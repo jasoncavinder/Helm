@@ -50,11 +50,16 @@ Completed in this milestone branch:
 - Task persistence hooks for orchestration runtime plus SQLite-backed integration tests.
 - Service-boundary process execution contracts (`ProcessSpawnRequest`, `ProcessExecutor`, `RunningProcess`).
 - Homebrew structured process request planning (detect/list/search) with no shell-string construction.
+- `TokioProcessExecutor`: real process spawning with `process_group(0)`, SIGTERM/SIGKILL termination, timeout enforcement, and 7 integration tests against system binaries.
+- `ProcessHomebrewSource`: wires `HomebrewSource` trait through `ProcessExecutor` contract using existing structured request builders.
+- End-to-end orchestration tests: full path from `AdapterRuntime` through `HomebrewAdapter<ProcessHomebrewSource>` to a routing fake executor, verifying detect/list/search/failure propagation (5 tests).
 
-Remaining before 0.3 exit:
-- Wire a service-boundary shim implementation that executes `ProcessSpawnRequest` through cancellable process handles.
-- Route at least one real adapter path through the execution contract end-to-end (contract + orchestration).
-- Reconfirm all 0.3 exit criteria in this document and `docs/ROADMAP.md` before merge from `dev` to `main`.
+All 0.3 exit criteria confirmed:
+- Multiple managers run concurrently (tested in `orchestration_runtime_queue`).
+- Same-manager tasks are serialized (tested in `orchestration_runtime_queue` and `orchestration_in_memory`).
+- Cancellation behavior verified by tests (immediate + graceful, tested in `orchestration_adapter_execution` and `orchestration_runtime_queue`).
+- Structured per-task failures observable from core contracts (tested in `orchestration_adapter_execution`, `orchestration_adapter_runtime`, and `end_to_end_homebrew`).
+- Process execution wired end-to-end through adapter and orchestration layers (tested in `end_to_end_homebrew`).
 
 ## Versioning Notes
 
