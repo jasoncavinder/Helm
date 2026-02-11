@@ -102,10 +102,14 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
 }
 
 fn parse_detection_output(output: HomebrewDetectOutput) -> DetectionInfo {
+    let parsed_version = parse_homebrew_version(&output.version_output);
+    let has_executable = output.executable_path.is_some();
+    let installed = has_executable || parsed_version.is_some();
+
     DetectionInfo {
-        installed: true,
+        installed,
         executable_path: output.executable_path,
-        version: parse_homebrew_version(&output.version_output),
+        version: parsed_version,
     }
 }
 
@@ -236,6 +240,10 @@ fn parse_search_formulae(
             continue;
         }
 
+        if is_no_results_diagnostic(line) {
+            continue;
+        }
+
         for token in line.split_whitespace() {
             if !is_formula_name_token(token) {
                 continue;
@@ -292,6 +300,12 @@ fn is_formula_name_token(token: &str) -> bool {
         .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '@' | '+' | '-' | '_' | '.' | '/'))
 }
 
+fn is_no_results_diagnostic(line: &str) -> bool {
+    let lowered = line.to_ascii_lowercase();
+    lowered.starts_with("no formulae or casks found for")
+        || lowered.starts_with("no formula or cask found for")
+}
+
 fn parse_error(message: &str) -> CoreError {
     CoreError {
         manager: Some(ManagerId::HomebrewFormula),
@@ -333,6 +347,15 @@ mod tests {
     }
 
     #[test]
+    fn detection_marks_not_installed_when_probe_has_no_signals() {
+        let detection = super::parse_detection_output(HomebrewDetectOutput {
+            executable_path: None,
+            version_output: String::new(),
+        });
+        assert!(!detection.installed);
+    }
+
+    #[test]
     fn parses_installed_formulae_fixture() {
         let parsed = parse_installed_formulae(INSTALLED_FIXTURE).unwrap();
         assert_eq!(parsed.len(), 4);
@@ -355,6 +378,17 @@ mod tests {
     fn returns_parse_error_for_fully_malformed_outdated_output() {
         let error = parse_outdated_formulae("this-is-not-parseable").unwrap_err();
         assert_eq!(error.kind, CoreErrorKind::ParseFailure);
+    }
+
+    #[test]
+    fn search_ignores_no_result_diagnostic_line() {
+        let query = SearchQuery {
+            text: "foo".to_string(),
+            issued_at: UNIX_EPOCH,
+        };
+        let parsed =
+            parse_search_formulae("No formulae or casks found for \"foo\".", &query).unwrap();
+        assert!(parsed.is_empty());
     }
 
     #[test]
