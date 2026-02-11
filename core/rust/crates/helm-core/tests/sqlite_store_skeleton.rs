@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use helm_core::models::CoreErrorKind;
+use helm_core::models::{CoreErrorKind, InstalledPackage, ManagerId, OutdatedPackage, PackageRef};
 use helm_core::persistence::{MigrationStore, PackageStore};
 use helm_core::sqlite::{SqliteStore, current_schema_version};
 
@@ -71,13 +71,76 @@ fn rolling_back_migration_resets_schema_version() {
 }
 
 #[test]
-fn non_migration_store_operations_are_explicitly_not_implemented() {
-    let path = test_db_path("not-implemented");
+fn package_operations_require_migrations() {
+    let path = test_db_path("requires-migration");
     let store = SqliteStore::new(&path);
     let error = store.list_installed().unwrap_err();
 
     assert_eq!(error.kind, CoreErrorKind::StorageFailure);
-    assert!(error.message.contains("not implemented"));
+    assert!(error.message.contains("apply migrations"));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn upsert_and_list_installed_roundtrip() {
+    let path = test_db_path("installed-roundtrip");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let packages = vec![
+        InstalledPackage {
+            package: PackageRef {
+                manager: ManagerId::HomebrewFormula,
+                name: "git".to_string(),
+            },
+            installed_version: Some("2.45.1".to_string()),
+            pinned: false,
+        },
+        InstalledPackage {
+            package: PackageRef {
+                manager: ManagerId::Pnpm,
+                name: "typescript".to_string(),
+            },
+            installed_version: Some("5.5.2".to_string()),
+            pinned: true,
+        },
+    ];
+
+    store.upsert_installed(&packages).unwrap();
+    let mut persisted = store.list_installed().unwrap();
+    persisted.sort_by(|left, right| left.package.name.cmp(&right.package.name));
+
+    assert_eq!(persisted.len(), 2);
+    assert_eq!(persisted[0].package.name, "git");
+    assert_eq!(persisted[1].package.name, "typescript");
+    assert!(persisted[1].pinned);
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn upsert_and_list_outdated_roundtrip() {
+    let path = test_db_path("outdated-roundtrip");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let packages = vec![OutdatedPackage {
+        package: PackageRef {
+            manager: ManagerId::HomebrewFormula,
+            name: "openssl@3".to_string(),
+        },
+        installed_version: Some("3.3.1".to_string()),
+        candidate_version: "3.3.2".to_string(),
+        pinned: false,
+    }];
+
+    store.upsert_outdated(&packages).unwrap();
+    let persisted = store.list_outdated().unwrap();
+
+    assert_eq!(persisted.len(), 1);
+    assert_eq!(persisted[0].package.name, "openssl@3");
+    assert_eq!(persisted[0].candidate_version, "3.3.2");
 
     let _ = std::fs::remove_file(path);
 }

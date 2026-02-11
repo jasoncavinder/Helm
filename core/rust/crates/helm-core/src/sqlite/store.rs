@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use rusqlite::Connection;
 
 use crate::models::{
-    CachedSearchResult, CoreError, CoreErrorKind, InstalledPackage, OutdatedPackage, PinRecord,
-    TaskRecord,
+    CachedSearchResult, CoreError, CoreErrorKind, InstalledPackage, ManagerId, OutdatedPackage,
+    PackageRef, PinRecord, TaskRecord,
 };
 use crate::persistence::{
     MigrationStore, PackageStore, PersistenceResult, PinStore, SearchCacheStore, TaskStore,
@@ -102,20 +102,134 @@ impl MigrationStore for SqliteStore {
 }
 
 impl PackageStore for SqliteStore {
-    fn upsert_installed(&self, _packages: &[InstalledPackage]) -> PersistenceResult<()> {
-        Err(not_implemented("upsert_installed"))
+    fn upsert_installed(&self, packages: &[InstalledPackage]) -> PersistenceResult<()> {
+        self.with_connection("upsert_installed", |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction = connection.transaction()?;
+            {
+                let mut statement = transaction.prepare(
+                    "
+INSERT INTO installed_packages (
+    manager_id, package_name, installed_version, pinned, updated_at_unix
+) VALUES (?1, ?2, ?3, ?4, strftime('%s', 'now'))
+ON CONFLICT(manager_id, package_name) DO UPDATE SET
+    installed_version = excluded.installed_version,
+    pinned = excluded.pinned,
+    updated_at_unix = excluded.updated_at_unix
+",
+                )?;
+
+                for package in packages {
+                    statement.execute((
+                        package.package.manager.as_str(),
+                        package.package.name.as_str(),
+                        package.installed_version.as_deref(),
+                        bool_to_sqlite(package.pinned),
+                    ))?;
+                }
+            }
+            transaction.commit()?;
+            Ok(())
+        })
     }
 
-    fn upsert_outdated(&self, _packages: &[OutdatedPackage]) -> PersistenceResult<()> {
-        Err(not_implemented("upsert_outdated"))
+    fn upsert_outdated(&self, packages: &[OutdatedPackage]) -> PersistenceResult<()> {
+        self.with_connection("upsert_outdated", |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction = connection.transaction()?;
+            {
+                let mut statement = transaction.prepare(
+                    "
+INSERT INTO outdated_packages (
+    manager_id, package_name, installed_version, candidate_version, pinned, updated_at_unix
+) VALUES (?1, ?2, ?3, ?4, ?5, strftime('%s', 'now'))
+ON CONFLICT(manager_id, package_name) DO UPDATE SET
+    installed_version = excluded.installed_version,
+    candidate_version = excluded.candidate_version,
+    pinned = excluded.pinned,
+    updated_at_unix = excluded.updated_at_unix
+",
+                )?;
+
+                for package in packages {
+                    statement.execute((
+                        package.package.manager.as_str(),
+                        package.package.name.as_str(),
+                        package.installed_version.as_deref(),
+                        package.candidate_version.as_str(),
+                        bool_to_sqlite(package.pinned),
+                    ))?;
+                }
+            }
+            transaction.commit()?;
+            Ok(())
+        })
     }
 
     fn list_installed(&self) -> PersistenceResult<Vec<InstalledPackage>> {
-        Err(not_implemented("list_installed"))
+        self.with_connection("list_installed", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection.prepare(
+                "
+SELECT manager_id, package_name, installed_version, pinned
+FROM installed_packages
+ORDER BY manager_id, package_name
+",
+            )?;
+
+            let rows = statement.query_map([], |row| {
+                let manager_id: String = row.get(0)?;
+                let package_name: String = row.get(1)?;
+                let installed_version: Option<String> = row.get(2)?;
+                let pinned_int: i64 = row.get(3)?;
+
+                let manager = parse_manager_id(&manager_id)?;
+                Ok(InstalledPackage {
+                    package: PackageRef {
+                        manager,
+                        name: package_name,
+                    },
+                    installed_version,
+                    pinned: sqlite_to_bool(pinned_int),
+                })
+            })?;
+
+            rows.collect()
+        })
     }
 
     fn list_outdated(&self) -> PersistenceResult<Vec<OutdatedPackage>> {
-        Err(not_implemented("list_outdated"))
+        self.with_connection("list_outdated", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection.prepare(
+                "
+SELECT manager_id, package_name, installed_version, candidate_version, pinned
+FROM outdated_packages
+ORDER BY manager_id, package_name
+",
+            )?;
+
+            let rows = statement.query_map([], |row| {
+                let manager_id: String = row.get(0)?;
+                let package_name: String = row.get(1)?;
+                let installed_version: Option<String> = row.get(2)?;
+                let candidate_version: String = row.get(3)?;
+                let pinned_int: i64 = row.get(4)?;
+
+                let manager = parse_manager_id(&manager_id)?;
+                Ok(OutdatedPackage {
+                    package: PackageRef {
+                        manager,
+                        name: package_name,
+                    },
+                    installed_version,
+                    candidate_version,
+                    pinned: sqlite_to_bool(pinned_int),
+                })
+            })?;
+
+            rows.collect()
+        })
     }
 }
 
@@ -191,6 +305,17 @@ CREATE TABLE IF NOT EXISTS helm_schema_migrations (
     Ok(())
 }
 
+fn ensure_schema_ready(connection: &Connection) -> rusqlite::Result<()> {
+    ensure_migrations_table(connection)?;
+    let version = read_current_version(connection)?;
+    if version <= 0 {
+        return Err(storage_error_sqlite(
+            "database schema is not initialized; apply migrations before package operations",
+        ));
+    }
+    Ok(())
+}
+
 fn read_current_version(connection: &Connection) -> rusqlite::Result<i64> {
     connection.query_row(
         &format!("SELECT COALESCE(MAX(version), 0) FROM {MIGRATIONS_TABLE}"),
@@ -232,6 +357,26 @@ fn apply_down_migration(
 
 fn storage_error(operation: &str, error: rusqlite::Error) -> CoreError {
     storage_error_text(operation, error.to_string())
+}
+
+fn storage_error_sqlite(message: &str) -> rusqlite::Error {
+    rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(message.to_string())))
+}
+
+fn parse_manager_id(raw: &str) -> rusqlite::Result<ManagerId> {
+    ManagerId::from_str(raw).ok_or_else(|| {
+        storage_error_sqlite(&format!(
+            "unknown manager id '{raw}' found in persisted sqlite record"
+        ))
+    })
+}
+
+fn bool_to_sqlite(value: bool) -> i64 {
+    if value { 1 } else { 0 }
+}
+
+fn sqlite_to_bool(value: i64) -> bool {
+    value != 0
 }
 
 fn storage_error_text(operation: &str, message: impl AsRef<str>) -> CoreError {
