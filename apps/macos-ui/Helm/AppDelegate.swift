@@ -34,15 +34,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 private struct StatusBarView: View {
+    @StateObject var core = HelmCore.shared
+    
     var body: some View {
-        VStack(spacing: 12) {
-            Text("Helm")
-                .font(.headline)
-            Text("Menu bar utility running.")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
+        VStack(spacing: 0) {
+            HStack {
+                Text("Helm")
+                    .font(.headline)
+                Spacer()
+                Button(action: {
+                    // Refresh action placeholder
+                }) {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.plain)
+            }
+            .padding()
+            .background(Color(nsColor: .windowBackgroundColor))
+            
+            Divider()
+            
+            if core.isInitialized {
+                TaskListView()
+                    .frame(height: 150)
+                Divider()
+                PackageListView()
+                    .frame(height: 300)
+            } else {
+                Text("Initializing Core...")
+                    .padding()
+            }
+            
+            Divider()
+            
+            HStack {
+                Text("v0.4.0")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Spacer()
+                Button("Quit") {
+                    NSApplication.shared.terminate(nil)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding()
         }
-        .padding()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(width: 350)
     }
 }

@@ -1,0 +1,15 @@
+[package]
+name = "helm-ffi"
+version = "0.1.0"
+edition = "2024"
+license = "UNLICENSED"
+
+[lib]
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+helm-core = { path = "../helm-core" }
+libc = "0.2"
+
+[build-dependencies]
+cbindgen = "0.29"

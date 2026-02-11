@@ -1,0 +1,8 @@
+language = "C"
+
+[parse]
+parse_deps = true
+include = ["helm-core"]
+
+[export]
+include = ["helm_init"]
