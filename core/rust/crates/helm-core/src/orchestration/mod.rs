@@ -1,6 +1,10 @@
 pub mod in_memory;
+pub mod runtime_queue;
 
 pub use in_memory::InMemoryTaskCoordinator;
+pub use runtime_queue::{
+    InMemoryAsyncTaskQueue, TaskCancellationToken, TaskOperation, TaskRuntimeSnapshot,
+};
 
 use std::time::{Duration, SystemTime};
 
