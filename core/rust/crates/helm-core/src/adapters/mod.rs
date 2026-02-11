@@ -1,5 +1,7 @@
+pub mod homebrew;
 pub mod manager;
 
+pub use homebrew::{HomebrewAdapter, HomebrewSource};
 pub use manager::{
     AdapterRequest, AdapterResponse, AdapterResult, DetectRequest, InstallRequest,
     ListInstalledRequest, ListOutdatedRequest, ManagerAdapter, MutationResult, PinRequest,
