@@ -111,6 +111,36 @@ pub enum ManagerAction {
     Unpin,
 }
 
+impl ManagerAction {
+    pub fn required_capability(self) -> Capability {
+        match self {
+            Self::Detect => Capability::Detect,
+            Self::Refresh => Capability::Refresh,
+            Self::Search => Capability::Search,
+            Self::ListInstalled => Capability::ListInstalled,
+            Self::ListOutdated => Capability::ListOutdated,
+            Self::Install => Capability::Install,
+            Self::Uninstall => Capability::Uninstall,
+            Self::Upgrade => Capability::Upgrade,
+            Self::Pin => Capability::Pin,
+            Self::Unpin => Capability::Unpin,
+        }
+    }
+
+    pub fn safety(self) -> ActionSafety {
+        match self {
+            Self::Detect
+            | Self::Refresh
+            | Self::Search
+            | Self::ListInstalled
+            | Self::ListOutdated => ActionSafety::ReadOnly,
+            Self::Install | Self::Uninstall | Self::Upgrade | Self::Pin | Self::Unpin => {
+                ActionSafety::Mutating
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum ActionSafety {
     ReadOnly,

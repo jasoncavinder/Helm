@@ -1,6 +1,6 @@
 use crate::models::{
-    ActionSafety, CachedSearchResult, CoreError, DetectionInfo, InstalledPackage, ManagerAction,
-    ManagerDescriptor, OutdatedPackage, PackageRef, SearchQuery,
+    ActionSafety, CachedSearchResult, CoreError, CoreErrorKind, DetectionInfo, InstalledPackage,
+    ManagerAction, ManagerDescriptor, OutdatedPackage, PackageRef, SearchQuery,
 };
 
 pub type AdapterResult<T> = Result<T, CoreError>;
@@ -80,6 +80,34 @@ impl AdapterRequest {
     }
 }
 
+pub fn ensure_action_supported(
+    descriptor: &ManagerDescriptor,
+    action: ManagerAction,
+) -> AdapterResult<()> {
+    let required = action.required_capability();
+    if descriptor.supports(required) {
+        return Ok(());
+    }
+
+    Err(CoreError {
+        manager: Some(descriptor.id),
+        task: None,
+        action: Some(action),
+        kind: CoreErrorKind::UnsupportedCapability,
+        message: format!(
+            "manager '{}' does not support required capability '{:?}' for action '{:?}'",
+            descriptor.display_name, required, action
+        ),
+    })
+}
+
+pub fn ensure_request_supported(
+    descriptor: &ManagerDescriptor,
+    request: &AdapterRequest,
+) -> AdapterResult<()> {
+    ensure_action_supported(descriptor, request.action())
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MutationResult {
     pub package: PackageRef,
@@ -104,4 +132,12 @@ pub trait ManagerAdapter: Send + Sync {
     fn action_safety(&self, action: ManagerAction) -> ActionSafety;
 
     fn execute(&self, request: AdapterRequest) -> AdapterResult<AdapterResponse>;
+}
+
+pub fn execute_with_capability_check(
+    adapter: &dyn ManagerAdapter,
+    request: AdapterRequest,
+) -> AdapterResult<AdapterResponse> {
+    ensure_request_supported(adapter.descriptor(), &request)?;
+    adapter.execute(request)
 }

@@ -1,3 +1,7 @@
+pub mod in_memory;
+
+pub use in_memory::InMemoryTaskCoordinator;
+
 use std::time::{Duration, SystemTime};
 
 use crate::models::{CoreError, ManagerId, TaskId, TaskRecord, TaskStatus, TaskType};
