@@ -6,3 +6,4 @@ license = "UNLICENSED"
 description = "Helm core domain models and manager adapter contracts"
 
 [dependencies]
+rusqlite = { version = "0.33", features = ["bundled"] }
