@@ -1,3 +1,9 @@
+#[cfg(unix)]
+pub mod tokio_process;
+
+#[cfg(unix)]
+pub use tokio_process::TokioProcessExecutor;
+
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::path::PathBuf;
