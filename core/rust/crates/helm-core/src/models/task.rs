@@ -1,11 +1,13 @@
+use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
 use crate::models::ManagerId;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct TaskId(pub u64);
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TaskType {
     Detection,
     Refresh,
@@ -17,7 +19,8 @@ pub enum TaskType {
     Unpin,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TaskStatus {
     Queued,
     Running,
@@ -26,7 +29,7 @@ pub enum TaskStatus {
     Failed,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct TaskRecord {
     pub id: TaskId,
     pub manager: ManagerId,

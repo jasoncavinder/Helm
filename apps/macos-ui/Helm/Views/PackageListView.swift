@@ -1,26 +1,39 @@
 import SwiftUI
 
 struct PackageListView: View {
-    @State private var packages: [PackageItem] = []
+    @StateObject var core = HelmCore.shared
     
     var body: some View {
         VStack(alignment: .leading) {
-            Text("Installed Packages")
-                .font(.headline)
-                .padding(.horizontal)
+            HStack {
+                Text("Installed Packages")
+                    .font(.headline)
+                Spacer()
+                Button(action: { core.fetchPackages() }) {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal)
             
-            List(packages) { package in
-                HStack {
-                    VStack(alignment: .leading) {
-                        Text(package.name)
-                            .font(.body)
-                        Text(package.manager)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+            if core.installedPackages.isEmpty {
+                Text("No packages found.")
+                    .foregroundColor(.secondary)
+                    .padding()
+            } else {
+                List(core.installedPackages) { package in
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(package.name)
+                                .font(.body)
+                            Text(package.manager)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Text(package.version)
+                            .font(.monospacedDigit(.body)())
                     }
-                    Spacer()
-                    Text(package.version)
-                        .font(.monospacedDigit(.body)())
                 }
             }
         }

@@ -1,20 +1,20 @@
 import SwiftUI
 
 struct TaskListView: View {
-    @State private var tasks: [TaskItem] = []
+    @StateObject var core = HelmCore.shared
     
     var body: some View {
         VStack(alignment: .leading) {
-            Text("Active Tasks")
+            Text("Recent Tasks")
                 .font(.headline)
                 .padding(.horizontal)
             
-            if tasks.isEmpty {
-                Text("No active tasks")
+            if core.activeTasks.isEmpty {
+                Text("No recent tasks")
                     .foregroundColor(.secondary)
                     .padding()
             } else {
-                List(tasks) { task in
+                List(core.activeTasks) { task in
                     HStack {
                         Text(task.description)
                         Spacer()

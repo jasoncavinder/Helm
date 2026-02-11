@@ -10,6 +10,11 @@ crate-type = ["staticlib", "cdylib"]
 [dependencies]
 helm-core = { path = "../helm-core" }
 libc = "0.2"
+lazy_static = "1.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
 [build-dependencies]
 cbindgen = "0.29"

@@ -11,7 +11,22 @@ This milestone introduces the Rust FFI layer and SwiftUI shell. Since Xcode proj
 
 Open `apps/macos-ui/Helm.xcodeproj` in Xcode.
 
-### 1. Add Build Script Phase
+### 1. Add New Source Files
+
+The automation script created several new Swift files, but they are not yet part of the Xcode project.
+
+1.  Right-click on the **Helm** folder in the Project Navigator (left sidebar).
+2.  Select **Add Files to "Helm"...**.
+3.  Select the following folders/files (hold Cmd to select multiple):
+    *   `Core` (folder)
+    *   `Models` (folder)
+    *   `Views` (folder)
+    *   `Helm-Bridging-Header.h`
+4.  Ensure **"Create groups"** is selected.
+5.  Ensure **"Add to targets"** -> **Helm** is checked.
+6.  Click **Add**.
+
+### 2. Add Build Script Phase
 
 1. Select the **Helm** target.
 2. Go to **Build Phases**.

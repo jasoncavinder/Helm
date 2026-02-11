@@ -43,7 +43,7 @@ private struct StatusBarView: View {
                     .font(.headline)
                 Spacer()
                 Button(action: {
-                    // Refresh action placeholder
+                    core.triggerRefresh()
                 }) {
                     Image(systemName: "arrow.clockwise")
                 }

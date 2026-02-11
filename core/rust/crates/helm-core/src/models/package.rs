@@ -1,19 +1,20 @@
 use crate::models::ManagerId;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct PackageRef {
     pub manager: ManagerId,
     pub name: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct InstalledPackage {
     pub package: PackageRef,
     pub installed_version: Option<String>,
     pub pinned: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct OutdatedPackage {
     pub package: PackageRef,
     pub installed_version: Option<String>,
@@ -21,7 +22,7 @@ pub struct OutdatedPackage {
     pub pinned: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PackageCandidate {
     pub package: PackageRef,
     pub version: Option<String>,
