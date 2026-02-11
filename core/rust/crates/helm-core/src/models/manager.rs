@@ -96,38 +96,42 @@ impl ManagerId {
             Self::FirmwareUpdates => "firmware_updates",
         }
     }
+}
 
-    pub fn from_str(value: &str) -> Option<Self> {
+impl std::str::FromStr for ManagerId {
+    type Err = ();
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
-            "mise" => Some(Self::Mise),
-            "asdf" => Some(Self::Asdf),
-            "rustup" => Some(Self::Rustup),
-            "homebrew_formula" => Some(Self::HomebrewFormula),
-            "softwareupdate" => Some(Self::SoftwareUpdate),
-            "macports" => Some(Self::MacPorts),
-            "nix_darwin" => Some(Self::NixDarwin),
-            "pnpm" => Some(Self::Pnpm),
-            "npm" => Some(Self::Npm),
-            "yarn" => Some(Self::Yarn),
-            "pipx" => Some(Self::Pipx),
-            "pip" => Some(Self::Pip),
-            "poetry" => Some(Self::Poetry),
-            "rubygems" => Some(Self::RubyGems),
-            "bundler" => Some(Self::Bundler),
-            "cargo" => Some(Self::Cargo),
-            "cargo_binstall" => Some(Self::CargoBinstall),
-            "mas" => Some(Self::Mas),
-            "sparkle" => Some(Self::Sparkle),
-            "setapp" => Some(Self::Setapp),
-            "homebrew_cask" => Some(Self::HomebrewCask),
-            "docker_desktop" => Some(Self::DockerDesktop),
-            "podman" => Some(Self::Podman),
-            "colima" => Some(Self::Colima),
-            "parallels_desktop" => Some(Self::ParallelsDesktop),
-            "xcode_command_line_tools" => Some(Self::XcodeCommandLineTools),
-            "rosetta2" => Some(Self::Rosetta2),
-            "firmware_updates" => Some(Self::FirmwareUpdates),
-            _ => None,
+            "mise" => Ok(Self::Mise),
+            "asdf" => Ok(Self::Asdf),
+            "rustup" => Ok(Self::Rustup),
+            "homebrew_formula" => Ok(Self::HomebrewFormula),
+            "softwareupdate" => Ok(Self::SoftwareUpdate),
+            "macports" => Ok(Self::MacPorts),
+            "nix_darwin" => Ok(Self::NixDarwin),
+            "pnpm" => Ok(Self::Pnpm),
+            "npm" => Ok(Self::Npm),
+            "yarn" => Ok(Self::Yarn),
+            "pipx" => Ok(Self::Pipx),
+            "pip" => Ok(Self::Pip),
+            "poetry" => Ok(Self::Poetry),
+            "rubygems" => Ok(Self::RubyGems),
+            "bundler" => Ok(Self::Bundler),
+            "cargo" => Ok(Self::Cargo),
+            "cargo_binstall" => Ok(Self::CargoBinstall),
+            "mas" => Ok(Self::Mas),
+            "sparkle" => Ok(Self::Sparkle),
+            "setapp" => Ok(Self::Setapp),
+            "homebrew_cask" => Ok(Self::HomebrewCask),
+            "docker_desktop" => Ok(Self::DockerDesktop),
+            "podman" => Ok(Self::Podman),
+            "colima" => Ok(Self::Colima),
+            "parallels_desktop" => Ok(Self::ParallelsDesktop),
+            "xcode_command_line_tools" => Ok(Self::XcodeCommandLineTools),
+            "rosetta2" => Ok(Self::Rosetta2),
+            "firmware_updates" => Ok(Self::FirmwareUpdates),
+            _ => Err(()),
         }
     }
 }

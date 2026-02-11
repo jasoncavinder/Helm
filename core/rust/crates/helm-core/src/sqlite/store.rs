@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 
 use crate::models::{
     CachedSearchResult, CoreError, CoreErrorKind, InstalledPackage, ManagerId, OutdatedPackage,
@@ -11,7 +11,7 @@ use crate::models::{
 use crate::persistence::{
     MigrationStore, PackageStore, PersistenceResult, PinStore, SearchCacheStore, TaskStore,
 };
-use crate::sqlite::migrations::{SqliteMigration, current_schema_version, migration, migrations};
+use crate::sqlite::migrations::{current_schema_version, migration, migrations, SqliteMigration};
 
 const MIGRATIONS_TABLE: &str = "helm_schema_migrations";
 
@@ -482,11 +482,9 @@ LIMIT ?1
 }
 
 fn open_connection(database_path: &Path) -> rusqlite::Result<Connection> {
-    if let Some(parent) = database_path.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent)
-                .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
-        }
+    if let Some(parent) = database_path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        fs::create_dir_all(parent)
+            .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
     }
     Connection::open(database_path)
 }
@@ -563,7 +561,7 @@ fn storage_error_sqlite(message: &str) -> rusqlite::Error {
 }
 
 fn parse_manager_id(raw: &str) -> rusqlite::Result<ManagerId> {
-    ManagerId::from_str(raw).ok_or_else(|| {
+    raw.parse::<ManagerId>().map_err(|_| {
         storage_error_sqlite(&format!(
             "unknown manager id '{raw}' found in persisted sqlite record"
         ))
@@ -652,7 +650,11 @@ fn parse_task_status(raw: &str) -> rusqlite::Result<TaskStatus> {
 }
 
 fn bool_to_sqlite(value: bool) -> i64 {
-    if value { 1 } else { 0 }
+    if value {
+        1
+    } else {
+        0
+    }
 }
 
 fn sqlite_to_bool(value: i64) -> bool {

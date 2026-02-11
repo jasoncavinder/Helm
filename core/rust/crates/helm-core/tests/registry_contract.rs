@@ -75,7 +75,7 @@ fn tool_runtime_managers_are_authoritative() {
 fn manager_ids_roundtrip_to_and_from_storage_keys() {
     for manager in ManagerId::ALL {
         let serialized = manager.as_str();
-        let parsed = ManagerId::from_str(serialized);
+        let parsed: Option<ManagerId> = serialized.parse().ok();
         assert_eq!(parsed, Some(manager));
     }
 }
