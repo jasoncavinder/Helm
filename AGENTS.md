@@ -192,3 +192,28 @@ When implementing:
 - Be predictable.
 
 Helm is infrastructure. Treat it like one.
+
+---
+
+## 13. Git Workflow (Required)
+
+### Branch model
+- `main`: stable/releasable; protected; merges come from `dev` (except hotfixes).
+- `dev`: integration branch; protected; feature work merges here first.
+- Feature branches: branch off `dev`, merge back to `dev` via PR:
+  - `feat/...`, `fix/...`, `chore/...`, `docs/...`, `test/...`, `refactor/...`
+- Hotfixes: branch off `main` as `hotfix/...`, then merge into both `main` and `dev`.
+
+### Rules
+- Do not commit directly to `main`.
+- Avoid committing directly to `dev` except trivial docs fixes; prefer PRs.
+- Do not rewrite published history (no force-push) unless explicitly instructed.
+- Prefer small, coherent commits.
+
+### Commit messages
+Use prefixes:
+- `feat:`, `fix:`, `chore:`, `docs:`, `test:`, `refactor:`
+
+### Before opening a PR
+- Ensure relevant tests pass (e.g., `cargo test`).
+- Keep PRs focused; split unrelated changes.
