@@ -2,20 +2,22 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use crate::adapters::{AdapterRequest, ManagerAdapter};
+use crate::adapters::{AdapterRequest, AdapterResponse, ManagerAdapter};
 use crate::models::{
     CoreError, CoreErrorKind, ManagerAction, ManagerId, TaskId, TaskRecord, TaskStatus, TaskType,
 };
 use crate::orchestration::{
-    AdapterExecutionRuntime, AdapterTaskSnapshot, CancellationMode, OrchestrationResult,
+    AdapterExecutionRuntime, AdapterTaskSnapshot, AdapterTaskTerminalState, CancellationMode,
+    OrchestrationResult,
 };
-use crate::persistence::TaskStore;
+use crate::persistence::{PackageStore, TaskStore};
 
 #[derive(Clone)]
 pub struct AdapterRuntime {
     execution: AdapterExecutionRuntime,
     adapters: Arc<HashMap<ManagerId, Arc<dyn ManagerAdapter>>>,
     task_store: Option<Arc<dyn TaskStore>>,
+    package_store: Option<Arc<dyn PackageStore>>,
 }
 
 impl AdapterRuntime {
@@ -29,24 +31,26 @@ impl AdapterRuntime {
         execution: AdapterExecutionRuntime,
         adapters: impl IntoIterator<Item = Arc<dyn ManagerAdapter>>,
     ) -> OrchestrationResult<Self> {
-        Self::with_execution_and_task_store(execution, adapters, None)
+        Self::with_stores(execution, adapters, None, None)
     }
 
     pub fn with_task_store(
         adapters: impl IntoIterator<Item = Arc<dyn ManagerAdapter>>,
         task_store: Arc<dyn TaskStore>,
     ) -> OrchestrationResult<Self> {
-        Self::with_execution_and_task_store(
+        Self::with_stores(
             AdapterExecutionRuntime::new(),
             adapters,
             Some(task_store),
+            None,
         )
     }
 
-    pub fn with_execution_and_task_store(
+    pub fn with_stores(
         execution: AdapterExecutionRuntime,
         adapters: impl IntoIterator<Item = Arc<dyn ManagerAdapter>>,
         task_store: Option<Arc<dyn TaskStore>>,
+        package_store: Option<Arc<dyn PackageStore>>,
     ) -> OrchestrationResult<Self> {
         let mut mapped = HashMap::new();
         for adapter in adapters {
@@ -66,6 +70,7 @@ impl AdapterRuntime {
             execution,
             adapters: Arc::new(mapped),
             task_store,
+            package_store,
         })
     }
 
@@ -116,6 +121,7 @@ impl AdapterRuntime {
             spawn_terminal_persistence_watcher(
                 self.execution.clone(),
                 task_store.clone(),
+                self.package_store.clone(),
                 task_id,
                 manager,
                 task_type,
@@ -152,6 +158,7 @@ impl AdapterRuntime {
 fn spawn_terminal_persistence_watcher(
     execution: AdapterExecutionRuntime,
     task_store: Arc<dyn TaskStore>,
+    package_store: Option<Arc<dyn PackageStore>>,
     task_id: TaskId,
     manager: ManagerId,
     task_type: TaskType,
@@ -175,6 +182,31 @@ fn spawn_terminal_persistence_watcher(
                 return;
             }
         };
+
+        // Persist task result (domain data)
+        if let Some(package_store) = package_store {
+            if let Some(AdapterTaskTerminalState::Succeeded(response)) = &snapshot.terminal_state {
+                if let Err(error) = persist_adapter_response(
+                    package_store,
+                    response,
+                    manager,
+                    task_type,
+                    action,
+                )
+                .await
+                {
+                    tracing::error!(
+                        manager = ?manager,
+                        task_id = task_id.0,
+                        task_type = ?task_type,
+                        action = ?action,
+                        kind = ?error.kind,
+                        message = %error.message,
+                        "failed to persist adapter response data"
+                    );
+                }
+            }
+        }
 
         let updated = TaskRecord {
             id: snapshot.runtime.id,
@@ -204,6 +236,39 @@ fn spawn_terminal_persistence_watcher(
             );
         }
     });
+}
+
+async fn persist_adapter_response(
+    package_store: Arc<dyn PackageStore>,
+    response: &AdapterResponse,
+    manager: ManagerId,
+    task_type: TaskType,
+    action: ManagerAction,
+) -> OrchestrationResult<()> {
+    // Clone data for the blocking thread
+    // This might be expensive for large lists, but necessary for thread safety across spawn_blocking
+    let response = response.clone();
+
+    tokio::task::spawn_blocking(move || {
+        match response {
+            AdapterResponse::InstalledPackages(packages) => {
+                package_store.upsert_installed(&packages)
+            }
+            AdapterResponse::OutdatedPackages(packages) => {
+                package_store.upsert_outdated(&packages)
+            }
+            _ => Ok(()), // Other responses not persisted yet
+        }
+    })
+    .await
+    .map_err(|join_error| CoreError {
+        manager: Some(manager),
+        task: Some(task_type),
+        action: Some(action),
+        kind: CoreErrorKind::Internal,
+        message: format!("response persistence join failure: {join_error}"),
+    })?
+    .map_err(|error| attribute_error(error, manager, task_type, action))
 }
 
 async fn persist_create_task(
