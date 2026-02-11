@@ -158,3 +158,77 @@ async fn immediate_cancel_reports_cancelled_terminal_state() {
         Some(AdapterTaskTerminalState::Cancelled(_))
     ));
 }
+
+#[tokio::test]
+async fn graceful_cancel_allows_near_complete_adapter_execution() {
+    let runtime = AdapterExecutionRuntime::new();
+    let adapter = Arc::new(TestAdapter::new(
+        ManagerId::Pnpm,
+        AdapterBehavior::SleepsThenSucceeds(Duration::from_millis(40), AdapterResponse::Refreshed),
+    ));
+
+    let task_id = runtime
+        .submit(adapter, AdapterRequest::Refresh(RefreshRequest))
+        .await
+        .unwrap();
+
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    runtime
+        .cancel(
+            task_id,
+            CancellationMode::Graceful {
+                grace_period: Duration::from_millis(250),
+            },
+        )
+        .await
+        .unwrap();
+
+    let snapshot = runtime
+        .wait_for_terminal(task_id, Some(Duration::from_secs(1)))
+        .await
+        .unwrap();
+
+    assert_eq!(snapshot.runtime.status, TaskStatus::Completed);
+    assert_eq!(
+        snapshot.terminal_state,
+        Some(AdapterTaskTerminalState::Succeeded(
+            AdapterResponse::Refreshed
+        ))
+    );
+}
+
+#[tokio::test]
+async fn graceful_cancel_times_out_and_cancels_adapter_execution() {
+    let runtime = AdapterExecutionRuntime::new();
+    let adapter = Arc::new(TestAdapter::new(
+        ManagerId::Yarn,
+        AdapterBehavior::SleepsThenSucceeds(Duration::from_millis(400), AdapterResponse::Refreshed),
+    ));
+
+    let task_id = runtime
+        .submit(adapter, AdapterRequest::Refresh(RefreshRequest))
+        .await
+        .unwrap();
+
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    runtime
+        .cancel(
+            task_id,
+            CancellationMode::Graceful {
+                grace_period: Duration::from_millis(20),
+            },
+        )
+        .await
+        .unwrap();
+
+    let snapshot = runtime
+        .wait_for_terminal(task_id, Some(Duration::from_secs(1)))
+        .await
+        .unwrap();
+
+    assert_eq!(snapshot.runtime.status, TaskStatus::Cancelled);
+    assert!(matches!(
+        snapshot.terminal_state,
+        Some(AdapterTaskTerminalState::Cancelled(_))
+    ));
+}
