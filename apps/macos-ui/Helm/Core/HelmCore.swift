@@ -26,32 +26,20 @@ final class HelmCore: ObservableObject {
     @Published var activeTasks: [TaskItem] = []
     
     private var timer: Timer?
+    private var connection: NSXPCConnection?
     
     private init() {
-        setup()
+        setupConnection()
     }
     
-    func setup() {
-        // Path to SQLite DB in Application Support
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dbPath = appSupport.appendingPathComponent("Helm/helm.db").path
+    func setupConnection() {
+        let connection = NSXPCConnection(serviceName: "com.jasoncavinder.Helm.HelmService")
+        connection.remoteObjectInterface = NSXPCInterface(with: HelmServiceProtocol.self)
+        connection.resume()
+        self.connection = connection
         
-        // Ensure directory exists
-        try? FileManager.default.createDirectory(atPath: appSupport.appendingPathComponent("Helm").path, withIntermediateDirectories: true)
-        
-        // Call Rust init
-        let success = dbPath.withCString { cPath in
-            helm_init(cPath)
-        }
-        
-        if success {
-            print("Helm Core initialized successfully")
-            isInitialized = true
-            fetchPackages()
-            startPolling()
-        } else {
-            print("Failed to initialize Helm Core")
-        }
+        isInitialized = true
+        startPolling()
     }
     
     func startPolling() {
@@ -61,68 +49,66 @@ final class HelmCore: ObservableObject {
         }
     }
     
+    func service() -> HelmServiceProtocol? {
+        return connection?.remoteObjectProxy as? HelmServiceProtocol
+    }
+    
     func triggerRefresh() {
-        if helm_trigger_refresh() {
-            print("Refresh triggered")
-        } else {
-            print("Failed to trigger refresh")
+        service()?.triggerRefresh { success in
+            if success {
+                print("Refresh triggered via XPC")
+            } else {
+                print("Failed to trigger refresh via XPC")
+            }
         }
     }
     
     func fetchPackages() {
-        guard let cString = helm_list_installed_packages() else {
-            return
-        }
-        defer { helm_free_string(cString) }
-        
-        let jsonString = String(cString: cString)
-        guard let data = jsonString.data(using: .utf8) else { return }
-        
-        do {
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
-            let corePackages = try decoder.decode([CoreInstalledPackage].self, from: data)
+        service()?.listInstalledPackages { [weak self] jsonString in
+            guard let jsonString = jsonString, let data = jsonString.data(using: .utf8) else { return }
             
-            DispatchQueue.main.async {
-                self.installedPackages = corePackages.map { pkg in
-                    PackageItem(
-                        id: "\(pkg.package.manager):\(pkg.package.name)",
-                        name: pkg.package.name,
-                        version: pkg.installed_version ?? "unknown",
-                        manager: pkg.package.manager.replacingOccurrences(of: "_", with: " ").capitalized
-                    )
+            do {
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                let corePackages = try decoder.decode([CoreInstalledPackage].self, from: data)
+                
+                DispatchQueue.main.async {
+                    self?.installedPackages = corePackages.map { pkg in
+                        PackageItem(
+                            id: "\(pkg.package.manager):\(pkg.package.name)",
+                            name: pkg.package.name,
+                            version: pkg.installed_version ?? "unknown",
+                            manager: pkg.package.manager.replacingOccurrences(of: "_", with: " ").capitalized
+                        )
+                    }
                 }
+            } catch {
+                print("Failed to decode packages: \(error)")
             }
-        } catch {
-            print("Failed to decode packages: \(error)")
         }
     }
     
     func fetchTasks() {
-        guard let cString = helm_list_tasks() else {
-            return
-        }
-        defer { helm_free_string(cString) }
-        
-        let jsonString = String(cString: cString)
-        guard let data = jsonString.data(using: .utf8) else { return }
-        
-        do {
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
-            let coreTasks = try decoder.decode([CoreTaskRecord].self, from: data)
+        service()?.listTasks { [weak self] jsonString in
+            guard let jsonString = jsonString, let data = jsonString.data(using: .utf8) else { return }
             
-            DispatchQueue.main.async {
-                self.activeTasks = coreTasks.map { task in
-                    TaskItem(
-                        id: "\(task.id)",
-                        description: "\(task.task_type.capitalized) \(task.manager.replacingOccurrences(of: "_", with: " ").capitalized)",
-                        status: task.status.capitalized
-                    )
+            do {
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                let coreTasks = try decoder.decode([CoreTaskRecord].self, from: data)
+                
+                DispatchQueue.main.async {
+                    self?.activeTasks = coreTasks.map { task in
+                        TaskItem(
+                            id: "\(task.id)",
+                            description: "\(task.task_type.capitalized) \(task.manager.replacingOccurrences(of: "_", with: " ").capitalized)",
+                            status: task.status.capitalized
+                        )
+                    }
                 }
+            } catch {
+                print("Failed to decode tasks: \(error)")
             }
-        } catch {
-            print("Failed to decode tasks: \(error)")
         }
     }
 }
