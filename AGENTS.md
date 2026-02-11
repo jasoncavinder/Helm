@@ -206,6 +206,7 @@ Helm is infrastructure. Treat it like one.
 
 ### Rules
 - Do not commit directly to `main`.
+- Exception: direct commits to `main` are allowed when explicitly instructed by the user/repo owner in the current session.
 - Avoid committing directly to `dev` except trivial docs fixes; prefer PRs.
 - Do not rewrite published history (no force-push) unless explicitly instructed.
 - Prefer small, coherent commits.
