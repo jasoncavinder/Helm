@@ -9,3 +9,4 @@ This repository is scaffolded to follow the Helm layered architecture:
 Only the Rust core workspace contracts are initialized in this stage.
 No UI or service implementation is included yet.
 
+Helm is currently pre-1.0. See docs/DEFINITION_OF_DONE.md for release criteria.
