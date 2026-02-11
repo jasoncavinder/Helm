@@ -1,6 +1,10 @@
+pub mod adapter_execution;
 pub mod in_memory;
 pub mod runtime_queue;
 
+pub use adapter_execution::{
+    AdapterExecutionRuntime, AdapterTaskSnapshot, AdapterTaskTerminalState,
+};
 pub use in_memory::InMemoryTaskCoordinator;
 pub use runtime_queue::{
     InMemoryAsyncTaskQueue, TaskCancellationToken, TaskOperation, TaskRuntimeSnapshot,
