@@ -32,6 +32,39 @@ pub enum ManagerId {
     FirmwareUpdates,
 }
 
+impl ManagerId {
+    pub const ALL: [Self; 28] = [
+        Self::Mise,
+        Self::Asdf,
+        Self::Rustup,
+        Self::HomebrewFormula,
+        Self::SoftwareUpdate,
+        Self::MacPorts,
+        Self::NixDarwin,
+        Self::Pnpm,
+        Self::Npm,
+        Self::Yarn,
+        Self::Pipx,
+        Self::Pip,
+        Self::Poetry,
+        Self::RubyGems,
+        Self::Bundler,
+        Self::Cargo,
+        Self::CargoBinstall,
+        Self::Mas,
+        Self::Sparkle,
+        Self::Setapp,
+        Self::HomebrewCask,
+        Self::DockerDesktop,
+        Self::Podman,
+        Self::Colima,
+        Self::ParallelsDesktop,
+        Self::XcodeCommandLineTools,
+        Self::Rosetta2,
+        Self::FirmwareUpdates,
+    ];
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum ManagerCategory {
     ToolRuntime,
@@ -90,7 +123,7 @@ pub struct ManagerDescriptor {
     pub display_name: &'static str,
     pub category: ManagerCategory,
     pub authority: ManagerAuthority,
-    pub capabilities: Vec<Capability>,
+    pub capabilities: &'static [Capability],
 }
 
 impl ManagerDescriptor {
