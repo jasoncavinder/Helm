@@ -5,7 +5,7 @@ It is designed as infrastructure software: deterministic, safety-first, and expl
 
 ## Current Status
 
-This branch (`main`) currently represents the **0.1.x core foundation** stage.
+This branch (`main`) currently represents the **0.3.x orchestration engine** stage.
 
 Implemented today on `main`:
 - Repository scaffold for the 3-layer architecture.
@@ -14,12 +14,19 @@ Implemented today on `main`:
   - adapter trait/contracts,
   - orchestration contracts + in-memory coordinator,
   - SQLite migration and persistence contracts.
+- **Orchestration Engine**:
+  - Background task queue with per-manager serialization.
+  - Cross-manager parallelism.
+  - Process-level cancellation (SIGTERM/SIGKILL).
+  - Structured error reporting.
+- **Homebrew Adapter**:
+  - Full detection, listing, and search capabilities.
+  - Safe, structured process execution without shell strings.
 - Deterministic unit/integration tests for core contracts.
 
 Not yet implemented on `main`:
 - Production UI behavior in `apps/macos-ui`.
-- Production service-boundary execution in `service/macos-service`.
-- Full manager adapter implementations.
+- Service-boundary XPC integration.
 
 ## Architecture
 

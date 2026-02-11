@@ -1,6 +1,8 @@
-# 0.3.x Kickoff Plan (Orchestration Engine)
+# 0.3.x Kickoff Plan (Orchestration Engine) - Completed
 
 This plan starts milestone `0.3.x` from `docs/ROADMAP.md`.
+
+**Status: COMPLETED (v0.3.0 released)**
 
 Current released development baseline:
 - `helm-core` version: `0.2.0-alpha.1`

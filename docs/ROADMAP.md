@@ -5,7 +5,7 @@ Milestones are feature-driven, not time-driven.
 
 ---
 
-## 0.1.x — Core Foundation (alpha)
+## 0.1.x — Core Foundation (alpha) - Completed
 
 Goal:
 - Rust workspace initialized
@@ -21,7 +21,7 @@ Exit Criteria:
 
 ---
 
-## 0.2.x — First Adapter (alpha)
+## 0.2.x — First Adapter (alpha) - Completed
 
 Goal:
 - Homebrew adapter implemented
@@ -37,7 +37,7 @@ Exit Criteria:
 
 ---
 
-## 0.3.x — Orchestration Engine (beta)
+## 0.3.x — Orchestration Engine (beta) - Completed
 
 Goal:
 - Background task queue
@@ -53,7 +53,7 @@ Exit Criteria:
 
 ---
 
-## 0.4.x — SwiftUI Shell (beta)
+## 0.4.x — SwiftUI Shell (beta) - Active
 
 Goal:
 - Menu bar app scaffold
