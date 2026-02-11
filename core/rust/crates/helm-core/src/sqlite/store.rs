@@ -1,11 +1,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use rusqlite::Connection;
+use rusqlite::{Connection, params};
 
 use crate::models::{
     CachedSearchResult, CoreError, CoreErrorKind, InstalledPackage, ManagerId, OutdatedPackage,
-    PackageRef, PinRecord, TaskRecord,
+    PackageCandidate, PackageRef, PinKind, PinRecord, TaskId, TaskRecord, TaskStatus, TaskType,
 };
 use crate::persistence::{
     MigrationStore, PackageStore, PersistenceResult, PinStore, SearchCacheStore, TaskStore,
@@ -234,52 +235,250 @@ ORDER BY manager_id, package_name
 }
 
 impl PinStore for SqliteStore {
-    fn upsert_pin(&self, _pin: &PinRecord) -> PersistenceResult<()> {
-        Err(not_implemented("upsert_pin"))
+    fn upsert_pin(&self, pin: &PinRecord) -> PersistenceResult<()> {
+        self.with_connection("upsert_pin", |connection| {
+            ensure_schema_ready(connection)?;
+            connection.execute(
+                "
+INSERT INTO pin_records (
+    manager_id, package_name, pin_kind, pinned_version, created_at_unix
+) VALUES (?1, ?2, ?3, ?4, ?5)
+ON CONFLICT(manager_id, package_name) DO UPDATE SET
+    pin_kind = excluded.pin_kind,
+    pinned_version = excluded.pinned_version,
+    created_at_unix = excluded.created_at_unix
+",
+                params![
+                    pin.package.manager.as_str(),
+                    pin.package.name.as_str(),
+                    pin_kind_to_str(pin.kind),
+                    pin.pinned_version.as_deref(),
+                    to_unix_seconds(pin.created_at)?,
+                ],
+            )?;
+            Ok(())
+        })
     }
 
-    fn remove_pin(&self, _package_key: &str) -> PersistenceResult<()> {
-        Err(not_implemented("remove_pin"))
+    fn remove_pin(&self, package_key: &str) -> PersistenceResult<()> {
+        self.with_connection("remove_pin", |connection| {
+            ensure_schema_ready(connection)?;
+            let (manager, package_name) = parse_package_key(package_key)?;
+            connection.execute(
+                "DELETE FROM pin_records WHERE manager_id = ?1 AND package_name = ?2",
+                params![manager.as_str(), package_name],
+            )?;
+            Ok(())
+        })
     }
 
     fn list_pins(&self) -> PersistenceResult<Vec<PinRecord>> {
-        Err(not_implemented("list_pins"))
+        self.with_connection("list_pins", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection.prepare(
+                "
+SELECT manager_id, package_name, pin_kind, pinned_version, created_at_unix
+FROM pin_records
+ORDER BY manager_id, package_name
+",
+            )?;
+            let rows = statement.query_map([], |row| {
+                let manager_raw: String = row.get(0)?;
+                let package_name: String = row.get(1)?;
+                let pin_kind_raw: String = row.get(2)?;
+                let pinned_version: Option<String> = row.get(3)?;
+                let created_at_unix: i64 = row.get(4)?;
+
+                Ok(PinRecord {
+                    package: PackageRef {
+                        manager: parse_manager_id(&manager_raw)?,
+                        name: package_name,
+                    },
+                    kind: parse_pin_kind(&pin_kind_raw)?,
+                    pinned_version,
+                    created_at: from_unix_seconds(created_at_unix)?,
+                })
+            })?;
+
+            rows.collect()
+        })
     }
 }
 
 impl SearchCacheStore for SqliteStore {
-    fn upsert_search_results(&self, _results: &[CachedSearchResult]) -> PersistenceResult<()> {
-        Err(not_implemented("upsert_search_results"))
+    fn upsert_search_results(&self, results: &[CachedSearchResult]) -> PersistenceResult<()> {
+        self.with_connection("upsert_search_results", |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction = connection.transaction()?;
+            {
+                let mut delete_statement = transaction.prepare(
+                    "
+DELETE FROM search_cache
+WHERE manager_id = ?1
+  AND package_name = ?2
+  AND COALESCE(version, '') = COALESCE(?3, '')
+  AND originating_query = ?4
+",
+                )?;
+                let mut insert_statement = transaction.prepare(
+                    "
+INSERT INTO search_cache (
+    manager_id, package_name, version, summary, originating_query, cached_at_unix
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+",
+                )?;
+
+                for result in results {
+                    delete_statement.execute(params![
+                        result.source_manager.as_str(),
+                        result.result.package.name.as_str(),
+                        result.result.version.as_deref(),
+                        result.originating_query.as_str(),
+                    ])?;
+
+                    insert_statement.execute(params![
+                        result.source_manager.as_str(),
+                        result.result.package.name.as_str(),
+                        result.result.version.as_deref(),
+                        result.result.summary.as_deref(),
+                        result.originating_query.as_str(),
+                        to_unix_seconds(result.cached_at)?,
+                    ])?;
+                }
+            }
+            transaction.commit()?;
+            Ok(())
+        })
     }
 
-    fn query_local(
-        &self,
-        _query: &str,
-        _limit: usize,
-    ) -> PersistenceResult<Vec<CachedSearchResult>> {
-        Err(not_implemented("query_local"))
+    fn query_local(&self, query: &str, limit: usize) -> PersistenceResult<Vec<CachedSearchResult>> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+
+        self.with_connection("query_local", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection.prepare(
+                "
+SELECT manager_id, package_name, version, summary, originating_query, cached_at_unix
+FROM search_cache
+WHERE (?1 = '' OR package_name LIKE ?2 OR COALESCE(summary, '') LIKE ?2)
+ORDER BY cached_at_unix DESC, package_name ASC
+LIMIT ?3
+",
+            )?;
+
+            let pattern = format!("%{}%", query.trim());
+            let rows =
+                statement.query_map(params![query.trim(), pattern, to_i64(limit)?], |row| {
+                    let manager_raw: String = row.get(0)?;
+                    let package_name: String = row.get(1)?;
+                    let version: Option<String> = row.get(2)?;
+                    let summary: Option<String> = row.get(3)?;
+                    let originating_query: String = row.get(4)?;
+                    let cached_at_unix: i64 = row.get(5)?;
+
+                    let manager = parse_manager_id(&manager_raw)?;
+                    Ok(CachedSearchResult {
+                        result: PackageCandidate {
+                            package: PackageRef {
+                                manager,
+                                name: package_name,
+                            },
+                            version,
+                            summary,
+                        },
+                        source_manager: manager,
+                        originating_query,
+                        cached_at: from_unix_seconds(cached_at_unix)?,
+                    })
+                })?;
+
+            rows.collect()
+        })
     }
 }
 
 impl TaskStore for SqliteStore {
-    fn create_task(&self, _task: &TaskRecord) -> PersistenceResult<()> {
-        Err(not_implemented("create_task"))
+    fn create_task(&self, task: &TaskRecord) -> PersistenceResult<()> {
+        self.with_connection("create_task", |connection| {
+            ensure_schema_ready(connection)?;
+            connection.execute(
+                "
+INSERT INTO task_records (task_id, manager_id, task_type, status, created_at_unix)
+VALUES (?1, ?2, ?3, ?4, ?5)
+",
+                params![
+                    task_id_to_i64(task.id)?,
+                    task.manager.as_str(),
+                    task_type_to_str(task.task_type),
+                    task_status_to_str(task.status),
+                    to_unix_seconds(task.created_at)?,
+                ],
+            )?;
+            Ok(())
+        })
     }
 
-    fn update_task(&self, _task: &TaskRecord) -> PersistenceResult<()> {
-        Err(not_implemented("update_task"))
+    fn update_task(&self, task: &TaskRecord) -> PersistenceResult<()> {
+        self.with_connection("update_task", |connection| {
+            ensure_schema_ready(connection)?;
+            let updated = connection.execute(
+                "
+UPDATE task_records
+SET manager_id = ?2, task_type = ?3, status = ?4, created_at_unix = ?5
+WHERE task_id = ?1
+",
+                params![
+                    task_id_to_i64(task.id)?,
+                    task.manager.as_str(),
+                    task_type_to_str(task.task_type),
+                    task_status_to_str(task.status),
+                    to_unix_seconds(task.created_at)?,
+                ],
+            )?;
+
+            if updated == 0 {
+                return Err(storage_error_sqlite("task id was not found for update"));
+            }
+            Ok(())
+        })
     }
 
-    fn list_recent_tasks(&self, _limit: usize) -> PersistenceResult<Vec<TaskRecord>> {
-        Err(not_implemented("list_recent_tasks"))
-    }
-}
+    fn list_recent_tasks(&self, limit: usize) -> PersistenceResult<Vec<TaskRecord>> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
 
-fn not_implemented(operation: &str) -> CoreError {
-    storage_error_text(
-        operation,
-        format!("sqlite store operation '{operation}' is not implemented"),
-    )
+        self.with_connection("list_recent_tasks", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection.prepare(
+                "
+SELECT task_id, manager_id, task_type, status, created_at_unix
+FROM task_records
+ORDER BY created_at_unix DESC, task_id DESC
+LIMIT ?1
+",
+            )?;
+            let rows = statement.query_map(params![to_i64(limit)?], |row| {
+                let task_id_raw: i64 = row.get(0)?;
+                let manager_raw: String = row.get(1)?;
+                let task_type_raw: String = row.get(2)?;
+                let status_raw: String = row.get(3)?;
+                let created_at_unix: i64 = row.get(4)?;
+
+                Ok(TaskRecord {
+                    id: TaskId(i64_to_u64(task_id_raw)?),
+                    manager: parse_manager_id(&manager_raw)?,
+                    task_type: parse_task_type(&task_type_raw)?,
+                    status: parse_task_status(&status_raw)?,
+                    created_at: from_unix_seconds(created_at_unix)?,
+                })
+            })?;
+
+            rows.collect()
+        })
+    }
 }
 
 fn open_connection(database_path: &Path) -> rusqlite::Result<Connection> {
@@ -371,12 +570,125 @@ fn parse_manager_id(raw: &str) -> rusqlite::Result<ManagerId> {
     })
 }
 
+fn parse_package_key(package_key: &str) -> rusqlite::Result<(ManagerId, &str)> {
+    let (manager_raw, package_name) = package_key.split_once(':').ok_or_else(|| {
+        storage_error_sqlite("package_key must use '<manager_id>:<package_name>' format")
+    })?;
+    if package_name.trim().is_empty() {
+        return Err(storage_error_sqlite(
+            "package_key must include a non-empty package_name",
+        ));
+    }
+    Ok((parse_manager_id(manager_raw)?, package_name))
+}
+
+fn pin_kind_to_str(kind: PinKind) -> &'static str {
+    match kind {
+        PinKind::Native => "native",
+        PinKind::Virtual => "virtual",
+    }
+}
+
+fn parse_pin_kind(raw: &str) -> rusqlite::Result<PinKind> {
+    match raw {
+        "native" => Ok(PinKind::Native),
+        "virtual" => Ok(PinKind::Virtual),
+        _ => Err(storage_error_sqlite(&format!(
+            "unknown pin kind '{raw}' in sqlite record"
+        ))),
+    }
+}
+
+fn task_type_to_str(value: TaskType) -> &'static str {
+    match value {
+        TaskType::Detection => "detection",
+        TaskType::Refresh => "refresh",
+        TaskType::Search => "search",
+        TaskType::Install => "install",
+        TaskType::Uninstall => "uninstall",
+        TaskType::Upgrade => "upgrade",
+        TaskType::Pin => "pin",
+        TaskType::Unpin => "unpin",
+    }
+}
+
+fn parse_task_type(raw: &str) -> rusqlite::Result<TaskType> {
+    match raw {
+        "detection" => Ok(TaskType::Detection),
+        "refresh" => Ok(TaskType::Refresh),
+        "search" => Ok(TaskType::Search),
+        "install" => Ok(TaskType::Install),
+        "uninstall" => Ok(TaskType::Uninstall),
+        "upgrade" => Ok(TaskType::Upgrade),
+        "pin" => Ok(TaskType::Pin),
+        "unpin" => Ok(TaskType::Unpin),
+        _ => Err(storage_error_sqlite(&format!(
+            "unknown task type '{raw}' in sqlite record"
+        ))),
+    }
+}
+
+fn task_status_to_str(value: TaskStatus) -> &'static str {
+    match value {
+        TaskStatus::Queued => "queued",
+        TaskStatus::Running => "running",
+        TaskStatus::Completed => "completed",
+        TaskStatus::Cancelled => "cancelled",
+        TaskStatus::Failed => "failed",
+    }
+}
+
+fn parse_task_status(raw: &str) -> rusqlite::Result<TaskStatus> {
+    match raw {
+        "queued" => Ok(TaskStatus::Queued),
+        "running" => Ok(TaskStatus::Running),
+        "completed" => Ok(TaskStatus::Completed),
+        "cancelled" => Ok(TaskStatus::Cancelled),
+        "failed" => Ok(TaskStatus::Failed),
+        _ => Err(storage_error_sqlite(&format!(
+            "unknown task status '{raw}' in sqlite record"
+        ))),
+    }
+}
+
 fn bool_to_sqlite(value: bool) -> i64 {
     if value { 1 } else { 0 }
 }
 
 fn sqlite_to_bool(value: i64) -> bool {
     value != 0
+}
+
+fn to_unix_seconds(value: SystemTime) -> rusqlite::Result<i64> {
+    let duration = value.duration_since(UNIX_EPOCH).map_err(|error| {
+        storage_error_sqlite(&format!("time before unix epoch is not supported: {error}"))
+    })?;
+    let seconds = i64::try_from(duration.as_secs())
+        .map_err(|_| storage_error_sqlite("unix timestamp seconds exceed i64 range"))?;
+    Ok(seconds)
+}
+
+fn from_unix_seconds(value: i64) -> rusqlite::Result<SystemTime> {
+    if value < 0 {
+        return Err(storage_error_sqlite(
+            "negative unix timestamps are not supported",
+        ));
+    }
+    let seconds = u64::try_from(value)
+        .map_err(|_| storage_error_sqlite("failed to convert unix timestamp to u64"))?;
+    Ok(UNIX_EPOCH + Duration::from_secs(seconds))
+}
+
+fn task_id_to_i64(value: TaskId) -> rusqlite::Result<i64> {
+    i64::try_from(value.0).map_err(|_| storage_error_sqlite("task id exceeds i64 range"))
+}
+
+fn i64_to_u64(value: i64) -> rusqlite::Result<u64> {
+    u64::try_from(value).map_err(|_| storage_error_sqlite("negative task id in sqlite record"))
+}
+
+fn to_i64(value: usize) -> rusqlite::Result<i64> {
+    i64::try_from(value).map_err(|_| storage_error_sqlite("value exceeds i64 range"))
 }
 
 fn storage_error_text(operation: &str, message: impl AsRef<str>) -> CoreError {

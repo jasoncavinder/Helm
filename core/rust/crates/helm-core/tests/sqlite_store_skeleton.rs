@@ -1,8 +1,11 @@
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use helm_core::models::{CoreErrorKind, InstalledPackage, ManagerId, OutdatedPackage, PackageRef};
-use helm_core::persistence::{MigrationStore, PackageStore};
+use helm_core::models::{
+    CachedSearchResult, CoreErrorKind, InstalledPackage, ManagerId, OutdatedPackage,
+    PackageCandidate, PackageRef, PinKind, PinRecord, TaskId, TaskRecord, TaskStatus, TaskType,
+};
+use helm_core::persistence::{MigrationStore, PackageStore, PinStore, SearchCacheStore, TaskStore};
 use helm_core::sqlite::{SqliteStore, current_schema_version};
 
 fn test_db_path(test_name: &str) -> PathBuf {
@@ -141,6 +144,123 @@ fn upsert_and_list_outdated_roundtrip() {
     assert_eq!(persisted.len(), 1);
     assert_eq!(persisted[0].package.name, "openssl@3");
     assert_eq!(persisted[0].candidate_version, "3.3.2");
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn upsert_and_remove_pins_roundtrip() {
+    let path = test_db_path("pins-roundtrip");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let pin = PinRecord {
+        package: PackageRef {
+            manager: ManagerId::HomebrewFormula,
+            name: "git".to_string(),
+        },
+        kind: PinKind::Native,
+        pinned_version: Some("2.45.1".to_string()),
+        created_at: UNIX_EPOCH + Duration::from_secs(123),
+    };
+
+    store.upsert_pin(&pin).unwrap();
+    let listed = store.list_pins().unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].package.name, "git");
+    assert_eq!(listed[0].kind, PinKind::Native);
+
+    store.remove_pin("homebrew_formula:git").unwrap();
+    assert!(store.list_pins().unwrap().is_empty());
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn remove_pin_requires_structured_package_key() {
+    let path = test_db_path("pin-key-format");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let error = store.remove_pin("git").unwrap_err();
+    assert_eq!(error.kind, CoreErrorKind::StorageFailure);
+    assert!(error.message.contains("package_key"));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn upsert_and_query_search_cache_roundtrip() {
+    let path = test_db_path("search-roundtrip");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let now = SystemTime::now();
+    let results = vec![
+        CachedSearchResult {
+            result: PackageCandidate {
+                package: PackageRef {
+                    manager: ManagerId::HomebrewFormula,
+                    name: "ripgrep".to_string(),
+                },
+                version: Some("14.1.0".to_string()),
+                summary: Some("line-oriented search tool".to_string()),
+            },
+            source_manager: ManagerId::HomebrewFormula,
+            originating_query: "rip".to_string(),
+            cached_at: now,
+        },
+        CachedSearchResult {
+            result: PackageCandidate {
+                package: PackageRef {
+                    manager: ManagerId::Pnpm,
+                    name: "typescript".to_string(),
+                },
+                version: Some("5.5.2".to_string()),
+                summary: Some("language for application-scale JS".to_string()),
+            },
+            source_manager: ManagerId::Pnpm,
+            originating_query: "type".to_string(),
+            cached_at: now + Duration::from_secs(1),
+        },
+    ];
+
+    store.upsert_search_results(&results).unwrap();
+
+    let by_name = store.query_local("ripgrep", 10).unwrap();
+    assert_eq!(by_name.len(), 1);
+    assert_eq!(by_name[0].result.package.name, "ripgrep");
+
+    let all = store.query_local("", 10).unwrap();
+    assert_eq!(all.len(), 2);
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn create_update_and_list_recent_tasks_roundtrip() {
+    let path = test_db_path("tasks-roundtrip");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let mut task = TaskRecord {
+        id: TaskId(42),
+        manager: ManagerId::HomebrewFormula,
+        task_type: TaskType::Refresh,
+        status: TaskStatus::Queued,
+        created_at: UNIX_EPOCH + Duration::from_secs(777),
+    };
+
+    store.create_task(&task).unwrap();
+    let listed = store.list_recent_tasks(10).unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].status, TaskStatus::Queued);
+
+    task.status = TaskStatus::Running;
+    store.update_task(&task).unwrap();
+
+    let listed = store.list_recent_tasks(10).unwrap();
+    assert_eq!(listed[0].status, TaskStatus::Running);
 
     let _ = std::fs::remove_file(path);
 }
