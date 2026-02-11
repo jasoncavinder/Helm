@@ -1,15 +1,17 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use crate::adapters::manager::{AdapterRequest, AdapterResponse, AdapterResult, ManagerAdapter};
 use crate::models::{
-    ActionSafety, Capability, CoreError, CoreErrorKind, DetectionInfo, InstalledPackage,
-    ManagerAction, ManagerAuthority, ManagerCategory, ManagerDescriptor, ManagerId,
-    OutdatedPackage, PackageRef,
+    ActionSafety, CachedSearchResult, Capability, CoreError, CoreErrorKind, DetectionInfo,
+    InstalledPackage, ManagerAction, ManagerAuthority, ManagerCategory, ManagerDescriptor,
+    ManagerId, OutdatedPackage, PackageCandidate, PackageRef, SearchQuery,
 };
 
 const HOMEBREW_READ_CAPABILITIES: &[Capability] = &[
     Capability::Detect,
     Capability::Refresh,
+    Capability::Search,
     Capability::ListInstalled,
     Capability::ListOutdated,
 ];
@@ -34,6 +36,8 @@ pub trait HomebrewSource: Send + Sync {
     fn list_installed_formulae(&self) -> AdapterResult<String>;
 
     fn list_outdated_formulae(&self) -> AdapterResult<String>;
+
+    fn search_local_formulae(&self, query: &str) -> AdapterResult<String>;
 }
 
 pub struct HomebrewAdapter<S: HomebrewSource> {
@@ -78,6 +82,13 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                 let raw = self.source.list_outdated_formulae()?;
                 let packages = parse_outdated_formulae(&raw)?;
                 Ok(AdapterResponse::OutdatedPackages(packages))
+            }
+            AdapterRequest::Search(search_request) => {
+                let raw = self
+                    .source
+                    .search_local_formulae(search_request.query.text.as_str())?;
+                let results = parse_search_formulae(&raw, &search_request.query)?;
+                Ok(AdapterResponse::SearchResults(results))
             }
             _ => Err(CoreError {
                 manager: Some(ManagerId::HomebrewFormula),
@@ -203,6 +214,84 @@ fn parse_outdated_line(line: &str) -> Option<(String, Option<String>, String)> {
     ))
 }
 
+fn parse_search_formulae(
+    output: &str,
+    query: &SearchQuery,
+) -> AdapterResult<Vec<CachedSearchResult>> {
+    let mut parsed = Vec::new();
+    let mut seen = HashSet::new();
+    let mut section = SearchSection::Unspecified;
+
+    for line in output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+    {
+        if let Some(next) = parse_search_section_header(line) {
+            section = next;
+            continue;
+        }
+
+        if section == SearchSection::Casks {
+            continue;
+        }
+
+        for token in line.split_whitespace() {
+            if !is_formula_name_token(token) {
+                continue;
+            }
+
+            if seen.insert(token.to_string()) {
+                parsed.push(CachedSearchResult {
+                    result: PackageCandidate {
+                        package: PackageRef {
+                            manager: ManagerId::HomebrewFormula,
+                            name: token.to_string(),
+                        },
+                        version: None,
+                        summary: None,
+                    },
+                    source_manager: ManagerId::HomebrewFormula,
+                    originating_query: query.text.clone(),
+                    cached_at: query.issued_at,
+                });
+            }
+        }
+    }
+
+    Ok(parsed)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SearchSection {
+    Unspecified,
+    Formulae,
+    Casks,
+}
+
+fn parse_search_section_header(line: &str) -> Option<SearchSection> {
+    if !line.starts_with("==>") {
+        return None;
+    }
+    let lowered = line.to_ascii_lowercase();
+    if lowered.contains("formula") {
+        return Some(SearchSection::Formulae);
+    }
+    if lowered.contains("cask") {
+        return Some(SearchSection::Casks);
+    }
+    Some(SearchSection::Unspecified)
+}
+
+fn is_formula_name_token(token: &str) -> bool {
+    if token.is_empty() || token.starts_with("==>") {
+        return false;
+    }
+    token
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '@' | '+' | '-' | '_' | '.' | '/'))
+}
+
 fn parse_error(message: &str) -> CoreError {
     CoreError {
         manager: Some(ManagerId::HomebrewFormula),
@@ -218,22 +307,24 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::UNIX_EPOCH;
 
     use crate::adapters::manager::{
         AdapterRequest, AdapterResponse, AdapterResult, DetectRequest, ListInstalledRequest,
-        ListOutdatedRequest, ManagerAdapter,
+        ListOutdatedRequest, ManagerAdapter, SearchRequest,
     };
-    use crate::models::CoreErrorKind;
+    use crate::models::{CoreErrorKind, SearchQuery};
 
     use super::{
         HomebrewAdapter, HomebrewDetectOutput, HomebrewSource, parse_homebrew_version,
-        parse_installed_formulae, parse_outdated_formulae,
+        parse_installed_formulae, parse_outdated_formulae, parse_search_formulae,
     };
 
     const INSTALLED_FIXTURE: &str =
         include_str!("../../tests/fixtures/homebrew/list_installed_versions.txt");
     const OUTDATED_FIXTURE: &str =
         include_str!("../../tests/fixtures/homebrew/list_outdated_verbose.txt");
+    const SEARCH_FIXTURE: &str = include_str!("../../tests/fixtures/homebrew/search_local.txt");
 
     #[test]
     fn parses_homebrew_version_from_standard_banner() {
@@ -267,6 +358,19 @@ mod tests {
     }
 
     #[test]
+    fn parses_search_formulae_fixture() {
+        let query = SearchQuery {
+            text: "rip".to_string(),
+            issued_at: UNIX_EPOCH,
+        };
+        let parsed = parse_search_formulae(SEARCH_FIXTURE, &query).unwrap();
+        assert_eq!(parsed.len(), 3);
+        assert_eq!(parsed[0].result.package.name, "ripgrep");
+        assert_eq!(parsed[1].result.package.name, "ripgrep-all");
+        assert_eq!(parsed[2].result.package.name, "ripsecret");
+    }
+
+    #[test]
     fn adapter_executes_supported_read_only_requests() {
         let source = FixtureSource::default();
         let adapter = HomebrewAdapter::new(source);
@@ -280,10 +384,19 @@ mod tests {
         let outdated = adapter
             .execute(AdapterRequest::ListOutdated(ListOutdatedRequest))
             .unwrap();
+        let search = adapter
+            .execute(AdapterRequest::Search(SearchRequest {
+                query: SearchQuery {
+                    text: "rip".to_string(),
+                    issued_at: UNIX_EPOCH,
+                },
+            }))
+            .unwrap();
 
         assert!(matches!(detect, AdapterResponse::Detection(_)));
         assert!(matches!(installed, AdapterResponse::InstalledPackages(_)));
         assert!(matches!(outdated, AdapterResponse::OutdatedPackages(_)));
+        assert!(matches!(search, AdapterResponse::SearchResults(_)));
     }
 
     #[test]
@@ -323,6 +436,10 @@ mod tests {
 
         fn list_outdated_formulae(&self) -> AdapterResult<String> {
             Ok(OUTDATED_FIXTURE.to_string())
+        }
+
+        fn search_local_formulae(&self, _query: &str) -> AdapterResult<String> {
+            Ok(SEARCH_FIXTURE.to_string())
         }
     }
 }

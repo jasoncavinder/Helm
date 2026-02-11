@@ -1,0 +1,6 @@
+==> Formulae
+ripgrep
+ripgrep-all
+ripsecret
+==> Casks
+ripcord
