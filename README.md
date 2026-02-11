@@ -5,7 +5,7 @@ It is designed as infrastructure software: deterministic, safety-first, and expl
 
 ## Current Status
 
-This branch (`main`) currently represents the **0.3.x orchestration engine** stage.
+This branch (`main`) currently represents the **0.4.0 SwiftUI Shell** stage.
 
 Implemented today on `main`:
 - Repository scaffold for the 3-layer architecture.
@@ -14,19 +14,19 @@ Implemented today on `main`:
   - adapter trait/contracts,
   - orchestration contracts + in-memory coordinator,
   - SQLite migration and persistence contracts.
+- **macOS Menu Bar App**:
+  - SwiftUI frontend with XPC communication.
+  - Displays real-time task status and installed packages.
+  - Supports triggering refreshes via the UI.
 - **Orchestration Engine**:
-  - Background task queue with per-manager serialization.
-  - Cross-manager parallelism.
-  - Process-level cancellation (SIGTERM/SIGKILL).
-  - Structured error reporting.
+  - Background task queue, parallelism, and cancellation.
 - **Homebrew Adapter**:
-  - Full detection, listing, and search capabilities.
-  - Safe, structured process execution without shell strings.
-- Deterministic unit/integration tests for core contracts.
+  - Detection, listing, search, and process execution.
 
 Not yet implemented on `main`:
-- Production UI behavior in `apps/macos-ui`.
-- Service-boundary XPC integration.
+- Search UI.
+- Package installation/upgrade actions via UI.
+- Settings panel.
 
 ## Architecture
 

@@ -53,7 +53,7 @@ Exit Criteria:
 
 ---
 
-## 0.4.x — SwiftUI Shell (beta) - Active
+## 0.4.x — SwiftUI Shell (beta) - Completed
 
 Goal:
 - Menu bar app scaffold
@@ -68,7 +68,7 @@ Exit Criteria:
 
 ---
 
-## 0.5.x — Progressive Search (beta)
+## 0.5.x — Progressive Search (beta) - Active
 
 Goal:
 - Local-first fuzzy search
