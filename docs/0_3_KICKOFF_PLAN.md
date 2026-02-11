@@ -40,6 +40,22 @@ Per roadmap goals:
 - Cancellation behavior is verified by tests.
 - Structured per-task failures are observable from core contracts.
 
+## Progress Snapshot (February 11, 2026)
+
+Completed in this milestone branch:
+- Async runtime queue with per-manager serialization and cross-manager parallelism.
+- Immediate and graceful cancellation coverage with deterministic tests.
+- Adapter execution runtime with structured terminal states.
+- Manager-dispatch adapter runtime with duplicate/unknown manager validation.
+- Task persistence hooks for orchestration runtime plus SQLite-backed integration tests.
+- Service-boundary process execution contracts (`ProcessSpawnRequest`, `ProcessExecutor`, `RunningProcess`).
+- Homebrew structured process request planning (detect/list/search) with no shell-string construction.
+
+Remaining before 0.3 exit:
+- Wire a service-boundary shim implementation that executes `ProcessSpawnRequest` through cancellable process handles.
+- Route at least one real adapter path through the execution contract end-to-end (contract + orchestration).
+- Reconfirm all 0.3 exit criteria in this document and `docs/ROADMAP.md` before merge from `dev` to `main`.
+
 ## Versioning Notes
 
 - Continue commits on `dev`.
