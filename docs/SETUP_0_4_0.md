@@ -60,10 +60,17 @@ Select the **Helm** target:
    * Build Phases > **Embed XPC Services**.
    * Ensure `HelmService.xpc` is listed here.
 
-## Verification
+## Troubleshooting
 
-1. Run the **Helm** scheme.
-2. The app should launch.
-3. It will attempt to connect to XPC.
-4. Verify functionality (Refresh, Lists) works as before but now via XPC.
+### "Multiple commands produce..." Error
+If you see errors about multiple commands producing `main.swift` or `HelmService.swift`, it means you have duplicate files in the **Compile Sources** phase: one set from the Xcode template, and one set you imported from `service/macos-service`.
+**Fix:** Delete the `main.swift` and `HelmService.swift` files that Xcode created in the `HelmService` group/folder, keeping only the ones you imported.
+
+### "Update to recommended settings" Warning
+Xcode may prompt you to "Update to recommended settings", including:
+*   **Enable Code Signing**
+*   **Enable Dead Code Stripping**
+
+**Action:** Go ahead and **Accept** these changes. They are standard configurations for macOS targets.
+
 

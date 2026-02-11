@@ -8,4 +8,12 @@
 
 bool helm_init(const char *db_path);
 
+char *helm_list_installed_packages(void);
+
+char *helm_list_tasks(void);
+
+bool helm_trigger_refresh(void);
+
+void helm_free_string(char *s);
+
 #endif  /* HELM_H */

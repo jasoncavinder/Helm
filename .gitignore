@@ -3,11 +3,13 @@
 # Xcode
 build/
 DerivedData/
-*.xcworkspace/xcuserdata/
+*.xcworkspace/
 xcuserdata/
 *.xcuserstate
 *.moved-aside
 *.ipa
 *.dSYM.zip
 *.dSYM
+apps/macos-ui/Generated/
+
 
