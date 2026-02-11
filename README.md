@@ -5,16 +5,12 @@ It is designed as infrastructure software: deterministic, safety-first, and expl
 
 ## Current Status
 
-This branch (`main`) currently represents the **0.4.0 SwiftUI Shell** stage.
+This branch (`dev`) currently represents the active **0.4.x SwiftUI Shell** development stage.
 
-Implemented today on `main`:
+Implemented so far:
 - Repository scaffold for the 3-layer architecture.
-- Rust core workspace (`core/rust`) with:
-  - manager and capability data models,
-  - adapter trait/contracts,
-  - orchestration contracts + in-memory coordinator,
-  - SQLite migration and persistence contracts.
-- **macOS Menu Bar App**:
+- Rust core workspace (`core/rust`) with orchestration and adapters.
+- **macOS Menu Bar App** (Work in Progress):
   - SwiftUI frontend with XPC communication.
   - Displays real-time task status and installed packages.
   - Supports triggering refreshes via the UI.
@@ -23,10 +19,9 @@ Implemented today on `main`:
 - **Homebrew Adapter**:
   - Detection, listing, search, and process execution.
 
-Not yet implemented on `main`:
-- Search UI.
-- Package installation/upgrade actions via UI.
-- Settings panel.
+Remaining for 0.4.x:
+- Finalizing UI polish.
+- Addressing open issues.
 
 ## Architecture
 
