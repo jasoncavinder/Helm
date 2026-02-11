@@ -244,3 +244,67 @@ async fn queued_task_can_be_cancelled_before_start() {
     assert_eq!(second_snapshot.status, TaskStatus::Cancelled);
     assert!(!queued_started.load(Ordering::SeqCst));
 }
+
+#[tokio::test]
+async fn graceful_cancel_allows_near_complete_task_to_finish() {
+    let queue = InMemoryAsyncTaskQueue::new();
+    let task = queue
+        .spawn(
+            submission(ManagerId::Pnpm, TaskType::Search),
+            operation(move |_| async move {
+                tokio::time::sleep(Duration::from_millis(30)).await;
+                Ok(())
+            }),
+        )
+        .await
+        .unwrap();
+
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    queue
+        .cancel(
+            task,
+            CancellationMode::Graceful {
+                grace_period: Duration::from_millis(250),
+            },
+        )
+        .await
+        .unwrap();
+
+    let snapshot = queue
+        .wait_for_terminal(task, Some(Duration::from_secs(1)))
+        .await
+        .unwrap();
+    assert_eq!(snapshot.status, TaskStatus::Completed);
+}
+
+#[tokio::test]
+async fn graceful_cancel_times_out_and_cancels_long_running_task() {
+    let queue = InMemoryAsyncTaskQueue::new();
+    let task = queue
+        .spawn(
+            submission(ManagerId::Yarn, TaskType::Refresh),
+            operation(move |_| async move {
+                tokio::time::sleep(Duration::from_millis(400)).await;
+                Ok(())
+            }),
+        )
+        .await
+        .unwrap();
+
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    queue
+        .cancel(
+            task,
+            CancellationMode::Graceful {
+                grace_period: Duration::from_millis(20),
+            },
+        )
+        .await
+        .unwrap();
+
+    let snapshot = queue
+        .wait_for_terminal(task, Some(Duration::from_secs(1)))
+        .await
+        .unwrap();
+    assert_eq!(snapshot.status, TaskStatus::Cancelled);
+}

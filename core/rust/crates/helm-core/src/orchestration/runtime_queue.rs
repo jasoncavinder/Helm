@@ -131,11 +131,7 @@ impl InMemoryAsyncTaskQueue {
             let outcome = operation(token.clone()).await;
             match outcome {
                 Ok(()) => {
-                    if token.is_cancelled() {
-                        set_cancelled_terminal(&inner, task_id, None).await;
-                    } else {
-                        set_terminal(&inner, task_id, TaskStatus::Completed, None).await;
-                    }
+                    set_terminal(&inner, task_id, TaskStatus::Completed, None).await;
                 }
                 Err(error) => {
                     if token.is_cancelled() || error.kind == CoreErrorKind::Cancelled {

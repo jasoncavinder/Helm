@@ -1,11 +1,13 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use crate::adapters::manager::{AdapterRequest, AdapterResponse, AdapterResult, ManagerAdapter};
+use crate::execution::{CommandSpec, ProcessSpawnRequest};
 use crate::models::{
     ActionSafety, CachedSearchResult, Capability, CoreError, CoreErrorKind, DetectionInfo,
     InstalledPackage, ManagerAction, ManagerAuthority, ManagerCategory, ManagerDescriptor,
-    ManagerId, OutdatedPackage, PackageCandidate, PackageRef, SearchQuery,
+    ManagerId, OutdatedPackage, PackageCandidate, PackageRef, SearchQuery, TaskId, TaskType,
 };
 
 const HOMEBREW_READ_CAPABILITIES: &[Capability] = &[
@@ -23,6 +25,11 @@ const HOMEBREW_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
     authority: ManagerAuthority::Guarded,
     capabilities: HOMEBREW_READ_CAPABILITIES,
 };
+
+const HOMEBREW_COMMAND: &str = "brew";
+const DETECT_TIMEOUT: Duration = Duration::from_secs(5);
+const LIST_TIMEOUT: Duration = Duration::from_secs(30);
+const SEARCH_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HomebrewDetectOutput {
@@ -99,6 +106,68 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
             }),
         }
     }
+}
+
+pub fn homebrew_detect_request(task_id: Option<TaskId>) -> ProcessSpawnRequest {
+    homebrew_request(
+        task_id,
+        TaskType::Detection,
+        ManagerAction::Detect,
+        CommandSpec::new(HOMEBREW_COMMAND).arg("--version"),
+        DETECT_TIMEOUT,
+    )
+}
+
+pub fn homebrew_list_installed_request(task_id: Option<TaskId>) -> ProcessSpawnRequest {
+    homebrew_request(
+        task_id,
+        TaskType::Refresh,
+        ManagerAction::ListInstalled,
+        CommandSpec::new(HOMEBREW_COMMAND).args(["list", "--formula", "--versions"]),
+        LIST_TIMEOUT,
+    )
+}
+
+pub fn homebrew_list_outdated_request(task_id: Option<TaskId>) -> ProcessSpawnRequest {
+    homebrew_request(
+        task_id,
+        TaskType::Refresh,
+        ManagerAction::ListOutdated,
+        CommandSpec::new(HOMEBREW_COMMAND).args(["outdated", "--formula", "--verbose"]),
+        LIST_TIMEOUT,
+    )
+}
+
+pub fn homebrew_search_local_request(
+    task_id: Option<TaskId>,
+    query: &SearchQuery,
+) -> ProcessSpawnRequest {
+    homebrew_request(
+        task_id,
+        TaskType::Search,
+        ManagerAction::Search,
+        CommandSpec::new(HOMEBREW_COMMAND)
+            .args(["search", "--formula"])
+            .arg(query.text.clone()),
+        SEARCH_TIMEOUT,
+    )
+}
+
+fn homebrew_request(
+    task_id: Option<TaskId>,
+    task_type: TaskType,
+    action: ManagerAction,
+    command: CommandSpec,
+    timeout: Duration,
+) -> ProcessSpawnRequest {
+    let mut request =
+        ProcessSpawnRequest::new(ManagerId::HomebrewFormula, task_type, action, command)
+            .requires_elevation(false)
+            .timeout(timeout);
+    if let Some(task_id) = task_id {
+        request = request.task_id(task_id);
+    }
+    request
 }
 
 fn parse_detection_output(output: HomebrewDetectOutput) -> DetectionInfo {
@@ -327,11 +396,13 @@ mod tests {
         AdapterRequest, AdapterResponse, AdapterResult, DetectRequest, ListInstalledRequest,
         ListOutdatedRequest, ManagerAdapter, SearchRequest,
     };
-    use crate::models::{CoreErrorKind, SearchQuery};
+    use crate::models::{CoreErrorKind, ManagerAction, SearchQuery, TaskId, TaskType};
 
     use super::{
-        HomebrewAdapter, HomebrewDetectOutput, HomebrewSource, parse_homebrew_version,
-        parse_installed_formulae, parse_outdated_formulae, parse_search_formulae,
+        HomebrewAdapter, HomebrewDetectOutput, HomebrewSource, homebrew_detect_request,
+        homebrew_list_installed_request, homebrew_list_outdated_request,
+        homebrew_search_local_request, parse_homebrew_version, parse_installed_formulae,
+        parse_outdated_formulae, parse_search_formulae,
     };
 
     const INSTALLED_FIXTURE: &str =
@@ -448,6 +519,66 @@ mod tests {
             }))
             .unwrap_err();
         assert_eq!(error.kind, CoreErrorKind::UnsupportedCapability);
+    }
+
+    #[test]
+    fn detect_command_plan_uses_structured_homebrew_args() {
+        let request = homebrew_detect_request(Some(TaskId(11)));
+        assert_eq!(request.manager, crate::models::ManagerId::HomebrewFormula);
+        assert_eq!(request.task_id, Some(TaskId(11)));
+        assert_eq!(request.task_type, TaskType::Detection);
+        assert_eq!(request.action, ManagerAction::Detect);
+        assert_eq!(request.command.program, PathBuf::from("brew"));
+        assert_eq!(request.command.args, vec!["--version".to_string()]);
+        assert!(request.timeout.is_some());
+    }
+
+    #[test]
+    fn list_command_plans_do_not_build_shell_strings() {
+        let installed = homebrew_list_installed_request(None);
+        assert_eq!(
+            installed.command.args,
+            vec![
+                "list".to_string(),
+                "--formula".to_string(),
+                "--versions".to_string()
+            ]
+        );
+        assert_eq!(installed.action, ManagerAction::ListInstalled);
+        assert_eq!(installed.task_type, TaskType::Refresh);
+
+        let outdated = homebrew_list_outdated_request(None);
+        assert_eq!(
+            outdated.command.args,
+            vec![
+                "outdated".to_string(),
+                "--formula".to_string(),
+                "--verbose".to_string()
+            ]
+        );
+        assert_eq!(outdated.action, ManagerAction::ListOutdated);
+        assert_eq!(outdated.task_type, TaskType::Refresh);
+    }
+
+    #[test]
+    fn search_command_plan_keeps_query_as_single_argument() {
+        let query = SearchQuery {
+            text: "rip grep".to_string(),
+            issued_at: UNIX_EPOCH,
+        };
+        let request = homebrew_search_local_request(Some(TaskId(9)), &query);
+
+        assert_eq!(request.task_id, Some(TaskId(9)));
+        assert_eq!(request.task_type, TaskType::Search);
+        assert_eq!(request.action, ManagerAction::Search);
+        assert_eq!(
+            request.command.args,
+            vec![
+                "search".to_string(),
+                "--formula".to_string(),
+                "rip grep".to_string()
+            ]
+        );
     }
 
     #[derive(Default, Clone)]
