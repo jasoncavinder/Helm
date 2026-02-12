@@ -86,9 +86,8 @@ cargo test
 
 Build and run the macOS app:
 
-1. See `docs/SETUP_0_4_0.md` for one-time Xcode project setup.
-2. Open `apps/macos-ui/Helm.xcodeproj` in Xcode.
-3. Build and run the **Helm** scheme.
+1. Open `apps/macos-ui/Helm.xcodeproj` in Xcode.
+2. Build and run the **Helm** scheme.
 
 The build script (`scripts/build_rust.sh`) compiles the Rust FFI library and generates the version header automatically.
 
