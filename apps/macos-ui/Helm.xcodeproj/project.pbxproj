@@ -14,7 +14,6 @@
 		8CE1FDD92F3D2BAA000A3945 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE1FDD62F3D2BA9000A3945 /* main.swift */; };
 		8CE1FDDA2F3D2BAA000A3945 /* HelmServiceDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE1FDD72F3D2BA9000A3945 /* HelmServiceDelegate.swift */; };
 		8CE1FDDD2F3D2DA7000A3945 /* libhelm_ffi.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 8CFB6D482F3D1B24002372B8 /* libhelm_ffi.a */; };
-		8CE1FDDF2F3D3249000A3945 /* Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 8CE1FDDE2F3D3249000A3945 /* Info.plist */; };
 		8CFB6D572F3D1D1D002372B8 /* HelmCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CFB6D4B2F3D1D1D002372B8 /* HelmCore.swift */; };
 		8CFB6D582F3D1D1D002372B8 /* TaskListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CFB6D4D2F3D1D1D002372B8 /* TaskListView.swift */; };
 		8CFB6D592F3D1D1D002372B8 /* PackageListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CFB6D4E2F3D1D1D002372B8 /* PackageListView.swift */; };
@@ -303,7 +302,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				8CE1FDDF2F3D3249000A3945 /* Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

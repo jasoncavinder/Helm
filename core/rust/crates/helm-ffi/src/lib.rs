@@ -1,15 +1,20 @@
-use helm_core::adapters::{AdapterRequest, RefreshRequest};
-use helm_core::adapters::homebrew::HomebrewAdapter;
-use helm_core::adapters::homebrew_process::ProcessHomebrewSource;
-use helm_core::execution::tokio_process::TokioProcessExecutor;
-use helm_core::models::ManagerId;
-use helm_core::orchestration::adapter_runtime::AdapterRuntime;
-use helm_core::persistence::{PackageStore, TaskStore};
-use helm_core::sqlite::SqliteStore;
-use lazy_static::lazy_static;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use helm_core::adapters::homebrew::HomebrewAdapter;
+use helm_core::adapters::homebrew_process::ProcessHomebrewSource;
+use helm_core::adapters::{
+    AdapterRequest, AdapterResponse, ListInstalledRequest, ListOutdatedRequest,
+};
+use helm_core::execution::tokio_process::TokioProcessExecutor;
+use helm_core::models::ManagerId;
+use helm_core::orchestration::adapter_runtime::AdapterRuntime;
+use helm_core::orchestration::AdapterTaskTerminalState;
+use helm_core::persistence::{PackageStore, TaskStore};
+use helm_core::sqlite::SqliteStore;
+use lazy_static::lazy_static;
 
 struct HelmState {
     store: Arc<SqliteStore>,
@@ -149,18 +154,80 @@ pub extern "C" fn helm_trigger_refresh() -> bool {
         None => return false,
     };
 
-    // Trigger refresh for Homebrew
-    // We need to run this async. We can use the runtime handle.
     let runtime = state.runtime.clone();
-    
+    let store = state.store.clone();
+
     state._tokio_rt.spawn(async move {
-        let req = AdapterRequest::Refresh(RefreshRequest);
-        if let Err(e) = runtime.submit(ManagerId::HomebrewFormula, req).await {
-            eprintln!("Failed to submit refresh task: {}", e);
+        // Fetch installed packages and persist to store
+        if let Some(packages) = submit_and_wait(
+            &runtime,
+            AdapterRequest::ListInstalled(ListInstalledRequest),
+        )
+        .await
+        {
+            if let AdapterResponse::InstalledPackages(pkgs) = packages {
+                if let Err(e) = store.upsert_installed(&pkgs) {
+                    eprintln!("Failed to persist installed packages: {e}");
+                }
+            }
+        }
+
+        // Fetch outdated packages and persist to store
+        if let Some(packages) = submit_and_wait(
+            &runtime,
+            AdapterRequest::ListOutdated(ListOutdatedRequest),
+        )
+        .await
+        {
+            if let AdapterResponse::OutdatedPackages(pkgs) = packages {
+                if let Err(e) = store.upsert_outdated(&pkgs) {
+                    eprintln!("Failed to persist outdated packages: {e}");
+                }
+            }
         }
     });
 
     true
+}
+
+async fn submit_and_wait(
+    runtime: &AdapterRuntime,
+    request: AdapterRequest,
+) -> Option<AdapterResponse> {
+    let task_id = match runtime
+        .submit(ManagerId::HomebrewFormula, request)
+        .await
+    {
+        Ok(id) => id,
+        Err(e) => {
+            eprintln!("Failed to submit task: {e}");
+            return None;
+        }
+    };
+
+    let snapshot = match runtime
+        .wait_for_terminal(task_id, Some(Duration::from_secs(60)))
+        .await
+    {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Failed to wait for task: {e}");
+            return None;
+        }
+    };
+
+    match snapshot.terminal_state {
+        Some(AdapterTaskTerminalState::Succeeded(response)) => Some(response),
+        Some(AdapterTaskTerminalState::Failed(e)) => {
+            eprintln!("Task failed: {e}");
+            None
+        }
+        Some(AdapterTaskTerminalState::Cancelled(_)) => {
+            eprintln!("Task was cancelled");
+            None
+        }
+        None => None,
+    }
 }
 
 #[unsafe(no_mangle)]
