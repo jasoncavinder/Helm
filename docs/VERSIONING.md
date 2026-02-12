@@ -35,6 +35,9 @@ Examples:
 0.3.0-beta.1 → orchestration engine complete
 0.8.0-rc.1 → near-1.0 stability
 
+Pre-1.0 milestones beyond 0.10 may be used to represent capability layers.
+Version numbers are not constrained to single digits.
+
 ---
 
 ## 1.0.0 Meaning
