@@ -1,0 +1,15 @@
+{
+  "rust": [
+    {
+      "version": "stable",
+      "requested_version": "stable",
+      "install_path": "/Users/dev/.local/share/mise/installs/rust/stable",
+      "source": {
+        "type": ".mise.toml",
+        "path": "/Users/dev/.mise.toml"
+      },
+      "installed": true,
+      "active": true
+    }
+  ]
+}

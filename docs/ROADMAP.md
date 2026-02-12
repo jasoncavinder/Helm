@@ -116,7 +116,7 @@ Delivered:
 
 ---
 
-## 0.6.x — Core Toolchain Managers (beta)
+## 0.6.x — Core Toolchain Managers (beta) - Completed
 
 Goal:
 
@@ -140,6 +140,19 @@ Exit Criteria:
 - Version parsing robust across versions
 - Failure isolation verified
 - Tests include fixture parsing for version output
+
+Delivered:
+- mise adapter with JSON parsing for `mise ls --json` and `mise outdated --json`
+- rustup adapter with text parsing for `rustup toolchain list` and `rustup check`
+- Authority ordering engine: `authority_phases()` groups adapters by Authoritative → Standard → Guarded
+- `refresh_all_ordered()` executes phased parallel refresh with cross-manager parallelism within phases
+- Shared adapter infrastructure: `process_utils::run_and_collect_stdout` and `detect_utils::which_executable`
+- PATH injection for XPC context: `$HOME/.local/bin` (mise), `$HOME/.cargo/bin` (rustup)
+- FFI registers all three adapters (Homebrew, mise, rustup) with shared TokioProcessExecutor
+- Failure isolation: one manager failing does not block others in the same or subsequent phases
+- End-to-end integration tests for mise and rustup with fake executors
+- Multi-manager orchestration tests verifying cross-manager parallelism and authority ordering
+- UI marks mise and rustup as implemented in the manager grid
 
 ---
 
