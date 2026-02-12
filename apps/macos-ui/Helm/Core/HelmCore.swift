@@ -66,25 +66,20 @@ final class HelmCore: ObservableObject {
     func triggerRefresh() {
         logger.info("triggerRefresh called")
         service()?.triggerRefresh { success in
-            logger.info("triggerRefresh reply: \(success)")
+            if !success {
+                logger.error("triggerRefresh failed")
+            }
         }
     }
 
     func fetchPackages() {
         service()?.listInstalledPackages { [weak self] jsonString in
-            guard let jsonString = jsonString, let data = jsonString.data(using: .utf8) else {
-                logger.debug("fetchPackages: nil or empty reply")
-                return
-            }
-
-            logger.debug("fetchPackages JSON (\(data.count) bytes): \(jsonString.prefix(200))")
+            guard let jsonString = jsonString, let data = jsonString.data(using: .utf8) else { return }
 
             do {
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
                 let corePackages = try decoder.decode([CoreInstalledPackage].self, from: data)
-
-                logger.info("Decoded \(corePackages.count) packages")
 
                 DispatchQueue.main.async {
                     self?.installedPackages = corePackages.map { pkg in

@@ -27,9 +27,7 @@ class HelmService: NSObject, HelmServiceProtocol {
             return
         }
         defer { helm_free_string(cString) }
-        let json = String(cString: cString)
-        logger.info("listInstalledPackages: \(json.prefix(200))")
-        reply(json)
+        reply(String(cString: cString))
     }
 
     func listTasks(withReply reply: @escaping (String?) -> Void) {
@@ -39,9 +37,7 @@ class HelmService: NSObject, HelmServiceProtocol {
             return
         }
         defer { helm_free_string(cString) }
-        let json = String(cString: cString)
-        logger.info("listTasks: \(json.prefix(200))")
-        reply(json)
+        reply(String(cString: cString))
     }
 
     func triggerRefresh(withReply reply: @escaping (Bool) -> Void) {
