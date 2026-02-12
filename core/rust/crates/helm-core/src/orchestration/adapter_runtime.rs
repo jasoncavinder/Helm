@@ -10,7 +10,7 @@ use crate::orchestration::{
     AdapterExecutionRuntime, AdapterTaskSnapshot, AdapterTaskTerminalState, CancellationMode,
     OrchestrationResult,
 };
-use crate::persistence::{PackageStore, TaskStore};
+use crate::persistence::{PackageStore, SearchCacheStore, TaskStore};
 
 #[derive(Clone)]
 pub struct AdapterRuntime {
@@ -18,6 +18,7 @@ pub struct AdapterRuntime {
     adapters: Arc<HashMap<ManagerId, Arc<dyn ManagerAdapter>>>,
     task_store: Option<Arc<dyn TaskStore>>,
     package_store: Option<Arc<dyn PackageStore>>,
+    search_cache_store: Option<Arc<dyn SearchCacheStore>>,
 }
 
 impl AdapterRuntime {
@@ -54,6 +55,32 @@ impl AdapterRuntime {
         task_store: Option<Arc<dyn TaskStore>>,
         package_store: Option<Arc<dyn PackageStore>>,
     ) -> OrchestrationResult<Self> {
+        Self::build(execution, adapters, task_store, package_store, None)
+    }
+
+    pub fn with_all_stores(
+        adapters: impl IntoIterator<Item = Arc<dyn ManagerAdapter>>,
+        task_store: Arc<dyn TaskStore>,
+        search_cache_store: Arc<dyn SearchCacheStore>,
+    ) -> OrchestrationResult<Self> {
+        let start_id = task_store.next_task_id().unwrap_or(0);
+        let queue = crate::orchestration::InMemoryAsyncTaskQueue::with_initial_id(start_id);
+        Self::build(
+            AdapterExecutionRuntime::with_queue(queue),
+            adapters,
+            Some(task_store),
+            None,
+            Some(search_cache_store),
+        )
+    }
+
+    fn build(
+        execution: AdapterExecutionRuntime,
+        adapters: impl IntoIterator<Item = Arc<dyn ManagerAdapter>>,
+        task_store: Option<Arc<dyn TaskStore>>,
+        package_store: Option<Arc<dyn PackageStore>>,
+        search_cache_store: Option<Arc<dyn SearchCacheStore>>,
+    ) -> OrchestrationResult<Self> {
         let mut mapped = HashMap::new();
         for adapter in adapters {
             let manager = adapter.descriptor().id;
@@ -73,6 +100,7 @@ impl AdapterRuntime {
             adapters: Arc::new(mapped),
             task_store,
             package_store,
+            search_cache_store,
         })
     }
 
@@ -120,15 +148,16 @@ impl AdapterRuntime {
                 return Err(error);
             }
 
-            spawn_terminal_persistence_watcher(
-                self.execution.clone(),
-                task_store.clone(),
-                self.package_store.clone(),
+            spawn_terminal_persistence_watcher(PersistenceWatcherContext {
+                execution: self.execution.clone(),
+                task_store: task_store.clone(),
+                package_store: self.package_store.clone(),
+                search_cache_store: self.search_cache_store.clone(),
                 task_id,
                 manager,
                 task_type,
                 action,
-            );
+            });
         }
 
         Ok(task_id)
@@ -157,16 +186,61 @@ impl AdapterRuntime {
     }
 }
 
-fn spawn_terminal_persistence_watcher(
+struct PersistenceWatcherContext {
     execution: AdapterExecutionRuntime,
     task_store: Arc<dyn TaskStore>,
     package_store: Option<Arc<dyn PackageStore>>,
+    search_cache_store: Option<Arc<dyn SearchCacheStore>>,
     task_id: TaskId,
     manager: ManagerId,
     task_type: TaskType,
     action: ManagerAction,
-) {
+}
+
+fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
+    let PersistenceWatcherContext {
+        execution,
+        task_store,
+        package_store,
+        search_cache_store,
+        task_id,
+        manager,
+        task_type,
+        action,
+    } = ctx;
+
     tokio::spawn(async move {
+        // Poll briefly for Running status and persist it so the UI sees the transition
+        for _ in 0..50 {
+            if let Ok(status) = execution.status(task_id).await {
+                if status == TaskStatus::Running {
+                    let running_record = TaskRecord {
+                        id: task_id,
+                        manager,
+                        task_type,
+                        status: TaskStatus::Running,
+                        created_at: SystemTime::now(),
+                    };
+                    let _ = persist_update_task(
+                        task_store.clone(),
+                        running_record,
+                        manager,
+                        task_type,
+                        action,
+                    )
+                    .await;
+                    break;
+                }
+                if matches!(
+                    status,
+                    TaskStatus::Completed | TaskStatus::Failed | TaskStatus::Cancelled
+                ) {
+                    break;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+
         let terminal = execution.wait_for_terminal(task_id, None).await;
         let snapshot = match terminal {
             Ok(snapshot) => snapshot,
@@ -199,6 +273,24 @@ fn spawn_terminal_persistence_watcher(
                 kind = ?error.kind,
                 message = %error.message,
                 "failed to persist adapter response data"
+            );
+        }
+
+        // Persist search results to cache
+        if let Some(search_cache_store) = search_cache_store
+            && let Some(AdapterTaskTerminalState::Succeeded(response)) = &snapshot.terminal_state
+            && let Err(error) =
+                persist_search_response(search_cache_store, response, manager, task_type, action)
+                    .await
+        {
+            tracing::error!(
+                manager = ?manager,
+                task_id = task_id.0,
+                task_type = ?task_type,
+                action = ?action,
+                kind = ?error.kind,
+                message = %error.message,
+                "failed to persist search cache data"
             );
         }
 
@@ -259,6 +351,32 @@ async fn persist_adapter_response(
         action: Some(action),
         kind: CoreErrorKind::Internal,
         message: format!("response persistence join failure: {join_error}"),
+    })?
+    .map_err(|error| attribute_error(error, manager, task_type, action))
+}
+
+async fn persist_search_response(
+    search_cache_store: Arc<dyn SearchCacheStore>,
+    response: &AdapterResponse,
+    manager: ManagerId,
+    task_type: TaskType,
+    action: ManagerAction,
+) -> OrchestrationResult<()> {
+    let response = response.clone();
+
+    tokio::task::spawn_blocking(move || match response {
+        AdapterResponse::SearchResults(results) => {
+            search_cache_store.upsert_search_results(&results)
+        }
+        _ => Ok(()),
+    })
+    .await
+    .map_err(|join_error| CoreError {
+        manager: Some(manager),
+        task: Some(task_type),
+        action: Some(action),
+        kind: CoreErrorKind::Internal,
+        message: format!("search cache persistence join failure: {join_error}"),
     })?
     .map_err(|error| attribute_error(error, manager, task_type, action))
 }

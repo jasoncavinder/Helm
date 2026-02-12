@@ -24,6 +24,29 @@ char *helm_list_tasks(void);
 bool helm_trigger_refresh(void);
 
 /**
+ * Query the local search cache synchronously and return JSON results.
+ *
+ * # Safety
+ *
+ * `query` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ */
+char *helm_search_local(const char *query);
+
+/**
+ * Submit a remote search request for the given query. Returns the task ID, or -1 on error.
+ *
+ * # Safety
+ *
+ * `query` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ */
+int64_t helm_trigger_remote_search(const char *query);
+
+/**
+ * Cancel a running task by ID. Returns true on success.
+ */
+bool helm_cancel_task(int64_t task_id);
+
+/**
  * Free a string previously returned by a `helm_*` function.
  *
  * # Safety

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PackageListView: View {
     @ObservedObject var core = HelmCore.shared
+    @Binding var searchText: String
     @State private var selectedStatusFilters: Set<PackageStatus> = []
     @State private var detailsPackage: PackageItem? = nil
 
@@ -16,11 +17,33 @@ struct PackageListView: View {
         }
     }
 
-    private var filteredPackages: [PackageItem] {
-        if selectedStatusFilters.isEmpty {
-            return allPackages
+    private var displayedPackages: [PackageItem] {
+        let query = searchText.trimmingCharacters(in: .whitespaces).lowercased()
+
+        var base: [PackageItem]
+        if query.isEmpty {
+            // Show all installed/outdated + cached available packages
+            base = allPackages
+            let existingIds = Set(base.map { $0.id })
+            let available = core.cachedAvailablePackages.filter { !existingIds.contains($0.id) }
+            base.append(contentsOf: available)
+            base.sort {
+                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+        } else {
+            // Filter installed/outdated by name match
+            base = allPackages.filter { $0.name.lowercased().contains(query) }
+
+            // Merge in search results (deduplicated by ID)
+            let existingIds = Set(base.map { $0.id })
+            let newResults = core.searchResults.filter { !existingIds.contains($0.id) }
+            base.append(contentsOf: newResults)
         }
-        return allPackages.filter { selectedStatusFilters.contains($0.status) }
+
+        if selectedStatusFilters.isEmpty {
+            return base
+        }
+        return base.filter { selectedStatusFilters.contains($0.status) }
     }
 
     var body: some View {
@@ -45,7 +68,6 @@ struct PackageListView: View {
                         title: status.displayName,
                         isSelected: selectedStatusFilters.contains(status),
                         action: {
-                            if status == .available { return }
                             if selectedStatusFilters.contains(status) {
                                 selectedStatusFilters.remove(status)
                             } else {
@@ -53,8 +75,6 @@ struct PackageListView: View {
                             }
                         }
                     )
-                    .opacity(status == .available ? 0.5 : 1.0)
-                    .disabled(status == .available)
                 }
                 Spacer()
             }
@@ -64,7 +84,7 @@ struct PackageListView: View {
             Divider()
 
             // Package list
-            if filteredPackages.isEmpty {
+            if displayedPackages.isEmpty {
                 VStack {
                     Spacer()
                     Text("No packages found")
@@ -75,7 +95,7 @@ struct PackageListView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(filteredPackages) { package in
+                        ForEach(displayedPackages) { package in
                             PackageRowView(package: package)
                                 .contentShape(Rectangle())
                                 .onTapGesture {

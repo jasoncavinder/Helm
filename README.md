@@ -5,15 +5,16 @@ It is designed as infrastructure software: deterministic, safety-first, and expl
 
 ## Current Status
 
-**v0.4.0 — SwiftUI Shell (beta)** is complete on `dev`.
+**v0.5.0 — Progressive Search (beta)** is complete on `dev`.
 
 Milestones completed:
 - **0.1.x** — Core foundation: Rust workspace, adapter traits, capability model, SQLite schema.
 - **0.2.x** — First adapter: Homebrew detection, listing, search with fixture-based tests.
 - **0.3.x** — Orchestration engine: background task queue, per-manager serialization, cross-manager parallelism, process cancellation, structured errors, real process execution.
 - **0.4.x** — SwiftUI shell: macOS menu bar app with floating panel UI, XPC service architecture, Rust FFI bridge, real-time task and package views, refresh wired end-to-end, code signing validation, app sandbox.
+- **0.5.x** — Progressive search: local-first fuzzy search, debounced remote search with cancellation, cache enrichment, available packages surfaced in UI.
 
-Next: **0.5.x** — Progressive search (local-first fuzzy search, debounced remote search, cancellation).
+Next: **0.6.x** — Core toolchain managers (mise, rustup adapters, authority ordering).
 
 ## Design Commitments for 1.0
 

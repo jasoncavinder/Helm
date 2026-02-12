@@ -483,11 +483,10 @@ LIMIT ?1
     fn next_task_id(&self) -> PersistenceResult<u64> {
         self.with_connection("next_task_id", |connection| {
             ensure_schema_ready(connection)?;
-            let max_id: Option<i64> = connection.query_row(
-                "SELECT MAX(task_id) FROM task_records",
-                [],
-                |row| row.get(0),
-            )?;
+            let max_id: Option<i64> =
+                connection.query_row("SELECT MAX(task_id) FROM task_records", [], |row| {
+                    row.get(0)
+                })?;
             match max_id {
                 Some(id) => Ok(i64_to_u64(id)?.saturating_add(1)),
                 None => Ok(0),

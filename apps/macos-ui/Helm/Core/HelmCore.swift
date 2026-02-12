@@ -28,19 +28,35 @@ struct CoreTaskRecord: Codable {
     let status: String
 }
 
+struct CoreSearchResult: Codable {
+    let manager: String
+    let name: String
+    let version: String?
+    let summary: String?
+    let sourceManager: String
+}
+
 final class HelmCore: ObservableObject {
     static let shared = HelmCore()
 
     @Published var isInitialized = false
     @Published var isConnected = false
     @Published var isRefreshing = false
+    @Published var isSearching = false
+    @Published var searchText: String = "" {
+        didSet { onSearchTextChanged(searchText) }
+    }
     @Published var installedPackages: [PackageItem] = []
     @Published var outdatedPackages: [PackageItem] = []
     @Published var activeTasks: [TaskItem] = []
+    @Published var searchResults: [PackageItem] = []
+    @Published var cachedAvailablePackages: [PackageItem] = []
 
     private var timer: Timer?
     private var connection: NSXPCConnection?
     private var lastRefreshTrigger: Date?
+    private var searchDebounceTimer: Timer?
+    private var activeRemoteSearchTaskId: Int64?
 
     private init() {
         setupConnection()
@@ -53,6 +69,7 @@ final class HelmCore: ObservableObject {
             logger.error("XPC connection invalidated")
             DispatchQueue.main.async {
                 self?.isConnected = false
+                self?.clearSearchState()
                 self?.scheduleReconnection()
             }
         }
@@ -60,6 +77,7 @@ final class HelmCore: ObservableObject {
             logger.error("XPC connection interrupted")
             DispatchQueue.main.async {
                 self?.isConnected = false
+                self?.clearSearchState()
                 self?.scheduleReconnection()
             }
         }
@@ -87,6 +105,12 @@ final class HelmCore: ObservableObject {
             self?.fetchTasks()
             self?.fetchPackages()
             self?.fetchOutdatedPackages()
+            self?.refreshCachedAvailablePackages()
+
+            // Re-query local cache to pick up enriched results from remote search
+            if let query = self?.searchText, !query.trimmingCharacters(in: .whitespaces).isEmpty {
+                self?.fetchSearchResults(query: query)
+            }
         }
     }
 
@@ -193,10 +217,146 @@ final class HelmCore: ObservableObject {
                     } else {
                         self?.isRefreshing = false
                     }
+
+                    // Detect remote search completion
+                    if let searchTaskId = self?.activeRemoteSearchTaskId {
+                        let matchingTask = coreTasks.first { $0.id == UInt64(searchTaskId) }
+                        if let task = matchingTask {
+                            let status = task.status.lowercased()
+                            if status == "completed" || status == "failed" || status == "cancelled" {
+                                self?.activeRemoteSearchTaskId = nil
+                                self?.isSearching = false
+                            }
+                        }
+                    }
                 }
             } catch {
                 logger.error("Failed to decode tasks: \(error)")
             }
         }
+    }
+
+    func fetchSearchResults(query: String) {
+        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else {
+            DispatchQueue.main.async {
+                self.searchResults = []
+            }
+            return
+        }
+
+        service()?.searchLocal(query: query) { [weak self] jsonString in
+            guard let jsonString = jsonString, let data = jsonString.data(using: .utf8) else {
+                DispatchQueue.main.async { self?.searchResults = [] }
+                return
+            }
+
+            do {
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                let results = try decoder.decode([CoreSearchResult].self, from: data)
+
+                DispatchQueue.main.async {
+                    self?.searchResults = results.map { result in
+                        PackageItem(
+                            id: "\(result.sourceManager):\(result.name)",
+                            name: result.name,
+                            version: result.version ?? "",
+                            manager: result.sourceManager.replacingOccurrences(of: "_", with: " ").capitalized,
+                            summary: result.summary,
+                            status: .available
+                        )
+                    }
+                }
+            } catch {
+                logger.error("Failed to decode search results: \(error)")
+                DispatchQueue.main.async { self?.searchResults = [] }
+            }
+        }
+    }
+
+    func refreshCachedAvailablePackages() {
+        service()?.searchLocal(query: "") { [weak self] jsonString in
+            guard let jsonString = jsonString, let data = jsonString.data(using: .utf8) else { return }
+
+            do {
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                let results = try decoder.decode([CoreSearchResult].self, from: data)
+
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    let installedIds = Set(self.installedPackages.map { $0.id })
+                    self.cachedAvailablePackages = results.compactMap { result in
+                        let id = "\(result.sourceManager):\(result.name)"
+                        guard !installedIds.contains(id) else { return nil }
+                        return PackageItem(
+                            id: id,
+                            name: result.name,
+                            version: result.version ?? "",
+                            manager: result.sourceManager.replacingOccurrences(of: "_", with: " ").capitalized,
+                            summary: result.summary,
+                            status: .available
+                        )
+                    }
+                }
+            } catch {
+                logger.error("Failed to decode cached available packages: \(error)")
+            }
+        }
+    }
+
+    // MARK: - Search Orchestration
+
+    private func onSearchTextChanged(_ query: String) {
+        // 1. Instant local cache query
+        fetchSearchResults(query: query)
+
+        // 2. Cancel in-flight remote search
+        cancelActiveRemoteSearch()
+
+        // 3. Invalidate debounce timer
+        searchDebounceTimer?.invalidate()
+        searchDebounceTimer = nil
+
+        // 4. If empty, clear state and return
+        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else {
+            isSearching = false
+            return
+        }
+
+        // 5. Start 300ms debounce timer for remote search
+        searchDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
+            self?.triggerRemoteSearch(query: query)
+        }
+    }
+
+    private func triggerRemoteSearch(query: String) {
+        isSearching = true
+        service()?.triggerRemoteSearch(query: query) { [weak self] taskId in
+            DispatchQueue.main.async {
+                if taskId >= 0 {
+                    self?.activeRemoteSearchTaskId = taskId
+                } else {
+                    logger.error("triggerRemoteSearch returned error")
+                    self?.isSearching = false
+                }
+            }
+        }
+    }
+
+    private func cancelActiveRemoteSearch() {
+        guard let taskId = activeRemoteSearchTaskId else { return }
+        activeRemoteSearchTaskId = nil
+        isSearching = false
+        service()?.cancelTask(taskId: taskId) { success in
+            if !success {
+                logger.warning("cancelTask(\(taskId)) returned false")
+            }
+        }
+    }
+
+    private func clearSearchState() {
+        activeRemoteSearchTaskId = nil
+        isSearching = false
     }
 }

@@ -55,4 +55,26 @@ class HelmService: NSObject, HelmServiceProtocol {
         logger.info("helm_trigger_refresh result: \(result)")
         reply(result)
     }
+
+    func searchLocal(query: String, withReply reply: @escaping (String?) -> Void) {
+        guard let cString = query.withCString({ helm_search_local($0) }) else {
+            logger.warning("helm_search_local returned nil")
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(cString) }
+        reply(String(cString: cString))
+    }
+
+    func triggerRemoteSearch(query: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = query.withCString { helm_trigger_remote_search($0) }
+        logger.info("helm_trigger_remote_search result: \(taskId)")
+        reply(taskId)
+    }
+
+    func cancelTask(taskId: Int64, withReply reply: @escaping (Bool) -> Void) {
+        let result = helm_cancel_task(taskId)
+        logger.info("helm_cancel_task(\(taskId)) result: \(result)")
+        reply(result)
+    }
 }
