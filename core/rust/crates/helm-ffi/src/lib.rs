@@ -124,6 +124,33 @@ pub extern "C" fn helm_list_installed_packages() -> *mut c_char {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn helm_list_outdated_packages() -> *mut c_char {
+    let guard = STATE.lock().unwrap();
+    let state = match guard.as_ref() {
+        Some(s) => s,
+        None => return std::ptr::null_mut(),
+    };
+
+    let packages = match state.store.list_outdated() {
+        Ok(pkgs) => pkgs,
+        Err(e) => {
+            eprintln!("Failed to list outdated packages: {}", e);
+            return std::ptr::null_mut();
+        }
+    };
+
+    let json = match serde_json::to_string(&packages) {
+        Ok(j) => j,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    match CString::new(json) {
+        Ok(c) => c.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn helm_list_tasks() -> *mut c_char {
     let guard = STATE.lock().unwrap();
     let state = match guard.as_ref() {

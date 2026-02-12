@@ -27,8 +27,8 @@ const HOMEBREW_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
 };
 
 const HOMEBREW_COMMAND: &str = "brew";
-const DETECT_TIMEOUT: Duration = Duration::from_secs(5);
-const LIST_TIMEOUT: Duration = Duration::from_secs(30);
+const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
+const LIST_TIMEOUT: Duration = Duration::from_secs(60);
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -267,16 +267,22 @@ fn parse_outdated_formulae(output: &str) -> AdapterResult<Vec<OutdatedPackage>> 
 }
 
 fn parse_outdated_line(line: &str) -> Option<(String, Option<String>, String)> {
-    let (left, right) = line.split_once(" -> ")?;
-    let mut left_segments = left.split_whitespace();
-    let name = left_segments.next()?.trim();
-    if name.is_empty() {
+    // Format: "name (installed_version) < candidate_version"
+    let (left, candidate_version) = line.split_once(" < ")?;
+    let candidate_version = candidate_version.trim();
+    if candidate_version.is_empty() {
         return None;
     }
 
-    let installed_version = left_segments.last().map(str::to_owned);
-    let candidate_version = right.trim();
-    if candidate_version.is_empty() {
+    let (name, installed_version) = if let Some(paren_start) = left.find(" (") {
+        let name = left[..paren_start].trim();
+        let version_part = left[paren_start + 2..].trim_end_matches(')').trim();
+        (name, Some(version_part.to_owned()))
+    } else {
+        (left.trim(), None)
+    };
+
+    if name.is_empty() {
         return None;
     }
 

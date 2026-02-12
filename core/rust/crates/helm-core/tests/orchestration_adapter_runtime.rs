@@ -121,6 +121,17 @@ impl TaskStore for RecordingTaskStore {
         values.truncate(limit);
         Ok(values)
     }
+
+    fn next_task_id(&self) -> PersistenceResult<u64> {
+        let records = self.records.lock().map_err(|_| CoreError {
+            manager: None,
+            task: None,
+            action: None,
+            kind: CoreErrorKind::Internal,
+            message: "recording store mutex poisoned".to_string(),
+        })?;
+        Ok(records.keys().map(|id| id.0).max().map_or(0, |m| m + 1))
+    }
 }
 
 impl ManagerAdapter for TestAdapter {

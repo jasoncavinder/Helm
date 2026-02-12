@@ -40,4 +40,6 @@ pub trait TaskStore: Send + Sync {
     fn update_task(&self, task: &TaskRecord) -> PersistenceResult<()>;
 
     fn list_recent_tasks(&self, limit: usize) -> PersistenceResult<Vec<TaskRecord>>;
+
+    fn next_task_id(&self) -> PersistenceResult<u64>;
 }

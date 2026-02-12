@@ -12,7 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
         panel = FloatingPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 350, height: 500),
+            contentRect: NSRect(x: 0, y: 0, width: 350, height: 560),
             backing: .buffered,
             defer: false
         )
@@ -135,48 +135,58 @@ final class EventMonitor {
 
 private struct StatusBarView: View {
     @StateObject var core = HelmCore.shared
+    @State private var selectedTab: HelmTab = .dashboard
+    @State private var searchText: String = ""
+    @State private var showSettings: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("Helm")
-                    .font(.headline)
-                Spacer()
-                Button(action: {
-                    core.triggerRefresh()
-                }) {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .buttonStyle(.plain)
-            }
-            .padding()
+            NavigationBarView(
+                selectedTab: $selectedTab,
+                searchText: $searchText,
+                showSettings: $showSettings
+            )
 
             Divider()
 
             if core.isInitialized {
-                TaskListView()
-                    .frame(height: 150)
-                Divider()
-                PackageListView()
-                    .frame(height: 300)
+                Group {
+                    switch selectedTab {
+                    case .dashboard:
+                        DashboardView()
+                    case .packages:
+                        PackageListView()
+                    }
+                }
+                .frame(maxHeight: .infinity)
             } else {
-                Text("Initializing Core...")
-                    .padding()
+                VStack {
+                    Spacer()
+                    ProgressView("Initializing...")
+                        .font(.subheadline)
+                    Spacer()
+                }
             }
 
             Divider()
 
             HStack {
-                Text("v\(helmVersion)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Spacer()
-                Button("Quit") {
-                    NSApplication.shared.terminate(nil)
+                if core.isRefreshing {
+                    ProgressView()
+                        .scaleEffect(0.5)
+                        .frame(width: 12, height: 12)
+                    Text("Refreshing...")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                } else {
+                    Text("v\(helmVersion)")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
                 }
-                .buttonStyle(.plain)
+                Spacer()
             }
-            .padding()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
         }
         .frame(width: 350)
     }
