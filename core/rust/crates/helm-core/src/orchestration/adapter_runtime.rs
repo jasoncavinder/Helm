@@ -63,6 +63,7 @@ impl AdapterRuntime {
     pub fn with_all_stores(
         adapters: impl IntoIterator<Item = Arc<dyn ManagerAdapter>>,
         task_store: Arc<dyn TaskStore>,
+        package_store: Arc<dyn PackageStore>,
         search_cache_store: Arc<dyn SearchCacheStore>,
     ) -> OrchestrationResult<Self> {
         let start_id = task_store.next_task_id().unwrap_or(0);
@@ -71,7 +72,7 @@ impl AdapterRuntime {
             AdapterExecutionRuntime::with_queue(queue),
             adapters,
             Some(task_store),
-            None,
+            Some(package_store),
             Some(search_cache_store),
         )
     }

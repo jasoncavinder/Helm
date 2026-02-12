@@ -1,6 +1,6 @@
 use crate::adapters::manager::AdapterResult;
 use crate::execution::{
-    spawn_validated, ProcessExecutor, ProcessExitStatus, ProcessOutput, ProcessSpawnRequest,
+    ProcessExecutor, ProcessExitStatus, ProcessOutput, ProcessSpawnRequest, spawn_validated,
 };
 use crate::models::{CoreError, CoreErrorKind};
 
@@ -19,18 +19,13 @@ pub(crate) fn run_and_collect_stdout(
 
     match output.status {
         ProcessExitStatus::ExitCode(0) => {
-            let stdout_str = String::from_utf8(output.stdout).map_err(|error| CoreError {
+            String::from_utf8(output.stdout).map_err(|error| CoreError {
                 manager: Some(manager),
                 task: Some(task_type),
                 action: Some(action),
                 kind: CoreErrorKind::ParseFailure,
                 message: format!("process stdout is not valid UTF-8: {error}"),
-            })?;
-
-            // DEBUG: Print stdout to stderr for Xcode console visibility
-            eprintln!("[helm-core] {manager:?} {action:?} stdout:\n{stdout_str}");
-
-            Ok(stdout_str)
+            })
         }
         ProcessExitStatus::ExitCode(code) => {
             let stderr = String::from_utf8_lossy(&output.stderr);

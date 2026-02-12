@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::adapters::detect_utils::which_executable;
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::mise::{
-    mise_detect_request, mise_list_installed_request, mise_list_outdated_request, MiseSource,
+    MiseSource, mise_detect_request, mise_list_installed_request, mise_list_outdated_request,
 };
 use crate::adapters::process_utils::run_and_collect_stdout;
 use crate::execution::{ProcessExecutor, ProcessSpawnRequest};
@@ -19,7 +19,7 @@ impl ProcessMiseSource {
     }
 
     fn configure_request(&self, mut request: ProcessSpawnRequest) -> ProcessSpawnRequest {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        let home = std::env::var("HOME").unwrap_or_default();
         let mise_bin = format!("{home}/.local/bin");
         let path = std::env::var("PATH").unwrap_or_default();
         let new_path = format!("{mise_bin}:{path}");
@@ -27,22 +27,15 @@ impl ProcessMiseSource {
         request.command = request.command.env("PATH", new_path);
 
         // Resolve absolute path to binary if possible
-        if request.command.program.to_str() == Some("mise") {
-            // 1. Try direct path resolution first (most reliable)
-            let direct_path = std::path::Path::new(&mise_bin).join("mise");
-            if direct_path.exists() {
-                request.command.program = direct_path;
-            } else {
-                // 2. Fallback to `which` if not found in standard location
-                if let Some(exe) = which_executable(
-                    self.executor.as_ref(),
-                    "mise",
-                    &[mise_bin.as_str()],
-                    ManagerId::Mise,
-                ) {
-                    request.command.program = exe;
-                }
-            }
+        if request.command.program.to_str() == Some("mise")
+            && let Some(exe) = which_executable(
+                self.executor.as_ref(),
+                "mise",
+                &[mise_bin.as_str()],
+                ManagerId::Mise,
+            )
+        {
+            request.command.program = exe;
         }
 
         request

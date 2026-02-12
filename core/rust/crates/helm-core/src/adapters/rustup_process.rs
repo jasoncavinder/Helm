@@ -4,7 +4,7 @@ use crate::adapters::detect_utils::which_executable;
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::process_utils::run_and_collect_stdout;
 use crate::adapters::rustup::{
-    rustup_check_request, rustup_detect_request, rustup_toolchain_list_request, RustupSource,
+    RustupSource, rustup_check_request, rustup_detect_request, rustup_toolchain_list_request,
 };
 use crate::execution::{ProcessExecutor, ProcessSpawnRequest};
 use crate::models::ManagerId;

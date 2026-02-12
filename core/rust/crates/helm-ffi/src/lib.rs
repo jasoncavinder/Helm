@@ -88,7 +88,12 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
         vec![homebrew_adapter, mise_adapter, rustup_adapter];
 
     // Initialize Orchestration
-    let runtime = match AdapterRuntime::with_all_stores(adapters, store.clone(), store.clone()) {
+    let runtime = match AdapterRuntime::with_all_stores(
+        adapters,
+        store.clone(),
+        store.clone(),
+        store.clone(),
+    ) {
         Ok(rt) => Arc::new(rt),
         Err(e) => {
             eprintln!("Failed to create adapter runtime: {}", e);

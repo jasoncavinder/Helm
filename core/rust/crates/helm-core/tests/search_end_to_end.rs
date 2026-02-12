@@ -139,7 +139,9 @@ async fn cache_enrichment_across_multiple_queries() {
         ManagerId::HomebrewFormula,
         Duration::from_millis(10),
     ));
-    let runtime = AdapterRuntime::with_all_stores([adapter], store.clone(), store.clone()).unwrap();
+    let runtime =
+        AdapterRuntime::with_all_stores([adapter], store.clone(), store.clone(), store.clone())
+            .unwrap();
 
     // First search: "wget" → 2 results
     let request1 = AdapterRequest::Search(SearchRequest {
@@ -218,7 +220,9 @@ async fn grace_period_allows_near_complete_search_to_persist() {
         ManagerId::HomebrewFormula,
         Duration::from_millis(200),
     ));
-    let runtime = AdapterRuntime::with_all_stores([adapter], store.clone(), store.clone()).unwrap();
+    let runtime =
+        AdapterRuntime::with_all_stores([adapter], store.clone(), store.clone(), store.clone())
+            .unwrap();
 
     let request = AdapterRequest::Search(SearchRequest {
         query: SearchQuery {
@@ -274,7 +278,9 @@ async fn long_running_search_aborted_after_grace_period() {
         ManagerId::HomebrewFormula,
         Duration::from_secs(5),
     ));
-    let runtime = AdapterRuntime::with_all_stores([adapter], store.clone(), store.clone()).unwrap();
+    let runtime =
+        AdapterRuntime::with_all_stores([adapter], store.clone(), store.clone(), store.clone())
+            .unwrap();
 
     let request = AdapterRequest::Search(SearchRequest {
         query: SearchQuery {
@@ -323,7 +329,9 @@ async fn concurrent_search_and_refresh_serialized_without_deadlock() {
         ManagerId::HomebrewFormula,
         Duration::from_millis(100),
     ));
-    let runtime = AdapterRuntime::with_all_stores([adapter], store.clone(), store.clone()).unwrap();
+    let runtime =
+        AdapterRuntime::with_all_stores([adapter], store.clone(), store.clone(), store.clone())
+            .unwrap();
 
     // Submit search and refresh concurrently — both use HomebrewFormula, must be serialized
     let search_request = AdapterRequest::Search(SearchRequest {
@@ -370,7 +378,9 @@ async fn empty_query_returns_empty_results_from_cache() {
         ManagerId::HomebrewFormula,
         Duration::from_millis(10),
     ));
-    let runtime = AdapterRuntime::with_all_stores([adapter], store.clone(), store.clone()).unwrap();
+    let runtime =
+        AdapterRuntime::with_all_stores([adapter], store.clone(), store.clone(), store.clone())
+            .unwrap();
 
     let request = AdapterRequest::Search(SearchRequest {
         query: SearchQuery {
