@@ -59,7 +59,6 @@ In order of precedence:
 1. **`PROJECT_BRIEF.md`** — Authoritative product and architecture spec. Wins over conflicting instructions.
 2. **`AGENTS.md`** — Non-negotiable development constraints and principles.
 3. **`docs/ROADMAP.md`** — Milestone definitions (0.1 through 1.0).
-4. **`docs/0_3_KICKOFF_PLAN.md`** — Completed milestone reference (orchestration engine).
 
 ## Git Workflow
 
