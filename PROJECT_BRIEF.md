@@ -8,11 +8,11 @@ Helm is a native macOS menu bar utility that provides a centralized control cent
 
 ## **Product Goals**
 
-* One central “control plane” for third-party package and tool updates.
-* High-speed status overview: installed, upgradable, and available items.
-* One-click actions for refresh, install, uninstall, and “upgrade all”.
-* Clear separation of authority between managers and tools.
-* UX that feels responsive even during long background operations.
+- One central “control plane” for third-party package and tool updates.
+- High-speed status overview: installed, upgradable, and available items.
+- One-click actions for refresh, install, uninstall, and “upgrade all”.
+- Clear separation of authority between managers and tools.
+- UX that feels responsive even during long background operations.
 
 ---
 
@@ -22,12 +22,16 @@ Helm is a native macOS menu bar utility that provides a centralized control cent
 
 These define toolchain versions and are considered authoritative over downstream package managers:
 
-* **mise** (recommended)
-* **asdf** (optional / compatibility mode)
-* **rustup** (recommended)
+- **mise** (recommended)
+- **asdf** (optional / compatibility mode)
+- **rustup** (recommended)
 
 **Authority rules:** These should always execute before downstream package updates.
-> For 1.0, mise and rustup are required implementations.
+
+For 1.0:
+- mise and rustup are required implementations.
+- Toolchain managers execute before downstream package managers in bulk upgrade flows.
+- Toolchain upgrade failures do not cascade silently.
 
 ---
 
@@ -35,16 +39,21 @@ These define toolchain versions and are considered authoritative over downstream
 
 These run last and may require elevated privileges or reboots:
 
-* **Homebrew (formulae)**
-* **macOS `softwareupdate`**
-* **MacPorts** (optional)
-* **nix-darwin** (optional)
+- **Homebrew (formulae)**
+- **macOS `softwareupdate`**
+- **MacPorts** (optional)
+- **nix-darwin** (optional)
 
 Guardrails:
 
-* Explicit confirmation for privileged or system-level actions.
-* Rate-limiting and scheduling options.
-> For 1.0, Homebrew and macOS softwareupdate are required.
+- Explicit confirmation for privileged or system-level actions.
+- Rate-limiting and scheduling options.
+
+For 1.0:
+- Homebrew and macOS softwareupdate are required.
+- OS updates require explicit confirmation.
+- Reboot-required state must be surfaced clearly in the UI.
+- Silent OS updates are prohibited.
 
 ---
 
@@ -52,24 +61,24 @@ Guardrails:
 
 Focus on global packages; project-local dependencies are excluded unless explicitly enabled.
 
-* **pnpm** (global)
-* **npm** (global)
-* **yarn** (classic + berry)
-* **pipx** (recommended)
-* **pip** (`python3 -m pip`)
-* **poetry**
-* **RubyGems**
-* **bundler**
-* **Cargo**
-* **cargo-binstall**
+- **pnpm** (global)
+- **npm** (global)
+- **yarn** (classic + berry)
+- **pipx** (recommended)
+- **pip** (`python3 -m pip`)
+- **poetry**
+- **RubyGems**
+- **bundler**
+- **Cargo**
+- **cargo-binstall**
 
 Managers must declare:
 
-* install
-* uninstall
-* list
-* outdated
-* search
+- install
+- uninstall
+- list
+- outdated
+- search
   capabilities.
 
 ---
@@ -78,12 +87,12 @@ Managers must declare:
 
 Primarily for status visibility:
 
-* **Mac App Store (`mas`)**
-* **Sparkle-based updaters** (detection only)
-* **Setapp** (detection only)
-* **Homebrew casks**
+- **Mac App Store (`mas`)**
+- **Sparkle-based updaters** (detection only)
+- **Setapp** (detection only)
+- **Homebrew casks**
 
-> For 1.0, mas is required.
+For 1.0, mas is required.
 
 ---
 
@@ -91,10 +100,10 @@ Primarily for status visibility:
 
 Detection and upgrade prompting where applicable:
 
-* **Docker Desktop**
-* **podman**
-* **colima**
-* **Parallels Desktop** (detection only)
+- **Docker Desktop**
+- **podman**
+- **colima**
+- **Parallels Desktop** (detection only)
 
 ---
 
@@ -102,19 +111,19 @@ Detection and upgrade prompting where applicable:
 
 System integrity and tooling:
 
-* **Xcode Command Line Tools**
-* **Rosetta 2** (Apple Silicon)
-* **Firmware updates** (`softwareupdate --history`)
+- **Xcode Command Line Tools**
+- **Rosetta 2** (Apple Silicon)
+- **Firmware updates** (`softwareupdate --history`)
 
 ---
 
 ## **Platform & UX Choices**
 
-* Menu bar macOS utility (`LSUIElement`, no Dock icon).
-* SwiftUI frontend for native look & feel.
-* Floating panel UI from the menu bar icon.
-* Background execution for long-running tasks.
-* Live task list with per-task status/progress.
+- Menu bar macOS utility (`LSUIElement`, no Dock icon).
+- SwiftUI frontend for native look & feel.
+- Floating panel UI from the menu bar icon.
+- Background execution for long-running tasks.
+- Live task list with per-task status/progress.
 
 ---
 
@@ -122,9 +131,9 @@ System integrity and tooling:
 
 ### **Hybrid Model**
 
-* **SwiftUI frontend:** UI rendering, immediate responses.
-* **Background service (daemon / XPC boundary):** Privileged or long-lived operations.
-* **Rust core:** Adapter modules, orchestration logic, persistence API.
+- **SwiftUI frontend:** UI rendering, immediate responses.
+- **Background service (daemon / XPC boundary):** Privileged or long-lived operations.
+- **Rust core:** Adapter modules, orchestration logic, persistence API.
 
 The core boundary is **documented and versioned**. Rust core is UI-agnostic and safe.
 
@@ -132,19 +141,19 @@ The core boundary is **documented and versioned**. Rust core is UI-agnostic and 
 
 ## **Persistence & Logging**
 
-* **SQLite** for caches, preferences, and state (schema versioning & migrations).
-* **File logs** in Application Support.
-* Structured, per-manager log entries for analysis.
+- **SQLite** for caches, preferences, and state (schema versioning & migrations).
+- **File logs** in Application Support.
+- Structured, per-manager log entries for analysis.
 
 ---
 
 ## **Design Principles**
 
-* Adapter / plugin-style modules per manager.
-* Capability-driven behavior; not all managers support all actions.
-* Authority & precedence explicitly defined.
-* Offline-first search with progressive remote enrichment.
-* Pin-aware orchestration.
+- Adapter / plugin-style modules per manager.
+- Capability-driven behavior; not all managers support all actions.
+- Authority & precedence explicitly defined.
+- Offline-first search with progressive remote enrichment.
+- Pin-aware orchestration.
 
 ---
 
@@ -152,9 +161,9 @@ The core boundary is **documented and versioned**. Rust core is UI-agnostic and 
 
 ### **1) Manager Detection**
 
-* Detect installation state for managers.
-* Enable by default for installed managers.
-* Allow user toggle on/off per manager.
+- Detect installation state for managers.
+- Enable by default for installed managers.
+- Allow user toggle on/off per manager.
 
 ---
 
@@ -162,24 +171,24 @@ The core boundary is **documented and versioned**. Rust core is UI-agnostic and 
 
 For every enabled manager:
 
-* List installed packages.
-* List outdated packages.
-* List available / searchable packages when supported.
+- List installed packages.
+- List outdated packages.
+- List available / searchable packages when supported.
 
 Available packages are cached opportunistically as they are discovered through:
 
-* user search interactions,
-* remote searches,
-* on-demand queries.
+- user search interactions,
+- remote searches,
+- on-demand queries.
 
 ---
 
 ### **3) Package Actions**
 
-* Install package
-* Uninstall package
-* Upgrade package
-* Upgrade all upgradable packages across managers, respecting authority and pinning.
+- Install package
+- Uninstall package
+- Upgrade package
+- Upgrade all upgradable packages across managers, respecting authority and pinning.
 
 Packages are updated individually rather than in a single bulk command where possible.
 
@@ -189,9 +198,9 @@ Packages are updated individually rather than in a single bulk command where pos
 
 **Automatic, progressive, cancelable search behavior**:
 
-* Local cache fuzzy search returns instantly.
-* After a short idle debounce, remote searches spawn in background for managers that support remote search; results update cache and UI incrementally.
-* Ongoing remote searches are cancellable when user resumes typing, with a *grace period* allowing near-complete tasks to finish and avoid thrashing.
+- Local cache fuzzy search returns instantly.
+- After a short idle debounce, remote searches spawn in background for managers that support remote search; results update cache and UI incrementally.
+- Ongoing remote searches are cancellable when user resumes typing, with a *grace period* allowing near-complete tasks to finish and avoid thrashing.
 
 Remote search enriches local cache rather than replacing it, improving responsiveness and relevance.
 
@@ -199,12 +208,12 @@ Remote search enriches local cache rather than replacing it, improving responsiv
 
 ### **5) Package Pinning**
 
-* **Native pinning** where supported (e.g., Homebrew `brew pin`, manager exact version installs).
-* **Virtual pinning** fallback: Helm records pinned versions and enforces exclusion during upgrades.
-* Pins are visible in UI; pinned packages are excluded from:
+- **Native pinning** where supported (e.g., Homebrew `brew pin`, manager exact version installs).
+- **Virtual pinning** fallback: Helm records pinned versions and enforces exclusion during upgrades.
+- Pins are visible in UI; pinned packages are excluded from:
 
-  * bulk upgrades
-  * automatic update modes (unless overridden)
+  - bulk upgrades
+  - automatic update modes (unless overridden)
 
 ---
 
@@ -212,54 +221,98 @@ Remote search enriches local cache rather than replacing it, improving responsiv
 
 Settings include:
 
-* Auto-check toggle
-* Frequency (daily/weekly/monthly)
-* Time of day
-* Auto-apply toggle (off by default)
-* Check on launch toggle
-* Fully automatic mode toggle with rate limits
-* Quiet hours
-* Major upgrade policies
+- Auto-check toggle
+- Frequency (daily/weekly/monthly)
+- Time of day
+- Auto-apply toggle (off by default)
+- Check on launch toggle
+- Fully automatic mode toggle with rate limits
+- Quiet hours
+- Major upgrade policies
 
 ---
 
 ### **7) Tasks**
 
-* Background task queue with observable statuses.
-* Task types: detection, install, uninstall, refresh, search, upgrade.
-* Per-manager exclusivity locks; same manager tasks run serially.
-* True process cancellation, not just UI dismissal.
+- Background task queue with observable statuses.
+- Task types: detection, install, uninstall, refresh, search, upgrade.
+- Per-manager exclusivity locks; same manager tasks run serially.
+- True process cancellation, not just UI dismissal.
 
 ---
 
 ### **8) Onboarding Wizard**
 
-* Detect available managers
-* Present safety policy defaults
-* Choose auto-update preferences
+- Detect available managers
+- Present safety policy defaults
+- Choose auto-update preferences
+
+---
+
+### 9) Upgrade Preview & Dry-Run
+
+Before executing bulk upgrades, Helm must provide:
+
+- Ordered execution plan
+- Manager grouping
+- Pin exclusions
+- Potential reboot warnings
+- Estimated impact
+
+Users may cancel before execution begins.
+
+Dry-run mode must be supported for CLI and UI.
+
+---
+
+### 10) Helm Self-Update
+
+Helm must support self-updating via a signed update mechanism.
+
+Requirements:
+- Code-signed updates
+- Version integrity verification
+- Delta updates preferred
+- No shell-based update mechanisms
+- Manual approval required (auto-update optional)
+
+Self-update must not depend on Homebrew.
+
+---
+
+### 11) Diagnostics & Transparency
+
+Helm must provide:
+
+- Per-task structured logs
+- Manager detection diagnostics
+- Service health visibility
+- Copyable logs for support
+
+Control planes must be transparent.
 
 ---
 
 ## **Future Enhancements**
 
-* Notification & history timeline
-* Dependency / conflict resolution
-* CLI companion tool
-* Export/import configuration
-* API for 3rd-party integrations
-* Interactive upgrade previews
+- Notification & history timeline
+- Dependency / conflict resolution
+- CLI companion tool
+- Export/import configuration
+- API for 3rd-party integrations
+- Interactive upgrade previews
 
 ---
 
 ## **Quality Constraints**
 
-* No shell injection vectors — structured process args only.
-* Defensive output parsing.
-* Clear per-manager error reporting.
-* Thread-safe shared state.
-* Reasonable timeouts / retries.
-* Unit tests for adapters and parsers.
-* Integration tests for orchestration and UI flows.
+- No shell injection vectors — structured process args only.
+- Defensive output parsing.
+- Clear per-manager error reporting.
+- Thread-safe shared state.
+- Reasonable timeouts / retries.
+- Unit tests for adapters and parsers.
+- Integration tests for orchestration and UI flows.
 
 ---
 
@@ -276,15 +329,15 @@ Settings include:
 
 ## **Deliverables**
 
-* Working macOS app bundle.
-* README with architecture and setup steps.
-* Documented core UI ↔ service ↔ Rust interfaces.
-* Clear limits and known shortcomings.
+- Working macOS app bundle.
+- README with architecture and setup steps.
+- Documented core UI ↔ service ↔ Rust interfaces.
+- Clear limits and known shortcomings.
 
 ---
 
 ## **Notes**
 
-* Managers run in parallel across categories; within one manager they run serially.
-* Respect manager interdependencies (e.g., `mas` depends on Homebrew).
-* Prefer per-package ops over bulk where feasible.
+- Managers run in parallel across categories; within one manager they run serially.
+- Respect manager interdependencies (e.g., `mas` depends on Homebrew).
+- Prefer per-package ops over bulk where feasible.

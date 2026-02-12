@@ -104,6 +104,8 @@ Goal:
 
 - mise adapter
 - rustup adapter
+- Toolchain normalization layer
+- Authority ordering engine
 - Authority ordering enforced:
 
   - mise / rustup before package managers
@@ -116,7 +118,9 @@ Exit Criteria:
 
 - mise detection works
 - rustup detection works
-- Toolchain upgrades execute before brew/npm/pipx in bulk upgrade
+- Toolchain upgrades execute before brew/npm/pipx
+- Version parsing robust across versions
+- Failure isolation verified
 - Tests include fixture parsing for version output
 
 ---
@@ -130,79 +134,126 @@ Goal:
 - Guarded execution model
 - Explicit confirmation requirement for OS-level updates
 - Reboot-required detection
+- Privilege boundary validation
 - Elevation flow defined (if needed)
 
 Exit Criteria:
 
-- `softwareupdate --list` parsed correctly
-- `mas outdated` parsed correctly
+- `softwareupdate --list` parsed correctly and stable across macOS versions
+- `mas outdated` detection works and is parsed correctly
 - Guardrails block silent OS updates
 - Reboot-required surfaced in UI
 
 ---
 
-## 0.8.x — Pinning & Policy (beta)
+## 0.8.x — Pinning & Policy Enforcement (beta)
 
 Goal:
-- Native pin support (brew first)
+
+- Native pin support
 - Virtual pin fallback
 - Pin-aware upgrade-all
-- Settings controls for pin behavior
-
-Exit Criteria:
-- All adapters respect pin state
-- Pinned packages excluded from bulk upgrades
-- Pin state persists across restarts
-
----
-
-## 0.9.x — Guardrails & Safety (beta)
-
-Goal:
-- Privilege boundary enforcement
-- OS update confirmations
 - Timeout enforcement across all adapters
-- Timeout tuning
-- Retry policies
-- Robust error surfacing
+- Manager enable/disable toggles
 - Per-manager structured error reporting hardened
+- Safe mode execution mode
 
 Exit Criteria:
-- No shell injection paths
-- Clear per-manager failure reporting
+
+- All adapters respect pin state
+- Safe mode blocks OS updates
 - softwareupdate cannot run without explicit confirmation
 - Cancellation verified across mise / rustup / mas / brew
+- Settings persist reliably
 
 ---
 
-## 0.10.x — Hardening (rc)
+## 0.9.x — Upgrade Preview & Execution Transparency (beta)
 
 Goal:
-- Integration tests covering:
+
+- Bulk upgrade preview modal
+- Dry-run execution
+- Ordered plan rendering
+- Failure isolation reporting
+
+Exit Criteria:
+
+- Users can inspect full execution plan
+- Dry-run matches actual execution order
+- Partial failure clearly reported
+
+---
+
+## 0.10.x — Self-Update & Installer Hardening (beta)
+
+Goal:
+
+- Sparkle integration (or equivalent)
+- Signed update verification
+- Delta updates
+- Self-update testing across versions
+
+Exit Criteria:
+
+- Helm can update itself safely
+- Downgrade handling defined
+- Update interruption recovery tested
+
+---
+
+## 0.11.x — Diagnostics & Logging (rc)
+
+Goal:
+
+- Per-task log viewer
+- Structured error export
+- Service health diagnostics panel
+- Manager detection diagnostics
+
+Exit Criteria:
+
+- Logs accessible in UI
+- No silent failures
+- Support data export works
+
+---
+
+## 0.12.x — Stability & Pre-1.0 Hardening (rc)
+
+Goal:
+
+- Full integration test matrix, especially:
 
   - multi-manager authority ordering
   - guarded OS update flow
   - failure isolation
-- Deterministic parsing tests
+- Multi-manager orchestration stress tests
+- Cancellation stress tests
 - Logging refinement
 - Crash recovery validation
 - No known race conditions
+- Memory safety audit
 
 Exit Criteria:
-- All core paths covered by tests
+
+- All core paths tested
+- No known race conditions
 - No unhandled panics
 - Stable FFI boundary
+- Deterministic execution verified
 
 ---
 
-## 1.0.0 — Stable Release
+## 1.0.0 — Stable Control Plane Release
 
 Goal:
+
 - Stable architecture
 - Stable adapter trait
 - Stable orchestration semantics
-- Usable UI
-- Documentation complete
-- Known limitations documented
-
-See: docs/DEFINITION_OF_DONE.md
+- Production-safe execution
+- Self-update operational
+- Authority ordering guaranteed
+- Guardrails enforced
+- Logs and diagnostics present

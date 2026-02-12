@@ -23,18 +23,18 @@ Helm must support:
 
 Core managers (required for 1.0):
 
-Toolchain Managers:
+Toolchain:
 - mise
 - rustup
 
-System & OS Managers:
+System:
 - Homebrew (formula + cask)
 - macOS softwareupdate
 
 App Store:
 - mas (Mac App Store)
 
-Language Managers:
+Language:
 - npm (global)
 - pipx
 - Cargo
@@ -60,7 +60,9 @@ Capabilities:
 - Pin enforcement during bulk upgrades
 - Toolchain managers execute before downstream package managers.
 - System-level updates require explicit confirmation.
-- Reboot-required state surfaced to UI.
+- Upgrade preview available before execution.
+- Dry-run mode supported.
+- Reboot-required state surfaced clearly to UI.
 
 ---
 
@@ -71,6 +73,9 @@ Capabilities:
 - Timeouts enforced
 - Clear error attribution
 - Guardrails for OS updates
+- OS updates require explicit confirmation.
+- Silent system upgrades are disallowed.
+- Privileged operations clearly indicated.
 
 ---
 
@@ -116,6 +121,22 @@ Capabilities:
 - Supported managers listed
 - Known limitations documented
 - Architecture overview included
+
+---
+
+## 9. Self-Update
+
+- Helm can update itself via signed updates.
+- Update integrity verified.
+- Update interruption recovery tested.
+
+---
+
+## 10. Transparency & Diagnostics
+
+- Per-task logs visible in UI.
+- Failure isolation reporting present.
+- Manager detection diagnostics accessible.
 
 ---
 

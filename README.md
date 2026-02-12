@@ -15,6 +15,24 @@ Milestones completed:
 
 Next: **0.5.x** — Progressive search (local-first fuzzy search, debounced remote search, cancellation).
 
+## Design Commitments for 1.0
+
+Helm 1.0 is intended to be a production-grade macOS control plane.
+
+Before 1.0, Helm will include:
+
+- Authoritative toolchain managers (mise, rustup)
+- System-level update management (softwareupdate)
+- Mac App Store integration (mas)
+- Upgrade preview and dry-run support
+- Reboot awareness for OS updates
+- Guarded execution for privileged operations
+- Structured per-task logs
+- Self-update mechanism for Helm itself
+
+Helm is not a simple package manager UI.
+It is designed to be a safe orchestration layer across heterogeneous update systems.
+
 ## Architecture
 
 Helm is intentionally split into three layers:
