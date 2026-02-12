@@ -30,6 +30,16 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(String(cString: cString))
     }
 
+    func listOutdatedPackages(withReply reply: @escaping (String?) -> Void) {
+        guard let cString = helm_list_outdated_packages() else {
+            logger.warning("helm_list_outdated_packages returned nil")
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(cString) }
+        reply(String(cString: cString))
+    }
+
     func listTasks(withReply reply: @escaping (String?) -> Void) {
         guard let cString = helm_list_tasks() else {
             logger.warning("helm_list_tasks returned nil")

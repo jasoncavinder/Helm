@@ -142,12 +142,18 @@ private struct StatusBarView: View {
                 Text("Helm")
                     .font(.headline)
                 Spacer()
-                Button(action: {
-                    core.triggerRefresh()
-                }) {
-                    Image(systemName: "arrow.clockwise")
+                if core.isRefreshing {
+                    ProgressView()
+                        .scaleEffect(0.5)
+                        .frame(width: 16, height: 16)
+                } else {
+                    Button(action: {
+                        core.triggerRefresh()
+                    }) {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
             .padding()
 
