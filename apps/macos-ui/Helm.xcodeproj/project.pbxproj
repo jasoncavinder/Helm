@@ -23,6 +23,15 @@
 		A10000010000000000000002 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000002 /* AppDelegate.swift */; };
 		A10000010000000000000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000003 /* Assets.xcassets */; };
 		A30000000000000000000002 /* HelmVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000001 /* HelmVersion.swift */; };
+		B20000000000000000000001 /* ManagerInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000001 /* ManagerInfo.swift */; };
+		B20000000000000000000002 /* LabeledContentRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000002 /* LabeledContentRow.swift */; };
+		B20000000000000000000003 /* FilterButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000003 /* FilterButton.swift */; };
+		B20000000000000000000004 /* ManagerItemView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000004 /* ManagerItemView.swift */; };
+		B20000000000000000000005 /* PackageRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000005 /* PackageRowView.swift */; };
+		B20000000000000000000006 /* TaskRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000006 /* TaskRowView.swift */; };
+		B20000000000000000000007 /* NavigationBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000007 /* NavigationBarView.swift */; };
+		B20000000000000000000008 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000008 /* DashboardView.swift */; };
+		B20000000000000000000009 /* SettingsPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000009 /* SettingsPopoverView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -72,6 +81,15 @@
 		A10000020000000000000006 /* Helm.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Helm.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A30000000000000000000001 /* HelmVersion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HelmVersion.swift; path = Generated/HelmVersion.swift; sourceTree = SOURCE_ROOT; };
 		A40000000000000000000001 /* HelmVersion.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = HelmVersion.xcconfig; path = Generated/HelmVersion.xcconfig; sourceTree = SOURCE_ROOT; };
+		B10000000000000000000001 /* ManagerInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagerInfo.swift; sourceTree = "<group>"; };
+		B10000000000000000000002 /* LabeledContentRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabeledContentRow.swift; sourceTree = "<group>"; };
+		B10000000000000000000003 /* FilterButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilterButton.swift; sourceTree = "<group>"; };
+		B10000000000000000000004 /* ManagerItemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagerItemView.swift; sourceTree = "<group>"; };
+		B10000000000000000000005 /* PackageRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PackageRowView.swift; sourceTree = "<group>"; };
+		B10000000000000000000006 /* TaskRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskRowView.swift; sourceTree = "<group>"; };
+		B10000000000000000000007 /* NavigationBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationBarView.swift; sourceTree = "<group>"; };
+		B10000000000000000000008 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		B10000000000000000000009 /* SettingsPopoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsPopoverView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -121,6 +139,14 @@
 			path = Sources;
 			sourceTree = "<group>";
 		};
+		8CEC4C9B2F3DA4B500CA3470 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				A40000000000000000000001 /* HelmVersion.xcconfig */,
+			);
+			name = "Recovered References";
+			sourceTree = "<group>";
+		};
 		8CFB6D472F3D1B24002372B8 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
@@ -140,8 +166,12 @@
 		8CFB6D4C2F3D1D1D002372B8 /* Views */ = {
 			isa = PBXGroup;
 			children = (
-				8CFB6D4D2F3D1D1D002372B8 /* TaskListView.swift */,
+				B30000000000000000000001 /* Components */,
+				B10000000000000000000008 /* DashboardView.swift */,
+				B10000000000000000000007 /* NavigationBarView.swift */,
 				8CFB6D4E2F3D1D1D002372B8 /* PackageListView.swift */,
+				B10000000000000000000009 /* SettingsPopoverView.swift */,
+				8CFB6D4D2F3D1D1D002372B8 /* TaskListView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -150,6 +180,7 @@
 			isa = PBXGroup;
 			children = (
 				8CFB6D512F3D1D1D002372B8 /* .build */,
+				B10000000000000000000001 /* ManagerInfo.swift */,
 				8CFB6D552F3D1D1D002372B8 /* Package.swift */,
 				8CFB6D562F3D1D1D002372B8 /* Task.swift */,
 			);
@@ -194,6 +225,7 @@
 				8CE1FDC12F3D2AD7000A3945 /* HelmService */,
 				A10000040000000000000003 /* Products */,
 				8CFB6D472F3D1B24002372B8 /* Frameworks */,
+				8CEC4C9B2F3DA4B500CA3470 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -222,6 +254,18 @@
 				8CE1FDC02F3D2AD7000A3945 /* HelmService.xpc */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		B30000000000000000000001 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000003 /* FilterButton.swift */,
+				B10000000000000000000002 /* LabeledContentRow.swift */,
+				B10000000000000000000004 /* ManagerItemView.swift */,
+				B10000000000000000000005 /* PackageRowView.swift */,
+				B10000000000000000000006 /* TaskRowView.swift */,
+			);
+			path = Components;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -366,6 +410,15 @@
 				A30000000000000000000002 /* HelmVersion.swift in Sources */,
 				8CFB6D5B2F3D1D1D002372B8 /* Task.swift in Sources */,
 				8CFB6D582F3D1D1D002372B8 /* TaskListView.swift in Sources */,
+				B20000000000000000000001 /* ManagerInfo.swift in Sources */,
+				B20000000000000000000002 /* LabeledContentRow.swift in Sources */,
+				B20000000000000000000003 /* FilterButton.swift in Sources */,
+				B20000000000000000000004 /* ManagerItemView.swift in Sources */,
+				B20000000000000000000005 /* PackageRowView.swift in Sources */,
+				B20000000000000000000006 /* TaskRowView.swift in Sources */,
+				B20000000000000000000007 /* NavigationBarView.swift in Sources */,
+				B20000000000000000000008 /* DashboardView.swift in Sources */,
+				B20000000000000000000009 /* SettingsPopoverView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -399,7 +452,7 @@
 					"$(SRCROOT)/Generated",
 					"$(PROJECT_DIR)/Generated",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 12.7;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_BUNDLE_IDENTIFIER = app.jasoncavinder.Helm.HelmService;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -428,7 +481,7 @@
 					"$(SRCROOT)/Generated",
 					"$(PROJECT_DIR)/Generated",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 12.7;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_BUNDLE_IDENTIFIER = app.jasoncavinder.Helm.HelmService;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;

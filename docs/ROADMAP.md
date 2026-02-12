@@ -71,15 +71,18 @@ Delivered:
 - XPC service architecture: sandboxed app communicates with unsandboxed service for process execution
 - Rust FFI layer (`helm-ffi`) bridging Swift UI to Rust core via C ABI
 - Real-time task list with 1-second polling (status transitions: Queued → Running → Completed/Failed)
-- Installed packages view populated from Homebrew adapter
+- Installed and outdated packages views populated from Homebrew adapter
 - Refresh action wired end-to-end: UI → XPC → FFI → orchestration → SQLite
 - Code signing validation on XPC connections (team ID verification via SecCode)
-- Centralized version management (workspace Cargo.toml, auto-generated HelmVersion.swift)
-
-Known gaps deferred to 0.4.1:
-- Outdated packages not yet surfaced in UI (backend persists them, no FFI/UI exposure)
-- No visual refresh feedback (spinner, button state, completion notification)
-- No XPC reconnection logic on service interruption
+- Centralized version management (workspace Cargo.toml, auto-generated HelmVersion.swift + xcconfig)
+- Visual refresh feedback: spinner in nav bar and footer, button state management
+- XPC reconnection logic with automatic retry on service interruption
+- Tabbed UI (Dashboard / Packages) with MacPax-inspired design
+- Dashboard: app icon, version, package stats, manager grid, recent tasks
+- Package list: status filter bar, color-coded status icons, detail popover
+- Settings popover with functional Refresh/Quit and disabled future controls
+- Task ID persistence across app restarts (seeded from SQLite max ID)
+- Process stdin null for XPC service daemon context
 
 ---
 

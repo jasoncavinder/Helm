@@ -22,6 +22,7 @@ impl ProcessExecutor for TokioProcessExecutor {
             cmd.current_dir(dir);
         }
 
+        cmd.stdin(std::process::Stdio::null());
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
         cmd.process_group(0);

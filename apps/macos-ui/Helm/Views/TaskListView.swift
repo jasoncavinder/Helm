@@ -1,26 +1,19 @@
 import SwiftUI
 
 struct TaskListView: View {
-    @StateObject var core = HelmCore.shared
-    
+    @ObservedObject var core = HelmCore.shared
+    var maxTasks: Int = 10
+
     var body: some View {
-        VStack(alignment: .leading) {
-            Text("Recent Tasks")
-                .font(.headline)
-                .padding(.horizontal)
-            
+        VStack(alignment: .leading, spacing: 4) {
             if core.activeTasks.isEmpty {
                 Text("No recent tasks")
                     .foregroundColor(.secondary)
-                    .padding()
+                    .font(.caption)
+                    .padding(.horizontal, 16)
             } else {
-                List(core.activeTasks) { task in
-                    HStack {
-                        Text(task.description)
-                        Spacer()
-                        Text(task.status)
-                            .foregroundColor(.secondary)
-                    }
+                ForEach(Array(core.activeTasks.prefix(maxTasks))) { task in
+                    TaskRowView(task: task)
                 }
             }
         }

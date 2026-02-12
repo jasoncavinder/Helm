@@ -70,6 +70,15 @@ impl InMemoryAsyncTaskQueue {
         Self::default()
     }
 
+    pub fn with_initial_id(start: u64) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(QueueState {
+                next_task_id: start,
+                ..QueueState::default()
+            })),
+        }
+    }
+
     pub async fn spawn(
         &self,
         submission: TaskSubmission,

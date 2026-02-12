@@ -38,8 +38,10 @@ impl AdapterRuntime {
         adapters: impl IntoIterator<Item = Arc<dyn ManagerAdapter>>,
         task_store: Arc<dyn TaskStore>,
     ) -> OrchestrationResult<Self> {
+        let start_id = task_store.next_task_id().unwrap_or(0);
+        let queue = crate::orchestration::InMemoryAsyncTaskQueue::with_initial_id(start_id);
         Self::with_stores(
-            AdapterExecutionRuntime::new(),
+            AdapterExecutionRuntime::with_queue(queue),
             adapters,
             Some(task_store),
             None,
