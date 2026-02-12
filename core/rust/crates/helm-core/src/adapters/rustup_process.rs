@@ -4,7 +4,7 @@ use crate::adapters::detect_utils::which_executable;
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::process_utils::run_and_collect_stdout;
 use crate::adapters::rustup::{
-    RustupSource, rustup_check_request, rustup_detect_request, rustup_toolchain_list_request,
+    rustup_check_request, rustup_detect_request, rustup_toolchain_list_request, RustupSource,
 };
 use crate::execution::{ProcessExecutor, ProcessSpawnRequest};
 use crate::models::ManagerId;
@@ -25,21 +25,25 @@ impl ProcessRustupSource {
         let new_path = format!("{cargo_bin}:{path}");
 
         request.command = request.command.env("PATH", new_path);
+
+        // Resolve absolute path to binary if possible
+        if request.command.program.to_str() == Some("rustup") {
+            if let Some(exe) = which_executable(
+                self.executor.as_ref(),
+                "rustup",
+                &[cargo_bin.as_str()],
+                ManagerId::Rustup,
+            ) {
+                request.command.program = exe;
+            }
+        }
+
         request
     }
 }
 
 impl RustupSource for ProcessRustupSource {
     fn detect(&self) -> AdapterResult<String> {
-        let home = std::env::var("HOME").unwrap_or_default();
-        let cargo_bin = format!("{home}/.cargo/bin");
-        let _ = which_executable(
-            self.executor.as_ref(),
-            "rustup",
-            &[cargo_bin.as_str()],
-            ManagerId::Rustup,
-        );
-
         let request = rustup_detect_request(None);
         let version_request = self.configure_request(request);
         run_and_collect_stdout(self.executor.as_ref(), version_request)
