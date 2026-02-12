@@ -1,6 +1,8 @@
+pub(crate) mod detect_utils;
 pub mod homebrew;
 pub mod homebrew_process;
 pub mod manager;
+pub(crate) mod process_utils;
 
 pub use homebrew::{
     HomebrewAdapter, HomebrewSource, homebrew_detect_request, homebrew_list_installed_request,
