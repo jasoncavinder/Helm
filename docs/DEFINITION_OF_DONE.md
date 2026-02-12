@@ -21,8 +21,20 @@ This document may only be modified via PR targeting main.
 
 Helm must support:
 
-Core managers:
+Core managers (required for 1.0):
+
+Toolchain Managers:
+- mise
+- rustup
+
+System & OS Managers:
 - Homebrew (formula + cask)
+- macOS softwareupdate
+
+App Store:
+- mas (Mac App Store)
+
+Language Managers:
 - npm (global)
 - pipx
 - Cargo
@@ -46,6 +58,9 @@ Capabilities:
 - True process-level cancellation
 - Authority ordering respected
 - Pin enforcement during bulk upgrades
+- Toolchain managers execute before downstream package managers.
+- System-level updates require explicit confirmation.
+- Reboot-required state surfaced to UI.
 
 ---
 
