@@ -53,7 +53,7 @@ Exit Criteria:
 
 ---
 
-## 0.4.x — SwiftUI Shell (beta) - Active
+## 0.4.x — SwiftUI Shell (beta) - Completed
 
 Goal:
 - Menu bar app scaffold
@@ -65,6 +65,21 @@ Exit Criteria:
 - App launches
 - Refresh populates UI
 - Tasks update live
+
+Delivered:
+- macOS menu bar app with floating panel UI (no Dock icon)
+- XPC service architecture: sandboxed app communicates with unsandboxed service for process execution
+- Rust FFI layer (`helm-ffi`) bridging Swift UI to Rust core via C ABI
+- Real-time task list with 1-second polling (status transitions: Queued → Running → Completed/Failed)
+- Installed packages view populated from Homebrew adapter
+- Refresh action wired end-to-end: UI → XPC → FFI → orchestration → SQLite
+- Code signing validation on XPC connections (team ID verification via SecCode)
+- Centralized version management (workspace Cargo.toml, auto-generated HelmVersion.swift)
+
+Known gaps deferred to 0.4.1:
+- Outdated packages not yet surfaced in UI (backend persists them, no FFI/UI exposure)
+- No visual refresh feedback (spinner, button state, completion notification)
+- No XPC reconnection logic on service interruption
 
 ---
 

@@ -16,7 +16,7 @@ Open `apps/macos-ui/Helm.xcodeproj` in Xcode.
 1. File > New > Target.
 2. Select **XPC Service** (under macOS > System Extension / Driver / XPC Service).
 3. Product Name: `HelmService`.
-4. Bundle Identifier: `com.jasoncavinder.Helm.HelmService` (Must match `Info.plist` and `HelmCore.swift`).
+4. Bundle Identifier: `app.jasoncavinder.Helm.HelmService` (Must match `Info.plist` and `HelmCore.swift`).
 5. Finish.
 
 ### 2. Add Source Files
