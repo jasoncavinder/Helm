@@ -19,7 +19,7 @@ impl ProcessMiseSource {
     }
 
     fn configure_request(&self, mut request: ProcessSpawnRequest) -> ProcessSpawnRequest {
-        let home = std::env::var("HOME").unwrap_or_default();
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
         let mise_bin = format!("{home}/.local/bin");
         let path = std::env::var("PATH").unwrap_or_default();
         let new_path = format!("{mise_bin}:{path}");
@@ -28,13 +28,20 @@ impl ProcessMiseSource {
 
         // Resolve absolute path to binary if possible
         if request.command.program.to_str() == Some("mise") {
-            if let Some(exe) = which_executable(
-                self.executor.as_ref(),
-                "mise",
-                &[mise_bin.as_str()],
-                ManagerId::Mise,
-            ) {
-                request.command.program = exe;
+            // 1. Try direct path resolution first (most reliable)
+            let direct_path = std::path::Path::new(&mise_bin).join("mise");
+            if direct_path.exists() {
+                request.command.program = direct_path;
+            } else {
+                // 2. Fallback to `which` if not found in standard location
+                if let Some(exe) = which_executable(
+                    self.executor.as_ref(),
+                    "mise",
+                    &[mise_bin.as_str()],
+                    ManagerId::Mise,
+                ) {
+                    request.command.program = exe;
+                }
             }
         }
 
