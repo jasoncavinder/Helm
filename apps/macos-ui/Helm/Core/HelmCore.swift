@@ -135,6 +135,20 @@ final class HelmCore: ObservableObject {
         }
     }
 
+    private func normalizedManagerName(_ raw: String) -> String {
+        switch raw.lowercased() {
+        case "homebrew_formula": return "Homebrew"
+        case "homebrew_cask": return "Homebrew Cask"
+        case "npm_global": return "npm"
+        case "pipx": return "pipx"
+        case "cargo": return "Cargo"
+        case "mise": return "mise"
+        case "rustup": return "rustup"
+        case "mas": return "App Store"
+        default: return raw.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+
     func fetchPackages() {
         service()?.listInstalledPackages { [weak self] jsonString in
             guard let jsonString = jsonString, let data = jsonString.data(using: .utf8) else { return }
@@ -150,7 +164,7 @@ final class HelmCore: ObservableObject {
                             id: "\(pkg.package.manager):\(pkg.package.name)",
                             name: pkg.package.name,
                             version: pkg.installedVersion ?? "unknown",
-                            manager: pkg.package.manager.replacingOccurrences(of: "_", with: " ").capitalized
+                            manager: self?.normalizedManagerName(pkg.package.manager) ?? pkg.package.manager
                         )
                     }
                 }
@@ -176,7 +190,7 @@ final class HelmCore: ObservableObject {
                             name: pkg.package.name,
                             version: pkg.installedVersion ?? "unknown",
                             latestVersion: pkg.candidateVersion,
-                            manager: pkg.package.manager.replacingOccurrences(of: "_", with: " ").capitalized
+                            manager: self?.normalizedManagerName(pkg.package.manager) ?? pkg.package.manager
                         )
                     }
                 }
@@ -197,9 +211,10 @@ final class HelmCore: ObservableObject {
 
                 DispatchQueue.main.async {
                     self?.activeTasks = coreTasks.map { task in
-                        TaskItem(
+                        let managerName = self?.normalizedManagerName(task.manager) ?? task.manager
+                        return TaskItem(
                             id: "\(task.id)",
-                            description: "\(task.taskType.capitalized) \(task.manager.replacingOccurrences(of: "_", with: " ").capitalized)",
+                            description: "\(task.taskType.capitalized) \(managerName)",
                             status: task.status.capitalized
                         )
                     }
@@ -261,7 +276,7 @@ final class HelmCore: ObservableObject {
                             id: "\(result.sourceManager):\(result.name)",
                             name: result.name,
                             version: result.version ?? "",
-                            manager: result.sourceManager.replacingOccurrences(of: "_", with: " ").capitalized,
+                            manager: self?.normalizedManagerName(result.sourceManager) ?? result.sourceManager,
                             summary: result.summary,
                             status: .available
                         )
@@ -293,7 +308,7 @@ final class HelmCore: ObservableObject {
                             id: id,
                             name: result.name,
                             version: result.version ?? "",
-                            manager: result.sourceManager.replacingOccurrences(of: "_", with: " ").capitalized,
+                            manager: self.normalizedManagerName(result.sourceManager),
                             summary: result.summary,
                             status: .available
                         )
