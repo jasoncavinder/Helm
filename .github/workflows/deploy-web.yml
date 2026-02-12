@@ -6,6 +6,11 @@ on:
       - main
     paths:
       - 'web/**'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'web/**'
 
 permissions:
   contents: read
@@ -31,6 +36,7 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
