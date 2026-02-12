@@ -71,6 +71,7 @@
 		A10000020000000000000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A10000020000000000000006 /* Helm.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Helm.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A30000000000000000000001 /* HelmVersion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HelmVersion.swift; path = Generated/HelmVersion.swift; sourceTree = SOURCE_ROOT; };
+		A40000000000000000000001 /* HelmVersion.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = HelmVersion.xcconfig; path = Generated/HelmVersion.xcconfig; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -381,11 +382,11 @@
 /* Begin XCBuildConfiguration section */
 		8CE1FDCD2F3D2AD8000A3945 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A40000000000000000000001 /* HelmVersion.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = V73WPJR9M4;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -399,7 +400,6 @@
 					"$(PROJECT_DIR)/Generated",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.7;
-				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = app.jasoncavinder.Helm.HelmService;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -411,11 +411,11 @@
 		};
 		8CE1FDCE2F3D2AD8000A3945 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A40000000000000000000001 /* HelmVersion.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = V73WPJR9M4;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -429,7 +429,6 @@
 					"$(PROJECT_DIR)/Generated",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.7;
-				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = app.jasoncavinder.Helm.HelmService;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -562,6 +561,7 @@
 		};
 		A10000090000000000000003 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A40000000000000000000001 /* HelmVersion.xcconfig */;
 			buildSettings = {
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -571,7 +571,6 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = V73WPJR9M4;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -587,7 +586,6 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/Generated",
 				);
-				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jasoncavinder.Helm;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -597,6 +595,7 @@
 		};
 		A10000090000000000000004 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A40000000000000000000001 /* HelmVersion.xcconfig */;
 			buildSettings = {
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -606,7 +605,6 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = V73WPJR9M4;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -622,7 +620,6 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/Generated",
 				);
-				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jasoncavinder.Helm;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

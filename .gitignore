@@ -10,7 +10,8 @@ xcuserdata/
 *.ipa
 *.dSYM.zip
 *.dSYM
-apps/macos-ui/Generated/
+apps/macos-ui/Generated/*
+!apps/macos-ui/Generated/HelmVersion.xcconfig
 
 # macOS
 .DS_Store
