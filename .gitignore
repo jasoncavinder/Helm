@@ -16,7 +16,10 @@ apps/macos-ui/Generated/*
 # macOS
 .DS_Store
 
-# Python
+# Web
+web/node_modules/
+web/.astro/
+web/dist/
 .ruff_cache/
 __pycache__/
 *.pyc
