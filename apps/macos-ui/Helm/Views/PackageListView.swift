@@ -71,44 +71,49 @@ struct PackageListView: View {
             }
 
             // Filter bar
-            HStack(spacing: 4) {
-                ForEach(PackageStatus.allCases, id: \.self) { status in
-                    FilterButton(
-                        title: status.displayName,
-                        isSelected: selectedStatusFilters.contains(status),
-                        action: {
-                            if selectedStatusFilters.contains(status) {
-                                selectedStatusFilters.remove(status)
-                            } else {
-                                selectedStatusFilters.insert(status)
+            VStack(alignment: .leading, spacing: 8) {
+                // Status filters
+                HStack(spacing: 4) {
+                    ForEach(PackageStatus.allCases, id: \.self) { status in
+                        FilterButton(
+                            title: status.displayName,
+                            isSelected: selectedStatusFilters.contains(status),
+                            action: {
+                                if selectedStatusFilters.contains(status) {
+                                    selectedStatusFilters.remove(status)
+                                } else {
+                                    selectedStatusFilters.insert(status)
+                                }
                             }
-                        }
-                    )
+                        )
+                    }
+                    Spacer()
                 }
-                
-                Spacer()
-                
+
                 // Manager Filter
-                Menu {
-                    Button("All Managers") { selectedManager = nil }
-                    Divider()
-                    ForEach(availableManagers, id: \.self) { manager in
-                        Button(manager) { selectedManager = manager }
+                HStack {
+                    Menu {
+                        Button("All Managers") { selectedManager = nil }
+                        Divider()
+                        ForEach(availableManagers, id: \.self) { manager in
+                            Button(manager) { selectedManager = manager }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "square.stack.3d.up")
+                            Text(selectedManager ?? "All Managers")
+                        }
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(selectedManager != nil ? Color.accentColor.opacity(0.2) : Color.gray.opacity(0.1))
+                        .cornerRadius(6)
+                        .foregroundColor(selectedManager != nil ? .accentColor : .primary)
                     }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "square.stack.3d.up")
-                        Text(selectedManager ?? "All Managers")
-                    }
-                    .font(.caption)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(selectedManager != nil ? Color.accentColor.opacity(0.2) : Color.gray.opacity(0.1))
-                    .cornerRadius(6)
-                    .foregroundColor(selectedManager != nil ? .accentColor : .primary)
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    Spacer()
                 }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
