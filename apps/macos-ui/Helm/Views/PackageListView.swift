@@ -52,7 +52,7 @@ struct PackageListView: View {
         if selectedStatusFilters.isEmpty {
             return base
         }
-        return base.filter { selectedStatusFilters.contains(status) }
+        return base.filter { selectedStatusFilters.contains($0.status) }
     }
 
     var body: some View {
