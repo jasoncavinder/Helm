@@ -6,19 +6,20 @@ use std::time::Duration;
 use helm_core::adapters::homebrew::HomebrewAdapter;
 use helm_core::adapters::homebrew_process::ProcessHomebrewSource;
 use helm_core::adapters::{
-    AdapterRequest, AdapterResponse, ListInstalledRequest, ListOutdatedRequest,
+    AdapterRequest, AdapterResponse, ListInstalledRequest, ListOutdatedRequest, SearchRequest,
 };
 use helm_core::execution::tokio_process::TokioProcessExecutor;
-use helm_core::models::ManagerId;
-use helm_core::orchestration::AdapterTaskTerminalState;
+use helm_core::models::{ManagerId, SearchQuery};
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
-use helm_core::persistence::{PackageStore, TaskStore};
+use helm_core::orchestration::{AdapterTaskTerminalState, CancellationMode};
+use helm_core::persistence::{PackageStore, SearchCacheStore, TaskStore};
 use helm_core::sqlite::SqliteStore;
 use lazy_static::lazy_static;
 
 struct HelmState {
     store: Arc<SqliteStore>,
     runtime: Arc<AdapterRuntime>,
+    rt_handle: tokio::runtime::Handle,
     _tokio_rt: tokio::runtime::Runtime,
 }
 
@@ -77,7 +78,7 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
     let adapters = vec![adapter as Arc<dyn helm_core::adapters::ManagerAdapter>];
 
     // Initialize Orchestration
-    let runtime = match AdapterRuntime::with_task_store(adapters, store.clone()) {
+    let runtime = match AdapterRuntime::with_all_stores(adapters, store.clone(), store.clone()) {
         Ok(rt) => Arc::new(rt),
         Err(e) => {
             eprintln!("Failed to create adapter runtime: {}", e);
@@ -85,9 +86,12 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
         }
     };
 
+    let rt_handle = rt.handle().clone();
+
     let state = HelmState {
         store,
         runtime,
+        rt_handle,
         _tokio_rt: rt,
     };
 
@@ -247,6 +251,139 @@ async fn submit_and_wait(
             None
         }
         None => None,
+    }
+}
+
+/// Query the local search cache synchronously and return JSON results.
+///
+/// # Safety
+///
+/// `query` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_search_local(query: *const c_char) -> *mut c_char {
+    if query.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    let c_str = unsafe { CStr::from_ptr(query) };
+    let query_str = match c_str.to_str() {
+        Ok(s) => s,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    let guard = STATE.lock().unwrap();
+    let state = match guard.as_ref() {
+        Some(s) => s,
+        None => return std::ptr::null_mut(),
+    };
+
+    let results = match state.store.query_local(query_str, 50) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Failed to query local search cache: {}", e);
+            return std::ptr::null_mut();
+        }
+    };
+
+    #[derive(serde::Serialize)]
+    struct FfiSearchResult {
+        manager: String,
+        name: String,
+        version: Option<String>,
+        summary: Option<String>,
+        source_manager: String,
+    }
+
+    let ffi_results: Vec<FfiSearchResult> = results
+        .into_iter()
+        .map(|r| FfiSearchResult {
+            manager: r.result.package.manager.as_str().to_string(),
+            name: r.result.package.name,
+            version: r.result.version,
+            summary: r.result.summary,
+            source_manager: r.source_manager.as_str().to_string(),
+        })
+        .collect();
+
+    let json = match serde_json::to_string(&ffi_results) {
+        Ok(j) => j,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    match CString::new(json) {
+        Ok(c) => c.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Submit a remote search request for the given query. Returns the task ID, or -1 on error.
+///
+/// # Safety
+///
+/// `query` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_trigger_remote_search(query: *const c_char) -> i64 {
+    if query.is_null() {
+        return -1;
+    }
+
+    let c_str = unsafe { CStr::from_ptr(query) };
+    let query_str = match c_str.to_str() {
+        Ok(s) => s,
+        Err(_) => return -1,
+    };
+
+    let (runtime, rt_handle) = {
+        let guard = STATE.lock().unwrap();
+        let state = match guard.as_ref() {
+            Some(s) => s,
+            None => return -1,
+        };
+        (state.runtime.clone(), state.rt_handle.clone())
+    };
+
+    let request = AdapterRequest::Search(SearchRequest {
+        query: SearchQuery {
+            text: query_str.to_string(),
+            issued_at: std::time::SystemTime::now(),
+        },
+    });
+
+    match rt_handle.block_on(runtime.submit(ManagerId::HomebrewFormula, request)) {
+        Ok(task_id) => task_id.0 as i64,
+        Err(e) => {
+            eprintln!("Failed to submit remote search: {}", e);
+            -1
+        }
+    }
+}
+
+/// Cancel a running task by ID. Returns true on success.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_cancel_task(task_id: i64) -> bool {
+    if task_id < 0 {
+        return false;
+    }
+
+    let (runtime, rt_handle) = {
+        let guard = STATE.lock().unwrap();
+        let state = match guard.as_ref() {
+            Some(s) => s,
+            None => return false,
+        };
+        (state.runtime.clone(), state.rt_handle.clone())
+    };
+
+    let mode = CancellationMode::Graceful {
+        grace_period: Duration::from_millis(500),
+    };
+
+    match rt_handle.block_on(runtime.cancel(helm_core::models::TaskId(task_id as u64), mode)) {
+        Ok(()) => true,
+        Err(e) => {
+            eprintln!("Failed to cancel task {}: {}", task_id, e);
+            false
+        }
     }
 }
 

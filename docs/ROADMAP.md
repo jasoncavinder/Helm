@@ -86,7 +86,7 @@ Delivered:
 
 ---
 
-## 0.5.x — Progressive Search (beta)
+## 0.5.x — Progressive Search (beta) - Completed
 
 Goal:
 - Local-first fuzzy search
@@ -98,6 +98,21 @@ Exit Criteria:
 - Typing cancels remote searches
 - Cache updates incrementally
 - No UI freezing
+
+Delivered:
+- Progressive search across all three architectural layers (SwiftUI → XPC → Rust FFI)
+- Local-first search: instant filtering of installed/outdated packages by name, plus SQLite cache query via XPC
+- Debounced remote search: 300ms debounce timer triggers Homebrew formulae search as background task
+- Cancellation: typing cancels in-flight remote searches with graceful 500ms grace period
+- Cache enrichment: remote search results persist to SQLite `search_cache` table, enrich local queries on subsequent polls
+- Search bar enabled in navigation bar with live spinner during remote search
+- Available packages surfaced in package list and Dashboard stats
+- Serde derives on search domain types for FFI JSON transport
+- Three new FFI functions: `helm_search_local`, `helm_trigger_remote_search`, `helm_cancel_task`
+- Three new XPC protocol methods bridging search FFI to SwiftUI
+- Search orchestration in HelmCore: debounce timer, remote task tracking, XPC disconnect cleanup
+- Comprehensive Rust integration tests: persistence watcher, cancellation, end-to-end search flows
+- Compact Dashboard header layout for improved vertical space usage
 
 ---
 

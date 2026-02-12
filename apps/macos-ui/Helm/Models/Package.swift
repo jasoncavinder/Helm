@@ -36,8 +36,21 @@ struct PackageItem: Identifiable {
     let version: String
     var latestVersion: String? = nil
     let manager: String
+    var summary: String? = nil
+    private var statusOverride: PackageStatus? = nil
 
     var status: PackageStatus {
-        latestVersion != nil ? .upgradable : .installed
+        if let override_ = statusOverride { return override_ }
+        return latestVersion != nil ? .upgradable : .installed
+    }
+
+    init(id: String, name: String, version: String, latestVersion: String? = nil, manager: String, summary: String? = nil, status: PackageStatus? = nil) {
+        self.id = id
+        self.name = name
+        self.version = version
+        self.latestVersion = latestVersion
+        self.manager = manager
+        self.summary = summary
+        self.statusOverride = status
     }
 }

@@ -12,7 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
         panel = FloatingPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 350, height: 560),
+            contentRect: NSRect(x: 0, y: 0, width: 350, height: 600),
             backing: .buffered,
             defer: false
         )
@@ -44,16 +44,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showPanel() {
         guard let button = statusItem?.button else { return }
 
+        let buttonRect = button.window?.convertToScreen(button.frame) ?? .zero
+        let screen = NSScreen.main ?? NSScreen.screens.first
+
+        // Determine max height: from menu bar down to 40pt above screen bottom
+        let maxHeight: CGFloat
+        if let screen = screen {
+            let visibleBottom = screen.visibleFrame.origin.y
+            maxHeight = min(buttonRect.origin.y - visibleBottom - 40, 600)
+        } else {
+            maxHeight = 600
+        }
+
         if let view = panel.contentViewController?.view {
             let size = view.fittingSize
             if size.height > 0 && size.width > 0 {
-                panel.setContentSize(size)
+                let clampedHeight = min(size.height, max(maxHeight, 300))
+                panel.setContentSize(NSSize(width: size.width, height: clampedHeight))
             }
         }
 
-        let buttonRect = button.window?.convertToScreen(button.frame) ?? .zero
         let panelSize = panel.frame.size
-
         let x = buttonRect.origin.x + (buttonRect.width / 2) - (panelSize.width / 2)
         let y = buttonRect.origin.y - panelSize.height - 5
 
@@ -136,14 +147,13 @@ final class EventMonitor {
 private struct StatusBarView: View {
     @StateObject var core = HelmCore.shared
     @State private var selectedTab: HelmTab = .dashboard
-    @State private var searchText: String = ""
     @State private var showSettings: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
             NavigationBarView(
                 selectedTab: $selectedTab,
-                searchText: $searchText,
+                searchText: $core.searchText,
                 showSettings: $showSettings
             )
 
@@ -155,7 +165,7 @@ private struct StatusBarView: View {
                     case .dashboard:
                         DashboardView()
                     case .packages:
-                        PackageListView()
+                        PackageListView(searchText: $core.searchText)
                     }
                 }
                 .frame(maxHeight: .infinity)
@@ -189,5 +199,10 @@ private struct StatusBarView: View {
             .padding(.vertical, 6)
         }
         .frame(width: 350)
+        .onChange(of: core.searchText) { newValue in
+            if !newValue.trimmingCharacters(in: .whitespaces).isEmpty && selectedTab != .packages {
+                selectedTab = .packages
+            }
+        }
     }
 }

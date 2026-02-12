@@ -9,6 +9,7 @@ struct NavigationBarView: View {
     @Binding var selectedTab: HelmTab
     @Binding var searchText: String
     @Binding var showSettings: Bool
+    @ObservedObject var core = HelmCore.shared
 
     var body: some View {
         VStack(spacing: 8) {
@@ -38,9 +39,15 @@ struct NavigationBarView: View {
             }
 
             HStack {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.secondary)
-                    .font(.subheadline)
+                if core.isSearching {
+                    ProgressView()
+                        .scaleEffect(0.5)
+                        .frame(width: 14, height: 14)
+                } else {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.secondary)
+                        .font(.subheadline)
+                }
                 TextField("Search packages...", text: $searchText)
                     .textFieldStyle(.plain)
                     .font(.subheadline)
@@ -59,8 +66,6 @@ struct NavigationBarView: View {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(Color.gray.opacity(0.12))
             )
-            .disabled(true)
-            .opacity(0.7)
         }
         .padding(.horizontal, 12)
         .padding(.top, 10)

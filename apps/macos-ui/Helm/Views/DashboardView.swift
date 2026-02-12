@@ -5,23 +5,27 @@ struct DashboardView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 16) {
+            VStack(spacing: 12) {
                 // App icon + version
-                VStack(spacing: 6) {
+                HStack(spacing: 10) {
                     Image(nsImage: NSApp.applicationIconImage)
                         .resizable()
-                        .frame(width: 64, height: 64)
-                        .cornerRadius(14)
+                        .frame(width: 36, height: 36)
+                        .cornerRadius(8)
 
-                    Text("Helm")
-                        .font(.title2)
-                        .fontWeight(.bold)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Helm")
+                            .font(.headline)
 
-                    Text("v\(helmVersion)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                        Text("v\(helmVersion)")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
                 }
-                .padding(.top, 8)
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
 
                 // Stats
                 VStack(spacing: 6) {
@@ -36,8 +40,8 @@ struct DashboardView: View {
                     )
                     LabeledContentRow(
                         label: "Available",
-                        value: "--",
-                        valueColor: .secondary
+                        value: "\(core.cachedAvailablePackages.count)",
+                        valueColor: core.cachedAvailablePackages.isEmpty ? .secondary : .blue
                     )
                 }
                 .padding(.horizontal, 16)

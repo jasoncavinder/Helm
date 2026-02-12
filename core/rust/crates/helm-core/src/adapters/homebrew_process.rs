@@ -72,7 +72,7 @@ impl HomebrewSource for ProcessHomebrewSource {
     fn search_local_formulae(&self, query: &str) -> AdapterResult<String> {
         let search_query = SearchQuery {
             text: query.to_string(),
-            issued_at: std::time::UNIX_EPOCH,
+            issued_at: std::time::SystemTime::now(),
         };
         let request = self.configure_request(homebrew_search_local_request(None, &search_query));
         run_and_collect_stdout(self.executor.as_ref(), request)
