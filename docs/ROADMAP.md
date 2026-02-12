@@ -98,7 +98,50 @@ Exit Criteria:
 
 ---
 
-## 0.6.x — Pinning & Policy (beta)
+## 0.6.x — Core Toolchain Managers (beta)
+
+Goal:
+
+- mise adapter
+- rustup adapter
+- Authority ordering enforced:
+
+  - mise / rustup before package managers
+- list_installed
+- list_outdated
+- upgrade toolchains
+- version detection and normalization
+
+Exit Criteria:
+
+- mise detection works
+- rustup detection works
+- Toolchain upgrades execute before brew/npm/pipx in bulk upgrade
+- Tests include fixture parsing for version output
+
+---
+
+## 0.7.x — System & App Store Managers (beta)
+
+Goal:
+
+- macOS `softwareupdate` adapter
+- `mas` adapter
+- Guarded execution model
+- Explicit confirmation requirement for OS-level updates
+- Reboot-required detection
+- Elevation flow defined (if needed)
+
+Exit Criteria:
+
+- `softwareupdate --list` parsed correctly
+- `mas outdated` parsed correctly
+- Guardrails block silent OS updates
+- Reboot-required surfaced in UI
+
+---
+
+## 0.8.x — Pinning & Policy (beta)
 
 Goal:
 - Native pin support (brew first)
@@ -107,37 +150,48 @@ Goal:
 - Settings controls for pin behavior
 
 Exit Criteria:
+- All adapters respect pin state
 - Pinned packages excluded from bulk upgrades
 - Pin state persists across restarts
 
 ---
 
-## 0.7.x — Guardrails & Safety (beta)
+## 0.9.x — Guardrails & Safety (beta)
 
 Goal:
 - Privilege boundary enforcement
 - OS update confirmations
+- Timeout enforcement across all adapters
 - Timeout tuning
 - Retry policies
 - Robust error surfacing
+- Per-manager structured error reporting hardened
 
 Exit Criteria:
 - No shell injection paths
 - Clear per-manager failure reporting
+- softwareupdate cannot run without explicit confirmation
+- Cancellation verified across mise / rustup / mas / brew
 
 ---
 
-## 0.8.x — Hardening (rc)
+## 0.10.x — Hardening (rc)
 
 Goal:
-- Comprehensive test coverage
+- Integration tests covering:
+
+  - multi-manager authority ordering
+  - guarded OS update flow
+  - failure isolation
 - Deterministic parsing tests
 - Logging refinement
 - Crash recovery validation
+- No known race conditions
 
 Exit Criteria:
 - All core paths covered by tests
-- No known race conditions
+- No unhandled panics
+- Stable FFI boundary
 
 ---
 
