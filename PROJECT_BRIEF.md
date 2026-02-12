@@ -27,6 +27,7 @@ These define toolchain versions and are considered authoritative over downstream
 * **rustup** (recommended)
 
 **Authority rules:** These should always execute before downstream package updates.
+> For 1.0, mise and rustup are required implementations.
 
 ---
 
@@ -43,6 +44,7 @@ Guardrails:
 
 * Explicit confirmation for privileged or system-level actions.
 * Rate-limiting and scheduling options.
+> For 1.0, Homebrew and macOS softwareupdate are required.
 
 ---
 
@@ -80,6 +82,8 @@ Primarily for status visibility:
 * **Sparkle-based updaters** (detection only)
 * **Setapp** (detection only)
 * **Homebrew casks**
+
+> For 1.0, mas is required.
 
 ---
 
