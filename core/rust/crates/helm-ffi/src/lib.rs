@@ -5,13 +5,15 @@ use std::time::Duration;
 
 use helm_core::adapters::homebrew::HomebrewAdapter;
 use helm_core::adapters::homebrew_process::ProcessHomebrewSource;
-use helm_core::adapters::{
-    AdapterRequest, AdapterResponse, ListInstalledRequest, ListOutdatedRequest, SearchRequest,
-};
+use helm_core::adapters::mise::MiseAdapter;
+use helm_core::adapters::mise_process::ProcessMiseSource;
+use helm_core::adapters::rustup::RustupAdapter;
+use helm_core::adapters::rustup_process::ProcessRustupSource;
+use helm_core::adapters::{AdapterRequest, SearchRequest};
 use helm_core::execution::tokio_process::TokioProcessExecutor;
 use helm_core::models::{ManagerId, SearchQuery};
+use helm_core::orchestration::CancellationMode;
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
-use helm_core::orchestration::{AdapterTaskTerminalState, CancellationMode};
 use helm_core::persistence::{PackageStore, SearchCacheStore, TaskStore};
 use helm_core::sqlite::SqliteStore;
 use lazy_static::lazy_static;
@@ -71,11 +73,19 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
         return false;
     }
 
-    // Initialize Homebrew Adapter
+    // Initialize Adapters
     let executor = Arc::new(TokioProcessExecutor);
-    let source = ProcessHomebrewSource::new(executor);
-    let adapter = Arc::new(HomebrewAdapter::new(source));
-    let adapters = vec![adapter as Arc<dyn helm_core::adapters::ManagerAdapter>];
+
+    let homebrew_adapter = Arc::new(HomebrewAdapter::new(ProcessHomebrewSource::new(
+        executor.clone(),
+    )));
+    let mise_adapter = Arc::new(MiseAdapter::new(ProcessMiseSource::new(executor.clone())));
+    let rustup_adapter = Arc::new(RustupAdapter::new(ProcessRustupSource::new(
+        executor.clone(),
+    )));
+
+    let adapters: Vec<Arc<dyn helm_core::adapters::ManagerAdapter>> =
+        vec![homebrew_adapter, mise_adapter, rustup_adapter];
 
     // Initialize Orchestration
     let runtime = match AdapterRuntime::with_all_stores(adapters, store.clone(), store.clone()) {
@@ -191,67 +201,17 @@ pub extern "C" fn helm_trigger_refresh() -> bool {
     };
 
     let runtime = state.runtime.clone();
-    let store = state.store.clone();
 
     state._tokio_rt.spawn(async move {
-        // Fetch installed packages and persist to store
-        if let Some(AdapterResponse::InstalledPackages(pkgs)) = submit_and_wait(
-            &runtime,
-            AdapterRequest::ListInstalled(ListInstalledRequest),
-        )
-        .await
-            && let Err(e) = store.upsert_installed(&pkgs)
-        {
-            eprintln!("Failed to persist installed packages: {e}");
-        }
-
-        // Fetch outdated packages and persist to store
-        if let Some(AdapterResponse::OutdatedPackages(pkgs)) =
-            submit_and_wait(&runtime, AdapterRequest::ListOutdated(ListOutdatedRequest)).await
-            && let Err(e) = store.upsert_outdated(&pkgs)
-        {
-            eprintln!("Failed to persist outdated packages: {e}");
+        let results = runtime.refresh_all_ordered().await;
+        for (manager, result) in results {
+            if let Err(e) = result {
+                eprintln!("Refresh failed for {manager:?}: {e}");
+            }
         }
     });
 
     true
-}
-
-async fn submit_and_wait(
-    runtime: &AdapterRuntime,
-    request: AdapterRequest,
-) -> Option<AdapterResponse> {
-    let task_id = match runtime.submit(ManagerId::HomebrewFormula, request).await {
-        Ok(id) => id,
-        Err(e) => {
-            eprintln!("Failed to submit task: {e}");
-            return None;
-        }
-    };
-
-    let snapshot = match runtime
-        .wait_for_terminal(task_id, Some(Duration::from_secs(60)))
-        .await
-    {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("Failed to wait for task: {e}");
-            return None;
-        }
-    };
-
-    match snapshot.terminal_state {
-        Some(AdapterTaskTerminalState::Succeeded(response)) => Some(response),
-        Some(AdapterTaskTerminalState::Failed(e)) => {
-            eprintln!("Task failed: {e}");
-            None
-        }
-        Some(AdapterTaskTerminalState::Cancelled(_)) => {
-            eprintln!("Task was cancelled");
-            None
-        }
-        None => None,
-    }
 }
 
 /// Query the local search cache synchronously and return JSON results.

@@ -1,5 +1,6 @@
 pub mod adapter_execution;
 pub mod adapter_runtime;
+pub mod authority_order;
 pub mod in_memory;
 pub mod runtime_queue;
 
