@@ -1,0 +1,24 @@
+{
+  "node": {
+    "name": "node",
+    "requested": "22",
+    "current": "22.5.1",
+    "bump": null,
+    "latest": "22.12.0",
+    "source": {
+      "type": ".mise.toml",
+      "path": "/Users/dev/project/.mise.toml"
+    }
+  },
+  "python": {
+    "name": "python",
+    "requested": "3.12",
+    "current": "3.12.3",
+    "bump": null,
+    "latest": "3.12.8",
+    "source": {
+      "type": ".tool-versions",
+      "path": "/Users/dev/.tool-versions"
+    }
+  }
+}

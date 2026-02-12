@@ -2,6 +2,8 @@ pub(crate) mod detect_utils;
 pub mod homebrew;
 pub mod homebrew_process;
 pub mod manager;
+pub mod mise;
+pub mod mise_process;
 pub(crate) mod process_utils;
 
 pub use homebrew::{
@@ -15,3 +17,8 @@ pub use manager::{
     RefreshRequest, SearchRequest, UninstallRequest, UnpinRequest, UpgradeRequest,
     ensure_action_supported, ensure_request_supported, execute_with_capability_check,
 };
+pub use mise::{
+    MiseAdapter, MiseSource, mise_detect_request, mise_list_installed_request,
+    mise_list_outdated_request,
+};
+pub use mise_process::ProcessMiseSource;
