@@ -65,7 +65,7 @@ private struct StatusBarView: View {
             Divider()
             
             HStack {
-                Text("v0.4.0")
+                Text("v\(helmVersion)")
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Spacer()
