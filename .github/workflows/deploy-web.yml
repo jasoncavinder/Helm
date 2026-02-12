@@ -3,10 +3,14 @@ name: Deploy Web
 on:
   push:
     branches:
-      - '**'
+      - main
+    paths:
+      - 'web/**'
   pull_request:
     branches:
       - main
+    paths:
+      - 'web/**'
 
 permissions:
   contents: read
