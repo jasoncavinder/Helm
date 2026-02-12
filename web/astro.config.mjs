@@ -9,9 +9,9 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: 'Helm',
-			social: {
-				github: 'https://github.com/jasoncavinder/Helm',
-			},
+			social: [
+				{ label: 'GitHub', href: 'https://github.com/jasoncavinder/Helm', icon: 'github' },
+			],
 			sidebar: [
 				{
 					label: 'Start Here',
