@@ -5,6 +5,8 @@ pub mod manager;
 pub mod mise;
 pub mod mise_process;
 pub(crate) mod process_utils;
+pub mod rustup;
+pub mod rustup_process;
 
 pub use homebrew::{
     HomebrewAdapter, HomebrewSource, homebrew_detect_request, homebrew_list_installed_request,
@@ -22,3 +24,8 @@ pub use mise::{
     mise_list_outdated_request,
 };
 pub use mise_process::ProcessMiseSource;
+pub use rustup::{
+    RustupAdapter, RustupSource, rustup_check_request, rustup_detect_request,
+    rustup_toolchain_list_request,
+};
+pub use rustup_process::ProcessRustupSource;
