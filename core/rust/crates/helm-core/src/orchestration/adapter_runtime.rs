@@ -184,28 +184,20 @@ fn spawn_terminal_persistence_watcher(
         };
 
         // Persist task result (domain data)
-        if let Some(package_store) = package_store {
-            if let Some(AdapterTaskTerminalState::Succeeded(response)) = &snapshot.terminal_state {
-                if let Err(error) = persist_adapter_response(
-                    package_store,
-                    response,
-                    manager,
-                    task_type,
-                    action,
-                )
-                .await
-                {
-                    tracing::error!(
-                        manager = ?manager,
-                        task_id = task_id.0,
-                        task_type = ?task_type,
-                        action = ?action,
-                        kind = ?error.kind,
-                        message = %error.message,
-                        "failed to persist adapter response data"
-                    );
-                }
-            }
+        if let Some(package_store) = package_store
+            && let Some(AdapterTaskTerminalState::Succeeded(response)) = &snapshot.terminal_state
+            && let Err(error) =
+                persist_adapter_response(package_store, response, manager, task_type, action).await
+        {
+            tracing::error!(
+                manager = ?manager,
+                task_id = task_id.0,
+                task_type = ?task_type,
+                action = ?action,
+                kind = ?error.kind,
+                message = %error.message,
+                "failed to persist adapter response data"
+            );
         }
 
         let updated = TaskRecord {
@@ -254,9 +246,7 @@ async fn persist_adapter_response(
             AdapterResponse::InstalledPackages(packages) => {
                 package_store.upsert_installed(&packages)
             }
-            AdapterResponse::OutdatedPackages(packages) => {
-                package_store.upsert_outdated(&packages)
-            }
+            AdapterResponse::OutdatedPackages(packages) => package_store.upsert_outdated(&packages),
             _ => Ok(()), // Other responses not persisted yet
         }
     })

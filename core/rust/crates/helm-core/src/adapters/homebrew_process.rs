@@ -2,13 +2,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::adapters::homebrew::{
-    homebrew_detect_request, homebrew_list_installed_request, homebrew_list_outdated_request,
-    homebrew_search_local_request, HomebrewDetectOutput, HomebrewSource,
+    HomebrewDetectOutput, HomebrewSource, homebrew_detect_request, homebrew_list_installed_request,
+    homebrew_list_outdated_request, homebrew_search_local_request,
 };
 use crate::adapters::manager::AdapterResult;
 use crate::execution::{
-    spawn_validated, CommandSpec, ProcessExecutor, ProcessExitStatus, ProcessOutput,
-    ProcessSpawnRequest,
+    CommandSpec, ProcessExecutor, ProcessExitStatus, ProcessOutput, ProcessSpawnRequest,
+    spawn_validated,
 };
 use crate::models::{CoreError, CoreErrorKind, ManagerAction, ManagerId, SearchQuery, TaskType};
 

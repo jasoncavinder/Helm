@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 
 use crate::models::{
     CachedSearchResult, CoreError, CoreErrorKind, InstalledPackage, ManagerId, OutdatedPackage,
@@ -11,7 +11,7 @@ use crate::models::{
 use crate::persistence::{
     MigrationStore, PackageStore, PersistenceResult, PinStore, SearchCacheStore, TaskStore,
 };
-use crate::sqlite::migrations::{current_schema_version, migration, migrations, SqliteMigration};
+use crate::sqlite::migrations::{SqliteMigration, current_schema_version, migration, migrations};
 
 const MIGRATIONS_TABLE: &str = "helm_schema_migrations";
 
@@ -650,11 +650,7 @@ fn parse_task_status(raw: &str) -> rusqlite::Result<TaskStatus> {
 }
 
 fn bool_to_sqlite(value: bool) -> i64 {
-    if value {
-        1
-    } else {
-        0
-    }
+    if value { 1 } else { 0 }
 }
 
 fn sqlite_to_bool(value: i64) -> bool {

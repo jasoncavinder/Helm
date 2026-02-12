@@ -81,10 +81,10 @@ async fn wait_for_persisted_status(
         let tasks = store
             .list_recent_tasks(20)
             .expect("list_recent_tasks should succeed");
-        if let Some(task) = tasks.into_iter().find(|task| task.id.0 == task_id) {
-            if task.status == expected {
-                return Some(task.status);
-            }
+        if let Some(task) = tasks.into_iter().find(|task| task.id.0 == task_id)
+            && task.status == expected
+        {
+            return Some(task.status);
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }

@@ -10,8 +10,8 @@ use helm_core::adapters::{
 };
 use helm_core::execution::tokio_process::TokioProcessExecutor;
 use helm_core::models::ManagerId;
-use helm_core::orchestration::adapter_runtime::AdapterRuntime;
 use helm_core::orchestration::AdapterTaskTerminalState;
+use helm_core::orchestration::adapter_runtime::AdapterRuntime;
 use helm_core::persistence::{PackageStore, TaskStore};
 use helm_core::sqlite::SqliteStore;
 use lazy_static::lazy_static;
@@ -26,8 +26,13 @@ lazy_static! {
     static ref STATE: Mutex<Option<HelmState>> = Mutex::new(None);
 }
 
+/// Initialize the Helm core engine with the given SQLite database path.
+///
+/// # Safety
+///
+/// `db_path` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
 #[unsafe(no_mangle)]
-pub extern "C" fn helm_init(db_path: *const c_char) -> bool {
+pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
     if db_path.is_null() {
         return false;
     }
@@ -103,7 +108,7 @@ pub extern "C" fn helm_list_installed_packages() -> *mut c_char {
         Ok(pkgs) => pkgs,
         Err(e) => {
             eprintln!("Failed to list installed packages: {}", e);
-            return std::ptr::null_mut()
+            return std::ptr::null_mut();
         }
     };
 
@@ -131,7 +136,7 @@ pub extern "C" fn helm_list_tasks() -> *mut c_char {
         Ok(tasks) => tasks,
         Err(e) => {
             eprintln!("Failed to list tasks: {}", e);
-            return std::ptr::null_mut()
+            return std::ptr::null_mut();
         }
     };
 
@@ -159,31 +164,22 @@ pub extern "C" fn helm_trigger_refresh() -> bool {
 
     state._tokio_rt.spawn(async move {
         // Fetch installed packages and persist to store
-        if let Some(packages) = submit_and_wait(
+        if let Some(AdapterResponse::InstalledPackages(pkgs)) = submit_and_wait(
             &runtime,
             AdapterRequest::ListInstalled(ListInstalledRequest),
         )
         .await
+            && let Err(e) = store.upsert_installed(&pkgs)
         {
-            if let AdapterResponse::InstalledPackages(pkgs) = packages {
-                if let Err(e) = store.upsert_installed(&pkgs) {
-                    eprintln!("Failed to persist installed packages: {e}");
-                }
-            }
+            eprintln!("Failed to persist installed packages: {e}");
         }
 
         // Fetch outdated packages and persist to store
-        if let Some(packages) = submit_and_wait(
-            &runtime,
-            AdapterRequest::ListOutdated(ListOutdatedRequest),
-        )
-        .await
+        if let Some(AdapterResponse::OutdatedPackages(pkgs)) =
+            submit_and_wait(&runtime, AdapterRequest::ListOutdated(ListOutdatedRequest)).await
+            && let Err(e) = store.upsert_outdated(&pkgs)
         {
-            if let AdapterResponse::OutdatedPackages(pkgs) = packages {
-                if let Err(e) = store.upsert_outdated(&pkgs) {
-                    eprintln!("Failed to persist outdated packages: {e}");
-                }
-            }
+            eprintln!("Failed to persist outdated packages: {e}");
         }
     });
 
@@ -194,10 +190,7 @@ async fn submit_and_wait(
     runtime: &AdapterRuntime,
     request: AdapterRequest,
 ) -> Option<AdapterResponse> {
-    let task_id = match runtime
-        .submit(ManagerId::HomebrewFormula, request)
-        .await
-    {
+    let task_id = match runtime.submit(ManagerId::HomebrewFormula, request).await {
         Ok(id) => id,
         Err(e) => {
             eprintln!("Failed to submit task: {e}");
@@ -230,9 +223,16 @@ async fn submit_and_wait(
     }
 }
 
+/// Free a string previously returned by a `helm_*` function.
+///
+/// # Safety
+///
+/// `s` must be a pointer previously returned by a `helm_*` function, or null.
 #[unsafe(no_mangle)]
-pub extern "C" fn helm_free_string(s: *mut c_char) {
-    if s.is_null() { return; }
+pub unsafe extern "C" fn helm_free_string(s: *mut c_char) {
+    if s.is_null() {
+        return;
+    }
     unsafe {
         let _ = CString::from_raw(s);
     }
