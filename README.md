@@ -1,105 +1,109 @@
-# Helm
+<p align="center">
+  <img src="docs/app-icon.png" width="96" alt="Helm app icon">
+</p>
 
-Helm is a macOS package and update control plane in active pre-1.0 development.
-It is designed as infrastructure software: deterministic, safety-first, and explicit about authority, orchestration, and error handling.
+<h1 align="center">Helm</h1>
 
-## Current Status
+<p align="center">
+  A native macOS menu bar app for unified package manager control.
+  <br>
+  <strong>Pre-1.0 &middot; v0.5.0</strong>
+</p>
 
-**v0.5.0 — Progressive Search (beta)** is complete on `dev`.
+<p align="center">
+  <img src="https://img.shields.io/badge/platform-macOS%2012%2B-blue" alt="macOS 12+">
+  <img src="https://img.shields.io/badge/swift-5.7%2B-orange" alt="Swift 5.7+">
+  <img src="https://img.shields.io/badge/rust-2024%20edition-brown" alt="Rust 2024">
+  <img src="https://img.shields.io/github/v/tag/jasoncavinder/Helm?label=version" alt="Version">
+</p>
 
-Milestones completed:
-- **0.1.x** — Core foundation: Rust workspace, adapter traits, capability model, SQLite schema.
-- **0.2.x** — First adapter: Homebrew detection, listing, search with fixture-based tests.
-- **0.3.x** — Orchestration engine: background task queue, per-manager serialization, cross-manager parallelism, process cancellation, structured errors, real process execution.
-- **0.4.x** — SwiftUI shell: macOS menu bar app with floating panel UI, XPC service architecture, Rust FFI bridge, real-time task and package views, refresh wired end-to-end, code signing validation, app sandbox.
-- **0.5.x** — Progressive search: local-first fuzzy search, debounced remote search with cancellation, cache enrichment, available packages surfaced in UI.
+---
 
-Next: **0.6.x** — Core toolchain managers (mise, rustup adapters, authority ordering).
+Helm manages software across multiple package managers (Homebrew, npm, pip, Cargo, etc.) and runtime tools (mise, rustup) from a single menu bar interface. It is designed as infrastructure software: deterministic, safety-first, and explicit about authority, orchestration, and error handling.
 
-## Design Commitments for 1.0
+> **Status:** Active pre-1.0 development. Homebrew formulae adapter is functional. Additional adapters and features are being added milestone by milestone.
 
-Helm 1.0 is intended to be a production-grade macOS control plane.
+## Features
 
-Before 1.0, Helm will include:
-
-- Authoritative toolchain managers (mise, rustup)
-- System-level update management (softwareupdate)
-- Mac App Store integration (mas)
-- Upgrade preview and dry-run support
-- Reboot awareness for OS updates
-- Guarded execution for privileged operations
-- Structured per-task logs
-- Self-update mechanism for Helm itself
-
-Helm is not a simple package manager UI.
-It is designed to be a safe orchestration layer across heterogeneous update systems.
+- **Menu bar app** — Lightweight floating panel, no Dock icon
+- **Dashboard** — Package stats, manager grid, and recent task activity at a glance
+- **Package list** — Browse installed, upgradable, and available packages with status filters
+- **Progressive search** — Instant local filtering with debounced remote search and cache enrichment
+- **Background tasks** — Real-time task tracking with per-manager serial execution
+- **Refresh** — One-click refresh of all package data from Homebrew
 
 ## Architecture
 
-Helm is intentionally split into three layers:
+Helm is split into three layers connected via XPC and FFI:
 
-1. `apps/macos-ui` (SwiftUI)
-- Presentation only.
-- Reads state, emits intents.
+| Layer | Location | Role |
+|-------|----------|------|
+| **UI** (SwiftUI) | `apps/macos-ui/` | Presentation only — reads state, emits intents |
+| **Service** (XPC) | `apps/macos-ui/HelmService/` | Hosts Rust FFI in a separate unsandboxed process |
+| **Core** (Rust) | `core/rust/` | All business logic, adapters, orchestration, persistence |
 
-2. `apps/macos-ui/HelmService` (XPC service boundary)
-- Hosts Rust FFI in a separate unsandboxed process.
-- Owns process execution and privilege boundaries.
-
-3. `core/rust` (Rust core)
-- Manager models and adapter contracts.
-- Orchestration and persistence contracts.
-- Parsing/normalization and storage foundations.
-
-## Repository Layout
-
-- `apps/macos-ui/` — macOS app layer scaffold.
-- `service/macos-service/` — service boundary scaffold.
-- `core/rust/` — Rust workspace (`helm-core`, `helm-ffi`).
-- `docs/` — roadmap, versioning, and release criteria.
-- `PROJECT_BRIEF.md` — product and architecture source of truth.
-- `AGENTS.md` — repository engineering and workflow constraints.
-
-## Development Workflow
-
-Branch policy:
-- `main`: stable/releasable.
-- `dev`: integration branch for active feature work.
-- feature branches: merge to `dev` first unless explicitly directed otherwise.
-
-Current roadmap and milestones are tracked in:
-- `docs/ROADMAP.md`
-- `docs/VERSIONING.md`
+The XPC boundary isolates process execution from the sandboxed app. The Rust core is UI-agnostic and fully testable.
 
 ## Getting Started
 
-Prerequisites:
-- Rust stable toolchain (edition 2024)
-- Xcode 14+
-- macOS 12+
+### Prerequisites
 
-Run core tests:
+- macOS 12+
+- Xcode 14+
+- Rust stable toolchain (2024 edition)
+
+### Build & Run
 
 ```bash
+# Run Rust core tests
 cd core/rust
 cargo test
+
+# Build the macOS app
+cd apps/macos-ui
+xcodebuild -project Helm.xcodeproj -scheme Helm -configuration Debug build
 ```
 
-Build and run the macOS app:
+Or open `apps/macos-ui/Helm.xcodeproj` in Xcode and run the **Helm** scheme. The build script automatically compiles the Rust FFI library and generates version headers.
 
-1. Open `apps/macos-ui/Helm.xcodeproj` in Xcode.
-2. Build and run the **Helm** scheme.
+## Milestones
 
-The build script (`scripts/build_rust.sh`) compiles the Rust FFI library and generates the version header automatically.
+| Version | Milestone | Status |
+|---------|-----------|--------|
+| 0.1.x | Core foundation — adapter traits, capability model, SQLite schema | Complete |
+| 0.2.x | First adapter — Homebrew detection, listing, fixture-based tests | Complete |
+| 0.3.x | Orchestration engine — task queue, per-manager serialization, cancellation | Complete |
+| 0.4.x | SwiftUI shell — menu bar app, XPC service, Rust FFI bridge, live UI | Complete |
+| 0.5.x | Progressive search — local-first search, remote search, cache enrichment | Complete |
+| 0.6.x | Core toolchain managers — mise, rustup adapters, authority ordering | Next |
+| 1.0.0 | Stable control plane release | Planned |
+
+See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full roadmap through 1.0.
+
+## Repository Layout
+
+```
+apps/macos-ui/              SwiftUI app + XPC service
+core/rust/                   Rust workspace (helm-core, helm-ffi)
+docs/                        Roadmap, versioning, release criteria
+PROJECT_BRIEF.md             Product and architecture source of truth
+AGENTS.md                    Engineering guardrails and constraints
+```
+
+## Development
+
+- **`main`** — Stable, releasable. Tags created here.
+- **`dev`** — Integration branch. Feature branches merge here via PR.
+- **Feature branches** — `feat/`, `fix/`, `chore/`, `docs/`, `test/`, `refactor/`
+
+See [`docs/VERSIONING.md`](docs/VERSIONING.md) for the versioning strategy.
 
 ## Documentation
 
-- Product and architecture brief: `PROJECT_BRIEF.md`
-- Engineering guardrails: `AGENTS.md`
-- Roadmap: `docs/ROADMAP.md`
-- Versioning strategy: `docs/VERSIONING.md`
-- 1.0 release criteria: `docs/DEFINITION_OF_DONE.md`
+- [Roadmap](docs/ROADMAP.md) — Milestone definitions through 1.0
+- [Versioning](docs/VERSIONING.md) — Semantic versioning strategy
+- [Release Criteria](docs/DEFINITION_OF_DONE.md) — 1.0 definition of done
 
 ## License
 
-Currently marked `UNLICENSED` in the Rust crate metadata.
+Currently unlicensed. All rights reserved.
