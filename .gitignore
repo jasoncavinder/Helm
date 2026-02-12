@@ -12,4 +12,11 @@ xcuserdata/
 *.dSYM
 apps/macos-ui/Generated/
 
+# macOS
+.DS_Store
 
+# Python
+.ruff_cache/
+__pycache__/
+*.pyc
+venv/

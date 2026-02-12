@@ -1,4 +1,7 @@
 import Foundation
+import os.log
+
+private let logger = Logger(subsystem: "com.jasoncavinder.Helm", category: "core")
 
 struct CorePackageRef: Codable {
     let manager: String
@@ -20,58 +23,64 @@ struct CoreTaskRecord: Codable {
 
 final class HelmCore: ObservableObject {
     static let shared = HelmCore()
-    
+
     @Published var isInitialized = false
     @Published var installedPackages: [PackageItem] = []
     @Published var activeTasks: [TaskItem] = []
-    
+
     private var timer: Timer?
     private var connection: NSXPCConnection?
-    
+
     private init() {
         setupConnection()
     }
-    
+
     func setupConnection() {
-        let connection = NSXPCConnection(serviceName: "com.jasoncavinder.Helm.HelmService")
+        let connection = NSXPCConnection(serviceName: "app.jasoncavinder.Helm.HelmService")
         connection.remoteObjectInterface = NSXPCInterface(with: HelmServiceProtocol.self)
+        connection.invalidationHandler = {
+            logger.error("XPC connection invalidated")
+        }
+        connection.interruptionHandler = {
+            logger.error("XPC connection interrupted")
+        }
         connection.resume()
         self.connection = connection
-        
+
+        logger.info("XPC connection established")
         isInitialized = true
         startPolling()
     }
-    
+
     func startPolling() {
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.fetchTasks()
             self?.fetchPackages()
         }
     }
-    
+
     func service() -> HelmServiceProtocol? {
         return connection?.remoteObjectProxy as? HelmServiceProtocol
     }
-    
+
     func triggerRefresh() {
+        logger.info("triggerRefresh called")
         service()?.triggerRefresh { success in
-            if success {
-                print("Refresh triggered via XPC")
-            } else {
-                print("Failed to trigger refresh via XPC")
+            if !success {
+                logger.error("triggerRefresh failed")
             }
         }
     }
-    
+
     func fetchPackages() {
         service()?.listInstalledPackages { [weak self] jsonString in
             guard let jsonString = jsonString, let data = jsonString.data(using: .utf8) else { return }
-            
+
             do {
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
                 let corePackages = try decoder.decode([CoreInstalledPackage].self, from: data)
-                
+
                 DispatchQueue.main.async {
                     self?.installedPackages = corePackages.map { pkg in
                         PackageItem(
@@ -83,20 +92,20 @@ final class HelmCore: ObservableObject {
                     }
                 }
             } catch {
-                print("Failed to decode packages: \(error)")
+                logger.error("Failed to decode packages: \(error)")
             }
         }
     }
-    
+
     func fetchTasks() {
         service()?.listTasks { [weak self] jsonString in
             guard let jsonString = jsonString, let data = jsonString.data(using: .utf8) else { return }
-            
+
             do {
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
                 let coreTasks = try decoder.decode([CoreTaskRecord].self, from: data)
-                
+
                 DispatchQueue.main.async {
                     self?.activeTasks = coreTasks.map { task in
                         TaskItem(
@@ -107,7 +116,7 @@ final class HelmCore: ObservableObject {
                     }
                 }
             } catch {
-                print("Failed to decode tasks: \(error)")
+                logger.error("Failed to decode tasks: \(error)")
             }
         }
     }

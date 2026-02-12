@@ -1,15 +1,20 @@
-use helm_core::adapters::{AdapterRequest, RefreshRequest};
+use std::ffi::{CStr, CString};
+use std::os::raw::c_char;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
 use helm_core::adapters::homebrew::HomebrewAdapter;
 use helm_core::adapters::homebrew_process::ProcessHomebrewSource;
+use helm_core::adapters::{
+    AdapterRequest, AdapterResponse, ListInstalledRequest, ListOutdatedRequest,
+};
 use helm_core::execution::tokio_process::TokioProcessExecutor;
 use helm_core::models::ManagerId;
+use helm_core::orchestration::AdapterTaskTerminalState;
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
 use helm_core::persistence::{PackageStore, TaskStore};
 use helm_core::sqlite::SqliteStore;
 use lazy_static::lazy_static;
-use std::ffi::{CStr, CString};
-use std::os::raw::c_char;
-use std::sync::{Arc, Mutex};
 
 struct HelmState {
     store: Arc<SqliteStore>,
@@ -21,8 +26,13 @@ lazy_static! {
     static ref STATE: Mutex<Option<HelmState>> = Mutex::new(None);
 }
 
+/// Initialize the Helm core engine with the given SQLite database path.
+///
+/// # Safety
+///
+/// `db_path` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
 #[unsafe(no_mangle)]
-pub extern "C" fn helm_init(db_path: *const c_char) -> bool {
+pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
     if db_path.is_null() {
         return false;
     }
@@ -98,7 +108,7 @@ pub extern "C" fn helm_list_installed_packages() -> *mut c_char {
         Ok(pkgs) => pkgs,
         Err(e) => {
             eprintln!("Failed to list installed packages: {}", e);
-            return std::ptr::null_mut()
+            return std::ptr::null_mut();
         }
     };
 
@@ -126,7 +136,7 @@ pub extern "C" fn helm_list_tasks() -> *mut c_char {
         Ok(tasks) => tasks,
         Err(e) => {
             eprintln!("Failed to list tasks: {}", e);
-            return std::ptr::null_mut()
+            return std::ptr::null_mut();
         }
     };
 
@@ -149,23 +159,80 @@ pub extern "C" fn helm_trigger_refresh() -> bool {
         None => return false,
     };
 
-    // Trigger refresh for Homebrew
-    // We need to run this async. We can use the runtime handle.
     let runtime = state.runtime.clone();
-    
+    let store = state.store.clone();
+
     state._tokio_rt.spawn(async move {
-        let req = AdapterRequest::Refresh(RefreshRequest);
-        if let Err(e) = runtime.submit(ManagerId::HomebrewFormula, req).await {
-            eprintln!("Failed to submit refresh task: {}", e);
+        // Fetch installed packages and persist to store
+        if let Some(AdapterResponse::InstalledPackages(pkgs)) = submit_and_wait(
+            &runtime,
+            AdapterRequest::ListInstalled(ListInstalledRequest),
+        )
+        .await
+            && let Err(e) = store.upsert_installed(&pkgs)
+        {
+            eprintln!("Failed to persist installed packages: {e}");
+        }
+
+        // Fetch outdated packages and persist to store
+        if let Some(AdapterResponse::OutdatedPackages(pkgs)) =
+            submit_and_wait(&runtime, AdapterRequest::ListOutdated(ListOutdatedRequest)).await
+            && let Err(e) = store.upsert_outdated(&pkgs)
+        {
+            eprintln!("Failed to persist outdated packages: {e}");
         }
     });
 
     true
 }
 
+async fn submit_and_wait(
+    runtime: &AdapterRuntime,
+    request: AdapterRequest,
+) -> Option<AdapterResponse> {
+    let task_id = match runtime.submit(ManagerId::HomebrewFormula, request).await {
+        Ok(id) => id,
+        Err(e) => {
+            eprintln!("Failed to submit task: {e}");
+            return None;
+        }
+    };
+
+    let snapshot = match runtime
+        .wait_for_terminal(task_id, Some(Duration::from_secs(60)))
+        .await
+    {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Failed to wait for task: {e}");
+            return None;
+        }
+    };
+
+    match snapshot.terminal_state {
+        Some(AdapterTaskTerminalState::Succeeded(response)) => Some(response),
+        Some(AdapterTaskTerminalState::Failed(e)) => {
+            eprintln!("Task failed: {e}");
+            None
+        }
+        Some(AdapterTaskTerminalState::Cancelled(_)) => {
+            eprintln!("Task was cancelled");
+            None
+        }
+        None => None,
+    }
+}
+
+/// Free a string previously returned by a `helm_*` function.
+///
+/// # Safety
+///
+/// `s` must be a pointer previously returned by a `helm_*` function, or null.
 #[unsafe(no_mangle)]
-pub extern "C" fn helm_free_string(s: *mut c_char) {
-    if s.is_null() { return; }
+pub unsafe extern "C" fn helm_free_string(s: *mut c_char) {
+    if s.is_null() {
+        return;
+    }
     unsafe {
         let _ = CString::from_raw(s);
     }

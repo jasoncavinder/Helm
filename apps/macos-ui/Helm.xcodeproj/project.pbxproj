@@ -14,7 +14,6 @@
 		8CE1FDD92F3D2BAA000A3945 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE1FDD62F3D2BA9000A3945 /* main.swift */; };
 		8CE1FDDA2F3D2BAA000A3945 /* HelmServiceDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE1FDD72F3D2BA9000A3945 /* HelmServiceDelegate.swift */; };
 		8CE1FDDD2F3D2DA7000A3945 /* libhelm_ffi.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 8CFB6D482F3D1B24002372B8 /* libhelm_ffi.a */; };
-		8CE1FDDF2F3D3249000A3945 /* Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 8CE1FDDE2F3D3249000A3945 /* Info.plist */; };
 		8CFB6D572F3D1D1D002372B8 /* HelmCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CFB6D4B2F3D1D1D002372B8 /* HelmCore.swift */; };
 		8CFB6D582F3D1D1D002372B8 /* TaskListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CFB6D4D2F3D1D1D002372B8 /* TaskListView.swift */; };
 		8CFB6D592F3D1D1D002372B8 /* PackageListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CFB6D4E2F3D1D1D002372B8 /* PackageListView.swift */; };
@@ -23,6 +22,7 @@
 		A10000010000000000000001 /* HelmApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000001 /* HelmApp.swift */; };
 		A10000010000000000000002 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000002 /* AppDelegate.swift */; };
 		A10000010000000000000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000003 /* Assets.xcassets */; };
+		A30000000000000000000002 /* HelmVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000001 /* HelmVersion.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -70,6 +70,7 @@
 		A10000020000000000000004 /* Helm.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Helm.entitlements; sourceTree = "<group>"; };
 		A10000020000000000000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A10000020000000000000006 /* Helm.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Helm.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A30000000000000000000001 /* HelmVersion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HelmVersion.swift; path = Generated/HelmVersion.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -205,6 +206,7 @@
 				8CFB6D4C2F3D1D1D002372B8 /* Views */,
 				A10000020000000000000001 /* HelmApp.swift */,
 				A10000020000000000000002 /* AppDelegate.swift */,
+				A30000000000000000000001 /* HelmVersion.swift */,
 				A10000020000000000000003 /* Assets.xcassets */,
 				A10000020000000000000004 /* Helm.entitlements */,
 				A10000020000000000000005 /* Info.plist */,
@@ -303,7 +305,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				8CE1FDDF2F3D3249000A3945 /* Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -361,6 +362,7 @@
 				8CFB6D592F3D1D1D002372B8 /* PackageListView.swift in Sources */,
 				A10000010000000000000002 /* AppDelegate.swift in Sources */,
 				8CE1FDD22F3D2B84000A3945 /* HelmServiceProtocol.swift in Sources */,
+				A30000000000000000000002 /* HelmVersion.swift in Sources */,
 				8CFB6D5B2F3D1D1D002372B8 /* Task.swift in Sources */,
 				8CFB6D582F3D1D1D002372B8 /* TaskListView.swift in Sources */,
 			);

@@ -17,7 +17,7 @@ echo "Generating icons..."
 declare -a SIZES=(16 32 64 128 256 512 1024)
 
 for size in "${SIZES[@]}"; do
-    magick "$SOURCE_IMG" -resize "${size}x${size}" "$DEST_DIR/icon_${size}x${size}.png"
+    magick "$SOURCE_IMG" -resize "${size}x${size}" -gravity center -background transparent -extent "${size}x${size}" "$DEST_DIR/icon_${size}x${size}.png"
 done
 
 # Create Contents.json

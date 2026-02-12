@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Helm is a native macOS menu bar utility for centralized package manager control. It manages software across multiple package managers (Homebrew, npm, pip, Cargo, etc.) and runtime tools (mise, asdf, rustup). Pre-1.0, currently at v0.2.0-alpha.1 working toward 0.3.x (orchestration engine).
+Helm is a native macOS menu bar utility for centralized package manager control. It manages software across multiple package managers (Homebrew, npm, pip, Cargo, etc.) and runtime tools (mise, asdf, rustup). Pre-1.0, currently at v0.4.0 (SwiftUI shell complete, targeting 0.5.x progressive search).
 
 ## Build & Test Commands
 
-All Rust commands run from `core/rust/`:
+Rust commands run from `core/rust/`:
 
 ```bash
 cargo build                              # build
@@ -22,13 +22,19 @@ cargo fmt                                # format
 cargo fmt -- --check                     # format check (CI-style)
 ```
 
+Xcode build from `apps/macos-ui/`:
+
+```bash
+xcodebuild -project Helm.xcodeproj -scheme Helm -configuration Debug build
+```
+
 ## Architecture
 
 Three-layer architecture — do not collapse or bypass boundaries:
 
-1. **UI (SwiftUI)** — `apps/macos-ui/` — Pure presentation, no business logic (not yet implemented)
-2. **Service (macOS daemon/XPC)** — `service/macos-service/` — Process execution, privilege escalation (not yet implemented)
-3. **Core (Rust)** — `core/rust/crates/helm-core/` — All business logic, adapters, orchestration, persistence
+1. **UI (SwiftUI)** — `apps/macos-ui/` — Pure presentation, no business logic. Menu bar app with floating panel.
+2. **Service (XPC)** — `apps/macos-ui/HelmService/` — Hosts Rust FFI in a separate process. Unsandboxed for process execution. Code-signed connection validation.
+3. **Core (Rust)** — `core/rust/crates/helm-core/` — All business logic, adapters, orchestration, persistence. Exposed to Swift via `helm-ffi` C ABI.
 
 ### Rust Core Modules (`core/rust/crates/helm-core/src/`)
 
@@ -53,7 +59,6 @@ In order of precedence:
 1. **`PROJECT_BRIEF.md`** — Authoritative product and architecture spec. Wins over conflicting instructions.
 2. **`AGENTS.md`** — Non-negotiable development constraints and principles.
 3. **`docs/ROADMAP.md`** — Milestone definitions (0.1 through 1.0).
-4. **`docs/0_3_KICKOFF_PLAN.md`** — Current milestone scope and implementation order.
 
 ## Git Workflow
 
