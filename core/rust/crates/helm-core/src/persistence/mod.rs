@@ -1,6 +1,10 @@
+pub mod detection_store;
+
 use crate::models::{
     CachedSearchResult, CoreError, InstalledPackage, OutdatedPackage, PinRecord, TaskRecord,
 };
+
+pub use detection_store::DetectionStore;
 
 pub type PersistenceResult<T> = Result<T, CoreError>;
 
@@ -42,4 +46,11 @@ pub trait TaskStore: Send + Sync {
     fn list_recent_tasks(&self, limit: usize) -> PersistenceResult<Vec<TaskRecord>>;
 
     fn next_task_id(&self) -> PersistenceResult<u64>;
+
+    /// Delete completed/failed/cancelled tasks older than `max_age_secs` seconds.
+    /// Returns the number of rows deleted.
+    fn prune_completed_tasks(&self, max_age_secs: i64) -> PersistenceResult<usize>;
+
+    /// Delete all task records.
+    fn delete_all_tasks(&self) -> PersistenceResult<()>;
 }

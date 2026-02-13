@@ -19,6 +19,7 @@ struct CoreOutdatedPackage: Codable {
     let installedVersion: String?
     let candidateVersion: String
     let pinned: Bool
+    let restartRequired: Bool
 }
 
 struct CoreTaskRecord: Codable {
@@ -36,6 +37,15 @@ struct CoreSearchResult: Codable {
     let sourceManager: String
 }
 
+struct ManagerStatus: Codable {
+    let managerId: String
+    let detected: Bool
+    let version: String?
+    let executablePath: String?
+    let enabled: Bool
+    let isImplemented: Bool
+}
+
 final class HelmCore: ObservableObject {
     static let shared = HelmCore()
 
@@ -51,6 +61,10 @@ final class HelmCore: ObservableObject {
     @Published var activeTasks: [TaskItem] = []
     @Published var searchResults: [PackageItem] = []
     @Published var cachedAvailablePackages: [PackageItem] = []
+    @Published var detectedManagers: Set<String> = []
+    @Published var managerStatuses: [String: ManagerStatus] = [:]
+    @Published var selectedManagerFilter: String? = nil
+    @Published var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
 
     private var timer: Timer?
     private var connection: NSXPCConnection?
@@ -105,6 +119,7 @@ final class HelmCore: ObservableObject {
             self?.fetchTasks()
             self?.fetchPackages()
             self?.fetchOutdatedPackages()
+            self?.fetchManagerStatus()
             self?.refreshCachedAvailablePackages()
 
             // Re-query local cache to pick up enriched results from remote search
@@ -120,10 +135,8 @@ final class HelmCore: ObservableObject {
 
     func triggerRefresh() {
         logger.info("triggerRefresh called")
-        DispatchQueue.main.async {
-            self.lastRefreshTrigger = Date()
-            self.isRefreshing = true
-        }
+        self.lastRefreshTrigger = Date()
+        self.isRefreshing = true
         service()?.triggerRefresh { success in
             if !success {
                 logger.error("triggerRefresh failed")
@@ -144,6 +157,7 @@ final class HelmCore: ObservableObject {
         case "cargo": return "Cargo"
         case "mise": return "mise"
         case "rustup": return "rustup"
+        case "softwareupdate": return "Software Update"
         case "mas": return "App Store"
         default: return raw.replacingOccurrences(of: "_", with: " ").capitalized
         }
@@ -190,7 +204,8 @@ final class HelmCore: ObservableObject {
                             name: pkg.package.name,
                             version: pkg.installedVersion ?? "unknown",
                             latestVersion: pkg.candidateVersion,
-                            manager: self?.normalizedManagerName(pkg.package.manager) ?? pkg.package.manager
+                            manager: self?.normalizedManagerName(pkg.package.manager) ?? pkg.package.manager,
+                            restartRequired: pkg.restartRequired
                         )
                     }
                 }
@@ -219,16 +234,47 @@ final class HelmCore: ObservableObject {
                         )
                     }
 
+                    // Derive detection status from Detection-type tasks specifically.
+                    // Tasks are ordered most-recent-first. A manager is "detected" if
+                    // its latest detection task completed successfully.
+                    var latestDetectionByManager: [String: String] = [:]
+                    for task in coreTasks {
+                        guard task.taskType.lowercased() == "detection" else { continue }
+                        if latestDetectionByManager[task.manager] == nil {
+                            latestDetectionByManager[task.manager] = task.status.lowercased()
+                        }
+                    }
+                    var detected = Set<String>()
+                    for (manager, status) in latestDetectionByManager {
+                        if status == "completed" {
+                            detected.insert(manager)
+                        }
+                    }
+                    self?.detectedManagers = detected
+
                     let isRunning = coreTasks.contains {
-                        $0.taskType.lowercased() == "refresh" &&
-                        ($0.status.lowercased() == "running" || $0.status.lowercased() == "queued")
+                        let type = $0.taskType.lowercased()
+                        let status = $0.status.lowercased()
+                        return (type == "refresh" || type == "detection") &&
+                               (status == "running" || status == "queued")
                     }
 
-                    if isRunning {
-                        self?.isRefreshing = true
-                        self?.lastRefreshTrigger = nil
-                    } else if let lastTrigger = self?.lastRefreshTrigger, Date().timeIntervalSince(lastTrigger) < 2.0 {
-                        self?.isRefreshing = true
+                    // Only show "refreshing" when we triggered a refresh this session.
+                    // Without this guard, stale running tasks from a previous session
+                    // would permanently lock isRefreshing = true.
+                    if let lastTrigger = self?.lastRefreshTrigger {
+                        if Date().timeIntervalSince(lastTrigger) > 120.0 {
+                            // Safety valve: clear stuck refresh after 2 minutes
+                            self?.isRefreshing = false
+                            self?.lastRefreshTrigger = nil
+                        } else if isRunning {
+                            self?.isRefreshing = true
+                        } else if Date().timeIntervalSince(lastTrigger) < 2.0 {
+                            self?.isRefreshing = true
+                        } else {
+                            self?.isRefreshing = false
+                            self?.lastRefreshTrigger = nil
+                        }
                     } else {
                         self?.isRefreshing = false
                     }
@@ -316,6 +362,86 @@ final class HelmCore: ObservableObject {
                 }
             } catch {
                 logger.error("Failed to decode cached available packages: \(error)")
+            }
+        }
+    }
+
+    // MARK: - Manager Status
+
+    func fetchManagerStatus() {
+        service()?.listManagerStatus { [weak self] jsonString in
+            guard let jsonString = jsonString, let data = jsonString.data(using: .utf8) else { return }
+
+            do {
+                let decoder = JSONDecoder()
+                let statuses = try decoder.decode([ManagerStatus].self, from: data)
+
+                DispatchQueue.main.async {
+                    var map: [String: ManagerStatus] = [:]
+                    for status in statuses {
+                        map[status.managerId] = status
+                    }
+                    self?.managerStatuses = map
+                }
+            } catch {
+                logger.error("Failed to decode manager statuses: \(error)")
+            }
+        }
+    }
+
+    func setManagerEnabled(_ managerId: String, enabled: Bool) {
+        service()?.setManagerEnabled(managerId: managerId, enabled: enabled) { success in
+            if !success {
+                logger.error("setManagerEnabled(\(managerId), \(enabled)) failed")
+            }
+        }
+    }
+
+    func installManager(_ managerId: String) {
+        service()?.installManager(managerId: managerId) { taskId in
+            if taskId < 0 {
+                logger.error("installManager(\(managerId)) failed")
+            }
+        }
+    }
+
+    func completeOnboarding() {
+        UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
+        hasCompletedOnboarding = true
+    }
+
+    func resetDatabase(completion: @escaping (Bool) -> Void) {
+        // Stop polling during reset to prevent stale reads
+        timer?.invalidate()
+        timer = nil
+
+        service()?.resetDatabase { [weak self] success in
+            DispatchQueue.main.async {
+                if success {
+                    self?.installedPackages = []
+                    self?.outdatedPackages = []
+                    self?.activeTasks = []
+                    self?.searchResults = []
+                    self?.cachedAvailablePackages = []
+                    self?.detectedManagers = []
+                    self?.managerStatuses = [:]
+                    self?.searchText = ""
+                    self?.isRefreshing = false
+                    self?.lastRefreshTrigger = nil
+                    UserDefaults.standard.removeObject(forKey: "hasCompletedOnboarding")
+                    self?.hasCompletedOnboarding = false
+                }
+                // Resume polling after reset
+                self?.startPolling()
+                completion(success)
+            }
+        }
+    }
+
+    func uninstallManager(_ managerId: String) {
+        service()?.uninstallManager(managerId: managerId) { taskId in
+            if taskId < 0 {
+                logger.error("uninstallManager(\(managerId)) failed")
             }
         }
     }

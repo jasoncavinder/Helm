@@ -5,6 +5,8 @@ struct SettingsPopoverView: View {
 
     @State private var autoCheckEnabled = false
     @State private var checkFrequency = 60
+    @State private var showResetConfirmation = false
+    @State private var isResetting = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -58,6 +60,18 @@ struct SettingsPopoverView: View {
             Divider()
 
             Button(action: {
+                showResetConfirmation = true
+            }) {
+                HStack {
+                    Image(systemName: "arrow.counterclockwise")
+                    Text("Reset Local Data")
+                }
+                .foregroundColor(.red)
+                .frame(maxWidth: .infinity)
+            }
+            .disabled(core.isRefreshing || isResetting)
+
+            Button(action: {
                 NSApplication.shared.terminate(nil)
             }) {
                 HStack {
@@ -69,5 +83,16 @@ struct SettingsPopoverView: View {
         }
         .padding(16)
         .frame(width: 220)
+        .alert("Reset Local Data?", isPresented: $showResetConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Reset", role: .destructive) {
+                isResetting = true
+                core.resetDatabase { _ in
+                    isResetting = false
+                }
+            }
+        } message: {
+            Text("This will clear all cached data and return Helm to its initial state. Your installed packages will not be affected.")
+        }
     }
 }

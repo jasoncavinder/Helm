@@ -8,7 +8,9 @@ pub enum ManagerId {
     Asdf,
     Rustup,
     HomebrewFormula,
+    #[serde(rename = "softwareupdate")]
     SoftwareUpdate,
+    #[serde(rename = "macports")]
     MacPorts,
     NixDarwin,
     Pnpm,
@@ -17,6 +19,7 @@ pub enum ManagerId {
     Pipx,
     Pip,
     Poetry,
+    #[serde(rename = "rubygems")]
     RubyGems,
     Bundler,
     Cargo,

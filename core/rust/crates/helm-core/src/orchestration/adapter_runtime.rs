@@ -3,7 +3,8 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use crate::adapters::{
-    AdapterRequest, AdapterResponse, ListInstalledRequest, ListOutdatedRequest, ManagerAdapter,
+    AdapterRequest, AdapterResponse, DetectRequest, ListInstalledRequest, ListOutdatedRequest,
+    ManagerAdapter,
 };
 use crate::models::{
     CoreError, CoreErrorKind, ManagerAction, ManagerId, TaskId, TaskRecord, TaskStatus, TaskType,
@@ -12,7 +13,7 @@ use crate::orchestration::{
     AdapterExecutionRuntime, AdapterTaskSnapshot, AdapterTaskTerminalState, CancellationMode,
     OrchestrationResult,
 };
-use crate::persistence::{PackageStore, SearchCacheStore, TaskStore};
+use crate::persistence::{DetectionStore, PackageStore, SearchCacheStore, TaskStore};
 
 #[derive(Clone)]
 pub struct AdapterRuntime {
@@ -21,6 +22,7 @@ pub struct AdapterRuntime {
     task_store: Option<Arc<dyn TaskStore>>,
     package_store: Option<Arc<dyn PackageStore>>,
     search_cache_store: Option<Arc<dyn SearchCacheStore>>,
+    detection_store: Option<Arc<dyn DetectionStore>>,
 }
 
 impl AdapterRuntime {
@@ -57,7 +59,7 @@ impl AdapterRuntime {
         task_store: Option<Arc<dyn TaskStore>>,
         package_store: Option<Arc<dyn PackageStore>>,
     ) -> OrchestrationResult<Self> {
-        Self::build(execution, adapters, task_store, package_store, None)
+        Self::build(execution, adapters, task_store, package_store, None, None)
     }
 
     pub fn with_all_stores(
@@ -65,6 +67,7 @@ impl AdapterRuntime {
         task_store: Arc<dyn TaskStore>,
         package_store: Arc<dyn PackageStore>,
         search_cache_store: Arc<dyn SearchCacheStore>,
+        detection_store: Arc<dyn DetectionStore>,
     ) -> OrchestrationResult<Self> {
         let start_id = task_store.next_task_id().unwrap_or(0);
         let queue = crate::orchestration::InMemoryAsyncTaskQueue::with_initial_id(start_id);
@@ -74,6 +77,7 @@ impl AdapterRuntime {
             Some(task_store),
             Some(package_store),
             Some(search_cache_store),
+            Some(detection_store),
         )
     }
 
@@ -83,6 +87,7 @@ impl AdapterRuntime {
         task_store: Option<Arc<dyn TaskStore>>,
         package_store: Option<Arc<dyn PackageStore>>,
         search_cache_store: Option<Arc<dyn SearchCacheStore>>,
+        detection_store: Option<Arc<dyn DetectionStore>>,
     ) -> OrchestrationResult<Self> {
         let mut mapped = HashMap::new();
         for adapter in adapters {
@@ -104,6 +109,7 @@ impl AdapterRuntime {
             task_store,
             package_store,
             search_cache_store,
+            detection_store,
         })
     }
 
@@ -113,6 +119,24 @@ impl AdapterRuntime {
 
     pub fn adapter_list(&self) -> Vec<Arc<dyn ManagerAdapter>> {
         self.adapters.values().cloned().collect()
+    }
+
+    pub fn is_manager_enabled(&self, manager: ManagerId) -> bool {
+        if let Some(ds) = &self.detection_store {
+            match ds.list_manager_preferences() {
+                Ok(prefs) => {
+                    for (m, enabled) in prefs {
+                        if m == manager {
+                            return enabled;
+                        }
+                    }
+                    true // default: enabled
+                }
+                Err(_) => true,
+            }
+        } else {
+            true
+        }
     }
 
     pub async fn refresh_all_ordered(&self) -> Vec<(ManagerId, OrchestrationResult<()>)> {
@@ -127,9 +151,24 @@ impl AdapterRuntime {
 
             for manager_id in &phase {
                 let manager = *manager_id;
+
+                // Skip managers that the user has disabled
+                if !self.is_manager_enabled(manager) {
+                    all_results.push((manager, Ok(())));
+                    continue;
+                }
+
                 let runtime = self.clone();
 
                 handles.push(tokio::spawn(async move {
+                    // Detect first — if the manager binary is not installed, skip list operations
+                    if let Err(e) = runtime
+                        .submit_refresh_request(manager, AdapterRequest::Detect(DetectRequest))
+                        .await
+                    {
+                        return vec![(manager, Err(e))];
+                    }
+
                     // Submit ListInstalled
                     if let Err(e) = runtime
                         .submit_refresh_request(
@@ -244,6 +283,7 @@ impl AdapterRuntime {
                 task_store: task_store.clone(),
                 package_store: self.package_store.clone(),
                 search_cache_store: self.search_cache_store.clone(),
+                detection_store: self.detection_store.clone(),
                 task_id,
                 manager,
                 task_type,
@@ -282,6 +322,7 @@ struct PersistenceWatcherContext {
     task_store: Arc<dyn TaskStore>,
     package_store: Option<Arc<dyn PackageStore>>,
     search_cache_store: Option<Arc<dyn SearchCacheStore>>,
+    detection_store: Option<Arc<dyn DetectionStore>>,
     task_id: TaskId,
     manager: ManagerId,
     task_type: TaskType,
@@ -294,6 +335,7 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
         task_store,
         package_store,
         search_cache_store,
+        detection_store,
         task_id,
         manager,
         task_type,
@@ -385,6 +427,24 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
             );
         }
 
+        // Persist detection results
+        if let Some(detection_store) = detection_store
+            && let Some(AdapterTaskTerminalState::Succeeded(response)) = &snapshot.terminal_state
+            && let Err(error) =
+                persist_detection_response(detection_store, response, manager, task_type, action)
+                    .await
+        {
+            tracing::error!(
+                manager = ?manager,
+                task_id = task_id.0,
+                task_type = ?task_type,
+                action = ?action,
+                kind = ?error.kind,
+                message = %error.message,
+                "failed to persist detection data"
+            );
+        }
+
         let updated = TaskRecord {
             id: snapshot.runtime.id,
             manager: snapshot.runtime.manager,
@@ -468,6 +528,30 @@ async fn persist_search_response(
         action: Some(action),
         kind: CoreErrorKind::Internal,
         message: format!("search cache persistence join failure: {join_error}"),
+    })?
+    .map_err(|error| attribute_error(error, manager, task_type, action))
+}
+
+async fn persist_detection_response(
+    detection_store: Arc<dyn DetectionStore>,
+    response: &AdapterResponse,
+    manager: ManagerId,
+    task_type: TaskType,
+    action: ManagerAction,
+) -> OrchestrationResult<()> {
+    let response = response.clone();
+
+    tokio::task::spawn_blocking(move || match response {
+        AdapterResponse::Detection(info) => detection_store.upsert_detection(manager, &info),
+        _ => Ok(()),
+    })
+    .await
+    .map_err(|join_error| CoreError {
+        manager: Some(manager),
+        task: Some(task_type),
+        action: Some(action),
+        kind: CoreErrorKind::Internal,
+        message: format!("detection persistence join failure: {join_error}"),
     })?
     .map_err(|error| attribute_error(error, manager, task_type, action))
 }

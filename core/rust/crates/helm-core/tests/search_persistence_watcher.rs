@@ -90,9 +90,14 @@ async fn search_results_are_persisted_to_cache_via_watcher() {
     store.migrate_to_latest().unwrap();
 
     let adapter: Arc<dyn ManagerAdapter> = Arc::new(SearchTestAdapter::new(ManagerId::Npm));
-    let runtime =
-        AdapterRuntime::with_all_stores([adapter], store.clone(), store.clone(), store.clone())
-            .unwrap();
+    let runtime = AdapterRuntime::with_all_stores(
+        [adapter],
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+    )
+    .unwrap();
 
     let request = AdapterRequest::Search(SearchRequest {
         query: SearchQuery {

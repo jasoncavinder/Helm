@@ -77,4 +77,38 @@ class HelmService: NSObject, HelmServiceProtocol {
         logger.info("helm_cancel_task(\(taskId)) result: \(result)")
         reply(result)
     }
+
+    func listManagerStatus(withReply reply: @escaping (String?) -> Void) {
+        guard let cString = helm_list_manager_status() else {
+            logger.warning("helm_list_manager_status returned nil")
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(cString) }
+        reply(String(cString: cString))
+    }
+
+    func setManagerEnabled(managerId: String, enabled: Bool, withReply reply: @escaping (Bool) -> Void) {
+        let result = managerId.withCString { helm_set_manager_enabled($0, enabled) }
+        logger.info("helm_set_manager_enabled(\(managerId), \(enabled)) result: \(result)")
+        reply(result)
+    }
+
+    func installManager(managerId: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = managerId.withCString { helm_install_manager($0) }
+        logger.info("helm_install_manager(\(managerId)) result: \(taskId)")
+        reply(taskId)
+    }
+
+    func uninstallManager(managerId: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = managerId.withCString { helm_uninstall_manager($0) }
+        logger.info("helm_uninstall_manager(\(managerId)) result: \(taskId)")
+        reply(taskId)
+    }
+
+    func resetDatabase(withReply reply: @escaping (Bool) -> Void) {
+        let result = helm_reset_database()
+        logger.info("helm_reset_database result: \(result)")
+        reply(result)
+    }
 }

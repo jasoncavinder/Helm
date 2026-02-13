@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::adapters::manager::{AdapterRequest, AdapterResponse, AdapterResult, ManagerAdapter};
@@ -13,6 +14,7 @@ const RUSTUP_READ_CAPABILITIES: &[Capability] = &[
     Capability::Refresh,
     Capability::ListInstalled,
     Capability::ListOutdated,
+    Capability::Uninstall,
 ];
 
 const RUSTUP_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
@@ -27,10 +29,19 @@ const RUSTUP_COMMAND: &str = "rustup";
 const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
 const LIST_TIMEOUT: Duration = Duration::from_secs(60);
 
+const UNINSTALL_TIMEOUT: Duration = Duration::from_secs(60);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RustupDetectOutput {
+    pub executable_path: Option<PathBuf>,
+    pub version_output: String,
+}
+
 pub trait RustupSource: Send + Sync {
-    fn detect(&self) -> AdapterResult<String>;
+    fn detect(&self) -> AdapterResult<RustupDetectOutput>;
     fn toolchain_list(&self) -> AdapterResult<String>;
     fn check(&self) -> AdapterResult<String>;
+    fn self_uninstall(&self) -> AdapterResult<String>;
 }
 
 pub struct RustupAdapter<S: RustupSource> {
@@ -57,12 +68,13 @@ impl<S: RustupSource> ManagerAdapter for RustupAdapter<S> {
 
         match request {
             AdapterRequest::Detect(_) => {
-                let raw = self.source.detect()?;
-                let version = parse_rustup_version(&raw);
-                let installed = version.is_some();
+                let output = self.source.detect()?;
+                let version = parse_rustup_version(&output.version_output);
+                let has_executable = output.executable_path.is_some();
+                let installed = has_executable || version.is_some();
                 Ok(AdapterResponse::Detection(DetectionInfo {
                     installed,
-                    executable_path: None,
+                    executable_path: output.executable_path,
                     version,
                 }))
             }
@@ -79,6 +91,15 @@ impl<S: RustupSource> ManagerAdapter for RustupAdapter<S> {
                 let raw = self.source.check()?;
                 let packages = parse_rustup_check(&raw)?;
                 Ok(AdapterResponse::OutdatedPackages(packages))
+            }
+            AdapterRequest::Uninstall(uninstall_request) => {
+                let _ = self.source.self_uninstall()?;
+                Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
+                    package: uninstall_request.package,
+                    action: ManagerAction::Uninstall,
+                    before_version: None,
+                    after_version: None,
+                }))
             }
             _ => Err(CoreError {
                 manager: Some(ManagerId::Rustup),
@@ -118,6 +139,16 @@ pub fn rustup_check_request(task_id: Option<TaskId>) -> ProcessSpawnRequest {
         ManagerAction::ListOutdated,
         CommandSpec::new(RUSTUP_COMMAND).arg("check"),
         LIST_TIMEOUT,
+    )
+}
+
+pub fn rustup_self_uninstall_request(task_id: Option<TaskId>) -> ProcessSpawnRequest {
+    rustup_request(
+        task_id,
+        TaskType::Uninstall,
+        ManagerAction::Uninstall,
+        CommandSpec::new(RUSTUP_COMMAND).args(["self", "uninstall", "-y"]),
+        UNINSTALL_TIMEOUT,
     )
 }
 
@@ -229,6 +260,7 @@ fn parse_rustup_check(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
             },
             candidate_version: new_version.to_owned(),
             pinned: false,
+            restart_required: false,
         });
     }
 
@@ -248,7 +280,7 @@ mod tests {
     use crate::models::{CoreErrorKind, ManagerAction, ManagerId, TaskId, TaskType};
 
     use super::{
-        RustupAdapter, RustupSource, parse_rustup_check, parse_rustup_version,
+        RustupAdapter, RustupDetectOutput, RustupSource, parse_rustup_check, parse_rustup_version,
         parse_toolchain_list, rustup_check_request, rustup_detect_request,
         rustup_toolchain_list_request,
     };
@@ -341,7 +373,7 @@ mod tests {
     }
 
     #[test]
-    fn adapter_rejects_unsupported_action() {
+    fn adapter_rejects_unsupported_install_action() {
         let source = FixtureSource::default();
         let adapter = RustupAdapter::new(source);
 
@@ -355,6 +387,24 @@ mod tests {
             }))
             .unwrap_err();
         assert_eq!(error.kind, CoreErrorKind::UnsupportedCapability);
+    }
+
+    #[test]
+    fn adapter_executes_uninstall_request() {
+        let source = FixtureSource::default();
+        let adapter = RustupAdapter::new(source);
+
+        let result = adapter
+            .execute(AdapterRequest::Uninstall(
+                crate::adapters::UninstallRequest {
+                    package: crate::models::PackageRef {
+                        manager: ManagerId::Rustup,
+                        name: "__self__".to_string(),
+                    },
+                },
+            ))
+            .unwrap();
+        assert!(matches!(result, AdapterResponse::Mutation(_)));
     }
 
     #[test]
@@ -391,9 +441,12 @@ mod tests {
     }
 
     impl RustupSource for FixtureSource {
-        fn detect(&self) -> AdapterResult<String> {
+        fn detect(&self) -> AdapterResult<RustupDetectOutput> {
             self.detect_calls.fetch_add(1, Ordering::SeqCst);
-            Ok(VERSION_FIXTURE.to_string())
+            Ok(RustupDetectOutput {
+                executable_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+                version_output: VERSION_FIXTURE.to_string(),
+            })
         }
 
         fn toolchain_list(&self) -> AdapterResult<String> {
@@ -402,6 +455,10 @@ mod tests {
 
         fn check(&self) -> AdapterResult<String> {
             Ok(CHECK_FIXTURE.to_string())
+        }
+
+        fn self_uninstall(&self) -> AdapterResult<String> {
+            Ok(String::new())
         }
     }
 }

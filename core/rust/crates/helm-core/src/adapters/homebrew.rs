@@ -16,6 +16,8 @@ const HOMEBREW_READ_CAPABILITIES: &[Capability] = &[
     Capability::Search,
     Capability::ListInstalled,
     Capability::ListOutdated,
+    Capability::Install,
+    Capability::Uninstall,
 ];
 
 const HOMEBREW_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
@@ -37,6 +39,8 @@ pub struct HomebrewDetectOutput {
     pub version_output: String,
 }
 
+const INSTALL_TIMEOUT: Duration = Duration::from_secs(300);
+
 pub trait HomebrewSource: Send + Sync {
     fn detect(&self) -> AdapterResult<HomebrewDetectOutput>;
 
@@ -45,6 +49,10 @@ pub trait HomebrewSource: Send + Sync {
     fn list_outdated_formulae(&self) -> AdapterResult<String>;
 
     fn search_local_formulae(&self, query: &str) -> AdapterResult<String>;
+
+    fn install_formula(&self, name: &str) -> AdapterResult<String>;
+
+    fn uninstall_formula(&self, name: &str) -> AdapterResult<String>;
 }
 
 pub struct HomebrewAdapter<S: HomebrewSource> {
@@ -96,6 +104,26 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                     .search_local_formulae(search_request.query.text.as_str())?;
                 let results = parse_search_formulae(&raw, &search_request.query)?;
                 Ok(AdapterResponse::SearchResults(results))
+            }
+            AdapterRequest::Install(install_request) => {
+                let _ = self.source.install_formula(&install_request.package.name)?;
+                Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
+                    package: install_request.package,
+                    action: ManagerAction::Install,
+                    before_version: None,
+                    after_version: install_request.version,
+                }))
+            }
+            AdapterRequest::Uninstall(uninstall_request) => {
+                let _ = self
+                    .source
+                    .uninstall_formula(&uninstall_request.package.name)?;
+                Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
+                    package: uninstall_request.package,
+                    action: ManagerAction::Uninstall,
+                    before_version: None,
+                    after_version: None,
+                }))
             }
             _ => Err(CoreError {
                 manager: Some(ManagerId::HomebrewFormula),
@@ -150,6 +178,26 @@ pub fn homebrew_search_local_request(
             .args(["search", "--formula"])
             .arg(query.text.clone()),
         SEARCH_TIMEOUT,
+    )
+}
+
+pub fn homebrew_install_request(task_id: Option<TaskId>, name: &str) -> ProcessSpawnRequest {
+    homebrew_request(
+        task_id,
+        TaskType::Install,
+        ManagerAction::Install,
+        CommandSpec::new(HOMEBREW_COMMAND).args(["install", name]),
+        INSTALL_TIMEOUT,
+    )
+}
+
+pub fn homebrew_uninstall_request(task_id: Option<TaskId>, name: &str) -> ProcessSpawnRequest {
+    homebrew_request(
+        task_id,
+        TaskType::Uninstall,
+        ManagerAction::Uninstall,
+        CommandSpec::new(HOMEBREW_COMMAND).args(["uninstall", name]),
+        INSTALL_TIMEOUT,
     )
 }
 
@@ -252,6 +300,7 @@ fn parse_outdated_formulae(output: &str) -> AdapterResult<Vec<OutdatedPackage>> 
                 installed_version,
                 candidate_version,
                 pinned: false,
+                restart_required: false,
             }),
             None => malformed_lines += 1,
         }
@@ -511,11 +560,11 @@ mod tests {
     }
 
     #[test]
-    fn adapter_rejects_mutating_request_with_unsupported_capability() {
+    fn adapter_executes_install_request() {
         let source = FixtureSource::default();
         let adapter = HomebrewAdapter::new(source);
 
-        let error = adapter
+        let result = adapter
             .execute(AdapterRequest::Install(crate::adapters::InstallRequest {
                 package: crate::models::PackageRef {
                     manager: crate::models::ManagerId::HomebrewFormula,
@@ -523,8 +572,26 @@ mod tests {
                 },
                 version: None,
             }))
-            .unwrap_err();
-        assert_eq!(error.kind, CoreErrorKind::UnsupportedCapability);
+            .unwrap();
+        assert!(matches!(result, AdapterResponse::Mutation(_)));
+    }
+
+    #[test]
+    fn adapter_executes_uninstall_request() {
+        let source = FixtureSource::default();
+        let adapter = HomebrewAdapter::new(source);
+
+        let result = adapter
+            .execute(AdapterRequest::Uninstall(
+                crate::adapters::UninstallRequest {
+                    package: crate::models::PackageRef {
+                        manager: crate::models::ManagerId::HomebrewFormula,
+                        name: "ripgrep".to_string(),
+                    },
+                },
+            ))
+            .unwrap();
+        assert!(matches!(result, AdapterResponse::Mutation(_)));
     }
 
     #[test]
@@ -611,6 +678,14 @@ mod tests {
 
         fn search_local_formulae(&self, _query: &str) -> AdapterResult<String> {
             Ok(SEARCH_FIXTURE.to_string())
+        }
+
+        fn install_formula(&self, _name: &str) -> AdapterResult<String> {
+            Ok(String::new())
+        }
+
+        fn uninstall_formula(&self, _name: &str) -> AdapterResult<String> {
+            Ok(String::new())
         }
     }
 }

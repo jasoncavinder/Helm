@@ -1,0 +1,7 @@
+Software Update Tool
+
+Finding available software
+
+Software Update found the following new or updated software:
+* Label: macOS Sequoia 15.3.2-15.3.2
+	Title: macOS Sequoia 15.3.2, Version: 15.3.2, Size: 1803133KiB, Recommended: YES, Action: restart,

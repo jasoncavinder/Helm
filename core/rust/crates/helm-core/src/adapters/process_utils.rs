@@ -4,6 +4,36 @@ use crate::execution::{
 };
 use crate::models::{CoreError, CoreErrorKind};
 
+/// Run a process and return stdout, falling back to stderr if stdout is empty.
+/// Used for version detection where some tools output to stderr.
+/// Returns empty string on any failure (best-effort).
+pub(crate) fn run_and_collect_version_output(
+    executor: &dyn ProcessExecutor,
+    request: ProcessSpawnRequest,
+) -> String {
+    let process = match spawn_validated(executor, request) {
+        Ok(p) => p,
+        Err(_) => return String::new(),
+    };
+
+    let handle = tokio::runtime::Handle::current();
+    let output: ProcessOutput = match handle.block_on(process.wait()) {
+        Ok(o) => o,
+        Err(_) => return String::new(),
+    };
+
+    if !matches!(output.status, ProcessExitStatus::ExitCode(0)) {
+        return String::new();
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    if !stdout.trim().is_empty() {
+        return stdout;
+    }
+
+    String::from_utf8_lossy(&output.stderr).to_string()
+}
+
 pub(crate) fn run_and_collect_stdout(
     executor: &dyn ProcessExecutor,
     request: ProcessSpawnRequest,

@@ -47,6 +47,48 @@ int64_t helm_trigger_remote_search(const char *query);
 bool helm_cancel_task(int64_t task_id);
 
 /**
+ * List manager status: detection info + preferences + implementation status as JSON.
+ */
+char *helm_list_manager_status(void);
+
+/**
+ * Set a manager as enabled or disabled.
+ *
+ * # Safety
+ *
+ * `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ */
+bool helm_set_manager_enabled(const char *manager_id, bool enabled);
+
+/**
+ * Install a manager tool via Homebrew. Returns the task ID, or -1 on error.
+ *
+ * Supported manager IDs: "mise", "mas".
+ *
+ * # Safety
+ *
+ * `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ */
+int64_t helm_install_manager(const char *manager_id);
+
+/**
+ * Uninstall a manager tool. Returns the task ID, or -1 on error.
+ *
+ * Supported manager IDs: "mise", "mas" (via Homebrew), "rustup" (self uninstall).
+ *
+ * # Safety
+ *
+ * `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ */
+int64_t helm_uninstall_manager(const char *manager_id);
+
+/**
+ * Reset the database by rolling back all migrations and re-applying them.
+ * Returns true on success.
+ */
+bool helm_reset_database(void);
+
+/**
  * Free a string previously returned by a `helm_*` function.
  *
  * # Safety

@@ -20,6 +20,7 @@ pub struct OutdatedPackage {
     pub installed_version: Option<String>,
     pub candidate_version: String,
     pub pinned: bool,
+    pub restart_required: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Helm is a native macOS menu bar utility for centralized package manager control. It manages software across multiple package managers (Homebrew, npm, pip, Cargo, etc.) and runtime tools (mise, asdf, rustup). Pre-1.0, currently at v0.6.0 (Homebrew, mise, and rustup adapters with authority-ordered refresh).
+Helm is a native macOS menu bar utility for centralized package manager control. It manages software across multiple package managers (Homebrew, npm, pip, Cargo, etc.) and runtime tools (mise, asdf, rustup). Pre-1.0, currently at v0.7.0-alpha.1 (Homebrew, mise, and rustup adapters with authority-ordered refresh, two-phase detection, and enhanced dashboard UI).
 
 ## Build & Test Commands
 
