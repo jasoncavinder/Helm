@@ -7,6 +7,8 @@ pub mod mise_process;
 pub(crate) mod process_utils;
 pub mod rustup;
 pub mod rustup_process;
+pub mod softwareupdate;
+pub mod softwareupdate_process;
 
 pub use homebrew::{
     HomebrewAdapter, HomebrewSource, homebrew_detect_request, homebrew_list_installed_request,
@@ -29,3 +31,8 @@ pub use rustup::{
     rustup_toolchain_list_request,
 };
 pub use rustup_process::ProcessRustupSource;
+pub use softwareupdate::{
+    SoftwareUpdateAdapter, SoftwareUpdateSource, softwareupdate_detect_request,
+    softwareupdate_list_request,
+};
+pub use softwareupdate_process::ProcessSoftwareUpdateSource;
