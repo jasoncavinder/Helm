@@ -64,6 +64,7 @@ final class HelmCore: ObservableObject {
     @Published var detectedManagers: Set<String> = []
     @Published var managerStatuses: [String: ManagerStatus] = [:]
     @Published var selectedManagerFilter: String? = nil
+    @Published var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
 
     private var timer: Timer?
     private var connection: NSXPCConnection?
@@ -402,6 +403,11 @@ final class HelmCore: ObservableObject {
                 logger.error("installManager(\(managerId)) failed")
             }
         }
+    }
+
+    func completeOnboarding() {
+        UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
+        hasCompletedOnboarding = true
     }
 
     func uninstallManager(_ managerId: String) {

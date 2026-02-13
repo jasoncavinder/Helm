@@ -33,6 +33,10 @@
 		B20000000000000000000008 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000008 /* DashboardView.swift */; };
 		B20000000000000000000009 /* SettingsPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000009 /* SettingsPopoverView.swift */; };
 		B20000000000000000000010 /* ManagersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000010 /* ManagersView.swift */; };
+		B20000000000000000000011 /* OnboardingContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000011 /* OnboardingContainerView.swift */; };
+		B20000000000000000000012 /* OnboardingWelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000012 /* OnboardingWelcomeView.swift */; };
+		B20000000000000000000013 /* OnboardingDetectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000013 /* OnboardingDetectionView.swift */; };
+		B20000000000000000000014 /* OnboardingConfigureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000014 /* OnboardingConfigureView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -92,6 +96,10 @@
 		B10000000000000000000008 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		B10000000000000000000009 /* SettingsPopoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsPopoverView.swift; sourceTree = "<group>"; };
 		B10000000000000000000010 /* ManagersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagersView.swift; sourceTree = "<group>"; };
+		B10000000000000000000011 /* OnboardingContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingContainerView.swift; sourceTree = "<group>"; };
+		B10000000000000000000012 /* OnboardingWelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWelcomeView.swift; sourceTree = "<group>"; };
+		B10000000000000000000013 /* OnboardingDetectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingDetectionView.swift; sourceTree = "<group>"; };
+		B10000000000000000000014 /* OnboardingConfigureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingConfigureView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -169,6 +177,7 @@
 			isa = PBXGroup;
 			children = (
 				B30000000000000000000001 /* Components */,
+				B30000000000000000000002 /* Onboarding */,
 				B10000000000000000000008 /* DashboardView.swift */,
 				B10000000000000000000010 /* ManagersView.swift */,
 				B10000000000000000000007 /* NavigationBarView.swift */,
@@ -269,6 +278,17 @@
 				B10000000000000000000006 /* TaskRowView.swift */,
 			);
 			path = Components;
+			sourceTree = "<group>";
+		};
+		B30000000000000000000002 /* Onboarding */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000011 /* OnboardingContainerView.swift */,
+				B10000000000000000000014 /* OnboardingConfigureView.swift */,
+				B10000000000000000000013 /* OnboardingDetectionView.swift */,
+				B10000000000000000000012 /* OnboardingWelcomeView.swift */,
+			);
+			path = Onboarding;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -423,6 +443,10 @@
 				B20000000000000000000008 /* DashboardView.swift in Sources */,
 				B20000000000000000000009 /* SettingsPopoverView.swift in Sources */,
 				B20000000000000000000010 /* ManagersView.swift in Sources */,
+				B20000000000000000000011 /* OnboardingContainerView.swift in Sources */,
+				B20000000000000000000012 /* OnboardingWelcomeView.swift in Sources */,
+				B20000000000000000000013 /* OnboardingDetectionView.swift in Sources */,
+				B20000000000000000000014 /* OnboardingConfigureView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

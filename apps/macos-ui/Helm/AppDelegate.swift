@@ -135,56 +135,67 @@ private struct StatusBarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            NavigationBarView(
-                selectedTab: $selectedTab,
-                searchText: $core.searchText,
-                showSettings: $showSettings
-            )
+            if !core.hasCompletedOnboarding {
+                OnboardingContainerView {
+                    core.completeOnboarding()
+                }
+            } else {
+                NavigationBarView(
+                    selectedTab: $selectedTab,
+                    searchText: $core.searchText,
+                    showSettings: $showSettings
+                )
 
-            Divider()
+                Divider()
 
-            if core.isInitialized {
-                Group {
-                    switch selectedTab {
-                    case .dashboard:
-                        DashboardView(selectedTab: $selectedTab)
-                    case .managers:
-                        ManagersView(selectedTab: $selectedTab)
-                    case .packages:
-                        PackageListView(searchText: $core.searchText)
+                if core.isInitialized {
+                    Group {
+                        switch selectedTab {
+                        case .dashboard:
+                            DashboardView(selectedTab: $selectedTab)
+                        case .managers:
+                            ManagersView(selectedTab: $selectedTab)
+                        case .packages:
+                            PackageListView(searchText: $core.searchText)
+                        }
+                    }
+                    .frame(maxHeight: .infinity)
+                } else {
+                    VStack {
+                        Spacer()
+                        ProgressView("Initializing...")
+                            .font(.subheadline)
+                        Spacer()
                     }
                 }
-                .frame(maxHeight: .infinity)
-            } else {
-                VStack {
-                    Spacer()
-                    ProgressView("Initializing...")
-                        .font(.subheadline)
+
+                Divider()
+
+                HStack {
+                    if core.isRefreshing {
+                        ProgressView()
+                            .scaleEffect(0.5)
+                            .frame(width: 12, height: 12)
+                        Text("Refreshing...")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("v\(helmVersion)")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
                     Spacer()
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
             }
-
-            Divider()
-
-            HStack {
-                if core.isRefreshing {
-                    ProgressView()
-                        .scaleEffect(0.5)
-                        .frame(width: 12, height: 12)
-                    Text("Refreshing...")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                } else {
-                    Text("v\(helmVersion)")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
         }
         .frame(width: 360, height: 600)
+        .onAppear {
+            if core.hasCompletedOnboarding {
+                core.triggerRefresh()
+            }
+        }
         .onChange(of: core.searchText) { newValue in
             if !newValue.trimmingCharacters(in: .whitespaces).isEmpty && selectedTab != .packages {
                 selectedTab = .packages

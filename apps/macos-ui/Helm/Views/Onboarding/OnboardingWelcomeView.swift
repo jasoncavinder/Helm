@@ -1,0 +1,40 @@
+import SwiftUI
+
+struct OnboardingWelcomeView: View {
+    let onContinue: () -> Void
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Spacer()
+
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 80, height: 80)
+                .cornerRadius(16)
+
+            VStack(spacing: 8) {
+                Text("Welcome to Helm")
+                    .font(.title2)
+                    .fontWeight(.bold)
+
+                Text("Centralized control for all your\npackage managers")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+            }
+
+            Spacer()
+
+            Button(action: onContinue) {
+                Text("Get Started")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(.horizontal, 40)
+            .padding(.bottom, 32)
+        }
+    }
+}
