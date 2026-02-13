@@ -1,6 +1,6 @@
 # Helm Website
 
-This is the source code for the [Helm product website](https://jasoncavinder.github.io/Helm/).
+This is the source code for the [Helm product website](https://helmapp.dev/).
 
 ## Built With
 

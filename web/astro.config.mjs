@@ -4,8 +4,7 @@ import starlight from '@astrojs/starlight';
 
 // https://astro.build/config
 export default defineConfig({
-	site: 'https://jasoncavinder.github.io',
-	base: '/Helm',
+	site: 'https://helmapp.dev',
 	integrations: [
 		starlight({
 			title: 'Helm',
