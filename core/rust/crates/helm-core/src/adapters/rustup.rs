@@ -260,6 +260,7 @@ fn parse_rustup_check(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
             },
             candidate_version: new_version.to_owned(),
             pinned: false,
+            restart_required: false,
         });
     }
 

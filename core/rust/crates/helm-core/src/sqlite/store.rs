@@ -151,12 +151,13 @@ ON CONFLICT(manager_id, package_name) DO UPDATE SET
                 let mut statement = transaction.prepare(
                     "
 INSERT INTO outdated_packages (
-    manager_id, package_name, installed_version, candidate_version, pinned, updated_at_unix
-) VALUES (?1, ?2, ?3, ?4, ?5, strftime('%s', 'now'))
+    manager_id, package_name, installed_version, candidate_version, pinned, restart_required, updated_at_unix
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%s', 'now'))
 ON CONFLICT(manager_id, package_name) DO UPDATE SET
     installed_version = excluded.installed_version,
     candidate_version = excluded.candidate_version,
     pinned = excluded.pinned,
+    restart_required = excluded.restart_required,
     updated_at_unix = excluded.updated_at_unix
 ",
                 )?;
@@ -168,6 +169,7 @@ ON CONFLICT(manager_id, package_name) DO UPDATE SET
                         package.installed_version.as_deref(),
                         package.candidate_version.as_str(),
                         bool_to_sqlite(package.pinned),
+                        bool_to_sqlite(package.restart_required),
                     ))?;
                 }
             }
@@ -213,7 +215,7 @@ ORDER BY manager_id, package_name
             ensure_schema_ready(connection)?;
             let mut statement = connection.prepare(
                 "
-SELECT manager_id, package_name, installed_version, candidate_version, pinned
+SELECT manager_id, package_name, installed_version, candidate_version, pinned, restart_required
 FROM outdated_packages
 ORDER BY manager_id, package_name
 ",
@@ -225,6 +227,7 @@ ORDER BY manager_id, package_name
                 let installed_version: Option<String> = row.get(2)?;
                 let candidate_version: String = row.get(3)?;
                 let pinned_int: i64 = row.get(4)?;
+                let restart_required_int: i64 = row.get(5)?;
 
                 let manager = parse_manager_id(&manager_id)?;
                 Ok(OutdatedPackage {
@@ -235,6 +238,7 @@ ORDER BY manager_id, package_name
                     installed_version,
                     candidate_version,
                     pinned: sqlite_to_bool(pinned_int),
+                    restart_required: sqlite_to_bool(restart_required_int),
                 })
             })?;
 

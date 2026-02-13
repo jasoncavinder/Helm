@@ -124,4 +124,28 @@ mod tests {
         let phases = authority_phases(&adapters);
         assert!(phases.is_empty());
     }
+
+    #[test]
+    fn five_adapter_authority_phases() {
+        let mise = StubAdapter::new(ManagerId::Mise, ManagerAuthority::Authoritative);
+        let rustup = StubAdapter::new(ManagerId::Rustup, ManagerAuthority::Authoritative);
+        let mas = StubAdapter::new(ManagerId::Mas, ManagerAuthority::Standard);
+        let brew = StubAdapter::new(ManagerId::HomebrewFormula, ManagerAuthority::Guarded);
+        let swupd = StubAdapter::new(ManagerId::SoftwareUpdate, ManagerAuthority::Guarded);
+
+        let adapters: Vec<&dyn ManagerAdapter> = vec![&mise, &rustup, &mas, &brew, &swupd];
+        let phases = authority_phases(&adapters);
+
+        assert_eq!(phases.len(), 3);
+        // Phase 1: Authoritative — mise + rustup
+        assert!(phases[0].contains(&ManagerId::Mise));
+        assert!(phases[0].contains(&ManagerId::Rustup));
+        assert_eq!(phases[0].len(), 2);
+        // Phase 2: Standard — mas
+        assert_eq!(phases[1], vec![ManagerId::Mas]);
+        // Phase 3: Guarded — homebrew + softwareupdate
+        assert!(phases[2].contains(&ManagerId::HomebrewFormula));
+        assert!(phases[2].contains(&ManagerId::SoftwareUpdate));
+        assert_eq!(phases[2].len(), 2);
+    }
 }

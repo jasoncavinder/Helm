@@ -71,6 +71,8 @@ struct ManagersView: View {
         case "cargo": return "Cargo"
         case "mise": return "mise"
         case "rustup": return "rustup"
+        case "softwareupdate": return "Software Update"
+        case "mas": return "App Store"
         default: return raw.replacingOccurrences(of: "_", with: " ").capitalized
         }
     }

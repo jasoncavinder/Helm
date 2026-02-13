@@ -9,7 +9,7 @@
   <br>
   A native macOS menu bar app for unified package manager control.
   <br>
-  <strong>Pre-1.0 &middot; v0.6.0</strong>
+  <strong>Pre-1.0 &middot; v0.7.0</strong>
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
 
 Helm manages software across multiple package managers (Homebrew, npm, pip, Cargo, etc.) and runtime tools (mise, rustup) from a single menu bar interface. It is designed as infrastructure software: deterministic, safety-first, and explicit about authority, orchestration, and error handling.
 
-> **Status:** Active pre-1.0 development. Homebrew, mise, and rustup adapters are functional with authority-ordered refresh. Additional adapters and features are being added milestone by milestone.
+> **Status:** Active pre-1.0 development. Five adapters are functional (Homebrew, mise, rustup, softwareupdate, mas) with authority-ordered refresh and restart-required detection. Additional adapters and features are being added milestone by milestone.
 
 ## Features
 
@@ -32,7 +32,8 @@ Helm manages software across multiple package managers (Homebrew, npm, pip, Carg
 - **Package list** — Browse installed, upgradable, and available packages with status filters
 - **Progressive search** — Instant local filtering with debounced remote search and cache enrichment
 - **Background tasks** — Real-time task tracking with per-manager serial execution
-- **Multi-manager refresh** — Authority-ordered refresh across Homebrew, mise, and rustup
+- **Multi-manager refresh** — Authority-ordered refresh across 5 managers (Homebrew, mise, rustup, softwareupdate, mas)
+- **Restart detection** — Surface restart-required updates from macOS softwareupdate
 
 ## Architecture
 
@@ -78,6 +79,7 @@ Or open `apps/macos-ui/Helm.xcodeproj` in Xcode and run the **Helm** scheme. The
 | 0.4.x | SwiftUI shell — menu bar app, XPC service, Rust FFI bridge, live UI | Complete |
 | 0.5.x | Progressive search — local-first search, remote search, cache enrichment | Complete |
 | 0.6.x | Core toolchain managers — mise, rustup adapters, authority ordering | Complete |
+| 0.7.x | System & App Store managers — softwareupdate, mas, restart detection | Complete |
 | 1.0.0 | Stable control plane release | Planned |
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full roadmap through 1.0.

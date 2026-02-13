@@ -177,6 +177,16 @@ private struct PackageDetailPopover: View {
                 LabeledContentRow(label: "Available", value: latest, valueColor: .orange)
             }
 
+            if package.restartRequired {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .foregroundColor(.orange)
+                    Text("Restart required after update")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+
             Divider()
 
             HStack {

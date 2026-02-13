@@ -5,10 +5,14 @@ use std::time::Duration;
 
 use helm_core::adapters::homebrew::HomebrewAdapter;
 use helm_core::adapters::homebrew_process::ProcessHomebrewSource;
+use helm_core::adapters::mas::MasAdapter;
+use helm_core::adapters::mas_process::ProcessMasSource;
 use helm_core::adapters::mise::MiseAdapter;
 use helm_core::adapters::mise_process::ProcessMiseSource;
 use helm_core::adapters::rustup::RustupAdapter;
 use helm_core::adapters::rustup_process::ProcessRustupSource;
+use helm_core::adapters::softwareupdate::SoftwareUpdateAdapter;
+use helm_core::adapters::softwareupdate_process::ProcessSoftwareUpdateSource;
 use helm_core::adapters::{AdapterRequest, InstallRequest, SearchRequest, UninstallRequest};
 use helm_core::execution::tokio_process::TokioProcessExecutor;
 use helm_core::models::{ManagerId, PackageRef, SearchQuery};
@@ -83,9 +87,18 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
     let rustup_adapter = Arc::new(RustupAdapter::new(ProcessRustupSource::new(
         executor.clone(),
     )));
+    let softwareupdate_adapter = Arc::new(SoftwareUpdateAdapter::new(
+        ProcessSoftwareUpdateSource::new(executor.clone()),
+    ));
+    let mas_adapter = Arc::new(MasAdapter::new(ProcessMasSource::new(executor.clone())));
 
-    let adapters: Vec<Arc<dyn helm_core::adapters::ManagerAdapter>> =
-        vec![homebrew_adapter, mise_adapter, rustup_adapter];
+    let adapters: Vec<Arc<dyn helm_core::adapters::ManagerAdapter>> = vec![
+        homebrew_adapter,
+        mise_adapter,
+        rustup_adapter,
+        softwareupdate_adapter,
+        mas_adapter,
+    ];
 
     // Initialize Orchestration
     let runtime = match AdapterRuntime::with_all_stores(
@@ -372,6 +385,8 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
         ManagerId::HomebrewFormula,
         ManagerId::Mise,
         ManagerId::Rustup,
+        ManagerId::SoftwareUpdate,
+        ManagerId::Mas,
     ];
 
     #[derive(serde::Serialize)]

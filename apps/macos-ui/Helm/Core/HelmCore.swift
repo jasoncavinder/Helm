@@ -19,6 +19,7 @@ struct CoreOutdatedPackage: Codable {
     let installedVersion: String?
     let candidateVersion: String
     let pinned: Bool
+    let restartRequired: Bool
 }
 
 struct CoreTaskRecord: Codable {
@@ -157,6 +158,7 @@ final class HelmCore: ObservableObject {
         case "cargo": return "Cargo"
         case "mise": return "mise"
         case "rustup": return "rustup"
+        case "softwareupdate": return "Software Update"
         case "mas": return "App Store"
         default: return raw.replacingOccurrences(of: "_", with: " ").capitalized
         }
@@ -203,7 +205,8 @@ final class HelmCore: ObservableObject {
                             name: pkg.package.name,
                             version: pkg.installedVersion ?? "unknown",
                             latestVersion: pkg.candidateVersion,
-                            manager: self?.normalizedManagerName(pkg.package.manager) ?? pkg.package.manager
+                            manager: self?.normalizedManagerName(pkg.package.manager) ?? pkg.package.manager,
+                            restartRequired: pkg.restartRequired
                         )
                     }
                 }

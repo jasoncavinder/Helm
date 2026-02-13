@@ -156,7 +156,7 @@ Delivered:
 
 ---
 
-## 0.7.x — System & App Store Managers (beta)
+## 0.7.x — System & App Store Managers (beta) - Completed
 
 Goal:
 
@@ -174,6 +174,16 @@ Exit Criteria:
 - `mas outdated` detection works and is parsed correctly
 - Guardrails block silent OS updates
 - Reboot-required surfaced in UI
+
+Delivered:
+- softwareupdate adapter with `sw_vers` detection and `softwareupdate -l` parsing
+- mas (Mac App Store) adapter with `mas version`, `mas list`, and `mas outdated` parsing
+- restart_required field on OutdatedPackage model with schema migration v2
+- Full 3-phase authority ordering validated: Authoritative (mise, rustup) → Standard (mas) → Guarded (Homebrew, softwareupdate)
+- FFI registration for all 5 adapters with shared TokioProcessExecutor
+- Restart-required indicator in PackageRowView and PackageDetailPopover
+- End-to-end integration tests for softwareupdate and mas adapters
+- 5-adapter authority phase ordering test
 
 ---
 

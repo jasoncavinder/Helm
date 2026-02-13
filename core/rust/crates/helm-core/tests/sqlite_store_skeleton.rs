@@ -136,6 +136,7 @@ fn upsert_and_list_outdated_roundtrip() {
         installed_version: Some("3.3.1".to_string()),
         candidate_version: "3.3.2".to_string(),
         pinned: false,
+        restart_required: false,
     }];
 
     store.upsert_outdated(&packages).unwrap();

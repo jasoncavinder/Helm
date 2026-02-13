@@ -217,6 +217,7 @@ fn parse_mise_outdated(json: &str) -> AdapterResult<Vec<OutdatedPackage>> {
             installed_version: Some(entry.current),
             candidate_version: entry.latest,
             pinned: false,
+            restart_required: false,
         })
         .collect();
 
