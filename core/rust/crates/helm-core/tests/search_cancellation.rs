@@ -82,7 +82,7 @@ async fn graceful_cancel_with_sufficient_grace_period_allows_completion() {
         Duration::from_millis(200),
     ));
     let runtime =
-        AdapterRuntime::with_all_stores([adapter], store.clone(), store.clone(), store.clone())
+        AdapterRuntime::with_all_stores([adapter], store.clone(), store.clone(), store.clone(), store.clone())
             .unwrap();
 
     let request = AdapterRequest::Search(SearchRequest {
@@ -129,7 +129,7 @@ async fn graceful_cancel_with_short_grace_period_cancels_long_task() {
         Duration::from_secs(5),
     ));
     let runtime =
-        AdapterRuntime::with_all_stores([adapter], store.clone(), store.clone(), store.clone())
+        AdapterRuntime::with_all_stores([adapter], store.clone(), store.clone(), store.clone(), store.clone())
             .unwrap();
 
     let request = AdapterRequest::Search(SearchRequest {

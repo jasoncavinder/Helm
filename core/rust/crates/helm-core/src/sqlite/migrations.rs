@@ -68,7 +68,30 @@ DROP TABLE IF EXISTS installed_packages;
 "#,
 };
 
-const MIGRATIONS: [SqliteMigration; 1] = [MIGRATION_0001];
+const MIGRATION_0002: SqliteMigration = SqliteMigration {
+    version: 2,
+    name: "add_manager_detection_and_preferences",
+    up_sql: r#"
+CREATE TABLE IF NOT EXISTS manager_detection (
+    manager_id TEXT PRIMARY KEY,
+    detected INTEGER NOT NULL DEFAULT 0,
+    executable_path TEXT,
+    version TEXT,
+    detected_at_unix INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS manager_preferences (
+    manager_id TEXT PRIMARY KEY,
+    enabled INTEGER NOT NULL DEFAULT 1
+);
+"#,
+    down_sql: r#"
+DROP TABLE IF EXISTS manager_preferences;
+DROP TABLE IF EXISTS manager_detection;
+"#,
+};
+
+const MIGRATIONS: [SqliteMigration; 2] = [MIGRATION_0001, MIGRATION_0002];
 
 pub fn migrations() -> &'static [SqliteMigration] {
     &MIGRATIONS

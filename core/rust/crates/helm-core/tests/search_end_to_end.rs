@@ -140,7 +140,7 @@ async fn cache_enrichment_across_multiple_queries() {
         Duration::from_millis(10),
     ));
     let runtime =
-        AdapterRuntime::with_all_stores([adapter], store.clone(), store.clone(), store.clone())
+        AdapterRuntime::with_all_stores([adapter], store.clone(), store.clone(), store.clone(), store.clone())
             .unwrap();
 
     // First search: "wget" → 2 results
@@ -221,7 +221,7 @@ async fn grace_period_allows_near_complete_search_to_persist() {
         Duration::from_millis(200),
     ));
     let runtime =
-        AdapterRuntime::with_all_stores([adapter], store.clone(), store.clone(), store.clone())
+        AdapterRuntime::with_all_stores([adapter], store.clone(), store.clone(), store.clone(), store.clone())
             .unwrap();
 
     let request = AdapterRequest::Search(SearchRequest {
@@ -279,7 +279,7 @@ async fn long_running_search_aborted_after_grace_period() {
         Duration::from_secs(5),
     ));
     let runtime =
-        AdapterRuntime::with_all_stores([adapter], store.clone(), store.clone(), store.clone())
+        AdapterRuntime::with_all_stores([adapter], store.clone(), store.clone(), store.clone(), store.clone())
             .unwrap();
 
     let request = AdapterRequest::Search(SearchRequest {
@@ -330,7 +330,7 @@ async fn concurrent_search_and_refresh_serialized_without_deadlock() {
         Duration::from_millis(100),
     ));
     let runtime =
-        AdapterRuntime::with_all_stores([adapter], store.clone(), store.clone(), store.clone())
+        AdapterRuntime::with_all_stores([adapter], store.clone(), store.clone(), store.clone(), store.clone())
             .unwrap();
 
     // Submit search and refresh concurrently — both use HomebrewFormula, must be serialized
@@ -379,7 +379,7 @@ async fn empty_query_returns_empty_results_from_cache() {
         Duration::from_millis(10),
     ));
     let runtime =
-        AdapterRuntime::with_all_stores([adapter], store.clone(), store.clone(), store.clone())
+        AdapterRuntime::with_all_stores([adapter], store.clone(), store.clone(), store.clone(), store.clone())
             .unwrap();
 
     let request = AdapterRequest::Search(SearchRequest {

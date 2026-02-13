@@ -5,11 +5,13 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use rusqlite::{Connection, params};
 
 use crate::models::{
-    CachedSearchResult, CoreError, CoreErrorKind, InstalledPackage, ManagerId, OutdatedPackage,
-    PackageCandidate, PackageRef, PinKind, PinRecord, TaskId, TaskRecord, TaskStatus, TaskType,
+    CachedSearchResult, CoreError, CoreErrorKind, DetectionInfo, InstalledPackage, ManagerId,
+    OutdatedPackage, PackageCandidate, PackageRef, PinKind, PinRecord, TaskId, TaskRecord,
+    TaskStatus, TaskType,
 };
 use crate::persistence::{
-    MigrationStore, PackageStore, PersistenceResult, PinStore, SearchCacheStore, TaskStore,
+    DetectionStore, MigrationStore, PackageStore, PersistenceResult, PinStore, SearchCacheStore,
+    TaskStore,
 };
 use crate::sqlite::migrations::{SqliteMigration, current_schema_version, migration, migrations};
 
@@ -491,6 +493,103 @@ LIMIT ?1
                 Some(id) => Ok(i64_to_u64(id)?.saturating_add(1)),
                 None => Ok(0),
             }
+        })
+    }
+}
+
+impl DetectionStore for SqliteStore {
+    fn upsert_detection(&self, manager: ManagerId, info: &DetectionInfo) -> PersistenceResult<()> {
+        self.with_connection("upsert_detection", |connection| {
+            ensure_schema_ready(connection)?;
+            connection.execute(
+                "
+INSERT INTO manager_detection (manager_id, detected, executable_path, version, detected_at_unix)
+VALUES (?1, ?2, ?3, ?4, strftime('%s', 'now'))
+ON CONFLICT(manager_id) DO UPDATE SET
+    detected = excluded.detected,
+    executable_path = excluded.executable_path,
+    version = excluded.version,
+    detected_at_unix = excluded.detected_at_unix
+",
+                params![
+                    manager.as_str(),
+                    bool_to_sqlite(info.installed),
+                    info.executable_path.as_ref().map(|p| p.to_string_lossy().to_string()),
+                    info.version.as_deref(),
+                ],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn list_detections(&self) -> PersistenceResult<Vec<(ManagerId, DetectionInfo)>> {
+        self.with_connection("list_detections", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection.prepare(
+                "
+SELECT manager_id, detected, executable_path, version
+FROM manager_detection
+ORDER BY manager_id
+",
+            )?;
+
+            let rows = statement.query_map([], |row| {
+                let manager_raw: String = row.get(0)?;
+                let detected_int: i64 = row.get(1)?;
+                let executable_path: Option<String> = row.get(2)?;
+                let version: Option<String> = row.get(3)?;
+
+                let manager = parse_manager_id(&manager_raw)?;
+                Ok((
+                    manager,
+                    DetectionInfo {
+                        installed: sqlite_to_bool(detected_int),
+                        executable_path: executable_path.map(std::path::PathBuf::from),
+                        version,
+                    },
+                ))
+            })?;
+
+            rows.collect()
+        })
+    }
+
+    fn set_manager_enabled(&self, manager: ManagerId, enabled: bool) -> PersistenceResult<()> {
+        self.with_connection("set_manager_enabled", |connection| {
+            ensure_schema_ready(connection)?;
+            connection.execute(
+                "
+INSERT INTO manager_preferences (manager_id, enabled)
+VALUES (?1, ?2)
+ON CONFLICT(manager_id) DO UPDATE SET
+    enabled = excluded.enabled
+",
+                params![manager.as_str(), bool_to_sqlite(enabled)],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn list_manager_preferences(&self) -> PersistenceResult<Vec<(ManagerId, bool)>> {
+        self.with_connection("list_manager_preferences", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection.prepare(
+                "
+SELECT manager_id, enabled
+FROM manager_preferences
+ORDER BY manager_id
+",
+            )?;
+
+            let rows = statement.query_map([], |row| {
+                let manager_raw: String = row.get(0)?;
+                let enabled_int: i64 = row.get(1)?;
+
+                let manager = parse_manager_id(&manager_raw)?;
+                Ok((manager, sqlite_to_bool(enabled_int)))
+            })?;
+
+            rows.collect()
         })
     }
 }

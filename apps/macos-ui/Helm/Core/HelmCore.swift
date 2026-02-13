@@ -36,6 +36,15 @@ struct CoreSearchResult: Codable {
     let sourceManager: String
 }
 
+struct ManagerStatus: Codable {
+    let managerId: String
+    let detected: Bool
+    let version: String?
+    let executablePath: String?
+    let enabled: Bool
+    let isImplemented: Bool
+}
+
 final class HelmCore: ObservableObject {
     static let shared = HelmCore()
 
@@ -52,6 +61,8 @@ final class HelmCore: ObservableObject {
     @Published var searchResults: [PackageItem] = []
     @Published var cachedAvailablePackages: [PackageItem] = []
     @Published var detectedManagers: Set<String> = []
+    @Published var managerStatuses: [String: ManagerStatus] = [:]
+    @Published var selectedManagerFilter: String? = nil
 
     private var timer: Timer?
     private var connection: NSXPCConnection?
@@ -106,6 +117,7 @@ final class HelmCore: ObservableObject {
             self?.fetchTasks()
             self?.fetchPackages()
             self?.fetchOutdatedPackages()
+            self?.fetchManagerStatus()
             self?.refreshCachedAvailablePackages()
 
             // Re-query local cache to pick up enriched results from remote search
@@ -335,6 +347,46 @@ final class HelmCore: ObservableObject {
                 }
             } catch {
                 logger.error("Failed to decode cached available packages: \(error)")
+            }
+        }
+    }
+
+    // MARK: - Manager Status
+
+    func fetchManagerStatus() {
+        service()?.listManagerStatus { [weak self] jsonString in
+            guard let jsonString = jsonString, let data = jsonString.data(using: .utf8) else { return }
+
+            do {
+                let decoder = JSONDecoder()
+                let statuses = try decoder.decode([ManagerStatus].self, from: data)
+
+                DispatchQueue.main.async {
+                    var map: [String: ManagerStatus] = [:]
+                    for status in statuses {
+                        map[status.managerId] = status
+                    }
+                    self?.managerStatuses = map
+
+                    // Also update detectedManagers from persisted detection data
+                    var detected = Set<String>()
+                    for status in statuses {
+                        if status.detected {
+                            detected.insert(status.managerId)
+                        }
+                    }
+                    self?.detectedManagers = detected
+                }
+            } catch {
+                logger.error("Failed to decode manager statuses: \(error)")
+            }
+        }
+    }
+
+    func setManagerEnabled(_ managerId: String, enabled: Bool) {
+        service()?.setManagerEnabled(managerId: managerId, enabled: enabled) { success in
+            if !success {
+                logger.error("setManagerEnabled(\(managerId), \(enabled)) failed")
             }
         }
     }

@@ -1,6 +1,10 @@
+pub mod detection_store;
+
 use crate::models::{
     CachedSearchResult, CoreError, InstalledPackage, OutdatedPackage, PinRecord, TaskRecord,
 };
+
+pub use detection_store::DetectionStore;
 
 pub type PersistenceResult<T> = Result<T, CoreError>;
 

@@ -77,4 +77,20 @@ class HelmService: NSObject, HelmServiceProtocol {
         logger.info("helm_cancel_task(\(taskId)) result: \(result)")
         reply(result)
     }
+
+    func listManagerStatus(withReply reply: @escaping (String?) -> Void) {
+        guard let cString = helm_list_manager_status() else {
+            logger.warning("helm_list_manager_status returned nil")
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(cString) }
+        reply(String(cString: cString))
+    }
+
+    func setManagerEnabled(managerId: String, enabled: Bool, withReply reply: @escaping (Bool) -> Void) {
+        let result = managerId.withCString { helm_set_manager_enabled($0, enabled) }
+        logger.info("helm_set_manager_enabled(\(managerId), \(enabled)) result: \(result)")
+        reply(result)
+    }
 }
