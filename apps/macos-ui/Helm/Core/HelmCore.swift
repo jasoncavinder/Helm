@@ -220,19 +220,18 @@ final class HelmCore: ObservableObject {
                         )
                     }
 
-                    // Derive detection status from most recent task per manager.
+                    // Derive detection status from Detection-type tasks specifically.
                     // Tasks are ordered most-recent-first. A manager is "detected" if
-                    // its latest non-search task completed successfully.
-                    var latestStatusByManager: [String: String] = [:]
+                    // its latest detection task completed successfully.
+                    var latestDetectionByManager: [String: String] = [:]
                     for task in coreTasks {
-                        let taskType = task.taskType.lowercased()
-                        guard taskType != "search" else { continue }
-                        if latestStatusByManager[task.manager] == nil {
-                            latestStatusByManager[task.manager] = task.status.lowercased()
+                        guard task.taskType.lowercased() == "detection" else { continue }
+                        if latestDetectionByManager[task.manager] == nil {
+                            latestDetectionByManager[task.manager] = task.status.lowercased()
                         }
                     }
                     var detected = Set<String>()
-                    for (manager, status) in latestStatusByManager {
+                    for (manager, status) in latestDetectionByManager {
                         if status == "completed" {
                             detected.insert(manager)
                         }
