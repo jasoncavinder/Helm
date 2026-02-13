@@ -508,6 +508,34 @@ LIMIT ?1
             }
         })
     }
+
+    fn prune_completed_tasks(&self, max_age_secs: i64) -> PersistenceResult<usize> {
+        self.with_connection("prune_completed_tasks", |connection| {
+            ensure_schema_ready(connection)?;
+            let cutoff = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or(Duration::ZERO)
+                .as_secs() as i64
+                - max_age_secs;
+            let deleted = connection.execute(
+                "
+DELETE FROM task_records
+WHERE status IN ('completed', 'failed', 'cancelled')
+  AND created_at_unix < ?1
+",
+                params![cutoff],
+            )?;
+            Ok(deleted)
+        })
+    }
+
+    fn delete_all_tasks(&self) -> PersistenceResult<()> {
+        self.with_connection("delete_all_tasks", |connection| {
+            ensure_schema_ready(connection)?;
+            connection.execute("DELETE FROM task_records", [])?;
+            Ok(())
+        })
+    }
 }
 
 impl DetectionStore for SqliteStore {

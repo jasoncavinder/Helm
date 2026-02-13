@@ -132,6 +132,22 @@ impl TaskStore for RecordingTaskStore {
         })?;
         Ok(records.keys().map(|id| id.0).max().map_or(0, |m| m + 1))
     }
+
+    fn prune_completed_tasks(&self, _max_age_secs: i64) -> PersistenceResult<usize> {
+        Ok(0)
+    }
+
+    fn delete_all_tasks(&self) -> PersistenceResult<()> {
+        let mut records = self.records.lock().map_err(|_| CoreError {
+            manager: None,
+            task: None,
+            action: None,
+            kind: CoreErrorKind::Internal,
+            message: "recording store mutex poisoned".to_string(),
+        })?;
+        records.clear();
+        Ok(())
+    }
 }
 
 impl ManagerAdapter for TestAdapter {

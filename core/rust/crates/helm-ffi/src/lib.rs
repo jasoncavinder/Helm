@@ -193,6 +193,9 @@ pub extern "C" fn helm_list_tasks() -> *mut c_char {
         None => return std::ptr::null_mut(),
     };
 
+    // Auto-prune completed/failed/cancelled tasks older than 5 minutes
+    let _ = state.store.prune_completed_tasks(300);
+
     // List recent 50 tasks
     let tasks = match state.store.list_recent_tasks(50) {
         Ok(tasks) => tasks,
@@ -609,6 +612,10 @@ pub extern "C" fn helm_reset_database() -> bool {
         eprintln!("Failed to re-apply migrations: {}", e);
         return false;
     }
+
+    // Final cleanup: delete any task records that in-flight persistence
+    // watchers may have re-inserted during the brief reset window.
+    let _ = state.store.delete_all_tasks();
 
     true
 }

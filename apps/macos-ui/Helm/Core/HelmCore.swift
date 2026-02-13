@@ -135,10 +135,8 @@ final class HelmCore: ObservableObject {
 
     func triggerRefresh() {
         logger.info("triggerRefresh called")
-        DispatchQueue.main.async {
-            self.lastRefreshTrigger = Date()
-            self.isRefreshing = true
-        }
+        self.lastRefreshTrigger = Date()
+        self.isRefreshing = true
         service()?.triggerRefresh { success in
             if !success {
                 logger.error("triggerRefresh failed")
@@ -255,8 +253,10 @@ final class HelmCore: ObservableObject {
                     self?.detectedManagers = detected
 
                     let isRunning = coreTasks.contains {
-                        $0.taskType.lowercased() == "refresh" &&
-                        ($0.status.lowercased() == "running" || $0.status.lowercased() == "queued")
+                        let type = $0.taskType.lowercased()
+                        let status = $0.status.lowercased()
+                        return (type == "refresh" || type == "detection") &&
+                               (status == "running" || status == "queued")
                     }
 
                     // Only show "refreshing" when we triggered a refresh this session.
@@ -411,6 +411,10 @@ final class HelmCore: ObservableObject {
     }
 
     func resetDatabase(completion: @escaping (Bool) -> Void) {
+        // Stop polling during reset to prevent stale reads
+        timer?.invalidate()
+        timer = nil
+
         service()?.resetDatabase { [weak self] success in
             DispatchQueue.main.async {
                 if success {
@@ -427,6 +431,8 @@ final class HelmCore: ObservableObject {
                     UserDefaults.standard.removeObject(forKey: "hasCompletedOnboarding")
                     self?.hasCompletedOnboarding = false
                 }
+                // Resume polling after reset
+                self?.startPolling()
                 completion(success)
             }
         }
