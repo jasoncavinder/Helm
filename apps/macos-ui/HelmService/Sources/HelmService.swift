@@ -105,4 +105,10 @@ class HelmService: NSObject, HelmServiceProtocol {
         logger.info("helm_uninstall_manager(\(managerId)) result: \(taskId)")
         reply(taskId)
     }
+
+    func resetDatabase(withReply reply: @escaping (Bool) -> Void) {
+        let result = helm_reset_database()
+        logger.info("helm_reset_database result: \(result)")
+        reply(result)
+    }
 }

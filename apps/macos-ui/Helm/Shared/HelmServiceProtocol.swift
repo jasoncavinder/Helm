@@ -12,4 +12,5 @@ import Foundation
     func setManagerEnabled(managerId: String, enabled: Bool, withReply reply: @escaping (Bool) -> Void)
     func installManager(managerId: String, withReply reply: @escaping (Int64) -> Void)
     func uninstallManager(managerId: String, withReply reply: @escaping (Int64) -> Void)
+    func resetDatabase(withReply reply: @escaping (Bool) -> Void)
 }

@@ -410,6 +410,28 @@ final class HelmCore: ObservableObject {
         hasCompletedOnboarding = true
     }
 
+    func resetDatabase(completion: @escaping (Bool) -> Void) {
+        service()?.resetDatabase { [weak self] success in
+            DispatchQueue.main.async {
+                if success {
+                    self?.installedPackages = []
+                    self?.outdatedPackages = []
+                    self?.activeTasks = []
+                    self?.searchResults = []
+                    self?.cachedAvailablePackages = []
+                    self?.detectedManagers = []
+                    self?.managerStatuses = [:]
+                    self?.searchText = ""
+                    self?.isRefreshing = false
+                    self?.lastRefreshTrigger = nil
+                    UserDefaults.standard.removeObject(forKey: "hasCompletedOnboarding")
+                    self?.hasCompletedOnboarding = false
+                }
+                completion(success)
+            }
+        }
+    }
+
     func uninstallManager(_ managerId: String) {
         service()?.uninstallManager(managerId: managerId) { taskId in
             if taskId < 0 {

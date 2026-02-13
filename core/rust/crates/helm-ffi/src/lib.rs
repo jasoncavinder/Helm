@@ -18,7 +18,9 @@ use helm_core::execution::tokio_process::TokioProcessExecutor;
 use helm_core::models::{ManagerId, PackageRef, SearchQuery};
 use helm_core::orchestration::CancellationMode;
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
-use helm_core::persistence::{DetectionStore, PackageStore, SearchCacheStore, TaskStore};
+use helm_core::persistence::{
+    DetectionStore, MigrationStore, PackageStore, SearchCacheStore, TaskStore,
+};
 use helm_core::sqlite::SqliteStore;
 use lazy_static::lazy_static;
 
@@ -584,6 +586,31 @@ pub unsafe extern "C" fn helm_uninstall_manager(manager_id: *const c_char) -> i6
             -1
         }
     }
+}
+
+/// Reset the database by rolling back all migrations and re-applying them.
+/// Returns true on success.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_reset_database() -> bool {
+    let guard = STATE.lock().unwrap();
+    let state = match guard.as_ref() {
+        Some(s) => s,
+        None => return false,
+    };
+
+    // Roll back to version 0 (drops all data tables)
+    if let Err(e) = state.store.apply_migration(0) {
+        eprintln!("Failed to roll back migrations: {}", e);
+        return false;
+    }
+
+    // Re-apply all migrations (recreates empty tables)
+    if let Err(e) = state.store.migrate_to_latest() {
+        eprintln!("Failed to re-apply migrations: {}", e);
+        return false;
+    }
+
+    true
 }
 
 /// Free a string previously returned by a `helm_*` function.

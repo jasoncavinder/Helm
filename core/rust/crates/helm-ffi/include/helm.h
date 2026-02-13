@@ -83,6 +83,12 @@ int64_t helm_install_manager(const char *manager_id);
 int64_t helm_uninstall_manager(const char *manager_id);
 
 /**
+ * Reset the database by rolling back all migrations and re-applying them.
+ * Returns true on success.
+ */
+bool helm_reset_database(void);
+
+/**
  * Free a string previously returned by a `helm_*` function.
  *
  * # Safety
