@@ -16,6 +16,19 @@ Helm is a native macOS menu bar utility that provides a centralized control cent
 
 ---
 
+## **Product Variations (1.0 and Beyond)**
+
+Helm ships as two build artifacts with runtime-gated editions:
+
+- **Debug build** (development and internal validation only)
+- **Release build** (production signed artifact)
+- **Pro edition** (pay-gated runtime entitlement within release build)
+- **Business edition** (subscription-gated runtime entitlement within release build)
+
+Business edition extends Helm with centrally managed policy and compliance controls so package and toolchain environments can be kept consistent across enterprise scopes.
+
+---
+
 ## **Initial Manager Scope**
 
 ### **1. Tool & Runtime Managers (Authoritative)**
@@ -293,6 +306,20 @@ Control planes must be transparent.
 
 ---
 
+### 12) Enterprise Managed Mode (Post-1.0 Expansion)
+
+Business edition adds centrally managed operation without collapsing Helm's core architecture:
+
+- MDM deploys Helm and provides bootstrap managed configuration.
+- Helm consumes scoped policies from a central control plane.
+- Rust core evaluates policy before mutating actions (install, uninstall, upgrade, pin changes).
+- Drift and compliance states are computed locally and reported with clear attribution.
+- Offline behavior uses last known valid policy snapshot and degrades safely when policy is unavailable.
+
+This scope is planned for 1.x and is not a 1.0 release gate.
+
+---
+
 ## **Future Enhancements**
 
 - Notification & history timeline
@@ -301,6 +328,7 @@ Control planes must be transparent.
 - Export/import configuration
 - API for 3rd-party integrations
 - Interactive upgrade previews
+- Enterprise central policy and rollout management (Business edition)
 
 ---
 

@@ -82,7 +82,7 @@ Or open `apps/macos-ui/Helm.xcodeproj` in Xcode and run the **Helm** scheme. The
 | 0.7.x | System & App Store managers — softwareupdate, mas, restart detection | Complete |
 | 1.0.0 | Stable control plane release | Planned |
 
-See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full roadmap through 1.0.
+See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full roadmap through 1.x.
 
 ## Repository Layout
 
@@ -104,9 +104,13 @@ See [`docs/VERSIONING.md`](docs/VERSIONING.md) for the versioning strategy.
 
 ## Documentation
 
-- [Roadmap](docs/ROADMAP.md) — Milestone definitions through 1.0
+- [Roadmap](docs/ROADMAP.md) — Milestone definitions through 1.x
 - [Versioning](docs/VERSIONING.md) — Semantic versioning strategy
 - [Release Criteria](docs/DEFINITION_OF_DONE.md) — 1.0 definition of done
+- [Enterprise Architecture](docs/enterprise/ENTERPRISE_INTEGRATION_ARCHITECTURE.md) — Integration model for managed enterprise environments
+- [Editions and Entitlements](docs/enterprise/EDITIONS_AND_ENTITLEMENTS.md) — Debug/release build strategy and Free/Pro/Business gating
+- [Business Central Management Spec](docs/enterprise/BUSINESS_CENTRAL_MANAGEMENT_SPEC.md) — Scoped policy, drift, and compliance model
+- [Enterprise GTM Matrix](docs/enterprise/GTM_PERSONA_MATRIX.md) — Persona messaging and pilot KPI framework
 
 ## License
 
