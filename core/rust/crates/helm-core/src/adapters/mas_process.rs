@@ -3,7 +3,8 @@ use std::sync::Arc;
 use crate::adapters::detect_utils::which_executable;
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::mas::{
-    MasSource, mas_detect_request, mas_list_installed_request, mas_list_outdated_request,
+    MasDetectOutput, MasSource, mas_detect_request, mas_list_installed_request,
+    mas_list_outdated_request,
 };
 use crate::adapters::process_utils::run_and_collect_stdout;
 use crate::execution::{ProcessExecutor, ProcessSpawnRequest};
@@ -39,9 +40,24 @@ impl ProcessMasSource {
 }
 
 impl MasSource for ProcessMasSource {
-    fn detect(&self) -> AdapterResult<String> {
+    fn detect(&self) -> AdapterResult<MasDetectOutput> {
+        // Phase 1: instant filesystem check via which
+        let executable_path = which_executable(
+            self.executor.as_ref(),
+            "mas",
+            &["/opt/homebrew/bin", "/usr/local/bin"],
+            ManagerId::Mas,
+        );
+
+        // Phase 2: best-effort version (timeout is non-fatal)
         let request = self.configure_request(mas_detect_request(None));
-        run_and_collect_stdout(self.executor.as_ref(), request)
+        let version_output =
+            run_and_collect_stdout(self.executor.as_ref(), request).unwrap_or_default();
+
+        Ok(MasDetectOutput {
+            executable_path,
+            version_output,
+        })
     }
 
     fn list_installed(&self) -> AdapterResult<String> {

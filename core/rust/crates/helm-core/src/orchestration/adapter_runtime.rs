@@ -163,10 +163,7 @@ impl AdapterRuntime {
                 handles.push(tokio::spawn(async move {
                     // Detect first — if the manager binary is not installed, skip list operations
                     if let Err(e) = runtime
-                        .submit_refresh_request(
-                            manager,
-                            AdapterRequest::Detect(DetectRequest),
-                        )
+                        .submit_refresh_request(manager, AdapterRequest::Detect(DetectRequest))
                         .await
                     {
                         return vec![(manager, Err(e))];

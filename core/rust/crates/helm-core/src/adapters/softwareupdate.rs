@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::adapters::manager::{AdapterRequest, AdapterResponse, AdapterResult, ManagerAdapter};
@@ -27,8 +28,14 @@ const SOFTWAREUPDATE_COMMAND: &str = "/usr/sbin/softwareupdate";
 const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
 const LIST_TIMEOUT: Duration = Duration::from_secs(120);
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SoftwareUpdateDetectOutput {
+    pub executable_path: Option<PathBuf>,
+    pub version_output: String,
+}
+
 pub trait SoftwareUpdateSource: Send + Sync {
-    fn detect(&self) -> AdapterResult<String>;
+    fn detect(&self) -> AdapterResult<SoftwareUpdateDetectOutput>;
     fn list_available(&self) -> AdapterResult<String>;
 }
 
@@ -56,12 +63,13 @@ impl<S: SoftwareUpdateSource> ManagerAdapter for SoftwareUpdateAdapter<S> {
 
         match request {
             AdapterRequest::Detect(_) => {
-                let raw = self.source.detect()?;
-                let version = parse_softwareupdate_version(&raw);
-                let installed = version.is_some();
+                let output = self.source.detect()?;
+                let version = parse_softwareupdate_version(&output.version_output);
+                let has_executable = output.executable_path.is_some();
+                let installed = has_executable || version.is_some();
                 Ok(AdapterResponse::Detection(DetectionInfo {
                     installed,
-                    executable_path: None,
+                    executable_path: output.executable_path,
                     version,
                 }))
             }
@@ -242,8 +250,9 @@ mod tests {
     use crate::models::{CoreErrorKind, ManagerAction, ManagerId, TaskId, TaskType};
 
     use super::{
-        SoftwareUpdateAdapter, SoftwareUpdateSource, parse_softwareupdate_list,
-        parse_softwareupdate_version, softwareupdate_detect_request, softwareupdate_list_request,
+        SoftwareUpdateAdapter, SoftwareUpdateDetectOutput, SoftwareUpdateSource,
+        parse_softwareupdate_list, parse_softwareupdate_version, softwareupdate_detect_request,
+        softwareupdate_list_request,
     };
 
     const VERSION_FIXTURE: &str = include_str!("../../tests/fixtures/softwareupdate/version.txt");
@@ -378,9 +387,12 @@ mod tests {
     }
 
     impl SoftwareUpdateSource for FixtureSource {
-        fn detect(&self) -> AdapterResult<String> {
+        fn detect(&self) -> AdapterResult<SoftwareUpdateDetectOutput> {
             self.detect_calls.fetch_add(1, Ordering::SeqCst);
-            Ok(VERSION_FIXTURE.to_string())
+            Ok(SoftwareUpdateDetectOutput {
+                executable_path: Some(PathBuf::from("/usr/bin/sw_vers")),
+                version_output: VERSION_FIXTURE.to_string(),
+            })
         }
 
         fn list_available(&self) -> AdapterResult<String> {

@@ -280,8 +280,8 @@ mod tests {
     use crate::models::{CoreErrorKind, ManagerAction, ManagerId, TaskId, TaskType};
 
     use super::{
-        RustupAdapter, RustupDetectOutput, RustupSource, parse_rustup_check,
-        parse_rustup_version, parse_toolchain_list, rustup_check_request, rustup_detect_request,
+        RustupAdapter, RustupDetectOutput, RustupSource, parse_rustup_check, parse_rustup_version,
+        parse_toolchain_list, rustup_check_request, rustup_detect_request,
         rustup_toolchain_list_request,
     };
 
@@ -395,12 +395,14 @@ mod tests {
         let adapter = RustupAdapter::new(source);
 
         let result = adapter
-            .execute(AdapterRequest::Uninstall(crate::adapters::UninstallRequest {
-                package: crate::models::PackageRef {
-                    manager: ManagerId::Rustup,
-                    name: "__self__".to_string(),
+            .execute(AdapterRequest::Uninstall(
+                crate::adapters::UninstallRequest {
+                    package: crate::models::PackageRef {
+                        manager: ManagerId::Rustup,
+                        name: "__self__".to_string(),
+                    },
                 },
-            }))
+            ))
             .unwrap();
         assert!(matches!(result, AdapterResponse::Mutation(_)));
     }

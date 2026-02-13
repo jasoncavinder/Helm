@@ -582,12 +582,14 @@ mod tests {
         let adapter = HomebrewAdapter::new(source);
 
         let result = adapter
-            .execute(AdapterRequest::Uninstall(crate::adapters::UninstallRequest {
-                package: crate::models::PackageRef {
-                    manager: crate::models::ManagerId::HomebrewFormula,
-                    name: "ripgrep".to_string(),
+            .execute(AdapterRequest::Uninstall(
+                crate::adapters::UninstallRequest {
+                    package: crate::models::PackageRef {
+                        manager: crate::models::ManagerId::HomebrewFormula,
+                        name: "ripgrep".to_string(),
+                    },
                 },
-            }))
+            ))
             .unwrap();
         assert!(matches!(result, AdapterResponse::Mutation(_)));
     }

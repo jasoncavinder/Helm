@@ -410,8 +410,11 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
                 manager_id: id.as_str().to_string(),
                 detected: detection.map(|d| d.installed).unwrap_or(false),
                 version: detection.and_then(|d| d.version.clone()),
-                executable_path: detection
-                    .and_then(|d| d.executable_path.as_ref().map(|p| p.to_string_lossy().to_string())),
+                executable_path: detection.and_then(|d| {
+                    d.executable_path
+                        .as_ref()
+                        .map(|p| p.to_string_lossy().to_string())
+                }),
                 enabled,
                 is_implemented,
             }
