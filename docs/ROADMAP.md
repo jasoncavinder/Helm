@@ -232,7 +232,86 @@ Exit Criteria:
 
 ---
 
-## 0.9.x — Upgrade Preview & Execution Transparency (beta)
+## 0.9.x — Core Language Package Managers (beta)
+
+Goal:
+
+- npm (global) adapter
+- pipx adapter (recommended for Python CLI tools)
+- pip adapter (`python3 -m pip`, global packages only)
+- Cargo adapter (global installs via `cargo install`)
+- cargo-binstall adapter
+- Homebrew Casks adapter (extends existing Homebrew adapter for GUI applications)
+- All adapters declare capabilities: install, uninstall, list, outdated, search
+- Global packages only; project-local dependencies excluded unless explicitly enabled
+
+Exit Criteria:
+
+- Detection works for all six managers
+- list_installed and list_outdated produce correct results
+- Search returns results for managers that support it
+- Fixture-based parser tests for each adapter's output format
+- Authority ordering preserved (language managers execute as Standard authority)
+
+---
+
+## 0.10.x — Extended Language Package Managers (beta)
+
+Goal:
+
+- pnpm (global) adapter
+- yarn adapter (classic + berry)
+- poetry adapter
+- RubyGems adapter
+- bundler adapter
+- Same capability declaration requirements as 0.9.x adapters
+
+Exit Criteria:
+
+- Detection works for all five managers
+- list_installed and list_outdated produce correct results
+- Search returns results for managers that support it
+- Fixture-based parser tests for each adapter's output format
+- Patterns established in 0.9.x reused consistently
+
+---
+
+## 0.11.x — Platform, Detection & Optional Managers (beta)
+
+Goal:
+
+- Container & VM managers:
+
+  - Docker Desktop adapter (detection and upgrade prompting)
+  - podman adapter (detection and upgrade prompting)
+  - colima adapter (detection and upgrade prompting)
+  - Parallels Desktop adapter (detection only)
+- Security, firmware & vendor tools:
+
+  - Xcode Command Line Tools adapter
+  - Rosetta 2 adapter (Apple Silicon detection and status)
+  - Firmware updates adapter (`softwareupdate --history`)
+- App detection managers:
+
+  - Sparkle-based updaters (detection only)
+  - Setapp (detection only)
+- Optional toolchain managers:
+
+  - asdf adapter (optional / compatibility mode)
+  - MacPorts adapter (optional)
+  - nix-darwin adapter (optional)
+
+Exit Criteria:
+
+- Detection works for all managers in this milestone
+- Full adapter capabilities implemented for non-detection-only managers
+- Detection-only managers surface status correctly in UI
+- Optional managers clearly marked and disabled by default
+- Fixture-based parser tests for each adapter
+
+---
+
+## 0.12.x — Upgrade Preview & Execution Transparency (beta)
 
 Goal:
 
@@ -249,7 +328,7 @@ Exit Criteria:
 
 ---
 
-## 0.10.x — Self-Update & Installer Hardening (beta)
+## 0.13.x — Self-Update & Installer Hardening (beta)
 
 Goal:
 
@@ -266,7 +345,7 @@ Exit Criteria:
 
 ---
 
-## 0.11.x — Diagnostics & Logging (rc)
+## 0.14.x — Diagnostics & Logging (rc)
 
 Goal:
 
@@ -283,7 +362,7 @@ Exit Criteria:
 
 ---
 
-## 0.12.x — Stability & Pre-1.0 Hardening (rc)
+## 0.15.x — Stability & Pre-1.0 Hardening (rc)
 
 Goal:
 
