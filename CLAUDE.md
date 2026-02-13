@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Helm is a native macOS menu bar utility for centralized package manager control. It manages software across multiple package managers (Homebrew, npm, pip, Cargo, etc.) and runtime tools (mise, asdf, rustup). Pre-1.0, currently at v0.4.0 (SwiftUI shell complete, targeting 0.5.x progressive search).
+Helm is a native macOS menu bar utility for centralized package manager control. It manages software across multiple package managers (Homebrew, npm, pip, Cargo, etc.) and runtime tools (mise, asdf, rustup). Pre-1.0, currently at v0.6.0 (Homebrew, mise, and rustup adapters with authority-ordered refresh).
 
 ## Build & Test Commands
 
@@ -39,7 +39,7 @@ Three-layer architecture — do not collapse or bypass boundaries:
 ### Rust Core Modules (`core/rust/crates/helm-core/src/`)
 
 - **`models/`** — Domain types: `ManagerId` (28 managers), `PackageRef`, `InstalledPackage`, `OutdatedPackage`, `TaskRecord`, `CoreError`, `PinRecord`, `SearchQuery`. Errors carry attribution (manager/task/action).
-- **`adapters/`** — Package manager adapters implementing `ManagerAdapter` trait. Each adapter uses a trait-based source for dependency injection and testability. Only Homebrew implemented so far.
+- **`adapters/`** — Package manager adapters implementing `ManagerAdapter` trait. Each adapter uses a trait-based source for dependency injection and testability. Homebrew, mise, and rustup are implemented. Shared utilities in `process_utils.rs` and `detect_utils.rs`.
 - **`orchestration/`** — Task execution engine. `InMemoryTaskCoordinator` (sync state machine), `InMemoryAsyncTaskQueue` (async runtime with Tokio), `AdapterExecutionRuntime` (wraps adapter calls). Per-manager mutex enforces serial execution; cross-manager parallelism allowed.
 - **`persistence/`** — Abstract store traits: `PackageStore`, `PinStore`, `SearchCacheStore`, `TaskStore`, `MigrationStore`.
 - **`sqlite/`** — SQLite implementation of all store traits. Schema v1 with versioned migrations.
@@ -51,6 +51,7 @@ Three-layer architecture — do not collapse or bypass boundaries:
 - **Capability gating**: Adapters declare supported capabilities; requests are checked before execution.
 - **Concurrency**: `SerialPerManagerPolicy` — same manager tasks serial, different managers parallel. Enforced via per-manager mutex locks.
 - **Cancellation**: `TaskCancellationToken` for cooperative cancellation, Tokio `AbortHandle` for process-level.
+- **Authority ordering**: `authority_phases()` groups adapters by `ManagerAuthority` (Authoritative → Standard → Guarded). `refresh_all_ordered()` executes phases sequentially with cross-manager parallelism within each phase. Failure in one manager does not block others.
 
 ## Authority Documents
 
