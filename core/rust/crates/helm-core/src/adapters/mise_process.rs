@@ -6,7 +6,7 @@ use crate::adapters::mise::{
     MiseDetectOutput, MiseSource, mise_detect_request, mise_list_installed_request,
     mise_list_outdated_request,
 };
-use crate::adapters::process_utils::run_and_collect_stdout;
+use crate::adapters::process_utils::{run_and_collect_stdout, run_and_collect_version_output};
 use crate::execution::{ProcessExecutor, ProcessSpawnRequest};
 use crate::models::ManagerId;
 
@@ -55,11 +55,11 @@ impl MiseSource for ProcessMiseSource {
             ManagerId::Mise,
         );
 
-        // Phase 2: best-effort version (timeout is non-fatal)
+        // Phase 2: best-effort version (timeout is non-fatal, tries stdout then stderr)
         let request = mise_detect_request(None);
         let version_request = self.configure_request(request);
         let version_output =
-            run_and_collect_stdout(self.executor.as_ref(), version_request).unwrap_or_default();
+            run_and_collect_version_output(self.executor.as_ref(), version_request);
 
         Ok(MiseDetectOutput {
             executable_path,

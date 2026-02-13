@@ -149,11 +149,12 @@ fn mise_request(
 }
 
 fn parse_mise_version(output: &str) -> Option<String> {
-    // "mise 2026.2.6 macos-x64" -> "2026.2.6"
+    // Old format: "mise 2026.2.6 macos-x64" -> "2026.2.6"
+    // New format: "2026.2.6 macos-x64 (2026-02-07)" -> "2026.2.6"
     let line = output.lines().map(str::trim).find(|l| !l.is_empty())?;
-    let rest = line.strip_prefix("mise ")?;
-    let version = rest.split_whitespace().next()?;
-    if version.is_empty() {
+    let candidate = line.strip_prefix("mise ").unwrap_or(line);
+    let version = candidate.split_whitespace().next()?;
+    if version.is_empty() || !version.starts_with(|c: char| c.is_ascii_digit()) {
         return None;
     }
     Some(version.to_owned())
@@ -261,6 +262,12 @@ mod tests {
     #[test]
     fn parses_mise_version_from_standard_banner() {
         let version = parse_mise_version("mise 2026.2.6 macos-x64\n");
+        assert_eq!(version.as_deref(), Some("2026.2.6"));
+    }
+
+    #[test]
+    fn parses_mise_version_from_new_format() {
+        let version = parse_mise_version("2026.2.6 macos-x64 (2026-02-07)\n");
         assert_eq!(version.as_deref(), Some("2026.2.6"));
     }
 
