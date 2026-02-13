@@ -9,6 +9,7 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: 'Helm',
+			tagline: 'Take the helm.',
 			logo: {
 				src: './src/assets/helm-icon.png',
 			},
@@ -16,12 +17,15 @@ export default defineConfig({
 				{ label: 'GitHub', href: 'https://github.com/jasoncavinder/Helm', icon: 'github' },
 			],
 			sidebar: [
+				{ label: 'Overview', slug: 'overview' },
 				{
-					label: 'Start Here',
+					label: 'Guides',
 					items: [
-						{ label: 'Introduction', slug: 'guides/example' },
+						{ label: 'Installation', slug: 'guides/installation' },
+						{ label: 'Usage', slug: 'guides/usage' },
 					],
 				},
+				{ label: 'Roadmap', slug: 'roadmap' },
 			],
 		}),
 	],

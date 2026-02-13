@@ -1,19 +1,22 @@
 ---
 title: Helm
-description: The Unified Package & Update Control Center for macOS.
+description: Take the helm. Unified package management for macOS.
 template: splash
 hero:
-  tagline: The Unified Package & Update Control Center for macOS.
+  tagline: "<strong>Take the helm.</strong> One control plane for all your package managers on macOS."
   image:
     file: ../../assets/helm-icon.png
   actions:
     - text: Get Started
-      link: /guides/example/
+      link: /Helm/overview/
       icon: right-arrow
       variant: primary
     - text: View on GitHub
       link: https://github.com/jasoncavinder/Helm
       icon: external
+    - text: Roadmap
+      link: /Helm/roadmap/
+      icon: document
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
@@ -22,15 +25,19 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 
 <CardGrid stagger>
 	<Card title="Unified Control Plane" icon="laptop">
-		Manage Homebrew, npm, Cargo, and more from one native, high-performance macOS UI.
+		Manage Homebrew, mise, rustup, and more from one native macOS menu bar app. No more switching between terminals.
 	</Card>
 	<Card title="Safety First" icon="approve-check-circle">
-		Structured process execution, explicit authority rules, and no shell injection risks.
+		Structured process execution, authority-ordered refresh, and no shell injection risks. Your system stays predictable.
 	</Card>
 	<Card title="Smart Orchestration" icon="rocket">
-		Parallel execution across managers, with intelligent conflict resolution and caching.
+		Toolchain managers refresh before package managers. Parallel execution across managers, serial within each. Failures are isolated.
 	</Card>
 	<Card title="Native & Fast" icon="lightning">
-		Built with Rust and SwiftUI for instant search, low memory usage, and zero lag.
+		Built with Rust and SwiftUI. Instant search, low memory usage, and real-time task tracking from your menu bar.
 	</Card>
 </CardGrid>
+
+## Current Status
+
+Helm is in active pre-1.0 development at **v0.6.0**. Homebrew, mise, and rustup adapters are functional with authority-ordered refresh. See the [roadmap](/Helm/roadmap/) for what's next.
