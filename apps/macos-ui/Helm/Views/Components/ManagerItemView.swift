@@ -43,7 +43,6 @@ struct ManagerItemView: View {
                     .fill(indicatorColor)
                     .frame(width: 8, height: 8)
                     .offset(x: 2, y: -2)
-                    .help(statusTooltip)
             }
 
             Text(manager.shortName)
@@ -59,6 +58,7 @@ struct ManagerItemView: View {
         }
         .frame(width: 60)
         .contentShape(Rectangle())
+        .help(statusTooltip)
         .onTapGesture { onTap() }
         .contextMenu {
             Button("View Packages") { onTap() }

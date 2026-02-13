@@ -61,6 +61,10 @@ struct OnboardingConfigureView: View {
 
                                 Spacer()
 
+                                Text(enabled ? "Enabled" : "Disabled")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+
                                 Toggle("", isOn: Binding(
                                     get: { enabled },
                                     set: { _ in

@@ -10,28 +10,51 @@ struct OnboardingDetectionView: View {
         hasTriggeredDetection && !core.isRefreshing
     }
 
+    private var foundManagers: [ManagerInfo] {
+        ManagerInfo.implemented.filter { manager in
+            core.managerStatuses[manager.id]?.detected == true
+        }
+    }
+
     var body: some View {
         VStack(spacing: 16) {
             Text("Detecting Package Managers")
                 .font(.headline)
                 .padding(.top, 16)
 
-            Text("Scanning your system...")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
+            if detectionComplete {
+                if foundManagers.isEmpty {
+                    Text("No package managers were detected.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                } else {
+                    Text("Found \(foundManagers.count) package manager\(foundManagers.count == 1 ? "" : "s")")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+            } else {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                    Text("Scanning your system\u{2026}")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+            }
 
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(ManagerInfo.implemented) { manager in
-                        let status = core.managerStatuses[manager.id]
-                        DetectionRow(
-                            manager: manager,
-                            status: status,
-                            isRefreshing: core.isRefreshing,
-                            hasTriggered: hasTriggeredDetection
-                        )
-                        Divider()
-                            .padding(.leading, 44)
+            if foundManagers.isEmpty && !detectionComplete {
+                Spacer()
+            } else {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(foundManagers) { manager in
+                            let status = core.managerStatuses[manager.id]
+                            FoundManagerRow(manager: manager, status: status)
+                            if manager.id != foundManagers.last?.id {
+                                Divider()
+                                    .padding(.leading, 44)
+                            }
+                        }
                     }
                 }
             }
@@ -58,42 +81,27 @@ struct OnboardingDetectionView: View {
     }
 }
 
-private struct DetectionRow: View {
+private struct FoundManagerRow: View {
     let manager: ManagerInfo
     let status: ManagerStatus?
-    let isRefreshing: Bool
-    let hasTriggered: Bool
 
     var body: some View {
         HStack(spacing: 12) {
-            Group {
-                if let status = status, status.detected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                } else if !isRefreshing && hasTriggered {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary)
-                } else if hasTriggered {
-                    ProgressView()
-                        .scaleEffect(0.6)
-                } else {
-                    Circle()
-                        .fill(Color.gray.opacity(0.3))
-                }
-            }
-            .frame(width: 20, height: 20)
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundColor(.green)
+                .frame(width: 20, height: 20)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(manager.displayName)
                     .font(.subheadline)
                     .fontWeight(.medium)
 
-                if let status = status, status.detected, let version = status.version {
+                if let version = status?.version {
                     Text("v\(version)")
                         .font(.caption2)
                         .foregroundColor(.secondary)
-                } else if !isRefreshing && hasTriggered {
-                    Text("Not found")
+                } else {
+                    Text("Detected")
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 }

@@ -2,8 +2,8 @@ import SwiftUI
 
 enum HelmTab: String, CaseIterable {
     case dashboard = "Dashboard"
-    case managers = "Managers"
     case packages = "Packages"
+    case managers = "Managers"
 }
 
 struct NavigationBarView: View {

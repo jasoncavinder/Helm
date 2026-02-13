@@ -5,132 +5,135 @@ struct DashboardView: View {
     @Binding var selectedTab: HelmTab
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 12) {
-                // App icon + version | Stats
-                HStack(alignment: .center, spacing: 12) {
-                    Image(nsImage: NSApp.applicationIconImage)
-                        .resizable()
-                        .frame(width: 36, height: 36)
-                        .cornerRadius(8)
+        VStack(spacing: 12) {
+            // App icon + version | Stats
+            HStack(alignment: .center, spacing: 12) {
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .frame(width: 36, height: 36)
+                    .cornerRadius(8)
 
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Helm")
-                            .font(.headline)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Helm")
+                        .font(.headline)
 
-                        Text("v\(helmVersion)")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
+                    Text("v\(helmVersion)")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
 
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 4) {
+                    StatRow(label: "Installed", value: "\(core.installedPackages.count)")
+                    StatRow(
+                        label: "Upgradable",
+                        value: "\(core.outdatedPackages.count)",
+                        valueColor: core.outdatedPackages.isEmpty ? .primary : .orange
+                    )
+                    StatRow(
+                        label: "Available",
+                        value: "\(core.cachedAvailablePackages.count)",
+                        valueColor: core.cachedAvailablePackages.isEmpty ? .secondary : .blue
+                    )
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+
+            Divider()
+                .padding(.horizontal, 16)
+
+            // Connection banner
+            if !core.isConnected {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.yellow)
+                    Text("Reconnecting to service...")
+                        .font(.caption)
                     Spacer()
-
-                    VStack(alignment: .trailing, spacing: 4) {
-                        StatRow(label: "Installed", value: "\(core.installedPackages.count)")
-                        StatRow(
-                            label: "Upgradable",
-                            value: "\(core.outdatedPackages.count)",
-                            valueColor: core.outdatedPackages.isEmpty ? .primary : .orange
-                        )
-                        StatRow(
-                            label: "Available",
-                            value: "\(core.cachedAvailablePackages.count)",
-                            valueColor: core.cachedAvailablePackages.isEmpty ? .secondary : .blue
-                        )
-                    }
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 10)
+                .padding(.vertical, 6)
+                .background(Color.yellow.opacity(0.1))
+                .cornerRadius(6)
+                .padding(.horizontal, 12)
+            }
 
-                Divider()
+            // Manager grid (installed + enabled only)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Package Managers")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
                     .padding(.horizontal, 16)
 
-                // Connection banner
-                if !core.isConnected {
-                    HStack {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.yellow)
-                        Text("Reconnecting to service...")
-                            .font(.caption)
-                        Spacer()
+                if activeManagers.isEmpty {
+                    Text("No active managers. Enable managers on the Managers tab.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 16)
+                } else {
+                    LazyVGrid(
+                        columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4),
+                        spacing: 12
+                    ) {
+                        ForEach(activeManagers) { manager in
+                            ManagerItemView(
+                                manager: manager,
+                                packageCount: countFor(manager: manager),
+                                hasOutdatedPackages: hasOutdated(manager: manager),
+                                hasFailedTasks: hasFailed(manager: manager),
+                                versionAvailable: core.managerStatuses[manager.id]?.version != nil,
+                                outdatedCount: outdatedCount(manager: manager),
+                                onTap: {
+                                    core.selectedManagerFilter = normalizedManagerName(manager.id)
+                                    selectedTab = .packages
+                                },
+                                onRefresh: {
+                                    core.triggerRefresh()
+                                }
+                            )
+                        }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 6)
-                    .background(Color.yellow.opacity(0.1))
-                    .cornerRadius(6)
                     .padding(.horizontal, 12)
                 }
+            }
 
-                // Manager grid (installed + enabled only)
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Package Managers")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .padding(.horizontal, 16)
+            Divider()
+                .padding(.horizontal, 16)
 
-                    if activeManagers.isEmpty {
-                        Text("No active managers. Enable managers on the Managers tab.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal, 16)
-                    } else {
-                        LazyVGrid(
-                            columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4),
-                            spacing: 12
-                        ) {
-                            ForEach(activeManagers) { manager in
-                                ManagerItemView(
-                                    manager: manager,
-                                    packageCount: countFor(manager: manager),
-                                    hasOutdatedPackages: hasOutdated(manager: manager),
-                                    hasFailedTasks: hasFailed(manager: manager),
-                                    versionAvailable: core.managerStatuses[manager.id]?.version != nil,
-                                    outdatedCount: outdatedCount(manager: manager),
-                                    onTap: {
-                                        core.selectedManagerFilter = normalizedManagerName(manager.id)
-                                        selectedTab = .packages
-                                    },
-                                    onRefresh: {
-                                        core.triggerRefresh()
-                                    }
-                                )
-                            }
-                        }
-                        .padding(.horizontal, 12)
-                    }
-                }
-
-                Divider()
+            // Recent tasks
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Recent Tasks")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
                     .padding(.horizontal, 16)
 
-                // Recent tasks
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Recent Tasks")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
+                if core.activeTasks.isEmpty {
+                    Text("No recent tasks")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                         .padding(.horizontal, 16)
-
-                    if core.activeTasks.isEmpty {
-                        Text("No recent tasks")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal, 16)
-                    } else {
-                        ForEach(core.activeTasks.prefix(5)) { task in
-                            TaskRowView(task: task)
-                                .padding(.horizontal, 8)
+                } else {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            ForEach(core.activeTasks.prefix(20)) { task in
+                                TaskRowView(task: task)
+                                    .padding(.horizontal, 8)
+                            }
                         }
                     }
                 }
             }
-            .padding(.bottom, 12)
+            .frame(maxHeight: .infinity)
         }
+        .padding(.bottom, 12)
     }
 
     private var activeManagers: [ManagerInfo] {
         ManagerInfo.all.filter { manager in
             let status = core.managerStatuses[manager.id]
-            let detected = (status?.detected ?? false) || core.detectedManagers.contains(manager.id)
+            let detected = status?.detected ?? false
             let enabled = status?.enabled ?? true
             return manager.isImplemented && detected && enabled
         }

@@ -23,7 +23,7 @@ struct ManagersView: View {
 
                     ForEach(group.managers) { manager in
                         let status = core.managerStatuses[manager.id]
-                        let detected = (status?.detected ?? false) || core.detectedManagers.contains(manager.id)
+                        let detected = status?.detected ?? false
                         let enabled = status?.enabled ?? true
                         let packageCount = countFor(manager: manager)
 
@@ -122,10 +122,6 @@ private struct ManagerRow: View {
                         .foregroundColor(manager.isImplemented ? .primary : .secondary)
 
                     HStack(spacing: 6) {
-                        Text(manager.category)
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-
                         if let version = version {
                             Text("v\(version)")
                                 .font(.caption2)
@@ -150,18 +146,24 @@ private struct ManagerRow: View {
             }
 
             if manager.isImplemented {
-                Text(enabled ? "Enabled" : "Disabled")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
+                if detected {
+                    Text(enabled ? "Enabled" : "Disabled")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
 
-                Toggle("", isOn: Binding(
-                    get: { enabled },
-                    set: { _ in onToggle() }
-                ))
-                .toggleStyle(.switch)
-                .scaleEffect(0.7)
-                .labelsHidden()
-                .help("Enable or disable this manager")
+                    Toggle("", isOn: Binding(
+                        get: { enabled },
+                        set: { _ in onToggle() }
+                    ))
+                    .toggleStyle(.switch)
+                    .scaleEffect(0.7)
+                    .labelsHidden()
+                    .help("Enable or disable this manager")
+                } else {
+                    Text("Not Installed")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
             } else {
                 Text("Coming Soon")
                     .font(.caption2)
