@@ -68,7 +68,31 @@ DROP TABLE IF EXISTS installed_packages;
 "#,
 };
 
-const MIGRATIONS: [SqliteMigration; 1] = [MIGRATION_0001];
+const MIGRATION_0002: SqliteMigration = SqliteMigration {
+    version: 2,
+    name: "add_restart_required_to_outdated",
+    up_sql: r#"
+ALTER TABLE outdated_packages ADD COLUMN restart_required INTEGER NOT NULL DEFAULT 0;
+"#,
+    down_sql: r#"
+CREATE TABLE outdated_packages_backup (
+    manager_id TEXT NOT NULL,
+    package_name TEXT NOT NULL,
+    installed_version TEXT,
+    candidate_version TEXT NOT NULL,
+    pinned INTEGER NOT NULL DEFAULT 0,
+    updated_at_unix INTEGER NOT NULL,
+    PRIMARY KEY (manager_id, package_name)
+);
+INSERT INTO outdated_packages_backup
+    SELECT manager_id, package_name, installed_version, candidate_version, pinned, updated_at_unix
+    FROM outdated_packages;
+DROP TABLE outdated_packages;
+ALTER TABLE outdated_packages_backup RENAME TO outdated_packages;
+"#,
+};
+
+const MIGRATIONS: [SqliteMigration; 2] = [MIGRATION_0001, MIGRATION_0002];
 
 pub fn migrations() -> &'static [SqliteMigration] {
     &MIGRATIONS

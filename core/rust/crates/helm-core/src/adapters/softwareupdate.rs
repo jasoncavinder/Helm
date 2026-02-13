@@ -205,9 +205,8 @@ fn parse_softwareupdate_list(output: &str) -> AdapterResult<Vec<OutdatedPackage>
 fn build_outdated_package(
     label: &str,
     candidate_version: &str,
-    _restart_required: bool,
+    restart_required: bool,
 ) -> OutdatedPackage {
-    // restart_required will be wired into the model in alpha.3
     OutdatedPackage {
         package: PackageRef {
             manager: ManagerId::SoftwareUpdate,
@@ -216,6 +215,7 @@ fn build_outdated_package(
         installed_version: None,
         candidate_version: candidate_version.to_owned(),
         pinned: false,
+        restart_required,
     }
 }
 
@@ -285,9 +285,11 @@ mod tests {
         assert_eq!(packages[0].package.name, "macOS Sequoia 15.3.2-15.3.2");
         assert_eq!(packages[0].candidate_version, "15.3.2");
         assert!(packages[0].installed_version.is_none());
+        assert!(packages[0].restart_required);
 
         assert_eq!(packages[1].package.name, "Safari 18.3.1-18.3.1");
         assert_eq!(packages[1].candidate_version, "18.3.1");
+        assert!(!packages[1].restart_required);
     }
 
     #[test]

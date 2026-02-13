@@ -206,6 +206,7 @@ fn parse_mas_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
             installed_version: installed,
             candidate_version: candidate,
             pinned: false,
+            restart_required: false,
         });
     }
 

@@ -252,6 +252,7 @@ fn parse_outdated_formulae(output: &str) -> AdapterResult<Vec<OutdatedPackage>> 
                 installed_version,
                 candidate_version,
                 pinned: false,
+                restart_required: false,
             }),
             None => malformed_lines += 1,
         }
