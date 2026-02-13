@@ -8,6 +8,7 @@ Example:
 0.3.0-alpha.1
 0.5.0-beta.2
 0.8.0-rc.1
+0.7.0
 1.0.0
 
 ---
@@ -86,10 +87,14 @@ v1.0.0
 2. Update version in:
    - Cargo.toml
    - Swift bundle version
-3. Merge `dev` → `main`.
-4. Create annotated tag.
-5. Push tag to GitHub.
-6. Generate release notes.
+3. Update changelog and release checklist.
+4. Merge `dev` → `main`.
+5. Create annotated tag.
+6. Push tag to GitHub.
+7. Generate release notes.
+
+Release checklist document:
+- `docs/RELEASE_CHECKLIST.md`
 
 ---
 

@@ -185,12 +185,15 @@ Delivered:
 - End-to-end integration tests for softwareupdate and mas adapters
 - 5-adapter authority phase ordering test
 
-### 0.7.0-alpha.2
+### 0.7.0
 
 - Onboarding wizard: 3-step first-run experience (Welcome → Detection → Configure)
 - Auto-detect on launch: triggerRefresh on app appear for returning users
 - Reset Local Data: full database wipe with onboarding re-entry via Settings
-- Manager install/uninstall: context menu actions for mas, mise, and rustup
+- Manager controls:
+  - install: mas, mise
+  - update/self-update: Homebrew, mas, mise, rustup
+  - uninstall: mas, mise, rustup
 - Rustup version detection fix: bypass pipe EOF deadlock from background subprocesses
 - Mise version parser: handle new output format without "mise " prefix
 - Task auto-pruning: completed/failed/cancelled tasks cleaned after 5 minutes
@@ -199,6 +202,11 @@ Delivered:
 - Dashboard layout: fixed header with scrollable Recent Tasks section
 - Onboarding detection: spinner during scan, found-only manager list with versions
 - Tab reorder: Dashboard → Packages → Managers
+- Refresh ordering hardened:
+  - capability-aware ordered refresh (skip unsupported list actions)
+  - skip list actions when detection reports manager not installed
+- mas parsing corrected to use app names (instead of numeric App Store IDs)
+- Registry capability declarations aligned with implemented adapter actions
 
 ---
 
