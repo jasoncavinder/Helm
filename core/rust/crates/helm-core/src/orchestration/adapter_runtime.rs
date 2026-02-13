@@ -3,7 +3,8 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use crate::adapters::{
-    AdapterRequest, AdapterResponse, ListInstalledRequest, ListOutdatedRequest, ManagerAdapter,
+    AdapterRequest, AdapterResponse, DetectRequest, ListInstalledRequest, ListOutdatedRequest,
+    ManagerAdapter,
 };
 use crate::models::{
     CoreError, CoreErrorKind, ManagerAction, ManagerId, TaskId, TaskRecord, TaskStatus, TaskType,
@@ -130,6 +131,17 @@ impl AdapterRuntime {
                 let runtime = self.clone();
 
                 handles.push(tokio::spawn(async move {
+                    // Detect first — if the manager binary is not installed, skip list operations
+                    if let Err(e) = runtime
+                        .submit_refresh_request(
+                            manager,
+                            AdapterRequest::Detect(DetectRequest),
+                        )
+                        .await
+                    {
+                        return vec![(manager, Err(e))];
+                    }
+
                     // Submit ListInstalled
                     if let Err(e) = runtime
                         .submit_refresh_request(
