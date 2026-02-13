@@ -52,7 +52,16 @@ struct PackageListView: View {
         if selectedStatusFilters.isEmpty {
             return base
         }
-        return base.filter { selectedStatusFilters.contains($0.status) }
+        return base.filter { pkg in
+            if selectedStatusFilters.contains(pkg.status) {
+                return true
+            }
+            // "Installed" filter should also include upgradable packages
+            if selectedStatusFilters.contains(.installed) && pkg.status == .upgradable {
+                return true
+            }
+            return false
+        }
     }
 
     var body: some View {
@@ -71,49 +80,44 @@ struct PackageListView: View {
             }
 
             // Filter bar
-            VStack(alignment: .leading, spacing: 8) {
-                // Status filters
-                HStack(spacing: 4) {
-                    ForEach(PackageStatus.allCases, id: \.self) { status in
-                        FilterButton(
-                            title: status.displayName,
-                            isSelected: selectedStatusFilters.contains(status),
-                            action: {
-                                if selectedStatusFilters.contains(status) {
-                                    selectedStatusFilters.remove(status)
-                                } else {
-                                    selectedStatusFilters.insert(status)
-                                }
+            HStack(spacing: 4) {
+                ForEach(PackageStatus.allCases, id: \.self) { status in
+                    FilterButton(
+                        title: status.displayName,
+                        isSelected: selectedStatusFilters.contains(status),
+                        action: {
+                            if selectedStatusFilters.contains(status) {
+                                selectedStatusFilters.remove(status)
+                            } else {
+                                selectedStatusFilters.insert(status)
                             }
-                        )
-                    }
-                    Spacer()
+                        }
+                    )
                 }
+                Spacer()
 
                 // Manager Filter
-                HStack {
-                    Menu {
-                        Button("All Managers") { selectedManager = nil }
-                        Divider()
-                        ForEach(availableManagers, id: \.self) { manager in
-                            Button(manager) { selectedManager = manager }
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "square.stack.3d.up")
-                            Text(selectedManager ?? "All Managers")
-                        }
-                        .font(.caption)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(selectedManager != nil ? Color.accentColor.opacity(0.2) : Color.gray.opacity(0.1))
-                        .cornerRadius(6)
-                        .foregroundColor(selectedManager != nil ? .accentColor : .primary)
+                Menu {
+                    Button("All Managers") { selectedManager = nil }
+                    Divider()
+                    ForEach(availableManagers, id: \.self) { manager in
+                        Button(manager) { selectedManager = manager }
                     }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
-                    Spacer()
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "square.stack.3d.up")
+                            .imageScale(.small)
+                        Text(selectedManager ?? "All Managers")
+                    }
+                    .font(.caption2)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(selectedManager != nil ? Color.accentColor.opacity(0.2) : Color.gray.opacity(0.1))
+                    .cornerRadius(5)
+                    .foregroundColor(selectedManager != nil ? .accentColor : .primary)
                 }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)

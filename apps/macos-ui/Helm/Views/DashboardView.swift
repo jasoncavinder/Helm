@@ -6,8 +6,8 @@ struct DashboardView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 12) {
-                // App icon + version
-                HStack(spacing: 10) {
+                // App icon + version | Stats
+                HStack(alignment: .center, spacing: 12) {
                     Image(nsImage: NSApp.applicationIconImage)
                         .resizable()
                         .frame(width: 36, height: 36)
@@ -23,28 +23,23 @@ struct DashboardView: View {
                     }
 
                     Spacer()
+
+                    VStack(alignment: .trailing, spacing: 4) {
+                        StatRow(label: "Installed", value: "\(core.installedPackages.count)")
+                        StatRow(
+                            label: "Upgradable",
+                            value: "\(core.outdatedPackages.count)",
+                            valueColor: core.outdatedPackages.isEmpty ? .primary : .orange
+                        )
+                        StatRow(
+                            label: "Available",
+                            value: "\(core.cachedAvailablePackages.count)",
+                            valueColor: core.cachedAvailablePackages.isEmpty ? .secondary : .blue
+                        )
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 10)
-
-                // Stats
-                VStack(spacing: 6) {
-                    LabeledContentRow(
-                        label: "Installed",
-                        value: "\(core.installedPackages.count)"
-                    )
-                    LabeledContentRow(
-                        label: "Upgradable",
-                        value: "\(core.outdatedPackages.count)",
-                        valueColor: core.outdatedPackages.isEmpty ? .primary : .orange
-                    )
-                    LabeledContentRow(
-                        label: "Available",
-                        value: "\(core.cachedAvailablePackages.count)",
-                        valueColor: core.cachedAvailablePackages.isEmpty ? .secondary : .blue
-                    )
-                }
-                .padding(.horizontal, 16)
 
                 Divider()
                     .padding(.horizontal, 16)
@@ -117,5 +112,23 @@ struct DashboardView: View {
         core.installedPackages.filter {
             $0.manager.lowercased().contains(manager.shortName.lowercased())
         }.count
+    }
+}
+
+private struct StatRow: View {
+    let label: String
+    let value: String
+    var valueColor: Color = .primary
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            Text(value)
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundColor(valueColor)
+        }
     }
 }
