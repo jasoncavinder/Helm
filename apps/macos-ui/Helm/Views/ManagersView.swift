@@ -89,6 +89,18 @@ private struct ManagerRow: View {
     let onInstall: () -> Void
     let onUninstall: () -> Void
 
+    @State private var confirmAction: ConfirmAction? = nil
+
+    private enum ConfirmAction: Identifiable {
+        case install, uninstall
+        var id: String {
+            switch self {
+            case .install: return "install"
+            case .uninstall: return "uninstall"
+            }
+        }
+    }
+
     private var indicatorColor: Color {
         if !manager.isImplemented { return .gray }
         if !enabled { return .gray }
@@ -165,18 +177,36 @@ private struct ManagerRow: View {
         .contextMenu {
             if manager.canInstall && !detected {
                 Button("Install \(manager.shortName)") {
-                    onInstall()
+                    confirmAction = .install
                 }
             }
             if manager.canUninstall && detected {
                 Button("Uninstall \(manager.shortName)") {
-                    onUninstall()
+                    confirmAction = .uninstall
                 }
             }
             if manager.isImplemented && detected && packageCount > 0 {
                 Button("View Packages") {
                     onTap()
                 }
+            }
+        }
+        .alert(item: $confirmAction) { action in
+            switch action {
+            case .install:
+                return Alert(
+                    title: Text("Install \(manager.displayName)?"),
+                    message: Text("This will install \(manager.shortName) via Homebrew."),
+                    primaryButton: .default(Text("Install")) { onInstall() },
+                    secondaryButton: .cancel()
+                )
+            case .uninstall:
+                return Alert(
+                    title: Text("Uninstall \(manager.displayName)?"),
+                    message: Text("This will remove \(manager.shortName) from your system."),
+                    primaryButton: .destructive(Text("Uninstall")) { onUninstall() },
+                    secondaryButton: .cancel()
+                )
             }
         }
         .opacity(manager.isImplemented ? 1.0 : 0.6)
