@@ -405,6 +405,14 @@ final class HelmCore: ObservableObject {
         }
     }
 
+    func updateManager(_ managerId: String) {
+        service()?.updateManager(managerId: managerId) { taskId in
+            if taskId < 0 {
+                logger.error("updateManager(\(managerId)) failed")
+            }
+        }
+    }
+
     func completeOnboarding() {
         UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
         hasCompletedOnboarding = true
