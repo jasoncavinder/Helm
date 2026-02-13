@@ -3,6 +3,14 @@ import SwiftUI
 struct ManagerItemView: View {
     let manager: ManagerInfo
     let packageCount: Int
+    let isDetected: Bool
+
+    private var indicatorColor: Color {
+        if !manager.isImplemented {
+            return .gray
+        }
+        return isDetected ? .green : .red
+    }
 
     var body: some View {
         VStack(spacing: 4) {
@@ -20,7 +28,7 @@ struct ManagerItemView: View {
                     )
 
                 Circle()
-                    .fill(manager.isImplemented ? .green : .red)
+                    .fill(indicatorColor)
                     .frame(width: 8, height: 8)
                     .offset(x: 2, y: -2)
             }

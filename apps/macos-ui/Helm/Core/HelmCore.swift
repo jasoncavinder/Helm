@@ -51,6 +51,7 @@ final class HelmCore: ObservableObject {
     @Published var activeTasks: [TaskItem] = []
     @Published var searchResults: [PackageItem] = []
     @Published var cachedAvailablePackages: [PackageItem] = []
+    @Published var detectedManagers: Set<String> = []
 
     private var timer: Timer?
     private var connection: NSXPCConnection?
@@ -218,6 +219,25 @@ final class HelmCore: ObservableObject {
                             status: task.status.capitalized
                         )
                     }
+
+                    // Derive detection status from most recent task per manager.
+                    // Tasks are ordered most-recent-first. A manager is "detected" if
+                    // its latest non-search task completed successfully.
+                    var latestStatusByManager: [String: String] = [:]
+                    for task in coreTasks {
+                        let taskType = task.taskType.lowercased()
+                        guard taskType != "search" else { continue }
+                        if latestStatusByManager[task.manager] == nil {
+                            latestStatusByManager[task.manager] = task.status.lowercased()
+                        }
+                    }
+                    var detected = Set<String>()
+                    for (manager, status) in latestStatusByManager {
+                        if status == "completed" {
+                            detected.insert(manager)
+                        }
+                    }
+                    self?.detectedManagers = detected
 
                     let isRunning = coreTasks.contains {
                         $0.taskType.lowercased() == "refresh" &&

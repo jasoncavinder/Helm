@@ -74,7 +74,8 @@ struct DashboardView: View {
                         ForEach(ManagerInfo.all) { manager in
                             ManagerItemView(
                                 manager: manager,
-                                packageCount: countFor(manager: manager)
+                                packageCount: countFor(manager: manager),
+                                isDetected: core.detectedManagers.contains(manager.id)
                             )
                         }
                     }
