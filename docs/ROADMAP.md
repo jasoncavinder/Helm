@@ -313,3 +313,54 @@ Goal:
 - Authority ordering guaranteed
 - Guardrails enforced
 - Logs and diagnostics present
+
+---
+
+## 1.1.x — Editions and Entitlement Foundations
+
+Goal:
+
+- Formalize debug and release build variants
+- Implement runtime entitlement model for Free / Pro / Business editions
+- Add entitlement verification and safe degradation behavior
+- Define managed bootstrap configuration contract for MDM deployments
+
+Exit Criteria:
+
+- Single signed release artifact supports edition gating
+- Invalid/expired entitlements degrade predictably without unsafe behavior
+- Managed bootstrap configuration is documented and testable
+
+---
+
+## 1.2.x — Business Policy and Drift Management
+
+Goal:
+
+- Scoped policy model (org / department / team / environment / device group)
+- Baseline profile enforcement for package and toolchain consistency
+- Drift detection and compliance reporting
+- Policy snapshot persistence for offline-safe enforcement
+
+Exit Criteria:
+
+- Policy precedence rules are deterministic and tested
+- Drift categories and compliance states are surfaced clearly
+- Offline behavior uses last valid policy snapshot without UI/executor instability
+
+---
+
+## 1.3.x — Enterprise Rollout, Approvals, and Audit
+
+Goal:
+
+- Ring-based rollout workflow (canary, pilot, broad)
+- Policy approval workflow and rollback controls
+- Audit/event export integrations (SIEM/webhook/ticketing targets)
+- Role-based access model for business operators
+
+Exit Criteria:
+
+- Ring promotion and rollback flow verified end-to-end
+- Policy changes and enforcement actions produce attributable audit events
+- Enterprise controls preserve Helm safety and orchestration guarantees

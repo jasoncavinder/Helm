@@ -121,6 +121,7 @@ Capabilities:
 - Supported managers listed
 - Known limitations documented
 - Architecture overview included
+- Edition boundaries documented (debug/release/free/pro/business)
 
 ---
 
@@ -140,6 +141,16 @@ Capabilities:
 
 ---
 
+## 11. Editions and Distribution Baseline
+
+- Reproducible debug and release builds are defined.
+- Release build includes entitlement-aware gating scaffolding.
+- Free capabilities remain available under entitlement failure.
+- Mutating business-only controls fail closed when entitlement validation fails.
+- Centralized business control plane remains post-1.0 scope.
+
+---
+
 ## Explicit Non-Goals for 1.0
 
 - Dependency graph resolution
@@ -147,3 +158,4 @@ Capabilities:
 - CLI companion tool
 - Telemetry
 - Cloud sync
+- Centrally hosted enterprise policy control plane
