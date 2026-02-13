@@ -18,6 +18,7 @@ const HOMEBREW_READ_CAPABILITIES: &[Capability] = &[
     Capability::ListOutdated,
     Capability::Install,
     Capability::Uninstall,
+    Capability::Upgrade,
 ];
 
 const HOMEBREW_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
@@ -53,6 +54,8 @@ pub trait HomebrewSource: Send + Sync {
     fn install_formula(&self, name: &str) -> AdapterResult<String>;
 
     fn uninstall_formula(&self, name: &str) -> AdapterResult<String>;
+
+    fn upgrade_formula(&self, name: Option<&str>) -> AdapterResult<String>;
 }
 
 pub struct HomebrewAdapter<S: HomebrewSource> {
@@ -121,6 +124,19 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: uninstall_request.package,
                     action: ManagerAction::Uninstall,
+                    before_version: None,
+                    after_version: None,
+                }))
+            }
+            AdapterRequest::Upgrade(upgrade_request) => {
+                let package = upgrade_request.package.unwrap_or(PackageRef {
+                    manager: ManagerId::HomebrewFormula,
+                    name: "__all__".to_string(),
+                });
+                let _ = self.source.upgrade_formula(Some(package.name.as_str()))?;
+                Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
+                    package,
+                    action: ManagerAction::Upgrade,
                     before_version: None,
                     after_version: None,
                 }))
@@ -197,6 +213,23 @@ pub fn homebrew_uninstall_request(task_id: Option<TaskId>, name: &str) -> Proces
         TaskType::Uninstall,
         ManagerAction::Uninstall,
         CommandSpec::new(HOMEBREW_COMMAND).args(["uninstall", name]),
+        INSTALL_TIMEOUT,
+    )
+}
+
+pub fn homebrew_upgrade_request(task_id: Option<TaskId>, name: &str) -> ProcessSpawnRequest {
+    let command = if name == "__self__" {
+        CommandSpec::new(HOMEBREW_COMMAND).arg("update")
+    } else if name == "__all__" {
+        CommandSpec::new(HOMEBREW_COMMAND).arg("upgrade")
+    } else {
+        CommandSpec::new(HOMEBREW_COMMAND).args(["upgrade", name])
+    };
+    homebrew_request(
+        task_id,
+        TaskType::Upgrade,
+        ManagerAction::Upgrade,
+        command,
         INSTALL_TIMEOUT,
     )
 }
@@ -456,8 +489,8 @@ mod tests {
     use super::{
         HomebrewAdapter, HomebrewDetectOutput, HomebrewSource, homebrew_detect_request,
         homebrew_list_installed_request, homebrew_list_outdated_request,
-        homebrew_search_local_request, parse_homebrew_version, parse_installed_formulae,
-        parse_outdated_formulae, parse_search_formulae,
+        homebrew_search_local_request, homebrew_upgrade_request, parse_homebrew_version,
+        parse_installed_formulae, parse_outdated_formulae, parse_search_formulae,
     };
 
     const INSTALLED_FIXTURE: &str =
@@ -595,6 +628,22 @@ mod tests {
     }
 
     #[test]
+    fn adapter_executes_upgrade_request() {
+        let source = FixtureSource::default();
+        let adapter = HomebrewAdapter::new(source);
+
+        let result = adapter
+            .execute(AdapterRequest::Upgrade(crate::adapters::UpgradeRequest {
+                package: Some(crate::models::PackageRef {
+                    manager: crate::models::ManagerId::HomebrewFormula,
+                    name: "mise".to_string(),
+                }),
+            }))
+            .unwrap();
+        assert!(matches!(result, AdapterResponse::Mutation(_)));
+    }
+
+    #[test]
     fn detect_command_plan_uses_structured_homebrew_args() {
         let request = homebrew_detect_request(Some(TaskId(11)));
         assert_eq!(request.manager, crate::models::ManagerId::HomebrewFormula);
@@ -654,6 +703,21 @@ mod tests {
         );
     }
 
+    #[test]
+    fn upgrade_command_plan_is_structured_for_self_and_formula_targets() {
+        let self_update = homebrew_upgrade_request(None, "__self__");
+        assert_eq!(self_update.command.args, vec!["update".to_string()]);
+        assert_eq!(self_update.action, ManagerAction::Upgrade);
+        assert_eq!(self_update.task_type, TaskType::Upgrade);
+
+        let formula_upgrade = homebrew_upgrade_request(Some(TaskId(7)), "mise");
+        assert_eq!(
+            formula_upgrade.command.args,
+            vec!["upgrade".to_string(), "mise".to_string()]
+        );
+        assert_eq!(formula_upgrade.task_id, Some(TaskId(7)));
+    }
+
     #[derive(Default, Clone)]
     struct FixtureSource {
         detect_calls: Arc<AtomicUsize>,
@@ -685,6 +749,10 @@ mod tests {
         }
 
         fn uninstall_formula(&self, _name: &str) -> AdapterResult<String> {
+            Ok(String::new())
+        }
+
+        fn upgrade_formula(&self, _name: Option<&str>) -> AdapterResult<String> {
             Ok(String::new())
         }
     }

@@ -7,7 +7,8 @@ use crate::adapters::{
     ManagerAdapter,
 };
 use crate::models::{
-    CoreError, CoreErrorKind, ManagerAction, ManagerId, TaskId, TaskRecord, TaskStatus, TaskType,
+    Capability, CoreError, CoreErrorKind, ManagerAction, ManagerId, TaskId, TaskRecord, TaskStatus,
+    TaskType,
 };
 use crate::orchestration::{
     AdapterExecutionRuntime, AdapterTaskSnapshot, AdapterTaskTerminalState, CancellationMode,
@@ -158,35 +159,67 @@ impl AdapterRuntime {
                     continue;
                 }
 
+                let Some(adapter) = self.adapters.get(&manager) else {
+                    all_results.push((
+                        manager,
+                        Err(CoreError {
+                            manager: Some(manager),
+                            task: None,
+                            action: None,
+                            kind: CoreErrorKind::InvalidInput,
+                            message: format!(
+                                "manager '{manager:?}' is in execution phase but has no registered adapter"
+                            ),
+                        }),
+                    ));
+                    continue;
+                };
+                let supports_detect = adapter.descriptor().supports(Capability::Detect);
+                let supports_list_installed =
+                    adapter.descriptor().supports(Capability::ListInstalled);
+                let supports_list_outdated =
+                    adapter.descriptor().supports(Capability::ListOutdated);
+
                 let runtime = self.clone();
 
                 handles.push(tokio::spawn(async move {
-                    // Detect first — if the manager binary is not installed, skip list operations
-                    if let Err(e) = runtime
-                        .submit_refresh_request(manager, AdapterRequest::Detect(DetectRequest))
-                        .await
+                    if supports_detect {
+                        // Detect first; skip refresh list actions when manager is not installed.
+                        match runtime
+                            .submit_refresh_request_response(
+                                manager,
+                                AdapterRequest::Detect(DetectRequest),
+                            )
+                            .await
+                        {
+                            Ok(AdapterResponse::Detection(info)) => {
+                                if !info.installed {
+                                    return vec![(manager, Ok(()))];
+                                }
+                            }
+                            Ok(_) => {}
+                            Err(e) => return vec![(manager, Err(e))],
+                        }
+                    }
+
+                    if supports_list_installed
+                        && let Err(e) = runtime
+                            .submit_refresh_request(
+                                manager,
+                                AdapterRequest::ListInstalled(ListInstalledRequest),
+                            )
+                            .await
                     {
                         return vec![(manager, Err(e))];
                     }
 
-                    // Submit ListInstalled
-                    if let Err(e) = runtime
-                        .submit_refresh_request(
-                            manager,
-                            AdapterRequest::ListInstalled(ListInstalledRequest),
-                        )
-                        .await
-                    {
-                        return vec![(manager, Err(e))];
-                    }
-
-                    // Submit ListOutdated
-                    if let Err(e) = runtime
-                        .submit_refresh_request(
-                            manager,
-                            AdapterRequest::ListOutdated(ListOutdatedRequest),
-                        )
-                        .await
+                    if supports_list_outdated
+                        && let Err(e) = runtime
+                            .submit_refresh_request(
+                                manager,
+                                AdapterRequest::ListOutdated(ListOutdatedRequest),
+                            )
+                            .await
                     {
                         return vec![(manager, Err(e))];
                     }
@@ -214,12 +247,23 @@ impl AdapterRuntime {
         manager: ManagerId,
         request: AdapterRequest,
     ) -> OrchestrationResult<()> {
+        let _ = self
+            .submit_refresh_request_response(manager, request)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn submit_refresh_request_response(
+        &self,
+        manager: ManagerId,
+        request: AdapterRequest,
+    ) -> OrchestrationResult<AdapterResponse> {
         let task_id = self.submit(manager, request).await?;
         let snapshot = self
             .wait_for_terminal(task_id, Some(Duration::from_secs(60)))
             .await?;
         match snapshot.terminal_state {
-            Some(AdapterTaskTerminalState::Succeeded(_)) => Ok(()),
+            Some(AdapterTaskTerminalState::Succeeded(response)) => Ok(response),
             Some(AdapterTaskTerminalState::Failed(e)) => Err(e),
             Some(AdapterTaskTerminalState::Cancelled(e)) => Err(e.unwrap_or(CoreError {
                 manager: Some(manager),
