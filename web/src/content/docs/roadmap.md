@@ -15,12 +15,12 @@ Helm follows feature-driven milestones. Dates are intentionally omitted — mile
 | 0.4.x | SwiftUI shell — menu bar app, XPC service, Rust FFI bridge, live UI |
 | 0.5.x | Progressive search — local-first search, remote search, cache enrichment |
 | 0.6.x | Core toolchain managers — mise, rustup adapters, authority ordering |
+| 0.7.x | System & App Store managers — softwareupdate, mas, restart detection |
 
 ## Upcoming
 
 | Version | Milestone |
 |---------|-----------|
-| 0.7.x | System & App Store managers — macOS `softwareupdate`, `mas`, guarded execution |
 | 0.8.x | Pinning & policy enforcement — native/virtual pins, manager toggles, safe mode |
 | 0.9.x | Upgrade preview & execution transparency — bulk preview, dry-run, ordered plans |
 | 0.10.x | Self-update & installer hardening — signed updates, delta updates |
