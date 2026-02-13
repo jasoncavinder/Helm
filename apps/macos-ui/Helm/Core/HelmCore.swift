@@ -255,11 +255,22 @@ final class HelmCore: ObservableObject {
                         ($0.status.lowercased() == "running" || $0.status.lowercased() == "queued")
                     }
 
-                    if isRunning {
-                        self?.isRefreshing = true
-                        self?.lastRefreshTrigger = nil
-                    } else if let lastTrigger = self?.lastRefreshTrigger, Date().timeIntervalSince(lastTrigger) < 2.0 {
-                        self?.isRefreshing = true
+                    // Only show "refreshing" when we triggered a refresh this session.
+                    // Without this guard, stale running tasks from a previous session
+                    // would permanently lock isRefreshing = true.
+                    if let lastTrigger = self?.lastRefreshTrigger {
+                        if Date().timeIntervalSince(lastTrigger) > 120.0 {
+                            // Safety valve: clear stuck refresh after 2 minutes
+                            self?.isRefreshing = false
+                            self?.lastRefreshTrigger = nil
+                        } else if isRunning {
+                            self?.isRefreshing = true
+                        } else if Date().timeIntervalSince(lastTrigger) < 2.0 {
+                            self?.isRefreshing = true
+                        } else {
+                            self?.isRefreshing = false
+                            self?.lastRefreshTrigger = nil
+                        }
                     } else {
                         self?.isRefreshing = false
                     }
@@ -367,15 +378,6 @@ final class HelmCore: ObservableObject {
                         map[status.managerId] = status
                     }
                     self?.managerStatuses = map
-
-                    // Also update detectedManagers from persisted detection data
-                    var detected = Set<String>()
-                    for status in statuses {
-                        if status.detected {
-                            detected.insert(status.managerId)
-                        }
-                    }
-                    self?.detectedManagers = detected
                 }
             } catch {
                 logger.error("Failed to decode manager statuses: \(error)")

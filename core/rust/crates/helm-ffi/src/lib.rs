@@ -243,7 +243,7 @@ pub unsafe extern "C" fn helm_search_local(query: *const c_char) -> *mut c_char 
         None => return std::ptr::null_mut(),
     };
 
-    let results = match state.store.query_local(query_str, 50) {
+    let results = match state.store.query_local(query_str, 500) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("Failed to query local search cache: {}", e);

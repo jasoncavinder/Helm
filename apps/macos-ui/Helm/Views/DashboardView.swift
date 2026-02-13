@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DashboardView: View {
     @ObservedObject var core = HelmCore.shared
+    @Binding var selectedTab: HelmTab
 
     var body: some View {
         ScrollView {
@@ -60,26 +61,43 @@ struct DashboardView: View {
                     .padding(.horizontal, 12)
                 }
 
-                // Manager grid
+                // Manager grid (installed + enabled only)
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Package Managers")
                         .font(.subheadline)
                         .fontWeight(.semibold)
                         .padding(.horizontal, 16)
 
-                    LazyVGrid(
-                        columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4),
-                        spacing: 12
-                    ) {
-                        ForEach(ManagerInfo.all) { manager in
-                            ManagerItemView(
-                                manager: manager,
-                                packageCount: countFor(manager: manager),
-                                isDetected: core.detectedManagers.contains(manager.id)
-                            )
+                    if activeManagers.isEmpty {
+                        Text("No active managers. Enable managers on the Managers tab.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 16)
+                    } else {
+                        LazyVGrid(
+                            columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4),
+                            spacing: 12
+                        ) {
+                            ForEach(activeManagers) { manager in
+                                ManagerItemView(
+                                    manager: manager,
+                                    packageCount: countFor(manager: manager),
+                                    hasOutdatedPackages: hasOutdated(manager: manager),
+                                    hasFailedTasks: hasFailed(manager: manager),
+                                    versionAvailable: core.managerStatuses[manager.id]?.version != nil,
+                                    outdatedCount: outdatedCount(manager: manager),
+                                    onTap: {
+                                        core.selectedManagerFilter = normalizedManagerName(manager.id)
+                                        selectedTab = .packages
+                                    },
+                                    onRefresh: {
+                                        core.triggerRefresh()
+                                    }
+                                )
+                            }
                         }
+                        .padding(.horizontal, 12)
                     }
-                    .padding(.horizontal, 12)
                 }
 
                 Divider()
@@ -109,10 +127,51 @@ struct DashboardView: View {
         }
     }
 
+    private var activeManagers: [ManagerInfo] {
+        ManagerInfo.all.filter { manager in
+            let status = core.managerStatuses[manager.id]
+            let detected = (status?.detected ?? false) || core.detectedManagers.contains(manager.id)
+            let enabled = status?.enabled ?? true
+            return manager.isImplemented && detected && enabled
+        }
+    }
+
     private func countFor(manager: ManagerInfo) -> Int {
         core.installedPackages.filter {
             $0.manager.lowercased().contains(manager.shortName.lowercased())
         }.count
+    }
+
+    private func hasOutdated(manager: ManagerInfo) -> Bool {
+        core.outdatedPackages.contains {
+            $0.manager.lowercased().contains(manager.shortName.lowercased())
+        }
+    }
+
+    private func outdatedCount(manager: ManagerInfo) -> Int {
+        core.outdatedPackages.filter {
+            $0.manager.lowercased().contains(manager.shortName.lowercased())
+        }.count
+    }
+
+    private func hasFailed(manager: ManagerInfo) -> Bool {
+        core.activeTasks.contains {
+            $0.status.lowercased() == "failed" &&
+            $0.description.lowercased().contains(manager.shortName.lowercased())
+        }
+    }
+
+    private func normalizedManagerName(_ raw: String) -> String {
+        switch raw.lowercased() {
+        case "homebrew_formula": return "Homebrew"
+        case "homebrew_cask": return "Homebrew Cask"
+        case "npm_global": return "npm"
+        case "pipx": return "pipx"
+        case "cargo": return "Cargo"
+        case "mise": return "mise"
+        case "rustup": return "rustup"
+        default: return raw.replacingOccurrences(of: "_", with: " ").capitalized
+        }
     }
 }
 

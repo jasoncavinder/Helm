@@ -3,7 +3,8 @@ use std::sync::Arc;
 use crate::adapters::detect_utils::which_executable;
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::mise::{
-    MiseSource, mise_detect_request, mise_list_installed_request, mise_list_outdated_request,
+    MiseDetectOutput, MiseSource, mise_detect_request, mise_list_installed_request,
+    mise_list_outdated_request,
 };
 use crate::adapters::process_utils::run_and_collect_stdout;
 use crate::execution::{ProcessExecutor, ProcessSpawnRequest};
@@ -43,13 +44,27 @@ impl ProcessMiseSource {
 }
 
 impl MiseSource for ProcessMiseSource {
-    fn detect(&self) -> AdapterResult<String> {
-        // which_executable check is done inside configure_request now (or we can do it explicitly here)
-        // actually configure_request is called below.
+    fn detect(&self) -> AdapterResult<MiseDetectOutput> {
+        // Phase 1: instant filesystem check
+        let home = std::env::var("HOME").unwrap_or_default();
+        let mise_bin = format!("{home}/.local/bin");
+        let executable_path = which_executable(
+            self.executor.as_ref(),
+            "mise",
+            &[mise_bin.as_str()],
+            ManagerId::Mise,
+        );
 
+        // Phase 2: best-effort version (timeout is non-fatal)
         let request = mise_detect_request(None);
         let version_request = self.configure_request(request);
-        run_and_collect_stdout(self.executor.as_ref(), version_request)
+        let version_output =
+            run_and_collect_stdout(self.executor.as_ref(), version_request).unwrap_or_default();
+
+        Ok(MiseDetectOutput {
+            executable_path,
+            version_output,
+        })
     }
 
     fn list_installed(&self) -> AdapterResult<String> {

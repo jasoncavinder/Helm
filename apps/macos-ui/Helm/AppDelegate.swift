@@ -12,7 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
         panel = FloatingPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 350, height: 600),
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 600),
             backing: .buffered,
             defer: false
         )
@@ -45,24 +45,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let button = statusItem?.button else { return }
 
         let buttonRect = button.window?.convertToScreen(button.frame) ?? .zero
-        let screen = NSScreen.main ?? NSScreen.screens.first
 
-        // Determine max height: from menu bar down to 40pt above screen bottom
-        let maxHeight: CGFloat
-        if let screen = screen {
-            let visibleBottom = screen.visibleFrame.origin.y
-            maxHeight = min(buttonRect.origin.y - visibleBottom - 40, 600)
-        } else {
-            maxHeight = 600
-        }
-
-        if let view = panel.contentViewController?.view {
-            let size = view.fittingSize
-            if size.height > 0 && size.width > 0 {
-                let clampedHeight = min(size.height, max(maxHeight, 300))
-                panel.setContentSize(NSSize(width: size.width, height: clampedHeight))
-            }
-        }
+        panel.setContentSize(NSSize(width: 360, height: 600))
 
         let panelSize = panel.frame.size
         let x = buttonRect.origin.x + (buttonRect.width / 2) - (panelSize.width / 2)
@@ -163,7 +147,7 @@ private struct StatusBarView: View {
                 Group {
                     switch selectedTab {
                     case .dashboard:
-                        DashboardView()
+                        DashboardView(selectedTab: $selectedTab)
                     case .managers:
                         ManagersView(selectedTab: $selectedTab)
                     case .packages:
@@ -200,7 +184,7 @@ private struct StatusBarView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
         }
-        .frame(width: 400)
+        .frame(width: 360, height: 600)
         .onChange(of: core.searchText) { newValue in
             if !newValue.trimmingCharacters(in: .whitespaces).isEmpty && selectedTab != .packages {
                 selectedTab = .packages

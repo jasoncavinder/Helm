@@ -7,35 +7,50 @@ struct ManagersView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                ForEach(ManagerInfo.all) { manager in
-                    let status = core.managerStatuses[manager.id]
-                    let detected = status?.detected ?? core.detectedManagers.contains(manager.id)
-                    let enabled = status?.enabled ?? true
-                    let packageCount = countFor(manager: manager)
+                ForEach(ManagerInfo.groupedByCategory, id: \.category) { group in
+                    // Section header
+                    HStack {
+                        Text(group.category)
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.secondary)
+                            .textCase(.uppercase)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 10)
+                    .padding(.bottom, 4)
 
-                    ManagerRow(
-                        manager: manager,
-                        detected: detected,
-                        enabled: enabled,
-                        version: status?.version,
-                        packageCount: packageCount,
-                        onToggle: {
-                            core.setManagerEnabled(manager.id, enabled: !enabled)
-                        },
-                        onTap: {
-                            core.selectedManagerFilter = normalizedManagerName(manager.id)
-                            selectedTab = .packages
-                        },
-                        onInstall: {
-                            core.installManager(manager.id)
-                        },
-                        onUninstall: {
-                            core.uninstallManager(manager.id)
-                        }
-                    )
+                    ForEach(group.managers) { manager in
+                        let status = core.managerStatuses[manager.id]
+                        let detected = (status?.detected ?? false) || core.detectedManagers.contains(manager.id)
+                        let enabled = status?.enabled ?? true
+                        let packageCount = countFor(manager: manager)
 
-                    Divider()
-                        .padding(.leading, 44)
+                        ManagerRow(
+                            manager: manager,
+                            detected: detected,
+                            enabled: enabled,
+                            version: status?.version,
+                            packageCount: packageCount,
+                            onToggle: {
+                                core.setManagerEnabled(manager.id, enabled: !enabled)
+                            },
+                            onTap: {
+                                core.selectedManagerFilter = normalizedManagerName(manager.id)
+                                selectedTab = .packages
+                            },
+                            onInstall: {
+                                core.installManager(manager.id)
+                            },
+                            onUninstall: {
+                                core.uninstallManager(manager.id)
+                            }
+                        )
+
+                        Divider()
+                            .padding(.leading, 44)
+                    }
                 }
             }
         }
@@ -80,38 +95,51 @@ private struct ManagerRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Circle()
-                .fill(indicatorColor)
-                .frame(width: 8, height: 8)
+            // Info area — tappable to navigate to packages
+            HStack(spacing: 10) {
+                Circle()
+                    .fill(indicatorColor)
+                    .frame(width: 8, height: 8)
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text(manager.displayName)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundColor(manager.isImplemented ? .primary : .secondary)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(manager.displayName)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(manager.isImplemented ? .primary : .secondary)
 
-                HStack(spacing: 6) {
-                    Text(manager.category)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-
-                    if let version = version {
-                        Text("v\(version)")
+                    HStack(spacing: 6) {
+                        Text(manager.category)
                             .font(.caption2)
                             .foregroundColor(.secondary)
-                    }
 
-                    if packageCount > 0 {
-                        Text("\(packageCount) pkg\(packageCount == 1 ? "" : "s")")
-                            .font(.caption2)
-                            .foregroundColor(.blue)
+                        if let version = version {
+                            Text("v\(version)")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+
+                        if packageCount > 0 {
+                            Text("\(packageCount) pkg\(packageCount == 1 ? "" : "s")")
+                                .font(.caption2)
+                                .foregroundColor(.blue)
+                        }
                     }
+                }
+
+                Spacer()
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if manager.isImplemented && detected && packageCount > 0 {
+                    onTap()
                 }
             }
 
-            Spacer()
-
             if manager.isImplemented {
+                Text(enabled ? "Enabled" : "Disabled")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+
                 Toggle("", isOn: Binding(
                     get: { enabled },
                     set: { _ in onToggle() }
@@ -119,6 +147,7 @@ private struct ManagerRow: View {
                 .toggleStyle(.switch)
                 .scaleEffect(0.7)
                 .labelsHidden()
+                .help("Enable or disable this manager")
             } else {
                 Text("Coming Soon")
                     .font(.caption2)
@@ -131,12 +160,6 @@ private struct ManagerRow: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if manager.isImplemented && detected && packageCount > 0 {
-                onTap()
-            }
-        }
         .contextMenu {
             if manager.canInstall && !detected {
                 Button("Install \(manager.shortName)") {

@@ -3,7 +3,7 @@ import SwiftUI
 struct PackageListView: View {
     @ObservedObject var core = HelmCore.shared
     @Binding var searchText: String
-    @State private var selectedStatusFilters: Set<PackageStatus> = []
+    @State private var selectedStatusFilter: PackageStatus? = nil
     @State private var selectedManager: String? = nil
     @State private var detailsPackage: PackageItem? = nil
 
@@ -49,15 +49,15 @@ struct PackageListView: View {
             base = base.filter { $0.manager == manager }
         }
 
-        if selectedStatusFilters.isEmpty {
+        guard let filter = selectedStatusFilter else {
             return base
         }
         return base.filter { pkg in
-            if selectedStatusFilters.contains(pkg.status) {
+            if pkg.status == filter {
                 return true
             }
             // "Installed" filter should also include upgradable packages
-            if selectedStatusFilters.contains(.installed) && pkg.status == .upgradable {
+            if filter == .installed && pkg.status == .upgradable {
                 return true
             }
             return false
@@ -84,12 +84,12 @@ struct PackageListView: View {
                 ForEach(PackageStatus.allCases, id: \.self) { status in
                     FilterButton(
                         title: status.displayName,
-                        isSelected: selectedStatusFilters.contains(status),
+                        isSelected: selectedStatusFilter == status,
                         action: {
-                            if selectedStatusFilters.contains(status) {
-                                selectedStatusFilters.remove(status)
+                            if selectedStatusFilter == status {
+                                selectedStatusFilter = nil
                             } else {
-                                selectedStatusFilters.insert(status)
+                                selectedStatusFilter = status
                             }
                         }
                     )

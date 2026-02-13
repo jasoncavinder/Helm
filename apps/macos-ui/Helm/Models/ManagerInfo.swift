@@ -41,4 +41,25 @@ struct ManagerInfo: Identifiable {
     static var implemented: [ManagerInfo] {
         all.filter { $0.isImplemented }
     }
+
+    // Category ordering matching core registry: ToolRuntime → SystemOs → Language → GuiApp
+    private static let categoryOrder: [String] = [
+        "Toolchain", "System/OS", "Language", "App Store"
+    ]
+
+    static var groupedByCategory: [(category: String, managers: [ManagerInfo])] {
+        var groups: [String: [ManagerInfo]] = [:]
+        for manager in all {
+            groups[manager.category, default: []].append(manager)
+        }
+        // Sort managers alphabetically within each group
+        for key in groups.keys {
+            groups[key]?.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+        }
+        // Return groups in documented order, skip empty
+        return categoryOrder.compactMap { cat in
+            guard let managers = groups[cat], !managers.isEmpty else { return nil }
+            return (category: cat, managers: managers)
+        }
+    }
 }

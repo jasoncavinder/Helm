@@ -82,6 +82,13 @@ impl MigrationStore for SqliteStore {
             let current_version = read_current_version(connection)?;
 
             if target_version == current_version {
+                // Re-apply all DDL to handle corrupted state where migration
+                // version was recorded but tables are missing. All DDL uses
+                // CREATE TABLE/INDEX IF NOT EXISTS, so this is idempotent.
+                for version in 1..=target_version {
+                    let m = migration(version).expect("validated migration version must exist");
+                    connection.execute_batch(m.up_sql)?;
+                }
                 return Ok(());
             }
 

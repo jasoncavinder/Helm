@@ -1,11 +1,12 @@
+use std::path::Path;
 use std::sync::Arc;
 
 use crate::adapters::detect_utils::which_executable;
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::process_utils::run_and_collect_stdout;
 use crate::adapters::rustup::{
-    RustupSource, rustup_check_request, rustup_detect_request, rustup_self_uninstall_request,
-    rustup_toolchain_list_request,
+    RustupDetectOutput, RustupSource, rustup_check_request, rustup_detect_request,
+    rustup_self_uninstall_request, rustup_toolchain_list_request,
 };
 use crate::execution::{ProcessExecutor, ProcessSpawnRequest};
 use crate::models::ManagerId;
@@ -51,10 +52,32 @@ impl ProcessRustupSource {
 }
 
 impl RustupSource for ProcessRustupSource {
-    fn detect(&self) -> AdapterResult<String> {
+    fn detect(&self) -> AdapterResult<RustupDetectOutput> {
+        // Phase 1: instant filesystem check
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        let cargo_bin = format!("{home}/.cargo/bin");
+        let direct_path = Path::new(&cargo_bin).join("rustup");
+        let executable_path = if direct_path.exists() {
+            Some(direct_path)
+        } else {
+            which_executable(
+                self.executor.as_ref(),
+                "rustup",
+                &[&cargo_bin],
+                ManagerId::Rustup,
+            )
+        };
+
+        // Phase 2: best-effort version (timeout is non-fatal)
         let request = rustup_detect_request(None);
         let version_request = self.configure_request(request);
-        run_and_collect_stdout(self.executor.as_ref(), version_request)
+        let version_output =
+            run_and_collect_stdout(self.executor.as_ref(), version_request).unwrap_or_default();
+
+        Ok(RustupDetectOutput {
+            executable_path,
+            version_output,
+        })
     }
 
     fn toolchain_list(&self) -> AdapterResult<String> {

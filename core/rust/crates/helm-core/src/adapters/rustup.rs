@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::adapters::manager::{AdapterRequest, AdapterResponse, AdapterResult, ManagerAdapter};
@@ -30,8 +31,14 @@ const LIST_TIMEOUT: Duration = Duration::from_secs(60);
 
 const UNINSTALL_TIMEOUT: Duration = Duration::from_secs(60);
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RustupDetectOutput {
+    pub executable_path: Option<PathBuf>,
+    pub version_output: String,
+}
+
 pub trait RustupSource: Send + Sync {
-    fn detect(&self) -> AdapterResult<String>;
+    fn detect(&self) -> AdapterResult<RustupDetectOutput>;
     fn toolchain_list(&self) -> AdapterResult<String>;
     fn check(&self) -> AdapterResult<String>;
     fn self_uninstall(&self) -> AdapterResult<String>;
@@ -61,12 +68,13 @@ impl<S: RustupSource> ManagerAdapter for RustupAdapter<S> {
 
         match request {
             AdapterRequest::Detect(_) => {
-                let raw = self.source.detect()?;
-                let version = parse_rustup_version(&raw);
-                let installed = version.is_some();
+                let output = self.source.detect()?;
+                let version = parse_rustup_version(&output.version_output);
+                let has_executable = output.executable_path.is_some();
+                let installed = has_executable || version.is_some();
                 Ok(AdapterResponse::Detection(DetectionInfo {
                     installed,
-                    executable_path: None,
+                    executable_path: output.executable_path,
                     version,
                 }))
             }
@@ -271,8 +279,8 @@ mod tests {
     use crate::models::{CoreErrorKind, ManagerAction, ManagerId, TaskId, TaskType};
 
     use super::{
-        RustupAdapter, RustupSource, parse_rustup_check, parse_rustup_version,
-        parse_toolchain_list, rustup_check_request, rustup_detect_request,
+        RustupAdapter, RustupDetectOutput, RustupSource, parse_rustup_check,
+        parse_rustup_version, parse_toolchain_list, rustup_check_request, rustup_detect_request,
         rustup_toolchain_list_request,
     };
 
@@ -430,9 +438,12 @@ mod tests {
     }
 
     impl RustupSource for FixtureSource {
-        fn detect(&self) -> AdapterResult<String> {
+        fn detect(&self) -> AdapterResult<RustupDetectOutput> {
             self.detect_calls.fetch_add(1, Ordering::SeqCst);
-            Ok(VERSION_FIXTURE.to_string())
+            Ok(RustupDetectOutput {
+                executable_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+                version_output: VERSION_FIXTURE.to_string(),
+            })
         }
 
         fn toolchain_list(&self) -> AdapterResult<String> {
