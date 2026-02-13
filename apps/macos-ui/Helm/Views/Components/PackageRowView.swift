@@ -30,9 +30,17 @@ struct PackageRowView: View {
 
             VStack(alignment: .trailing, spacing: 2) {
                 if let latest = package.latestVersion {
-                    Text(latest)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundColor(.orange)
+                    HStack(spacing: 4) {
+                        Text(latest)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundColor(.orange)
+                        if package.restartRequired {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.caption2)
+                                .foregroundColor(.orange)
+                                .help("Restart required")
+                        }
+                    }
                     Text(package.version)
                         .font(.system(.caption2, design: .monospaced))
                         .foregroundColor(.secondary)
