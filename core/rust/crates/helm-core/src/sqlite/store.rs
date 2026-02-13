@@ -85,9 +85,11 @@ impl MigrationStore for SqliteStore {
                 // Re-apply all DDL to handle corrupted state where migration
                 // version was recorded but tables are missing. All DDL uses
                 // CREATE TABLE/INDEX IF NOT EXISTS, so this is idempotent.
+                // ALTER TABLE ADD COLUMN is NOT idempotent in SQLite, so we
+                // tolerate "duplicate column name" errors.
                 for version in 1..=target_version {
                     let m = migration(version).expect("validated migration version must exist");
-                    connection.execute_batch(m.up_sql)?;
+                    execute_batch_tolerant(connection, m.up_sql)?;
                 }
                 return Ok(());
             }
@@ -525,7 +527,9 @@ ON CONFLICT(manager_id) DO UPDATE SET
                 params![
                     manager.as_str(),
                     bool_to_sqlite(info.installed),
-                    info.executable_path.as_ref().map(|p| p.to_string_lossy().to_string()),
+                    info.executable_path
+                        .as_ref()
+                        .map(|p| p.to_string_lossy().to_string()),
                     info.version.as_deref(),
                 ],
             )?;
@@ -650,7 +654,7 @@ fn apply_up_migration(
     migration: &SqliteMigration,
 ) -> rusqlite::Result<()> {
     let transaction = connection.transaction()?;
-    transaction.execute_batch(migration.up_sql)?;
+    execute_batch_tolerant(&transaction, migration.up_sql)?;
     transaction.execute(
         &format!(
             "INSERT INTO {MIGRATIONS_TABLE} (version, name, applied_at_unix)
@@ -660,6 +664,16 @@ fn apply_up_migration(
     )?;
     transaction.commit()?;
     Ok(())
+}
+
+/// Execute a SQL batch, tolerating "duplicate column name" errors from
+/// `ALTER TABLE ADD COLUMN` which is not idempotent in SQLite.
+fn execute_batch_tolerant(connection: &Connection, sql: &str) -> rusqlite::Result<()> {
+    match connection.execute_batch(sql) {
+        Ok(()) => Ok(()),
+        Err(e) if e.to_string().contains("duplicate column name") => Ok(()),
+        Err(e) => Err(e),
+    }
 }
 
 fn apply_down_migration(
