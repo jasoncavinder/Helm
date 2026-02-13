@@ -5,6 +5,8 @@
 <h1 align="center">Helm</h1>
 
 <p align="center">
+  <em>Take the helm.</em>
+  <br>
   A native macOS menu bar app for unified package manager control.
   <br>
   <strong>Pre-1.0 &middot; v0.6.0</strong>
