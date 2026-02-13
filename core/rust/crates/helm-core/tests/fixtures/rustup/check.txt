@@ -1,0 +1,3 @@
+stable-x86_64-apple-darwin - Update available : 1.82.0 -> 1.93.0
+nightly-x86_64-apple-darwin - Up to date : 1.86.0-nightly (abc1234 2025-01-15)
+rustup - Up to date : 1.28.2

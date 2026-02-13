@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use crate::adapters::{AdapterRequest, AdapterResponse, ManagerAdapter};
+use crate::adapters::{
+    AdapterRequest, AdapterResponse, ListInstalledRequest, ListOutdatedRequest, ManagerAdapter,
+};
 use crate::models::{
     CoreError, CoreErrorKind, ManagerAction, ManagerId, TaskId, TaskRecord, TaskStatus, TaskType,
 };
@@ -61,6 +63,7 @@ impl AdapterRuntime {
     pub fn with_all_stores(
         adapters: impl IntoIterator<Item = Arc<dyn ManagerAdapter>>,
         task_store: Arc<dyn TaskStore>,
+        package_store: Arc<dyn PackageStore>,
         search_cache_store: Arc<dyn SearchCacheStore>,
     ) -> OrchestrationResult<Self> {
         let start_id = task_store.next_task_id().unwrap_or(0);
@@ -69,7 +72,7 @@ impl AdapterRuntime {
             AdapterExecutionRuntime::with_queue(queue),
             adapters,
             Some(task_store),
-            None,
+            Some(package_store),
             Some(search_cache_store),
         )
     }
@@ -106,6 +109,94 @@ impl AdapterRuntime {
 
     pub fn has_manager(&self, manager: ManagerId) -> bool {
         self.adapters.contains_key(&manager)
+    }
+
+    pub fn adapter_list(&self) -> Vec<Arc<dyn ManagerAdapter>> {
+        self.adapters.values().cloned().collect()
+    }
+
+    pub async fn refresh_all_ordered(&self) -> Vec<(ManagerId, OrchestrationResult<()>)> {
+        let adapter_refs: Vec<&dyn ManagerAdapter> =
+            self.adapters.values().map(|a| a.as_ref()).collect();
+        let phases = crate::orchestration::authority_order::authority_phases(&adapter_refs);
+
+        let mut all_results = Vec::new();
+
+        for phase in phases {
+            let mut handles = Vec::new();
+
+            for manager_id in &phase {
+                let manager = *manager_id;
+                let runtime = self.clone();
+
+                handles.push(tokio::spawn(async move {
+                    // Submit ListInstalled
+                    if let Err(e) = runtime
+                        .submit_refresh_request(
+                            manager,
+                            AdapterRequest::ListInstalled(ListInstalledRequest),
+                        )
+                        .await
+                    {
+                        return vec![(manager, Err(e))];
+                    }
+
+                    // Submit ListOutdated
+                    if let Err(e) = runtime
+                        .submit_refresh_request(
+                            manager,
+                            AdapterRequest::ListOutdated(ListOutdatedRequest),
+                        )
+                        .await
+                    {
+                        return vec![(manager, Err(e))];
+                    }
+
+                    vec![(manager, Ok(()))]
+                }));
+            }
+
+            // Wait for all managers in this phase to complete
+            for handle in handles {
+                match handle.await {
+                    Ok(results) => all_results.extend(results),
+                    Err(_join_error) => {
+                        // JoinError means the task panicked; we still continue with other phases
+                    }
+                }
+            }
+        }
+
+        all_results
+    }
+
+    pub async fn submit_refresh_request(
+        &self,
+        manager: ManagerId,
+        request: AdapterRequest,
+    ) -> OrchestrationResult<()> {
+        let task_id = self.submit(manager, request).await?;
+        let snapshot = self
+            .wait_for_terminal(task_id, Some(Duration::from_secs(60)))
+            .await?;
+        match snapshot.terminal_state {
+            Some(AdapterTaskTerminalState::Succeeded(_)) => Ok(()),
+            Some(AdapterTaskTerminalState::Failed(e)) => Err(e),
+            Some(AdapterTaskTerminalState::Cancelled(e)) => Err(e.unwrap_or(CoreError {
+                manager: Some(manager),
+                task: None,
+                action: None,
+                kind: CoreErrorKind::Internal,
+                message: "task was cancelled".to_string(),
+            })),
+            None => Err(CoreError {
+                manager: Some(manager),
+                task: None,
+                action: None,
+                kind: CoreErrorKind::Internal,
+                message: "task reached terminal state with no result".to_string(),
+            }),
+        }
     }
 
     pub async fn submit(

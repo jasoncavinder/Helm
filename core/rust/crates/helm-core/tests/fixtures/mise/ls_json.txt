@@ -1,0 +1,49 @@
+{
+  "node": [
+    {
+      "version": "22.5.1",
+      "requested_version": "22",
+      "install_path": "/Users/dev/.local/share/mise/installs/node/22.5.1",
+      "source": {
+        "type": ".mise.toml",
+        "path": "/Users/dev/project/.mise.toml"
+      },
+      "installed": true,
+      "active": true
+    }
+  ],
+  "python": [
+    {
+      "version": "3.12.3",
+      "requested_version": "3.12",
+      "install_path": "/Users/dev/.local/share/mise/installs/python/3.12.3",
+      "source": {
+        "type": ".tool-versions",
+        "path": "/Users/dev/.tool-versions"
+      },
+      "installed": true,
+      "active": true
+    },
+    {
+      "version": "3.11.9",
+      "requested_version": "3.11",
+      "install_path": "/Users/dev/.local/share/mise/installs/python/3.11.9",
+      "source": null,
+      "installed": true,
+      "active": false
+    }
+  ],
+  "go": [
+    {
+      "version": "1.22.4",
+      "requested_version": "1.22",
+      "install_path": "/Users/dev/.local/share/mise/installs/go/1.22.4",
+      "source": {
+        "type": ".mise.toml",
+        "path": "/Users/dev/project/.mise.toml"
+      },
+      "installed": true,
+      "active": true
+    }
+  ]
+}

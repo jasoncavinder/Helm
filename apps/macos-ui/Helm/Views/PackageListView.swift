@@ -4,6 +4,7 @@ struct PackageListView: View {
     @ObservedObject var core = HelmCore.shared
     @Binding var searchText: String
     @State private var selectedStatusFilters: Set<PackageStatus> = []
+    @State private var selectedManager: String? = nil
     @State private var detailsPackage: PackageItem? = nil
 
     private var allPackages: [PackageItem] {
@@ -15,6 +16,10 @@ struct PackageListView: View {
         return packages.sorted {
             $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
+    }
+
+    private var availableManagers: [String] {
+        Array(Set(allPackages.map { $0.manager })).sorted()
     }
 
     private var displayedPackages: [PackageItem] {
@@ -40,10 +45,23 @@ struct PackageListView: View {
             base.append(contentsOf: newResults)
         }
 
+        if let manager = selectedManager {
+            base = base.filter { $0.manager == manager }
+        }
+
         if selectedStatusFilters.isEmpty {
             return base
         }
-        return base.filter { selectedStatusFilters.contains($0.status) }
+        return base.filter { pkg in
+            if selectedStatusFilters.contains(pkg.status) {
+                return true
+            }
+            // "Installed" filter should also include upgradable packages
+            if selectedStatusFilters.contains(.installed) && pkg.status == .upgradable {
+                return true
+            }
+            return false
+        }
     }
 
     var body: some View {
@@ -77,6 +95,29 @@ struct PackageListView: View {
                     )
                 }
                 Spacer()
+
+                // Manager Filter
+                Menu {
+                    Button("All Managers") { selectedManager = nil }
+                    Divider()
+                    ForEach(availableManagers, id: \.self) { manager in
+                        Button(manager) { selectedManager = manager }
+                    }
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "square.stack.3d.up")
+                            .imageScale(.small)
+                        Text(selectedManager ?? "All Managers")
+                    }
+                    .font(.caption2)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(selectedManager != nil ? Color.accentColor.opacity(0.2) : Color.gray.opacity(0.1))
+                    .cornerRadius(5)
+                    .foregroundColor(selectedManager != nil ? .accentColor : .primary)
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)

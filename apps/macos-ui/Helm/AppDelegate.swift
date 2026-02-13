@@ -198,7 +198,7 @@ private struct StatusBarView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
         }
-        .frame(width: 350)
+        .frame(width: 400)
         .onChange(of: core.searchText) { newValue in
             if !newValue.trimmingCharacters(in: .whitespaces).isEmpty && selectedTab != .packages {
                 selectedTab = .packages
