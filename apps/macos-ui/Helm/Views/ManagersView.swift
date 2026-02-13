@@ -3,7 +3,6 @@ import SwiftUI
 struct ManagersView: View {
     @ObservedObject var core = HelmCore.shared
     @Binding var selectedTab: HelmTab
-    @State private var detailManager: ManagerInfo? = nil
 
     var body: some View {
         ScrollView {
@@ -26,6 +25,12 @@ struct ManagersView: View {
                         onTap: {
                             core.selectedManagerFilter = normalizedManagerName(manager.id)
                             selectedTab = .packages
+                        },
+                        onInstall: {
+                            core.installManager(manager.id)
+                        },
+                        onUninstall: {
+                            core.uninstallManager(manager.id)
                         }
                     )
 
@@ -64,6 +69,8 @@ private struct ManagerRow: View {
     let packageCount: Int
     let onToggle: () -> Void
     let onTap: () -> Void
+    let onInstall: () -> Void
+    let onUninstall: () -> Void
 
     private var indicatorColor: Color {
         if !manager.isImplemented { return .gray }
@@ -128,6 +135,23 @@ private struct ManagerRow: View {
         .onTapGesture {
             if manager.isImplemented && detected && packageCount > 0 {
                 onTap()
+            }
+        }
+        .contextMenu {
+            if manager.canInstall && !detected {
+                Button("Install \(manager.shortName)") {
+                    onInstall()
+                }
+            }
+            if manager.canUninstall && detected {
+                Button("Uninstall \(manager.shortName)") {
+                    onUninstall()
+                }
+            }
+            if manager.isImplemented && detected && packageCount > 0 {
+                Button("View Packages") {
+                    onTap()
+                }
             }
         }
         .opacity(manager.isImplemented ? 1.0 : 0.6)

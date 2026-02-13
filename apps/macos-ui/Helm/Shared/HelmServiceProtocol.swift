@@ -10,4 +10,6 @@ import Foundation
     func cancelTask(taskId: Int64, withReply reply: @escaping (Bool) -> Void)
     func listManagerStatus(withReply reply: @escaping (String?) -> Void)
     func setManagerEnabled(managerId: String, enabled: Bool, withReply reply: @escaping (Bool) -> Void)
+    func installManager(managerId: String, withReply reply: @escaping (Int64) -> Void)
+    func uninstallManager(managerId: String, withReply reply: @escaping (Int64) -> Void)
 }

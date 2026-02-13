@@ -4,7 +4,8 @@ use crate::adapters::detect_utils::which_executable;
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::process_utils::run_and_collect_stdout;
 use crate::adapters::rustup::{
-    RustupSource, rustup_check_request, rustup_detect_request, rustup_toolchain_list_request,
+    RustupSource, rustup_check_request, rustup_detect_request, rustup_self_uninstall_request,
+    rustup_toolchain_list_request,
 };
 use crate::execution::{ProcessExecutor, ProcessSpawnRequest};
 use crate::models::ManagerId;
@@ -63,6 +64,11 @@ impl RustupSource for ProcessRustupSource {
 
     fn check(&self) -> AdapterResult<String> {
         let request = self.configure_request(rustup_check_request(None));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn self_uninstall(&self) -> AdapterResult<String> {
+        let request = self.configure_request(rustup_self_uninstall_request(None));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 }

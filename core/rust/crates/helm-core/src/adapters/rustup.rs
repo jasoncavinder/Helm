@@ -13,6 +13,7 @@ const RUSTUP_READ_CAPABILITIES: &[Capability] = &[
     Capability::Refresh,
     Capability::ListInstalled,
     Capability::ListOutdated,
+    Capability::Uninstall,
 ];
 
 const RUSTUP_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
@@ -27,10 +28,13 @@ const RUSTUP_COMMAND: &str = "rustup";
 const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
 const LIST_TIMEOUT: Duration = Duration::from_secs(60);
 
+const UNINSTALL_TIMEOUT: Duration = Duration::from_secs(60);
+
 pub trait RustupSource: Send + Sync {
     fn detect(&self) -> AdapterResult<String>;
     fn toolchain_list(&self) -> AdapterResult<String>;
     fn check(&self) -> AdapterResult<String>;
+    fn self_uninstall(&self) -> AdapterResult<String>;
 }
 
 pub struct RustupAdapter<S: RustupSource> {
@@ -80,6 +84,15 @@ impl<S: RustupSource> ManagerAdapter for RustupAdapter<S> {
                 let packages = parse_rustup_check(&raw)?;
                 Ok(AdapterResponse::OutdatedPackages(packages))
             }
+            AdapterRequest::Uninstall(uninstall_request) => {
+                let _ = self.source.self_uninstall()?;
+                Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
+                    package: uninstall_request.package,
+                    action: ManagerAction::Uninstall,
+                    before_version: None,
+                    after_version: None,
+                }))
+            }
             _ => Err(CoreError {
                 manager: Some(ManagerId::Rustup),
                 task: None,
@@ -118,6 +131,16 @@ pub fn rustup_check_request(task_id: Option<TaskId>) -> ProcessSpawnRequest {
         ManagerAction::ListOutdated,
         CommandSpec::new(RUSTUP_COMMAND).arg("check"),
         LIST_TIMEOUT,
+    )
+}
+
+pub fn rustup_self_uninstall_request(task_id: Option<TaskId>) -> ProcessSpawnRequest {
+    rustup_request(
+        task_id,
+        TaskType::Uninstall,
+        ManagerAction::Uninstall,
+        CommandSpec::new(RUSTUP_COMMAND).args(["self", "uninstall", "-y"]),
+        UNINSTALL_TIMEOUT,
     )
 }
 
@@ -341,7 +364,7 @@ mod tests {
     }
 
     #[test]
-    fn adapter_rejects_unsupported_action() {
+    fn adapter_rejects_unsupported_install_action() {
         let source = FixtureSource::default();
         let adapter = RustupAdapter::new(source);
 
@@ -355,6 +378,22 @@ mod tests {
             }))
             .unwrap_err();
         assert_eq!(error.kind, CoreErrorKind::UnsupportedCapability);
+    }
+
+    #[test]
+    fn adapter_executes_uninstall_request() {
+        let source = FixtureSource::default();
+        let adapter = RustupAdapter::new(source);
+
+        let result = adapter
+            .execute(AdapterRequest::Uninstall(crate::adapters::UninstallRequest {
+                package: crate::models::PackageRef {
+                    manager: ManagerId::Rustup,
+                    name: "__self__".to_string(),
+                },
+            }))
+            .unwrap();
+        assert!(matches!(result, AdapterResponse::Mutation(_)));
     }
 
     #[test]
@@ -402,6 +441,10 @@ mod tests {
 
         fn check(&self) -> AdapterResult<String> {
             Ok(CHECK_FIXTURE.to_string())
+        }
+
+        fn self_uninstall(&self) -> AdapterResult<String> {
+            Ok(String::new())
         }
     }
 }

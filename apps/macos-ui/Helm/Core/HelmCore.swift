@@ -391,6 +391,22 @@ final class HelmCore: ObservableObject {
         }
     }
 
+    func installManager(_ managerId: String) {
+        service()?.installManager(managerId: managerId) { taskId in
+            if taskId < 0 {
+                logger.error("installManager(\(managerId)) failed")
+            }
+        }
+    }
+
+    func uninstallManager(_ managerId: String) {
+        service()?.uninstallManager(managerId: managerId) { taskId in
+            if taskId < 0 {
+                logger.error("uninstallManager(\(managerId)) failed")
+            }
+        }
+    }
+
     // MARK: - Search Orchestration
 
     private func onSearchTextChanged(_ query: String) {

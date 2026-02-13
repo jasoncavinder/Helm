@@ -93,4 +93,16 @@ class HelmService: NSObject, HelmServiceProtocol {
         logger.info("helm_set_manager_enabled(\(managerId), \(enabled)) result: \(result)")
         reply(result)
     }
+
+    func installManager(managerId: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = managerId.withCString { helm_install_manager($0) }
+        logger.info("helm_install_manager(\(managerId)) result: \(taskId)")
+        reply(taskId)
+    }
+
+    func uninstallManager(managerId: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = managerId.withCString { helm_uninstall_manager($0) }
+        logger.info("helm_uninstall_manager(\(managerId)) result: \(taskId)")
+        reply(taskId)
+    }
 }

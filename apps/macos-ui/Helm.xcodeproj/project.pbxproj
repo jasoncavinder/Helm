@@ -32,6 +32,7 @@
 		B20000000000000000000007 /* NavigationBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000007 /* NavigationBarView.swift */; };
 		B20000000000000000000008 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000008 /* DashboardView.swift */; };
 		B20000000000000000000009 /* SettingsPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000009 /* SettingsPopoverView.swift */; };
+		B20000000000000000000010 /* ManagersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000010 /* ManagersView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -90,6 +91,7 @@
 		B10000000000000000000007 /* NavigationBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationBarView.swift; sourceTree = "<group>"; };
 		B10000000000000000000008 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		B10000000000000000000009 /* SettingsPopoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsPopoverView.swift; sourceTree = "<group>"; };
+		B10000000000000000000010 /* ManagersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagersView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -168,6 +170,7 @@
 			children = (
 				B30000000000000000000001 /* Components */,
 				B10000000000000000000008 /* DashboardView.swift */,
+				B10000000000000000000010 /* ManagersView.swift */,
 				B10000000000000000000007 /* NavigationBarView.swift */,
 				8CFB6D4E2F3D1D1D002372B8 /* PackageListView.swift */,
 				B10000000000000000000009 /* SettingsPopoverView.swift */,
@@ -419,6 +422,7 @@
 				B20000000000000000000007 /* NavigationBarView.swift in Sources */,
 				B20000000000000000000008 /* DashboardView.swift in Sources */,
 				B20000000000000000000009 /* SettingsPopoverView.swift in Sources */,
+				B20000000000000000000010 /* ManagersView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

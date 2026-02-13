@@ -9,9 +9,9 @@ use helm_core::adapters::mise::MiseAdapter;
 use helm_core::adapters::mise_process::ProcessMiseSource;
 use helm_core::adapters::rustup::RustupAdapter;
 use helm_core::adapters::rustup_process::ProcessRustupSource;
-use helm_core::adapters::{AdapterRequest, SearchRequest};
+use helm_core::adapters::{AdapterRequest, InstallRequest, SearchRequest, UninstallRequest};
 use helm_core::execution::tokio_process::TokioProcessExecutor;
-use helm_core::models::{ManagerId, SearchQuery};
+use helm_core::models::{ManagerId, PackageRef, SearchQuery};
 use helm_core::orchestration::CancellationMode;
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
 use helm_core::persistence::{DetectionStore, PackageStore, SearchCacheStore, TaskStore};
@@ -446,6 +446,126 @@ pub unsafe extern "C" fn helm_set_manager_enabled(
     };
 
     state.store.set_manager_enabled(manager, enabled).is_ok()
+}
+
+/// Install a manager tool via Homebrew. Returns the task ID, or -1 on error.
+///
+/// Supported manager IDs: "mise", "mas".
+///
+/// # Safety
+///
+/// `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_install_manager(manager_id: *const c_char) -> i64 {
+    if manager_id.is_null() {
+        return -1;
+    }
+
+    let c_str = unsafe { CStr::from_ptr(manager_id) };
+    let id_str = match c_str.to_str() {
+        Ok(s) => s,
+        Err(_) => return -1,
+    };
+
+    // Map manager IDs to the formula name to install via Homebrew
+    let formula_name = match id_str {
+        "mise" => "mise",
+        "mas" => "mas",
+        _ => return -1, // Not automatable
+    };
+
+    let (runtime, rt_handle) = {
+        let guard = STATE.lock().unwrap();
+        let state = match guard.as_ref() {
+            Some(s) => s,
+            None => return -1,
+        };
+        (state.runtime.clone(), state.rt_handle.clone())
+    };
+
+    let request = AdapterRequest::Install(InstallRequest {
+        package: PackageRef {
+            manager: ManagerId::HomebrewFormula,
+            name: formula_name.to_string(),
+        },
+        version: None,
+    });
+
+    match rt_handle.block_on(runtime.submit(ManagerId::HomebrewFormula, request)) {
+        Ok(task_id) => task_id.0 as i64,
+        Err(e) => {
+            eprintln!("Failed to install manager {}: {}", id_str, e);
+            -1
+        }
+    }
+}
+
+/// Uninstall a manager tool. Returns the task ID, or -1 on error.
+///
+/// Supported manager IDs: "mise", "mas" (via Homebrew), "rustup" (self uninstall).
+///
+/// # Safety
+///
+/// `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_uninstall_manager(manager_id: *const c_char) -> i64 {
+    if manager_id.is_null() {
+        return -1;
+    }
+
+    let c_str = unsafe { CStr::from_ptr(manager_id) };
+    let id_str = match c_str.to_str() {
+        Ok(s) => s,
+        Err(_) => return -1,
+    };
+
+    let (runtime, rt_handle) = {
+        let guard = STATE.lock().unwrap();
+        let state = match guard.as_ref() {
+            Some(s) => s,
+            None => return -1,
+        };
+        (state.runtime.clone(), state.rt_handle.clone())
+    };
+
+    let (target_manager, request) = match id_str {
+        "mise" => (
+            ManagerId::HomebrewFormula,
+            AdapterRequest::Uninstall(UninstallRequest {
+                package: PackageRef {
+                    manager: ManagerId::HomebrewFormula,
+                    name: "mise".to_string(),
+                },
+            }),
+        ),
+        "mas" => (
+            ManagerId::HomebrewFormula,
+            AdapterRequest::Uninstall(UninstallRequest {
+                package: PackageRef {
+                    manager: ManagerId::HomebrewFormula,
+                    name: "mas".to_string(),
+                },
+            }),
+        ),
+        "rustup" => (
+            ManagerId::Rustup,
+            AdapterRequest::Uninstall(UninstallRequest {
+                package: PackageRef {
+                    manager: ManagerId::Rustup,
+                    name: "__self__".to_string(),
+                },
+            }),
+        ),
+        _ => return -1, // Not automatable
+    };
+
+    match rt_handle.block_on(runtime.submit(target_manager, request)) {
+        Ok(task_id) => task_id.0 as i64,
+        Err(e) => {
+            eprintln!("Failed to uninstall manager {}: {}", id_str, e);
+            -1
+        }
+    }
 }
 
 /// Free a string previously returned by a `helm_*` function.
