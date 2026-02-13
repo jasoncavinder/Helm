@@ -37,6 +37,7 @@ struct PackageItem: Identifiable {
     var latestVersion: String? = nil
     let manager: String
     var summary: String? = nil
+    var restartRequired: Bool = false
     private var statusOverride: PackageStatus? = nil
 
     var status: PackageStatus {
@@ -44,13 +45,14 @@ struct PackageItem: Identifiable {
         return latestVersion != nil ? .upgradable : .installed
     }
 
-    init(id: String, name: String, version: String, latestVersion: String? = nil, manager: String, summary: String? = nil, status: PackageStatus? = nil) {
+    init(id: String, name: String, version: String, latestVersion: String? = nil, manager: String, summary: String? = nil, restartRequired: Bool = false, status: PackageStatus? = nil) {
         self.id = id
         self.name = name
         self.version = version
         self.latestVersion = latestVersion
         self.manager = manager
         self.summary = summary
+        self.restartRequired = restartRequired
         self.statusOverride = status
     }
 }

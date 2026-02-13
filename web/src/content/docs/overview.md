@@ -11,13 +11,15 @@ Developers and power users on macOS who manage software through multiple package
 
 ## What it does today
 
-Helm v0.6.0 supports three package managers with more planned:
+Helm v0.7.0 supports five package managers with more planned:
 
 | Manager | Type | Capabilities | Status |
 |---------|------|-------------|--------|
 | **Homebrew** | System package manager | Detect, list installed, list outdated, search | Active |
 | **mise** | Tool/runtime manager | Detect, list installed, list outdated | Active |
 | **rustup** | Rust toolchain manager | Detect, list installed, list outdated | Active |
+| **softwareupdate** | macOS system updates | Detect, list outdated (with restart detection) | Active |
+| **mas** | Mac App Store | Detect, list installed, list outdated | Active |
 
 Key features:
 
@@ -25,7 +27,8 @@ Key features:
 - **Dashboard** — package stats, manager grid, and recent task activity at a glance
 - **Package list** — browse installed, upgradable, and available packages with status filters and manager filter
 - **Progressive search** — instant local filtering with debounced remote search
-- **Authority-ordered refresh** — toolchain managers (mise, rustup) refresh before package managers (Homebrew)
+- **Authority-ordered refresh** — Authoritative (mise, rustup) → Standard (mas) → Guarded (Homebrew, softwareupdate)
+- **Restart detection** — surface restart-required updates from macOS softwareupdate
 - **Background tasks** — real-time task tracking with per-manager serial execution
 
 ## How it works

@@ -5,11 +5,13 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use rusqlite::{Connection, params};
 
 use crate::models::{
-    CachedSearchResult, CoreError, CoreErrorKind, InstalledPackage, ManagerId, OutdatedPackage,
-    PackageCandidate, PackageRef, PinKind, PinRecord, TaskId, TaskRecord, TaskStatus, TaskType,
+    CachedSearchResult, CoreError, CoreErrorKind, DetectionInfo, InstalledPackage, ManagerId,
+    OutdatedPackage, PackageCandidate, PackageRef, PinKind, PinRecord, TaskId, TaskRecord,
+    TaskStatus, TaskType,
 };
 use crate::persistence::{
-    MigrationStore, PackageStore, PersistenceResult, PinStore, SearchCacheStore, TaskStore,
+    DetectionStore, MigrationStore, PackageStore, PersistenceResult, PinStore, SearchCacheStore,
+    TaskStore,
 };
 use crate::sqlite::migrations::{SqliteMigration, current_schema_version, migration, migrations};
 
@@ -80,6 +82,15 @@ impl MigrationStore for SqliteStore {
             let current_version = read_current_version(connection)?;
 
             if target_version == current_version {
+                // Re-apply all DDL to handle corrupted state where migration
+                // version was recorded but tables are missing. All DDL uses
+                // CREATE TABLE/INDEX IF NOT EXISTS, so this is idempotent.
+                // ALTER TABLE ADD COLUMN is NOT idempotent in SQLite, so we
+                // tolerate "duplicate column name" errors.
+                for version in 1..=target_version {
+                    let m = migration(version).expect("validated migration version must exist");
+                    execute_batch_tolerant(connection, m.up_sql)?;
+                }
                 return Ok(());
             }
 
@@ -142,12 +153,13 @@ ON CONFLICT(manager_id, package_name) DO UPDATE SET
                 let mut statement = transaction.prepare(
                     "
 INSERT INTO outdated_packages (
-    manager_id, package_name, installed_version, candidate_version, pinned, updated_at_unix
-) VALUES (?1, ?2, ?3, ?4, ?5, strftime('%s', 'now'))
+    manager_id, package_name, installed_version, candidate_version, pinned, restart_required, updated_at_unix
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%s', 'now'))
 ON CONFLICT(manager_id, package_name) DO UPDATE SET
     installed_version = excluded.installed_version,
     candidate_version = excluded.candidate_version,
     pinned = excluded.pinned,
+    restart_required = excluded.restart_required,
     updated_at_unix = excluded.updated_at_unix
 ",
                 )?;
@@ -159,6 +171,7 @@ ON CONFLICT(manager_id, package_name) DO UPDATE SET
                         package.installed_version.as_deref(),
                         package.candidate_version.as_str(),
                         bool_to_sqlite(package.pinned),
+                        bool_to_sqlite(package.restart_required),
                     ))?;
                 }
             }
@@ -204,7 +217,7 @@ ORDER BY manager_id, package_name
             ensure_schema_ready(connection)?;
             let mut statement = connection.prepare(
                 "
-SELECT manager_id, package_name, installed_version, candidate_version, pinned
+SELECT manager_id, package_name, installed_version, candidate_version, pinned, restart_required
 FROM outdated_packages
 ORDER BY manager_id, package_name
 ",
@@ -216,6 +229,7 @@ ORDER BY manager_id, package_name
                 let installed_version: Option<String> = row.get(2)?;
                 let candidate_version: String = row.get(3)?;
                 let pinned_int: i64 = row.get(4)?;
+                let restart_required_int: i64 = row.get(5)?;
 
                 let manager = parse_manager_id(&manager_id)?;
                 Ok(OutdatedPackage {
@@ -226,6 +240,7 @@ ORDER BY manager_id, package_name
                     installed_version,
                     candidate_version,
                     pinned: sqlite_to_bool(pinned_int),
+                    restart_required: sqlite_to_bool(restart_required_int),
                 })
             })?;
 
@@ -493,6 +508,133 @@ LIMIT ?1
             }
         })
     }
+
+    fn prune_completed_tasks(&self, max_age_secs: i64) -> PersistenceResult<usize> {
+        self.with_connection("prune_completed_tasks", |connection| {
+            ensure_schema_ready(connection)?;
+            let cutoff = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or(Duration::ZERO)
+                .as_secs() as i64
+                - max_age_secs;
+            let deleted = connection.execute(
+                "
+DELETE FROM task_records
+WHERE status IN ('completed', 'failed', 'cancelled')
+  AND created_at_unix < ?1
+",
+                params![cutoff],
+            )?;
+            Ok(deleted)
+        })
+    }
+
+    fn delete_all_tasks(&self) -> PersistenceResult<()> {
+        self.with_connection("delete_all_tasks", |connection| {
+            ensure_schema_ready(connection)?;
+            connection.execute("DELETE FROM task_records", [])?;
+            Ok(())
+        })
+    }
+}
+
+impl DetectionStore for SqliteStore {
+    fn upsert_detection(&self, manager: ManagerId, info: &DetectionInfo) -> PersistenceResult<()> {
+        self.with_connection("upsert_detection", |connection| {
+            ensure_schema_ready(connection)?;
+            connection.execute(
+                "
+INSERT INTO manager_detection (manager_id, detected, executable_path, version, detected_at_unix)
+VALUES (?1, ?2, ?3, ?4, strftime('%s', 'now'))
+ON CONFLICT(manager_id) DO UPDATE SET
+    detected = excluded.detected,
+    executable_path = excluded.executable_path,
+    version = excluded.version,
+    detected_at_unix = excluded.detected_at_unix
+",
+                params![
+                    manager.as_str(),
+                    bool_to_sqlite(info.installed),
+                    info.executable_path
+                        .as_ref()
+                        .map(|p| p.to_string_lossy().to_string()),
+                    info.version.as_deref(),
+                ],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn list_detections(&self) -> PersistenceResult<Vec<(ManagerId, DetectionInfo)>> {
+        self.with_connection("list_detections", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection.prepare(
+                "
+SELECT manager_id, detected, executable_path, version
+FROM manager_detection
+ORDER BY manager_id
+",
+            )?;
+
+            let rows = statement.query_map([], |row| {
+                let manager_raw: String = row.get(0)?;
+                let detected_int: i64 = row.get(1)?;
+                let executable_path: Option<String> = row.get(2)?;
+                let version: Option<String> = row.get(3)?;
+
+                let manager = parse_manager_id(&manager_raw)?;
+                Ok((
+                    manager,
+                    DetectionInfo {
+                        installed: sqlite_to_bool(detected_int),
+                        executable_path: executable_path.map(std::path::PathBuf::from),
+                        version,
+                    },
+                ))
+            })?;
+
+            rows.collect()
+        })
+    }
+
+    fn set_manager_enabled(&self, manager: ManagerId, enabled: bool) -> PersistenceResult<()> {
+        self.with_connection("set_manager_enabled", |connection| {
+            ensure_schema_ready(connection)?;
+            connection.execute(
+                "
+INSERT INTO manager_preferences (manager_id, enabled)
+VALUES (?1, ?2)
+ON CONFLICT(manager_id) DO UPDATE SET
+    enabled = excluded.enabled
+",
+                params![manager.as_str(), bool_to_sqlite(enabled)],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn list_manager_preferences(&self) -> PersistenceResult<Vec<(ManagerId, bool)>> {
+        self.with_connection("list_manager_preferences", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection.prepare(
+                "
+SELECT manager_id, enabled
+FROM manager_preferences
+ORDER BY manager_id
+",
+            )?;
+
+            let rows = statement.query_map([], |row| {
+                let manager_raw: String = row.get(0)?;
+                let enabled_int: i64 = row.get(1)?;
+
+                let manager = parse_manager_id(&manager_raw)?;
+                Ok((manager, sqlite_to_bool(enabled_int)))
+            })?;
+
+            rows.collect()
+        })
+    }
 }
 
 fn open_connection(database_path: &Path) -> rusqlite::Result<Connection> {
@@ -540,7 +682,7 @@ fn apply_up_migration(
     migration: &SqliteMigration,
 ) -> rusqlite::Result<()> {
     let transaction = connection.transaction()?;
-    transaction.execute_batch(migration.up_sql)?;
+    execute_batch_tolerant(&transaction, migration.up_sql)?;
     transaction.execute(
         &format!(
             "INSERT INTO {MIGRATIONS_TABLE} (version, name, applied_at_unix)
@@ -550,6 +692,16 @@ fn apply_up_migration(
     )?;
     transaction.commit()?;
     Ok(())
+}
+
+/// Execute a SQL batch, tolerating "duplicate column name" errors from
+/// `ALTER TABLE ADD COLUMN` which is not idempotent in SQLite.
+fn execute_batch_tolerant(connection: &Connection, sql: &str) -> rusqlite::Result<()> {
+    match connection.execute_batch(sql) {
+        Ok(()) => Ok(()),
+        Err(e) if e.to_string().contains("duplicate column name") => Ok(()),
+        Err(e) => Err(e),
+    }
 }
 
 fn apply_down_migration(

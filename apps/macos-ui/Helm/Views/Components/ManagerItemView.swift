@@ -3,24 +3,44 @@ import SwiftUI
 struct ManagerItemView: View {
     let manager: ManagerInfo
     let packageCount: Int
+    let hasOutdatedPackages: Bool
+    let hasFailedTasks: Bool
+    let versionAvailable: Bool
+    let outdatedCount: Int
+    let onTap: () -> Void
+    let onRefresh: () -> Void
+
+    private var indicatorColor: Color {
+        if hasFailedTasks { return .red }
+        if hasOutdatedPackages || !versionAvailable { return .yellow }
+        return .green
+    }
+
+    private var statusTooltip: String {
+        if hasFailedTasks { return "Last task failed" }
+        if hasOutdatedPackages && !versionAvailable {
+            return "\(outdatedCount) outdated \u{00B7} Version unknown"
+        }
+        if hasOutdatedPackages { return "\(outdatedCount) outdated" }
+        if !versionAvailable { return "Version unknown" }
+        return "All up to date"
+    }
 
     var body: some View {
         VStack(spacing: 4) {
             ZStack(alignment: .topTrailing) {
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(manager.isImplemented
-                          ? Color.accentColor.opacity(0.15)
-                          : Color.gray.opacity(0.1))
+                    .fill(Color.accentColor.opacity(0.15))
                     .frame(width: 44, height: 44)
                     .overlay(
                         Text(manager.firstLetter)
                             .font(.title2)
                             .fontWeight(.bold)
-                            .foregroundColor(manager.isImplemented ? .accentColor : .gray)
+                            .foregroundColor(.accentColor)
                     )
 
                 Circle()
-                    .fill(manager.isImplemented ? .green : .red)
+                    .fill(indicatorColor)
                     .frame(width: 8, height: 8)
                     .offset(x: 2, y: -2)
             }
@@ -37,6 +57,14 @@ struct ManagerItemView: View {
             }
         }
         .frame(width: 60)
-        .opacity(manager.isImplemented ? 1.0 : 0.5)
+        .contentShape(Rectangle())
+        .help(statusTooltip)
+        .onTapGesture { onTap() }
+        .contextMenu {
+            Button("View Packages") { onTap() }
+            Button("Refresh") { onRefresh() }
+            Divider()
+            Text(statusTooltip)
+        }
     }
 }

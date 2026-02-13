@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -30,8 +31,14 @@ const MISE_COMMAND: &str = "mise";
 const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
 const LIST_TIMEOUT: Duration = Duration::from_secs(60);
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MiseDetectOutput {
+    pub executable_path: Option<PathBuf>,
+    pub version_output: String,
+}
+
 pub trait MiseSource: Send + Sync {
-    fn detect(&self) -> AdapterResult<String>;
+    fn detect(&self) -> AdapterResult<MiseDetectOutput>;
     fn list_installed(&self) -> AdapterResult<String>;
     fn list_outdated(&self) -> AdapterResult<String>;
 }
@@ -60,12 +67,13 @@ impl<S: MiseSource> ManagerAdapter for MiseAdapter<S> {
 
         match request {
             AdapterRequest::Detect(_) => {
-                let raw = self.source.detect()?;
-                let version = parse_mise_version(&raw);
-                let installed = version.is_some();
+                let output = self.source.detect()?;
+                let version = parse_mise_version(&output.version_output);
+                let has_executable = output.executable_path.is_some();
+                let installed = has_executable || version.is_some();
                 Ok(AdapterResponse::Detection(DetectionInfo {
                     installed,
-                    executable_path: None,
+                    executable_path: output.executable_path,
                     version,
                 }))
             }
@@ -141,11 +149,12 @@ fn mise_request(
 }
 
 fn parse_mise_version(output: &str) -> Option<String> {
-    // "mise 2026.2.6 macos-x64" -> "2026.2.6"
+    // Old format: "mise 2026.2.6 macos-x64" -> "2026.2.6"
+    // New format: "2026.2.6 macos-x64 (2026-02-07)" -> "2026.2.6"
     let line = output.lines().map(str::trim).find(|l| !l.is_empty())?;
-    let rest = line.strip_prefix("mise ")?;
-    let version = rest.split_whitespace().next()?;
-    if version.is_empty() {
+    let candidate = line.strip_prefix("mise ").unwrap_or(line);
+    let version = candidate.split_whitespace().next()?;
+    if version.is_empty() || !version.starts_with(|c: char| c.is_ascii_digit()) {
         return None;
     }
     Some(version.to_owned())
@@ -209,6 +218,7 @@ fn parse_mise_outdated(json: &str) -> AdapterResult<Vec<OutdatedPackage>> {
             installed_version: Some(entry.current),
             candidate_version: entry.latest,
             pinned: false,
+            restart_required: false,
         })
         .collect();
 
@@ -240,8 +250,9 @@ mod tests {
     use crate::models::{CoreErrorKind, ManagerAction, ManagerId, TaskId, TaskType};
 
     use super::{
-        MiseAdapter, MiseSource, mise_detect_request, mise_list_installed_request,
-        mise_list_outdated_request, parse_mise_installed, parse_mise_outdated, parse_mise_version,
+        MiseAdapter, MiseDetectOutput, MiseSource, mise_detect_request,
+        mise_list_installed_request, mise_list_outdated_request, parse_mise_installed,
+        parse_mise_outdated, parse_mise_version,
     };
 
     const VERSION_FIXTURE: &str = include_str!("../../tests/fixtures/mise/version.txt");
@@ -251,6 +262,12 @@ mod tests {
     #[test]
     fn parses_mise_version_from_standard_banner() {
         let version = parse_mise_version("mise 2026.2.6 macos-x64\n");
+        assert_eq!(version.as_deref(), Some("2026.2.6"));
+    }
+
+    #[test]
+    fn parses_mise_version_from_new_format() {
+        let version = parse_mise_version("2026.2.6 macos-x64 (2026-02-07)\n");
         assert_eq!(version.as_deref(), Some("2026.2.6"));
     }
 
@@ -398,9 +415,12 @@ mod tests {
     }
 
     impl MiseSource for FixtureSource {
-        fn detect(&self) -> AdapterResult<String> {
+        fn detect(&self) -> AdapterResult<MiseDetectOutput> {
             self.detect_calls.fetch_add(1, Ordering::SeqCst);
-            Ok(VERSION_FIXTURE.to_string())
+            Ok(MiseDetectOutput {
+                executable_path: Some(PathBuf::from("/Users/test/.local/bin/mise")),
+                version_output: VERSION_FIXTURE.to_string(),
+            })
         }
 
         fn list_installed(&self) -> AdapterResult<String> {

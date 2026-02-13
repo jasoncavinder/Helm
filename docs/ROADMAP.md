@@ -156,7 +156,7 @@ Delivered:
 
 ---
 
-## 0.7.x — System & App Store Managers (beta)
+## 0.7.x — System & App Store Managers (beta) - Completed
 
 Goal:
 
@@ -174,6 +174,31 @@ Exit Criteria:
 - `mas outdated` detection works and is parsed correctly
 - Guardrails block silent OS updates
 - Reboot-required surfaced in UI
+
+Delivered:
+- softwareupdate adapter with `sw_vers` detection and `softwareupdate -l` parsing
+- mas (Mac App Store) adapter with `mas version`, `mas list`, and `mas outdated` parsing
+- restart_required field on OutdatedPackage model with schema migration v2
+- Full 3-phase authority ordering validated: Authoritative (mise, rustup) → Standard (mas) → Guarded (Homebrew, softwareupdate)
+- FFI registration for all 5 adapters with shared TokioProcessExecutor
+- Restart-required indicator in PackageRowView and PackageDetailPopover
+- End-to-end integration tests for softwareupdate and mas adapters
+- 5-adapter authority phase ordering test
+
+### 0.7.0-alpha.2
+
+- Onboarding wizard: 3-step first-run experience (Welcome → Detection → Configure)
+- Auto-detect on launch: triggerRefresh on app appear for returning users
+- Reset Local Data: full database wipe with onboarding re-entry via Settings
+- Manager install/uninstall: context menu actions for mas, mise, and rustup
+- Rustup version detection fix: bypass pipe EOF deadlock from background subprocesses
+- Mise version parser: handle new output format without "mise " prefix
+- Task auto-pruning: completed/failed/cancelled tasks cleaned after 5 minutes
+- Reset lifecycle hardened: stop polling during wipe, delete stale task records
+- Manager toggles disabled for non-installed managers (show "Not Installed")
+- Dashboard layout: fixed header with scrollable Recent Tasks section
+- Onboarding detection: spinner during scan, found-only manager list with versions
+- Tab reorder: Dashboard → Packages → Managers
 
 ---
 
