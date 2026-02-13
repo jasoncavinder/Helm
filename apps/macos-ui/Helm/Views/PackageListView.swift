@@ -153,6 +153,12 @@ struct PackageListView: View {
             PackageDetailPopover(package: package)
                 .frame(width: 250)
         }
+        .onAppear {
+            if let filter = core.selectedManagerFilter {
+                selectedManager = filter
+                core.selectedManagerFilter = nil
+            }
+        }
     }
 }
 

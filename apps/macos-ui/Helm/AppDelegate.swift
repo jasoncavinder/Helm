@@ -164,6 +164,8 @@ private struct StatusBarView: View {
                     switch selectedTab {
                     case .dashboard:
                         DashboardView()
+                    case .managers:
+                        ManagersView(selectedTab: $selectedTab)
                     case .packages:
                         PackageListView(searchText: $core.searchText)
                     }
