@@ -13,7 +13,9 @@ use helm_core::adapters::rustup::RustupAdapter;
 use helm_core::adapters::rustup_process::ProcessRustupSource;
 use helm_core::adapters::softwareupdate::SoftwareUpdateAdapter;
 use helm_core::adapters::softwareupdate_process::ProcessSoftwareUpdateSource;
-use helm_core::adapters::{AdapterRequest, InstallRequest, SearchRequest, UninstallRequest};
+use helm_core::adapters::{
+    AdapterRequest, InstallRequest, SearchRequest, UninstallRequest, UpgradeRequest,
+};
 use helm_core::execution::tokio_process::TokioProcessExecutor;
 use helm_core::models::{ManagerId, PackageRef, SearchQuery};
 use helm_core::orchestration::CancellationMode;
@@ -518,6 +520,87 @@ pub unsafe extern "C" fn helm_install_manager(manager_id: *const c_char) -> i64 
         Ok(task_id) => task_id.0 as i64,
         Err(e) => {
             eprintln!("Failed to install manager {}: {}", id_str, e);
+            -1
+        }
+    }
+}
+
+/// Update a manager tool. Returns the task ID, or -1 on error.
+///
+/// Supported manager IDs:
+/// - "homebrew_formula" -> `brew update`
+/// - "mise" -> `brew upgrade mise`
+/// - "mas" -> `brew upgrade mas`
+/// - "rustup" -> `rustup self update`
+///
+/// # Safety
+///
+/// `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
+    if manager_id.is_null() {
+        return -1;
+    }
+
+    let c_str = unsafe { CStr::from_ptr(manager_id) };
+    let id_str = match c_str.to_str() {
+        Ok(s) => s,
+        Err(_) => return -1,
+    };
+
+    let (target_manager, request) = match id_str {
+        "homebrew_formula" => (
+            ManagerId::HomebrewFormula,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::HomebrewFormula,
+                    name: "__self__".to_string(),
+                }),
+            }),
+        ),
+        "mise" => (
+            ManagerId::HomebrewFormula,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::HomebrewFormula,
+                    name: "mise".to_string(),
+                }),
+            }),
+        ),
+        "mas" => (
+            ManagerId::HomebrewFormula,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::HomebrewFormula,
+                    name: "mas".to_string(),
+                }),
+            }),
+        ),
+        "rustup" => (
+            ManagerId::Rustup,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Rustup,
+                    name: "__self__".to_string(),
+                }),
+            }),
+        ),
+        _ => return -1,
+    };
+
+    let (runtime, rt_handle) = {
+        let guard = STATE.lock().unwrap();
+        let state = match guard.as_ref() {
+            Some(s) => s,
+            None => return -1,
+        };
+        (state.runtime.clone(), state.rt_handle.clone())
+    };
+
+    match rt_handle.block_on(runtime.submit(target_manager, request)) {
+        Ok(task_id) => task_id.0 as i64,
+        Err(e) => {
+            eprintln!("Failed to update manager {}: {}", id_str, e);
             -1
         }
     }

@@ -72,6 +72,21 @@ bool helm_set_manager_enabled(const char *manager_id, bool enabled);
 int64_t helm_install_manager(const char *manager_id);
 
 /**
+ * Update a manager tool. Returns the task ID, or -1 on error.
+ *
+ * Supported manager IDs:
+ * - "homebrew_formula" -> `brew update`
+ * - "mise" -> `brew upgrade mise`
+ * - "mas" -> `brew upgrade mas`
+ * - "rustup" -> `rustup self update`
+ *
+ * # Safety
+ *
+ * `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ */
+int64_t helm_update_manager(const char *manager_id);
+
+/**
  * Uninstall a manager tool. Returns the task ID, or -1 on error.
  *
  * Supported manager IDs: "mise", "mas" (via Homebrew), "rustup" (self uninstall).

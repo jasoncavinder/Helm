@@ -100,6 +100,12 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(taskId)
     }
 
+    func updateManager(managerId: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = managerId.withCString { helm_update_manager($0) }
+        logger.info("helm_update_manager(\(managerId)) result: \(taskId)")
+        reply(taskId)
+    }
+
     func uninstallManager(managerId: String, withReply reply: @escaping (Int64) -> Void) {
         let taskId = managerId.withCString { helm_uninstall_manager($0) }
         logger.info("helm_uninstall_manager(\(managerId)) result: \(taskId)")

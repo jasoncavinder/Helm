@@ -168,17 +168,18 @@ fn parse_mas_list(output: &str) -> AdapterResult<Vec<InstalledPackage>> {
         .filter(|line| !line.is_empty())
     {
         // Format: "497799835  Xcode               (16.2)"
-        // App ID is the first token, version is in parens at end
+        // App ID is the first token, app name is text before parenthesized version.
         let Some((app_id, rest)) = split_app_id(line) else {
             continue;
         };
 
         let version = extract_parenthesized_version(rest);
+        let app_name = extract_app_name(rest).unwrap_or_else(|| app_id.to_owned());
 
         packages.push(InstalledPackage {
             package: PackageRef {
                 manager: ManagerId::Mas,
-                name: app_id.to_owned(),
+                name: app_name,
             },
             installed_version: version,
             pinned: false,
@@ -205,11 +206,12 @@ fn parse_mas_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
         let Some(candidate) = candidate else {
             continue;
         };
+        let app_name = extract_app_name(rest).unwrap_or_else(|| app_id.to_owned());
 
         packages.push(OutdatedPackage {
             package: PackageRef {
                 manager: ManagerId::Mas,
-                name: app_id.to_owned(),
+                name: app_name,
             },
             installed_version: installed,
             candidate_version: candidate,
@@ -281,6 +283,21 @@ fn extract_outdated_versions(text: &str) -> (Option<String>, Option<String>) {
     }
 }
 
+/// Extract app name from the segment after app id.
+/// Example: "Xcode               (16.2)" -> "Xcode"
+fn extract_app_name(text: &str) -> Option<String> {
+    let base = if let Some(open) = text.rfind('(') {
+        text[..open].trim()
+    } else {
+        text.trim()
+    };
+    if base.is_empty() {
+        None
+    } else {
+        Some(base.to_owned())
+    }
+}
+
 fn _parse_error(message: &str) -> CoreError {
     CoreError {
         manager: Some(ManagerId::Mas),
@@ -336,14 +353,14 @@ mod tests {
         let packages = parse_mas_list(LIST_FIXTURE).unwrap();
         assert_eq!(packages.len(), 4);
 
-        assert_eq!(packages[0].package.name, "497799835");
+        assert_eq!(packages[0].package.name, "Xcode");
         assert_eq!(packages[0].installed_version.as_deref(), Some("16.2"));
         assert_eq!(packages[0].package.manager, ManagerId::Mas);
 
-        assert_eq!(packages[1].package.name, "409183694");
+        assert_eq!(packages[1].package.name, "Keynote");
         assert_eq!(packages[1].installed_version.as_deref(), Some("14.3"));
 
-        assert_eq!(packages[3].package.name, "1295203466");
+        assert_eq!(packages[3].package.name, "Microsoft Remote Desktop");
         assert_eq!(packages[3].installed_version.as_deref(), Some("10.9.5"));
     }
 
@@ -358,11 +375,11 @@ mod tests {
         let packages = parse_mas_outdated(OUTDATED_FIXTURE).unwrap();
         assert_eq!(packages.len(), 2);
 
-        assert_eq!(packages[0].package.name, "497799835");
+        assert_eq!(packages[0].package.name, "Xcode");
         assert_eq!(packages[0].installed_version.as_deref(), Some("16.1"));
         assert_eq!(packages[0].candidate_version, "16.2");
 
-        assert_eq!(packages[1].package.name, "409183694");
+        assert_eq!(packages[1].package.name, "Keynote");
         assert_eq!(packages[1].installed_version.as_deref(), Some("14.2"));
         assert_eq!(packages[1].candidate_version, "14.3");
     }

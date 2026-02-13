@@ -43,6 +43,9 @@ struct ManagersView: View {
                             onInstall: {
                                 core.installManager(manager.id)
                             },
+                            onUpdate: {
+                                core.updateManager(manager.id)
+                            },
                             onUninstall: {
                                 core.uninstallManager(manager.id)
                             }
@@ -87,15 +90,17 @@ private struct ManagerRow: View {
     let onToggle: () -> Void
     let onTap: () -> Void
     let onInstall: () -> Void
+    let onUpdate: () -> Void
     let onUninstall: () -> Void
 
     @State private var confirmAction: ConfirmAction? = nil
 
     private enum ConfirmAction: Identifiable {
-        case install, uninstall
+        case install, update, uninstall
         var id: String {
             switch self {
             case .install: return "install"
+            case .update: return "update"
             case .uninstall: return "uninstall"
             }
         }
@@ -182,6 +187,11 @@ private struct ManagerRow: View {
                     confirmAction = .install
                 }
             }
+            if manager.canUpdate && detected {
+                Button("Update \(manager.shortName)") {
+                    confirmAction = .update
+                }
+            }
             if manager.canUninstall && detected {
                 Button("Uninstall \(manager.shortName)") {
                     confirmAction = .uninstall
@@ -200,6 +210,13 @@ private struct ManagerRow: View {
                     title: Text("Install \(manager.displayName)?"),
                     message: Text("This will install \(manager.shortName) via Homebrew."),
                     primaryButton: .default(Text("Install")) { onInstall() },
+                    secondaryButton: .cancel()
+                )
+            case .update:
+                return Alert(
+                    title: Text("Update \(manager.displayName)?"),
+                    message: Text("This will run the manager's supported update flow."),
+                    primaryButton: .default(Text("Update")) { onUpdate() },
                     secondaryButton: .cancel()
                 )
             case .uninstall:

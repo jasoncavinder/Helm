@@ -40,7 +40,6 @@ const SOFTWARE_UPDATE_CAPABILITIES: &[Capability] = &[
     Capability::Detect,
     Capability::Refresh,
     Capability::ListOutdated,
-    Capability::Upgrade,
 ];
 const ROSETTA_CAPABILITIES: &[Capability] =
     &[Capability::Detect, Capability::Refresh, Capability::Install];
@@ -50,7 +49,6 @@ const MAS_CAPABILITIES: &[Capability] = &[
     Capability::Refresh,
     Capability::ListInstalled,
     Capability::ListOutdated,
-    Capability::Upgrade,
 ];
 
 const ALL_MANAGERS: [ManagerDescriptor; 28] = [
