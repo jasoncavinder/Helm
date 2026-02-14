@@ -5,7 +5,6 @@ struct PackageListView: View {
     @Binding var searchText: String
     @State private var selectedStatusFilter: PackageStatus? = nil
     @State private var selectedManager: String? = nil
-    @State private var detailsPackage: PackageItem? = nil
 
     private var allPackages: [PackageItem] {
         var packages = core.outdatedPackages
@@ -137,11 +136,18 @@ struct PackageListView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(displayedPackages) { package in
-                            PackageRowView(package: package)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    detailsPackage = package
-                                }
+                            PackageRowView(
+                                package: package,
+                                onTogglePin: package.status == .available
+                                    ? nil
+                                    : {
+                                        if package.pinned {
+                                            core.unpinPackage(package)
+                                        } else {
+                                            core.pinPackage(package)
+                                        }
+                                    }
+                            )
                             Divider()
                                 .padding(.leading, 36)
                         }
@@ -149,72 +155,12 @@ struct PackageListView: View {
                 }
             }
         }
-        .popover(item: $detailsPackage) { package in
-            PackageDetailPopover(package: package)
-                .frame(width: 250)
-        }
         .onAppear {
             if let filter = core.selectedManagerFilter {
                 selectedManager = filter
                 core.selectedManagerFilter = nil
             }
         }
-    }
-}
-
-private struct PackageDetailPopover: View {
-    @ObservedObject private var core = HelmCore.shared
-    let package: PackageItem
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(package.name)
-                .font(.headline)
-
-            LabeledContentRow(label: "Manager", value: package.manager)
-            LabeledContentRow(label: "Version", value: package.version)
-            LabeledContentRow(label: "Pinned", value: package.pinned ? "Yes" : "No")
-
-            if let latest = package.latestVersion {
-                LabeledContentRow(label: "Available", value: latest, valueColor: .orange)
-            }
-
-            if package.restartRequired {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .foregroundColor(.orange)
-                    Text("Restart required after update")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-
-            Divider()
-
-            HStack {
-                if package.status != .available {
-                    Button(package.pinned ? "Unpin" : "Pin") {
-                        if package.pinned {
-                            core.unpinPackage(package)
-                        } else {
-                            core.pinPackage(package)
-                        }
-                    }
-                }
-
-                if package.status == .upgradable {
-                    Button("Upgrade") {}
-                        .disabled(true)
-                        .help("Upgrade not yet implemented")
-                }
-
-                Button("Uninstall") {}
-                    .disabled(true)
-                    .help("Uninstall not yet implemented")
-            }
-            .padding(.top, 4)
-        }
-        .padding(12)
     }
 }
 

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PackageRowView: View {
     let package: PackageItem
+    var onTogglePin: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 8) {
@@ -37,6 +38,16 @@ struct PackageRowView: View {
             Spacer()
 
             VStack(alignment: .trailing, spacing: 2) {
+                if let onTogglePin {
+                    Button(action: onTogglePin) {
+                        Image(systemName: package.pinned ? "pin.slash.fill" : "pin")
+                            .font(.caption)
+                            .foregroundColor(package.pinned ? .orange : .secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .help(package.pinned ? "Unpin package" : "Pin package")
+                }
+
                 if let latest = package.latestVersion {
                     HStack(spacing: 4) {
                         Text(latest)

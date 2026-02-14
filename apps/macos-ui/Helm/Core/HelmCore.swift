@@ -539,17 +539,29 @@ final class HelmCore: ObservableObject {
 
     func pinPackage(_ package: PackageItem) {
         let version = package.version.isEmpty || package.version == "unknown" ? nil : package.version
-        service()?.pinPackage(managerId: package.managerId, packageName: package.name, version: version) { success in
-            if !success {
-                logger.error("pinPackage(\(package.managerId):\(package.name)) failed")
+        service()?.pinPackage(managerId: package.managerId, packageName: package.name, version: version) { [weak self] success in
+            DispatchQueue.main.async {
+                if success {
+                    self?.setPinnedState(packageId: package.id, pinned: true)
+                    self?.fetchPackages()
+                    self?.fetchOutdatedPackages()
+                } else {
+                    logger.error("pinPackage(\(package.managerId):\(package.name)) failed")
+                }
             }
         }
     }
 
     func unpinPackage(_ package: PackageItem) {
-        service()?.unpinPackage(managerId: package.managerId, packageName: package.name) { success in
-            if !success {
-                logger.error("unpinPackage(\(package.managerId):\(package.name)) failed")
+        service()?.unpinPackage(managerId: package.managerId, packageName: package.name) { [weak self] success in
+            DispatchQueue.main.async {
+                if success {
+                    self?.setPinnedState(packageId: package.id, pinned: false)
+                    self?.fetchPackages()
+                    self?.fetchOutdatedPackages()
+                } else {
+                    logger.error("unpinPackage(\(package.managerId):\(package.name)) failed")
+                }
             }
         }
     }
@@ -607,6 +619,21 @@ final class HelmCore: ObservableObject {
     private func clearSearchState() {
         activeRemoteSearchTaskId = nil
         isSearching = false
+    }
+
+    private func setPinnedState(packageId: String, pinned: Bool) {
+        if let index = installedPackages.firstIndex(where: { $0.id == packageId }) {
+            installedPackages[index].pinned = pinned
+        }
+        if let index = outdatedPackages.firstIndex(where: { $0.id == packageId }) {
+            outdatedPackages[index].pinned = pinned
+        }
+        if let index = searchResults.firstIndex(where: { $0.id == packageId }) {
+            searchResults[index].pinned = pinned
+        }
+        if let index = cachedAvailablePackages.firstIndex(where: { $0.id == packageId }) {
+            cachedAvailablePackages[index].pinned = pinned
+        }
     }
 
     private func registerManagerActionTask(
