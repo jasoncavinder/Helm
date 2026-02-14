@@ -25,6 +25,7 @@ export default defineConfig({
 					],
 				},
 				{ label: 'Roadmap', slug: 'roadmap' },
+				{ label: 'Licensing', slug: 'licensing' },
 			],
 		}),
 	],
