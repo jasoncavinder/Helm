@@ -8,7 +8,7 @@ use crate::adapters::homebrew::{
     homebrew_upgrade_request,
 };
 use crate::adapters::manager::AdapterResult;
-use crate::adapters::process_utils::run_and_collect_stdout;
+use crate::adapters::process_utils::{run_and_collect_stdout, run_and_collect_version_output};
 use crate::execution::{ProcessExecutor, ProcessSpawnRequest};
 use crate::models::{ManagerId, SearchQuery};
 
@@ -35,7 +35,7 @@ impl HomebrewSource for ProcessHomebrewSource {
         let version_request = self.configure_request(request);
 
         let version_output =
-            run_and_collect_stdout(self.executor.as_ref(), version_request).unwrap_or_default();
+            run_and_collect_version_output(self.executor.as_ref(), version_request);
 
         Ok(HomebrewDetectOutput {
             executable_path,
@@ -95,7 +95,11 @@ impl ProcessHomebrewSource {
         let path = std::env::var("PATH").unwrap_or_default();
         let new_path = format!("/opt/homebrew/bin:/usr/local/bin:{path}");
 
-        request.command = request.command.env("PATH", new_path);
+        request.command = request
+            .command
+            .env("PATH", new_path)
+            .env("HOMEBREW_NO_AUTO_UPDATE", "1")
+            .env("HOMEBREW_NO_ENV_HINTS", "1");
         request
     }
 }

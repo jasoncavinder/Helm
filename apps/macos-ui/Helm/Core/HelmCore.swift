@@ -63,6 +63,7 @@ final class HelmCore: ObservableObject {
     @Published var cachedAvailablePackages: [PackageItem] = []
     @Published var detectedManagers: Set<String> = []
     @Published var managerStatuses: [String: ManagerStatus] = [:]
+    @Published var managerOperations: [String: String] = [:]
     @Published var safeModeEnabled: Bool = false
     @Published var selectedManagerFilter: String? = nil
     @Published var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
@@ -72,6 +73,8 @@ final class HelmCore: ObservableObject {
     private var lastRefreshTrigger: Date?
     private var searchDebounceTimer: Timer?
     private var activeRemoteSearchTaskId: Int64?
+    private var managerActionTaskDescriptions: [UInt64: String] = [:]
+    private var managerActionTaskByManager: [String: UInt64] = [:]
 
     private init() {
         setupConnection()
@@ -167,7 +170,7 @@ final class HelmCore: ObservableObject {
 
     func fetchPackages() {
         service()?.listInstalledPackages { [weak self] jsonString in
-            guard let jsonString = jsonString, let data = jsonString.data(using: .utf8) else { return }
+            guard let jsonString = jsonString, let data = jsonString.data(using: String.Encoding.utf8) else { return }
 
             do {
                 let decoder = JSONDecoder()
@@ -181,8 +184,8 @@ final class HelmCore: ObservableObject {
                             name: pkg.package.name,
                             version: pkg.installedVersion ?? "unknown",
                             managerId: pkg.package.manager,
-                            pinned: pkg.pinned,
-                            manager: self?.normalizedManagerName(pkg.package.manager) ?? pkg.package.manager
+                            manager: self?.normalizedManagerName(pkg.package.manager) ?? pkg.package.manager,
+                            pinned: pkg.pinned
                         )
                     }
                 }
@@ -194,7 +197,7 @@ final class HelmCore: ObservableObject {
 
     func fetchOutdatedPackages() {
         service()?.listOutdatedPackages { [weak self] jsonString in
-            guard let jsonString = jsonString, let data = jsonString.data(using: .utf8) else { return }
+            guard let jsonString = jsonString, let data = jsonString.data(using: String.Encoding.utf8) else { return }
 
             do {
                 let decoder = JSONDecoder()
@@ -223,7 +226,7 @@ final class HelmCore: ObservableObject {
 
     func fetchTasks() {
         service()?.listTasks { [weak self] jsonString in
-            guard let jsonString = jsonString, let data = jsonString.data(using: .utf8) else { return }
+            guard let jsonString = jsonString, let data = jsonString.data(using: String.Encoding.utf8) else { return }
 
             do {
                 let decoder = JSONDecoder()
@@ -232,13 +235,15 @@ final class HelmCore: ObservableObject {
 
                 DispatchQueue.main.async {
                     self?.activeTasks = coreTasks.map { task in
+                        let overrideDescription = self?.managerActionTaskDescriptions[task.id]
                         let managerName = self?.normalizedManagerName(task.manager) ?? task.manager
                         return TaskItem(
                             id: "\(task.id)",
-                            description: "\(task.taskType.capitalized) \(managerName)",
+                            description: overrideDescription ?? "\(task.taskType.capitalized) \(managerName)",
                             status: task.status.capitalized
                         )
                     }
+                    self?.syncManagerOperations(from: coreTasks)
 
                     // Derive detection status from Detection-type tasks specifically.
                     // Tasks are ordered most-recent-first. A manager is "detected" if
@@ -434,17 +439,45 @@ final class HelmCore: ObservableObject {
     }
 
     func installManager(_ managerId: String) {
-        service()?.installManager(managerId: managerId) { taskId in
-            if taskId < 0 {
-                logger.error("installManager(\(managerId)) failed")
+        DispatchQueue.main.async {
+            self.managerOperations[managerId] = "Starting install..."
+        }
+        service()?.installManager(managerId: managerId) { [weak self] taskId in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if taskId < 0 {
+                    logger.error("installManager(\(managerId)) failed")
+                    self.managerOperations[managerId] = "Install failed"
+                    return
+                }
+                self.registerManagerActionTask(
+                    managerId: managerId,
+                    taskId: UInt64(taskId),
+                    description: self.managerActionDescription(action: "Install", managerId: managerId),
+                    inProgressText: "Installing..."
+                )
             }
         }
     }
 
     func updateManager(_ managerId: String) {
-        service()?.updateManager(managerId: managerId) { taskId in
-            if taskId < 0 {
-                logger.error("updateManager(\(managerId)) failed")
+        DispatchQueue.main.async {
+            self.managerOperations[managerId] = "Starting update..."
+        }
+        service()?.updateManager(managerId: managerId) { [weak self] taskId in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if taskId < 0 {
+                    logger.error("updateManager(\(managerId)) failed")
+                    self.managerOperations[managerId] = "Update failed"
+                    return
+                }
+                self.registerManagerActionTask(
+                    managerId: managerId,
+                    taskId: UInt64(taskId),
+                    description: self.managerActionDescription(action: "Update", managerId: managerId),
+                    inProgressText: "Updating..."
+                )
             }
         }
     }
@@ -483,9 +516,23 @@ final class HelmCore: ObservableObject {
     }
 
     func uninstallManager(_ managerId: String) {
-        service()?.uninstallManager(managerId: managerId) { taskId in
-            if taskId < 0 {
-                logger.error("uninstallManager(\(managerId)) failed")
+        DispatchQueue.main.async {
+            self.managerOperations[managerId] = "Starting uninstall..."
+        }
+        service()?.uninstallManager(managerId: managerId) { [weak self] taskId in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if taskId < 0 {
+                    logger.error("uninstallManager(\(managerId)) failed")
+                    self.managerOperations[managerId] = "Uninstall failed"
+                    return
+                }
+                self.registerManagerActionTask(
+                    managerId: managerId,
+                    taskId: UInt64(taskId),
+                    description: self.managerActionDescription(action: "Uninstall", managerId: managerId),
+                    inProgressText: "Uninstalling..."
+                )
             }
         }
     }
@@ -560,5 +607,69 @@ final class HelmCore: ObservableObject {
     private func clearSearchState() {
         activeRemoteSearchTaskId = nil
         isSearching = false
+    }
+
+    private func registerManagerActionTask(
+        managerId: String,
+        taskId: UInt64,
+        description: String,
+        inProgressText: String
+    ) {
+        managerActionTaskDescriptions[taskId] = description
+        managerActionTaskByManager[managerId] = taskId
+        managerOperations[managerId] = inProgressText
+
+        let idString = "\(taskId)"
+        if !activeTasks.contains(where: { $0.id == idString }) {
+            activeTasks.insert(
+                TaskItem(
+                    id: idString,
+                    description: description,
+                    status: "Queued"
+                ),
+                at: 0
+            )
+        }
+    }
+
+    private func syncManagerOperations(from coreTasks: [CoreTaskRecord]) {
+        let statusById = Dictionary(uniqueKeysWithValues: coreTasks.map { ($0.id, $0.status.lowercased()) })
+        let inFlightStates = Set(["queued", "running"])
+
+        for managerId in Array(managerActionTaskByManager.keys) {
+            guard let taskId = managerActionTaskByManager[managerId] else { continue }
+            guard let status = statusById[taskId] else {
+                managerOperations.removeValue(forKey: managerId)
+                managerActionTaskByManager.removeValue(forKey: managerId)
+                continue
+            }
+            if !inFlightStates.contains(status) {
+                managerOperations.removeValue(forKey: managerId)
+                managerActionTaskByManager.removeValue(forKey: managerId)
+            }
+        }
+    }
+
+    private func managerActionDescription(action: String, managerId: String) -> String {
+        switch (action, managerId) {
+        case ("Install", "mas"):
+            return "Install mas (Mac App Store manager) via Homebrew"
+        case ("Install", "mise"):
+            return "Install mise via Homebrew"
+        case ("Update", "homebrew_formula"):
+            return "Update Homebrew"
+        case ("Update", "mas"):
+            return "Update mas via Homebrew"
+        case ("Update", "mise"):
+            return "Update mise via Homebrew"
+        case ("Update", "rustup"):
+            return "Self-update rustup"
+        case ("Uninstall", "mas"):
+            return "Uninstall mas via Homebrew"
+        case ("Uninstall", "mise"):
+            return "Uninstall mise via Homebrew"
+        default:
+            return "\(action) \(normalizedManagerName(managerId))"
+        }
     }
 }

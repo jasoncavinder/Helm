@@ -65,28 +65,30 @@ struct SettingsPopoverView: View {
             }
             .disabled(core.isRefreshing || isResetting)
 
-            Divider()
+            Group {
+                Divider()
 
-            Button(action: {
-                showResetConfirmation = true
-            }) {
-                HStack {
-                    Image(systemName: "arrow.counterclockwise")
-                    Text("Reset Local Data")
+                Button(action: {
+                    showResetConfirmation = true
+                }) {
+                    HStack {
+                        Image(systemName: "arrow.counterclockwise")
+                        Text("Reset Local Data")
+                    }
+                    .foregroundColor(.red)
+                    .frame(maxWidth: .infinity)
                 }
-                .foregroundColor(.red)
-                .frame(maxWidth: .infinity)
-            }
-            .disabled(core.isRefreshing || isResetting)
+                .disabled(core.isRefreshing || isResetting)
 
-            Button(action: {
-                NSApplication.shared.terminate(nil)
-            }) {
-                HStack {
-                    Image(systemName: "power")
-                    Text("Quit Helm")
+                Button {
+                    NSApplication.shared.terminate(nil)
+                } label: {
+                    HStack {
+                        Image(systemName: "power")
+                        Text("Quit Helm")
+                    }
+                    .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity)
             }
         }
         .padding(16)

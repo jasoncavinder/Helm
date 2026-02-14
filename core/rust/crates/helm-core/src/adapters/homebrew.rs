@@ -115,7 +115,15 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                 Ok(AdapterResponse::SearchResults(results))
             }
             AdapterRequest::Install(install_request) => {
-                let _ = self.source.install_formula(&install_request.package.name)?;
+                if let Err(error) = self.source.install_formula(&install_request.package.name) {
+                    let lower = error.message.to_ascii_lowercase();
+                    let already_installed = error.kind == CoreErrorKind::ProcessFailure
+                        && (lower.contains("already installed")
+                            || lower.contains("is already installed"));
+                    if !already_installed {
+                        return Err(error);
+                    }
+                }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: install_request.package,
                     action: ManagerAction::Install,
@@ -301,11 +309,19 @@ fn parse_detection_output(output: HomebrewDetectOutput) -> DetectionInfo {
 }
 
 fn parse_homebrew_version(output: &str) -> Option<String> {
-    output
+    for line in output
         .lines()
         .map(str::trim)
-        .find(|line| !line.is_empty())
-        .and_then(|line| line.strip_prefix("Homebrew ").map(str::to_owned))
+        .filter(|line| !line.is_empty())
+    {
+        if let Some(tail) = line.strip_prefix("Homebrew ") {
+            let token = tail.split_whitespace().next().unwrap_or(tail);
+            if !token.is_empty() {
+                return Some(token.to_owned());
+            }
+        }
+    }
+    None
 }
 
 fn parse_installed_formulae(output: &str) -> AdapterResult<Vec<InstalledPackage>> {
@@ -386,8 +402,23 @@ fn parse_outdated_formulae(output: &str) -> AdapterResult<Vec<OutdatedPackage>> 
 }
 
 fn parse_outdated_line(line: &str) -> Option<(String, Option<String>, String)> {
-    // Format: "name (installed_version) < candidate_version"
-    let (left, candidate_version) = line.split_once(" < ")?;
+    // Common formats:
+    // - "name (installed_version) < candidate_version"
+    // - "name (installed_version) != candidate_version"
+    // - "name installed_version -> candidate_version"
+    let separator = if line.contains(" < ") {
+        " < "
+    } else if line.contains(" != ") {
+        " != "
+    } else if line.contains(" -> ") {
+        " -> "
+    } else if line.contains(" → ") {
+        " → "
+    } else {
+        return None;
+    };
+
+    let (left, candidate_version) = line.split_once(separator)?;
     let candidate_version = candidate_version.trim();
     if candidate_version.is_empty() {
         return None;
@@ -397,6 +428,21 @@ fn parse_outdated_line(line: &str) -> Option<(String, Option<String>, String)> {
         let name = left[..paren_start].trim();
         let version_part = left[paren_start + 2..].trim_end_matches(')').trim();
         (name, Some(version_part.to_owned()))
+    } else if let Some((name_part, version_part)) = left.rsplit_once(' ') {
+        let name = name_part.trim();
+        let version = version_part.trim();
+        if !name.is_empty()
+            && !version.is_empty()
+            && version
+                .chars()
+                .next()
+                .map(|ch| ch.is_ascii_digit())
+                .unwrap_or(false)
+        {
+            (name, Some(version.to_owned()))
+        } else {
+            (left.trim(), None)
+        }
     } else {
         (left.trim(), None)
     };
@@ -405,10 +451,18 @@ fn parse_outdated_line(line: &str) -> Option<(String, Option<String>, String)> {
         return None;
     }
 
+    let candidate_token = candidate_version
+        .split_whitespace()
+        .next()
+        .unwrap_or(candidate_version);
+    if candidate_token.is_empty() {
+        return None;
+    }
+
     Some((
         name.to_owned(),
         installed_version,
-        candidate_version.to_owned(),
+        candidate_token.to_owned(),
     ))
 }
 
@@ -521,7 +575,7 @@ mod tests {
         AdapterRequest, AdapterResponse, AdapterResult, DetectRequest, ListInstalledRequest,
         ListOutdatedRequest, ManagerAdapter, SearchRequest,
     };
-    use crate::models::{CoreErrorKind, ManagerAction, SearchQuery, TaskId, TaskType};
+    use crate::models::{CoreError, CoreErrorKind, ManagerAction, SearchQuery, TaskId, TaskType};
 
     use super::{
         HomebrewAdapter, HomebrewDetectOutput, HomebrewSource, homebrew_detect_request,
@@ -541,6 +595,14 @@ mod tests {
     fn parses_homebrew_version_from_standard_banner() {
         let version = parse_homebrew_version("Homebrew 4.2.21\n");
         assert_eq!(version.as_deref(), Some("4.2.21"));
+    }
+
+    #[test]
+    fn parses_homebrew_version_with_suffix() {
+        let version = parse_homebrew_version(
+            "Homebrew 5.0.14-46-g17729b5\nHomebrew/homebrew-core (git revision abcdef)\n",
+        );
+        assert_eq!(version.as_deref(), Some("5.0.14-46-g17729b5"));
     }
 
     #[test]
@@ -569,6 +631,21 @@ mod tests {
         assert_eq!(parsed[0].package.name, "git");
         assert_eq!(parsed[0].installed_version.as_deref(), Some("2.44.0"));
         assert_eq!(parsed[0].candidate_version, "2.45.1");
+    }
+
+    #[test]
+    fn parses_outdated_formulae_with_alternate_separators() {
+        let parsed = parse_outdated_formulae(
+            "foo (1.2.3) != 1.2.4\nbar 2.0.0 -> 2.1.0\nbaz (3.1.0) → 3.2.0",
+        )
+        .unwrap();
+        assert_eq!(parsed.len(), 3);
+        assert_eq!(parsed[0].package.name, "foo");
+        assert_eq!(parsed[0].candidate_version, "1.2.4");
+        assert_eq!(parsed[1].package.name, "bar");
+        assert_eq!(parsed[1].installed_version.as_deref(), Some("2.0.0"));
+        assert_eq!(parsed[1].candidate_version, "2.1.0");
+        assert_eq!(parsed[2].candidate_version, "3.2.0");
     }
 
     #[test]
@@ -640,6 +717,23 @@ mod tests {
                 package: crate::models::PackageRef {
                     manager: crate::models::ManagerId::HomebrewFormula,
                     name: "ripgrep".to_string(),
+                },
+                version: None,
+            }))
+            .unwrap();
+        assert!(matches!(result, AdapterResponse::Mutation(_)));
+    }
+
+    #[test]
+    fn adapter_treats_already_installed_as_success_for_install() {
+        let source = FixtureSource::with_install_error("Error: mas 1.0.0 is already installed");
+        let adapter = HomebrewAdapter::new(source);
+
+        let result = adapter
+            .execute(AdapterRequest::Install(crate::adapters::InstallRequest {
+                package: crate::models::PackageRef {
+                    manager: crate::models::ManagerId::HomebrewFormula,
+                    name: "mas".to_string(),
                 },
                 version: None,
             }))
@@ -809,6 +903,16 @@ mod tests {
     #[derive(Default, Clone)]
     struct FixtureSource {
         detect_calls: Arc<AtomicUsize>,
+        install_error: Option<String>,
+    }
+
+    impl FixtureSource {
+        fn with_install_error(message: &str) -> Self {
+            Self {
+                detect_calls: Arc::new(AtomicUsize::new(0)),
+                install_error: Some(message.to_string()),
+            }
+        }
     }
 
     impl HomebrewSource for FixtureSource {
@@ -833,6 +937,15 @@ mod tests {
         }
 
         fn install_formula(&self, _name: &str) -> AdapterResult<String> {
+            if let Some(message) = &self.install_error {
+                return Err(CoreError {
+                    manager: Some(crate::models::ManagerId::HomebrewFormula),
+                    task: Some(TaskType::Install),
+                    action: Some(ManagerAction::Install),
+                    kind: CoreErrorKind::ProcessFailure,
+                    message: message.clone(),
+                });
+            }
             Ok(String::new())
         }
 
