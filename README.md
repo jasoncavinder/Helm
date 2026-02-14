@@ -9,7 +9,7 @@
   <br>
   A native macOS menu bar app for unified package manager control.
   <br>
-  <strong>Pre-1.0 &middot; v0.7.0</strong>
+  <strong>Pre-1.0 &middot; v0.7.1</strong>
 </p>
 
 <p align="center">
@@ -80,6 +80,14 @@ Or open `apps/macos-ui/Helm.xcodeproj` in Xcode and run the **Helm** scheme. The
 | 0.5.x | Progressive search — local-first search, remote search, cache enrichment | Complete |
 | 0.6.x | Core toolchain managers — mise, rustup adapters, authority ordering | Complete |
 | 0.7.x | System & App Store managers — softwareupdate, mas, restart detection | Complete |
+| 0.8.x | Pinning & policy enforcement — native/virtual pins, safe mode, guarded updates | Planned (Next) |
+| 0.9.x | Core language package managers — npm, pipx, pip, Cargo, cargo-binstall, casks | Planned |
+| 0.10.x | Extended language package managers — uv, pnpm, bun, gem, composer | Planned |
+| 0.11.x | Reliability and safety hardening — timeouts, retries, cancellation, conflict checks | Planned |
+| 0.12.x | UI and workflow expansion — manager controls, batch actions, onboarding polish | Planned |
+| 0.13.x | Automation and rules engine — policies, schedules, maintenance windows | Planned |
+| 0.14.x | Cross-machine state and backup — import/export, optional cloud sync | Planned |
+| 0.15.x | Performance and scale hardening — large-state and high-volume optimization | Planned |
 | 1.0.0 | Stable control plane release | Planned |
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full roadmap through 1.x.

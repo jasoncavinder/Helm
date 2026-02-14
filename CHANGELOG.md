@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.7.1] - 2026-02-14
+
+### Changed
+- Expanded the `README.md` milestone table to mirror the active roadmap through `0.15.x`.
+- Updated `PROJECT_BRIEF.md` implementation phases to reflect completed `0.1.x-0.7.x` delivery and upcoming `0.8.x-1.0.0` sequencing.
+- Marked all `v0.7.0` branch/merge/tag/publish items complete in `docs/RELEASE_CHECKLIST.md`, including the recorded release SHA.
+
 ## [0.7.0] - 2026-02-13
 
 ### Added

@@ -2,7 +2,7 @@
 
 This checklist is required before creating a release tag on `main`.
 
-## v0.7.0
+## v0.7.0 (Completed)
 
 ### Scope and Documentation
 - [x] `docs/ROADMAP.md` reflects `0.7.0` milestone delivery.
@@ -21,13 +21,13 @@ This checklist is required before creating a release tag on `main`.
 - [x] macOS app build succeeds in CI/dev environment constraints.
 
 ### Branch and Merge
-- [ ] Feature branch merged into `dev`.
-- [ ] `dev` merged into `main`.
-- [ ] Final release commit SHA recorded.
+- [x] Feature branch merged into `dev`.
+- [x] `dev` merged into `main`.
+- [x] Final release commit SHA recorded: `2204a05` (`merge: dev into main for v0.7.0 release`).
 
 ### Tag and Publish
-- [ ] Create annotated tag from `main`:
+- [x] Create annotated tag from `main`:
   - `git tag -a v0.7.0 -m "Helm v0.7.0"`
-- [ ] Push tag:
+- [x] Push tag:
   - `git push origin v0.7.0`
-- [ ] Publish GitHub release notes from `CHANGELOG.md`.
+- [x] Publish GitHub release notes from `CHANGELOG.md`.
