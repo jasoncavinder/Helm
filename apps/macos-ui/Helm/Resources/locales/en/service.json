@@ -1,0 +1,16 @@
+{
+  "service.error.not_installed": "Not installed: {manager}",
+  "service.error.unsupported_capability": "Manager {manager} does not support this action.",
+  "service.error.invalid_input": "Invalid input provided.",
+  "service.error.parse_failure": "Failed to parse output.",
+  "service.error.timeout": "Operation timed out.",
+  "service.error.cancelled": "Operation cancelled.",
+  "service.error.process_failure": "Subprocess execution failed.",
+  "service.error.storage_failure": "Database storage error.",
+  "service.error.internal": "Internal service error.",
+  "service.task.status.pending": "Pending",
+  "service.task.status.running": "Running",
+  "service.task.status.completed": "Completed",
+  "service.task.status.failed": "Failed",
+  "service.task.status.cancelled": "Cancelled"
+}

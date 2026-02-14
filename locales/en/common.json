@@ -1,0 +1,18 @@
+{
+  "common.button.ok": "OK",
+  "common.button.cancel": "Cancel",
+  "common.button.refresh": "Refresh",
+  "common.button.install": "Install",
+  "common.button.uninstall": "Uninstall",
+  "common.button.update": "Update",
+  "common.button.settings": "Settings",
+  "common.button.quit": "Quit",
+  "common.button.done": "Done",
+  "common.button.reset": "Reset",
+  "common.label.version": "v{version}",
+  "common.label.loading": "Loading...",
+  "common.label.initializing": "Initializing...",
+  "common.label.error": "Error",
+  "common.label.warning": "Warning",
+  "common.label.success": "Success"
+}

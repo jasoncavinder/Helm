@@ -34,15 +34,15 @@ struct PackageRowView: View {
                         Text(latest)
                             .font(.system(.caption, design: .monospaced))
                             .foregroundColor(.orange)
-                        if package.restartRequired {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                                .font(.caption2)
-                                .foregroundColor(.orange)
-                                .help("Restart required")
+                            if package.restartRequired {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                                    .font(.caption2)
+                                    .foregroundColor(.orange)
+                                    .help(L10n.App.Packages.Label.restartRequired.localized)
+                            }
                         }
-                    }
-                    Text(package.version)
-                        .font(.system(.caption2, design: .monospaced))
+                        Text(package.version)
+                            .font(.system(.caption2, design: .monospaced))
                         .foregroundColor(.secondary)
                         .strikethrough()
                 } else {

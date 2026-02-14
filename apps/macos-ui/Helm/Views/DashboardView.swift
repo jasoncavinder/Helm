@@ -14,10 +14,10 @@ struct DashboardView: View {
                     .cornerRadius(8)
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Helm")
+                    Text(L10n.App.Dashboard.title.localized)
                         .font(.headline)
 
-                    Text("v\(helmVersion)")
+                    Text(L10n.Common.version.localized(with: ["version": helmVersion]))
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 }
@@ -25,14 +25,14 @@ struct DashboardView: View {
                 Spacer()
 
                 VStack(alignment: .trailing, spacing: 4) {
-                    StatRow(label: "Installed", value: "\(core.installedPackages.count)")
+                    StatRow(label: L10n.App.Packages.Filter.installed.localized, value: "\(core.installedPackages.count)")
                     StatRow(
-                        label: "Upgradable",
+                        label: L10n.App.Packages.Filter.upgradable.localized,
                         value: "\(core.outdatedPackages.count)",
                         valueColor: core.outdatedPackages.isEmpty ? .primary : .orange
                     )
                     StatRow(
-                        label: "Available",
+                        label: L10n.App.Packages.Filter.available.localized,
                         value: "\(core.cachedAvailablePackages.count)",
                         valueColor: core.cachedAvailablePackages.isEmpty ? .secondary : .blue
                     )
@@ -49,7 +49,7 @@ struct DashboardView: View {
                 HStack {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.yellow)
-                    Text("Reconnecting to service...")
+                    Text(L10n.App.Dashboard.Status.reconnecting.localized)
                         .font(.caption)
                     Spacer()
                 }
@@ -62,13 +62,13 @@ struct DashboardView: View {
 
             // Manager grid (installed + enabled only)
             VStack(alignment: .leading, spacing: 8) {
-                Text("Package Managers")
+                Text(L10n.App.Dashboard.Section.managers.localized)
                     .font(.subheadline)
                     .fontWeight(.semibold)
                     .padding(.horizontal, 16)
 
                 if activeManagers.isEmpty {
-                    Text("No active managers. Enable managers on the Managers tab.")
+                    Text(L10n.App.Dashboard.State.emptyManagers.localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .padding(.horizontal, 16)
@@ -104,13 +104,13 @@ struct DashboardView: View {
 
             // Recent tasks
             VStack(alignment: .leading, spacing: 6) {
-                Text("Recent Tasks")
+                Text(L10n.App.Dashboard.Section.recentTasks.localized)
                     .font(.subheadline)
                     .fontWeight(.semibold)
                     .padding(.horizontal, 16)
 
                 if core.activeTasks.isEmpty {
-                    Text("No recent tasks")
+                    Text(L10n.App.Dashboard.State.emptyTasks.localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .padding(.horizontal, 16)

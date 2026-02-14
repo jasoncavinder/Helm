@@ -31,4 +31,15 @@ struct TaskItem: Identifiable {
         default:          return .secondary
         }
     }
+    
+    var localizedStatus: String {
+        switch status.lowercased() {
+        case "queued": return L10n.Service.Task.Status.pending.localized
+        case "running": return L10n.Service.Task.Status.running.localized
+        case "completed": return L10n.Service.Task.Status.completed.localized
+        case "failed": return L10n.Service.Task.Status.failed.localized
+        case "cancelled": return L10n.Service.Task.Status.cancelled.localized
+        default: return status
+        }
+    }
 }

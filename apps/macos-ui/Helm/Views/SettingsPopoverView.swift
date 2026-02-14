@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsPopoverView: View {
     @ObservedObject var core = HelmCore.shared
+    @ObservedObject var localization = LocalizationManager.shared
 
     @State private var autoCheckEnabled = false
     @State private var checkFrequency = 60
@@ -10,17 +11,32 @@ struct SettingsPopoverView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Settings")
+            Text(L10n.App.Settings.Tab.title.localized)
                 .font(.headline)
 
             Divider()
+            
+            // Language Picker
+            HStack {
+                Text(L10n.App.Settings.Label.language.localized)
+                    .font(.subheadline)
+                Spacer()
+                Picker("", selection: $localization.currentLocale) {
+                    Text("\(L10n.App.Settings.Label.systemDefault.localized) (en)").tag("en")
+                    // Future: Add other languages
+                }
+                .labelsHidden()
+                .frame(width: 120)
+            }
+            
+            Divider()
 
-            Toggle("Auto-check for updates", isOn: $autoCheckEnabled)
+            Toggle(L10n.App.Settings.Label.autoCheck.localized, isOn: $autoCheckEnabled)
                 .disabled(true)
                 .font(.subheadline)
 
             HStack {
-                Text("Check every")
+                Text(L10n.App.Settings.Label.checkFrequency.localized)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                 Picker("", selection: $checkFrequency) {
@@ -41,7 +57,7 @@ struct SettingsPopoverView: View {
             }) {
                 HStack {
                     Image(systemName: "arrow.clockwise")
-                    Text("Refresh Now")
+                    Text(L10n.App.Settings.Action.refreshNow.localized)
                 }
                 .frame(maxWidth: .infinity)
             }
@@ -50,7 +66,7 @@ struct SettingsPopoverView: View {
             Button(action: {}) {
                 HStack {
                     Image(systemName: "arrow.up.square")
-                    Text("Upgrade All")
+                    Text(L10n.App.Settings.Action.upgradeAll.localized)
                 }
                 .frame(maxWidth: .infinity)
             }
@@ -64,7 +80,7 @@ struct SettingsPopoverView: View {
             }) {
                 HStack {
                     Image(systemName: "arrow.counterclockwise")
-                    Text("Reset Local Data")
+                    Text(L10n.App.Settings.Action.reset.localized)
                 }
                 .foregroundColor(.red)
                 .frame(maxWidth: .infinity)
@@ -76,23 +92,23 @@ struct SettingsPopoverView: View {
             }) {
                 HStack {
                     Image(systemName: "power")
-                    Text("Quit Helm")
+                    Text(L10n.App.Settings.Action.quit.localized)
                 }
                 .frame(maxWidth: .infinity)
             }
         }
         .padding(16)
-        .frame(width: 220)
-        .alert("Reset Local Data?", isPresented: $showResetConfirmation) {
-            Button("Cancel", role: .cancel) {}
-            Button("Reset", role: .destructive) {
+        .frame(width: 240) // Slightly wider for language picker
+        .alert(L10n.App.Settings.Alert.Reset.title.localized, isPresented: $showResetConfirmation) {
+            Button(L10n.Common.cancel.localized, role: .cancel) {}
+            Button(L10n.Common.reset.localized, role: .destructive) {
                 isResetting = true
                 core.resetDatabase { _ in
                     isResetting = false
                 }
             }
         } message: {
-            Text("This will clear all cached data and return Helm to its initial state. Your installed packages will not be affected.")
+            Text(L10n.App.Settings.Alert.Reset.message.localized)
         }
     }
 }

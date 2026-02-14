@@ -21,7 +21,7 @@ struct TaskRowView: View {
 
             Spacer()
 
-            Text(task.status)
+            Text(task.localizedStatus)
                 .font(.caption)
                 .foregroundColor(task.statusColor)
 

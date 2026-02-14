@@ -163,7 +163,7 @@ private struct StatusBarView: View {
                 } else {
                     VStack {
                         Spacer()
-                        ProgressView("Initializing...")
+                        ProgressView(L10n.Common.initializing.localized)
                             .font(.subheadline)
                         Spacer()
                     }
@@ -176,11 +176,11 @@ private struct StatusBarView: View {
                         ProgressView()
                             .scaleEffect(0.5)
                             .frame(width: 12, height: 12)
-                        Text("Refreshing...")
+                        Text(L10n.App.Dashboard.Status.refreshing.localized)
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     } else {
-                        Text("v\(helmVersion)")
+                        Text(L10n.Common.version.localized(with: ["version": helmVersion]))
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     }
