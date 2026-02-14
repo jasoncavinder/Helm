@@ -6,6 +6,16 @@ This project is currently in active development and pre-1.0. We welcome feedback
 
 ---
 
+## 🚫 Not Open Source (Yet)
+
+Helm is source-available but not open source at this stage.
+
+You may not reuse or redistribute the source code in other projects.
+
+This will likely change in the future.
+
+---
+
 ## ⚠️ License Notice
 
 Helm is **not open source at this time**.
