@@ -11,90 +11,98 @@ struct SettingsPopoverView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(L10n.App.Settings.Tab.title.localized)
-                .font(.headline)
+            Group {
+                Text(L10n.App.Settings.Tab.title.localized)
+                    .font(.headline)
 
-            Divider()
-            
-            // Language Picker
-            HStack {
-                Text(L10n.App.Settings.Label.language.localized)
+                Divider()
+                
+                // Language Picker
+                HStack {
+                    Text(L10n.App.Settings.Label.language.localized)
+                        .font(.subheadline)
+                    Spacer()
+                    Picker("", selection: $localization.currentLocale) {
+                        Text("\(L10n.App.Settings.Label.systemDefault.localized) (en)").tag("en")
+                        // Future: Add other languages
+                    }
+                    .labelsHidden()
+                    .frame(width: 120)
+                }
+                
+                Divider()
+            }
+
+            Group {
+                Toggle(L10n.App.Settings.Label.autoCheck.localized, isOn: $autoCheckEnabled)
+                    .disabled(true)
                     .font(.subheadline)
-                Spacer()
-                Picker("", selection: $localization.currentLocale) {
-                    Text("\(L10n.App.Settings.Label.systemDefault.localized) (en)").tag("en")
-                    // Future: Add other languages
-                }
-                .labelsHidden()
-                .frame(width: 120)
-            }
-            
-            Divider()
 
-            Toggle(L10n.App.Settings.Label.autoCheck.localized, isOn: $autoCheckEnabled)
+                HStack {
+                    Text(L10n.App.Settings.Label.checkFrequency.localized)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    Picker("", selection: $checkFrequency) {
+                        Text("15 min").tag(15)
+                        Text("30 min").tag(30)
+                        Text("1 hour").tag(60)
+                        Text("Daily").tag(1440)
+                    }
+                    .labelsHidden()
+                    .disabled(true)
+                    .frame(width: 100)
+                }
+
+                Divider()
+            }
+
+            Group {
+                Button(action: {
+                    core.triggerRefresh()
+                }) {
+                    HStack {
+                        Image(systemName: "arrow.clockwise")
+                        Text(L10n.App.Settings.Action.refreshNow.localized)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .disabled(core.isRefreshing)
+
+                Button(action: {}) {
+                    HStack {
+                        Image(systemName: "arrow.up.square")
+                        Text(L10n.App.Settings.Action.upgradeAll.localized)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
                 .disabled(true)
-                .font(.subheadline)
+                .help("Upgrade all not yet implemented")
 
-            HStack {
-                Text(L10n.App.Settings.Label.checkFrequency.localized)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                Picker("", selection: $checkFrequency) {
-                    Text("15 min").tag(15)
-                    Text("30 min").tag(30)
-                    Text("1 hour").tag(60)
-                    Text("Daily").tag(1440)
-                }
-                .labelsHidden()
-                .disabled(true)
-                .frame(width: 100)
+                Divider()
             }
 
-            Divider()
-
-            Button(action: {
-                core.triggerRefresh()
-            }) {
-                HStack {
-                    Image(systemName: "arrow.clockwise")
-                    Text(L10n.App.Settings.Action.refreshNow.localized)
+            Group {
+                Button(action: {
+                    showResetConfirmation = true
+                }) {
+                    HStack {
+                        Image(systemName: "arrow.counterclockwise")
+                        Text(L10n.App.Settings.Action.reset.localized)
+                    }
+                    .foregroundColor(.red)
+                    .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity)
-            }
-            .disabled(core.isRefreshing)
+                .disabled(core.isRefreshing || isResetting)
 
-            Button(action: {}) {
-                HStack {
-                    Image(systemName: "arrow.up.square")
-                    Text(L10n.App.Settings.Action.upgradeAll.localized)
+                Button(action: {
+                    NSApplication.shared.terminate(nil)
+                }) {
+                    HStack {
+                        Image(systemName: "power")
+                        Text(L10n.App.Settings.Action.quit.localized)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity)
-            }
-            .disabled(true)
-            .help("Upgrade all not yet implemented")
-
-            Divider()
-
-            Button(action: {
-                showResetConfirmation = true
-            }) {
-                HStack {
-                    Image(systemName: "arrow.counterclockwise")
-                    Text(L10n.App.Settings.Action.reset.localized)
-                }
-                .foregroundColor(.red)
-                .frame(maxWidth: .infinity)
-            }
-            .disabled(core.isRefreshing || isResetting)
-
-            Button(action: {
-                NSApplication.shared.terminate(nil)
-            }) {
-                HStack {
-                    Image(systemName: "power")
-                    Text(L10n.App.Settings.Action.quit.localized)
-                }
-                .frame(maxWidth: .infinity)
             }
         }
         .padding(16)
