@@ -22,18 +22,23 @@ class LocalizationManager: ObservableObject {
         loadLocale(locale)
     }
     
-    // Remove setLocale since setting property handles it
-    
     private func loadLocale(_ locale: String) {
-        // For now, only 'en' is supported, but structure is ready for others.
-        // We look for files in the 'locales/{locale}' subdirectory of the main bundle.
-        // Files to load: common.json, app.json, service.json
-        
         var loadedStrings: [String: String] = [:]
         let files = ["common", "app", "service"]
         
+        // 1. Try to find the locales folder (Folder Reference structure)
+        // Expected path: Bundle/Contents/Resources/locales/{locale}/{file}.json
+        
         for file in files {
-            if let url = Bundle.main.url(forResource: file, withExtension: "json", subdirectory: "locales/\(locale)") {
+            // Priority 1: Check for explicit subdirectory structure (Folder Reference)
+            var fileUrl = Bundle.main.url(forResource: file, withExtension: "json", subdirectory: "locales/\(locale)")
+            
+            // Priority 2: Check flat structure (Xcode Group flattening) - only works if filenames are unique or we only have one locale
+            if fileUrl == nil {
+                fileUrl = Bundle.main.url(forResource: file, withExtension: "json")
+            }
+            
+            if let url = fileUrl {
                 do {
                     let data = try Data(contentsOf: url)
                     if let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: String] {
@@ -59,7 +64,6 @@ class LocalizationManager: ObservableObject {
             #endif
         }
         
-        // Simple variable replacement: {name} -> value
         var result = format
         for (argKey, argValue) in args {
             let placeholder = "{\(argKey)}"
