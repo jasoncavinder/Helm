@@ -2,6 +2,28 @@
 
 This checklist is required before creating a release tag on `main`.
 
+## v0.8.0-rc.2 (Completed)
+
+### Scope and Documentation
+- [x] `docs/ROADMAP.md` status remains aligned with 0.8 policy/pinning scope.
+- [x] `CHANGELOG.md` includes `0.8.0-rc.2` release notes.
+- [x] `README.md` reflects current pre-1.0 release candidate status.
+
+### Versioning
+- [x] Workspace version bumped to `0.8.0-rc.2` in `core/rust/Cargo.toml`.
+- [x] Generated app version artifacts updated from workspace version:
+  - `apps/macos-ui/Generated/HelmVersion.swift`
+  - `apps/macos-ui/Generated/HelmVersion.xcconfig`
+
+### Validation
+- [x] Rust format check passes (`cargo fmt --all`).
+- [x] Targeted Rust tests for Homebrew/mise/rustup upgrade paths pass.
+- [x] macOS app build succeeds in CI/dev environment constraints.
+
+### Tag and Publish
+- [x] Create annotated tag:
+  - `git tag -a v0.8.0-rc.2 -m "Helm v0.8.0-rc.2"`
+
 ## v0.7.0 (Completed)
 
 ### Scope and Documentation

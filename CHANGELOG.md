@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.8.0-rc.2] - 2026-02-14
+
+### Added
+- Individual package upgrade support for outdated `mise` and `rustup` entries through adapter, FFI, and UI action wiring.
+
+### Changed
+- Homebrew upgrade flow now verifies target formula is no longer listed as outdated after `brew upgrade` and fails the task when upgrade was ineffective.
+- Individual package upgrade actions are now available for `homebrew_formula`, `mise`, and `rustup` managers in the package list UI.
+- Homebrew version probing and persistence were hardened for onboarding/managers visibility in stripped XPC environments.
+
+### Fixed
+- Task terminal persistence now handles adapter panic/missing terminal payload cases as explicit failures instead of leaving stale `running` states.
+- Detection persistence now treats empty-string manager versions as missing values (`NULL`) to prevent blank version regressions in UI.
+
 ## [0.8.0-rc.1] - 2026-02-14
 
 ### Added

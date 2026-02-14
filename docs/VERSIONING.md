@@ -7,7 +7,7 @@ MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
 Example:
 0.3.0-alpha.1
 0.5.0-beta.2
-0.8.0-rc.1
+0.8.0-rc.2
 0.7.0
 1.0.0
 
@@ -34,7 +34,7 @@ Version meaning:
 Examples:
 0.2.0-alpha.1 → first working adapter
 0.3.0-beta.1 → orchestration engine complete
-0.8.0-rc.1 → near-1.0 stability
+0.8.0-rc.2 → near-1.0 stability
 
 Pre-1.0 milestones beyond 0.10 may be used to represent capability layers.
 Version numbers are not constrained to single digits.
