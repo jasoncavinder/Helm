@@ -6,8 +6,20 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-02-14
+
+### Added
+- End-to-end pinning and policy controls across core/FFI/XPC/UI, including native Homebrew pin/unpin support, virtual pin fallback APIs, and safe mode persistence.
+- Individual package upgrade actions for outdated `homebrew_formula`, `mise`, and `rustup` package entries.
+
 ### Changed
-- `helm_upgrade_all` now queues outdated `mise` tools and outdated `rustup` toolchains (in addition to Homebrew and optional macOS updates), while preserving pin filtering and de-duplication.
+- `helm_upgrade_all` now queues outdated `homebrew_formula`, `mise`, and `rustup` targets (plus optional macOS updates), with pin filtering, de-duplication, and safe-mode enforcement.
+- Homebrew upgrade execution now verifies the target package is no longer outdated after `brew upgrade`, failing tasks when the upgrade is ineffective.
+- Homebrew version probing/persistence and settings surfaces were hardened for stripped runtime environments.
+
+### Fixed
+- Task terminal persistence now treats missing or malformed terminal payloads as explicit failures instead of leaving stale `running` tasks.
+- Detection persistence now normalizes empty-string manager versions as missing values (`NULL`) to prevent blank-version regressions.
 
 ## [0.8.0-rc.2] - 2026-02-14
 
