@@ -104,3 +104,11 @@ After 1.0:
 - Public core APIs are stable.
 - Adapter trait changes require MAJOR bump.
 - Orchestration semantics remain backward compatible.
+
+---
+
+## Licensing Note (Pre-1.0)
+
+Pre-1.0 versions of Helm are distributed under a source-available, non-commercial license.
+
+Licensing terms may change at or after 1.0.
