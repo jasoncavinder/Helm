@@ -64,6 +64,7 @@ final class HelmCore: ObservableObject {
     @Published var detectedManagers: Set<String> = []
     @Published var managerStatuses: [String: ManagerStatus] = [:]
     @Published var managerOperations: [String: String] = [:]
+    @Published var pinActionPackageIds: Set<String> = []
     @Published var safeModeEnabled: Bool = false
     @Published var selectedManagerFilter: String? = nil
     @Published var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
@@ -538,9 +539,20 @@ final class HelmCore: ObservableObject {
     }
 
     func pinPackage(_ package: PackageItem) {
-        let version = package.version.isEmpty || package.version == "unknown" ? nil : package.version
-        service()?.pinPackage(managerId: package.managerId, packageName: package.name, version: version) { [weak self] success in
+        DispatchQueue.main.async {
+            self.pinActionPackageIds.insert(package.id)
+        }
+        guard let service = service() else {
+            logger.error("pinPackage(\(package.managerId):\(package.name)) failed: service unavailable")
             DispatchQueue.main.async {
+                self.pinActionPackageIds.remove(package.id)
+            }
+            return
+        }
+        let version = package.version.isEmpty || package.version == "unknown" ? nil : package.version
+        service.pinPackage(managerId: package.managerId, packageName: package.name, version: version) { [weak self] success in
+            DispatchQueue.main.async {
+                self?.pinActionPackageIds.remove(package.id)
                 if success {
                     self?.setPinnedState(packageId: package.id, pinned: true)
                     self?.fetchPackages()
@@ -553,8 +565,19 @@ final class HelmCore: ObservableObject {
     }
 
     func unpinPackage(_ package: PackageItem) {
-        service()?.unpinPackage(managerId: package.managerId, packageName: package.name) { [weak self] success in
+        DispatchQueue.main.async {
+            self.pinActionPackageIds.insert(package.id)
+        }
+        guard let service = service() else {
+            logger.error("unpinPackage(\(package.managerId):\(package.name)) failed: service unavailable")
             DispatchQueue.main.async {
+                self.pinActionPackageIds.remove(package.id)
+            }
+            return
+        }
+        service.unpinPackage(managerId: package.managerId, packageName: package.name) { [weak self] success in
+            DispatchQueue.main.async {
+                self?.pinActionPackageIds.remove(package.id)
                 if success {
                     self?.setPinnedState(packageId: package.id, pinned: false)
                     self?.fetchPackages()

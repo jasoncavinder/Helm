@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PackageRowView: View {
     let package: PackageItem
+    var isPinActionInFlight: Bool = false
     var onTogglePin: (() -> Void)? = nil
 
     var body: some View {
@@ -39,13 +40,20 @@ struct PackageRowView: View {
 
             VStack(alignment: .trailing, spacing: 2) {
                 if let onTogglePin {
-                    Button(action: onTogglePin) {
-                        Image(systemName: package.pinned ? "pin.slash.fill" : "pin")
-                            .font(.caption)
-                            .foregroundColor(package.pinned ? .orange : .secondary)
+                    if isPinActionInFlight {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .scaleEffect(0.75)
+                            .frame(width: 16, height: 16)
+                    } else {
+                        Button(action: onTogglePin) {
+                            Image(systemName: package.pinned ? "pin.slash.fill" : "pin")
+                                .font(.caption)
+                                .foregroundColor(package.pinned ? .orange : .secondary)
+                        }
+                        .buttonStyle(.borderless)
+                        .help(package.pinned ? "Unpin package" : "Pin package")
                     }
-                    .buttonStyle(.borderless)
-                    .help(package.pinned ? "Unpin package" : "Pin package")
                 }
 
                 if let latest = package.latestVersion {

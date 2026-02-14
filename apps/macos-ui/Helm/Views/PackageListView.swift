@@ -138,6 +138,7 @@ struct PackageListView: View {
                         ForEach(displayedPackages) { package in
                             PackageRowView(
                                 package: package,
+                                isPinActionInFlight: core.pinActionPackageIds.contains(package.id),
                                 onTogglePin: package.status == .available
                                     ? nil
                                     : {
