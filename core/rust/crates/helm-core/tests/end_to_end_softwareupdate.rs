@@ -1,17 +1,23 @@
+use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use helm_core::adapters::softwareupdate::SoftwareUpdateAdapter;
 use helm_core::adapters::softwareupdate_process::ProcessSoftwareUpdateSource;
 use helm_core::adapters::{
     AdapterRequest, AdapterResponse, DetectRequest, ListOutdatedRequest, ManagerAdapter,
+    UpgradeRequest,
 };
 use helm_core::execution::{
     ExecutionResult, ProcessExecutor, ProcessExitStatus, ProcessOutput, ProcessSpawnRequest,
     ProcessTerminationMode, ProcessWaitFuture, RunningProcess,
 };
-use helm_core::models::{CoreErrorKind, ManagerId, TaskStatus};
+use helm_core::models::{
+    CoreErrorKind, ManagerAction, ManagerId, PackageRef, TaskStatus, TaskType,
+};
 use helm_core::orchestration::{AdapterRuntime, AdapterTaskTerminalState};
+use helm_core::persistence::DetectionStore;
+use helm_core::sqlite::SqliteStore;
 
 const VERSION_FIXTURE: &str = include_str!("fixtures/softwareupdate/version.txt");
 const LIST_AVAILABLE_FIXTURE: &str = include_str!("fixtures/softwareupdate/list_available.txt");
@@ -95,6 +101,30 @@ fn build_runtime(executor: Arc<dyn ProcessExecutor>) -> AdapterRuntime {
     let source = ProcessSoftwareUpdateSource::new(executor);
     let adapter: Arc<dyn ManagerAdapter> = Arc::new(SoftwareUpdateAdapter::new(source));
     AdapterRuntime::new([adapter]).expect("runtime creation should succeed")
+}
+
+fn build_runtime_with_store(
+    executor: Arc<dyn ProcessExecutor>,
+    store: Arc<SqliteStore>,
+) -> AdapterRuntime {
+    let source = ProcessSoftwareUpdateSource::new(executor);
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(SoftwareUpdateAdapter::new(source));
+    AdapterRuntime::with_all_stores(
+        [adapter],
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store,
+    )
+    .expect("runtime creation with store should succeed")
+}
+
+fn test_db_path(test_name: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock before unix epoch")
+        .as_nanos();
+    std::env::temp_dir().join(format!("helm-{test_name}-{nanos}.sqlite3"))
 }
 
 #[tokio::test]
@@ -185,4 +215,74 @@ async fn softwareupdate_not_installed_propagates_as_structured_error() {
         }
         other => panic!("expected Failed terminal state, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn safe_mode_blocks_softwareupdate_upgrade_submission() {
+    let path = test_db_path("softwareupdate-safe-mode-block");
+    let store = Arc::new(SqliteStore::new(&path));
+    store.migrate_to_latest().unwrap();
+    store.set_safe_mode(true).unwrap();
+
+    let executor = Arc::new(SoftwareUpdateFakeExecutor::normal());
+    let runtime = build_runtime_with_store(executor, store);
+
+    let error = runtime
+        .submit(
+            ManagerId::SoftwareUpdate,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::SoftwareUpdate,
+                    name: "__confirm_os_updates__".to_string(),
+                }),
+            }),
+        )
+        .await
+        .expect_err("safe mode should block softwareupdate upgrade submit");
+
+    assert_eq!(error.kind, CoreErrorKind::InvalidInput);
+    assert_eq!(error.manager, Some(ManagerId::SoftwareUpdate));
+    assert_eq!(error.task, Some(TaskType::Upgrade));
+    assert_eq!(error.action, Some(ManagerAction::Upgrade));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[tokio::test]
+async fn safe_mode_off_allows_confirmed_softwareupdate_upgrade() {
+    let path = test_db_path("softwareupdate-safe-mode-off");
+    let store = Arc::new(SqliteStore::new(&path));
+    store.migrate_to_latest().unwrap();
+    store.set_safe_mode(false).unwrap();
+
+    let executor = Arc::new(SoftwareUpdateFakeExecutor::normal());
+    let runtime = build_runtime_with_store(executor, store);
+
+    let task_id = runtime
+        .submit(
+            ManagerId::SoftwareUpdate,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::SoftwareUpdate,
+                    name: "__confirm_os_updates__".to_string(),
+                }),
+            }),
+        )
+        .await
+        .unwrap();
+
+    let snapshot = runtime
+        .wait_for_terminal(task_id, Some(Duration::from_secs(5)))
+        .await
+        .unwrap();
+
+    assert_eq!(snapshot.runtime.status, TaskStatus::Completed);
+    assert!(matches!(
+        snapshot.terminal_state,
+        Some(AdapterTaskTerminalState::Succeeded(
+            AdapterResponse::Mutation(_)
+        ))
+    ));
+
+    let _ = std::fs::remove_file(path);
 }

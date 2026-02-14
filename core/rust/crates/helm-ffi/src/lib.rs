@@ -557,14 +557,18 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
             && softwareupdate_outdated
             && runtime.is_manager_enabled(ManagerId::SoftwareUpdate)
         {
-            let request = AdapterRequest::Upgrade(UpgradeRequest {
-                package: Some(PackageRef {
-                    manager: ManagerId::SoftwareUpdate,
-                    name: "__confirm_os_updates__".to_string(),
-                }),
-            });
-            if let Err(error) = runtime.submit(ManagerId::SoftwareUpdate, request).await {
-                eprintln!("upgrade_all: failed to queue softwareupdate task: {error}");
+            if runtime.is_safe_mode() {
+                eprintln!("upgrade_all: safe mode enabled; skipping softwareupdate upgrade");
+            } else {
+                let request = AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::SoftwareUpdate,
+                        name: "__confirm_os_updates__".to_string(),
+                    }),
+                });
+                if let Err(error) = runtime.submit(ManagerId::SoftwareUpdate, request).await {
+                    eprintln!("upgrade_all: failed to queue softwareupdate task: {error}");
+                }
             }
         }
     });

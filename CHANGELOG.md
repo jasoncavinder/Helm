@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.8.0-rc.1] - 2026-02-14
+
+### Added
+- End-to-end safe-mode orchestration tests for `softwareupdate` upgrade submission behavior (blocked when safe mode is enabled, allowed when disabled with explicit confirmation token).
+
+### Changed
+- `helm_upgrade_all` now skips queuing `softwareupdate` upgrades when safe mode is enabled instead of attempting submission and relying on runtime rejection.
+
 ## [0.8.0-beta.1] - 2026-02-14
 
 ### Added
