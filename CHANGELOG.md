@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.9.2] - 2026-02-14
+
+### Added
+- Added `es` (Spanish) and `de` (German) locale bundles for app/common/service strings in both source locale assets and macOS app resources.
+- Added language-picker options for Spanish and German in Settings.
+
+### Changed
+- Expanded localization keyset with language display-name keys used by the picker (`app.settings.label.language.spanish`, `app.settings.label.language.german`).
+
 ## [0.9.1] - 2026-02-14
 
 ### Fixed
