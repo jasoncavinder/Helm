@@ -42,6 +42,7 @@ pub trait RustupSource: Send + Sync {
     fn detect(&self) -> AdapterResult<RustupDetectOutput>;
     fn toolchain_list(&self) -> AdapterResult<String>;
     fn check(&self) -> AdapterResult<String>;
+    fn update_toolchain(&self, toolchain: &str) -> AdapterResult<String>;
     fn self_uninstall(&self) -> AdapterResult<String>;
     fn self_update(&self) -> AdapterResult<String>;
 }
@@ -108,18 +109,11 @@ impl<S: RustupSource> ManagerAdapter for RustupAdapter<S> {
                     manager: ManagerId::Rustup,
                     name: "__self__".to_string(),
                 });
-                if package.name != "__self__" {
-                    return Err(CoreError {
-                        manager: Some(ManagerId::Rustup),
-                        task: None,
-                        action: Some(ManagerAction::Upgrade),
-                        kind: CoreErrorKind::InvalidInput,
-                        message:
-                            "rustup adapter only supports manager self-update in this milestone"
-                                .to_string(),
-                    });
+                if package.name == "__self__" {
+                    let _ = self.source.self_update()?;
+                } else {
+                    let _ = self.source.update_toolchain(&package.name)?;
                 }
-                let _ = self.source.self_update()?;
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
                     action: ManagerAction::Upgrade,
@@ -184,6 +178,19 @@ pub fn rustup_self_update_request(task_id: Option<TaskId>) -> ProcessSpawnReques
         TaskType::Upgrade,
         ManagerAction::Upgrade,
         CommandSpec::new(RUSTUP_COMMAND).args(["self", "update"]),
+        LIST_TIMEOUT,
+    )
+}
+
+pub fn rustup_toolchain_update_request(
+    task_id: Option<TaskId>,
+    toolchain: &str,
+) -> ProcessSpawnRequest {
+    rustup_request(
+        task_id,
+        TaskType::Upgrade,
+        ManagerAction::Upgrade,
+        CommandSpec::new(RUSTUP_COMMAND).args(["update", toolchain]),
         LIST_TIMEOUT,
     )
 }
@@ -318,7 +325,7 @@ mod tests {
     use super::{
         RustupAdapter, RustupDetectOutput, RustupSource, parse_rustup_check, parse_rustup_version,
         parse_toolchain_list, rustup_check_request, rustup_detect_request,
-        rustup_self_update_request, rustup_toolchain_list_request,
+        rustup_self_update_request, rustup_toolchain_list_request, rustup_toolchain_update_request,
     };
 
     const VERSION_FIXTURE: &str = include_str!("../../tests/fixtures/rustup/version.txt");
@@ -460,19 +467,19 @@ mod tests {
     }
 
     #[test]
-    fn adapter_rejects_upgrade_for_non_self_target() {
+    fn adapter_executes_upgrade_for_toolchain_target() {
         let source = FixtureSource::default();
         let adapter = RustupAdapter::new(source);
 
-        let error = adapter
+        let result = adapter
             .execute(AdapterRequest::Upgrade(crate::adapters::UpgradeRequest {
                 package: Some(crate::models::PackageRef {
                     manager: ManagerId::Rustup,
                     name: "stable-x86_64-apple-darwin".to_string(),
                 }),
             }))
-            .unwrap_err();
-        assert_eq!(error.kind, CoreErrorKind::InvalidInput);
+            .unwrap();
+        assert!(matches!(result, AdapterResponse::Mutation(_)));
     }
 
     #[test]
@@ -515,6 +522,22 @@ mod tests {
         assert_eq!(request.task_type, TaskType::Upgrade);
     }
 
+    #[test]
+    fn toolchain_update_command_spec_uses_structured_args() {
+        let request =
+            rustup_toolchain_update_request(Some(TaskId(8)), "stable-x86_64-apple-darwin");
+        assert_eq!(request.task_id, Some(TaskId(8)));
+        assert_eq!(
+            request.command.args,
+            vec![
+                "update".to_string(),
+                "stable-x86_64-apple-darwin".to_string()
+            ]
+        );
+        assert_eq!(request.action, ManagerAction::Upgrade);
+        assert_eq!(request.task_type, TaskType::Upgrade);
+    }
+
     #[derive(Default, Clone)]
     struct FixtureSource {
         detect_calls: Arc<AtomicUsize>,
@@ -538,6 +561,10 @@ mod tests {
         }
 
         fn self_uninstall(&self) -> AdapterResult<String> {
+            Ok(String::new())
+        }
+
+        fn update_toolchain(&self, _toolchain: &str) -> AdapterResult<String> {
             Ok(String::new())
         }
 

@@ -218,3 +218,16 @@ Use prefixes:
 ### Before opening a PR
 - Ensure relevant tests pass (e.g., `cargo test`).
 - Keep PRs focused; split unrelated changes.
+
+---
+
+## 14. Licensing Constraints
+
+Helm is not open source at this stage.
+
+AI agents must not:
+- suggest licensing changes without explicit instruction
+- introduce third-party code incompatible with a source-available commercial future
+- assume MIT/Apache-style reuse permissions
+
+All contributions are subject to the CLA.

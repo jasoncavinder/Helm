@@ -83,7 +83,12 @@ struct DashboardView: View {
                                 packageCount: countFor(manager: manager),
                                 hasOutdatedPackages: hasOutdated(manager: manager),
                                 hasFailedTasks: hasFailed(manager: manager),
-                                versionAvailable: core.managerStatuses[manager.id]?.version != nil,
+                                versionAvailable: {
+                                    if let version = core.managerStatuses[manager.id]?.version {
+                                        return !version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    }
+                                    return false
+                                }(),
                                 outdatedCount: outdatedCount(manager: manager),
                                 onTap: {
                                     core.selectedManagerFilter = normalizedManagerName(manager.id)

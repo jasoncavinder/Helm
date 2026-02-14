@@ -12,11 +12,12 @@ use crate::models::{
     OutdatedPackage, PackageRef, TaskId, TaskType,
 };
 
-const MISE_READ_CAPABILITIES: &[Capability] = &[
+const MISE_CAPABILITIES: &[Capability] = &[
     Capability::Detect,
     Capability::Refresh,
     Capability::ListInstalled,
     Capability::ListOutdated,
+    Capability::Upgrade,
 ];
 
 const MISE_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
@@ -24,12 +25,13 @@ const MISE_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
     display_name: "mise",
     category: ManagerCategory::ToolRuntime,
     authority: ManagerAuthority::Authoritative,
-    capabilities: MISE_READ_CAPABILITIES,
+    capabilities: MISE_CAPABILITIES,
 };
 
 const MISE_COMMAND: &str = "mise";
 const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
 const LIST_TIMEOUT: Duration = Duration::from_secs(60);
+const UPGRADE_TIMEOUT: Duration = Duration::from_secs(300);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MiseDetectOutput {
@@ -41,6 +43,7 @@ pub trait MiseSource: Send + Sync {
     fn detect(&self) -> AdapterResult<MiseDetectOutput>;
     fn list_installed(&self) -> AdapterResult<String>;
     fn list_outdated(&self) -> AdapterResult<String>;
+    fn upgrade_tool(&self, name: &str) -> AdapterResult<String>;
 }
 
 pub struct MiseAdapter<S: MiseSource> {
@@ -91,6 +94,19 @@ impl<S: MiseSource> ManagerAdapter for MiseAdapter<S> {
                 let packages = parse_mise_outdated(&raw)?;
                 Ok(AdapterResponse::OutdatedPackages(packages))
             }
+            AdapterRequest::Upgrade(upgrade_request) => {
+                let package = upgrade_request.package.unwrap_or(PackageRef {
+                    manager: ManagerId::Mise,
+                    name: "__all__".to_string(),
+                });
+                let _ = self.source.upgrade_tool(&package.name)?;
+                Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
+                    package,
+                    action: ManagerAction::Upgrade,
+                    before_version: None,
+                    after_version: None,
+                }))
+            }
             _ => Err(CoreError {
                 manager: Some(ManagerId::Mise),
                 task: None,
@@ -129,6 +145,21 @@ pub fn mise_list_outdated_request(task_id: Option<TaskId>) -> ProcessSpawnReques
         ManagerAction::ListOutdated,
         CommandSpec::new(MISE_COMMAND).args(["outdated", "--json"]),
         LIST_TIMEOUT,
+    )
+}
+
+pub fn mise_upgrade_request(task_id: Option<TaskId>, name: &str) -> ProcessSpawnRequest {
+    let command = if name == "__all__" {
+        CommandSpec::new(MISE_COMMAND).arg("upgrade")
+    } else {
+        CommandSpec::new(MISE_COMMAND).args(["upgrade", name])
+    };
+    mise_request(
+        task_id,
+        TaskType::Upgrade,
+        ManagerAction::Upgrade,
+        command,
+        UPGRADE_TIMEOUT,
     )
 }
 
@@ -251,8 +282,8 @@ mod tests {
 
     use super::{
         MiseAdapter, MiseDetectOutput, MiseSource, mise_detect_request,
-        mise_list_installed_request, mise_list_outdated_request, parse_mise_installed,
-        parse_mise_outdated, parse_mise_version,
+        mise_list_installed_request, mise_list_outdated_request, mise_upgrade_request,
+        parse_mise_installed, parse_mise_outdated, parse_mise_version,
     };
 
     const VERSION_FIXTURE: &str = include_str!("../../tests/fixtures/mise/version.txt");
@@ -379,6 +410,22 @@ mod tests {
     }
 
     #[test]
+    fn adapter_executes_upgrade_request() {
+        let source = FixtureSource::default();
+        let adapter = MiseAdapter::new(source);
+
+        let result = adapter
+            .execute(AdapterRequest::Upgrade(crate::adapters::UpgradeRequest {
+                package: Some(crate::models::PackageRef {
+                    manager: ManagerId::Mise,
+                    name: "node".to_string(),
+                }),
+            }))
+            .unwrap();
+        assert!(matches!(result, AdapterResponse::Mutation(_)));
+    }
+
+    #[test]
     fn detect_command_spec_uses_structured_args() {
         let request = mise_detect_request(Some(TaskId(42)));
         assert_eq!(request.manager, ManagerId::Mise);
@@ -409,6 +456,23 @@ mod tests {
         assert_eq!(outdated.task_type, TaskType::Refresh);
     }
 
+    #[test]
+    fn upgrade_command_spec_uses_structured_args() {
+        let package_upgrade = mise_upgrade_request(Some(TaskId(99)), "node");
+        assert_eq!(package_upgrade.task_id, Some(TaskId(99)));
+        assert_eq!(
+            package_upgrade.command.args,
+            vec!["upgrade".to_string(), "node".to_string()]
+        );
+        assert_eq!(package_upgrade.task_type, TaskType::Upgrade);
+        assert_eq!(package_upgrade.action, ManagerAction::Upgrade);
+
+        let all_upgrade = mise_upgrade_request(None, "__all__");
+        assert_eq!(all_upgrade.command.args, vec!["upgrade".to_string()]);
+        assert_eq!(all_upgrade.task_type, TaskType::Upgrade);
+        assert_eq!(all_upgrade.action, ManagerAction::Upgrade);
+    }
+
     #[derive(Default, Clone)]
     struct FixtureSource {
         detect_calls: Arc<AtomicUsize>,
@@ -429,6 +493,10 @@ mod tests {
 
         fn list_outdated(&self) -> AdapterResult<String> {
             Ok(OUTDATED_FIXTURE.to_string())
+        }
+
+        fn upgrade_tool(&self, _name: &str) -> AdapterResult<String> {
+            Ok(String::new())
         }
     }
 }

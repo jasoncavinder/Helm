@@ -1,0 +1,21 @@
+# CLA Assistant configuration
+
+# URL to CLA document
+cla_url: https://github.com/jasoncavinder/Helm/blob/main/CLA.md
+
+# Require all contributors to sign
+require_all: true
+
+# Require re-signing if CLA changes
+require_reapproval: true
+
+# Comment message
+comment: >
+  Thank you for your contribution!
+
+  Before we can merge your pull request, you must agree to the Contributor License Agreement (CLA).
+
+  Please review and accept the CLA here:
+  {{cla_url}}
+
+  Once you have signed, this pull request will be automatically updated.

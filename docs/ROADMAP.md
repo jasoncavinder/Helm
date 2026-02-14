@@ -210,9 +210,9 @@ Delivered:
 
 ---
 
-## 0.8.x — Pinning & Policy Enforcement (beta)
+## 0.8.x — Pinning & Policy Enforcement (beta) - Completed
 
-Goal:
+Delivered:
 
 - Native pin support
 - Virtual pin fallback
@@ -232,7 +232,32 @@ Exit Criteria:
 
 ---
 
-## 0.9.x — Core Language Package Managers (beta)
+## 0.9.x — Internationalization Foundation (beta)
+
+Goal:
+
+- Centralized localization system (`locales/` directory)
+- Key-based string architecture (no hardcoded UI strings)
+- ICU message format support (plurals, variables)
+- Locale detection and override (system + user preference)
+- Fallback strategy implementation (locale → language → en)
+- Structured error localization (service returns keys, not strings)
+- Initial English locale (`en`) fully implemented
+  - Localization wrapper APIs for SwiftUI (app), Rust (service/core key-return), and website (i18n utilities + routing conventions)
+
+Exit Criteria:
+
+- No user-facing text is hardcoded
+- All UI strings resolved via localization system
+- Missing keys visibly fail in development
+- Fallback logic verified
+- Error messages display localized strings via keys
+- Introduce i18n:string-freeze before 0.12.x begins; new UI strings require keys + English text + metadata.
+- CI check prevents new hardcoded user-facing strings in UI layer (best-effort heuristic is OK initially)
+
+---
+
+## 0.10.x — Core Language Package Managers (beta)
 
 Goal:
 
@@ -255,7 +280,7 @@ Exit Criteria:
 
 ---
 
-## 0.10.x — Extended Language Package Managers (beta)
+## 0.11.x — Extended Language Package Managers (beta)
 
 Goal:
 
@@ -264,7 +289,7 @@ Goal:
 - poetry adapter
 - RubyGems adapter
 - bundler adapter
-- Same capability declaration requirements as 0.9.x adapters
+- Same capability declaration requirements as 0.10.x adapters
 
 Exit Criteria:
 
@@ -272,11 +297,35 @@ Exit Criteria:
 - list_installed and list_outdated produce correct results
 - Search returns results for managers that support it
 - Fixture-based parser tests for each adapter's output format
-- Patterns established in 0.9.x reused consistently
+- Patterns established in 0.10.x reused consistently
 
 ---
 
-## 0.11.x — Platform, Detection & Optional Managers (beta)
+## 0.12.x — Localization (beta)
+
+Goal:
+
+- Initial non-English locales:
+  - es, fr, de, pt-BR, ja
+- Translation coverage for core user flows:
+  - onboarding
+  - refresh
+  - updates
+  - errors
+- Locale selection UI (Settings)
+- Text expansion and layout validation
+- Tagline transcreation support
+
+Exit Criteria:
+
+- Core workflows fully usable in all supported languages
+- No UI truncation or layout breakage
+- Pluralization verified across locales
+- Tagline displays correctly per locale strategy
+
+---
+
+## 0.13.x — Platform, Detection & Optional Managers (beta)
 
 Goal:
 
@@ -311,7 +360,7 @@ Exit Criteria:
 
 ---
 
-## 0.12.x — Upgrade Preview & Execution Transparency (beta)
+## 0.14.x — Upgrade Preview & Execution Transparency (beta)
 
 Goal:
 
@@ -328,7 +377,7 @@ Exit Criteria:
 
 ---
 
-## 0.13.x — Self-Update & Installer Hardening (beta)
+## 0.15.x — Self-Update & Installer Hardening (beta)
 
 Goal:
 
@@ -345,7 +394,7 @@ Exit Criteria:
 
 ---
 
-## 0.14.x — Diagnostics & Logging (rc)
+## 0.16.x — Diagnostics & Logging (rc)
 
 Goal:
 
@@ -362,7 +411,7 @@ Exit Criteria:
 
 ---
 
-## 0.15.x — Stability & Pre-1.0 Hardening (rc)
+## 0.17.x — Stability & Pre-1.0 Hardening (rc)
 
 Goal:
 
@@ -377,6 +426,12 @@ Goal:
 - Crash recovery validation
 - No known race conditions
 - Memory safety audit
+- i18n validation:
+  - key parity across locales
+  - placeholder consistency
+  - ICU syntax validation
+- UI validation for text expansion
+- Localization fallback behavior tested
 
 Exit Criteria:
 
@@ -403,7 +458,25 @@ Goal:
 
 ---
 
-## 1.1.x — Editions and Entitlement Foundations
+## 1.1.x — Globalization Expansion
+
+Goal:
+
+- Additional locales:
+  - zh-Hans, ko, it, nl
+- Localization coverage for all UI surfaces
+- Website localization
+- Documentation localization (partial)
+
+Exit Criteria:
+
+- Additional locales meet UX and QA standards
+- Website supports locale routing
+- Translation coverage >80% for supported locales
+
+---
+
+## 1.2.x — Editions and Entitlement Foundations
 
 Goal:
 
@@ -420,7 +493,7 @@ Exit Criteria:
 
 ---
 
-## 1.2.x — Business Policy and Drift Management
+## 1.3.x — Business Policy and Drift Management
 
 Goal:
 
@@ -428,6 +501,9 @@ Goal:
 - Baseline profile enforcement for package and toolchain consistency
 - Drift detection and compliance reporting
 - Policy snapshot persistence for offline-safe enforcement
+- Organization-level locale policies
+- Locale enforcement for managed environments
+- Multi-locale reporting and audit output
 
 Exit Criteria:
 
@@ -437,7 +513,7 @@ Exit Criteria:
 
 ---
 
-## 1.3.x — Enterprise Rollout, Approvals, and Audit
+## 1.4.x — Enterprise Rollout, Approvals, and Audit
 
 Goal:
 

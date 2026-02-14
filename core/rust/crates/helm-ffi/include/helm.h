@@ -52,6 +52,96 @@ bool helm_cancel_task(int64_t task_id);
 char *helm_list_manager_status(void);
 
 /**
+ * Return whether safe mode is enabled.
+ */
+bool helm_get_safe_mode(void);
+
+/**
+ * Set safe mode state. Returns true on success.
+ */
+bool helm_set_safe_mode(bool enabled);
+
+/**
+ * Return whether Homebrew upgrades should auto-clean old kegs by default.
+ */
+bool helm_get_homebrew_keg_auto_cleanup(void);
+
+/**
+ * Set the global Homebrew keg policy.
+ */
+bool helm_set_homebrew_keg_auto_cleanup(bool enabled);
+
+/**
+ * List per-package Homebrew keg policy overrides as JSON.
+ */
+char *helm_list_package_keg_policies(void);
+
+/**
+ * Set per-package Homebrew keg policy override.
+ *
+ * `policy_mode` values:
+ * - `-1`: clear override (use global)
+ * - `0`: keep old kegs
+ * - `1`: cleanup old kegs
+ *
+ * # Safety
+ *
+ * `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
+ * strings.
+ */
+bool helm_set_package_keg_policy(const char *manager_id,
+                                 const char *package_name,
+                                 int32_t policy_mode);
+
+/**
+ * Queue upgrade tasks for supported managers using cached outdated snapshot.
+ *
+ * - `include_pinned`: if false, pinned packages are excluded.
+ * - `allow_os_updates`: explicit confirmation gate for `softwareupdate` upgrades.
+ */
+bool helm_upgrade_all(bool include_pinned, bool allow_os_updates);
+
+/**
+ * Queue an upgrade task for a single package. Returns the task ID, or -1 on error.
+ *
+ * Currently supported manager IDs:
+ * - "homebrew_formula"
+ * - "mise"
+ * - "rustup"
+ *
+ * # Safety
+ *
+ * `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
+ * strings.
+ */
+int64_t helm_upgrade_package(const char *manager_id, const char *package_name);
+
+/**
+ * List pin records as JSON.
+ */
+char *helm_list_pins(void);
+
+/**
+ * Persist a virtual pin for a package. Returns true on success.
+ *
+ * # Safety
+ *
+ * `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
+ * strings. `pinned_version` may be null.
+ */
+bool helm_pin_package(const char *manager_id, const char *package_name, const char *pinned_version);
+
+/**
+ * Remove a pin for a package. Returns true on success.
+ *
+ * # Safety
+ *
+ * `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
+ * strings.
+ */
+bool helm_unpin_package(const char *manager_id, const char *package_name);
+
+/**
  * Set a manager as enabled or disabled.
  *
  * # Safety

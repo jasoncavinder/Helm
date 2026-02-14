@@ -8,25 +8,35 @@ Helm follows feature-driven milestones. Dates are intentionally omitted — mile
 ## Completed
 
 | Version | Milestone |
-|---------|-----------|
-| 0.1.x | Core foundation — Rust workspace, adapter traits, capability model, SQLite schema |
-| 0.2.x | First adapter — Homebrew detection, listing, fixture-based tests |
-| 0.3.x | Orchestration engine — task queue, per-manager serialization, cancellation |
-| 0.4.x | SwiftUI shell — menu bar app, XPC service, Rust FFI bridge, live UI |
-| 0.5.x | Progressive search — local-first search, remote search, cache enrichment |
-| 0.6.x | Core toolchain managers — mise, rustup adapters, authority ordering |
-| 0.7.x | System & App Store managers — softwareupdate, mas, restart detection |
+|---|---|
+| 0.1.x | Core Foundation — Rust workspace, adapter trait, capability model |
+| 0.2.x | First Adapter — Homebrew detection, listing, fixture-based tests |
+| 0.3.x | Orchestration Engine — task queue, per-manager serialization, cancellation |
+| 0.4.x | SwiftUI Shell — menu bar app, XPC service, Rust FFI bridge, live UI |
+| 0.5.x | Progressive Search — local-first search, remote search, cache enrichment |
+| 0.6.x | Core Toolchain Managers — mise, rustup adapters, authority ordering |
+| 0.7.x | System & App Store Managers — softwareupdate, mas, restart detection |
 
-## Upcoming
+## In Progress (Beta)
 
 | Version | Milestone |
-|---------|-----------|
-| 0.8.x | Pinning & policy enforcement — native/virtual pins, manager toggles, safe mode |
-| 0.9.x | Upgrade preview & execution transparency — bulk preview, dry-run, ordered plans |
-| 0.10.x | Self-update & installer hardening — signed updates, delta updates |
-| 0.11.x | Diagnostics & logging — per-task log viewer, structured error export |
-| 0.12.x | Stability & pre-1.0 hardening — full test matrix, stress tests, crash recovery |
-| **1.0.0** | **Stable control plane release** |
+|---|---|
+| 0.8.x | Pinning & Policy Enforcement — native/virtual pins, safe mode, guarded updates |
+
+## Planned
+
+| Version | Milestone |
+|---|---|
+| 0.9.x | Internationalization Foundation — centralized localization system, ICU format |
+| 0.10.x | Core Language Package Managers — npm, pipx, pip, Cargo, cargo-binstall |
+| 0.11.x | Extended Language Package Managers — pnpm, yarn, poetry, RubyGems, bundler |
+| 0.12.x | Localization — non-English locales, translation coverage, locale UI |
+| 0.13.x | Platform, Detection & Optional Managers — Docker, Xcode, Rosetta, Sparkle |
+| 0.14.x | Upgrade Preview & Execution Transparency — bulk preview, dry-run, failure isolation |
+| 0.15.x | Self-Update & Installer Hardening — Sparkle integration, signed verification |
+| 0.16.x | Diagnostics & Logging — log viewer, structured error export, health panel |
+| 0.17.x | Stability & Pre-1.0 Hardening — stress tests, crash recovery, memory audit |
+| 1.0.0 | Stable Control Plane Release — production-safe execution, full feature set |
 
 ## Details
 

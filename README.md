@@ -9,7 +9,7 @@
   <br>
   A native macOS menu bar app for unified package manager control.
   <br>
-  <strong>Pre-1.0 &middot; v0.7.1</strong>
+  <strong>Pre-1.0 &middot; v0.9.0</strong>
 </p>
 
 <p align="center">
@@ -72,24 +72,25 @@ Or open `apps/macos-ui/Helm.xcodeproj` in Xcode and run the **Helm** scheme. The
 ## Milestones
 
 | Version | Milestone | Status |
-|---------|-----------|--------|
-| 0.1.x | Core foundation — adapter traits, capability model, SQLite schema | Complete |
-| 0.2.x | First adapter — Homebrew detection, listing, fixture-based tests | Complete |
-| 0.3.x | Orchestration engine — task queue, per-manager serialization, cancellation | Complete |
-| 0.4.x | SwiftUI shell — menu bar app, XPC service, Rust FFI bridge, live UI | Complete |
-| 0.5.x | Progressive search — local-first search, remote search, cache enrichment | Complete |
-| 0.6.x | Core toolchain managers — mise, rustup adapters, authority ordering | Complete |
-| 0.7.x | System & App Store managers — softwareupdate, mas, restart detection | Completed |
-| 0.8.x | Pinning & policy enforcement — native/virtual pins, safe mode, guarded updates | In Progress (Beta) |
+|---|---|---|
+| 0.1.x | Core Foundation — Rust workspace, adapter trait, capability model | Completed |
+| 0.2.x | First Adapter — Homebrew detection, listing, fixture-based tests | Completed |
+| 0.3.x | Orchestration Engine — task queue, per-manager serialization, cancellation | Completed |
+| 0.4.x | SwiftUI Shell — menu bar app, XPC service, Rust FFI bridge, live UI | Completed |
+| 0.5.x | Progressive Search — local-first search, remote search, cache enrichment | Completed |
+| 0.6.x | Core Toolchain Managers — mise, rustup adapters, authority ordering | Completed |
+| 0.7.x | System & App Store Managers — softwareupdate, mas, restart detection | Completed |
+| 0.8.x | Pinning & Policy Enforcement — native/virtual pins, safe mode, guarded updates | Completed |
 | 0.9.x | Internationalization Foundation — centralized localization system, ICU format | Completed |
-| 0.10.x | Core language package managers — npm, pipx, pip, Cargo, cargo-binstall, casks | Planned |
-| 0.10.x | Extended language package managers — uv, pnpm, bun, gem, composer | Planned |
-| 0.11.x | Reliability and safety hardening — timeouts, retries, cancellation, conflict checks | Planned |
-| 0.12.x | UI and workflow expansion — manager controls, batch actions, onboarding polish | Planned |
-| 0.13.x | Automation and rules engine — policies, schedules, maintenance windows | Planned |
-| 0.14.x | Cross-machine state and backup — import/export, optional cloud sync | Planned |
-| 0.15.x | Performance and scale hardening — large-state and high-volume optimization | Planned |
-| 1.0.0 | Stable control plane release | Planned |
+| 0.10.x | Core Language Package Managers — npm, pipx, pip, Cargo, cargo-binstall | Planned |
+| 0.11.x | Extended Language Package Managers — pnpm, yarn, poetry, RubyGems, bundler | Planned |
+| 0.12.x | Localization — non-English locales, translation coverage, locale UI | Planned |
+| 0.13.x | Platform, Detection & Optional Managers — Docker, Xcode, Rosetta, Sparkle | Planned |
+| 0.14.x | Upgrade Preview & Execution Transparency — bulk preview, dry-run, failure isolation | Planned |
+| 0.15.x | Self-Update & Installer Hardening — Sparkle integration, signed verification | Planned |
+| 0.16.x | Diagnostics & Logging — log viewer, structured error export, health panel | Planned |
+| 0.17.x | Stability & Pre-1.0 Hardening — stress tests, crash recovery, memory audit | Planned |
+| 1.0.0 | Stable Control Plane Release — production-safe execution, full feature set | Planned |
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full roadmap through 1.x.
 
@@ -123,6 +124,32 @@ See [`docs/VERSIONING.md`](docs/VERSIONING.md) for the versioning strategy.
 - [Business Central Management Spec](docs/enterprise/BUSINESS_CENTRAL_MANAGEMENT_SPEC.md) — Scoped policy, drift, and compliance model
 - [Enterprise GTM Matrix](docs/enterprise/GTM_PERSONA_MATRIX.md) — Persona messaging and pilot KPI framework
 
+## Future Licensing
+
+Helm is currently released under a source-available, non-commercial license.
+
+The licensing model will evolve at or after version 1.0 to support commercial use and additional editions.
+
+See [docs/LICENSING_STRATEGY.md](docs/LICENSING_STRATEGY.md) for details.
+
 ## License
 
-Currently unlicensed. All rights reserved.
+Helm is currently released under a **source-available, non-commercial license** (pre-1.0).
+
+- Source code is visible for transparency and evaluation
+- Use is permitted for personal and non-commercial purposes
+- Commercial use is not permitted before 1.0
+- Redistribution of unmodified binaries is allowed for non-commercial use
+- Modification and reuse of the source code is not permitted
+
+See [LICENSE](LICENSE) for full terms.
+
+---
+
+## Contributions
+
+Contributions are welcome, but require agreement to the Contributor License Agreement (CLA).
+
+By submitting a contribution, you agree to the terms in [CLA.md](CLA.md).
+
+This ensures Helm can evolve its licensing model in the future (including commercial and open-source options).

@@ -151,6 +151,16 @@ Capabilities:
 
 ---
 
+## 12. Licensing & Distribution
+
+- License model defined for release builds
+- Commercial usage terms defined for Free / Pro / Business editions
+- Contributor License Agreement (CLA) in place for all contributions
+- License and usage terms documented in README
+- Distribution model aligned with licensing (binary distribution, update mechanism)
+
+---
+
 ## Explicit Non-Goals for 1.0
 
 - Dependency graph resolution

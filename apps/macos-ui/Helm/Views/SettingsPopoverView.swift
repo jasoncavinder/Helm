@@ -7,6 +7,7 @@ struct SettingsPopoverView: View {
     @State private var autoCheckEnabled = false
     @State private var checkFrequency = 60
     @State private var showResetConfirmation = false
+    @State private var showUpgradeConfirmation = false
     @State private var isResetting = false
 
     var body: some View {
@@ -52,6 +53,20 @@ struct SettingsPopoverView: View {
                     .disabled(true)
                     .frame(width: 100)
                 }
+                
+                // Safe Mode Toggle (Merged from 0.8)
+                Toggle("Safe Mode (block macOS updates)", isOn: Binding(
+                    get: { core.safeModeEnabled },
+                    set: { core.setSafeMode($0) }
+                ))
+                .font(.subheadline)
+
+                // Homebrew Cleanup (Merged from 0.8)
+                Toggle("Auto-clean old Homebrew kegs", isOn: Binding(
+                    get: { core.homebrewKegAutoCleanupEnabled },
+                    set: { core.setHomebrewKegAutoCleanup($0) }
+                ))
+                .font(.subheadline)
 
                 Divider()
             }
@@ -68,15 +83,16 @@ struct SettingsPopoverView: View {
                 }
                 .disabled(core.isRefreshing)
 
-                Button(action: {}) {
+                Button(action: {
+                    showUpgradeConfirmation = true
+                }) {
                     HStack {
                         Image(systemName: "arrow.up.square")
                         Text(L10n.App.Settings.Action.upgradeAll.localized)
                     }
                     .frame(maxWidth: .infinity)
                 }
-                .disabled(true)
-                .help("Upgrade all not yet implemented")
+                .disabled(core.isRefreshing || isResetting)
 
                 Divider()
             }
@@ -117,6 +133,23 @@ struct SettingsPopoverView: View {
             }
         } message: {
             Text(L10n.App.Settings.Alert.Reset.message.localized)
+        }
+        .alert("Upgrade All Packages?", isPresented: $showUpgradeConfirmation) {
+            Button("Upgrade (No OS Updates)") {
+                core.upgradeAll(includePinned: false, allowOsUpdates: false)
+            }
+            if !core.safeModeEnabled {
+                Button("Upgrade Including OS Updates", role: .destructive) {
+                    core.upgradeAll(includePinned: false, allowOsUpdates: true)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            if core.safeModeEnabled {
+                Text("Safe Mode is enabled, so macOS software updates will be blocked. Pinned packages are excluded.")
+            } else {
+                Text("Pinned packages are excluded. Choose the OS update option only when you explicitly want softwareupdate to run.")
+            }
         }
     }
 }
