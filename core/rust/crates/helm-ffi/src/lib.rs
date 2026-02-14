@@ -21,7 +21,8 @@ use helm_core::adapters::{
 };
 use helm_core::execution::tokio_process::TokioProcessExecutor;
 use helm_core::models::{
-    DetectionInfo, HomebrewKegPolicy, ManagerId, PackageRef, PinKind, PinRecord, SearchQuery,
+    DetectionInfo, HomebrewKegPolicy, ManagerId, OutdatedPackage, PackageRef, PinKind, PinRecord,
+    SearchQuery,
 };
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
 use helm_core::orchestration::{AdapterTaskTerminalState, CancellationMode};
@@ -140,6 +141,58 @@ fn parse_homebrew_config_version(output: &str) -> Option<String> {
         }
     }
     None
+}
+
+#[derive(Default)]
+struct UpgradeAllTargets {
+    homebrew: Vec<String>,
+    mise: Vec<String>,
+    rustup: Vec<String>,
+    softwareupdate_outdated: bool,
+}
+
+fn collect_upgrade_all_targets(
+    outdated: &[OutdatedPackage],
+    pinned_keys: &std::collections::HashSet<String>,
+    include_pinned: bool,
+) -> UpgradeAllTargets {
+    let mut targets = UpgradeAllTargets::default();
+    let mut seen_homebrew = std::collections::HashSet::new();
+    let mut seen_mise = std::collections::HashSet::new();
+    let mut seen_rustup = std::collections::HashSet::new();
+
+    for package in outdated {
+        let package_key = format!(
+            "{}:{}",
+            package.package.manager.as_str(),
+            package.package.name.as_str()
+        );
+        if !include_pinned && (package.pinned || pinned_keys.contains(&package_key)) {
+            continue;
+        }
+
+        match package.package.manager {
+            ManagerId::HomebrewFormula => {
+                if seen_homebrew.insert(package.package.name.clone()) {
+                    targets.homebrew.push(package.package.name.clone());
+                }
+            }
+            ManagerId::Mise => {
+                if seen_mise.insert(package.package.name.clone()) {
+                    targets.mise.push(package.package.name.clone());
+                }
+            }
+            ManagerId::Rustup => {
+                if seen_rustup.insert(package.package.name.clone()) {
+                    targets.rustup.push(package.package.name.clone());
+                }
+            }
+            ManagerId::SoftwareUpdate => targets.softwareupdate_outdated = true,
+            _ => {}
+        }
+    }
+
+    targets
 }
 
 fn probe_homebrew_version(executable_path: Option<&std::path::Path>) -> Option<String> {
@@ -824,35 +877,10 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
             })
             .unwrap_or_default();
 
-        let mut homebrew_targets = Vec::new();
-        let mut seen_homebrew_targets = std::collections::HashSet::new();
-        let mut rustup_outdated = false;
-        let mut softwareupdate_outdated = false;
-
-        for package in outdated {
-            let package_key = format!(
-                "{}:{}",
-                package.package.manager.as_str(),
-                package.package.name.as_str()
-            );
-            if !include_pinned && (package.pinned || pinned_keys.contains(&package_key)) {
-                continue;
-            }
-
-            match package.package.manager {
-                ManagerId::HomebrewFormula => {
-                    if seen_homebrew_targets.insert(package.package.name.clone()) {
-                        homebrew_targets.push(package.package.name);
-                    }
-                }
-                ManagerId::Rustup => rustup_outdated = true,
-                ManagerId::SoftwareUpdate => softwareupdate_outdated = true,
-                _ => {}
-            }
-        }
+        let targets = collect_upgrade_all_targets(&outdated, &pinned_keys, include_pinned);
 
         if runtime.is_manager_enabled(ManagerId::HomebrewFormula) {
-            for package_name in homebrew_targets {
+            for package_name in targets.homebrew {
                 let policy = effective_homebrew_keg_policy(&store, &package_name);
                 let cleanup_old_kegs = policy == HomebrewKegPolicy::Cleanup;
                 let target_name = encode_homebrew_upgrade_target(&package_name, cleanup_old_kegs);
@@ -876,23 +904,48 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
             }
         }
 
-        if rustup_outdated && runtime.is_manager_enabled(ManagerId::Rustup) {
-            let request = AdapterRequest::Upgrade(UpgradeRequest {
-                package: Some(PackageRef {
-                    manager: ManagerId::Rustup,
-                    name: "__self__".to_string(),
-                }),
-            });
-            match runtime.submit(ManagerId::Rustup, request).await {
-                Ok(task_id) => set_task_label(task_id, "Self-update rustup".to_string()),
-                Err(error) => {
-                    eprintln!("upgrade_all: failed to queue rustup self-update task: {error}");
+        if runtime.is_manager_enabled(ManagerId::Mise) {
+            for package_name in targets.mise {
+                let request = AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::Mise,
+                        name: package_name.clone(),
+                    }),
+                });
+                match runtime.submit(ManagerId::Mise, request).await {
+                    Ok(task_id) => {
+                        set_task_label(task_id, format!("Upgrade {package_name} via mise"))
+                    }
+                    Err(error) => {
+                        eprintln!("upgrade_all: failed to queue mise upgrade task: {error}");
+                    }
+                }
+            }
+        }
+
+        if runtime.is_manager_enabled(ManagerId::Rustup) {
+            for toolchain in targets.rustup {
+                let request = AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::Rustup,
+                        name: toolchain.clone(),
+                    }),
+                });
+                match runtime.submit(ManagerId::Rustup, request).await {
+                    Ok(task_id) => {
+                        set_task_label(task_id, format!("Upgrade rustup toolchain {toolchain}"))
+                    }
+                    Err(error) => {
+                        eprintln!(
+                            "upgrade_all: failed to queue rustup toolchain upgrade task: {error}"
+                        );
+                    }
                 }
             }
         }
 
         if allow_os_updates
-            && softwareupdate_outdated
+            && targets.softwareupdate_outdated
             && runtime.is_manager_enabled(ManagerId::SoftwareUpdate)
         {
             if runtime.is_safe_mode() {
@@ -1606,7 +1659,10 @@ pub unsafe extern "C" fn helm_free_string(s: *mut c_char) {
 
 #[cfg(test)]
 mod tests {
-    use super::{homebrew_probe_candidates, parse_homebrew_config_version};
+    use super::{
+        collect_upgrade_all_targets, homebrew_probe_candidates, parse_homebrew_config_version,
+    };
+    use helm_core::models::{ManagerId, OutdatedPackage, PackageRef};
     use std::path::Path;
 
     #[test]
@@ -1635,5 +1691,56 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn collect_upgrade_all_targets_routes_supported_managers() {
+        let outdated = vec![
+            outdated_pkg(ManagerId::HomebrewFormula, "git", false),
+            outdated_pkg(ManagerId::Mise, "node", false),
+            outdated_pkg(ManagerId::Rustup, "stable-x86_64-apple-darwin", false),
+            outdated_pkg(ManagerId::SoftwareUpdate, "macos", false),
+        ];
+        let pinned = std::collections::HashSet::new();
+
+        let targets = collect_upgrade_all_targets(&outdated, &pinned, true);
+        assert_eq!(targets.homebrew, vec!["git".to_string()]);
+        assert_eq!(targets.mise, vec!["node".to_string()]);
+        assert_eq!(
+            targets.rustup,
+            vec!["stable-x86_64-apple-darwin".to_string()]
+        );
+        assert!(targets.softwareupdate_outdated);
+    }
+
+    #[test]
+    fn collect_upgrade_all_targets_excludes_pinned_and_deduplicates() {
+        let outdated = vec![
+            outdated_pkg(ManagerId::HomebrewFormula, "git", false),
+            outdated_pkg(ManagerId::HomebrewFormula, "git", false),
+            outdated_pkg(ManagerId::Mise, "node", true),
+            outdated_pkg(ManagerId::Rustup, "stable-x86_64-apple-darwin", false),
+        ];
+        let pinned =
+            std::collections::HashSet::from(["rustup:stable-x86_64-apple-darwin".to_string()]);
+
+        let targets = collect_upgrade_all_targets(&outdated, &pinned, false);
+        assert_eq!(targets.homebrew, vec!["git".to_string()]);
+        assert!(targets.mise.is_empty());
+        assert!(targets.rustup.is_empty());
+        assert!(!targets.softwareupdate_outdated);
+    }
+
+    fn outdated_pkg(manager: ManagerId, name: &str, pinned: bool) -> OutdatedPackage {
+        OutdatedPackage {
+            package: PackageRef {
+                manager,
+                name: name.to_string(),
+            },
+            installed_version: Some("1.0.0".to_string()),
+            candidate_version: "1.1.0".to_string(),
+            pinned,
+            restart_required: false,
+        }
     }
 }

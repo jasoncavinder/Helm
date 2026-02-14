@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [Unreleased]
+
+### Changed
+- `helm_upgrade_all` now queues outdated `mise` tools and outdated `rustup` toolchains (in addition to Homebrew and optional macOS updates), while preserving pin filtering and de-duplication.
+
 ## [0.8.0-rc.2] - 2026-02-14
 
 ### Added
