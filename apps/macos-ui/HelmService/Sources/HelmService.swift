@@ -216,4 +216,13 @@ class HelmService: NSObject, HelmServiceProtocol {
         logger.info("helm_reset_database result: \(result)")
         reply(result)
     }
+
+    func takeLastErrorKey(withReply reply: @escaping (String?) -> Void) {
+        guard let cString = helm_take_last_error_key() else {
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(cString) }
+        reply(String(cString: cString))
+    }
 }

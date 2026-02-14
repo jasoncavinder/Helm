@@ -18,17 +18,17 @@ struct OnboardingDetectionView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            Text("Detecting Package Managers")
+            Text(L10n.App.Onboarding.Detection.title.localized)
                 .font(.headline)
                 .padding(.top, 16)
 
             if detectionComplete {
                 if foundManagers.isEmpty {
-                    Text("No package managers were detected.")
+                    Text(L10n.App.Onboarding.Detection.noneDetected.localized)
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 } else {
-                    Text("Found \(foundManagers.count) package manager\(foundManagers.count == 1 ? "" : "s")")
+                    Text(L10n.App.Onboarding.Detection.foundCount.localized(with: ["count": foundManagers.count]))
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
@@ -36,7 +36,7 @@ struct OnboardingDetectionView: View {
                 HStack(spacing: 8) {
                     ProgressView()
                         .scaleEffect(0.7)
-                    Text("Scanning your system\u{2026}")
+                    Text(L10n.App.Onboarding.Detection.scanning.localized)
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
@@ -62,7 +62,7 @@ struct OnboardingDetectionView: View {
             Spacer()
 
             Button(action: onContinue) {
-                Text("Continue")
+                Text(L10n.App.Onboarding.Detection.`continue`.localized)
                     .font(.headline)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
@@ -97,11 +97,11 @@ private struct FoundManagerRow: View {
                     .fontWeight(.medium)
 
                 if let version = status?.version, !version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text("v\(version)")
+                    Text(L10n.Common.version.localized(with: ["version": version]))
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 } else {
-                    Text("Detected")
+                    Text(L10n.Common.detected.localized)
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 }

@@ -7,7 +7,7 @@ struct TaskListView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             if core.activeTasks.isEmpty {
-                Text("No recent tasks")
+                Text(L10n.App.Tasks.noRecentTasks.localized)
                     .foregroundColor(.secondary)
                     .font(.caption)
                     .padding(.horizontal, 16)

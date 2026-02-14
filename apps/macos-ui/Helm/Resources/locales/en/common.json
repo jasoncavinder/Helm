@@ -1,6 +1,7 @@
 {
   "common.button.ok": "OK",
   "common.button.cancel": "Cancel",
+  "common.button.continue": "Continue",
   "common.button.refresh": "Refresh",
   "common.button.install": "Install",
   "common.button.uninstall": "Uninstall",
@@ -14,5 +15,11 @@
   "common.label.initializing": "Initializing...",
   "common.label.error": "Error",
   "common.label.warning": "Warning",
-  "common.label.success": "Success"
+  "common.label.success": "Success",
+  "common.label.unknown": "unknown",
+  "common.label.detected": "Detected",
+  "common.label.enabled": "Enabled",
+  "common.label.disabled": "Disabled",
+  "common.label.not_installed": "Not Installed",
+  "common.label.coming_soon": "Coming Soon"
 }

@@ -86,7 +86,7 @@ struct PackageListView: View {
                 HStack {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.yellow)
-                    Text("Reconnecting to service...")
+                    Text(L10n.App.Dashboard.Status.reconnecting.localized)
                         .font(.caption)
                     Spacer()
                 }
@@ -113,7 +113,7 @@ struct PackageListView: View {
 
                 // Manager Filter
                 Menu {
-                    Button("All Managers") { selectedManager = nil }
+                    Button(L10n.App.Packages.Filter.allManagers.localized) { selectedManager = nil }
                     Divider()
                     ForEach(availableManagers, id: \.self) { manager in
                         Button(manager) { selectedManager = manager }
@@ -122,7 +122,7 @@ struct PackageListView: View {
                     HStack(spacing: 3) {
                         Image(systemName: "square.stack.3d.up")
                             .imageScale(.small)
-                        Text(selectedManager ?? "All Managers")
+                        Text(selectedManager ?? L10n.App.Packages.Filter.allManagers.localized)
                     }
                     .font(.caption2)
                     .padding(.horizontal, 6)
@@ -143,7 +143,7 @@ struct PackageListView: View {
             if displayedPackages.isEmpty {
                 VStack {
                     Spacer()
-                    Text("No packages found")
+                    Text(L10n.App.Packages.State.noPackagesFound.localized)
                         .foregroundColor(.secondary)
                         .font(.subheadline)
                     Spacer()

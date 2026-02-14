@@ -25,4 +25,5 @@ import Foundation
     func updateManager(managerId: String, withReply reply: @escaping (Int64) -> Void)
     func uninstallManager(managerId: String, withReply reply: @escaping (Int64) -> Void)
     func resetDatabase(withReply reply: @escaping (Bool) -> Void)
+    func takeLastErrorKey(withReply reply: @escaping (String?) -> Void)
 }

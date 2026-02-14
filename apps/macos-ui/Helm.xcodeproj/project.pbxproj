@@ -37,6 +37,9 @@
 		B20000000000000000000012 /* OnboardingWelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000012 /* OnboardingWelcomeView.swift */; };
 		B20000000000000000000013 /* OnboardingDetectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000013 /* OnboardingDetectionView.swift */; };
 		B20000000000000000000014 /* OnboardingConfigureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000014 /* OnboardingConfigureView.swift */; };
+		B20000000000000000000015 /* LocalizationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000015 /* LocalizationManager.swift */; };
+		B20000000000000000000016 /* String+Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000016 /* String+Localization.swift */; };
+		B20000000000000000000017 /* L10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000017 /* L10n.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -100,6 +103,9 @@
 		B10000000000000000000012 /* OnboardingWelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWelcomeView.swift; sourceTree = "<group>"; };
 		B10000000000000000000013 /* OnboardingDetectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingDetectionView.swift; sourceTree = "<group>"; };
 		B10000000000000000000014 /* OnboardingConfigureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingConfigureView.swift; sourceTree = "<group>"; };
+		B10000000000000000000015 /* LocalizationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationManager.swift; sourceTree = "<group>"; };
+		B10000000000000000000016 /* String+Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+Localization.swift"; sourceTree = "<group>"; };
+		B10000000000000000000017 /* L10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L10n.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -165,14 +171,17 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		8CFB6D4A2F3D1D1D002372B8 /* Core */ = {
-			isa = PBXGroup;
-			children = (
-				8CFB6D4B2F3D1D1D002372B8 /* HelmCore.swift */,
-			);
-			path = Core;
-			sourceTree = "<group>";
-		};
+			8CFB6D4A2F3D1D1D002372B8 /* Core */ = {
+				isa = PBXGroup;
+				children = (
+					8CFB6D4B2F3D1D1D002372B8 /* HelmCore.swift */,
+					B10000000000000000000015 /* LocalizationManager.swift */,
+					B10000000000000000000016 /* String+Localization.swift */,
+					B10000000000000000000017 /* L10n.swift */,
+				);
+				path = Core;
+				sourceTree = "<group>";
+			};
 		8CFB6D4C2F3D1D1D002372B8 /* Views */ = {
 			isa = PBXGroup;
 			children = (
@@ -423,11 +432,14 @@
 		A10000060000000000000001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = (
-				8CFB6D5A2F3D1D1D002372B8 /* Package.swift in Sources */,
-				8CFB6D572F3D1D1D002372B8 /* HelmCore.swift in Sources */,
-				A10000010000000000000001 /* HelmApp.swift in Sources */,
-				8CFB6D592F3D1D1D002372B8 /* PackageListView.swift in Sources */,
+				files = (
+					8CFB6D5A2F3D1D1D002372B8 /* Package.swift in Sources */,
+					8CFB6D572F3D1D1D002372B8 /* HelmCore.swift in Sources */,
+					B20000000000000000000015 /* LocalizationManager.swift in Sources */,
+					B20000000000000000000016 /* String+Localization.swift in Sources */,
+					B20000000000000000000017 /* L10n.swift in Sources */,
+					A10000010000000000000001 /* HelmApp.swift in Sources */,
+					8CFB6D592F3D1D1D002372B8 /* PackageListView.swift in Sources */,
 				A10000010000000000000002 /* AppDelegate.swift in Sources */,
 				8CE1FDD22F3D2B84000A3945 /* HelmServiceProtocol.swift in Sources */,
 				A30000000000000000000002 /* HelmVersion.swift in Sources */,

@@ -17,13 +17,13 @@ struct ManagerItemView: View {
     }
 
     private var statusTooltip: String {
-        if hasFailedTasks { return "Last task failed" }
+        if hasFailedTasks { return L10n.App.Managers.Tooltip.lastTaskFailed.localized }
         if hasOutdatedPackages && !versionAvailable {
-            return "\(outdatedCount) outdated \u{00B7} Version unknown"
+            return L10n.App.Managers.Tooltip.outdatedWithUnknown.localized(with: ["count": outdatedCount])
         }
-        if hasOutdatedPackages { return "\(outdatedCount) outdated" }
-        if !versionAvailable { return "Version unknown" }
-        return "All up to date"
+        if hasOutdatedPackages { return L10n.App.Managers.Tooltip.outdated.localized(with: ["count": outdatedCount]) }
+        if !versionAvailable { return L10n.App.Managers.Tooltip.versionUnknown.localized }
+        return L10n.App.Managers.Tooltip.allUpToDate.localized
     }
 
     var body: some View {
@@ -61,8 +61,8 @@ struct ManagerItemView: View {
         .help(statusTooltip)
         .onTapGesture { onTap() }
         .contextMenu {
-            Button("View Packages") { onTap() }
-            Button("Refresh") { onRefresh() }
+            Button(L10n.App.Managers.Action.viewPackages.localized) { onTap() }
+            Button(L10n.Common.refresh.localized) { onRefresh() }
             Divider()
             Text(statusTooltip)
         }

@@ -39,14 +39,53 @@ struct HelmState {
     _tokio_rt: tokio::runtime::Runtime,
 }
 
-lazy_static! {
-    static ref STATE: Mutex<Option<HelmState>> = Mutex::new(None);
-    static ref TASK_LABELS: Mutex<std::collections::HashMap<u64, String>> =
-        Mutex::new(std::collections::HashMap::new());
+#[derive(Clone, Debug, Default)]
+struct TaskLabel {
+    key: String,
+    args: std::collections::BTreeMap<String, String>,
 }
 
-fn set_task_label(task_id: helm_core::models::TaskId, label: String) {
-    TASK_LABELS.lock().unwrap().insert(task_id.0, label);
+lazy_static! {
+    static ref STATE: Mutex<Option<HelmState>> = Mutex::new(None);
+    static ref TASK_LABELS: Mutex<std::collections::HashMap<u64, TaskLabel>> =
+        Mutex::new(std::collections::HashMap::new());
+    static ref LAST_ERROR_KEY: Mutex<Option<String>> = Mutex::new(None);
+}
+
+fn clear_last_error_key() {
+    LAST_ERROR_KEY.lock().unwrap().take();
+}
+
+fn set_last_error_key(error_key: &str) {
+    *LAST_ERROR_KEY.lock().unwrap() = Some(error_key.to_string());
+}
+
+fn return_error_bool(error_key: &str) -> bool {
+    set_last_error_key(error_key);
+    false
+}
+
+fn return_error_i64(error_key: &str) -> i64 {
+    set_last_error_key(error_key);
+    -1
+}
+
+fn set_task_label(
+    task_id: helm_core::models::TaskId,
+    key: &str,
+    args: &[(&str, String)],
+) {
+    let mut args_map = std::collections::BTreeMap::new();
+    for (arg_key, arg_value) in args {
+        args_map.insert((*arg_key).to_string(), arg_value.clone());
+    }
+    TASK_LABELS.lock().unwrap().insert(
+        task_id.0,
+        TaskLabel {
+            key: key.to_string(),
+            args: args_map,
+        },
+    );
 }
 
 fn encode_homebrew_upgrade_target(package_name: &str, cleanup_old_kegs: bool) -> String {
@@ -396,7 +435,8 @@ pub extern "C" fn helm_list_tasks() -> *mut c_char {
         manager: ManagerId,
         task_type: helm_core::models::TaskType,
         status: helm_core::models::TaskStatus,
-        label: Option<String>,
+        label_key: Option<String>,
+        label_args: Option<std::collections::BTreeMap<String, String>>,
     }
 
     let mut labels = TASK_LABELS.lock().unwrap();
@@ -410,7 +450,14 @@ pub extern "C" fn helm_list_tasks() -> *mut c_char {
             manager: task.manager,
             task_type: task.task_type,
             status: task.status,
-            label: labels.get(&task.id.0).cloned(),
+            label_key: labels.get(&task.id.0).map(|label| label.key.clone()),
+            label_args: labels.get(&task.id.0).and_then(|label| {
+                if label.args.is_empty() {
+                    None
+                } else {
+                    Some(label.args.clone())
+                }
+            }),
         })
         .collect();
     drop(labels);
@@ -428,10 +475,11 @@ pub extern "C" fn helm_list_tasks() -> *mut c_char {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_trigger_refresh() -> bool {
+    clear_last_error_key();
     let guard = STATE.lock().unwrap();
     let state = match guard.as_ref() {
         Some(s) => s,
-        None => return false,
+        None => return return_error_bool("service.error.internal"),
     };
 
     let runtime = state.runtime.clone();
@@ -846,11 +894,12 @@ pub unsafe extern "C" fn helm_set_package_keg_policy(
 /// - `allow_os_updates`: explicit confirmation gate for `softwareupdate` upgrades.
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool) -> bool {
+    clear_last_error_key();
     let (store, runtime, tokio_rt) = {
         let guard = STATE.lock().unwrap();
         let state = match guard.as_ref() {
             Some(s) => s,
-            None => return false,
+            None => return return_error_bool("service.error.internal"),
         };
         (
             state.store.clone(),
@@ -884,11 +933,6 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                 let policy = effective_homebrew_keg_policy(&store, &package_name);
                 let cleanup_old_kegs = policy == HomebrewKegPolicy::Cleanup;
                 let target_name = encode_homebrew_upgrade_target(&package_name, cleanup_old_kegs);
-                let label = if cleanup_old_kegs {
-                    format!("Upgrade {} via Homebrew (cleanup old kegs)", package_name)
-                } else {
-                    format!("Upgrade {} via Homebrew", package_name)
-                };
                 let request = AdapterRequest::Upgrade(UpgradeRequest {
                     package: Some(PackageRef {
                         manager: ManagerId::HomebrewFormula,
@@ -896,7 +940,21 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                     }),
                 });
                 match runtime.submit(ManagerId::HomebrewFormula, request).await {
-                    Ok(task_id) => set_task_label(task_id, label),
+                    Ok(task_id) => {
+                        if cleanup_old_kegs {
+                            set_task_label(
+                                task_id,
+                                "service.task.label.upgrade.homebrew_cleanup",
+                                &[("package", package_name.clone())],
+                            );
+                        } else {
+                            set_task_label(
+                                task_id,
+                                "service.task.label.upgrade.homebrew",
+                                &[("package", package_name.clone())],
+                            );
+                        }
+                    }
                     Err(error) => {
                         eprintln!("upgrade_all: failed to queue homebrew upgrade task: {error}");
                     }
@@ -913,9 +971,11 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                     }),
                 });
                 match runtime.submit(ManagerId::Mise, request).await {
-                    Ok(task_id) => {
-                        set_task_label(task_id, format!("Upgrade {package_name} via mise"))
-                    }
+                    Ok(task_id) => set_task_label(
+                        task_id,
+                        "service.task.label.upgrade.mise",
+                        &[("package", package_name.clone())],
+                    ),
                     Err(error) => {
                         eprintln!("upgrade_all: failed to queue mise upgrade task: {error}");
                     }
@@ -932,9 +992,11 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                     }),
                 });
                 match runtime.submit(ManagerId::Rustup, request).await {
-                    Ok(task_id) => {
-                        set_task_label(task_id, format!("Upgrade rustup toolchain {toolchain}"))
-                    }
+                    Ok(task_id) => set_task_label(
+                        task_id,
+                        "service.task.label.upgrade.rustup_toolchain",
+                        &[("toolchain", toolchain.clone())],
+                    ),
                     Err(error) => {
                         eprintln!(
                             "upgrade_all: failed to queue rustup toolchain upgrade task: {error}"
@@ -958,9 +1020,11 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                     }),
                 });
                 match runtime.submit(ManagerId::SoftwareUpdate, request).await {
-                    Ok(task_id) => {
-                        set_task_label(task_id, "Upgrade macOS software updates".to_string())
-                    }
+                    Ok(task_id) => set_task_label(
+                        task_id,
+                        "service.task.label.upgrade.softwareupdate_all",
+                        &[],
+                    ),
                     Err(error) => {
                         eprintln!("upgrade_all: failed to queue softwareupdate task: {error}");
                     }
@@ -988,8 +1052,9 @@ pub unsafe extern "C" fn helm_upgrade_package(
     manager_id: *const c_char,
     package_name: *const c_char,
 ) -> i64 {
+    clear_last_error_key();
     if manager_id.is_null() || package_name.is_null() {
-        return -1;
+        return return_error_i64("service.error.invalid_input");
     }
 
     let manager_cstr = unsafe { CStr::from_ptr(manager_id) };
@@ -999,22 +1064,27 @@ pub unsafe extern "C" fn helm_upgrade_package(
         .and_then(|s| s.parse::<ManagerId>().ok())
     {
         Some(manager) => manager,
-        None => return -1,
+        None => return return_error_i64("service.error.invalid_input"),
     };
 
     let package_cstr = unsafe { CStr::from_ptr(package_name) };
     let package_name = match package_cstr.to_str() {
         Ok(name) if !name.trim().is_empty() => name.trim().to_string(),
-        _ => return -1,
+        _ => return return_error_i64("service.error.invalid_input"),
     };
 
-    let (target_manager, request, label) = match manager {
+    let (target_manager, request, label_key, label_args): (
+        ManagerId,
+        AdapterRequest,
+        &str,
+        Vec<(&str, String)>,
+    ) = match manager {
         ManagerId::HomebrewFormula => {
             let policy = {
                 let guard = STATE.lock().unwrap();
                 let state = match guard.as_ref() {
                     Some(s) => s,
-                    None => return -1,
+                    None => return return_error_i64("service.error.internal"),
                 };
                 effective_homebrew_keg_policy(&state.store, &package_name)
             };
@@ -1029,10 +1099,11 @@ pub unsafe extern "C" fn helm_upgrade_package(
                     }),
                 }),
                 if cleanup_old_kegs {
-                    format!("Upgrade {} via Homebrew (cleanup old kegs)", package_name)
+                    "service.task.label.upgrade.homebrew_cleanup"
                 } else {
-                    format!("Upgrade {} via Homebrew", package_name)
+                    "service.task.label.upgrade.homebrew"
                 },
+                vec![("package", package_name.clone())],
             )
         }
         ManagerId::Mise => (
@@ -1043,13 +1114,14 @@ pub unsafe extern "C" fn helm_upgrade_package(
                     name: package_name.clone(),
                 }),
             }),
-            format!("Upgrade {} via mise", package_name),
+            "service.task.label.upgrade.mise",
+            vec![("package", package_name.clone())],
         ),
         ManagerId::Rustup => {
-            let label = if package_name == "__self__" {
-                "Self-update rustup".to_string()
+            let label_key = if package_name == "__self__" {
+                "service.task.label.update.rustup_self"
             } else {
-                format!("Upgrade rustup toolchain {}", package_name)
+                "service.task.label.upgrade.rustup_toolchain"
             };
             (
                 ManagerId::Rustup,
@@ -1059,29 +1131,34 @@ pub unsafe extern "C" fn helm_upgrade_package(
                         name: package_name.clone(),
                     }),
                 }),
-                label,
+                label_key,
+                if package_name == "__self__" {
+                    Vec::new()
+                } else {
+                    vec![("toolchain", package_name.clone())]
+                },
             )
         }
-        _ => return -1,
+        _ => return return_error_i64("service.error.unsupported_capability"),
     };
 
     let (runtime, rt_handle) = {
         let guard = STATE.lock().unwrap();
         let state = match guard.as_ref() {
             Some(s) => s,
-            None => return -1,
+            None => return return_error_i64("service.error.internal"),
         };
         (state.runtime.clone(), state.rt_handle.clone())
     };
 
     match rt_handle.block_on(runtime.submit(target_manager, request)) {
         Ok(task_id) => {
-            set_task_label(task_id, label);
+            set_task_label(task_id, label_key, &label_args);
             task_id.0 as i64
         }
         Err(error) => {
             eprintln!("upgrade_package: failed to queue task: {error}");
-            -1
+            return_error_i64("service.error.process_failure")
         }
     }
 }
@@ -1151,8 +1228,9 @@ pub unsafe extern "C" fn helm_pin_package(
     package_name: *const c_char,
     pinned_version: *const c_char,
 ) -> bool {
+    clear_last_error_key();
     if manager_id.is_null() || package_name.is_null() {
-        return false;
+        return return_error_bool("service.error.invalid_input");
     }
 
     let manager = {
@@ -1163,7 +1241,7 @@ pub unsafe extern "C" fn helm_pin_package(
             .and_then(|s| s.parse::<ManagerId>().ok())
         {
             Some(id) => id,
-            None => return false,
+            None => return return_error_bool("service.error.invalid_input"),
         }
     };
 
@@ -1171,7 +1249,7 @@ pub unsafe extern "C" fn helm_pin_package(
         let c_str = unsafe { CStr::from_ptr(package_name) };
         match c_str.to_str() {
             Ok(value) if !value.trim().is_empty() => value.to_string(),
-            _ => return false,
+            _ => return return_error_bool("service.error.invalid_input"),
         }
     };
 
@@ -1188,7 +1266,7 @@ pub unsafe extern "C" fn helm_pin_package(
                     Some(trimmed.to_string())
                 }
             }
-            Err(_) => return false,
+            Err(_) => return return_error_bool("service.error.invalid_input"),
         }
     };
 
@@ -1196,7 +1274,7 @@ pub unsafe extern "C" fn helm_pin_package(
         let guard = STATE.lock().unwrap();
         let state = match guard.as_ref() {
             Some(s) => s,
-            None => return false,
+            None => return return_error_bool("service.error.internal"),
         };
         (
             state.store.clone(),
@@ -1216,19 +1294,23 @@ pub unsafe extern "C" fn helm_pin_package(
         });
         let task_id = match rt_handle.block_on(runtime.submit(manager, request)) {
             Ok(task_id) => task_id,
-            Err(_) => return false,
+            Err(_) => return return_error_bool("service.error.process_failure"),
         };
 
-        set_task_label(task_id, format!("Pin {} via Homebrew", package.name));
+        set_task_label(
+            task_id,
+            "service.task.label.pin.homebrew",
+            &[("package", package.name.clone())],
+        );
 
         let snapshot = match rt_handle.block_on(runtime.wait_for_terminal(task_id, None)) {
             Ok(snapshot) => snapshot,
-            Err(_) => return false,
+            Err(_) => return return_error_bool("service.error.process_failure"),
         };
 
         match snapshot.terminal_state {
             Some(AdapterTaskTerminalState::Succeeded(_)) => {}
-            _ => return false,
+            _ => return return_error_bool("service.error.process_failure"),
         }
         PinKind::Native
     } else {
@@ -1242,6 +1324,7 @@ pub unsafe extern "C" fn helm_pin_package(
             pinned_version,
             created_at: std::time::SystemTime::now(),
         })
+        .map_err(|_| set_last_error_key("service.error.storage_failure"))
         .is_ok()
 }
 
@@ -1256,8 +1339,9 @@ pub unsafe extern "C" fn helm_unpin_package(
     manager_id: *const c_char,
     package_name: *const c_char,
 ) -> bool {
+    clear_last_error_key();
     if manager_id.is_null() || package_name.is_null() {
-        return false;
+        return return_error_bool("service.error.invalid_input");
     }
 
     let manager = {
@@ -1268,7 +1352,7 @@ pub unsafe extern "C" fn helm_unpin_package(
             .and_then(|s| s.parse::<ManagerId>().ok())
         {
             Some(id) => id,
-            None => return false,
+            None => return return_error_bool("service.error.invalid_input"),
         }
     };
 
@@ -1276,7 +1360,7 @@ pub unsafe extern "C" fn helm_unpin_package(
         let c_str = unsafe { CStr::from_ptr(package_name) };
         match c_str.to_str() {
             Ok(value) if !value.trim().is_empty() => value.to_string(),
-            _ => return false,
+            _ => return return_error_bool("service.error.invalid_input"),
         }
     };
 
@@ -1284,7 +1368,7 @@ pub unsafe extern "C" fn helm_unpin_package(
         let guard = STATE.lock().unwrap();
         let state = match guard.as_ref() {
             Some(s) => s,
-            None => return false,
+            None => return return_error_bool("service.error.internal"),
         };
         (
             state.store.clone(),
@@ -1302,24 +1386,31 @@ pub unsafe extern "C" fn helm_unpin_package(
         });
         let task_id = match rt_handle.block_on(runtime.submit(manager, request)) {
             Ok(task_id) => task_id,
-            Err(_) => return false,
+            Err(_) => return return_error_bool("service.error.process_failure"),
         };
 
-        set_task_label(task_id, format!("Unpin {} via Homebrew", package_name));
+        set_task_label(
+            task_id,
+            "service.task.label.unpin.homebrew",
+            &[("package", package_name.clone())],
+        );
 
         let snapshot = match rt_handle.block_on(runtime.wait_for_terminal(task_id, None)) {
             Ok(snapshot) => snapshot,
-            Err(_) => return false,
+            Err(_) => return return_error_bool("service.error.process_failure"),
         };
 
         match snapshot.terminal_state {
             Some(AdapterTaskTerminalState::Succeeded(_)) => {}
-            _ => return false,
+            _ => return return_error_bool("service.error.process_failure"),
         }
     }
 
     let package_key = format!("{}:{}", manager.as_str(), package_name);
-    store.remove_pin(&package_key).is_ok()
+    store
+        .remove_pin(&package_key)
+        .map_err(|_| set_last_error_key("service.error.storage_failure"))
+        .is_ok()
 }
 
 /// Set a manager as enabled or disabled.
@@ -1332,28 +1423,33 @@ pub unsafe extern "C" fn helm_set_manager_enabled(
     manager_id: *const c_char,
     enabled: bool,
 ) -> bool {
+    clear_last_error_key();
     if manager_id.is_null() {
-        return false;
+        return return_error_bool("service.error.invalid_input");
     }
 
     let c_str = unsafe { CStr::from_ptr(manager_id) };
     let id_str = match c_str.to_str() {
         Ok(s) => s,
-        Err(_) => return false,
+        Err(_) => return return_error_bool("service.error.invalid_input"),
     };
 
     let manager = match id_str.parse::<ManagerId>() {
         Ok(m) => m,
-        Err(_) => return false,
+        Err(_) => return return_error_bool("service.error.invalid_input"),
     };
 
     let guard = STATE.lock().unwrap();
     let state = match guard.as_ref() {
         Some(s) => s,
-        None => return false,
+        None => return return_error_bool("service.error.internal"),
     };
 
-    state.store.set_manager_enabled(manager, enabled).is_ok()
+    state
+        .store
+        .set_manager_enabled(manager, enabled)
+        .map_err(|_| set_last_error_key("service.error.storage_failure"))
+        .is_ok()
 }
 
 /// Install a manager tool via Homebrew. Returns the task ID, or -1 on error.
@@ -1365,28 +1461,29 @@ pub unsafe extern "C" fn helm_set_manager_enabled(
 /// `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn helm_install_manager(manager_id: *const c_char) -> i64 {
+    clear_last_error_key();
     if manager_id.is_null() {
-        return -1;
+        return return_error_i64("service.error.invalid_input");
     }
 
     let c_str = unsafe { CStr::from_ptr(manager_id) };
     let id_str = match c_str.to_str() {
         Ok(s) => s,
-        Err(_) => return -1,
+        Err(_) => return return_error_i64("service.error.invalid_input"),
     };
 
     // Map manager IDs to the formula name to install via Homebrew
     let formula_name = match id_str {
         "mise" => "mise",
         "mas" => "mas",
-        _ => return -1, // Not automatable
+        _ => return return_error_i64("service.error.unsupported_capability"),
     };
 
     let (runtime, rt_handle) = {
         let guard = STATE.lock().unwrap();
         let state = match guard.as_ref() {
             Some(s) => s,
-            None => return -1,
+            None => return return_error_i64("service.error.internal"),
         };
         (state.runtime.clone(), state.rt_handle.clone())
     };
@@ -1401,12 +1498,16 @@ pub unsafe extern "C" fn helm_install_manager(manager_id: *const c_char) -> i64 
 
     match rt_handle.block_on(runtime.submit(ManagerId::HomebrewFormula, request)) {
         Ok(task_id) => {
-            set_task_label(task_id, format!("Install {} via Homebrew", formula_name));
+            set_task_label(
+                task_id,
+                "service.task.label.install.homebrew_formula",
+                &[("package", formula_name.to_string())],
+            );
             task_id.0 as i64
         }
         Err(e) => {
             eprintln!("Failed to install manager {}: {}", id_str, e);
-            -1
+            return_error_i64("service.error.process_failure")
         }
     }
 }
@@ -1424,17 +1525,23 @@ pub unsafe extern "C" fn helm_install_manager(manager_id: *const c_char) -> i64 
 /// `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
+    clear_last_error_key();
     if manager_id.is_null() {
-        return -1;
+        return return_error_i64("service.error.invalid_input");
     }
 
     let c_str = unsafe { CStr::from_ptr(manager_id) };
     let id_str = match c_str.to_str() {
         Ok(s) => s,
-        Err(_) => return -1,
+        Err(_) => return return_error_i64("service.error.invalid_input"),
     };
 
-    let (target_manager, request, label) = match id_str {
+    let (target_manager, request, label_key, label_args): (
+        ManagerId,
+        AdapterRequest,
+        &str,
+        Vec<(&str, String)>,
+    ) = match id_str {
         "homebrew_formula" => (
             ManagerId::HomebrewFormula,
             AdapterRequest::Upgrade(UpgradeRequest {
@@ -1443,24 +1550,25 @@ pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
                     name: "__self__".to_string(),
                 }),
             }),
-            "Update Homebrew".to_string(),
+            "service.task.label.update.homebrew_self",
+            Vec::new(),
         ),
         "mise" => {
-            let (target_name, label) = {
+            let (target_name, label_key) = {
                 let guard = STATE.lock().unwrap();
                 let state = match guard.as_ref() {
                     Some(s) => s,
-                    None => return -1,
+                    None => return return_error_i64("service.error.internal"),
                 };
                 let policy = effective_homebrew_keg_policy(&state.store, "mise");
                 let cleanup_old_kegs = policy == HomebrewKegPolicy::Cleanup;
                 let target_name = encode_homebrew_upgrade_target("mise", cleanup_old_kegs);
-                let label = if cleanup_old_kegs {
-                    "Update mise via Homebrew (cleanup old kegs)".to_string()
+                let label_key = if cleanup_old_kegs {
+                    "service.task.label.update.homebrew_formula_cleanup"
                 } else {
-                    "Update mise via Homebrew".to_string()
+                    "service.task.label.update.homebrew_formula"
                 };
-                (target_name, label)
+                (target_name, label_key)
             };
             (
                 ManagerId::HomebrewFormula,
@@ -1470,25 +1578,26 @@ pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
                         name: target_name,
                     }),
                 }),
-                label,
+                label_key,
+                vec![("package", "mise".to_string())],
             )
         }
         "mas" => {
-            let (target_name, label) = {
+            let (target_name, label_key) = {
                 let guard = STATE.lock().unwrap();
                 let state = match guard.as_ref() {
                     Some(s) => s,
-                    None => return -1,
+                    None => return return_error_i64("service.error.internal"),
                 };
                 let policy = effective_homebrew_keg_policy(&state.store, "mas");
                 let cleanup_old_kegs = policy == HomebrewKegPolicy::Cleanup;
                 let target_name = encode_homebrew_upgrade_target("mas", cleanup_old_kegs);
-                let label = if cleanup_old_kegs {
-                    "Update mas via Homebrew (cleanup old kegs)".to_string()
+                let label_key = if cleanup_old_kegs {
+                    "service.task.label.update.homebrew_formula_cleanup"
                 } else {
-                    "Update mas via Homebrew".to_string()
+                    "service.task.label.update.homebrew_formula"
                 };
-                (target_name, label)
+                (target_name, label_key)
             };
             (
                 ManagerId::HomebrewFormula,
@@ -1498,7 +1607,8 @@ pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
                         name: target_name,
                     }),
                 }),
-                label,
+                label_key,
+                vec![("package", "mas".to_string())],
             )
         }
         "rustup" => (
@@ -1509,28 +1619,29 @@ pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
                     name: "__self__".to_string(),
                 }),
             }),
-            "Self-update rustup".to_string(),
+            "service.task.label.update.rustup_self",
+            Vec::new(),
         ),
-        _ => return -1,
+        _ => return return_error_i64("service.error.unsupported_capability"),
     };
 
     let (runtime, rt_handle) = {
         let guard = STATE.lock().unwrap();
         let state = match guard.as_ref() {
             Some(s) => s,
-            None => return -1,
+            None => return return_error_i64("service.error.internal"),
         };
         (state.runtime.clone(), state.rt_handle.clone())
     };
 
     match rt_handle.block_on(runtime.submit(target_manager, request)) {
         Ok(task_id) => {
-            set_task_label(task_id, label);
+            set_task_label(task_id, label_key, &label_args);
             task_id.0 as i64
         }
         Err(e) => {
             eprintln!("Failed to update manager {}: {}", id_str, e);
-            -1
+            return_error_i64("service.error.process_failure")
         }
     }
 }
@@ -1544,21 +1655,22 @@ pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
 /// `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn helm_uninstall_manager(manager_id: *const c_char) -> i64 {
+    clear_last_error_key();
     if manager_id.is_null() {
-        return -1;
+        return return_error_i64("service.error.invalid_input");
     }
 
     let c_str = unsafe { CStr::from_ptr(manager_id) };
     let id_str = match c_str.to_str() {
         Ok(s) => s,
-        Err(_) => return -1,
+        Err(_) => return return_error_i64("service.error.invalid_input"),
     };
 
     let (runtime, rt_handle) = {
         let guard = STATE.lock().unwrap();
         let state = match guard.as_ref() {
             Some(s) => s,
-            None => return -1,
+            None => return return_error_i64("service.error.internal"),
         };
         (state.runtime.clone(), state.rt_handle.clone())
     };
@@ -1591,24 +1703,30 @@ pub unsafe extern "C" fn helm_uninstall_manager(manager_id: *const c_char) -> i6
                 },
             }),
         ),
-        _ => return -1, // Not automatable
+        _ => return return_error_i64("service.error.unsupported_capability"),
     };
 
-    let label = match id_str {
-        "mise" => "Uninstall mise via Homebrew".to_string(),
-        "mas" => "Uninstall mas via Homebrew".to_string(),
-        "rustup" => "Uninstall rustup".to_string(),
-        _ => "Uninstall manager".to_string(),
+    let (label_key, label_args): (&str, Vec<(&str, String)>) = match id_str {
+        "mise" => (
+            "service.task.label.uninstall.homebrew_formula",
+            vec![("package", "mise".to_string())],
+        ),
+        "mas" => (
+            "service.task.label.uninstall.homebrew_formula",
+            vec![("package", "mas".to_string())],
+        ),
+        "rustup" => ("service.task.label.uninstall.rustup_self", Vec::new()),
+        _ => ("service.task.label.uninstall.homebrew_formula", Vec::new()),
     };
 
     match rt_handle.block_on(runtime.submit(target_manager, request)) {
         Ok(task_id) => {
-            set_task_label(task_id, label);
+            set_task_label(task_id, label_key, &label_args);
             task_id.0 as i64
         }
         Err(e) => {
             eprintln!("Failed to uninstall manager {}: {}", id_str, e);
-            -1
+            return_error_i64("service.error.process_failure")
         }
     }
 }
@@ -1617,22 +1735,23 @@ pub unsafe extern "C" fn helm_uninstall_manager(manager_id: *const c_char) -> i6
 /// Returns true on success.
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_reset_database() -> bool {
+    clear_last_error_key();
     let guard = STATE.lock().unwrap();
     let state = match guard.as_ref() {
         Some(s) => s,
-        None => return false,
+        None => return return_error_bool("service.error.internal"),
     };
 
     // Roll back to version 0 (drops all data tables)
     if let Err(e) = state.store.apply_migration(0) {
         eprintln!("Failed to roll back migrations: {}", e);
-        return false;
+        return return_error_bool("service.error.storage_failure");
     }
 
     // Re-apply all migrations (recreates empty tables)
     if let Err(e) = state.store.migrate_to_latest() {
         eprintln!("Failed to re-apply migrations: {}", e);
-        return false;
+        return return_error_bool("service.error.storage_failure");
     }
 
     // Final cleanup: delete any task records that in-flight persistence
@@ -1640,6 +1759,20 @@ pub extern "C" fn helm_reset_database() -> bool {
     let _ = state.store.delete_all_tasks();
 
     true
+}
+
+/// Return and clear the most recent service error localization key.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_take_last_error_key() -> *mut c_char {
+    let key = LAST_ERROR_KEY.lock().unwrap().take();
+    let Some(key) = key else {
+        return std::ptr::null_mut();
+    };
+
+    match CString::new(key) {
+        Ok(c) => c.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
 }
 
 /// Free a string previously returned by a `helm_*` function.

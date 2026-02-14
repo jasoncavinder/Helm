@@ -10,7 +10,7 @@ struct ManagersView: View {
                 ForEach(ManagerInfo.groupedByCategory, id: \.category) { group in
                     // Section header
                     HStack {
-                        Text(group.category)
+                        Text(localizedCategory(group.category))
                             .font(.caption)
                             .fontWeight(.semibold)
                             .foregroundColor(.secondary)
@@ -80,6 +80,21 @@ struct ManagersView: View {
         default: return raw.replacingOccurrences(of: "_", with: " ").capitalized
         }
     }
+
+    private func localizedCategory(_ category: String) -> String {
+        switch category {
+        case "Toolchain":
+            return L10n.App.Managers.Category.toolchain.localized
+        case "System/OS":
+            return L10n.App.Managers.Category.systemOs.localized
+        case "Language":
+            return L10n.App.Managers.Category.language.localized
+        case "App Store":
+            return L10n.App.Managers.Category.appStore.localized
+        default:
+            return category
+        }
+    }
 }
 
 private struct ManagerRow: View {
@@ -130,13 +145,13 @@ private struct ManagerRow: View {
 
                     HStack(spacing: 6) {
                         if let version = version, !version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            Text("v\(version)")
+                            Text(L10n.Common.version.localized(with: ["version": version]))
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                         }
 
                         if packageCount > 0 {
-                            Text("\(packageCount) pkg\(packageCount == 1 ? "" : "s")")
+                            Text(L10n.App.Managers.Label.packageCount.localized(with: ["count": packageCount]))
                                 .font(.caption2)
                                 .foregroundColor(.blue)
                         }
@@ -163,7 +178,7 @@ private struct ManagerRow: View {
                     }
                 }
                 if detected {
-                    Text(enabled ? "Enabled" : "Disabled")
+                    Text(enabled ? L10n.App.Managers.State.enabled.localized : L10n.App.Managers.State.disabled.localized)
                         .font(.caption2)
                         .foregroundColor(.secondary)
 
@@ -174,14 +189,14 @@ private struct ManagerRow: View {
                     .toggleStyle(.switch)
                     .scaleEffect(0.7)
                     .labelsHidden()
-                    .help("Enable or disable this manager")
+                    .help(L10n.App.Managers.Help.enableDisable.localized)
                 } else {
-                    Text("Not Installed")
+                    Text(L10n.App.Managers.State.notInstalled.localized)
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 }
             } else {
-                Text("Coming Soon")
+                Text(L10n.App.Managers.State.comingSoon.localized)
                     .font(.caption2)
                     .foregroundColor(.secondary)
                     .padding(.horizontal, 6)
@@ -194,22 +209,22 @@ private struct ManagerRow: View {
         .padding(.vertical, 8)
         .contextMenu {
             if manager.canInstall && !detected {
-                Button("Install \(manager.shortName)") {
+                Button(L10n.App.Managers.Action.install.localized(with: ["manager": manager.shortName])) {
                     confirmAction = .install
                 }
             }
             if manager.canUpdate && detected {
-                Button("Update \(manager.shortName)") {
+                Button(L10n.App.Managers.Action.update.localized(with: ["manager": manager.shortName])) {
                     confirmAction = .update
                 }
             }
             if manager.canUninstall && detected {
-                Button("Uninstall \(manager.shortName)") {
+                Button(L10n.App.Managers.Action.uninstall.localized(with: ["manager": manager.shortName])) {
                     confirmAction = .uninstall
                 }
             }
             if manager.isImplemented && detected && packageCount > 0 {
-                Button("View Packages") {
+                Button(L10n.App.Managers.Action.viewPackages.localized) {
                     onTap()
                 }
             }
@@ -218,23 +233,23 @@ private struct ManagerRow: View {
             switch action {
             case .install:
                 return Alert(
-                    title: Text("Install \(manager.displayName)?"),
-                    message: Text("This will install \(manager.shortName) via Homebrew."),
-                    primaryButton: .default(Text("Install")) { onInstall() },
+                    title: Text(L10n.App.Managers.Alert.installTitle.localized(with: ["manager": manager.displayName])),
+                    message: Text(L10n.App.Managers.Alert.installMessage.localized(with: ["manager_short": manager.shortName])),
+                    primaryButton: .default(Text(L10n.Common.install.localized)) { onInstall() },
                     secondaryButton: .cancel()
                 )
             case .update:
                 return Alert(
-                    title: Text("Update \(manager.displayName)?"),
-                    message: Text("This will run the manager's supported update flow."),
-                    primaryButton: .default(Text("Update")) { onUpdate() },
+                    title: Text(L10n.App.Managers.Alert.updateTitle.localized(with: ["manager": manager.displayName])),
+                    message: Text(L10n.App.Managers.Alert.updateMessage.localized),
+                    primaryButton: .default(Text(L10n.Common.update.localized)) { onUpdate() },
                     secondaryButton: .cancel()
                 )
             case .uninstall:
                 return Alert(
-                    title: Text("Uninstall \(manager.displayName)?"),
-                    message: Text("This will remove \(manager.shortName) from your system."),
-                    primaryButton: .destructive(Text("Uninstall")) { onUninstall() },
+                    title: Text(L10n.App.Managers.Alert.uninstallTitle.localized(with: ["manager": manager.displayName])),
+                    message: Text(L10n.App.Managers.Alert.uninstallMessage.localized(with: ["manager_short": manager.shortName])),
+                    primaryButton: .destructive(Text(L10n.Common.uninstall.localized)) { onUninstall() },
                     secondaryButton: .cancel()
                 )
             }

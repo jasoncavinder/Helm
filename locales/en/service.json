@@ -12,5 +12,19 @@
   "service.task.status.running": "Running",
   "service.task.status.completed": "Completed",
   "service.task.status.failed": "Failed",
-  "service.task.status.cancelled": "Cancelled"
+  "service.task.status.cancelled": "Cancelled",
+  "service.task.label.upgrade.homebrew": "Upgrade {package} via Homebrew",
+  "service.task.label.upgrade.homebrew_cleanup": "Upgrade {package} via Homebrew (cleanup old kegs)",
+  "service.task.label.upgrade.mise": "Upgrade {package} via mise",
+  "service.task.label.upgrade.rustup_toolchain": "Upgrade rustup toolchain {toolchain}",
+  "service.task.label.upgrade.softwareupdate_all": "Upgrade macOS software updates",
+  "service.task.label.pin.homebrew": "Pin {package} via Homebrew",
+  "service.task.label.unpin.homebrew": "Unpin {package} via Homebrew",
+  "service.task.label.install.homebrew_formula": "Install {package} via Homebrew",
+  "service.task.label.update.homebrew_self": "Update Homebrew",
+  "service.task.label.update.homebrew_formula": "Update {package} via Homebrew",
+  "service.task.label.update.homebrew_formula_cleanup": "Update {package} via Homebrew (cleanup old kegs)",
+  "service.task.label.update.rustup_self": "Self-update rustup",
+  "service.task.label.uninstall.homebrew_formula": "Uninstall {package} via Homebrew",
+  "service.task.label.uninstall.rustup_self": "Uninstall rustup"
 }

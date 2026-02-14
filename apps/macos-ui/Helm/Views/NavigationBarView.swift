@@ -1,9 +1,20 @@
 import SwiftUI
 
-enum HelmTab: String, CaseIterable {
-    case dashboard = "Dashboard"
-    case packages = "Packages"
-    case managers = "Managers"
+enum HelmTab: CaseIterable {
+    case dashboard
+    case packages
+    case managers
+
+    var title: String {
+        switch self {
+        case .dashboard:
+            return L10n.App.Navigation.dashboard.localized
+        case .packages:
+            return L10n.App.Navigation.packages.localized
+        case .managers:
+            return L10n.App.Navigation.managers.localized
+        }
+    }
 }
 
 struct NavigationBarView: View {
@@ -17,7 +28,7 @@ struct NavigationBarView: View {
             HStack(spacing: 0) {
                 ForEach(HelmTab.allCases, id: \.self) { tab in
                     Button(action: { selectedTab = tab }) {
-                        Text(tab.rawValue)
+                        Text(tab.title)
                             .font(.headline)
                             .foregroundColor(selectedTab == tab ? .primary : .secondary)
                             .padding(.vertical, 6)
@@ -49,7 +60,7 @@ struct NavigationBarView: View {
                         .foregroundColor(.secondary)
                         .font(.subheadline)
                 }
-                TextField("Search packages...", text: $searchText)
+                TextField(L10n.App.Navigation.searchPlaceholder.localized, text: $searchText)
                     .textFieldStyle(.plain)
                     .font(.subheadline)
                 if !searchText.isEmpty {

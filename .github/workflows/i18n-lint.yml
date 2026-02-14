@@ -1,0 +1,26 @@
+name: i18n Lint
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+
+jobs:
+  hardcoded-ui-strings:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure Locales Stay Synced
+        run: diff -ru locales/en apps/macos-ui/Helm/Resources/locales/en
+
+      - name: Block Hardcoded UI Strings
+        run: |
+          set -euo pipefail
+          PATTERN='Text\("[A-Za-z]|Button\("[A-Za-z]|Toggle\("[A-Za-z]|TextField\("[A-Za-z]|\.alert\("[A-Za-z]|\.help\("[A-Za-z]'
+          if rg -n "$PATTERN" apps/macos-ui/Helm; then
+            echo "Found hardcoded UI strings; use L10n keys instead."
+            exit 1
+          fi

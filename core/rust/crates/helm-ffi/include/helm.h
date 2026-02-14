@@ -194,6 +194,11 @@ int64_t helm_uninstall_manager(const char *manager_id);
 bool helm_reset_database(void);
 
 /**
+ * Return and clear the most recent service error localization key.
+ */
+char *helm_take_last_error_key(void);
+
+/**
  * Free a string previously returned by a `helm_*` function.
  *
  * # Safety

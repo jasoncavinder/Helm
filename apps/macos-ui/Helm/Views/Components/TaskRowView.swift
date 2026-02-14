@@ -33,7 +33,7 @@ struct TaskRowView: View {
                 .buttonStyle(.plain)
                 .disabled(true)
                 .opacity(0.5)
-                .help("Cancel not yet implemented")
+                .help(L10n.App.Tasks.cancelUnavailable.localized)
             }
         }
         .padding(.vertical, 3)

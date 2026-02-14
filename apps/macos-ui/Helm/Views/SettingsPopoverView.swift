@@ -24,7 +24,7 @@ struct SettingsPopoverView: View {
                         .font(.subheadline)
                     Spacer()
                     Picker("", selection: $localization.currentLocale) {
-                        Text("\(L10n.App.Settings.Label.systemDefault.localized) (en)").tag("en")
+                        Text(L10n.App.Settings.Label.systemDefaultWithEnglish.localized).tag("en")
                         // Future: Add other languages
                     }
                     .labelsHidden()
@@ -44,10 +44,10 @@ struct SettingsPopoverView: View {
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                     Picker("", selection: $checkFrequency) {
-                        Text("15 min").tag(15)
-                        Text("30 min").tag(30)
-                        Text("1 hour").tag(60)
-                        Text("Daily").tag(1440)
+                        Text(L10n.App.Settings.Frequency.every15Min.localized).tag(15)
+                        Text(L10n.App.Settings.Frequency.every30Min.localized).tag(30)
+                        Text(L10n.App.Settings.Frequency.every1Hour.localized).tag(60)
+                        Text(L10n.App.Settings.Frequency.daily.localized).tag(1440)
                     }
                     .labelsHidden()
                     .disabled(true)
@@ -55,14 +55,14 @@ struct SettingsPopoverView: View {
                 }
                 
                 // Safe Mode Toggle (Merged from 0.8)
-                Toggle("Safe Mode (block macOS updates)", isOn: Binding(
+                Toggle(L10n.App.Settings.Label.safeMode.localized, isOn: Binding(
                     get: { core.safeModeEnabled },
                     set: { core.setSafeMode($0) }
                 ))
                 .font(.subheadline)
 
                 // Homebrew Cleanup (Merged from 0.8)
-                Toggle("Auto-clean old Homebrew kegs", isOn: Binding(
+                Toggle(L10n.App.Settings.Label.autoCleanKegs.localized, isOn: Binding(
                     get: { core.homebrewKegAutoCleanupEnabled },
                     set: { core.setHomebrewKegAutoCleanup($0) }
                 ))
@@ -134,21 +134,21 @@ struct SettingsPopoverView: View {
         } message: {
             Text(L10n.App.Settings.Alert.Reset.message.localized)
         }
-        .alert("Upgrade All Packages?", isPresented: $showUpgradeConfirmation) {
-            Button("Upgrade (No OS Updates)") {
+        .alert(L10n.App.Settings.Alert.UpgradeAll.title.localized, isPresented: $showUpgradeConfirmation) {
+            Button(L10n.App.Settings.Alert.UpgradeAll.upgradeNoOs.localized) {
                 core.upgradeAll(includePinned: false, allowOsUpdates: false)
             }
             if !core.safeModeEnabled {
-                Button("Upgrade Including OS Updates", role: .destructive) {
+                Button(L10n.App.Settings.Alert.UpgradeAll.upgradeWithOs.localized, role: .destructive) {
                     core.upgradeAll(includePinned: false, allowOsUpdates: true)
                 }
             }
-            Button("Cancel", role: .cancel) {}
+            Button(L10n.Common.cancel.localized, role: .cancel) {}
         } message: {
             if core.safeModeEnabled {
-                Text("Safe Mode is enabled, so macOS software updates will be blocked. Pinned packages are excluded.")
+                Text(L10n.App.Settings.Alert.UpgradeAll.safeModeMessage.localized)
             } else {
-                Text("Pinned packages are excluded. Choose the OS update option only when you explicitly want softwareupdate to run.")
+                Text(L10n.App.Settings.Alert.UpgradeAll.standardMessage.localized)
             }
         }
     }

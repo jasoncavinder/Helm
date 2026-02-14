@@ -31,7 +31,7 @@ struct PackageRowView: View {
                         Image(systemName: "pin.fill")
                             .font(.caption2)
                             .foregroundColor(.secondary)
-                            .help("Pinned")
+                            .help(L10n.App.Packages.Label.pinned.localized)
                     }
                 }
 
@@ -56,7 +56,7 @@ struct PackageRowView: View {
                                 onSelectKegPolicy(.useGlobal)
                             } label: {
                                 HStack {
-                                    Text("Use Global")
+                                    Text(L10n.App.Packages.KegPolicy.useGlobal.localized)
                                     if kegPolicySelection == .useGlobal {
                                         Image(systemName: "checkmark")
                                     }
@@ -67,7 +67,7 @@ struct PackageRowView: View {
                                 onSelectKegPolicy(.keep)
                             } label: {
                                 HStack {
-                                    Text("Keep Old Kegs")
+                                    Text(L10n.App.Packages.KegPolicy.keepOld.localized)
                                     if kegPolicySelection == .keep {
                                         Image(systemName: "checkmark")
                                     }
@@ -78,7 +78,7 @@ struct PackageRowView: View {
                                 onSelectKegPolicy(.cleanup)
                             } label: {
                                 HStack {
-                                    Text("Cleanup Old Kegs")
+                                    Text(L10n.App.Packages.KegPolicy.cleanupOld.localized)
                                     if kegPolicySelection == .cleanup {
                                         Image(systemName: "checkmark")
                                     }
@@ -90,7 +90,7 @@ struct PackageRowView: View {
                                 .foregroundColor(.secondary)
                         }
                         .menuStyle(.borderlessButton)
-                        .help("Homebrew keg policy")
+                        .help(L10n.App.Packages.Label.homebrewKegPolicy.localized)
                     }
 
                     if let onUpgrade {
@@ -106,7 +106,7 @@ struct PackageRowView: View {
                                     .foregroundColor(.orange)
                             }
                             .buttonStyle(.borderless)
-                            .help("Upgrade package")
+                            .help(L10n.App.Packages.Action.upgradePackage.localized)
                         }
                     }
 
@@ -123,7 +123,11 @@ struct PackageRowView: View {
                                     .foregroundColor(package.pinned ? .orange : .secondary)
                             }
                             .buttonStyle(.borderless)
-                            .help(package.pinned ? "Unpin package" : "Pin package")
+                            .help(
+                                package.pinned
+                                    ? L10n.App.Packages.Action.unpin.localized
+                                    : L10n.App.Packages.Action.pin.localized
+                            )
                         }
                     }
                 }

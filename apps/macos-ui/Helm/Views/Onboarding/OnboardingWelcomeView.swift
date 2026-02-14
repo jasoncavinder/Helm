@@ -13,11 +13,11 @@ struct OnboardingWelcomeView: View {
                 .cornerRadius(16)
 
             VStack(spacing: 8) {
-                Text("Welcome to Helm")
+                Text(L10n.App.Onboarding.Welcome.title.localized)
                     .font(.title2)
                     .fontWeight(.bold)
 
-                Text("Centralized control for all your\npackage managers")
+                Text(L10n.App.Onboarding.Welcome.subtitle.localized)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -27,7 +27,7 @@ struct OnboardingWelcomeView: View {
             Spacer()
 
             Button(action: onContinue) {
-                Text("Get Started")
+                Text(L10n.App.Onboarding.Welcome.getStarted.localized)
                     .font(.headline)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)

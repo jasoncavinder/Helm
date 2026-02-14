@@ -7,9 +7,9 @@ enum PackageStatus: String, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .installed:  return "Installed"
-        case .upgradable: return "Upgradable"
-        case .available:  return "Available"
+        case .installed:  return L10n.App.Packages.Filter.installed.localized
+        case .upgradable: return L10n.App.Packages.Filter.upgradable.localized
+        case .available:  return L10n.App.Packages.Filter.available.localized
         }
     }
 

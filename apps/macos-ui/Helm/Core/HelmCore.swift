@@ -28,6 +28,8 @@ struct CoreTaskRecord: Codable {
     let taskType: String
     let status: String
     let label: String?
+    let labelKey: String?
+    let labelArgs: [String: String]?
 }
 
 struct CoreSearchResult: Codable {
@@ -168,6 +170,18 @@ final class HelmCore: ObservableObject {
         return connection?.remoteObjectProxy as? HelmServiceProtocol
     }
 
+    private func consumeLastServiceErrorKey(_ completion: @escaping (String?) -> Void) {
+        guard let service = service() else {
+            completion(nil)
+            return
+        }
+        service.takeLastErrorKey { key in
+            DispatchQueue.main.async {
+                completion(key)
+            }
+        }
+    }
+
     func triggerRefresh() {
         logger.info("triggerRefresh called")
         self.lastRefreshTrigger = Date()
@@ -231,7 +245,7 @@ final class HelmCore: ObservableObject {
                         PackageItem(
                             id: "\(pkg.package.manager):\(pkg.package.name)",
                             name: pkg.package.name,
-                            version: pkg.installedVersion ?? "unknown",
+                            version: pkg.installedVersion ?? L10n.Common.unknown.localized,
                             managerId: pkg.package.manager,
                             manager: self?.normalizedManagerName(pkg.package.manager) ?? pkg.package.manager,
                             pinned: pkg.pinned
@@ -258,7 +272,7 @@ final class HelmCore: ObservableObject {
                         PackageItem(
                             id: "\(pkg.package.manager):\(pkg.package.name)",
                             name: pkg.package.name,
-                            version: pkg.installedVersion ?? "unknown",
+                            version: pkg.installedVersion ?? L10n.Common.unknown.localized,
                             latestVersion: pkg.candidateVersion,
                             managerId: pkg.package.manager,
                             manager: self?.normalizedManagerName(pkg.package.manager) ?? pkg.package.manager,
@@ -290,9 +304,15 @@ final class HelmCore: ObservableObject {
                     self?.activeTasks = coreTasks.map { task in
                         let overrideDescription = self?.managerActionTaskDescriptions[task.id]
                         let managerName = self?.normalizedManagerName(task.manager) ?? task.manager
+                        let taskLabel = self?.localizedTaskLabel(from: task)
                         return TaskItem(
                             id: "\(task.id)",
-                            description: overrideDescription ?? task.label ?? "\(task.taskType.capitalized) \(managerName)",
+                            description: overrideDescription
+                                ?? taskLabel
+                                ?? L10n.App.Tasks.fallbackDescription.localized(with: [
+                                    "task_type": task.taskType.capitalized,
+                                    "manager": managerName
+                                ]),
                             status: task.status.capitalized
                         )
                     }
@@ -610,7 +630,7 @@ final class HelmCore: ObservableObject {
                     managerId: package.managerId,
                     taskId: UInt64(taskId),
                     description: self.upgradeActionDescription(for: package),
-                    inProgressText: "Upgrading..."
+                    inProgressText: L10n.App.Managers.Operation.upgrading.localized
                 )
             }
         }
@@ -626,21 +646,24 @@ final class HelmCore: ObservableObject {
 
     func installManager(_ managerId: String) {
         DispatchQueue.main.async {
-            self.managerOperations[managerId] = "Starting install..."
+            self.managerOperations[managerId] = L10n.App.Managers.Operation.startingInstall.localized
         }
         service()?.installManager(managerId: managerId) { [weak self] taskId in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 if taskId < 0 {
                     logger.error("installManager(\(managerId)) failed")
-                    self.managerOperations[managerId] = "Install failed"
+                    self.consumeLastServiceErrorKey { serviceErrorKey in
+                        self.managerOperations[managerId] =
+                            serviceErrorKey?.localized ?? L10n.App.Managers.Operation.installFailed.localized
+                    }
                     return
                 }
                 self.registerManagerActionTask(
                     managerId: managerId,
                     taskId: UInt64(taskId),
                     description: self.managerActionDescription(action: "Install", managerId: managerId),
-                    inProgressText: "Installing..."
+                    inProgressText: L10n.App.Managers.Operation.installing.localized
                 )
             }
         }
@@ -648,21 +671,24 @@ final class HelmCore: ObservableObject {
 
     func updateManager(_ managerId: String) {
         DispatchQueue.main.async {
-            self.managerOperations[managerId] = "Starting update..."
+            self.managerOperations[managerId] = L10n.App.Managers.Operation.startingUpdate.localized
         }
         service()?.updateManager(managerId: managerId) { [weak self] taskId in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 if taskId < 0 {
                     logger.error("updateManager(\(managerId)) failed")
-                    self.managerOperations[managerId] = "Update failed"
+                    self.consumeLastServiceErrorKey { serviceErrorKey in
+                        self.managerOperations[managerId] =
+                            serviceErrorKey?.localized ?? L10n.App.Managers.Operation.updateFailed.localized
+                    }
                     return
                 }
                 self.registerManagerActionTask(
                     managerId: managerId,
                     taskId: UInt64(taskId),
                     description: self.managerActionDescription(action: "Update", managerId: managerId),
-                    inProgressText: "Updating..."
+                    inProgressText: L10n.App.Managers.Operation.updating.localized
                 )
             }
         }
@@ -713,21 +739,24 @@ final class HelmCore: ObservableObject {
 
     func uninstallManager(_ managerId: String) {
         DispatchQueue.main.async {
-            self.managerOperations[managerId] = "Starting uninstall..."
+            self.managerOperations[managerId] = L10n.App.Managers.Operation.startingUninstall.localized
         }
         service()?.uninstallManager(managerId: managerId) { [weak self] taskId in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 if taskId < 0 {
                     logger.error("uninstallManager(\(managerId)) failed")
-                    self.managerOperations[managerId] = "Uninstall failed"
+                    self.consumeLastServiceErrorKey { serviceErrorKey in
+                        self.managerOperations[managerId] =
+                            serviceErrorKey?.localized ?? L10n.App.Managers.Operation.uninstallFailed.localized
+                    }
                     return
                 }
                 self.registerManagerActionTask(
                     managerId: managerId,
                     taskId: UInt64(taskId),
                     description: self.managerActionDescription(action: "Uninstall", managerId: managerId),
-                    inProgressText: "Uninstalling..."
+                    inProgressText: L10n.App.Managers.Operation.uninstalling.localized
                 )
             }
         }
@@ -983,34 +1012,60 @@ final class HelmCore: ObservableObject {
         }
     }
 
-    private func upgradeActionDescription(for package: PackageItem) -> String {
-        let base = "Upgrade \(package.name) via \(normalizedManagerName(package.managerId))"
-        if shouldCleanupOldKegs(for: package) {
-            return "\(base) (cleanup old kegs)"
+    private func localizedTaskLabel(from task: CoreTaskRecord) -> String? {
+        if let labelKey = task.labelKey {
+            let args = task.labelArgs?.reduce(into: [String: Any]()) { partialResult, entry in
+                partialResult[entry.key] = entry.value
+            } ?? [:]
+            return labelKey.localized(with: args)
         }
-        return base
+        return task.label
+    }
+
+    private func upgradeActionDescription(for package: PackageItem) -> String {
+        switch package.managerId {
+        case "homebrew_formula":
+            if shouldCleanupOldKegs(for: package) {
+                return L10n.Service.Task.Label.upgradeHomebrewCleanup.localized(with: ["package": package.name])
+            }
+            return L10n.Service.Task.Label.upgradeHomebrew.localized(with: ["package": package.name])
+        case "mise":
+            return L10n.Service.Task.Label.upgradeMise.localized(with: ["package": package.name])
+        case "rustup":
+            return L10n.Service.Task.Label.upgradeRustupToolchain.localized(with: ["toolchain": package.name])
+        default:
+            return L10n.App.Tasks.fallbackDescription.localized(with: [
+                "task_type": L10n.Common.update.localized,
+                "manager": normalizedManagerName(package.managerId)
+            ])
+        }
     }
 
     private func managerActionDescription(action: String, managerId: String) -> String {
         switch (action, managerId) {
         case ("Install", "mas"):
-            return "Install mas (Mac App Store manager) via Homebrew"
+            return L10n.Service.Task.Label.installHomebrewFormula.localized(with: ["package": "mas"])
         case ("Install", "mise"):
-            return "Install mise via Homebrew"
+            return L10n.Service.Task.Label.installHomebrewFormula.localized(with: ["package": "mise"])
         case ("Update", "homebrew_formula"):
-            return "Update Homebrew"
+            return L10n.Service.Task.Label.updateHomebrewSelf.localized
         case ("Update", "mas"):
-            return "Update mas via Homebrew"
+            return L10n.Service.Task.Label.updateHomebrewFormula.localized(with: ["package": "mas"])
         case ("Update", "mise"):
-            return "Update mise via Homebrew"
+            return L10n.Service.Task.Label.updateHomebrewFormula.localized(with: ["package": "mise"])
         case ("Update", "rustup"):
-            return "Self-update rustup"
+            return L10n.Service.Task.Label.updateRustupSelf.localized
         case ("Uninstall", "mas"):
-            return "Uninstall mas via Homebrew"
+            return L10n.Service.Task.Label.uninstallHomebrewFormula.localized(with: ["package": "mas"])
         case ("Uninstall", "mise"):
-            return "Uninstall mise via Homebrew"
+            return L10n.Service.Task.Label.uninstallHomebrewFormula.localized(with: ["package": "mise"])
+        case ("Uninstall", "rustup"):
+            return L10n.Service.Task.Label.uninstallRustupSelf.localized
         default:
-            return "\(action) \(normalizedManagerName(managerId))"
+            return L10n.App.Tasks.fallbackDescription.localized(with: [
+                "task_type": action,
+                "manager": normalizedManagerName(managerId)
+            ])
         }
     }
 }
