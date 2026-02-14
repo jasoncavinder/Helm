@@ -58,6 +58,9 @@ struct L10n {
                     static let pinned = "app.packages.detail.version.pinned"
                 }
             }
+            struct Label {
+                static let restartRequired = "app.packages.label.restart_required"
+            }
             struct Action {
                 static let install = "app.packages.action.install"
                 static let update = "app.packages.action.update"
@@ -85,7 +88,6 @@ struct L10n {
                 static let systemDefault = "app.settings.label.language.system_default"
                 static let autoCheck = "app.settings.label.auto_check"
                 static let checkFrequency = "app.settings.label.check_frequency"
-                static let restartRequired = "app.packages.label.restart_required"
             }
             struct Action {
                 static let refreshNow = "app.settings.action.refresh_now"
