@@ -923,7 +923,8 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
 ///
 /// Currently supported manager IDs:
 /// - "homebrew_formula"
-/// - "rustup" (only for package "__self__")
+/// - "mise"
+/// - "rustup"
 ///
 /// # Safety
 ///
@@ -981,16 +982,33 @@ pub unsafe extern "C" fn helm_upgrade_package(
                 },
             )
         }
-        ManagerId::Rustup if package_name == "__self__" => (
-            ManagerId::Rustup,
+        ManagerId::Mise => (
+            ManagerId::Mise,
             AdapterRequest::Upgrade(UpgradeRequest {
                 package: Some(PackageRef {
-                    manager: ManagerId::Rustup,
-                    name: "__self__".to_string(),
+                    manager: ManagerId::Mise,
+                    name: package_name.clone(),
                 }),
             }),
-            "Self-update rustup".to_string(),
+            format!("Upgrade {} via mise", package_name),
         ),
+        ManagerId::Rustup => {
+            let label = if package_name == "__self__" {
+                "Self-update rustup".to_string()
+            } else {
+                format!("Upgrade rustup toolchain {}", package_name)
+            };
+            (
+                ManagerId::Rustup,
+                AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::Rustup,
+                        name: package_name.clone(),
+                    }),
+                }),
+                label,
+            )
+        }
         _ => return -1,
     };
 

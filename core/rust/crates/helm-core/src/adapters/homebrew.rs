@@ -153,6 +153,9 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                 let (target_name, cleanup_after_upgrade) =
                     split_upgrade_target(requested_package.name.as_str());
                 let _ = self.source.upgrade_formula(Some(target_name))?;
+                if target_name != "__all__" && target_name != "__self__" {
+                    ensure_formula_no_longer_outdated(&self.source, target_name)?;
+                }
                 if cleanup_after_upgrade && target_name != "__all__" && target_name != "__self__" {
                     let _ = self.source.cleanup_formula(target_name)?;
                 }
@@ -297,6 +300,29 @@ fn split_upgrade_target(name: &str) -> (&str, bool) {
     } else {
         (name, false)
     }
+}
+
+fn ensure_formula_no_longer_outdated<S: HomebrewSource>(
+    source: &S,
+    formula_name: &str,
+) -> AdapterResult<()> {
+    let raw = source.list_outdated_formulae()?;
+    let outdated = parse_outdated_formulae(&raw)?;
+    if outdated
+        .iter()
+        .any(|item| item.package.name == formula_name)
+    {
+        return Err(CoreError {
+            manager: Some(ManagerId::HomebrewFormula),
+            task: Some(TaskType::Upgrade),
+            action: Some(ManagerAction::Upgrade),
+            kind: CoreErrorKind::ProcessFailure,
+            message: format!(
+                "homebrew upgrade reported success but '{formula_name}' remains outdated"
+            ),
+        });
+    }
+    Ok(())
 }
 
 pub fn homebrew_pin_request(task_id: Option<TaskId>, name: &str) -> ProcessSpawnRequest {
@@ -1087,6 +1113,24 @@ mod tests {
     }
 
     #[test]
+    fn adapter_upgrade_fails_when_formula_still_outdated_after_upgrade() {
+        let source = FixtureSource::with_outdated_output("gdu (1.0.0) < 1.0.1\n");
+        let adapter = HomebrewAdapter::new(source);
+
+        let error = adapter
+            .execute(AdapterRequest::Upgrade(crate::adapters::UpgradeRequest {
+                package: Some(crate::models::PackageRef {
+                    manager: crate::models::ManagerId::HomebrewFormula,
+                    name: "gdu".to_string(),
+                }),
+            }))
+            .unwrap_err();
+
+        assert_eq!(error.kind, CoreErrorKind::ProcessFailure);
+        assert!(error.message.contains("remains outdated"));
+    }
+
+    #[test]
     fn pin_command_plans_are_structured_for_formula_targets() {
         let pin = homebrew_pin_request(Some(TaskId(12)), "git");
         assert_eq!(pin.task_id, Some(TaskId(12)));
@@ -1103,10 +1147,11 @@ mod tests {
         );
     }
 
-    #[derive(Default, Clone)]
+    #[derive(Clone)]
     struct FixtureSource {
         detect_calls: Arc<AtomicUsize>,
         install_error: Option<String>,
+        outdated_output: String,
     }
 
     impl FixtureSource {
@@ -1114,6 +1159,25 @@ mod tests {
             Self {
                 detect_calls: Arc::new(AtomicUsize::new(0)),
                 install_error: Some(message.to_string()),
+                outdated_output: OUTDATED_FIXTURE.to_string(),
+            }
+        }
+
+        fn with_outdated_output(output: &str) -> Self {
+            Self {
+                detect_calls: Arc::new(AtomicUsize::new(0)),
+                install_error: None,
+                outdated_output: output.to_string(),
+            }
+        }
+    }
+
+    impl Default for FixtureSource {
+        fn default() -> Self {
+            Self {
+                detect_calls: Arc::new(AtomicUsize::new(0)),
+                install_error: None,
+                outdated_output: OUTDATED_FIXTURE.to_string(),
             }
         }
     }
@@ -1132,7 +1196,7 @@ mod tests {
         }
 
         fn list_outdated_formulae(&self) -> AdapterResult<String> {
-            Ok(OUTDATED_FIXTURE.to_string())
+            Ok(self.outdated_output.clone())
         }
 
         fn search_local_formulae(&self, _query: &str) -> AdapterResult<String> {

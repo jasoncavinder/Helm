@@ -574,7 +574,10 @@ final class HelmCore: ObservableObject {
     }
 
     func canUpgradeIndividually(_ package: PackageItem) -> Bool {
-        package.status == .upgradable && package.managerId == "homebrew_formula" && !package.pinned
+        let upgradableManagers: Set<String> = ["homebrew_formula", "mise", "rustup"]
+        return package.status == .upgradable
+            && upgradableManagers.contains(package.managerId)
+            && !package.pinned
     }
 
     func upgradePackage(_ package: PackageItem) {

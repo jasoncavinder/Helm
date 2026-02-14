@@ -106,7 +106,8 @@ bool helm_upgrade_all(bool include_pinned, bool allow_os_updates);
  *
  * Currently supported manager IDs:
  * - "homebrew_formula"
- * - "rustup" (only for package "__self__")
+ * - "mise"
+ * - "rustup"
  *
  * # Safety
  *
