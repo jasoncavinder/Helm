@@ -62,6 +62,38 @@ bool helm_get_safe_mode(void);
 bool helm_set_safe_mode(bool enabled);
 
 /**
+ * Return whether Homebrew upgrades should auto-clean old kegs by default.
+ */
+bool helm_get_homebrew_keg_auto_cleanup(void);
+
+/**
+ * Set the global Homebrew keg policy.
+ */
+bool helm_set_homebrew_keg_auto_cleanup(bool enabled);
+
+/**
+ * List per-package Homebrew keg policy overrides as JSON.
+ */
+char *helm_list_package_keg_policies(void);
+
+/**
+ * Set per-package Homebrew keg policy override.
+ *
+ * `policy_mode` values:
+ * - `-1`: clear override (use global)
+ * - `0`: keep old kegs
+ * - `1`: cleanup old kegs
+ *
+ * # Safety
+ *
+ * `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
+ * strings.
+ */
+bool helm_set_package_keg_policy(const char *manager_id,
+                                 const char *package_name,
+                                 int32_t policy_mode);
+
+/**
  * Queue upgrade tasks for supported managers using cached outdated snapshot.
  *
  * - `include_pinned`: if false, pinned packages are excluded.

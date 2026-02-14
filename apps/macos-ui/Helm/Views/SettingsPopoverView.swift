@@ -41,6 +41,12 @@ struct SettingsPopoverView: View {
             ))
             .font(.subheadline)
 
+            Toggle("Auto-clean old Homebrew kegs", isOn: Binding(
+                get: { core.homebrewKegAutoCleanupEnabled },
+                set: { core.setHomebrewKegAutoCleanup($0) }
+            ))
+            .font(.subheadline)
+
             Divider()
 
             Button(action: {

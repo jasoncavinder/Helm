@@ -99,6 +99,37 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(result)
     }
 
+    func getHomebrewKegAutoCleanup(withReply reply: @escaping (Bool) -> Void) {
+        let enabled = helm_get_homebrew_keg_auto_cleanup()
+        reply(enabled)
+    }
+
+    func setHomebrewKegAutoCleanup(enabled: Bool, withReply reply: @escaping (Bool) -> Void) {
+        let result = helm_set_homebrew_keg_auto_cleanup(enabled)
+        logger.info("helm_set_homebrew_keg_auto_cleanup(\(enabled)) result: \(result)")
+        reply(result)
+    }
+
+    func listPackageKegPolicies(withReply reply: @escaping (String?) -> Void) {
+        guard let cString = helm_list_package_keg_policies() else {
+            logger.warning("helm_list_package_keg_policies returned nil")
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(cString) }
+        reply(String(cString: cString))
+    }
+
+    func setPackageKegPolicy(managerId: String, packageName: String, policyMode: Int32, withReply reply: @escaping (Bool) -> Void) {
+        let result = managerId.withCString { manager in
+            packageName.withCString { package in
+                helm_set_package_keg_policy(manager, package, policyMode)
+            }
+        }
+        logger.info("helm_set_package_keg_policy(\(managerId), \(packageName), \(policyMode)) result: \(result)")
+        reply(result)
+    }
+
     func upgradeAll(includePinned: Bool, allowOsUpdates: Bool, withReply reply: @escaping (Bool) -> Void) {
         let result = helm_upgrade_all(includePinned, allowOsUpdates)
         logger.info("helm_upgrade_all(includePinned: \(includePinned), allowOsUpdates: \(allowOsUpdates)) result: \(result)")

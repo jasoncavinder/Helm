@@ -19,7 +19,9 @@ use helm_core::adapters::{
     UpgradeRequest,
 };
 use helm_core::execution::tokio_process::TokioProcessExecutor;
-use helm_core::models::{ManagerId, PackageRef, PinKind, PinRecord, SearchQuery};
+use helm_core::models::{
+    HomebrewKegPolicy, ManagerId, PackageRef, PinKind, PinRecord, SearchQuery,
+};
 use helm_core::orchestration::CancellationMode;
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
 use helm_core::persistence::{
@@ -37,11 +39,35 @@ struct HelmState {
 
 lazy_static! {
     static ref STATE: Mutex<Option<HelmState>> = Mutex::new(None);
-    static ref TASK_LABELS: Mutex<std::collections::HashMap<u64, String>> = Mutex::new(std::collections::HashMap::new());
+    static ref TASK_LABELS: Mutex<std::collections::HashMap<u64, String>> =
+        Mutex::new(std::collections::HashMap::new());
 }
 
 fn set_task_label(task_id: helm_core::models::TaskId, label: String) {
     TASK_LABELS.lock().unwrap().insert(task_id.0, label);
+}
+
+fn encode_homebrew_upgrade_target(package_name: &str, cleanup_old_kegs: bool) -> String {
+    if cleanup_old_kegs {
+        format!("{package_name}@@helm.cleanup")
+    } else {
+        package_name.to_string()
+    }
+}
+
+fn effective_homebrew_keg_policy(store: &SqliteStore, package_name: &str) -> HomebrewKegPolicy {
+    let package_ref = PackageRef {
+        manager: ManagerId::HomebrewFormula,
+        name: package_name.to_string(),
+    };
+
+    if let Ok(Some(policy)) = store.package_keg_policy(&package_ref) {
+        return policy;
+    }
+
+    store
+        .homebrew_keg_policy()
+        .unwrap_or(HomebrewKegPolicy::Keep)
 }
 
 /// Initialize the Helm core engine with the given SQLite database path.
@@ -493,6 +519,146 @@ pub extern "C" fn helm_set_safe_mode(enabled: bool) -> bool {
     state.store.set_safe_mode(enabled).is_ok()
 }
 
+/// Return whether Homebrew upgrades should auto-clean old kegs by default.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_get_homebrew_keg_auto_cleanup() -> bool {
+    let guard = STATE.lock().unwrap();
+    let state = match guard.as_ref() {
+        Some(s) => s,
+        None => return false,
+    };
+
+    matches!(
+        state.store.homebrew_keg_policy(),
+        Ok(HomebrewKegPolicy::Cleanup)
+    )
+}
+
+/// Set the global Homebrew keg policy.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_set_homebrew_keg_auto_cleanup(enabled: bool) -> bool {
+    let guard = STATE.lock().unwrap();
+    let state = match guard.as_ref() {
+        Some(s) => s,
+        None => return false,
+    };
+
+    let policy = if enabled {
+        HomebrewKegPolicy::Cleanup
+    } else {
+        HomebrewKegPolicy::Keep
+    };
+    state.store.set_homebrew_keg_policy(policy).is_ok()
+}
+
+/// List per-package Homebrew keg policy overrides as JSON.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_list_package_keg_policies() -> *mut c_char {
+    let guard = STATE.lock().unwrap();
+    let state = match guard.as_ref() {
+        Some(s) => s,
+        None => return std::ptr::null_mut(),
+    };
+
+    #[derive(serde::Serialize)]
+    struct FfiPackageKegPolicy {
+        manager_id: String,
+        package_name: String,
+        policy: String,
+    }
+
+    let policies = match state.store.list_package_keg_policies() {
+        Ok(entries) => entries
+            .into_iter()
+            .map(|entry| FfiPackageKegPolicy {
+                manager_id: entry.package.manager.as_str().to_string(),
+                package_name: entry.package.name,
+                policy: entry.policy.as_str().to_string(),
+            })
+            .collect::<Vec<_>>(),
+        Err(error) => {
+            eprintln!("Failed to list package keg policies: {error}");
+            return std::ptr::null_mut();
+        }
+    };
+
+    let json = match serde_json::to_string(&policies) {
+        Ok(json) => json,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    match CString::new(json) {
+        Ok(c_string) => c_string.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Set per-package Homebrew keg policy override.
+///
+/// `policy_mode` values:
+/// - `-1`: clear override (use global)
+/// - `0`: keep old kegs
+/// - `1`: cleanup old kegs
+///
+/// # Safety
+///
+/// `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
+/// strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_set_package_keg_policy(
+    manager_id: *const c_char,
+    package_name: *const c_char,
+    policy_mode: i32,
+) -> bool {
+    if manager_id.is_null() || package_name.is_null() {
+        return false;
+    }
+
+    let manager = {
+        let c_str = unsafe { CStr::from_ptr(manager_id) };
+        match c_str
+            .to_str()
+            .ok()
+            .and_then(|value| value.parse::<ManagerId>().ok())
+        {
+            Some(manager) => manager,
+            None => return false,
+        }
+    };
+
+    if manager != ManagerId::HomebrewFormula {
+        return false;
+    }
+
+    let package_name = {
+        let c_str = unsafe { CStr::from_ptr(package_name) };
+        match c_str.to_str() {
+            Ok(value) if !value.trim().is_empty() => value.trim().to_string(),
+            _ => return false,
+        }
+    };
+
+    let policy = match policy_mode {
+        -1 => None,
+        0 => Some(HomebrewKegPolicy::Keep),
+        1 => Some(HomebrewKegPolicy::Cleanup),
+        _ => return false,
+    };
+
+    let package = PackageRef {
+        manager,
+        name: package_name,
+    };
+
+    let guard = STATE.lock().unwrap();
+    let state = match guard.as_ref() {
+        Some(s) => s,
+        None => return false,
+    };
+
+    state.store.set_package_keg_policy(&package, policy).is_ok()
+}
+
 /// Queue upgrade tasks for supported managers using cached outdated snapshot.
 ///
 /// - `include_pinned`: if false, pinned packages are excluded.
@@ -559,11 +725,18 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
 
         if runtime.is_manager_enabled(ManagerId::HomebrewFormula) {
             for package_name in homebrew_targets {
-                let label = format!("Upgrade {} via Homebrew", package_name);
+                let policy = effective_homebrew_keg_policy(&store, &package_name);
+                let cleanup_old_kegs = policy == HomebrewKegPolicy::Cleanup;
+                let target_name = encode_homebrew_upgrade_target(&package_name, cleanup_old_kegs);
+                let label = if cleanup_old_kegs {
+                    format!("Upgrade {} via Homebrew (cleanup old kegs)", package_name)
+                } else {
+                    format!("Upgrade {} via Homebrew", package_name)
+                };
                 let request = AdapterRequest::Upgrade(UpgradeRequest {
                     package: Some(PackageRef {
                         manager: ManagerId::HomebrewFormula,
-                        name: package_name,
+                        name: target_name,
                     }),
                 });
                 match runtime.submit(ManagerId::HomebrewFormula, request).await {
@@ -638,7 +811,11 @@ pub unsafe extern "C" fn helm_upgrade_package(
     }
 
     let manager_cstr = unsafe { CStr::from_ptr(manager_id) };
-    let manager = match manager_cstr.to_str().ok().and_then(|s| s.parse::<ManagerId>().ok()) {
+    let manager = match manager_cstr
+        .to_str()
+        .ok()
+        .and_then(|s| s.parse::<ManagerId>().ok())
+    {
         Some(manager) => manager,
         None => return -1,
     };
@@ -650,16 +827,32 @@ pub unsafe extern "C" fn helm_upgrade_package(
     };
 
     let (target_manager, request, label) = match manager {
-        ManagerId::HomebrewFormula => (
-            ManagerId::HomebrewFormula,
-            AdapterRequest::Upgrade(UpgradeRequest {
-                package: Some(PackageRef {
-                    manager: ManagerId::HomebrewFormula,
-                    name: package_name.clone(),
+        ManagerId::HomebrewFormula => {
+            let policy = {
+                let guard = STATE.lock().unwrap();
+                let state = match guard.as_ref() {
+                    Some(s) => s,
+                    None => return -1,
+                };
+                effective_homebrew_keg_policy(&state.store, &package_name)
+            };
+            let cleanup_old_kegs = policy == HomebrewKegPolicy::Cleanup;
+            let target_name = encode_homebrew_upgrade_target(&package_name, cleanup_old_kegs);
+            (
+                ManagerId::HomebrewFormula,
+                AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::HomebrewFormula,
+                        name: target_name,
+                    }),
                 }),
-            }),
-            format!("Upgrade {} via Homebrew", package_name),
-        ),
+                if cleanup_old_kegs {
+                    format!("Upgrade {} via Homebrew (cleanup old kegs)", package_name)
+                } else {
+                    format!("Upgrade {} via Homebrew", package_name)
+                },
+            )
+        }
         ManagerId::Rustup if package_name == "__self__" => (
             ManagerId::Rustup,
             AdapterRequest::Upgrade(UpgradeRequest {
@@ -989,10 +1182,7 @@ pub unsafe extern "C" fn helm_install_manager(manager_id: *const c_char) -> i64 
 
     match rt_handle.block_on(runtime.submit(ManagerId::HomebrewFormula, request)) {
         Ok(task_id) => {
-            set_task_label(
-                task_id,
-                format!("Install {} via Homebrew", formula_name),
-            );
+            set_task_label(task_id, format!("Install {} via Homebrew", formula_name));
             task_id.0 as i64
         }
         Err(e) => {
@@ -1025,7 +1215,7 @@ pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
         Err(_) => return -1,
     };
 
-    let (target_manager, request) = match id_str {
+    let (target_manager, request, label) = match id_str {
         "homebrew_formula" => (
             ManagerId::HomebrewFormula,
             AdapterRequest::Upgrade(UpgradeRequest {
@@ -1034,25 +1224,64 @@ pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
                     name: "__self__".to_string(),
                 }),
             }),
+            "Update Homebrew".to_string(),
         ),
-        "mise" => (
-            ManagerId::HomebrewFormula,
-            AdapterRequest::Upgrade(UpgradeRequest {
-                package: Some(PackageRef {
-                    manager: ManagerId::HomebrewFormula,
-                    name: "mise".to_string(),
+        "mise" => {
+            let (target_name, label) = {
+                let guard = STATE.lock().unwrap();
+                let state = match guard.as_ref() {
+                    Some(s) => s,
+                    None => return -1,
+                };
+                let policy = effective_homebrew_keg_policy(&state.store, "mise");
+                let cleanup_old_kegs = policy == HomebrewKegPolicy::Cleanup;
+                let target_name = encode_homebrew_upgrade_target("mise", cleanup_old_kegs);
+                let label = if cleanup_old_kegs {
+                    "Update mise via Homebrew (cleanup old kegs)".to_string()
+                } else {
+                    "Update mise via Homebrew".to_string()
+                };
+                (target_name, label)
+            };
+            (
+                ManagerId::HomebrewFormula,
+                AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::HomebrewFormula,
+                        name: target_name,
+                    }),
                 }),
-            }),
-        ),
-        "mas" => (
-            ManagerId::HomebrewFormula,
-            AdapterRequest::Upgrade(UpgradeRequest {
-                package: Some(PackageRef {
-                    manager: ManagerId::HomebrewFormula,
-                    name: "mas".to_string(),
+                label,
+            )
+        }
+        "mas" => {
+            let (target_name, label) = {
+                let guard = STATE.lock().unwrap();
+                let state = match guard.as_ref() {
+                    Some(s) => s,
+                    None => return -1,
+                };
+                let policy = effective_homebrew_keg_policy(&state.store, "mas");
+                let cleanup_old_kegs = policy == HomebrewKegPolicy::Cleanup;
+                let target_name = encode_homebrew_upgrade_target("mas", cleanup_old_kegs);
+                let label = if cleanup_old_kegs {
+                    "Update mas via Homebrew (cleanup old kegs)".to_string()
+                } else {
+                    "Update mas via Homebrew".to_string()
+                };
+                (target_name, label)
+            };
+            (
+                ManagerId::HomebrewFormula,
+                AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::HomebrewFormula,
+                        name: target_name,
+                    }),
                 }),
-            }),
-        ),
+                label,
+            )
+        }
         "rustup" => (
             ManagerId::Rustup,
             AdapterRequest::Upgrade(UpgradeRequest {
@@ -1061,6 +1290,7 @@ pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
                     name: "__self__".to_string(),
                 }),
             }),
+            "Self-update rustup".to_string(),
         ),
         _ => return -1,
     };
@@ -1072,14 +1302,6 @@ pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
             None => return -1,
         };
         (state.runtime.clone(), state.rt_handle.clone())
-    };
-
-    let label = match id_str {
-        "homebrew_formula" => "Update Homebrew".to_string(),
-        "mise" => "Update mise via Homebrew".to_string(),
-        "mas" => "Update mas via Homebrew".to_string(),
-        "rustup" => "Self-update rustup".to_string(),
-        _ => "Update manager".to_string(),
     };
 
     match rt_handle.block_on(runtime.submit(target_manager, request)) {

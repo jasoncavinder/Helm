@@ -5,9 +5,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use rusqlite::{Connection, params};
 
 use crate::models::{
-    CachedSearchResult, CoreError, CoreErrorKind, DetectionInfo, InstalledPackage, ManagerId,
-    OutdatedPackage, PackageCandidate, PackageRef, PinKind, PinRecord, TaskId, TaskRecord,
-    TaskStatus, TaskType,
+    CachedSearchResult, CoreError, CoreErrorKind, DetectionInfo, HomebrewKegPolicy,
+    InstalledPackage, ManagerId, OutdatedPackage, PackageCandidate, PackageKegPolicy, PackageRef,
+    PinKind, PinRecord, TaskId, TaskRecord, TaskStatus, TaskType,
 };
 use crate::persistence::{
     DetectionStore, MigrationStore, PackageStore, PersistenceResult, PinStore, SearchCacheStore,
@@ -725,6 +725,128 @@ ON CONFLICT(key) DO UPDATE SET
             };
             let value: String = row.get(0)?;
             Ok(value.trim() == "1")
+        })
+    }
+
+    fn set_homebrew_keg_policy(&self, policy: HomebrewKegPolicy) -> PersistenceResult<()> {
+        self.with_connection("set_homebrew_keg_policy", |connection| {
+            ensure_schema_ready(connection)?;
+            connection.execute(
+                "
+INSERT INTO app_settings (key, value)
+VALUES ('homebrew_keg_policy', ?1)
+ON CONFLICT(key) DO UPDATE SET
+    value = excluded.value
+",
+                params![policy.as_str()],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn homebrew_keg_policy(&self) -> PersistenceResult<HomebrewKegPolicy> {
+        self.with_connection("homebrew_keg_policy", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection
+                .prepare("SELECT value FROM app_settings WHERE key = 'homebrew_keg_policy'")?;
+            let mut rows = statement.query([])?;
+            let Some(row) = rows.next()? else {
+                return Ok(HomebrewKegPolicy::Keep);
+            };
+            let value: String = row.get(0)?;
+            Ok(value
+                .trim()
+                .parse::<HomebrewKegPolicy>()
+                .unwrap_or(HomebrewKegPolicy::Keep))
+        })
+    }
+
+    fn set_package_keg_policy(
+        &self,
+        package: &PackageRef,
+        policy: Option<HomebrewKegPolicy>,
+    ) -> PersistenceResult<()> {
+        self.with_connection("set_package_keg_policy", |connection| {
+            ensure_schema_ready(connection)?;
+
+            match policy {
+                Some(policy) => {
+                    connection.execute(
+                        "
+INSERT INTO package_keg_policies (manager_id, package_name, policy, updated_at_unix)
+VALUES (?1, ?2, ?3, strftime('%s', 'now'))
+ON CONFLICT(manager_id, package_name) DO UPDATE SET
+    policy = excluded.policy,
+    updated_at_unix = excluded.updated_at_unix
+",
+                        params![package.manager.as_str(), package.name.as_str(), policy.as_str()],
+                    )?;
+                }
+                None => {
+                    connection.execute(
+                        "DELETE FROM package_keg_policies WHERE manager_id = ?1 AND package_name = ?2",
+                        params![package.manager.as_str(), package.name.as_str()],
+                    )?;
+                }
+            }
+
+            Ok(())
+        })
+    }
+
+    fn package_keg_policy(
+        &self,
+        package: &PackageRef,
+    ) -> PersistenceResult<Option<HomebrewKegPolicy>> {
+        self.with_connection("package_keg_policy", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection.prepare(
+                "
+SELECT policy
+FROM package_keg_policies
+WHERE manager_id = ?1 AND package_name = ?2
+",
+            )?;
+            let mut rows =
+                statement.query(params![package.manager.as_str(), package.name.as_str()])?;
+            let Some(row) = rows.next()? else {
+                return Ok(None);
+            };
+            let value: String = row.get(0)?;
+            Ok(value.trim().parse::<HomebrewKegPolicy>().ok())
+        })
+    }
+
+    fn list_package_keg_policies(&self) -> PersistenceResult<Vec<PackageKegPolicy>> {
+        self.with_connection("list_package_keg_policies", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection.prepare(
+                "
+SELECT manager_id, package_name, policy
+FROM package_keg_policies
+ORDER BY manager_id, package_name
+",
+            )?;
+            let rows = statement.query_map([], |row| {
+                let manager_raw: String = row.get(0)?;
+                let package_name: String = row.get(1)?;
+                let policy_raw: String = row.get(2)?;
+
+                let manager = parse_manager_id(&manager_raw)?;
+                let policy = policy_raw
+                    .parse::<HomebrewKegPolicy>()
+                    .map_err(|_| storage_error_sqlite("invalid keg policy value"))?;
+
+                Ok(PackageKegPolicy {
+                    package: PackageRef {
+                        manager,
+                        name: package_name,
+                    },
+                    policy,
+                })
+            })?;
+
+            rows.collect()
         })
     }
 }

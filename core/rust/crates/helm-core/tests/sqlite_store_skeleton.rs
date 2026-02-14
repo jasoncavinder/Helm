@@ -2,8 +2,9 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use helm_core::models::{
-    CachedSearchResult, CoreErrorKind, InstalledPackage, ManagerId, OutdatedPackage,
-    PackageCandidate, PackageRef, PinKind, PinRecord, TaskId, TaskRecord, TaskStatus, TaskType,
+    CachedSearchResult, CoreErrorKind, HomebrewKegPolicy, InstalledPackage, ManagerId,
+    OutdatedPackage, PackageCandidate, PackageRef, PinKind, PinRecord, TaskId, TaskRecord,
+    TaskStatus, TaskType,
 };
 use helm_core::persistence::{
     DetectionStore, MigrationStore, PackageStore, PinStore, SearchCacheStore, TaskStore,
@@ -232,6 +233,67 @@ fn safe_mode_defaults_false_and_roundtrips() {
     assert!(store.safe_mode().unwrap());
     store.set_safe_mode(false).unwrap();
     assert!(!store.safe_mode().unwrap());
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn homebrew_keg_policy_defaults_keep_and_roundtrips() {
+    let path = test_db_path("keg-policy-roundtrip");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    assert_eq!(
+        store.homebrew_keg_policy().unwrap(),
+        HomebrewKegPolicy::Keep
+    );
+    store
+        .set_homebrew_keg_policy(HomebrewKegPolicy::Cleanup)
+        .unwrap();
+    assert_eq!(
+        store.homebrew_keg_policy().unwrap(),
+        HomebrewKegPolicy::Cleanup
+    );
+    store
+        .set_homebrew_keg_policy(HomebrewKegPolicy::Keep)
+        .unwrap();
+    assert_eq!(
+        store.homebrew_keg_policy().unwrap(),
+        HomebrewKegPolicy::Keep
+    );
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn package_keg_policy_roundtrip_and_clear() {
+    let path = test_db_path("package-keg-policy-roundtrip");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let package = PackageRef {
+        manager: ManagerId::HomebrewFormula,
+        name: "sevenzip".to_string(),
+    };
+
+    assert!(store.package_keg_policy(&package).unwrap().is_none());
+
+    store
+        .set_package_keg_policy(&package, Some(HomebrewKegPolicy::Cleanup))
+        .unwrap();
+    assert_eq!(
+        store.package_keg_policy(&package).unwrap(),
+        Some(HomebrewKegPolicy::Cleanup)
+    );
+
+    let listed = store.list_package_keg_policies().unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].package.name, "sevenzip");
+    assert_eq!(listed[0].policy, HomebrewKegPolicy::Cleanup);
+
+    store.set_package_keg_policy(&package, None).unwrap();
+    assert!(store.package_keg_policy(&package).unwrap().is_none());
+    assert!(store.list_package_keg_policies().unwrap().is_empty());
 
     let _ = std::fs::remove_file(path);
 }

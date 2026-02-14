@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use crate::adapters::detect_utils::which_executable;
 use crate::adapters::homebrew::{
-    HomebrewDetectOutput, HomebrewSource, homebrew_detect_request, homebrew_install_request,
-    homebrew_list_installed_request, homebrew_list_outdated_request, homebrew_pin_request,
-    homebrew_search_local_request, homebrew_uninstall_request, homebrew_unpin_request,
-    homebrew_upgrade_request,
+    HomebrewDetectOutput, HomebrewSource, homebrew_cleanup_request, homebrew_detect_request,
+    homebrew_install_request, homebrew_list_installed_request, homebrew_list_outdated_request,
+    homebrew_pin_request, homebrew_search_local_request, homebrew_uninstall_request,
+    homebrew_unpin_request, homebrew_upgrade_request,
 };
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::process_utils::{run_and_collect_stdout, run_and_collect_version_output};
@@ -75,6 +75,11 @@ impl HomebrewSource for ProcessHomebrewSource {
     fn upgrade_formula(&self, name: Option<&str>) -> AdapterResult<String> {
         let target = name.unwrap_or("__all__");
         let request = self.configure_request(homebrew_upgrade_request(None, target));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn cleanup_formula(&self, name: &str) -> AdapterResult<String> {
+        let request = self.configure_request(homebrew_cleanup_request(None, name));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 

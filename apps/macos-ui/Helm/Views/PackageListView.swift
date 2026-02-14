@@ -63,6 +63,22 @@ struct PackageListView: View {
         }
     }
 
+    private func kegPolicyMenuSelection(for package: PackageItem) -> KegPolicyMenuSelection? {
+        guard package.managerId == "homebrew_formula", package.status != .available else {
+            return nil
+        }
+
+        let selection = core.kegPolicySelection(for: package)
+        switch selection {
+        case .useGlobal:
+            return .useGlobal
+        case .keep:
+            return .keep
+        case .cleanup:
+            return .cleanup
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Connection banner
@@ -140,6 +156,19 @@ struct PackageListView: View {
                                 package: package,
                                 isPinActionInFlight: core.pinActionPackageIds.contains(package.id),
                                 isUpgradeActionInFlight: core.upgradeActionPackageIds.contains(package.id),
+                                kegPolicySelection: kegPolicyMenuSelection(for: package),
+                                onSelectKegPolicy: package.managerId == "homebrew_formula"
+                                    ? { selection in
+                                        switch selection {
+                                        case .useGlobal:
+                                            core.setKegPolicySelection(for: package, selection: .useGlobal)
+                                        case .keep:
+                                            core.setKegPolicySelection(for: package, selection: .keep)
+                                        case .cleanup:
+                                            core.setKegPolicySelection(for: package, selection: .cleanup)
+                                        }
+                                    }
+                                    : nil,
                                 onUpgrade: core.canUpgradeIndividually(package)
                                     ? { core.upgradePackage(package) }
                                     : nil,

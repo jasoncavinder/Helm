@@ -38,6 +38,23 @@ struct CoreSearchResult: Codable {
     let sourceManager: String
 }
 
+enum HomebrewKegPolicyOverride: String, Codable {
+    case keep
+    case cleanup
+}
+
+struct CorePackageKegPolicy: Codable {
+    let managerId: String
+    let packageName: String
+    let policy: HomebrewKegPolicyOverride
+}
+
+enum KegPolicySelection {
+    case useGlobal
+    case keep
+    case cleanup
+}
+
 struct ManagerStatus: Codable {
     let managerId: String
     let detected: Bool
@@ -67,6 +84,8 @@ final class HelmCore: ObservableObject {
     @Published var managerOperations: [String: String] = [:]
     @Published var pinActionPackageIds: Set<String> = []
     @Published var upgradeActionPackageIds: Set<String> = []
+    @Published var homebrewKegAutoCleanupEnabled: Bool = false
+    @Published var packageKegPolicyOverrides: [String: HomebrewKegPolicyOverride] = [:]
     @Published var safeModeEnabled: Bool = false
     @Published var selectedManagerFilter: String? = nil
     @Published var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
@@ -113,6 +132,8 @@ final class HelmCore: ObservableObject {
             startPolling()
         }
         fetchSafeMode()
+        fetchHomebrewKegAutoCleanup()
+        fetchPackageKegPolicies()
     }
 
     func scheduleReconnection() {
@@ -425,10 +446,97 @@ final class HelmCore: ObservableObject {
         }
     }
 
+    func fetchHomebrewKegAutoCleanup() {
+        service()?.getHomebrewKegAutoCleanup { [weak self] enabled in
+            DispatchQueue.main.async {
+                self?.homebrewKegAutoCleanupEnabled = enabled
+            }
+        }
+    }
+
+    func setHomebrewKegAutoCleanup(_ enabled: Bool) {
+        service()?.setHomebrewKegAutoCleanup(enabled: enabled) { [weak self] success in
+            DispatchQueue.main.async {
+                if success {
+                    self?.homebrewKegAutoCleanupEnabled = enabled
+                } else {
+                    logger.error("setHomebrewKegAutoCleanup(\(enabled)) failed")
+                }
+            }
+        }
+    }
+
+    func fetchPackageKegPolicies() {
+        service()?.listPackageKegPolicies { [weak self] jsonString in
+            guard let jsonString = jsonString, let data = jsonString.data(using: .utf8) else { return }
+
+            do {
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                let entries = try decoder.decode([CorePackageKegPolicy].self, from: data)
+
+                DispatchQueue.main.async {
+                    var overrides: [String: HomebrewKegPolicyOverride] = [:]
+                    for entry in entries where entry.managerId == "homebrew_formula" {
+                        overrides["\(entry.managerId):\(entry.packageName)"] = entry.policy
+                    }
+                    self?.packageKegPolicyOverrides = overrides
+                }
+            } catch {
+                logger.error("Failed to decode package keg policies: \(error)")
+            }
+        }
+    }
+
     func upgradeAll(includePinned: Bool = false, allowOsUpdates: Bool = false) {
         service()?.upgradeAll(includePinned: includePinned, allowOsUpdates: allowOsUpdates) { success in
             if !success {
                 logger.error("upgradeAll(includePinned: \(includePinned), allowOsUpdates: \(allowOsUpdates)) failed")
+            }
+        }
+    }
+
+    func kegPolicySelection(for package: PackageItem) -> KegPolicySelection {
+        guard package.managerId == "homebrew_formula" else { return .useGlobal }
+
+        switch packageKegPolicyOverrides[package.id] {
+        case .keep:
+            return .keep
+        case .cleanup:
+            return .cleanup
+        case .none:
+            return .useGlobal
+        }
+    }
+
+    func setKegPolicySelection(for package: PackageItem, selection: KegPolicySelection) {
+        guard package.managerId == "homebrew_formula" else { return }
+
+        let policyMode: Int32
+        switch selection {
+        case .useGlobal:
+            policyMode = -1
+        case .keep:
+            policyMode = 0
+        case .cleanup:
+            policyMode = 1
+        }
+
+        service()?.setPackageKegPolicy(managerId: package.managerId, packageName: package.name, policyMode: policyMode) { [weak self] success in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                guard success else {
+                    logger.error("setPackageKegPolicy(\(package.managerId):\(package.name), \(policyMode)) failed")
+                    return
+                }
+                switch selection {
+                case .useGlobal:
+                    self.packageKegPolicyOverrides.removeValue(forKey: package.id)
+                case .keep:
+                    self.packageKegPolicyOverrides[package.id] = .keep
+                case .cleanup:
+                    self.packageKegPolicyOverrides[package.id] = .cleanup
+                }
             }
         }
     }
@@ -465,7 +573,7 @@ final class HelmCore: ObservableObject {
                 self.registerManagerActionTask(
                     managerId: package.managerId,
                     taskId: UInt64(taskId),
-                    description: "Upgrade \(package.name) via \(self.normalizedManagerName(package.managerId))",
+                    description: self.upgradeActionDescription(for: package),
                     inProgressText: "Upgrading..."
                 )
             }
@@ -544,6 +652,8 @@ final class HelmCore: ObservableObject {
                     self?.cachedAvailablePackages = []
                     self?.detectedManagers = []
                     self?.managerStatuses = [:]
+                    self?.packageKegPolicyOverrides = [:]
+                    self?.homebrewKegAutoCleanupEnabled = false
                     self?.searchText = ""
                     self?.isRefreshing = false
                     self?.lastRefreshTrigger = nil
@@ -739,6 +849,29 @@ final class HelmCore: ObservableObject {
                 managerActionTaskByManager.removeValue(forKey: managerId)
             }
         }
+    }
+
+    private func shouldCleanupOldKegs(for package: PackageItem) -> Bool {
+        if package.managerId != "homebrew_formula" {
+            return false
+        }
+
+        switch kegPolicySelection(for: package) {
+        case .cleanup:
+            return true
+        case .keep:
+            return false
+        case .useGlobal:
+            return homebrewKegAutoCleanupEnabled
+        }
+    }
+
+    private func upgradeActionDescription(for package: PackageItem) -> String {
+        let base = "Upgrade \(package.name) via \(normalizedManagerName(package.managerId))"
+        if shouldCleanupOldKegs(for: package) {
+            return "\(base) (cleanup old kegs)"
+        }
+        return base
     }
 
     private func managerActionDescription(action: String, managerId: String) -> String {

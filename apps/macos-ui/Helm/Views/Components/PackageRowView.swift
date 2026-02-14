@@ -1,9 +1,17 @@
 import SwiftUI
 
+enum KegPolicyMenuSelection {
+    case useGlobal
+    case keep
+    case cleanup
+}
+
 struct PackageRowView: View {
     let package: PackageItem
     var isPinActionInFlight: Bool = false
     var isUpgradeActionInFlight: Bool = false
+    var kegPolicySelection: KegPolicyMenuSelection? = nil
+    var onSelectKegPolicy: ((KegPolicyMenuSelection) -> Void)? = nil
     var onUpgrade: (() -> Void)? = nil
     var onTogglePin: (() -> Void)? = nil
 
@@ -42,6 +50,49 @@ struct PackageRowView: View {
 
             VStack(alignment: .trailing, spacing: 2) {
                 HStack(spacing: 6) {
+                    if let onSelectKegPolicy, let kegPolicySelection {
+                        Menu {
+                            Button {
+                                onSelectKegPolicy(.useGlobal)
+                            } label: {
+                                HStack {
+                                    Text("Use Global")
+                                    if kegPolicySelection == .useGlobal {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+
+                            Button {
+                                onSelectKegPolicy(.keep)
+                            } label: {
+                                HStack {
+                                    Text("Keep Old Kegs")
+                                    if kegPolicySelection == .keep {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+
+                            Button {
+                                onSelectKegPolicy(.cleanup)
+                            } label: {
+                                HStack {
+                                    Text("Cleanup Old Kegs")
+                                    if kegPolicySelection == .cleanup {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "shippingbox")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .menuStyle(.borderlessButton)
+                        .help("Homebrew keg policy")
+                    }
+
                     if let onUpgrade {
                         if isUpgradeActionInFlight {
                             ProgressView()

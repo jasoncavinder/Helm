@@ -32,6 +32,7 @@ const HOMEBREW_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
 };
 
 const HOMEBREW_COMMAND: &str = "brew";
+const HOMEBREW_CLEANUP_MARKER: &str = "@@helm.cleanup";
 const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
 const LIST_TIMEOUT: Duration = Duration::from_secs(60);
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(30);
@@ -58,6 +59,8 @@ pub trait HomebrewSource: Send + Sync {
     fn uninstall_formula(&self, name: &str) -> AdapterResult<String>;
 
     fn upgrade_formula(&self, name: Option<&str>) -> AdapterResult<String>;
+
+    fn cleanup_formula(&self, name: &str) -> AdapterResult<String>;
 
     fn pin_formula(&self, name: &str) -> AdapterResult<String>;
 
@@ -143,11 +146,20 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                 }))
             }
             AdapterRequest::Upgrade(upgrade_request) => {
-                let package = upgrade_request.package.unwrap_or(PackageRef {
+                let requested_package = upgrade_request.package.unwrap_or(PackageRef {
                     manager: ManagerId::HomebrewFormula,
                     name: "__all__".to_string(),
                 });
-                let _ = self.source.upgrade_formula(Some(package.name.as_str()))?;
+                let (target_name, cleanup_after_upgrade) =
+                    split_upgrade_target(requested_package.name.as_str());
+                let _ = self.source.upgrade_formula(Some(target_name))?;
+                if cleanup_after_upgrade && target_name != "__all__" && target_name != "__self__" {
+                    let _ = self.source.cleanup_formula(target_name)?;
+                }
+                let package = PackageRef {
+                    manager: requested_package.manager,
+                    name: target_name.to_string(),
+                };
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
                     action: ManagerAction::Upgrade,
@@ -257,6 +269,24 @@ pub fn homebrew_upgrade_request(task_id: Option<TaskId>, name: &str) -> ProcessS
         command,
         INSTALL_TIMEOUT,
     )
+}
+
+pub fn homebrew_cleanup_request(task_id: Option<TaskId>, name: &str) -> ProcessSpawnRequest {
+    homebrew_request(
+        task_id,
+        TaskType::Upgrade,
+        ManagerAction::Upgrade,
+        CommandSpec::new(HOMEBREW_COMMAND).args(["cleanup", name]),
+        INSTALL_TIMEOUT,
+    )
+}
+
+fn split_upgrade_target(name: &str) -> (&str, bool) {
+    if let Some(stripped) = name.strip_suffix(HOMEBREW_CLEANUP_MARKER) {
+        (stripped, true)
+    } else {
+        (name, false)
+    }
 }
 
 pub fn homebrew_pin_request(task_id: Option<TaskId>, name: &str) -> ProcessSpawnRequest {
@@ -674,11 +704,11 @@ mod tests {
     use crate::models::{CoreError, CoreErrorKind, ManagerAction, SearchQuery, TaskId, TaskType};
 
     use super::{
-        HomebrewAdapter, HomebrewDetectOutput, HomebrewSource, homebrew_detect_request,
-        homebrew_list_installed_request, homebrew_list_outdated_request, homebrew_pin_request,
-        homebrew_search_local_request, homebrew_unpin_request, homebrew_upgrade_request,
-        parse_homebrew_version, parse_installed_formulae, parse_outdated_formulae,
-        parse_search_formulae,
+        HomebrewAdapter, HomebrewDetectOutput, HomebrewSource, homebrew_cleanup_request,
+        homebrew_detect_request, homebrew_list_installed_request, homebrew_list_outdated_request,
+        homebrew_pin_request, homebrew_search_local_request, homebrew_unpin_request,
+        homebrew_upgrade_request, parse_homebrew_version, parse_installed_formulae,
+        parse_outdated_formulae, parse_search_formulae,
     };
 
     const INSTALLED_FIXTURE: &str =
@@ -991,6 +1021,35 @@ mod tests {
             vec!["upgrade".to_string(), "mise".to_string()]
         );
         assert_eq!(formula_upgrade.task_id, Some(TaskId(7)));
+
+        let cleanup = homebrew_cleanup_request(None, "sevenzip");
+        assert_eq!(
+            cleanup.command.args,
+            vec!["cleanup".to_string(), "sevenzip".to_string()]
+        );
+        assert_eq!(cleanup.task_type, TaskType::Upgrade);
+        assert_eq!(cleanup.action, ManagerAction::Upgrade);
+    }
+
+    #[test]
+    fn adapter_upgrade_supports_cleanup_marker_target() {
+        let source = FixtureSource::default();
+        let adapter = HomebrewAdapter::new(source);
+
+        let result = adapter
+            .execute(AdapterRequest::Upgrade(crate::adapters::UpgradeRequest {
+                package: Some(crate::models::PackageRef {
+                    manager: crate::models::ManagerId::HomebrewFormula,
+                    name: format!("sevenzip{}", super::HOMEBREW_CLEANUP_MARKER),
+                }),
+            }))
+            .unwrap();
+        match result {
+            AdapterResponse::Mutation(mutation) => {
+                assert_eq!(mutation.package.name, "sevenzip");
+            }
+            _ => panic!("expected mutation response"),
+        }
     }
 
     #[test]
@@ -1064,6 +1123,10 @@ mod tests {
         }
 
         fn upgrade_formula(&self, _name: Option<&str>) -> AdapterResult<String> {
+            Ok(String::new())
+        }
+
+        fn cleanup_formula(&self, _name: &str) -> AdapterResult<String> {
             Ok(String::new())
         }
 

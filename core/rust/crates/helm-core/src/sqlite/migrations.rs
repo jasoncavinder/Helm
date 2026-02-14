@@ -129,11 +129,29 @@ DROP TABLE IF EXISTS app_settings;
 "#,
 };
 
-const MIGRATIONS: [SqliteMigration; 4] = [
+const MIGRATION_0005: SqliteMigration = SqliteMigration {
+    version: 5,
+    name: "add_homebrew_keg_policy_overrides",
+    up_sql: r#"
+CREATE TABLE IF NOT EXISTS package_keg_policies (
+    manager_id TEXT NOT NULL,
+    package_name TEXT NOT NULL,
+    policy TEXT NOT NULL,
+    updated_at_unix INTEGER NOT NULL,
+    PRIMARY KEY (manager_id, package_name)
+);
+"#,
+    down_sql: r#"
+DROP TABLE IF EXISTS package_keg_policies;
+"#,
+};
+
+const MIGRATIONS: [SqliteMigration; 5] = [
     MIGRATION_0001,
     MIGRATION_0002,
     MIGRATION_0003,
     MIGRATION_0004,
+    MIGRATION_0005,
 ];
 
 pub fn migrations() -> &'static [SqliteMigration] {
