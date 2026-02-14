@@ -349,9 +349,9 @@ This scope is planned for 1.x and is not a 1.0 release gate.
 1. `0.1.x-0.3.x` foundation (completed): Rust core contracts, SQLite persistence, orchestration queue, cancellation semantics.
 2. `0.4.x-0.5.x` shell + search (completed): SwiftUI menu bar shell, XPC/FFI bridge, progressive local-first search with remote enrichment.
 3. `0.6.x-0.7.x` manager expansion (completed): mise/rustup/softwareupdate/mas adapters, authority ordering, restart-required surfacing, manager controls.
-4. `0.8.x` pinning and policy enforcement (next): native/virtual pin model, pin-aware upgrade-all, safe mode guardrails.
-5. `0.9.x-0.10.x` package manager coverage: core and extended language manager adapters with capability-complete operations.
-6. `0.11.x-0.15.x` hardening and operator workflows: reliability, automation rules, cross-machine state, and scale.
+4. `0.8.x` pinning and policy enforcement (beta): native/virtual pin model, pin-aware upgrade-all, safe mode guardrails.
+5. `0.9.x-0.12.x` globalization & language coverage (planned): i18n foundation, core/extended language adapters (npm/pip/cargo etc), full localization.
+6. `0.13.x-0.17.x` platform, reliability & hardening (planned): platform managers (docker/xcode), upgrade previews, self-update, diagnostics, stress testing.
 7. `1.0.0` stabilization: release criteria closure, documentation lock, and production readiness sign-off.
 
 ---
