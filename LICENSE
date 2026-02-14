@@ -1,0 +1,103 @@
+Helm Source-Available License v1.0 (Pre-1.0 Non-Commercial)
+
+Copyright (c) 2026 Jason Cavinder
+
+All rights reserved.
+
+This license governs the use of the Helm software and associated source code (the "Software").
+
+---
+
+1. Definitions
+
+"Software" means all source code, binaries, documentation, and associated materials provided in this repository.
+
+"Non-Commercial Use" means use of the Software for personal, educational, or evaluation purposes, and not primarily intended for or directed toward commercial advantage or monetary compensation.
+
+"Commercial Use" means any use of the Software in a business environment for production purposes, revenue generation, or internal operations that support commercial activity.
+
+"Official Distribution Channels" means the original repository, official release artifacts, and any distribution explicitly authorized by the Licensor.
+
+---
+
+2. License Grant
+
+Subject to the terms of this license, you are granted a limited, non-exclusive, non-transferable, revocable license to:
+
+(a) View and access the source code for reference and evaluation purposes.
+
+(b) Use the Software for Non-Commercial Use.
+
+(c) Install and execute unmodified binaries of the Software.
+
+(d) Redistribute unmodified binaries obtained from Official Distribution Channels solely for Non-Commercial Use and installation purposes, provided this license is included.
+
+---
+
+3. Evaluation in Business Environments
+
+You may use the Software in a business or organizational environment solely for internal evaluation and testing purposes, provided that such use is not for production or commercial advantage.
+
+---
+
+4. Restrictions
+
+You may not, without prior written permission from the Licensor:
+
+(a) Use the Software for Commercial Use.
+
+(b) Copy, modify, distribute, sublicense, or create derivative works of the source code.
+
+(c) Redistribute modified versions of the Software, including modified binaries.
+
+(d) Use the Software, or any portion of it, to develop, distribute, or offer a competing product or service.
+
+(e) Provide the Software as a hosted or managed service (SaaS, PaaS, or similar).
+
+(f) Remove or alter any copyright, license, or attribution notices.
+
+---
+
+5. Ownership
+
+The Software is licensed, not sold. All rights, title, and interest in and to the Software remain with the Licensor.
+
+---
+
+6. Contributions
+
+By contributing to the Software, you agree to the terms of the Contributor License Agreement (CLA) included in this repository.
+
+---
+
+7. Future Licensing
+
+The Licensor reserves the right to offer the Software under different terms, including commercial or open source licenses, in future versions.
+
+No rights are granted to use future versions under the terms of this license.
+
+---
+
+8. Termination
+
+This license is effective until terminated. It will terminate automatically if you violate any of its terms.
+
+Upon termination, you must cease all use of the Software and delete all copies in your possession.
+
+---
+
+9. Disclaimer of Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+
+---
+
+10. Limitation of Liability
+
+IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM OR RELATED TO THE SOFTWARE OR ITS USE.
+
+---
+
+11. Governing Law
+
+This license shall be governed by and construed in accordance with the laws of the Licensor’s jurisdiction.
