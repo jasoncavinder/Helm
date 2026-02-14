@@ -122,6 +122,14 @@ See [`docs/VERSIONING.md`](docs/VERSIONING.md) for the versioning strategy.
 - [Business Central Management Spec](docs/enterprise/BUSINESS_CENTRAL_MANAGEMENT_SPEC.md) — Scoped policy, drift, and compliance model
 - [Enterprise GTM Matrix](docs/enterprise/GTM_PERSONA_MATRIX.md) — Persona messaging and pilot KPI framework
 
+## Future Licensing
+
+Helm is currently released under a source-available, non-commercial license.
+
+The licensing model will evolve at or after version 1.0 to support commercial use and additional editions.
+
+See [docs/LICENSING_STRATEGY.md](docs/LICENSING_STRATEGY.md) for details.
+
 ## License
 
 Helm is currently released under a **source-available, non-commercial license** (pre-1.0).
