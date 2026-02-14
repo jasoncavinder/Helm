@@ -365,6 +365,21 @@ This scope is planned for 1.x and is not a 1.0 release gate.
 
 ---
 
+## Licensing Strategy (Pre-1.0)
+
+Helm is currently distributed under a source-available, non-commercial license.
+
+Goals:
+
+- Allow evaluation and feedback during development
+- Prevent unauthorized commercial use before 1.0
+- Prevent reuse of Helm source code in other projects
+- Preserve flexibility for future licensing models (proprietary, open core, or open source)
+
+All contributions are subject to a Contributor License Agreement (CLA), allowing relicensing in future versions.
+
+---
+
 ## **Notes**
 
 - Managers run in parallel across categories; within one manager they run serially.
