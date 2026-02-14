@@ -99,12 +99,21 @@ class LocalizationManager: ObservableObject {
     private func candidateFileURLs(for file: String, locale: String) -> [URL] {
         var urls: [URL] = []
 
-        if let scoped = Bundle.main.url(
-            forResource: file,
-            withExtension: "json",
-            subdirectory: "locales/\(locale)"
-        ) {
-            urls.append(scoped)
+        // Handle both bundle layouts:
+        // 1) locales/<locale>/<file>.json
+        // 2) Resources/locales/<locale>/<file>.json (folder-reference copy)
+        let scopedDirectories = [
+            "locales/\(locale)",
+            "Resources/locales/\(locale)",
+        ]
+        for directory in scopedDirectories {
+            if let scoped = Bundle.main.url(
+                forResource: file,
+                withExtension: "json",
+                subdirectory: directory
+            ) {
+                urls.append(scoped)
+            }
         }
 
         // Flat fallback is only safe for default locale.

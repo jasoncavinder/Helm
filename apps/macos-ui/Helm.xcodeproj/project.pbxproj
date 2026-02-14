@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		8CD965322F40F02800AE2AF5 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = 8CD965312F40F02800AE2AF5 /* Resources */; };
 		8CE1FDCB2F3D2AD8000A3945 /* HelmService.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = 8CE1FDC02F3D2AD7000A3945 /* HelmService.xpc */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		8CE1FDD22F3D2B84000A3945 /* HelmServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE1FDD12F3D2B84000A3945 /* HelmServiceProtocol.swift */; };
 		8CE1FDD32F3D2B84000A3945 /* HelmServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE1FDD12F3D2B84000A3945 /* HelmServiceProtocol.swift */; };
@@ -67,6 +68,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		8CD965312F40F02800AE2AF5 /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources; sourceTree = "<group>"; };
 		8CE1FDC02F3D2AD7000A3945 /* HelmService.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = HelmService.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
 		8CE1FDD12F3D2B84000A3945 /* HelmServiceProtocol.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = HelmServiceProtocol.swift; sourceTree = "<group>"; };
 		8CE1FDD52F3D2BA9000A3945 /* HelmService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = HelmService.swift; sourceTree = "<group>"; };
@@ -171,17 +173,17 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-			8CFB6D4A2F3D1D1D002372B8 /* Core */ = {
-				isa = PBXGroup;
-				children = (
-					8CFB6D4B2F3D1D1D002372B8 /* HelmCore.swift */,
-					B10000000000000000000015 /* LocalizationManager.swift */,
-					B10000000000000000000016 /* String+Localization.swift */,
-					B10000000000000000000017 /* L10n.swift */,
-				);
-				path = Core;
-				sourceTree = "<group>";
-			};
+		8CFB6D4A2F3D1D1D002372B8 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				8CFB6D4B2F3D1D1D002372B8 /* HelmCore.swift */,
+				B10000000000000000000015 /* LocalizationManager.swift */,
+				B10000000000000000000016 /* String+Localization.swift */,
+				B10000000000000000000017 /* L10n.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
 		8CFB6D4C2F3D1D1D002372B8 /* Views */ = {
 			isa = PBXGroup;
 			children = (
@@ -253,6 +255,7 @@
 		A10000040000000000000002 /* Helm */ = {
 			isa = PBXGroup;
 			children = (
+				8CD965312F40F02800AE2AF5 /* Resources */,
 				8CE1FDD02F3D2B84000A3945 /* Shared */,
 				8CFB6D4A2F3D1D1D002372B8 /* Core */,
 				8CFB6D4F2F3D1D1D002372B8 /* Helm-Bridging-Header.h */,
@@ -389,6 +392,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8CD965322F40F02800AE2AF5 /* Resources in Resources */,
 				A10000010000000000000003 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -432,14 +436,14 @@
 		A10000060000000000000001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
-				files = (
-					8CFB6D5A2F3D1D1D002372B8 /* Package.swift in Sources */,
-					8CFB6D572F3D1D1D002372B8 /* HelmCore.swift in Sources */,
-					B20000000000000000000015 /* LocalizationManager.swift in Sources */,
-					B20000000000000000000016 /* String+Localization.swift in Sources */,
-					B20000000000000000000017 /* L10n.swift in Sources */,
-					A10000010000000000000001 /* HelmApp.swift in Sources */,
-					8CFB6D592F3D1D1D002372B8 /* PackageListView.swift in Sources */,
+			files = (
+				8CFB6D5A2F3D1D1D002372B8 /* Package.swift in Sources */,
+				8CFB6D572F3D1D1D002372B8 /* HelmCore.swift in Sources */,
+				B20000000000000000000015 /* LocalizationManager.swift in Sources */,
+				B20000000000000000000016 /* String+Localization.swift in Sources */,
+				B20000000000000000000017 /* L10n.swift in Sources */,
+				A10000010000000000000001 /* HelmApp.swift in Sources */,
+				8CFB6D592F3D1D1D002372B8 /* PackageListView.swift in Sources */,
 				A10000010000000000000002 /* AppDelegate.swift in Sources */,
 				8CE1FDD22F3D2B84000A3945 /* HelmServiceProtocol.swift in Sources */,
 				A30000000000000000000002 /* HelmVersion.swift in Sources */,
