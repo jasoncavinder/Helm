@@ -348,7 +348,7 @@ fn parse_detection_output(output: HomebrewDetectOutput) -> DetectionInfo {
     }
 }
 
-pub(crate) fn parse_homebrew_version(output: &str) -> Option<String> {
+pub fn parse_homebrew_version(output: &str) -> Option<String> {
     let sanitized = strip_ansi_escape_sequences(output);
 
     for line in sanitized
@@ -478,16 +478,18 @@ fn parse_outdated_formulae(output: &str) -> AdapterResult<Vec<OutdatedPackage>> 
         .filter(|line| !line.is_empty())
     {
         match parse_outdated_line(line) {
-            Some((name, installed_version, candidate_version, pinned)) => parsed.push(OutdatedPackage {
-                package: PackageRef {
-                    manager: ManagerId::HomebrewFormula,
-                    name,
-                },
-                installed_version,
-                candidate_version,
-                pinned,
-                restart_required: false,
-            }),
+            Some((name, installed_version, candidate_version, pinned)) => {
+                parsed.push(OutdatedPackage {
+                    package: PackageRef {
+                        manager: ManagerId::HomebrewFormula,
+                        name,
+                    },
+                    installed_version,
+                    candidate_version,
+                    pinned,
+                    restart_required: false,
+                })
+            }
             None => {
                 if !looks_like_outdated_line(line) {
                     malformed_lines += 1;
@@ -805,8 +807,8 @@ mod tests {
 
     #[test]
     fn parses_outdated_formulae_marks_pinned_entries() {
-        let parsed = parse_outdated_formulae("libzip (1.11.4) < 1.11.4_1 [pinned at 1.11.4]")
-            .unwrap();
+        let parsed =
+            parse_outdated_formulae("libzip (1.11.4) < 1.11.4_1 [pinned at 1.11.4]").unwrap();
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].package.name, "libzip");
         assert_eq!(parsed[0].installed_version.as_deref(), Some("1.11.4"));

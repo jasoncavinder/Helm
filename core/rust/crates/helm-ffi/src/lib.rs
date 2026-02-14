@@ -1,5 +1,6 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::time::UNIX_EPOCH;
@@ -20,10 +21,10 @@ use helm_core::adapters::{
 };
 use helm_core::execution::tokio_process::TokioProcessExecutor;
 use helm_core::models::{
-    HomebrewKegPolicy, ManagerId, PackageRef, PinKind, PinRecord, SearchQuery,
+    DetectionInfo, HomebrewKegPolicy, ManagerId, PackageRef, PinKind, PinRecord, SearchQuery,
 };
-use helm_core::orchestration::{AdapterTaskTerminalState, CancellationMode};
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
+use helm_core::orchestration::{AdapterTaskTerminalState, CancellationMode};
 use helm_core::persistence::{
     DetectionStore, MigrationStore, PackageStore, PinStore, SearchCacheStore, TaskStore,
 };
@@ -68,6 +69,102 @@ fn effective_homebrew_keg_policy(store: &SqliteStore, package_name: &str) -> Hom
     store
         .homebrew_keg_policy()
         .unwrap_or(HomebrewKegPolicy::Keep)
+}
+
+fn normalize_nonempty(value: Option<String>) -> Option<String> {
+    value
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
+fn homebrew_probe_candidates(executable_path: Option<&std::path::Path>) -> Vec<std::ffi::OsString> {
+    let mut candidates = Vec::new();
+    let mut push_unique = |candidate: std::ffi::OsString| {
+        if !candidates.iter().any(|existing| existing == &candidate) {
+            candidates.push(candidate);
+        }
+    };
+
+    if let Some(path) = executable_path {
+        push_unique(path.as_os_str().to_os_string());
+    }
+    push_unique(std::ffi::OsString::from("/opt/homebrew/bin/brew"));
+    push_unique(std::ffi::OsString::from("/usr/local/bin/brew"));
+    push_unique(std::ffi::OsString::from("brew"));
+
+    candidates
+}
+
+fn run_homebrew_probe_output(program: &std::ffi::OsStr, args: &[&str]) -> Option<String> {
+    let output = Command::new(program)
+        .args(args)
+        .env(
+            "PATH",
+            "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        )
+        .env("HOMEBREW_NO_AUTO_UPDATE", "1")
+        .env("HOMEBREW_NO_ENV_HINTS", "1")
+        .output()
+        .ok()?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let mut combined = String::new();
+    if !stdout.trim().is_empty() {
+        combined.push_str(&stdout);
+    }
+    if !stderr.trim().is_empty() {
+        if !combined.is_empty() {
+            combined.push('\n');
+        }
+        combined.push_str(&stderr);
+    }
+
+    normalize_nonempty(Some(combined))
+}
+
+fn parse_homebrew_config_version(output: &str) -> Option<String> {
+    for line in output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+    {
+        if line.to_ascii_lowercase().starts_with("homebrew_version:")
+            && let Some((_, value)) = line.split_once(':')
+        {
+            let parsed = helm_core::adapters::homebrew::parse_homebrew_version(value.trim())
+                .or_else(|| normalize_nonempty(Some(value.trim().to_string())));
+            if parsed.is_some() {
+                return parsed;
+            }
+        }
+    }
+    None
+}
+
+fn probe_homebrew_version(executable_path: Option<&std::path::Path>) -> Option<String> {
+    for candidate in homebrew_probe_candidates(executable_path) {
+        if let Some(version_output) =
+            run_homebrew_probe_output(candidate.as_os_str(), &["--version"])
+            && let Some(version) = normalize_nonempty(
+                helm_core::adapters::homebrew::parse_homebrew_version(&version_output),
+            )
+        {
+            return Some(version);
+        }
+
+        if let Some(config_output) = run_homebrew_probe_output(candidate.as_os_str(), &["config"])
+            && let Some(version) = parse_homebrew_config_version(&config_output).or_else(|| {
+                normalize_nonempty(helm_core::adapters::homebrew::parse_homebrew_version(
+                    &config_output,
+                ))
+            })
+        {
+            return Some(version);
+        }
+    }
+
+    None
 }
 
 /// Initialize the Helm core engine with the given SQLite database path.
@@ -471,20 +568,46 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
             let detection = detection_map.get(&id);
             let enabled = pref_map.get(&id).copied().unwrap_or(true);
             let is_implemented = implemented_ids.contains(&id);
-            FfiManagerStatus {
-                manager_id: id.as_str().to_string(),
-                detected: detection.map(|d| d.installed).unwrap_or(false),
-                version: detection.and_then(|d| {
-                    d.version
-                        .as_ref()
-                        .map(|v| v.trim().to_string())
-                        .filter(|v| !v.is_empty())
-                }),
-                executable_path: detection.and_then(|d| {
+            let mut detected = detection.map(|d| d.installed).unwrap_or(false);
+            let executable_path = detection.and_then(|d| {
+                normalize_nonempty(
                     d.executable_path
                         .as_ref()
-                        .map(|p| p.to_string_lossy().to_string())
-                }),
+                        .map(|p| p.to_string_lossy().to_string()),
+                )
+            });
+            let mut version = detection.and_then(|d| normalize_nonempty(d.version.clone()));
+
+            // Homebrew detection/version probing is occasionally flaky during first detection.
+            // If status is missing or incomplete, probe directly from brew.
+            if id == ManagerId::HomebrewFormula
+                && (version.is_none() || !detected)
+                && let Some(probed) =
+                    probe_homebrew_version(detection.and_then(|d| d.executable_path.as_deref()))
+            {
+                version = Some(probed.clone());
+                detected = true;
+                if let Some(existing) = detection {
+                    let refreshed = DetectionInfo {
+                        installed: true,
+                        executable_path: existing.executable_path.clone(),
+                        version: Some(probed),
+                    };
+                    let _ = state.store.upsert_detection(id, &refreshed);
+                } else {
+                    let refreshed = DetectionInfo {
+                        installed: true,
+                        executable_path: None,
+                        version: Some(probed),
+                    };
+                    let _ = state.store.upsert_detection(id, &refreshed);
+                }
+            }
+            FfiManagerStatus {
+                manager_id: id.as_str().to_string(),
+                detected,
+                version,
+                executable_path,
                 enabled,
                 is_implemented,
             }
@@ -1460,5 +1583,39 @@ pub unsafe extern "C" fn helm_free_string(s: *mut c_char) {
     }
     unsafe {
         let _ = CString::from_raw(s);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{homebrew_probe_candidates, parse_homebrew_config_version};
+    use std::path::Path;
+
+    #[test]
+    fn parses_homebrew_version_from_config_output() {
+        let parsed = parse_homebrew_config_version(
+            "HOMEBREW_VERSION: 5.0.14-52-g807be07\nORIGIN: https://github.com/Homebrew/brew\n",
+        );
+        assert_eq!(parsed.as_deref(), Some("5.0.14-52-g807be07"));
+    }
+
+    #[test]
+    fn homebrew_probe_candidates_include_known_locations_without_duplicates() {
+        let candidates = homebrew_probe_candidates(Some(Path::new("/usr/local/bin/brew")));
+        let as_strings: Vec<String> = candidates
+            .iter()
+            .map(|candidate| candidate.to_string_lossy().to_string())
+            .collect();
+
+        assert!(as_strings.contains(&"/usr/local/bin/brew".to_string()));
+        assert!(as_strings.contains(&"/opt/homebrew/bin/brew".to_string()));
+        assert!(as_strings.contains(&"brew".to_string()));
+        assert_eq!(
+            as_strings
+                .iter()
+                .filter(|candidate| *candidate == "/usr/local/bin/brew")
+                .count(),
+            1
+        );
     }
 }

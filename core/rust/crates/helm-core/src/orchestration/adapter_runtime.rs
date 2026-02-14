@@ -562,9 +562,7 @@ async fn persist_adapter_response(
             }
             AdapterResponse::Mutation(mutation) => match mutation.action {
                 ManagerAction::Pin => package_store.set_snapshot_pinned(&mutation.package, true),
-                ManagerAction::Unpin => {
-                    package_store.set_snapshot_pinned(&mutation.package, false)
-                }
+                ManagerAction::Unpin => package_store.set_snapshot_pinned(&mutation.package, false),
                 ManagerAction::Upgrade => package_store.apply_upgrade_result(&mutation.package),
                 _ => Ok(()),
             },

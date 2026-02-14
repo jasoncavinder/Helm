@@ -494,6 +494,33 @@ fn upsert_detection_preserves_previous_version_when_new_version_is_missing() {
 }
 
 #[test]
+fn upsert_detection_treats_empty_version_as_missing() {
+    let path = test_db_path("detection-empty-version");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    store
+        .upsert_detection(
+            ManagerId::HomebrewFormula,
+            &helm_core::models::DetectionInfo {
+                installed: true,
+                executable_path: Some(PathBuf::from("/usr/local/bin/brew")),
+                version: Some(String::new()),
+            },
+        )
+        .unwrap();
+
+    let detections = store.list_detections().unwrap();
+    let homebrew = detections
+        .into_iter()
+        .find(|(manager, _)| *manager == ManagerId::HomebrewFormula)
+        .expect("homebrew detection should exist");
+    assert_eq!(homebrew.1.version, None);
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn upsert_and_query_search_cache_roundtrip() {
     let path = test_db_path("search-roundtrip");
     let store = SqliteStore::new(&path);

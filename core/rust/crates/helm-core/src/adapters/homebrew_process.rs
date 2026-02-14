@@ -45,7 +45,8 @@ impl HomebrewSource for ProcessHomebrewSource {
             if let Some(path) = executable_path.as_ref() {
                 config_request.command.program = path.clone();
             }
-            let config_output = run_and_collect_version_output(self.executor.as_ref(), config_request);
+            let config_output =
+                run_and_collect_version_output(self.executor.as_ref(), config_request);
             if !config_output.trim().is_empty() {
                 if !version_output.trim().is_empty() {
                     version_output.push('\n');

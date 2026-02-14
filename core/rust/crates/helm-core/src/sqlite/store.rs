@@ -697,15 +697,21 @@ impl DetectionStore for SqliteStore {
             connection.execute(
                 "
 INSERT INTO manager_detection (manager_id, detected, executable_path, version, detected_at_unix)
-VALUES (?1, ?2, ?3, ?4, strftime('%s', 'now'))
+VALUES (?1, ?2, NULLIF(?3, ''), NULLIF(?4, ''), strftime('%s', 'now'))
 ON CONFLICT(manager_id) DO UPDATE SET
     detected = excluded.detected,
     executable_path = CASE
-        WHEN excluded.detected = 1 THEN COALESCE(excluded.executable_path, manager_detection.executable_path)
+        WHEN excluded.detected = 1 THEN COALESCE(
+            NULLIF(excluded.executable_path, ''),
+            NULLIF(manager_detection.executable_path, '')
+        )
         ELSE excluded.executable_path
     END,
     version = CASE
-        WHEN excluded.detected = 1 THEN COALESCE(excluded.version, manager_detection.version)
+        WHEN excluded.detected = 1 THEN COALESCE(
+            NULLIF(excluded.version, ''),
+            NULLIF(manager_detection.version, '')
+        )
         ELSE excluded.version
     END,
     detected_at_unix = excluded.detected_at_unix

@@ -129,7 +129,7 @@ private struct ManagerRow: View {
                         .foregroundColor(manager.isImplemented ? .primary : .secondary)
 
                     HStack(spacing: 6) {
-                        if let version = version {
+                        if let version = version, !version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             Text("v\(version)")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
