@@ -15,7 +15,8 @@ use helm_core::adapters::rustup_process::ProcessRustupSource;
 use helm_core::adapters::softwareupdate::SoftwareUpdateAdapter;
 use helm_core::adapters::softwareupdate_process::ProcessSoftwareUpdateSource;
 use helm_core::adapters::{
-    AdapterRequest, InstallRequest, SearchRequest, UninstallRequest, UpgradeRequest,
+    AdapterRequest, InstallRequest, PinRequest, SearchRequest, UninstallRequest, UnpinRequest,
+    UpgradeRequest,
 };
 use helm_core::execution::tokio_process::TokioProcessExecutor;
 use helm_core::models::{ManagerId, PackageRef, PinKind, PinRecord, SearchQuery};
@@ -546,20 +547,43 @@ pub unsafe extern "C" fn helm_pin_package(
         }
     };
 
-    let guard = STATE.lock().unwrap();
-    let state = match guard.as_ref() {
-        Some(s) => s,
-        None => return false,
+    let (store, runtime, rt_handle) = {
+        let guard = STATE.lock().unwrap();
+        let state = match guard.as_ref() {
+            Some(s) => s,
+            None => return false,
+        };
+        (
+            state.store.clone(),
+            state.runtime.clone(),
+            state.rt_handle.clone(),
+        )
     };
 
-    state
-        .store
+    let package = PackageRef {
+        manager,
+        name: package_name,
+    };
+    let pin_kind = if manager == ManagerId::HomebrewFormula {
+        let request = AdapterRequest::Pin(PinRequest {
+            package: package.clone(),
+            version: pinned_version.clone(),
+        });
+        if rt_handle
+            .block_on(runtime.submit_refresh_request_response(manager, request))
+            .is_err()
+        {
+            return false;
+        }
+        PinKind::Native
+    } else {
+        PinKind::Virtual
+    };
+
+    store
         .upsert_pin(&PinRecord {
-            package: PackageRef {
-                manager,
-                name: package_name,
-            },
-            kind: PinKind::Virtual,
+            package,
+            kind: pin_kind,
             pinned_version,
             created_at: std::time::SystemTime::now(),
         })
@@ -601,14 +625,36 @@ pub unsafe extern "C" fn helm_unpin_package(
         }
     };
 
-    let guard = STATE.lock().unwrap();
-    let state = match guard.as_ref() {
-        Some(s) => s,
-        None => return false,
+    let (store, runtime, rt_handle) = {
+        let guard = STATE.lock().unwrap();
+        let state = match guard.as_ref() {
+            Some(s) => s,
+            None => return false,
+        };
+        (
+            state.store.clone(),
+            state.runtime.clone(),
+            state.rt_handle.clone(),
+        )
     };
 
+    if manager == ManagerId::HomebrewFormula {
+        let request = AdapterRequest::Unpin(UnpinRequest {
+            package: PackageRef {
+                manager,
+                name: package_name.clone(),
+            },
+        });
+        if rt_handle
+            .block_on(runtime.submit_refresh_request_response(manager, request))
+            .is_err()
+        {
+            return false;
+        }
+    }
+
     let package_key = format!("{}:{}", manager.as_str(), package_name);
-    state.store.remove_pin(&package_key).is_ok()
+    store.remove_pin(&package_key).is_ok()
 }
 
 /// Set a manager as enabled or disabled.

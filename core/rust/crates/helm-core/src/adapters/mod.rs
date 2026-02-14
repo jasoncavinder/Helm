@@ -14,7 +14,8 @@ pub mod softwareupdate_process;
 
 pub use homebrew::{
     HomebrewAdapter, HomebrewSource, homebrew_detect_request, homebrew_list_installed_request,
-    homebrew_list_outdated_request, homebrew_search_local_request,
+    homebrew_list_outdated_request, homebrew_pin_request, homebrew_search_local_request,
+    homebrew_unpin_request,
 };
 pub use homebrew_process::ProcessHomebrewSource;
 pub use manager::{

@@ -19,6 +19,8 @@ const HOMEBREW_READ_CAPABILITIES: &[Capability] = &[
     Capability::Install,
     Capability::Uninstall,
     Capability::Upgrade,
+    Capability::Pin,
+    Capability::Unpin,
 ];
 
 const HOMEBREW_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
@@ -56,6 +58,10 @@ pub trait HomebrewSource: Send + Sync {
     fn uninstall_formula(&self, name: &str) -> AdapterResult<String>;
 
     fn upgrade_formula(&self, name: Option<&str>) -> AdapterResult<String>;
+
+    fn pin_formula(&self, name: &str) -> AdapterResult<String>;
+
+    fn unpin_formula(&self, name: &str) -> AdapterResult<String>;
 }
 
 pub struct HomebrewAdapter<S: HomebrewSource> {
@@ -141,13 +147,24 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                     after_version: None,
                 }))
             }
-            _ => Err(CoreError {
-                manager: Some(ManagerId::HomebrewFormula),
-                task: None,
-                action: Some(request.action()),
-                kind: CoreErrorKind::UnsupportedCapability,
-                message: "homebrew adapter action not implemented in this milestone".to_string(),
-            }),
+            AdapterRequest::Pin(pin_request) => {
+                let _ = self.source.pin_formula(&pin_request.package.name)?;
+                Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
+                    package: pin_request.package,
+                    action: ManagerAction::Pin,
+                    before_version: None,
+                    after_version: pin_request.version,
+                }))
+            }
+            AdapterRequest::Unpin(unpin_request) => {
+                let _ = self.source.unpin_formula(&unpin_request.package.name)?;
+                Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
+                    package: unpin_request.package,
+                    action: ManagerAction::Unpin,
+                    before_version: None,
+                    after_version: None,
+                }))
+            }
         }
     }
 }
@@ -230,6 +247,26 @@ pub fn homebrew_upgrade_request(task_id: Option<TaskId>, name: &str) -> ProcessS
         TaskType::Upgrade,
         ManagerAction::Upgrade,
         command,
+        INSTALL_TIMEOUT,
+    )
+}
+
+pub fn homebrew_pin_request(task_id: Option<TaskId>, name: &str) -> ProcessSpawnRequest {
+    homebrew_request(
+        task_id,
+        TaskType::Pin,
+        ManagerAction::Pin,
+        CommandSpec::new(HOMEBREW_COMMAND).args(["pin", name]),
+        INSTALL_TIMEOUT,
+    )
+}
+
+pub fn homebrew_unpin_request(task_id: Option<TaskId>, name: &str) -> ProcessSpawnRequest {
+    homebrew_request(
+        task_id,
+        TaskType::Unpin,
+        ManagerAction::Unpin,
+        CommandSpec::new(HOMEBREW_COMMAND).args(["unpin", name]),
         INSTALL_TIMEOUT,
     )
 }
@@ -488,9 +525,10 @@ mod tests {
 
     use super::{
         HomebrewAdapter, HomebrewDetectOutput, HomebrewSource, homebrew_detect_request,
-        homebrew_list_installed_request, homebrew_list_outdated_request,
-        homebrew_search_local_request, homebrew_upgrade_request, parse_homebrew_version,
-        parse_installed_formulae, parse_outdated_formulae, parse_search_formulae,
+        homebrew_list_installed_request, homebrew_list_outdated_request, homebrew_pin_request,
+        homebrew_search_local_request, homebrew_unpin_request, homebrew_upgrade_request,
+        parse_homebrew_version, parse_installed_formulae, parse_outdated_formulae,
+        parse_search_formulae,
     };
 
     const INSTALLED_FIXTURE: &str =
@@ -644,6 +682,39 @@ mod tests {
     }
 
     #[test]
+    fn adapter_executes_pin_request() {
+        let source = FixtureSource::default();
+        let adapter = HomebrewAdapter::new(source);
+
+        let result = adapter
+            .execute(AdapterRequest::Pin(crate::adapters::PinRequest {
+                package: crate::models::PackageRef {
+                    manager: crate::models::ManagerId::HomebrewFormula,
+                    name: "git".to_string(),
+                },
+                version: Some("2.45.1".to_string()),
+            }))
+            .unwrap();
+        assert!(matches!(result, AdapterResponse::Mutation(_)));
+    }
+
+    #[test]
+    fn adapter_executes_unpin_request() {
+        let source = FixtureSource::default();
+        let adapter = HomebrewAdapter::new(source);
+
+        let result = adapter
+            .execute(AdapterRequest::Unpin(crate::adapters::UnpinRequest {
+                package: crate::models::PackageRef {
+                    manager: crate::models::ManagerId::HomebrewFormula,
+                    name: "git".to_string(),
+                },
+            }))
+            .unwrap();
+        assert!(matches!(result, AdapterResponse::Mutation(_)));
+    }
+
+    #[test]
     fn detect_command_plan_uses_structured_homebrew_args() {
         let request = homebrew_detect_request(Some(TaskId(11)));
         assert_eq!(request.manager, crate::models::ManagerId::HomebrewFormula);
@@ -718,6 +789,23 @@ mod tests {
         assert_eq!(formula_upgrade.task_id, Some(TaskId(7)));
     }
 
+    #[test]
+    fn pin_command_plans_are_structured_for_formula_targets() {
+        let pin = homebrew_pin_request(Some(TaskId(12)), "git");
+        assert_eq!(pin.task_id, Some(TaskId(12)));
+        assert_eq!(pin.task_type, TaskType::Pin);
+        assert_eq!(pin.action, ManagerAction::Pin);
+        assert_eq!(pin.command.args, vec!["pin".to_string(), "git".to_string()]);
+
+        let unpin = homebrew_unpin_request(None, "git");
+        assert_eq!(unpin.task_type, TaskType::Unpin);
+        assert_eq!(unpin.action, ManagerAction::Unpin);
+        assert_eq!(
+            unpin.command.args,
+            vec!["unpin".to_string(), "git".to_string()]
+        );
+    }
+
     #[derive(Default, Clone)]
     struct FixtureSource {
         detect_calls: Arc<AtomicUsize>,
@@ -753,6 +841,14 @@ mod tests {
         }
 
         fn upgrade_formula(&self, _name: Option<&str>) -> AdapterResult<String> {
+            Ok(String::new())
+        }
+
+        fn pin_formula(&self, _name: &str) -> AdapterResult<String> {
+            Ok(String::new())
+        }
+
+        fn unpin_formula(&self, _name: &str) -> AdapterResult<String> {
             Ok(String::new())
         }
     }

@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.8.0-alpha.2] - 2026-02-14
+
+### Added
+- Native Homebrew pin/unpin adapter actions (`brew pin`, `brew unpin`) with structured command specs and adapter tests.
+
+### Changed
+- Pin/unpin FFI path now uses native manager execution for Homebrew and keeps virtual pin fallback for managers without native pin support.
+- Homebrew adapter capabilities now explicitly declare `Pin` and `Unpin`.
+
 ## [0.8.0-alpha.1] - 2026-02-14
 
 ### Added
