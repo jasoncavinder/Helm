@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.9.1] - 2026-02-14
+
+### Fixed
+- Resolved placeholder localization text caused by folder-reference bundle layout differences by supporting both:
+  - `locales/<locale>/<file>.json`
+  - `Resources/locales/<locale>/<file>.json`
+- Kept Xcode `Resources` folder-reference wiring so locale JSON files are copied without flattening.
+
 ## [0.9.0] - 2026-02-14
 
 ### Added

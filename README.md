@@ -9,7 +9,7 @@
   <br>
   A native macOS menu bar app for unified package manager control.
   <br>
-  <strong>Pre-1.0 &middot; v0.9.0</strong>
+  <strong>Pre-1.0 &middot; v0.9.1</strong>
 </p>
 
 <p align="center">

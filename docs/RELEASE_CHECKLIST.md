@@ -2,6 +2,29 @@
 
 This checklist is required before creating a release tag on `main`.
 
+## v0.9.1 (In Progress)
+
+### Scope and Documentation
+- [x] `CHANGELOG.md` includes `0.9.1` hotfix notes for localization resource resolution.
+- [x] `README.md` reflects `v0.9.1`.
+
+### Versioning
+- [x] Workspace version bumped to `0.9.1` in `core/rust/Cargo.toml`.
+- [x] Rust lockfile package versions aligned to `0.9.1` in `core/rust/Cargo.lock`.
+- [x] Generated app version artifact updated:
+  - `apps/macos-ui/Generated/HelmVersion.xcconfig`
+
+### Validation
+- [ ] Rust tests pass (`cargo test -p helm-core -p helm-ffi`).
+- [ ] macOS app build succeeds in CI/dev environment constraints.
+
+### Branch and Tag
+- [ ] `dev` merged into `main` for release.
+- [ ] Create annotated tag from `main`:
+  - `git tag -a v0.9.1 -m "Helm v0.9.1"`
+- [ ] Push tag:
+  - `git push origin v0.9.1`
+
 ## v0.9.0 (Completed)
 
 ### Scope and Documentation
