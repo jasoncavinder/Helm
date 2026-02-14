@@ -189,6 +189,8 @@ struct L10n {
                 static let systemDefault = "app.settings.label.language.system_default"
                 static let systemDefaultWithEnglish = "app.settings.label.language.system_default_with_english"
                 static let english = "app.settings.label.language.english"
+                static let spanish = "app.settings.label.language.spanish"
+                static let german = "app.settings.label.language.german"
                 static let autoCheck = "app.settings.label.auto_check"
                 static let checkFrequency = "app.settings.label.check_frequency"
                 static let safeMode = "app.settings.label.safe_mode"

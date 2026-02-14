@@ -22,6 +22,8 @@
   "app.settings.label.language.system_default": "System Default",
   "app.settings.label.language.system_default_with_english": "System Default (English)",
   "app.settings.label.language.english": "English",
+  "app.settings.label.language.spanish": "Español",
+  "app.settings.label.language.german": "Deutsch",
   "app.settings.label.auto_check": "Auto-check for updates",
   "app.settings.label.check_frequency": "Check every",
   "app.settings.label.safe_mode": "Safe Mode (block macOS updates)",

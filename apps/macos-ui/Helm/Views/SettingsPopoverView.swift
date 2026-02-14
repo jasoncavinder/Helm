@@ -25,10 +25,11 @@ struct SettingsPopoverView: View {
                     Spacer()
                     Picker("", selection: $localization.currentLocale) {
                         Text(L10n.App.Settings.Label.systemDefaultWithEnglish.localized).tag("en")
-                        // Future: Add other languages
+                        Text(L10n.App.Settings.Label.spanish.localized).tag("es")
+                        Text(L10n.App.Settings.Label.german.localized).tag("de")
                     }
                     .labelsHidden()
-                    .frame(width: 120)
+                    .frame(width: 170)
                 }
                 
                 Divider()
