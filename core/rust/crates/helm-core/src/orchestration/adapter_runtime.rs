@@ -565,6 +565,7 @@ async fn persist_adapter_response(
                 ManagerAction::Unpin => {
                     package_store.set_snapshot_pinned(&mutation.package, false)
                 }
+                ManagerAction::Upgrade => package_store.apply_upgrade_result(&mutation.package),
                 _ => Ok(()),
             },
             _ => Ok(()), // Other responses not persisted yet

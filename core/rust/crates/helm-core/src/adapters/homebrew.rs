@@ -199,6 +199,16 @@ pub fn homebrew_detect_request(task_id: Option<TaskId>) -> ProcessSpawnRequest {
     )
 }
 
+pub fn homebrew_config_request(task_id: Option<TaskId>) -> ProcessSpawnRequest {
+    homebrew_request(
+        task_id,
+        TaskType::Detection,
+        ManagerAction::Detect,
+        CommandSpec::new(HOMEBREW_COMMAND).arg("config"),
+        DETECT_TIMEOUT,
+    )
+}
+
 pub fn homebrew_list_installed_request(task_id: Option<TaskId>) -> ProcessSpawnRequest {
     homebrew_request(
         task_id,
@@ -338,7 +348,7 @@ fn parse_detection_output(output: HomebrewDetectOutput) -> DetectionInfo {
     }
 }
 
-fn parse_homebrew_version(output: &str) -> Option<String> {
+pub(crate) fn parse_homebrew_version(output: &str) -> Option<String> {
     let sanitized = strip_ansi_escape_sequences(output);
 
     for line in sanitized
@@ -740,6 +750,14 @@ mod tests {
             "\u{1b}[1;32mHomebrew 4.4.31\u{1b}[0m\nHomebrew/homebrew-core (git revision)\n",
         );
         assert_eq!(version.as_deref(), Some("4.4.31"));
+    }
+
+    #[test]
+    fn parses_homebrew_version_from_config_output() {
+        let version = parse_homebrew_version(
+            "HOMEBREW_VERSION: 5.0.14-52-g807be07\nORIGIN: https://github.com/Homebrew/brew\n",
+        );
+        assert_eq!(version.as_deref(), Some("5.0.14-52-g807be07"));
     }
 
     #[test]

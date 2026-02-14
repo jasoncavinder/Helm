@@ -31,6 +31,8 @@ pub trait PackageStore: Send + Sync {
     fn list_outdated(&self) -> PersistenceResult<Vec<OutdatedPackage>>;
 
     fn set_snapshot_pinned(&self, package: &PackageRef, pinned: bool) -> PersistenceResult<()>;
+
+    fn apply_upgrade_result(&self, package: &PackageRef) -> PersistenceResult<()>;
 }
 
 pub trait PinStore: Send + Sync {

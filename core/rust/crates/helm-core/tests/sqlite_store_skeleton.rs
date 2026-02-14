@@ -413,6 +413,49 @@ fn set_snapshot_pinned_updates_cached_rows_immediately() {
 }
 
 #[test]
+fn apply_upgrade_result_promotes_package_to_installed_snapshot() {
+    let path = test_db_path("apply-upgrade-result");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let package = PackageRef {
+        manager: ManagerId::HomebrewFormula,
+        name: "abseil".to_string(),
+    };
+
+    store
+        .upsert_installed(&[InstalledPackage {
+            package: package.clone(),
+            installed_version: Some("20250127.0".to_string()),
+            pinned: false,
+        }])
+        .unwrap();
+    store
+        .upsert_outdated(&[OutdatedPackage {
+            package: package.clone(),
+            installed_version: Some("20250127.0".to_string()),
+            candidate_version: "20250814.0".to_string(),
+            pinned: false,
+            restart_required: false,
+        }])
+        .unwrap();
+
+    store.apply_upgrade_result(&package).unwrap();
+
+    let installed = store.list_installed().unwrap();
+    let outdated = store.list_outdated().unwrap();
+
+    let upgraded = installed
+        .iter()
+        .find(|entry| entry.package == package)
+        .expect("upgraded package should remain installed");
+    assert_eq!(upgraded.installed_version.as_deref(), Some("20250814.0"));
+    assert!(outdated.iter().all(|entry| entry.package != package));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn upsert_detection_preserves_previous_version_when_new_version_is_missing() {
     let path = test_db_path("detection-preserve-version");
     let store = SqliteStore::new(&path);

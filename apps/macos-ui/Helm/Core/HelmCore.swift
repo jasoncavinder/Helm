@@ -98,6 +98,7 @@ final class HelmCore: ObservableObject {
     private var activeRemoteSearchTaskId: Int64?
     private var managerActionTaskDescriptions: [UInt64: String] = [:]
     private var managerActionTaskByManager: [String: UInt64] = [:]
+    private var upgradeActionTaskByPackage: [String: UInt64] = [:]
     private var lastObservedTaskId: UInt64 = 0
     private var onboardingDetectionAnchorTaskId: UInt64 = 0
     private var onboardingDetectionPendingManagers: Set<String> = []
@@ -296,6 +297,7 @@ final class HelmCore: ObservableObject {
                         )
                     }
                     self?.syncManagerOperations(from: coreTasks)
+                    self?.syncUpgradeActions(from: coreTasks)
 
                     // Derive detection status from Detection-type tasks specifically.
                     // Tasks are ordered most-recent-first. A manager is "detected" if
@@ -593,13 +595,14 @@ final class HelmCore: ObservableObject {
         service.upgradePackage(managerId: package.managerId, packageName: package.name) { [weak self] taskId in
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                self.upgradeActionPackageIds.remove(package.id)
-
                 if taskId < 0 {
+                    self.upgradeActionTaskByPackage.removeValue(forKey: package.id)
+                    self.upgradeActionPackageIds.remove(package.id)
                     logger.error("upgradePackage(\(package.managerId):\(package.name)) failed")
                     return
                 }
 
+                self.upgradeActionTaskByPackage[package.id] = UInt64(taskId)
                 self.registerManagerActionTask(
                     managerId: package.managerId,
                     taskId: UInt64(taskId),
@@ -687,6 +690,9 @@ final class HelmCore: ObservableObject {
                     self?.searchText = ""
                     self?.isRefreshing = false
                     self?.onboardingDetectionInProgress = false
+                    self?.pinActionPackageIds = []
+                    self?.upgradeActionPackageIds = []
+                    self?.upgradeActionTaskByPackage = [:]
                     self?.lastObservedTaskId = 0
                     self?.onboardingDetectionAnchorTaskId = 0
                     self?.onboardingDetectionPendingManagers = []
@@ -883,6 +889,35 @@ final class HelmCore: ObservableObject {
                 managerOperations.removeValue(forKey: managerId)
                 managerActionTaskByManager.removeValue(forKey: managerId)
             }
+        }
+    }
+
+    private func syncUpgradeActions(from coreTasks: [CoreTaskRecord]) {
+        let statusById = Dictionary(uniqueKeysWithValues: coreTasks.map { ($0.id, $0.status.lowercased()) })
+        let inFlightStates = Set(["queued", "running"])
+        var shouldRefreshSnapshots = false
+
+        for packageId in Array(upgradeActionTaskByPackage.keys) {
+            guard let taskId = upgradeActionTaskByPackage[packageId] else { continue }
+            guard let status = statusById[taskId] else {
+                upgradeActionTaskByPackage.removeValue(forKey: packageId)
+                upgradeActionPackageIds.remove(packageId)
+                continue
+            }
+            if inFlightStates.contains(status) {
+                continue
+            }
+
+            upgradeActionTaskByPackage.removeValue(forKey: packageId)
+            upgradeActionPackageIds.remove(packageId)
+            if status == "completed" {
+                shouldRefreshSnapshots = true
+            }
+        }
+
+        if shouldRefreshSnapshots {
+            fetchPackages()
+            fetchOutdatedPackages()
         }
     }
 

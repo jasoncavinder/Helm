@@ -345,6 +345,60 @@ WHERE manager_id = ?1 AND package_name = ?2
             Ok(())
         })
     }
+
+    fn apply_upgrade_result(&self, package: &PackageRef) -> PersistenceResult<()> {
+        self.with_connection("apply_upgrade_result", |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction = connection.transaction()?;
+
+            transaction.execute(
+                "
+INSERT INTO installed_packages (
+    manager_id, package_name, installed_version, pinned, updated_at_unix
+)
+SELECT
+    op.manager_id, op.package_name, op.candidate_version, op.pinned, strftime('%s', 'now')
+FROM outdated_packages op
+WHERE op.manager_id = ?1
+  AND op.package_name = ?2
+  AND NOT EXISTS (
+      SELECT 1 FROM installed_packages ip
+      WHERE ip.manager_id = op.manager_id
+        AND ip.package_name = op.package_name
+  )
+",
+                params![package.manager.as_str(), package.name.as_str()],
+            )?;
+
+            transaction.execute(
+                "
+UPDATE installed_packages
+SET installed_version = COALESCE(
+        (
+            SELECT candidate_version
+            FROM outdated_packages
+            WHERE manager_id = ?1 AND package_name = ?2
+        ),
+        installed_version
+    ),
+    updated_at_unix = strftime('%s', 'now')
+WHERE manager_id = ?1 AND package_name = ?2
+",
+                params![package.manager.as_str(), package.name.as_str()],
+            )?;
+
+            transaction.execute(
+                "
+DELETE FROM outdated_packages
+WHERE manager_id = ?1 AND package_name = ?2
+",
+                params![package.manager.as_str(), package.name.as_str()],
+            )?;
+
+            transaction.commit()?;
+            Ok(())
+        })
+    }
 }
 
 impl PinStore for SqliteStore {

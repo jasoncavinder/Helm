@@ -474,7 +474,12 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
             FfiManagerStatus {
                 manager_id: id.as_str().to_string(),
                 detected: detection.map(|d| d.installed).unwrap_or(false),
-                version: detection.and_then(|d| d.version.clone()),
+                version: detection.and_then(|d| {
+                    d.version
+                        .as_ref()
+                        .map(|v| v.trim().to_string())
+                        .filter(|v| !v.is_empty())
+                }),
                 executable_path: detection.and_then(|d| {
                     d.executable_path
                         .as_ref()
