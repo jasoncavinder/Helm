@@ -15,8 +15,8 @@ This checklist is required before creating a release tag on `main`.
   - `apps/macos-ui/Generated/HelmVersion.xcconfig`
 
 ### Validation
-- [ ] Rust tests pass (`cargo test -p helm-core -p helm-ffi`).
-- [ ] macOS app build succeeds in CI/dev environment constraints.
+- [x] Rust tests pass (`cargo test -p helm-core -p helm-ffi`).
+- [x] macOS app build succeeds in CI/dev environment constraints.
 
 ### Branch and Tag
 - [ ] `dev` merged into `main` for release.
