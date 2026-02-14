@@ -79,3 +79,9 @@ In order of precedence:
 - Schema migrations must be explicit and reversible.
 - Tests favor determinism over realism; parsers use fixed fixtures in `tests/fixtures/`.
 - Work incrementally with small, coherent commits. No speculative features beyond the brief.
+
+## Licensing
+
+Helm is source-available and not open source.
+
+Contributions are governed by the CLA.
