@@ -441,6 +441,137 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
     }
 }
 
+/// Return whether safe mode is enabled.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_get_safe_mode() -> bool {
+    let guard = STATE.lock().unwrap();
+    let state = match guard.as_ref() {
+        Some(s) => s,
+        None => return false,
+    };
+    state.store.safe_mode().unwrap_or(false)
+}
+
+/// Set safe mode state. Returns true on success.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_set_safe_mode(enabled: bool) -> bool {
+    let guard = STATE.lock().unwrap();
+    let state = match guard.as_ref() {
+        Some(s) => s,
+        None => return false,
+    };
+    state.store.set_safe_mode(enabled).is_ok()
+}
+
+/// Queue upgrade tasks for supported managers using cached outdated snapshot.
+///
+/// - `include_pinned`: if false, pinned packages are excluded.
+/// - `allow_os_updates`: explicit confirmation gate for `softwareupdate` upgrades.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool) -> bool {
+    let (store, runtime, tokio_rt) = {
+        let guard = STATE.lock().unwrap();
+        let state = match guard.as_ref() {
+            Some(s) => s,
+            None => return false,
+        };
+        (
+            state.store.clone(),
+            state.runtime.clone(),
+            state._tokio_rt.handle().clone(),
+        )
+    };
+
+    tokio_rt.spawn(async move {
+        let outdated = match store.list_outdated() {
+            Ok(packages) => packages,
+            Err(error) => {
+                eprintln!("upgrade_all: failed to list outdated packages: {error}");
+                return;
+            }
+        };
+
+        let pinned_keys: std::collections::HashSet<String> = store
+            .list_pins()
+            .map(|pins| {
+                pins.into_iter()
+                    .map(|pin| format!("{}:{}", pin.package.manager.as_str(), pin.package.name))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let mut homebrew_targets = Vec::new();
+        let mut seen_homebrew_targets = std::collections::HashSet::new();
+        let mut rustup_outdated = false;
+        let mut softwareupdate_outdated = false;
+
+        for package in outdated {
+            let package_key = format!(
+                "{}:{}",
+                package.package.manager.as_str(),
+                package.package.name.as_str()
+            );
+            if !include_pinned && (package.pinned || pinned_keys.contains(&package_key)) {
+                continue;
+            }
+
+            match package.package.manager {
+                ManagerId::HomebrewFormula => {
+                    if seen_homebrew_targets.insert(package.package.name.clone()) {
+                        homebrew_targets.push(package.package.name);
+                    }
+                }
+                ManagerId::Rustup => rustup_outdated = true,
+                ManagerId::SoftwareUpdate => softwareupdate_outdated = true,
+                _ => {}
+            }
+        }
+
+        if runtime.is_manager_enabled(ManagerId::HomebrewFormula) {
+            for package_name in homebrew_targets {
+                let request = AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::HomebrewFormula,
+                        name: package_name,
+                    }),
+                });
+                if let Err(error) = runtime.submit(ManagerId::HomebrewFormula, request).await {
+                    eprintln!("upgrade_all: failed to queue homebrew upgrade task: {error}");
+                }
+            }
+        }
+
+        if rustup_outdated && runtime.is_manager_enabled(ManagerId::Rustup) {
+            let request = AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Rustup,
+                    name: "__self__".to_string(),
+                }),
+            });
+            if let Err(error) = runtime.submit(ManagerId::Rustup, request).await {
+                eprintln!("upgrade_all: failed to queue rustup self-update task: {error}");
+            }
+        }
+
+        if allow_os_updates
+            && softwareupdate_outdated
+            && runtime.is_manager_enabled(ManagerId::SoftwareUpdate)
+        {
+            let request = AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::SoftwareUpdate,
+                    name: "__confirm_os_updates__".to_string(),
+                }),
+            });
+            if let Err(error) = runtime.submit(ManagerId::SoftwareUpdate, request).await {
+                eprintln!("upgrade_all: failed to queue softwareupdate task: {error}");
+            }
+        }
+    });
+
+    true
+}
+
 /// List pin records as JSON.
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_list_pins() -> *mut c_char {

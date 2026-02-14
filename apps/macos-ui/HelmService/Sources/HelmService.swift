@@ -88,6 +88,23 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(String(cString: cString))
     }
 
+    func getSafeMode(withReply reply: @escaping (Bool) -> Void) {
+        let enabled = helm_get_safe_mode()
+        reply(enabled)
+    }
+
+    func setSafeMode(enabled: Bool, withReply reply: @escaping (Bool) -> Void) {
+        let result = helm_set_safe_mode(enabled)
+        logger.info("helm_set_safe_mode(\(enabled)) result: \(result)")
+        reply(result)
+    }
+
+    func upgradeAll(includePinned: Bool, allowOsUpdates: Bool, withReply reply: @escaping (Bool) -> Void) {
+        let result = helm_upgrade_all(includePinned, allowOsUpdates)
+        logger.info("helm_upgrade_all(includePinned: \(includePinned), allowOsUpdates: \(allowOsUpdates)) result: \(result)")
+        reply(result)
+    }
+
     func listPins(withReply reply: @escaping (String?) -> Void) {
         guard let cString = helm_list_pins() else {
             logger.warning("helm_list_pins returned nil")

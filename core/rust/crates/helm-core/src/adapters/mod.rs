@@ -41,6 +41,6 @@ pub use rustup::{
 pub use rustup_process::ProcessRustupSource;
 pub use softwareupdate::{
     SoftwareUpdateAdapter, SoftwareUpdateSource, softwareupdate_detect_request,
-    softwareupdate_list_request,
+    softwareupdate_list_request, softwareupdate_upgrade_request,
 };
 pub use softwareupdate_process::ProcessSoftwareUpdateSource;

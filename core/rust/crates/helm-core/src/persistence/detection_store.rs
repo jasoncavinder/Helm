@@ -9,4 +9,8 @@ pub trait DetectionStore: Send + Sync {
     fn set_manager_enabled(&self, manager: ManagerId, enabled: bool) -> PersistenceResult<()>;
 
     fn list_manager_preferences(&self) -> PersistenceResult<Vec<(ManagerId, bool)>>;
+
+    fn set_safe_mode(&self, enabled: bool) -> PersistenceResult<()>;
+
+    fn safe_mode(&self) -> PersistenceResult<bool>;
 }

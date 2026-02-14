@@ -63,6 +63,7 @@ final class HelmCore: ObservableObject {
     @Published var cachedAvailablePackages: [PackageItem] = []
     @Published var detectedManagers: Set<String> = []
     @Published var managerStatuses: [String: ManagerStatus] = [:]
+    @Published var safeModeEnabled: Bool = false
     @Published var selectedManagerFilter: String? = nil
     @Published var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
 
@@ -105,6 +106,7 @@ final class HelmCore: ObservableObject {
         if timer == nil {
             startPolling()
         }
+        fetchSafeMode()
     }
 
     func scheduleReconnection() {
@@ -391,6 +393,34 @@ final class HelmCore: ObservableObject {
                 }
             } catch {
                 logger.error("Failed to decode manager statuses: \(error)")
+            }
+        }
+    }
+
+    func fetchSafeMode() {
+        service()?.getSafeMode { [weak self] enabled in
+            DispatchQueue.main.async {
+                self?.safeModeEnabled = enabled
+            }
+        }
+    }
+
+    func setSafeMode(_ enabled: Bool) {
+        service()?.setSafeMode(enabled: enabled) { [weak self] success in
+            DispatchQueue.main.async {
+                if success {
+                    self?.safeModeEnabled = enabled
+                } else {
+                    logger.error("setSafeMode(\(enabled)) failed")
+                }
+            }
+        }
+    }
+
+    func upgradeAll(includePinned: Bool = false, allowOsUpdates: Bool = false) {
+        service()?.upgradeAll(includePinned: includePinned, allowOsUpdates: allowOsUpdates) { success in
+            if !success {
+                logger.error("upgradeAll(includePinned: \(includePinned), allowOsUpdates: \(allowOsUpdates)) failed")
             }
         }
     }

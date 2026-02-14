@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.8.0-beta.1] - 2026-02-14
+
+### Added
+- Safe mode persistence and control surfaces across FFI/XPC/UI (`helm_get_safe_mode`, `helm_set_safe_mode`) to block macOS software update upgrades by policy.
+- Upgrade-all orchestration entrypoint (`helm_upgrade_all`) with explicit OS-update confirmation gating.
+- `softwareupdate` adapter upgrade execution path (`softwareupdate -i -a`) with explicit confirmation token validation.
+
+### Changed
+- Runtime submission now enforces safe-mode policy for `softwareupdate` upgrade actions.
+- Settings UI now exposes Safe Mode and an operational Upgrade All flow (with and without OS updates).
+- SQLite schema adds `app_settings` to persist cross-session application policy flags.
+
 ## [0.8.0-alpha.2] - 2026-02-14
 
 ### Added

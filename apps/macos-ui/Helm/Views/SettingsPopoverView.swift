@@ -6,6 +6,7 @@ struct SettingsPopoverView: View {
     @State private var autoCheckEnabled = false
     @State private var checkFrequency = 60
     @State private var showResetConfirmation = false
+    @State private var showUpgradeConfirmation = false
     @State private var isResetting = false
 
     var body: some View {
@@ -34,6 +35,12 @@ struct SettingsPopoverView: View {
                 .frame(width: 100)
             }
 
+            Toggle("Safe Mode (block macOS updates)", isOn: Binding(
+                get: { core.safeModeEnabled },
+                set: { core.setSafeMode($0) }
+            ))
+            .font(.subheadline)
+
             Divider()
 
             Button(action: {
@@ -47,15 +54,16 @@ struct SettingsPopoverView: View {
             }
             .disabled(core.isRefreshing)
 
-            Button(action: {}) {
+            Button(action: {
+                showUpgradeConfirmation = true
+            }) {
                 HStack {
                     Image(systemName: "arrow.up.square")
                     Text("Upgrade All")
                 }
                 .frame(maxWidth: .infinity)
             }
-            .disabled(true)
-            .help("Upgrade all not yet implemented")
+            .disabled(core.isRefreshing || isResetting)
 
             Divider()
 
@@ -93,6 +101,23 @@ struct SettingsPopoverView: View {
             }
         } message: {
             Text("This will clear all cached data and return Helm to its initial state. Your installed packages will not be affected.")
+        }
+        .alert("Upgrade All Packages?", isPresented: $showUpgradeConfirmation) {
+            Button("Upgrade (No OS Updates)") {
+                core.upgradeAll(includePinned: false, allowOsUpdates: false)
+            }
+            if !core.safeModeEnabled {
+                Button("Upgrade Including OS Updates", role: .destructive) {
+                    core.upgradeAll(includePinned: false, allowOsUpdates: true)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            if core.safeModeEnabled {
+                Text("Safe Mode is enabled, so macOS software updates will be blocked. Pinned packages are excluded.")
+            } else {
+                Text("Pinned packages are excluded. Choose the OS update option only when you explicitly want softwareupdate to run.")
+            }
         }
     }
 }

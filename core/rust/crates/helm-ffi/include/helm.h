@@ -52,6 +52,24 @@ bool helm_cancel_task(int64_t task_id);
 char *helm_list_manager_status(void);
 
 /**
+ * Return whether safe mode is enabled.
+ */
+bool helm_get_safe_mode(void);
+
+/**
+ * Set safe mode state. Returns true on success.
+ */
+bool helm_set_safe_mode(bool enabled);
+
+/**
+ * Queue upgrade tasks for supported managers using cached outdated snapshot.
+ *
+ * - `include_pinned`: if false, pinned packages are excluded.
+ * - `allow_os_updates`: explicit confirmation gate for `softwareupdate` upgrades.
+ */
+bool helm_upgrade_all(bool include_pinned, bool allow_os_updates);
+
+/**
  * List pin records as JSON.
  */
 char *helm_list_pins(void);

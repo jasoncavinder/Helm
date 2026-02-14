@@ -5,7 +5,9 @@ use helm_core::models::{
     CachedSearchResult, CoreErrorKind, InstalledPackage, ManagerId, OutdatedPackage,
     PackageCandidate, PackageRef, PinKind, PinRecord, TaskId, TaskRecord, TaskStatus, TaskType,
 };
-use helm_core::persistence::{MigrationStore, PackageStore, PinStore, SearchCacheStore, TaskStore};
+use helm_core::persistence::{
+    DetectionStore, MigrationStore, PackageStore, PinStore, SearchCacheStore, TaskStore,
+};
 use helm_core::sqlite::{SqliteStore, current_schema_version};
 
 fn test_db_path(test_name: &str) -> PathBuf {
@@ -186,6 +188,21 @@ fn remove_pin_requires_structured_package_key() {
     let error = store.remove_pin("git").unwrap_err();
     assert_eq!(error.kind, CoreErrorKind::StorageFailure);
     assert!(error.message.contains("package_key"));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn safe_mode_defaults_false_and_roundtrips() {
+    let path = test_db_path("safe-mode-roundtrip");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    assert!(!store.safe_mode().unwrap());
+    store.set_safe_mode(true).unwrap();
+    assert!(store.safe_mode().unwrap());
+    store.set_safe_mode(false).unwrap();
+    assert!(!store.safe_mode().unwrap());
 
     let _ = std::fs::remove_file(path);
 }

@@ -657,6 +657,36 @@ ORDER BY manager_id
             rows.collect()
         })
     }
+
+    fn set_safe_mode(&self, enabled: bool) -> PersistenceResult<()> {
+        self.with_connection("set_safe_mode", |connection| {
+            ensure_schema_ready(connection)?;
+            connection.execute(
+                "
+INSERT INTO app_settings (key, value)
+VALUES ('safe_mode', ?1)
+ON CONFLICT(key) DO UPDATE SET
+    value = excluded.value
+",
+                params![if enabled { "1" } else { "0" }],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn safe_mode(&self) -> PersistenceResult<bool> {
+        self.with_connection("safe_mode", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement =
+                connection.prepare("SELECT value FROM app_settings WHERE key = 'safe_mode'")?;
+            let mut rows = statement.query([])?;
+            let Some(row) = rows.next()? else {
+                return Ok(false);
+            };
+            let value: String = row.get(0)?;
+            Ok(value.trim() == "1")
+        })
+    }
 }
 
 fn open_connection(database_path: &Path) -> rusqlite::Result<Connection> {

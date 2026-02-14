@@ -115,7 +115,26 @@ ALTER TABLE outdated_packages_backup RENAME TO outdated_packages;
 "#,
 };
 
-const MIGRATIONS: [SqliteMigration; 3] = [MIGRATION_0001, MIGRATION_0002, MIGRATION_0003];
+const MIGRATION_0004: SqliteMigration = SqliteMigration {
+    version: 4,
+    name: "add_app_settings",
+    up_sql: r#"
+CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+"#,
+    down_sql: r#"
+DROP TABLE IF EXISTS app_settings;
+"#,
+};
+
+const MIGRATIONS: [SqliteMigration; 4] = [
+    MIGRATION_0001,
+    MIGRATION_0002,
+    MIGRATION_0003,
+    MIGRATION_0004,
+];
 
 pub fn migrations() -> &'static [SqliteMigration] {
     &MIGRATIONS
