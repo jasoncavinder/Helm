@@ -32,7 +32,10 @@ impl HomebrewSource for ProcessHomebrewSource {
         );
 
         let request = homebrew_detect_request(None);
-        let version_request = self.configure_request(request);
+        let mut version_request = self.configure_request(request);
+        if let Some(path) = executable_path.as_ref() {
+            version_request.command.program = path.clone();
+        }
 
         let version_output =
             run_and_collect_version_output(self.executor.as_ref(), version_request);

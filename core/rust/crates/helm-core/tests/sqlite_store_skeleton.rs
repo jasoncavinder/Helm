@@ -373,6 +373,84 @@ fn list_outdated_marks_package_pinned_when_pin_record_exists() {
 }
 
 #[test]
+fn set_snapshot_pinned_updates_cached_rows_immediately() {
+    let path = test_db_path("set-snapshot-pinned");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let package = PackageRef {
+        manager: ManagerId::HomebrewFormula,
+        name: "libzip".to_string(),
+    };
+
+    store
+        .upsert_installed(&[InstalledPackage {
+            package: package.clone(),
+            installed_version: Some("1.11.4".to_string()),
+            pinned: true,
+        }])
+        .unwrap();
+    store
+        .upsert_outdated(&[OutdatedPackage {
+            package: package.clone(),
+            installed_version: Some("1.11.4".to_string()),
+            candidate_version: "1.11.4_1".to_string(),
+            pinned: true,
+            restart_required: false,
+        }])
+        .unwrap();
+
+    store.set_snapshot_pinned(&package, false).unwrap();
+
+    let installed = store.list_installed().unwrap();
+    let outdated = store.list_outdated().unwrap();
+    assert_eq!(installed.len(), 1);
+    assert_eq!(outdated.len(), 1);
+    assert!(!installed[0].pinned);
+    assert!(!outdated[0].pinned);
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn upsert_detection_preserves_previous_version_when_new_version_is_missing() {
+    let path = test_db_path("detection-preserve-version");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    store
+        .upsert_detection(
+            ManagerId::HomebrewFormula,
+            &helm_core::models::DetectionInfo {
+                installed: true,
+                executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                version: Some("4.6.0".to_string()),
+            },
+        )
+        .unwrap();
+
+    store
+        .upsert_detection(
+            ManagerId::HomebrewFormula,
+            &helm_core::models::DetectionInfo {
+                installed: true,
+                executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                version: None,
+            },
+        )
+        .unwrap();
+
+    let detections = store.list_detections().unwrap();
+    let homebrew = detections
+        .into_iter()
+        .find(|(manager, _)| *manager == ManagerId::HomebrewFormula)
+        .expect("homebrew detection should exist");
+    assert_eq!(homebrew.1.version.as_deref(), Some("4.6.0"));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn upsert_and_query_search_cache_roundtrip() {
     let path = test_db_path("search-roundtrip");
     let store = SqliteStore::new(&path);

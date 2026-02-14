@@ -560,6 +560,13 @@ async fn persist_adapter_response(
             AdapterResponse::OutdatedPackages(packages) => {
                 package_store.replace_outdated_snapshot(manager, &packages)
             }
+            AdapterResponse::Mutation(mutation) => match mutation.action {
+                ManagerAction::Pin => package_store.set_snapshot_pinned(&mutation.package, true),
+                ManagerAction::Unpin => {
+                    package_store.set_snapshot_pinned(&mutation.package, false)
+                }
+                _ => Ok(()),
+            },
             _ => Ok(()), // Other responses not persisted yet
         }
     })

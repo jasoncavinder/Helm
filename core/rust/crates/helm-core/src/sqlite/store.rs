@@ -309,6 +309,42 @@ ORDER BY op.manager_id, op.package_name
             rows.collect()
         })
     }
+
+    fn set_snapshot_pinned(&self, package: &PackageRef, pinned: bool) -> PersistenceResult<()> {
+        self.with_connection("set_snapshot_pinned", |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction = connection.transaction()?;
+
+            transaction.execute(
+                "
+UPDATE installed_packages
+SET pinned = ?3, updated_at_unix = strftime('%s', 'now')
+WHERE manager_id = ?1 AND package_name = ?2
+",
+                params![
+                    package.manager.as_str(),
+                    package.name.as_str(),
+                    bool_to_sqlite(pinned),
+                ],
+            )?;
+
+            transaction.execute(
+                "
+UPDATE outdated_packages
+SET pinned = ?3, updated_at_unix = strftime('%s', 'now')
+WHERE manager_id = ?1 AND package_name = ?2
+",
+                params![
+                    package.manager.as_str(),
+                    package.name.as_str(),
+                    bool_to_sqlite(pinned),
+                ],
+            )?;
+
+            transaction.commit()?;
+            Ok(())
+        })
+    }
 }
 
 impl PinStore for SqliteStore {
@@ -610,8 +646,14 @@ INSERT INTO manager_detection (manager_id, detected, executable_path, version, d
 VALUES (?1, ?2, ?3, ?4, strftime('%s', 'now'))
 ON CONFLICT(manager_id) DO UPDATE SET
     detected = excluded.detected,
-    executable_path = excluded.executable_path,
-    version = excluded.version,
+    executable_path = CASE
+        WHEN excluded.detected = 1 THEN COALESCE(excluded.executable_path, manager_detection.executable_path)
+        ELSE excluded.executable_path
+    END,
+    version = CASE
+        WHEN excluded.detected = 1 THEN COALESCE(excluded.version, manager_detection.version)
+        ELSE excluded.version
+    END,
     detected_at_unix = excluded.detected_at_unix
 ",
                 params![

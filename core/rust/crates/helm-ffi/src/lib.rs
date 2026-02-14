@@ -22,7 +22,7 @@ use helm_core::execution::tokio_process::TokioProcessExecutor;
 use helm_core::models::{
     HomebrewKegPolicy, ManagerId, PackageRef, PinKind, PinRecord, SearchQuery,
 };
-use helm_core::orchestration::CancellationMode;
+use helm_core::orchestration::{AdapterTaskTerminalState, CancellationMode};
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
 use helm_core::persistence::{
     DetectionStore, MigrationStore, PackageStore, PinStore, SearchCacheStore, TaskStore,
@@ -1015,11 +1015,21 @@ pub unsafe extern "C" fn helm_pin_package(
             package: package.clone(),
             version: pinned_version.clone(),
         });
-        if rt_handle
-            .block_on(runtime.submit_refresh_request_response(manager, request))
-            .is_err()
-        {
-            return false;
+        let task_id = match rt_handle.block_on(runtime.submit(manager, request)) {
+            Ok(task_id) => task_id,
+            Err(_) => return false,
+        };
+
+        set_task_label(task_id, format!("Pin {} via Homebrew", package.name));
+
+        let snapshot = match rt_handle.block_on(runtime.wait_for_terminal(task_id, None)) {
+            Ok(snapshot) => snapshot,
+            Err(_) => return false,
+        };
+
+        match snapshot.terminal_state {
+            Some(AdapterTaskTerminalState::Succeeded(_)) => {}
+            _ => return false,
         }
         PinKind::Native
     } else {
@@ -1091,11 +1101,21 @@ pub unsafe extern "C" fn helm_unpin_package(
                 name: package_name.clone(),
             },
         });
-        if rt_handle
-            .block_on(runtime.submit_refresh_request_response(manager, request))
-            .is_err()
-        {
-            return false;
+        let task_id = match rt_handle.block_on(runtime.submit(manager, request)) {
+            Ok(task_id) => task_id,
+            Err(_) => return false,
+        };
+
+        set_task_label(task_id, format!("Unpin {} via Homebrew", package_name));
+
+        let snapshot = match rt_handle.block_on(runtime.wait_for_terminal(task_id, None)) {
+            Ok(snapshot) => snapshot,
+            Err(_) => return false,
+        };
+
+        match snapshot.terminal_state {
+            Some(AdapterTaskTerminalState::Succeeded(_)) => {}
+            _ => return false,
         }
     }
 
