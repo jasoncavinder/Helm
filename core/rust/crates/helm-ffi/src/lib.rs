@@ -2,6 +2,7 @@ use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use std::time::UNIX_EPOCH;
 
 use helm_core::adapters::homebrew::HomebrewAdapter;
 use helm_core::adapters::homebrew_process::ProcessHomebrewSource;
@@ -17,11 +18,11 @@ use helm_core::adapters::{
     AdapterRequest, InstallRequest, SearchRequest, UninstallRequest, UpgradeRequest,
 };
 use helm_core::execution::tokio_process::TokioProcessExecutor;
-use helm_core::models::{ManagerId, PackageRef, SearchQuery};
+use helm_core::models::{ManagerId, PackageRef, PinKind, PinRecord, SearchQuery};
 use helm_core::orchestration::CancellationMode;
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
 use helm_core::persistence::{
-    DetectionStore, MigrationStore, PackageStore, SearchCacheStore, TaskStore,
+    DetectionStore, MigrationStore, PackageStore, PinStore, SearchCacheStore, TaskStore,
 };
 use helm_core::sqlite::SqliteStore;
 use lazy_static::lazy_static;
@@ -437,6 +438,177 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
         Ok(c) => c.into_raw(),
         Err(_) => std::ptr::null_mut(),
     }
+}
+
+/// List pin records as JSON.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_list_pins() -> *mut c_char {
+    let guard = STATE.lock().unwrap();
+    let state = match guard.as_ref() {
+        Some(s) => s,
+        None => return std::ptr::null_mut(),
+    };
+
+    #[derive(serde::Serialize)]
+    struct FfiPinRecord {
+        manager_id: String,
+        package_name: String,
+        pin_kind: String,
+        pinned_version: Option<String>,
+        created_at_unix: i64,
+    }
+
+    let pins = match state.store.list_pins() {
+        Ok(records) => records
+            .into_iter()
+            .map(|record| FfiPinRecord {
+                manager_id: record.package.manager.as_str().to_string(),
+                package_name: record.package.name,
+                pin_kind: match record.kind {
+                    PinKind::Native => "native".to_string(),
+                    PinKind::Virtual => "virtual".to_string(),
+                },
+                pinned_version: record.pinned_version,
+                created_at_unix: record
+                    .created_at
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0),
+            })
+            .collect::<Vec<_>>(),
+        Err(e) => {
+            eprintln!("Failed to list pins: {}", e);
+            return std::ptr::null_mut();
+        }
+    };
+
+    let json = match serde_json::to_string(&pins) {
+        Ok(j) => j,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    match CString::new(json) {
+        Ok(c) => c.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Persist a virtual pin for a package. Returns true on success.
+///
+/// # Safety
+///
+/// `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
+/// strings. `pinned_version` may be null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_pin_package(
+    manager_id: *const c_char,
+    package_name: *const c_char,
+    pinned_version: *const c_char,
+) -> bool {
+    if manager_id.is_null() || package_name.is_null() {
+        return false;
+    }
+
+    let manager = {
+        let c_str = unsafe { CStr::from_ptr(manager_id) };
+        match c_str
+            .to_str()
+            .ok()
+            .and_then(|s| s.parse::<ManagerId>().ok())
+        {
+            Some(id) => id,
+            None => return false,
+        }
+    };
+
+    let package_name = {
+        let c_str = unsafe { CStr::from_ptr(package_name) };
+        match c_str.to_str() {
+            Ok(value) if !value.trim().is_empty() => value.to_string(),
+            _ => return false,
+        }
+    };
+
+    let pinned_version = if pinned_version.is_null() {
+        None
+    } else {
+        let c_str = unsafe { CStr::from_ptr(pinned_version) };
+        match c_str.to_str() {
+            Ok(value) => {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                }
+            }
+            Err(_) => return false,
+        }
+    };
+
+    let guard = STATE.lock().unwrap();
+    let state = match guard.as_ref() {
+        Some(s) => s,
+        None => return false,
+    };
+
+    state
+        .store
+        .upsert_pin(&PinRecord {
+            package: PackageRef {
+                manager,
+                name: package_name,
+            },
+            kind: PinKind::Virtual,
+            pinned_version,
+            created_at: std::time::SystemTime::now(),
+        })
+        .is_ok()
+}
+
+/// Remove a pin for a package. Returns true on success.
+///
+/// # Safety
+///
+/// `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
+/// strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_unpin_package(
+    manager_id: *const c_char,
+    package_name: *const c_char,
+) -> bool {
+    if manager_id.is_null() || package_name.is_null() {
+        return false;
+    }
+
+    let manager = {
+        let c_str = unsafe { CStr::from_ptr(manager_id) };
+        match c_str
+            .to_str()
+            .ok()
+            .and_then(|s| s.parse::<ManagerId>().ok())
+        {
+            Some(id) => id,
+            None => return false,
+        }
+    };
+
+    let package_name = {
+        let c_str = unsafe { CStr::from_ptr(package_name) };
+        match c_str.to_str() {
+            Ok(value) if !value.trim().is_empty() => value.to_string(),
+            _ => return false,
+        }
+    };
+
+    let guard = STATE.lock().unwrap();
+    let state = match guard.as_ref() {
+        Some(s) => s,
+        None => return false,
+    };
+
+    let package_key = format!("{}:{}", manager.as_str(), package_name);
+    state.store.remove_pin(&package_key).is_ok()
 }
 
 /// Set a manager as enabled or disabled.

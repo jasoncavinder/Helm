@@ -52,6 +52,31 @@ bool helm_cancel_task(int64_t task_id);
 char *helm_list_manager_status(void);
 
 /**
+ * List pin records as JSON.
+ */
+char *helm_list_pins(void);
+
+/**
+ * Persist a virtual pin for a package. Returns true on success.
+ *
+ * # Safety
+ *
+ * `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
+ * strings. `pinned_version` may be null.
+ */
+bool helm_pin_package(const char *manager_id, const char *package_name, const char *pinned_version);
+
+/**
+ * Remove a pin for a package. Returns true on success.
+ *
+ * # Safety
+ *
+ * `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
+ * strings.
+ */
+bool helm_unpin_package(const char *manager_id, const char *package_name);
+
+/**
  * Set a manager as enabled or disabled.
  *
  * # Safety

@@ -191,6 +191,80 @@ fn remove_pin_requires_structured_package_key() {
 }
 
 #[test]
+fn list_installed_marks_package_pinned_when_pin_record_exists() {
+    let path = test_db_path("installed-pin-overlay");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    store
+        .upsert_installed(&[InstalledPackage {
+            package: PackageRef {
+                manager: ManagerId::HomebrewFormula,
+                name: "git".to_string(),
+            },
+            installed_version: Some("2.45.1".to_string()),
+            pinned: false,
+        }])
+        .unwrap();
+
+    store
+        .upsert_pin(&PinRecord {
+            package: PackageRef {
+                manager: ManagerId::HomebrewFormula,
+                name: "git".to_string(),
+            },
+            kind: PinKind::Virtual,
+            pinned_version: None,
+            created_at: UNIX_EPOCH + Duration::from_secs(500),
+        })
+        .unwrap();
+
+    let installed = store.list_installed().unwrap();
+    assert_eq!(installed.len(), 1);
+    assert!(installed[0].pinned);
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn list_outdated_marks_package_pinned_when_pin_record_exists() {
+    let path = test_db_path("outdated-pin-overlay");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    store
+        .upsert_outdated(&[OutdatedPackage {
+            package: PackageRef {
+                manager: ManagerId::Mas,
+                name: "Xcode".to_string(),
+            },
+            installed_version: Some("16.1".to_string()),
+            candidate_version: "16.2".to_string(),
+            pinned: false,
+            restart_required: false,
+        }])
+        .unwrap();
+
+    store
+        .upsert_pin(&PinRecord {
+            package: PackageRef {
+                manager: ManagerId::Mas,
+                name: "Xcode".to_string(),
+            },
+            kind: PinKind::Virtual,
+            pinned_version: Some("16.1".to_string()),
+            created_at: UNIX_EPOCH + Duration::from_secs(501),
+        })
+        .unwrap();
+
+    let outdated = store.list_outdated().unwrap();
+    assert_eq!(outdated.len(), 1);
+    assert!(outdated[0].pinned);
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn upsert_and_query_search_cache_roundtrip() {
     let path = test_db_path("search-roundtrip");
     let store = SqliteStore::new(&path);

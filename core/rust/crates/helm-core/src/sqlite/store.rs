@@ -185,9 +185,19 @@ ON CONFLICT(manager_id, package_name) DO UPDATE SET
             ensure_schema_ready(connection)?;
             let mut statement = connection.prepare(
                 "
-SELECT manager_id, package_name, installed_version, pinned
-FROM installed_packages
-ORDER BY manager_id, package_name
+SELECT
+    ip.manager_id,
+    ip.package_name,
+    ip.installed_version,
+    CASE
+        WHEN pr.manager_id IS NOT NULL THEN 1
+        ELSE ip.pinned
+    END AS pinned
+FROM installed_packages ip
+LEFT JOIN pin_records pr
+    ON pr.manager_id = ip.manager_id
+   AND pr.package_name = ip.package_name
+ORDER BY ip.manager_id, ip.package_name
 ",
             )?;
 
@@ -217,9 +227,21 @@ ORDER BY manager_id, package_name
             ensure_schema_ready(connection)?;
             let mut statement = connection.prepare(
                 "
-SELECT manager_id, package_name, installed_version, candidate_version, pinned, restart_required
-FROM outdated_packages
-ORDER BY manager_id, package_name
+SELECT
+    op.manager_id,
+    op.package_name,
+    op.installed_version,
+    op.candidate_version,
+    CASE
+        WHEN pr.manager_id IS NOT NULL THEN 1
+        ELSE op.pinned
+    END AS pinned,
+    op.restart_required
+FROM outdated_packages op
+LEFT JOIN pin_records pr
+    ON pr.manager_id = op.manager_id
+   AND pr.package_name = op.package_name
+ORDER BY op.manager_id, op.package_name
 ",
             )?;
 

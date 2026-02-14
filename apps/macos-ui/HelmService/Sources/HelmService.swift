@@ -88,6 +88,47 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(String(cString: cString))
     }
 
+    func listPins(withReply reply: @escaping (String?) -> Void) {
+        guard let cString = helm_list_pins() else {
+            logger.warning("helm_list_pins returned nil")
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(cString) }
+        reply(String(cString: cString))
+    }
+
+    func pinPackage(managerId: String, packageName: String, version: String?, withReply reply: @escaping (Bool) -> Void) {
+        let result: Bool
+        if let version {
+            result = managerId.withCString { manager in
+                packageName.withCString { package in
+                    version.withCString { versionPtr in
+                        helm_pin_package(manager, package, versionPtr)
+                    }
+                }
+            }
+        } else {
+            result = managerId.withCString { manager in
+                packageName.withCString { package in
+                    helm_pin_package(manager, package, nil)
+                }
+            }
+        }
+        logger.info("helm_pin_package(\(managerId), \(packageName)) result: \(result)")
+        reply(result)
+    }
+
+    func unpinPackage(managerId: String, packageName: String, withReply reply: @escaping (Bool) -> Void) {
+        let result = managerId.withCString { manager in
+            packageName.withCString { package in
+                helm_unpin_package(manager, package)
+            }
+        }
+        logger.info("helm_unpin_package(\(managerId), \(packageName)) result: \(result)")
+        reply(result)
+    }
+
     func setManagerEnabled(managerId: String, enabled: Bool, withReply reply: @escaping (Bool) -> Void) {
         let result = managerId.withCString { helm_set_manager_enabled($0, enabled) }
         logger.info("helm_set_manager_enabled(\(managerId), \(enabled)) result: \(result)")

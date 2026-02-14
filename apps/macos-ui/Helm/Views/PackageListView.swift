@@ -163,6 +163,7 @@ struct PackageListView: View {
 }
 
 private struct PackageDetailPopover: View {
+    @ObservedObject private var core = HelmCore.shared
     let package: PackageItem
 
     var body: some View {
@@ -172,6 +173,7 @@ private struct PackageDetailPopover: View {
 
             LabeledContentRow(label: "Manager", value: package.manager)
             LabeledContentRow(label: "Version", value: package.version)
+            LabeledContentRow(label: "Pinned", value: package.pinned ? "Yes" : "No")
 
             if let latest = package.latestVersion {
                 LabeledContentRow(label: "Available", value: latest, valueColor: .orange)
@@ -190,6 +192,16 @@ private struct PackageDetailPopover: View {
             Divider()
 
             HStack {
+                if package.status != .available {
+                    Button(package.pinned ? "Unpin" : "Pin") {
+                        if package.pinned {
+                            core.unpinPackage(package)
+                        } else {
+                            core.pinPackage(package)
+                        }
+                    }
+                }
+
                 if package.status == .upgradable {
                     Button("Upgrade") {}
                         .disabled(true)

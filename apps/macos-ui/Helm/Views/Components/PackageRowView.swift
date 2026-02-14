@@ -11,9 +11,17 @@ struct PackageRowView: View {
                 .frame(width: 20)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(package.name)
-                    .font(.body)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(package.name)
+                        .font(.body)
+                        .lineLimit(1)
+                    if package.pinned {
+                        Image(systemName: "pin.fill")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .help("Pinned")
+                    }
+                }
 
                 Text(package.manager)
                     .font(.caption2)

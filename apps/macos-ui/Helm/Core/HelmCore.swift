@@ -178,6 +178,8 @@ final class HelmCore: ObservableObject {
                             id: "\(pkg.package.manager):\(pkg.package.name)",
                             name: pkg.package.name,
                             version: pkg.installedVersion ?? "unknown",
+                            managerId: pkg.package.manager,
+                            pinned: pkg.pinned,
                             manager: self?.normalizedManagerName(pkg.package.manager) ?? pkg.package.manager
                         )
                     }
@@ -204,7 +206,9 @@ final class HelmCore: ObservableObject {
                             name: pkg.package.name,
                             version: pkg.installedVersion ?? "unknown",
                             latestVersion: pkg.candidateVersion,
+                            managerId: pkg.package.manager,
                             manager: self?.normalizedManagerName(pkg.package.manager) ?? pkg.package.manager,
+                            pinned: pkg.pinned,
                             restartRequired: pkg.restartRequired
                         )
                     }
@@ -322,6 +326,7 @@ final class HelmCore: ObservableObject {
                             id: "\(result.sourceManager):\(result.name)",
                             name: result.name,
                             version: result.version ?? "",
+                            managerId: result.sourceManager,
                             manager: self?.normalizedManagerName(result.sourceManager) ?? result.sourceManager,
                             summary: result.summary,
                             status: .available
@@ -354,6 +359,7 @@ final class HelmCore: ObservableObject {
                             id: id,
                             name: result.name,
                             version: result.version ?? "",
+                            managerId: result.sourceManager,
                             manager: self.normalizedManagerName(result.sourceManager),
                             summary: result.summary,
                             status: .available
@@ -450,6 +456,23 @@ final class HelmCore: ObservableObject {
         service()?.uninstallManager(managerId: managerId) { taskId in
             if taskId < 0 {
                 logger.error("uninstallManager(\(managerId)) failed")
+            }
+        }
+    }
+
+    func pinPackage(_ package: PackageItem) {
+        let version = package.version.isEmpty || package.version == "unknown" ? nil : package.version
+        service()?.pinPackage(managerId: package.managerId, packageName: package.name, version: version) { success in
+            if !success {
+                logger.error("pinPackage(\(package.managerId):\(package.name)) failed")
+            }
+        }
+    }
+
+    func unpinPackage(_ package: PackageItem) {
+        service()?.unpinPackage(managerId: package.managerId, packageName: package.name) { success in
+            if !success {
+                logger.error("unpinPackage(\(package.managerId):\(package.name)) failed")
             }
         }
     }
