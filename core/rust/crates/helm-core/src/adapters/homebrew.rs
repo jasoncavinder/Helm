@@ -309,19 +309,79 @@ fn parse_detection_output(output: HomebrewDetectOutput) -> DetectionInfo {
 }
 
 fn parse_homebrew_version(output: &str) -> Option<String> {
-    for line in output
+    let sanitized = strip_ansi_escape_sequences(output);
+
+    for line in sanitized
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
     {
-        if let Some(tail) = line.strip_prefix("Homebrew ") {
-            let token = tail.split_whitespace().next().unwrap_or(tail);
-            if !token.is_empty() {
-                return Some(token.to_owned());
+        if line.eq_ignore_ascii_case("homebrew") {
+            continue;
+        }
+
+        if line.to_ascii_lowercase().starts_with("homebrew")
+            && let Some(token) = line
+                .split_whitespace()
+                .find(|token| is_homebrew_version_token(token))
+        {
+            return Some(normalize_version_token(token));
+        }
+
+        if line.to_ascii_lowercase().contains("homebrew")
+            && let Some(token) = line
+                .split_whitespace()
+                .find(|token| is_homebrew_version_token(token))
+        {
+            return Some(normalize_version_token(token));
+        }
+    }
+
+    for token in sanitized.split_whitespace() {
+        if is_homebrew_version_token(token) {
+            let normalized = normalize_version_token(token);
+            if normalized.contains('.') {
+                return Some(normalized);
             }
         }
     }
     None
+}
+
+fn strip_ansi_escape_sequences(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch != '\u{1b}' {
+            output.push(ch);
+            continue;
+        }
+
+        if chars.peek() == Some(&'[') {
+            let _ = chars.next();
+            for c in chars.by_ref() {
+                if ('@'..='~').contains(&c) {
+                    break;
+                }
+            }
+        }
+    }
+
+    output
+}
+
+fn normalize_version_token(token: &str) -> String {
+    token
+        .trim_matches(|ch: char| ch == ',' || ch == ';' || ch == ')' || ch == '(')
+        .to_owned()
+}
+
+fn is_homebrew_version_token(token: &str) -> bool {
+    let normalized = normalize_version_token(token);
+    let mut chars = normalized.chars();
+    let starts_with_digit = chars.next().map(|ch| ch.is_ascii_digit()).unwrap_or(false);
+    starts_with_digit && normalized.contains('.')
 }
 
 fn parse_installed_formulae(output: &str) -> AdapterResult<Vec<InstalledPackage>> {
@@ -388,7 +448,11 @@ fn parse_outdated_formulae(output: &str) -> AdapterResult<Vec<OutdatedPackage>> 
                 pinned: false,
                 restart_required: false,
             }),
-            None => malformed_lines += 1,
+            None => {
+                if !looks_like_outdated_line(line) {
+                    malformed_lines += 1;
+                }
+            }
         }
     }
 
@@ -399,6 +463,10 @@ fn parse_outdated_formulae(output: &str) -> AdapterResult<Vec<OutdatedPackage>> 
     }
 
     Ok(parsed)
+}
+
+fn looks_like_outdated_line(line: &str) -> bool {
+    line.contains(" < ") || line.contains(" != ") || line.contains(" -> ") || line.contains(" → ")
 }
 
 fn parse_outdated_line(line: &str) -> Option<(String, Option<String>, String)> {
@@ -427,7 +495,7 @@ fn parse_outdated_line(line: &str) -> Option<(String, Option<String>, String)> {
     let (name, installed_version) = if let Some(paren_start) = left.find(" (") {
         let name = left[..paren_start].trim();
         let version_part = left[paren_start + 2..].trim_end_matches(')').trim();
-        (name, Some(version_part.to_owned()))
+        (name, normalize_installed_version(version_part))
     } else if let Some((name_part, version_part)) = left.rsplit_once(' ') {
         let name = name_part.trim();
         let version = version_part.trim();
@@ -459,11 +527,39 @@ fn parse_outdated_line(line: &str) -> Option<(String, Option<String>, String)> {
         return None;
     }
 
+    if let Some(installed) = &installed_version
+        && installed
+            .split(',')
+            .map(str::trim)
+            .any(|version| version == candidate_token)
+    {
+        // Ignore stale-keg lines where the candidate version is already installed.
+        return None;
+    }
+
     Some((
         name.to_owned(),
         installed_version,
         candidate_token.to_owned(),
     ))
+}
+
+fn normalize_installed_version(version_part: &str) -> Option<String> {
+    let normalized = version_part.trim();
+    if normalized.is_empty() {
+        return None;
+    }
+
+    if normalized.contains(',') {
+        let latest = normalized
+            .split(',')
+            .map(str::trim)
+            .filter(|token| !token.is_empty())
+            .next_back();
+        return latest.map(str::to_owned);
+    }
+
+    Some(normalized.to_owned())
 }
 
 fn parse_search_formulae(
@@ -606,6 +702,14 @@ mod tests {
     }
 
     #[test]
+    fn parses_homebrew_version_with_ansi_sequences() {
+        let version = parse_homebrew_version(
+            "\u{1b}[1;32mHomebrew 4.4.31\u{1b}[0m\nHomebrew/homebrew-core (git revision)\n",
+        );
+        assert_eq!(version.as_deref(), Some("4.4.31"));
+    }
+
+    #[test]
     fn detection_marks_not_installed_when_probe_has_no_signals() {
         let detection = super::parse_detection_output(HomebrewDetectOutput {
             executable_path: None,
@@ -646,6 +750,12 @@ mod tests {
         assert_eq!(parsed[1].installed_version.as_deref(), Some("2.0.0"));
         assert_eq!(parsed[1].candidate_version, "2.1.0");
         assert_eq!(parsed[2].candidate_version, "3.2.0");
+    }
+
+    #[test]
+    fn ignores_outdated_line_when_candidate_is_already_installed() {
+        let parsed = parse_outdated_formulae("sevenzip (25.01, 26.00) < 26.00").unwrap();
+        assert!(parsed.is_empty());
     }
 
     #[test]

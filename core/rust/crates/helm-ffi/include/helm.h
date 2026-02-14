@@ -70,6 +70,20 @@ bool helm_set_safe_mode(bool enabled);
 bool helm_upgrade_all(bool include_pinned, bool allow_os_updates);
 
 /**
+ * Queue an upgrade task for a single package. Returns the task ID, or -1 on error.
+ *
+ * Currently supported manager IDs:
+ * - "homebrew_formula"
+ * - "rustup" (only for package "__self__")
+ *
+ * # Safety
+ *
+ * `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
+ * strings.
+ */
+int64_t helm_upgrade_package(const char *manager_id, const char *package_name);
+
+/**
  * List pin records as JSON.
  */
 char *helm_list_pins(void);

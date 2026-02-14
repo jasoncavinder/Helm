@@ -139,6 +139,10 @@ struct PackageListView: View {
                             PackageRowView(
                                 package: package,
                                 isPinActionInFlight: core.pinActionPackageIds.contains(package.id),
+                                isUpgradeActionInFlight: core.upgradeActionPackageIds.contains(package.id),
+                                onUpgrade: core.canUpgradeIndividually(package)
+                                    ? { core.upgradePackage(package) }
+                                    : nil,
                                 onTogglePin: package.status == .available
                                     ? nil
                                     : {

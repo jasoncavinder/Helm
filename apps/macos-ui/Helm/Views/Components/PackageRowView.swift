@@ -3,6 +3,8 @@ import SwiftUI
 struct PackageRowView: View {
     let package: PackageItem
     var isPinActionInFlight: Bool = false
+    var isUpgradeActionInFlight: Bool = false
+    var onUpgrade: (() -> Void)? = nil
     var onTogglePin: (() -> Void)? = nil
 
     var body: some View {
@@ -39,20 +41,39 @@ struct PackageRowView: View {
             Spacer()
 
             VStack(alignment: .trailing, spacing: 2) {
-                if let onTogglePin {
-                    if isPinActionInFlight {
-                        ProgressView()
-                            .controlSize(.mini)
-                            .scaleEffect(0.75)
-                            .frame(width: 16, height: 16)
-                    } else {
-                        Button(action: onTogglePin) {
-                            Image(systemName: package.pinned ? "pin.slash.fill" : "pin")
-                                .font(.caption)
-                                .foregroundColor(package.pinned ? .orange : .secondary)
+                HStack(spacing: 6) {
+                    if let onUpgrade {
+                        if isUpgradeActionInFlight {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .scaleEffect(0.75)
+                                .frame(width: 16, height: 16)
+                        } else {
+                            Button(action: onUpgrade) {
+                                Image(systemName: "arrow.up.circle")
+                                    .font(.caption)
+                                    .foregroundColor(.orange)
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Upgrade package")
                         }
-                        .buttonStyle(.borderless)
-                        .help(package.pinned ? "Unpin package" : "Pin package")
+                    }
+
+                    if let onTogglePin {
+                        if isPinActionInFlight {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .scaleEffect(0.75)
+                                .frame(width: 16, height: 16)
+                        } else {
+                            Button(action: onTogglePin) {
+                                Image(systemName: package.pinned ? "pin.slash.fill" : "pin")
+                                    .font(.caption)
+                                    .foregroundColor(package.pinned ? .orange : .secondary)
+                            }
+                            .buttonStyle(.borderless)
+                            .help(package.pinned ? "Unpin package" : "Pin package")
+                        }
                     }
                 }
 

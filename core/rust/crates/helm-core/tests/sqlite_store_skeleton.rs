@@ -152,6 +152,35 @@ fn upsert_and_list_outdated_roundtrip() {
 }
 
 #[test]
+fn replace_outdated_snapshot_clears_stale_rows_for_manager() {
+    let path = test_db_path("outdated-replace-snapshot");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    store
+        .upsert_outdated(&[OutdatedPackage {
+            package: PackageRef {
+                manager: ManagerId::HomebrewFormula,
+                name: "sevenzip".to_string(),
+            },
+            installed_version: Some("25.01".to_string()),
+            candidate_version: "26.00".to_string(),
+            pinned: false,
+            restart_required: false,
+        }])
+        .unwrap();
+
+    store
+        .replace_outdated_snapshot(ManagerId::HomebrewFormula, &[])
+        .unwrap();
+
+    let persisted = store.list_outdated().unwrap();
+    assert!(persisted.is_empty());
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn upsert_and_remove_pins_roundtrip() {
     let path = test_db_path("pins-roundtrip");
     let store = SqliteStore::new(&path);

@@ -37,6 +37,11 @@ struct HelmState {
 
 lazy_static! {
     static ref STATE: Mutex<Option<HelmState>> = Mutex::new(None);
+    static ref TASK_LABELS: Mutex<std::collections::HashMap<u64, String>> = Mutex::new(std::collections::HashMap::new());
+}
+
+fn set_task_label(task_id: helm_core::models::TaskId, label: String) {
+    TASK_LABELS.lock().unwrap().insert(task_id.0, label);
 }
 
 /// Initialize the Helm core engine with the given SQLite database path.
@@ -209,7 +214,32 @@ pub extern "C" fn helm_list_tasks() -> *mut c_char {
         }
     };
 
-    let json = match serde_json::to_string(&tasks) {
+    #[derive(serde::Serialize)]
+    struct FfiTaskRecord {
+        id: helm_core::models::TaskId,
+        manager: ManagerId,
+        task_type: helm_core::models::TaskType,
+        status: helm_core::models::TaskStatus,
+        label: Option<String>,
+    }
+
+    let mut labels = TASK_LABELS.lock().unwrap();
+    let active_ids: std::collections::HashSet<u64> = tasks.iter().map(|task| task.id.0).collect();
+    labels.retain(|task_id, _| active_ids.contains(task_id));
+
+    let ffi_tasks: Vec<FfiTaskRecord> = tasks
+        .iter()
+        .map(|task| FfiTaskRecord {
+            id: task.id,
+            manager: task.manager,
+            task_type: task.task_type,
+            status: task.status,
+            label: labels.get(&task.id.0).cloned(),
+        })
+        .collect();
+    drop(labels);
+
+    let json = match serde_json::to_string(&ffi_tasks) {
         Ok(j) => j,
         Err(_) => return std::ptr::null_mut(),
     };
@@ -529,14 +559,18 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
 
         if runtime.is_manager_enabled(ManagerId::HomebrewFormula) {
             for package_name in homebrew_targets {
+                let label = format!("Upgrade {} via Homebrew", package_name);
                 let request = AdapterRequest::Upgrade(UpgradeRequest {
                     package: Some(PackageRef {
                         manager: ManagerId::HomebrewFormula,
                         name: package_name,
                     }),
                 });
-                if let Err(error) = runtime.submit(ManagerId::HomebrewFormula, request).await {
-                    eprintln!("upgrade_all: failed to queue homebrew upgrade task: {error}");
+                match runtime.submit(ManagerId::HomebrewFormula, request).await {
+                    Ok(task_id) => set_task_label(task_id, label),
+                    Err(error) => {
+                        eprintln!("upgrade_all: failed to queue homebrew upgrade task: {error}");
+                    }
                 }
             }
         }
@@ -548,8 +582,11 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                     name: "__self__".to_string(),
                 }),
             });
-            if let Err(error) = runtime.submit(ManagerId::Rustup, request).await {
-                eprintln!("upgrade_all: failed to queue rustup self-update task: {error}");
+            match runtime.submit(ManagerId::Rustup, request).await {
+                Ok(task_id) => set_task_label(task_id, "Self-update rustup".to_string()),
+                Err(error) => {
+                    eprintln!("upgrade_all: failed to queue rustup self-update task: {error}");
+                }
             }
         }
 
@@ -566,14 +603,95 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                         name: "__confirm_os_updates__".to_string(),
                     }),
                 });
-                if let Err(error) = runtime.submit(ManagerId::SoftwareUpdate, request).await {
-                    eprintln!("upgrade_all: failed to queue softwareupdate task: {error}");
+                match runtime.submit(ManagerId::SoftwareUpdate, request).await {
+                    Ok(task_id) => {
+                        set_task_label(task_id, "Upgrade macOS software updates".to_string())
+                    }
+                    Err(error) => {
+                        eprintln!("upgrade_all: failed to queue softwareupdate task: {error}");
+                    }
                 }
             }
         }
     });
 
     true
+}
+
+/// Queue an upgrade task for a single package. Returns the task ID, or -1 on error.
+///
+/// Currently supported manager IDs:
+/// - "homebrew_formula"
+/// - "rustup" (only for package "__self__")
+///
+/// # Safety
+///
+/// `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
+/// strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_upgrade_package(
+    manager_id: *const c_char,
+    package_name: *const c_char,
+) -> i64 {
+    if manager_id.is_null() || package_name.is_null() {
+        return -1;
+    }
+
+    let manager_cstr = unsafe { CStr::from_ptr(manager_id) };
+    let manager = match manager_cstr.to_str().ok().and_then(|s| s.parse::<ManagerId>().ok()) {
+        Some(manager) => manager,
+        None => return -1,
+    };
+
+    let package_cstr = unsafe { CStr::from_ptr(package_name) };
+    let package_name = match package_cstr.to_str() {
+        Ok(name) if !name.trim().is_empty() => name.trim().to_string(),
+        _ => return -1,
+    };
+
+    let (target_manager, request, label) = match manager {
+        ManagerId::HomebrewFormula => (
+            ManagerId::HomebrewFormula,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::HomebrewFormula,
+                    name: package_name.clone(),
+                }),
+            }),
+            format!("Upgrade {} via Homebrew", package_name),
+        ),
+        ManagerId::Rustup if package_name == "__self__" => (
+            ManagerId::Rustup,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Rustup,
+                    name: "__self__".to_string(),
+                }),
+            }),
+            "Self-update rustup".to_string(),
+        ),
+        _ => return -1,
+    };
+
+    let (runtime, rt_handle) = {
+        let guard = STATE.lock().unwrap();
+        let state = match guard.as_ref() {
+            Some(s) => s,
+            None => return -1,
+        };
+        (state.runtime.clone(), state.rt_handle.clone())
+    };
+
+    match rt_handle.block_on(runtime.submit(target_manager, request)) {
+        Ok(task_id) => {
+            set_task_label(task_id, label);
+            task_id.0 as i64
+        }
+        Err(error) => {
+            eprintln!("upgrade_package: failed to queue task: {error}");
+            -1
+        }
+    }
 }
 
 /// List pin records as JSON.
@@ -870,7 +988,13 @@ pub unsafe extern "C" fn helm_install_manager(manager_id: *const c_char) -> i64 
     });
 
     match rt_handle.block_on(runtime.submit(ManagerId::HomebrewFormula, request)) {
-        Ok(task_id) => task_id.0 as i64,
+        Ok(task_id) => {
+            set_task_label(
+                task_id,
+                format!("Install {} via Homebrew", formula_name),
+            );
+            task_id.0 as i64
+        }
         Err(e) => {
             eprintln!("Failed to install manager {}: {}", id_str, e);
             -1
@@ -950,8 +1074,19 @@ pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
         (state.runtime.clone(), state.rt_handle.clone())
     };
 
+    let label = match id_str {
+        "homebrew_formula" => "Update Homebrew".to_string(),
+        "mise" => "Update mise via Homebrew".to_string(),
+        "mas" => "Update mas via Homebrew".to_string(),
+        "rustup" => "Self-update rustup".to_string(),
+        _ => "Update manager".to_string(),
+    };
+
     match rt_handle.block_on(runtime.submit(target_manager, request)) {
-        Ok(task_id) => task_id.0 as i64,
+        Ok(task_id) => {
+            set_task_label(task_id, label);
+            task_id.0 as i64
+        }
         Err(e) => {
             eprintln!("Failed to update manager {}: {}", id_str, e);
             -1
@@ -1018,8 +1153,18 @@ pub unsafe extern "C" fn helm_uninstall_manager(manager_id: *const c_char) -> i6
         _ => return -1, // Not automatable
     };
 
+    let label = match id_str {
+        "mise" => "Uninstall mise via Homebrew".to_string(),
+        "mas" => "Uninstall mas via Homebrew".to_string(),
+        "rustup" => "Uninstall rustup".to_string(),
+        _ => "Uninstall manager".to_string(),
+    };
+
     match rt_handle.block_on(runtime.submit(target_manager, request)) {
-        Ok(task_id) => task_id.0 as i64,
+        Ok(task_id) => {
+            set_task_label(task_id, label);
+            task_id.0 as i64
+        }
         Err(e) => {
             eprintln!("Failed to uninstall manager {}: {}", id_str, e);
             -1

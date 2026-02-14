@@ -12,6 +12,7 @@ import Foundation
     func getSafeMode(withReply reply: @escaping (Bool) -> Void)
     func setSafeMode(enabled: Bool, withReply reply: @escaping (Bool) -> Void)
     func upgradeAll(includePinned: Bool, allowOsUpdates: Bool, withReply reply: @escaping (Bool) -> Void)
+    func upgradePackage(managerId: String, packageName: String, withReply reply: @escaping (Int64) -> Void)
     func listPins(withReply reply: @escaping (String?) -> Void)
     func pinPackage(managerId: String, packageName: String, version: String?, withReply reply: @escaping (Bool) -> Void)
     func unpinPackage(managerId: String, packageName: String, withReply reply: @escaping (Bool) -> Void)

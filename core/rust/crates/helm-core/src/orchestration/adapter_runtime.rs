@@ -557,7 +557,9 @@ async fn persist_adapter_response(
             AdapterResponse::InstalledPackages(packages) => {
                 package_store.upsert_installed(&packages)
             }
-            AdapterResponse::OutdatedPackages(packages) => package_store.upsert_outdated(&packages),
+            AdapterResponse::OutdatedPackages(packages) => {
+                package_store.replace_outdated_snapshot(manager, &packages)
+            }
             _ => Ok(()), // Other responses not persisted yet
         }
     })

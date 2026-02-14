@@ -180,6 +180,46 @@ ON CONFLICT(manager_id, package_name) DO UPDATE SET
         })
     }
 
+    fn replace_outdated_snapshot(
+        &self,
+        manager: ManagerId,
+        packages: &[OutdatedPackage],
+    ) -> PersistenceResult<()> {
+        self.with_connection("replace_outdated_snapshot", |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction = connection.transaction()?;
+
+            transaction.execute(
+                "DELETE FROM outdated_packages WHERE manager_id = ?1",
+                [manager.as_str()],
+            )?;
+
+            {
+                let mut statement = transaction.prepare(
+                    "
+INSERT INTO outdated_packages (
+    manager_id, package_name, installed_version, candidate_version, pinned, restart_required, updated_at_unix
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%s', 'now'))
+",
+                )?;
+
+                for package in packages {
+                    statement.execute((
+                        package.package.manager.as_str(),
+                        package.package.name.as_str(),
+                        package.installed_version.as_deref(),
+                        package.candidate_version.as_str(),
+                        bool_to_sqlite(package.pinned),
+                        bool_to_sqlite(package.restart_required),
+                    ))?;
+                }
+            }
+
+            transaction.commit()?;
+            Ok(())
+        })
+    }
+
     fn list_installed(&self) -> PersistenceResult<Vec<InstalledPackage>> {
         self.with_connection("list_installed", |connection| {
             ensure_schema_ready(connection)?;

@@ -27,6 +27,7 @@ struct CoreTaskRecord: Codable {
     let manager: String
     let taskType: String
     let status: String
+    let label: String?
 }
 
 struct CoreSearchResult: Codable {
@@ -65,6 +66,7 @@ final class HelmCore: ObservableObject {
     @Published var managerStatuses: [String: ManagerStatus] = [:]
     @Published var managerOperations: [String: String] = [:]
     @Published var pinActionPackageIds: Set<String> = []
+    @Published var upgradeActionPackageIds: Set<String> = []
     @Published var safeModeEnabled: Bool = false
     @Published var selectedManagerFilter: String? = nil
     @Published var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
@@ -240,7 +242,7 @@ final class HelmCore: ObservableObject {
                         let managerName = self?.normalizedManagerName(task.manager) ?? task.manager
                         return TaskItem(
                             id: "\(task.id)",
-                            description: overrideDescription ?? "\(task.taskType.capitalized) \(managerName)",
+                            description: overrideDescription ?? task.label ?? "\(task.taskType.capitalized) \(managerName)",
                             status: task.status.capitalized
                         )
                     }
@@ -427,6 +429,45 @@ final class HelmCore: ObservableObject {
         service()?.upgradeAll(includePinned: includePinned, allowOsUpdates: allowOsUpdates) { success in
             if !success {
                 logger.error("upgradeAll(includePinned: \(includePinned), allowOsUpdates: \(allowOsUpdates)) failed")
+            }
+        }
+    }
+
+    func canUpgradeIndividually(_ package: PackageItem) -> Bool {
+        package.status == .upgradable && package.managerId == "homebrew_formula" && !package.pinned
+    }
+
+    func upgradePackage(_ package: PackageItem) {
+        guard canUpgradeIndividually(package) else { return }
+
+        DispatchQueue.main.async {
+            self.upgradeActionPackageIds.insert(package.id)
+        }
+
+        guard let service = service() else {
+            logger.error("upgradePackage(\(package.managerId):\(package.name)) failed: service unavailable")
+            DispatchQueue.main.async {
+                self.upgradeActionPackageIds.remove(package.id)
+            }
+            return
+        }
+
+        service.upgradePackage(managerId: package.managerId, packageName: package.name) { [weak self] taskId in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.upgradeActionPackageIds.remove(package.id)
+
+                if taskId < 0 {
+                    logger.error("upgradePackage(\(package.managerId):\(package.name)) failed")
+                    return
+                }
+
+                self.registerManagerActionTask(
+                    managerId: package.managerId,
+                    taskId: UInt64(taskId),
+                    description: "Upgrade \(package.name) via \(self.normalizedManagerName(package.managerId))",
+                    inProgressText: "Upgrading..."
+                )
             }
         }
     }

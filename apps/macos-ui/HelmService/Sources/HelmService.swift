@@ -105,6 +105,16 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(result)
     }
 
+    func upgradePackage(managerId: String, packageName: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = managerId.withCString { manager in
+            packageName.withCString { package in
+                helm_upgrade_package(manager, package)
+            }
+        }
+        logger.info("helm_upgrade_package(\(managerId), \(packageName)) result: \(taskId)")
+        reply(taskId)
+    }
+
     func listPins(withReply reply: @escaping (String?) -> Void) {
         guard let cString = helm_list_pins() else {
             logger.warning("helm_list_pins returned nil")
