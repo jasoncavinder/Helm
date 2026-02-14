@@ -7,7 +7,7 @@ struct OnboardingDetectionView: View {
     @State private var hasTriggeredDetection = false
 
     private var detectionComplete: Bool {
-        hasTriggeredDetection && !core.isRefreshing
+        hasTriggeredDetection && !core.onboardingDetectionInProgress
     }
 
     private var foundManagers: [ManagerInfo] {
@@ -74,7 +74,7 @@ struct OnboardingDetectionView: View {
         }
         .onAppear {
             if !hasTriggeredDetection {
-                core.triggerRefresh()
+                core.triggerOnboardingDetectionRefresh()
                 hasTriggeredDetection = true
             }
         }

@@ -84,6 +84,7 @@ final class HelmCore: ObservableObject {
     @Published var managerOperations: [String: String] = [:]
     @Published var pinActionPackageIds: Set<String> = []
     @Published var upgradeActionPackageIds: Set<String> = []
+    @Published var onboardingDetectionInProgress: Bool = false
     @Published var homebrewKegAutoCleanupEnabled: Bool = false
     @Published var packageKegPolicyOverrides: [String: HomebrewKegPolicyOverride] = [:]
     @Published var safeModeEnabled: Bool = false
@@ -97,6 +98,10 @@ final class HelmCore: ObservableObject {
     private var activeRemoteSearchTaskId: Int64?
     private var managerActionTaskDescriptions: [UInt64: String] = [:]
     private var managerActionTaskByManager: [String: UInt64] = [:]
+    private var lastObservedTaskId: UInt64 = 0
+    private var onboardingDetectionAnchorTaskId: UInt64 = 0
+    private var onboardingDetectionPendingManagers: Set<String> = []
+    private var onboardingDetectionStartedAt: Date?
 
     private init() {
         setupConnection()
@@ -172,9 +177,28 @@ final class HelmCore: ObservableObject {
                 DispatchQueue.main.async {
                     self.isRefreshing = false
                     self.lastRefreshTrigger = nil
+                    self.completeOnboardingDetectionProgress()
                 }
             }
         }
+    }
+
+    func triggerOnboardingDetectionRefresh() {
+        let visibleMaxTaskId = activeTasks
+            .compactMap { UInt64($0.id) }
+            .max() ?? 0
+        onboardingDetectionAnchorTaskId = max(lastObservedTaskId, visibleMaxTaskId)
+
+        let enabledImplementedManagers = Set(
+            ManagerInfo.implemented
+                .filter { managerStatuses[$0.id]?.enabled ?? true }
+                .map(\.id)
+        )
+        onboardingDetectionPendingManagers = enabledImplementedManagers
+        onboardingDetectionStartedAt = Date()
+        onboardingDetectionInProgress = !enabledImplementedManagers.isEmpty
+
+        triggerRefresh()
     }
 
     private func normalizedManagerName(_ raw: String) -> String {
@@ -258,6 +282,10 @@ final class HelmCore: ObservableObject {
                 let coreTasks = try decoder.decode([CoreTaskRecord].self, from: data)
 
                 DispatchQueue.main.async {
+                    if let maxTaskId = coreTasks.map(\.id).max() {
+                        self?.lastObservedTaskId = max(self?.lastObservedTaskId ?? 0, maxTaskId)
+                    }
+
                     self?.activeTasks = coreTasks.map { task in
                         let overrideDescription = self?.managerActionTaskDescriptions[task.id]
                         let managerName = self?.normalizedManagerName(task.manager) ?? task.manager
@@ -286,6 +314,7 @@ final class HelmCore: ObservableObject {
                         }
                     }
                     self?.detectedManagers = detected
+                    self?.updateOnboardingDetectionProgress(from: coreTasks)
 
                     let isRunning = coreTasks.contains {
                         let type = $0.taskType.lowercased()
@@ -419,6 +448,7 @@ final class HelmCore: ObservableObject {
                         map[status.managerId] = status
                     }
                     self?.managerStatuses = map
+                    self?.pruneOnboardingDetectionForDisabledManagers()
                 }
             } catch {
                 logger.error("Failed to decode manager statuses: \(error)")
@@ -656,6 +686,11 @@ final class HelmCore: ObservableObject {
                     self?.homebrewKegAutoCleanupEnabled = false
                     self?.searchText = ""
                     self?.isRefreshing = false
+                    self?.onboardingDetectionInProgress = false
+                    self?.lastObservedTaskId = 0
+                    self?.onboardingDetectionAnchorTaskId = 0
+                    self?.onboardingDetectionPendingManagers = []
+                    self?.onboardingDetectionStartedAt = nil
                     self?.lastRefreshTrigger = nil
                     UserDefaults.standard.removeObject(forKey: "hasCompletedOnboarding")
                     self?.hasCompletedOnboarding = false
@@ -849,6 +884,50 @@ final class HelmCore: ObservableObject {
                 managerActionTaskByManager.removeValue(forKey: managerId)
             }
         }
+    }
+
+    private func updateOnboardingDetectionProgress(from coreTasks: [CoreTaskRecord]) {
+        guard onboardingDetectionInProgress else { return }
+
+        let terminalStatuses = Set(["completed", "failed", "cancelled"])
+        for task in coreTasks
+        where task.id > onboardingDetectionAnchorTaskId
+            && task.taskType.lowercased() == "detection"
+            && terminalStatuses.contains(task.status.lowercased())
+        {
+            onboardingDetectionPendingManagers.remove(task.manager)
+        }
+
+        pruneOnboardingDetectionForDisabledManagers()
+
+        if onboardingDetectionPendingManagers.isEmpty {
+            completeOnboardingDetectionProgress()
+            return
+        }
+
+        if let startedAt = onboardingDetectionStartedAt,
+           Date().timeIntervalSince(startedAt) > 90
+        {
+            let pending = onboardingDetectionPendingManagers.joined(separator: ",")
+            logger.warning("Onboarding detection timed out waiting for managers: \(pending)")
+            completeOnboardingDetectionProgress()
+        }
+    }
+
+    private func pruneOnboardingDetectionForDisabledManagers() {
+        guard onboardingDetectionInProgress else { return }
+        for (managerId, status) in managerStatuses where !status.enabled {
+            onboardingDetectionPendingManagers.remove(managerId)
+        }
+        if onboardingDetectionPendingManagers.isEmpty {
+            completeOnboardingDetectionProgress()
+        }
+    }
+
+    private func completeOnboardingDetectionProgress() {
+        onboardingDetectionInProgress = false
+        onboardingDetectionPendingManagers.removeAll()
+        onboardingDetectionStartedAt = nil
     }
 
     private func shouldCleanupOldKegs(for package: PackageItem) -> Bool {

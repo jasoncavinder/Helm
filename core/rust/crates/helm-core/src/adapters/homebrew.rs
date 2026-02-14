@@ -468,14 +468,14 @@ fn parse_outdated_formulae(output: &str) -> AdapterResult<Vec<OutdatedPackage>> 
         .filter(|line| !line.is_empty())
     {
         match parse_outdated_line(line) {
-            Some((name, installed_version, candidate_version)) => parsed.push(OutdatedPackage {
+            Some((name, installed_version, candidate_version, pinned)) => parsed.push(OutdatedPackage {
                 package: PackageRef {
                     manager: ManagerId::HomebrewFormula,
                     name,
                 },
                 installed_version,
                 candidate_version,
-                pinned: false,
+                pinned,
                 restart_required: false,
             }),
             None => {
@@ -499,7 +499,7 @@ fn looks_like_outdated_line(line: &str) -> bool {
     line.contains(" < ") || line.contains(" != ") || line.contains(" -> ") || line.contains(" → ")
 }
 
-fn parse_outdated_line(line: &str) -> Option<(String, Option<String>, String)> {
+fn parse_outdated_line(line: &str) -> Option<(String, Option<String>, String, bool)> {
     // Common formats:
     // - "name (installed_version) < candidate_version"
     // - "name (installed_version) != candidate_version"
@@ -557,6 +557,8 @@ fn parse_outdated_line(line: &str) -> Option<(String, Option<String>, String)> {
         return None;
     }
 
+    let pinned = line.to_ascii_lowercase().contains("[pinned");
+
     if let Some(installed) = &installed_version
         && installed
             .split(',')
@@ -571,6 +573,7 @@ fn parse_outdated_line(line: &str) -> Option<(String, Option<String>, String)> {
         name.to_owned(),
         installed_version,
         candidate_token.to_owned(),
+        pinned,
     ))
 }
 
@@ -780,6 +783,17 @@ mod tests {
         assert_eq!(parsed[1].installed_version.as_deref(), Some("2.0.0"));
         assert_eq!(parsed[1].candidate_version, "2.1.0");
         assert_eq!(parsed[2].candidate_version, "3.2.0");
+    }
+
+    #[test]
+    fn parses_outdated_formulae_marks_pinned_entries() {
+        let parsed = parse_outdated_formulae("libzip (1.11.4) < 1.11.4_1 [pinned at 1.11.4]")
+            .unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].package.name, "libzip");
+        assert_eq!(parsed[0].installed_version.as_deref(), Some("1.11.4"));
+        assert_eq!(parsed[0].candidate_version, "1.11.4_1");
+        assert!(parsed[0].pinned);
     }
 
     #[test]
