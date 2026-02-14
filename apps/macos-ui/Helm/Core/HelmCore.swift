@@ -27,6 +27,7 @@ struct CoreTaskRecord: Codable {
     let manager: String
     let taskType: String
     let status: String
+    let label: String?
 }
 
 struct CoreSearchResult: Codable {
@@ -35,6 +36,23 @@ struct CoreSearchResult: Codable {
     let version: String?
     let summary: String?
     let sourceManager: String
+}
+
+enum HomebrewKegPolicyOverride: String, Codable {
+    case keep
+    case cleanup
+}
+
+struct CorePackageKegPolicy: Codable {
+    let managerId: String
+    let packageName: String
+    let policy: HomebrewKegPolicyOverride
+}
+
+enum KegPolicySelection {
+    case useGlobal
+    case keep
+    case cleanup
 }
 
 struct ManagerStatus: Codable {
@@ -63,6 +81,13 @@ final class HelmCore: ObservableObject {
     @Published var cachedAvailablePackages: [PackageItem] = []
     @Published var detectedManagers: Set<String> = []
     @Published var managerStatuses: [String: ManagerStatus] = [:]
+    @Published var managerOperations: [String: String] = [:]
+    @Published var pinActionPackageIds: Set<String> = []
+    @Published var upgradeActionPackageIds: Set<String> = []
+    @Published var onboardingDetectionInProgress: Bool = false
+    @Published var homebrewKegAutoCleanupEnabled: Bool = false
+    @Published var packageKegPolicyOverrides: [String: HomebrewKegPolicyOverride] = [:]
+    @Published var safeModeEnabled: Bool = false
     @Published var selectedManagerFilter: String? = nil
     @Published var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
 
@@ -71,6 +96,13 @@ final class HelmCore: ObservableObject {
     private var lastRefreshTrigger: Date?
     private var searchDebounceTimer: Timer?
     private var activeRemoteSearchTaskId: Int64?
+    private var managerActionTaskDescriptions: [UInt64: String] = [:]
+    private var managerActionTaskByManager: [String: UInt64] = [:]
+    private var upgradeActionTaskByPackage: [String: UInt64] = [:]
+    private var lastObservedTaskId: UInt64 = 0
+    private var onboardingDetectionAnchorTaskId: UInt64 = 0
+    private var onboardingDetectionPendingManagers: Set<String> = []
+    private var onboardingDetectionStartedAt: Date?
 
     private init() {
         setupConnection()
@@ -105,6 +137,9 @@ final class HelmCore: ObservableObject {
         if timer == nil {
             startPolling()
         }
+        fetchSafeMode()
+        fetchHomebrewKegAutoCleanup()
+        fetchPackageKegPolicies()
     }
 
     func scheduleReconnection() {
@@ -143,9 +178,28 @@ final class HelmCore: ObservableObject {
                 DispatchQueue.main.async {
                     self.isRefreshing = false
                     self.lastRefreshTrigger = nil
+                    self.completeOnboardingDetectionProgress()
                 }
             }
         }
+    }
+
+    func triggerOnboardingDetectionRefresh() {
+        let visibleMaxTaskId = activeTasks
+            .compactMap { UInt64($0.id) }
+            .max() ?? 0
+        onboardingDetectionAnchorTaskId = max(lastObservedTaskId, visibleMaxTaskId)
+
+        let enabledImplementedManagers = Set(
+            ManagerInfo.implemented
+                .filter { managerStatuses[$0.id]?.enabled ?? true }
+                .map(\.id)
+        )
+        onboardingDetectionPendingManagers = enabledImplementedManagers
+        onboardingDetectionStartedAt = Date()
+        onboardingDetectionInProgress = !enabledImplementedManagers.isEmpty
+
+        triggerRefresh()
     }
 
     private func normalizedManagerName(_ raw: String) -> String {
@@ -165,7 +219,7 @@ final class HelmCore: ObservableObject {
 
     func fetchPackages() {
         service()?.listInstalledPackages { [weak self] jsonString in
-            guard let jsonString = jsonString, let data = jsonString.data(using: .utf8) else { return }
+            guard let jsonString = jsonString, let data = jsonString.data(using: String.Encoding.utf8) else { return }
 
             do {
                 let decoder = JSONDecoder()
@@ -178,7 +232,9 @@ final class HelmCore: ObservableObject {
                             id: "\(pkg.package.manager):\(pkg.package.name)",
                             name: pkg.package.name,
                             version: pkg.installedVersion ?? "unknown",
-                            manager: self?.normalizedManagerName(pkg.package.manager) ?? pkg.package.manager
+                            managerId: pkg.package.manager,
+                            manager: self?.normalizedManagerName(pkg.package.manager) ?? pkg.package.manager,
+                            pinned: pkg.pinned
                         )
                     }
                 }
@@ -190,7 +246,7 @@ final class HelmCore: ObservableObject {
 
     func fetchOutdatedPackages() {
         service()?.listOutdatedPackages { [weak self] jsonString in
-            guard let jsonString = jsonString, let data = jsonString.data(using: .utf8) else { return }
+            guard let jsonString = jsonString, let data = jsonString.data(using: String.Encoding.utf8) else { return }
 
             do {
                 let decoder = JSONDecoder()
@@ -204,7 +260,9 @@ final class HelmCore: ObservableObject {
                             name: pkg.package.name,
                             version: pkg.installedVersion ?? "unknown",
                             latestVersion: pkg.candidateVersion,
+                            managerId: pkg.package.manager,
                             manager: self?.normalizedManagerName(pkg.package.manager) ?? pkg.package.manager,
+                            pinned: pkg.pinned,
                             restartRequired: pkg.restartRequired
                         )
                     }
@@ -217,7 +275,7 @@ final class HelmCore: ObservableObject {
 
     func fetchTasks() {
         service()?.listTasks { [weak self] jsonString in
-            guard let jsonString = jsonString, let data = jsonString.data(using: .utf8) else { return }
+            guard let jsonString = jsonString, let data = jsonString.data(using: String.Encoding.utf8) else { return }
 
             do {
                 let decoder = JSONDecoder()
@@ -225,14 +283,21 @@ final class HelmCore: ObservableObject {
                 let coreTasks = try decoder.decode([CoreTaskRecord].self, from: data)
 
                 DispatchQueue.main.async {
+                    if let maxTaskId = coreTasks.map(\.id).max() {
+                        self?.lastObservedTaskId = max(self?.lastObservedTaskId ?? 0, maxTaskId)
+                    }
+
                     self?.activeTasks = coreTasks.map { task in
+                        let overrideDescription = self?.managerActionTaskDescriptions[task.id]
                         let managerName = self?.normalizedManagerName(task.manager) ?? task.manager
                         return TaskItem(
                             id: "\(task.id)",
-                            description: "\(task.taskType.capitalized) \(managerName)",
+                            description: overrideDescription ?? task.label ?? "\(task.taskType.capitalized) \(managerName)",
                             status: task.status.capitalized
                         )
                     }
+                    self?.syncManagerOperations(from: coreTasks)
+                    self?.syncUpgradeActions(from: coreTasks)
 
                     // Derive detection status from Detection-type tasks specifically.
                     // Tasks are ordered most-recent-first. A manager is "detected" if
@@ -251,6 +316,7 @@ final class HelmCore: ObservableObject {
                         }
                     }
                     self?.detectedManagers = detected
+                    self?.updateOnboardingDetectionProgress(from: coreTasks)
 
                     let isRunning = coreTasks.contains {
                         let type = $0.taskType.lowercased()
@@ -322,6 +388,7 @@ final class HelmCore: ObservableObject {
                             id: "\(result.sourceManager):\(result.name)",
                             name: result.name,
                             version: result.version ?? "",
+                            managerId: result.sourceManager,
                             manager: self?.normalizedManagerName(result.sourceManager) ?? result.sourceManager,
                             summary: result.summary,
                             status: .available
@@ -354,6 +421,7 @@ final class HelmCore: ObservableObject {
                             id: id,
                             name: result.name,
                             version: result.version ?? "",
+                            managerId: result.sourceManager,
                             manager: self.normalizedManagerName(result.sourceManager),
                             summary: result.summary,
                             status: .available
@@ -382,9 +450,168 @@ final class HelmCore: ObservableObject {
                         map[status.managerId] = status
                     }
                     self?.managerStatuses = map
+                    self?.pruneOnboardingDetectionForDisabledManagers()
                 }
             } catch {
                 logger.error("Failed to decode manager statuses: \(error)")
+            }
+        }
+    }
+
+    func fetchSafeMode() {
+        service()?.getSafeMode { [weak self] enabled in
+            DispatchQueue.main.async {
+                self?.safeModeEnabled = enabled
+            }
+        }
+    }
+
+    func setSafeMode(_ enabled: Bool) {
+        service()?.setSafeMode(enabled: enabled) { [weak self] success in
+            DispatchQueue.main.async {
+                if success {
+                    self?.safeModeEnabled = enabled
+                } else {
+                    logger.error("setSafeMode(\(enabled)) failed")
+                }
+            }
+        }
+    }
+
+    func fetchHomebrewKegAutoCleanup() {
+        service()?.getHomebrewKegAutoCleanup { [weak self] enabled in
+            DispatchQueue.main.async {
+                self?.homebrewKegAutoCleanupEnabled = enabled
+            }
+        }
+    }
+
+    func setHomebrewKegAutoCleanup(_ enabled: Bool) {
+        service()?.setHomebrewKegAutoCleanup(enabled: enabled) { [weak self] success in
+            DispatchQueue.main.async {
+                if success {
+                    self?.homebrewKegAutoCleanupEnabled = enabled
+                } else {
+                    logger.error("setHomebrewKegAutoCleanup(\(enabled)) failed")
+                }
+            }
+        }
+    }
+
+    func fetchPackageKegPolicies() {
+        service()?.listPackageKegPolicies { [weak self] jsonString in
+            guard let jsonString = jsonString, let data = jsonString.data(using: .utf8) else { return }
+
+            do {
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                let entries = try decoder.decode([CorePackageKegPolicy].self, from: data)
+
+                DispatchQueue.main.async {
+                    var overrides: [String: HomebrewKegPolicyOverride] = [:]
+                    for entry in entries where entry.managerId == "homebrew_formula" {
+                        overrides["\(entry.managerId):\(entry.packageName)"] = entry.policy
+                    }
+                    self?.packageKegPolicyOverrides = overrides
+                }
+            } catch {
+                logger.error("Failed to decode package keg policies: \(error)")
+            }
+        }
+    }
+
+    func upgradeAll(includePinned: Bool = false, allowOsUpdates: Bool = false) {
+        service()?.upgradeAll(includePinned: includePinned, allowOsUpdates: allowOsUpdates) { success in
+            if !success {
+                logger.error("upgradeAll(includePinned: \(includePinned), allowOsUpdates: \(allowOsUpdates)) failed")
+            }
+        }
+    }
+
+    func kegPolicySelection(for package: PackageItem) -> KegPolicySelection {
+        guard package.managerId == "homebrew_formula" else { return .useGlobal }
+
+        switch packageKegPolicyOverrides[package.id] {
+        case .keep:
+            return .keep
+        case .cleanup:
+            return .cleanup
+        case .none:
+            return .useGlobal
+        }
+    }
+
+    func setKegPolicySelection(for package: PackageItem, selection: KegPolicySelection) {
+        guard package.managerId == "homebrew_formula" else { return }
+
+        let policyMode: Int32
+        switch selection {
+        case .useGlobal:
+            policyMode = -1
+        case .keep:
+            policyMode = 0
+        case .cleanup:
+            policyMode = 1
+        }
+
+        service()?.setPackageKegPolicy(managerId: package.managerId, packageName: package.name, policyMode: policyMode) { [weak self] success in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                guard success else {
+                    logger.error("setPackageKegPolicy(\(package.managerId):\(package.name), \(policyMode)) failed")
+                    return
+                }
+                switch selection {
+                case .useGlobal:
+                    self.packageKegPolicyOverrides.removeValue(forKey: package.id)
+                case .keep:
+                    self.packageKegPolicyOverrides[package.id] = .keep
+                case .cleanup:
+                    self.packageKegPolicyOverrides[package.id] = .cleanup
+                }
+            }
+        }
+    }
+
+    func canUpgradeIndividually(_ package: PackageItem) -> Bool {
+        let upgradableManagers: Set<String> = ["homebrew_formula", "mise", "rustup"]
+        return package.status == .upgradable
+            && upgradableManagers.contains(package.managerId)
+            && !package.pinned
+    }
+
+    func upgradePackage(_ package: PackageItem) {
+        guard canUpgradeIndividually(package) else { return }
+
+        DispatchQueue.main.async {
+            self.upgradeActionPackageIds.insert(package.id)
+        }
+
+        guard let service = service() else {
+            logger.error("upgradePackage(\(package.managerId):\(package.name)) failed: service unavailable")
+            DispatchQueue.main.async {
+                self.upgradeActionPackageIds.remove(package.id)
+            }
+            return
+        }
+
+        service.upgradePackage(managerId: package.managerId, packageName: package.name) { [weak self] taskId in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if taskId < 0 {
+                    self.upgradeActionTaskByPackage.removeValue(forKey: package.id)
+                    self.upgradeActionPackageIds.remove(package.id)
+                    logger.error("upgradePackage(\(package.managerId):\(package.name)) failed")
+                    return
+                }
+
+                self.upgradeActionTaskByPackage[package.id] = UInt64(taskId)
+                self.registerManagerActionTask(
+                    managerId: package.managerId,
+                    taskId: UInt64(taskId),
+                    description: self.upgradeActionDescription(for: package),
+                    inProgressText: "Upgrading..."
+                )
             }
         }
     }
@@ -398,17 +625,45 @@ final class HelmCore: ObservableObject {
     }
 
     func installManager(_ managerId: String) {
-        service()?.installManager(managerId: managerId) { taskId in
-            if taskId < 0 {
-                logger.error("installManager(\(managerId)) failed")
+        DispatchQueue.main.async {
+            self.managerOperations[managerId] = "Starting install..."
+        }
+        service()?.installManager(managerId: managerId) { [weak self] taskId in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if taskId < 0 {
+                    logger.error("installManager(\(managerId)) failed")
+                    self.managerOperations[managerId] = "Install failed"
+                    return
+                }
+                self.registerManagerActionTask(
+                    managerId: managerId,
+                    taskId: UInt64(taskId),
+                    description: self.managerActionDescription(action: "Install", managerId: managerId),
+                    inProgressText: "Installing..."
+                )
             }
         }
     }
 
     func updateManager(_ managerId: String) {
-        service()?.updateManager(managerId: managerId) { taskId in
-            if taskId < 0 {
-                logger.error("updateManager(\(managerId)) failed")
+        DispatchQueue.main.async {
+            self.managerOperations[managerId] = "Starting update..."
+        }
+        service()?.updateManager(managerId: managerId) { [weak self] taskId in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if taskId < 0 {
+                    logger.error("updateManager(\(managerId)) failed")
+                    self.managerOperations[managerId] = "Update failed"
+                    return
+                }
+                self.registerManagerActionTask(
+                    managerId: managerId,
+                    taskId: UInt64(taskId),
+                    description: self.managerActionDescription(action: "Update", managerId: managerId),
+                    inProgressText: "Updating..."
+                )
             }
         }
     }
@@ -433,8 +688,18 @@ final class HelmCore: ObservableObject {
                     self?.cachedAvailablePackages = []
                     self?.detectedManagers = []
                     self?.managerStatuses = [:]
+                    self?.packageKegPolicyOverrides = [:]
+                    self?.homebrewKegAutoCleanupEnabled = false
                     self?.searchText = ""
                     self?.isRefreshing = false
+                    self?.onboardingDetectionInProgress = false
+                    self?.pinActionPackageIds = []
+                    self?.upgradeActionPackageIds = []
+                    self?.upgradeActionTaskByPackage = [:]
+                    self?.lastObservedTaskId = 0
+                    self?.onboardingDetectionAnchorTaskId = 0
+                    self?.onboardingDetectionPendingManagers = []
+                    self?.onboardingDetectionStartedAt = nil
                     self?.lastRefreshTrigger = nil
                     UserDefaults.standard.removeObject(forKey: "hasCompletedOnboarding")
                     self?.hasCompletedOnboarding = false
@@ -447,9 +712,74 @@ final class HelmCore: ObservableObject {
     }
 
     func uninstallManager(_ managerId: String) {
-        service()?.uninstallManager(managerId: managerId) { taskId in
-            if taskId < 0 {
-                logger.error("uninstallManager(\(managerId)) failed")
+        DispatchQueue.main.async {
+            self.managerOperations[managerId] = "Starting uninstall..."
+        }
+        service()?.uninstallManager(managerId: managerId) { [weak self] taskId in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if taskId < 0 {
+                    logger.error("uninstallManager(\(managerId)) failed")
+                    self.managerOperations[managerId] = "Uninstall failed"
+                    return
+                }
+                self.registerManagerActionTask(
+                    managerId: managerId,
+                    taskId: UInt64(taskId),
+                    description: self.managerActionDescription(action: "Uninstall", managerId: managerId),
+                    inProgressText: "Uninstalling..."
+                )
+            }
+        }
+    }
+
+    func pinPackage(_ package: PackageItem) {
+        DispatchQueue.main.async {
+            self.pinActionPackageIds.insert(package.id)
+        }
+        guard let service = service() else {
+            logger.error("pinPackage(\(package.managerId):\(package.name)) failed: service unavailable")
+            DispatchQueue.main.async {
+                self.pinActionPackageIds.remove(package.id)
+            }
+            return
+        }
+        let version = package.version.isEmpty || package.version == "unknown" ? nil : package.version
+        service.pinPackage(managerId: package.managerId, packageName: package.name, version: version) { [weak self] success in
+            DispatchQueue.main.async {
+                self?.pinActionPackageIds.remove(package.id)
+                if success {
+                    self?.setPinnedState(packageId: package.id, pinned: true)
+                    self?.fetchPackages()
+                    self?.fetchOutdatedPackages()
+                } else {
+                    logger.error("pinPackage(\(package.managerId):\(package.name)) failed")
+                }
+            }
+        }
+    }
+
+    func unpinPackage(_ package: PackageItem) {
+        DispatchQueue.main.async {
+            self.pinActionPackageIds.insert(package.id)
+        }
+        guard let service = service() else {
+            logger.error("unpinPackage(\(package.managerId):\(package.name)) failed: service unavailable")
+            DispatchQueue.main.async {
+                self.pinActionPackageIds.remove(package.id)
+            }
+            return
+        }
+        service.unpinPackage(managerId: package.managerId, packageName: package.name) { [weak self] success in
+            DispatchQueue.main.async {
+                self?.pinActionPackageIds.remove(package.id)
+                if success {
+                    self?.setPinnedState(packageId: package.id, pinned: false)
+                    self?.fetchPackages()
+                    self?.fetchOutdatedPackages()
+                } else {
+                    logger.error("unpinPackage(\(package.managerId):\(package.name)) failed")
+                }
             }
         }
     }
@@ -507,5 +837,180 @@ final class HelmCore: ObservableObject {
     private func clearSearchState() {
         activeRemoteSearchTaskId = nil
         isSearching = false
+    }
+
+    private func setPinnedState(packageId: String, pinned: Bool) {
+        if let index = installedPackages.firstIndex(where: { $0.id == packageId }) {
+            installedPackages[index].pinned = pinned
+        }
+        if let index = outdatedPackages.firstIndex(where: { $0.id == packageId }) {
+            outdatedPackages[index].pinned = pinned
+        }
+        if let index = searchResults.firstIndex(where: { $0.id == packageId }) {
+            searchResults[index].pinned = pinned
+        }
+        if let index = cachedAvailablePackages.firstIndex(where: { $0.id == packageId }) {
+            cachedAvailablePackages[index].pinned = pinned
+        }
+    }
+
+    private func registerManagerActionTask(
+        managerId: String,
+        taskId: UInt64,
+        description: String,
+        inProgressText: String
+    ) {
+        managerActionTaskDescriptions[taskId] = description
+        managerActionTaskByManager[managerId] = taskId
+        managerOperations[managerId] = inProgressText
+
+        let idString = "\(taskId)"
+        if !activeTasks.contains(where: { $0.id == idString }) {
+            activeTasks.insert(
+                TaskItem(
+                    id: idString,
+                    description: description,
+                    status: "Queued"
+                ),
+                at: 0
+            )
+        }
+    }
+
+    private func syncManagerOperations(from coreTasks: [CoreTaskRecord]) {
+        let statusById = Dictionary(uniqueKeysWithValues: coreTasks.map { ($0.id, $0.status.lowercased()) })
+        let inFlightStates = Set(["queued", "running"])
+
+        for managerId in Array(managerActionTaskByManager.keys) {
+            guard let taskId = managerActionTaskByManager[managerId] else { continue }
+            guard let status = statusById[taskId] else {
+                managerOperations.removeValue(forKey: managerId)
+                managerActionTaskByManager.removeValue(forKey: managerId)
+                continue
+            }
+            if !inFlightStates.contains(status) {
+                managerOperations.removeValue(forKey: managerId)
+                managerActionTaskByManager.removeValue(forKey: managerId)
+            }
+        }
+    }
+
+    private func syncUpgradeActions(from coreTasks: [CoreTaskRecord]) {
+        let statusById = Dictionary(uniqueKeysWithValues: coreTasks.map { ($0.id, $0.status.lowercased()) })
+        let inFlightStates = Set(["queued", "running"])
+        var shouldRefreshSnapshots = false
+
+        for packageId in Array(upgradeActionTaskByPackage.keys) {
+            guard let taskId = upgradeActionTaskByPackage[packageId] else { continue }
+            guard let status = statusById[taskId] else {
+                upgradeActionTaskByPackage.removeValue(forKey: packageId)
+                upgradeActionPackageIds.remove(packageId)
+                continue
+            }
+            if inFlightStates.contains(status) {
+                continue
+            }
+
+            upgradeActionTaskByPackage.removeValue(forKey: packageId)
+            upgradeActionPackageIds.remove(packageId)
+            if status == "completed" {
+                shouldRefreshSnapshots = true
+            }
+        }
+
+        if shouldRefreshSnapshots {
+            fetchPackages()
+            fetchOutdatedPackages()
+        }
+    }
+
+    private func updateOnboardingDetectionProgress(from coreTasks: [CoreTaskRecord]) {
+        guard onboardingDetectionInProgress else { return }
+
+        let terminalStatuses = Set(["completed", "failed", "cancelled"])
+        for task in coreTasks
+        where task.id > onboardingDetectionAnchorTaskId
+            && task.taskType.lowercased() == "detection"
+            && terminalStatuses.contains(task.status.lowercased())
+        {
+            onboardingDetectionPendingManagers.remove(task.manager)
+        }
+
+        pruneOnboardingDetectionForDisabledManagers()
+
+        if onboardingDetectionPendingManagers.isEmpty {
+            completeOnboardingDetectionProgress()
+            return
+        }
+
+        if let startedAt = onboardingDetectionStartedAt,
+           Date().timeIntervalSince(startedAt) > 90
+        {
+            let pending = onboardingDetectionPendingManagers.joined(separator: ",")
+            logger.warning("Onboarding detection timed out waiting for managers: \(pending)")
+            completeOnboardingDetectionProgress()
+        }
+    }
+
+    private func pruneOnboardingDetectionForDisabledManagers() {
+        guard onboardingDetectionInProgress else { return }
+        for (managerId, status) in managerStatuses where !status.enabled {
+            onboardingDetectionPendingManagers.remove(managerId)
+        }
+        if onboardingDetectionPendingManagers.isEmpty {
+            completeOnboardingDetectionProgress()
+        }
+    }
+
+    private func completeOnboardingDetectionProgress() {
+        onboardingDetectionInProgress = false
+        onboardingDetectionPendingManagers.removeAll()
+        onboardingDetectionStartedAt = nil
+    }
+
+    private func shouldCleanupOldKegs(for package: PackageItem) -> Bool {
+        if package.managerId != "homebrew_formula" {
+            return false
+        }
+
+        switch kegPolicySelection(for: package) {
+        case .cleanup:
+            return true
+        case .keep:
+            return false
+        case .useGlobal:
+            return homebrewKegAutoCleanupEnabled
+        }
+    }
+
+    private func upgradeActionDescription(for package: PackageItem) -> String {
+        let base = "Upgrade \(package.name) via \(normalizedManagerName(package.managerId))"
+        if shouldCleanupOldKegs(for: package) {
+            return "\(base) (cleanup old kegs)"
+        }
+        return base
+    }
+
+    private func managerActionDescription(action: String, managerId: String) -> String {
+        switch (action, managerId) {
+        case ("Install", "mas"):
+            return "Install mas (Mac App Store manager) via Homebrew"
+        case ("Install", "mise"):
+            return "Install mise via Homebrew"
+        case ("Update", "homebrew_formula"):
+            return "Update Homebrew"
+        case ("Update", "mas"):
+            return "Update mas via Homebrew"
+        case ("Update", "mise"):
+            return "Update mise via Homebrew"
+        case ("Update", "rustup"):
+            return "Self-update rustup"
+        case ("Uninstall", "mas"):
+            return "Uninstall mas via Homebrew"
+        case ("Uninstall", "mise"):
+            return "Uninstall mise via Homebrew"
+        default:
+            return "\(action) \(normalizedManagerName(managerId))"
+        }
     }
 }

@@ -210,9 +210,9 @@ Delivered:
 
 ---
 
-## 0.8.x — Pinning & Policy Enforcement (beta)
+## 0.8.x — Pinning & Policy Enforcement (beta) - Completed
 
-Goal:
+Delivered:
 
 - Native pin support
 - Virtual pin fallback

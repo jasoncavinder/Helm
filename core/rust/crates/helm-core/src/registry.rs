@@ -40,6 +40,7 @@ const SOFTWARE_UPDATE_CAPABILITIES: &[Capability] = &[
     Capability::Detect,
     Capability::Refresh,
     Capability::ListOutdated,
+    Capability::Upgrade,
 ];
 const ROSETTA_CAPABILITIES: &[Capability] =
     &[Capability::Detect, Capability::Refresh, Capability::Install];

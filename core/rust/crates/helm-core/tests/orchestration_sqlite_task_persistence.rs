@@ -19,6 +19,7 @@ const TEST_CAPABILITIES: &[Capability] = &[Capability::Refresh];
 enum AdapterBehavior {
     Succeeds,
     Fails,
+    Panics,
 }
 
 struct TestAdapter {
@@ -60,6 +61,7 @@ impl ManagerAdapter for TestAdapter {
                 kind: CoreErrorKind::ProcessFailure,
                 message: "simulated refresh failure".to_string(),
             }),
+            AdapterBehavior::Panics => panic!("simulated adapter panic"),
         }
     }
 }
@@ -144,6 +146,35 @@ async fn failed_task_is_persisted_to_sqlite() {
     let persisted = wait_for_persisted_status(store.as_ref(), task_id.0, TaskStatus::Failed)
         .await
         .expect("expected failed status to persist");
+    assert_eq!(persisted, TaskStatus::Failed);
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[tokio::test]
+async fn panicking_task_is_persisted_as_failed_to_sqlite() {
+    let path = test_db_path("orchestration-sqlite-panicked");
+    let store = Arc::new(SqliteStore::new(&path));
+    store.migrate_to_latest().unwrap();
+
+    let adapter: Arc<dyn ManagerAdapter> =
+        Arc::new(TestAdapter::new(ManagerId::Pip, AdapterBehavior::Panics));
+    let runtime = AdapterRuntime::with_task_store([adapter], store.clone()).unwrap();
+
+    let task_id = runtime
+        .submit(ManagerId::Pip, AdapterRequest::Refresh(RefreshRequest))
+        .await
+        .unwrap();
+    let terminal = runtime
+        .wait_for_terminal(task_id, Some(Duration::from_secs(1)))
+        .await
+        .unwrap();
+
+    assert_eq!(terminal.runtime.status, TaskStatus::Failed);
+
+    let persisted = wait_for_persisted_status(store.as_ref(), task_id.0, TaskStatus::Failed)
+        .await
+        .expect("expected failed status to persist for panicking adapter");
     assert_eq!(persisted, TaskStatus::Failed);
 
     let _ = std::fs::remove_file(path);

@@ -1,4 +1,5 @@
 pub mod error;
+pub mod keg_policy;
 pub mod manager;
 pub mod package;
 pub mod pin;
@@ -6,6 +7,7 @@ pub mod search;
 pub mod task;
 
 pub use error::{CoreError, CoreErrorKind};
+pub use keg_policy::{HomebrewKegPolicy, PackageKegPolicy};
 pub use manager::{
     ActionSafety, Capability, DetectionInfo, ManagerAction, ManagerAuthority, ManagerCategory,
     ManagerDescriptor, ManagerId,

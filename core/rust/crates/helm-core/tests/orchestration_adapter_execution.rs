@@ -19,6 +19,7 @@ enum AdapterBehavior {
     Succeeds(AdapterResponse),
     Fails(CoreError),
     SleepsThenSucceeds(Duration, AdapterResponse),
+    Panics,
 }
 
 struct TestAdapter {
@@ -58,6 +59,7 @@ impl ManagerAdapter for TestAdapter {
                 std::thread::sleep(*delay);
                 Ok(response.clone())
             }
+            AdapterBehavior::Panics => panic!("simulated adapter panic"),
         }
     }
 }
@@ -231,4 +233,31 @@ async fn graceful_cancel_times_out_and_cancels_adapter_execution() {
         snapshot.terminal_state,
         Some(AdapterTaskTerminalState::Cancelled(_))
     ));
+}
+
+#[tokio::test]
+async fn adapter_panic_is_reported_as_failed_terminal_state() {
+    let runtime = AdapterExecutionRuntime::new();
+    let adapter = Arc::new(TestAdapter::new(ManagerId::Pip, AdapterBehavior::Panics));
+
+    let task_id = runtime
+        .submit(adapter, AdapterRequest::Refresh(RefreshRequest))
+        .await
+        .unwrap();
+
+    let snapshot = runtime
+        .wait_for_terminal(task_id, Some(Duration::from_secs(1)))
+        .await
+        .unwrap();
+
+    assert_eq!(snapshot.runtime.status, TaskStatus::Failed);
+    match snapshot.terminal_state {
+        Some(AdapterTaskTerminalState::Failed(error)) => {
+            assert_eq!(error.manager, Some(ManagerId::Pip));
+            assert_eq!(error.task, Some(TaskType::Refresh));
+            assert_eq!(error.action, Some(ManagerAction::Refresh));
+            assert_eq!(error.kind, CoreErrorKind::Internal);
+        }
+        other => panic!("expected failed terminal state, got {other:?}"),
+    }
 }
