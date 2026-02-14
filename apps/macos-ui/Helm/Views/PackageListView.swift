@@ -5,7 +5,6 @@ struct PackageListView: View {
     @Binding var searchText: String
     @State private var selectedStatusFilter: PackageStatus? = nil
     @State private var selectedManager: String? = nil
-    @State private var detailsPackage: PackageItem? = nil
 
     private var allPackages: [PackageItem] {
         var packages = core.outdatedPackages
@@ -61,6 +60,22 @@ struct PackageListView: View {
                 return true
             }
             return false
+        }
+    }
+
+    private func kegPolicyMenuSelection(for package: PackageItem) -> KegPolicyMenuSelection? {
+        guard package.managerId == "homebrew_formula", package.status != .available else {
+            return nil
+        }
+
+        let selection = core.kegPolicySelection(for: package)
+        switch selection {
+        case .useGlobal:
+            return .useGlobal
+        case .keep:
+            return .keep
+        case .cleanup:
+            return .cleanup
         }
     }
 
@@ -137,11 +152,36 @@ struct PackageListView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(displayedPackages) { package in
-                            PackageRowView(package: package)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    detailsPackage = package
-                                }
+                            PackageRowView(
+                                package: package,
+                                isPinActionInFlight: core.pinActionPackageIds.contains(package.id),
+                                isUpgradeActionInFlight: core.upgradeActionPackageIds.contains(package.id),
+                                kegPolicySelection: kegPolicyMenuSelection(for: package),
+                                onSelectKegPolicy: package.managerId == "homebrew_formula"
+                                    ? { selection in
+                                        switch selection {
+                                        case .useGlobal:
+                                            core.setKegPolicySelection(for: package, selection: .useGlobal)
+                                        case .keep:
+                                            core.setKegPolicySelection(for: package, selection: .keep)
+                                        case .cleanup:
+                                            core.setKegPolicySelection(for: package, selection: .cleanup)
+                                        }
+                                    }
+                                    : nil,
+                                onUpgrade: core.canUpgradeIndividually(package)
+                                    ? { core.upgradePackage(package) }
+                                    : nil,
+                                onTogglePin: package.status == .available
+                                    ? nil
+                                    : {
+                                        if package.pinned {
+                                            core.unpinPackage(package)
+                                        } else {
+                                            core.pinPackage(package)
+                                        }
+                                    }
+                            )
                             Divider()
                                 .padding(.leading, 36)
                         }
@@ -149,60 +189,12 @@ struct PackageListView: View {
                 }
             }
         }
-        .popover(item: $detailsPackage) { package in
-            PackageDetailPopover(package: package)
-                .frame(width: 250)
-        }
         .onAppear {
             if let filter = core.selectedManagerFilter {
                 selectedManager = filter
                 core.selectedManagerFilter = nil
             }
         }
-    }
-}
-
-private struct PackageDetailPopover: View {
-    let package: PackageItem
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(package.name)
-                .font(.headline)
-
-            LabeledContentRow(label: "Manager", value: package.manager)
-            LabeledContentRow(label: "Version", value: package.version)
-
-            if let latest = package.latestVersion {
-                LabeledContentRow(label: "Available", value: latest, valueColor: .orange)
-            }
-
-            if package.restartRequired {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .foregroundColor(.orange)
-                    Text("Restart required after update")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-
-            Divider()
-
-            HStack {
-                if package.status == .upgradable {
-                    Button("Upgrade") {}
-                        .disabled(true)
-                        .help("Upgrade not yet implemented")
-                }
-
-                Button("Uninstall") {}
-                    .disabled(true)
-                    .help("Uninstall not yet implemented")
-            }
-            .padding(.top, 4)
-        }
-        .padding(12)
     }
 }
 

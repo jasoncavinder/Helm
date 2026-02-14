@@ -35,8 +35,10 @@ struct PackageItem: Identifiable {
     let name: String
     let version: String
     var latestVersion: String? = nil
+    let managerId: String
     let manager: String
     var summary: String? = nil
+    var pinned: Bool = false
     var restartRequired: Bool = false
     private var statusOverride: PackageStatus? = nil
 
@@ -45,13 +47,15 @@ struct PackageItem: Identifiable {
         return latestVersion != nil ? .upgradable : .installed
     }
 
-    init(id: String, name: String, version: String, latestVersion: String? = nil, manager: String, summary: String? = nil, restartRequired: Bool = false, status: PackageStatus? = nil) {
+    init(id: String, name: String, version: String, latestVersion: String? = nil, managerId: String? = nil, manager: String, summary: String? = nil, pinned: Bool = false, restartRequired: Bool = false, status: PackageStatus? = nil) {
         self.id = id
         self.name = name
         self.version = version
         self.latestVersion = latestVersion
+        self.managerId = managerId ?? manager
         self.manager = manager
         self.summary = summary
+        self.pinned = pinned
         self.restartRequired = restartRequired
         self.statusOverride = status
     }

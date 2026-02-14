@@ -1,4 +1,4 @@
-use crate::models::{DetectionInfo, ManagerId};
+use crate::models::{DetectionInfo, HomebrewKegPolicy, ManagerId, PackageKegPolicy, PackageRef};
 use crate::persistence::PersistenceResult;
 
 pub trait DetectionStore: Send + Sync {
@@ -9,4 +9,25 @@ pub trait DetectionStore: Send + Sync {
     fn set_manager_enabled(&self, manager: ManagerId, enabled: bool) -> PersistenceResult<()>;
 
     fn list_manager_preferences(&self) -> PersistenceResult<Vec<(ManagerId, bool)>>;
+
+    fn set_safe_mode(&self, enabled: bool) -> PersistenceResult<()>;
+
+    fn safe_mode(&self) -> PersistenceResult<bool>;
+
+    fn set_homebrew_keg_policy(&self, policy: HomebrewKegPolicy) -> PersistenceResult<()>;
+
+    fn homebrew_keg_policy(&self) -> PersistenceResult<HomebrewKegPolicy>;
+
+    fn set_package_keg_policy(
+        &self,
+        package: &PackageRef,
+        policy: Option<HomebrewKegPolicy>,
+    ) -> PersistenceResult<()>;
+
+    fn package_keg_policy(
+        &self,
+        package: &PackageRef,
+    ) -> PersistenceResult<Option<HomebrewKegPolicy>>;
+
+    fn list_package_keg_policies(&self) -> PersistenceResult<Vec<PackageKegPolicy>>;
 }

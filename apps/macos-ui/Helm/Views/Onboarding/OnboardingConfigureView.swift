@@ -52,7 +52,7 @@ struct OnboardingConfigureView: View {
                                         .font(.subheadline)
                                         .fontWeight(.medium)
 
-                                    if let version = status?.version {
+                                    if let version = status?.version, !version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                                         Text("v\(version)")
                                             .font(.caption2)
                                             .foregroundColor(.secondary)

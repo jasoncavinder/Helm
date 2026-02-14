@@ -1,6 +1,8 @@
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
+use tokio::io::AsyncReadExt;
+
 use crate::execution::{
     ExecutionResult, ProcessExecutor, ProcessExitStatus, ProcessOutput, ProcessSpawnRequest,
     ProcessTerminationMode, ProcessWaitFuture, RunningProcess,
@@ -104,7 +106,7 @@ impl RunningProcess for TokioRunningProcess {
         let pid = self.pid;
 
         Box::pin(async move {
-            let child = child.ok_or_else(|| {
+            let mut child = child.ok_or_else(|| {
                 process_failure(
                     manager,
                     task_type,
@@ -112,6 +114,27 @@ impl RunningProcess for TokioRunningProcess {
                     "child process already consumed".to_string(),
                 )
             })?;
+
+            let stdout_reader = {
+                let mut stdout = child.stdout.take();
+                tokio::spawn(async move {
+                    let mut buffer = Vec::new();
+                    if let Some(mut handle) = stdout.take() {
+                        let _ = handle.read_to_end(&mut buffer).await;
+                    }
+                    buffer
+                })
+            };
+            let stderr_reader = {
+                let mut stderr = child.stderr.take();
+                tokio::spawn(async move {
+                    let mut buffer = Vec::new();
+                    if let Some(mut handle) = stderr.take() {
+                        let _ = handle.read_to_end(&mut buffer).await;
+                    }
+                    buffer
+                })
+            };
 
             let wait_err = |error: std::io::Error| {
                 process_failure(
@@ -122,10 +145,10 @@ impl RunningProcess for TokioRunningProcess {
                 )
             };
 
-            // wait_with_output() consumes the child. On timeout, the future
-            // (and thus the child) is dropped; we kill via the stored pid.
-            let output = if let Some(timeout_duration) = timeout {
-                match tokio::time::timeout(timeout_duration, child.wait_with_output()).await {
+            // Wait for process exit first, then collect output with a short bounded read window.
+            // This avoids hanging forever when descendant processes inherit stdout/stderr fds.
+            let status = if let Some(timeout_duration) = timeout {
+                match tokio::time::timeout(timeout_duration, child.wait()).await {
                     Ok(result) => result.map_err(wait_err)?,
                     Err(_) => {
                         if let Some(pid) = pid {
@@ -134,6 +157,9 @@ impl RunningProcess for TokioRunningProcess {
                                 libc::kill(pgid, libc::SIGKILL);
                             }
                         }
+                        let _ = tokio::time::timeout(Duration::from_secs(1), child.wait()).await;
+                        stdout_reader.abort();
+                        stderr_reader.abort();
                         return Err(CoreError {
                             manager: Some(manager),
                             task: Some(task_type),
@@ -147,20 +173,30 @@ impl RunningProcess for TokioRunningProcess {
                     }
                 }
             } else {
-                child.wait_with_output().await.map_err(wait_err)?
+                child.wait().await.map_err(wait_err)?
+            };
+
+            let read_deadline = Duration::from_millis(250);
+            let stdout = match tokio::time::timeout(read_deadline, stdout_reader).await {
+                Ok(Ok(buffer)) => buffer,
+                _ => Vec::new(),
+            };
+            let stderr = match tokio::time::timeout(read_deadline, stderr_reader).await {
+                Ok(Ok(buffer)) => buffer,
+                _ => Vec::new(),
             };
 
             let finished_at = SystemTime::now();
 
-            let status = match output.status.code() {
+            let status = match status.code() {
                 Some(code) => ProcessExitStatus::ExitCode(code),
                 None => ProcessExitStatus::Terminated,
             };
 
             Ok(ProcessOutput {
                 status,
-                stdout: output.stdout,
-                stderr: output.stderr,
+                stdout,
+                stderr,
                 started_at,
                 finished_at,
             })

@@ -6,7 +6,7 @@ use crate::models::{CoreError, CoreErrorKind};
 
 /// Run a process and return stdout, falling back to stderr if stdout is empty.
 /// Used for version detection where some tools output to stderr.
-/// Returns empty string on any failure (best-effort).
+/// Returns empty string only when spawn/wait fails or no textual output is produced.
 pub(crate) fn run_and_collect_version_output(
     executor: &dyn ProcessExecutor,
     request: ProcessSpawnRequest,
@@ -22,16 +22,17 @@ pub(crate) fn run_and_collect_version_output(
         Err(_) => return String::new(),
     };
 
-    if !matches!(output.status, ProcessExitStatus::ExitCode(0)) {
-        return String::new();
-    }
-
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     if !stdout.trim().is_empty() {
         return stdout;
     }
 
-    String::from_utf8_lossy(&output.stderr).to_string()
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    if !stderr.trim().is_empty() {
+        return stderr;
+    }
+
+    String::new()
 }
 
 pub(crate) fn run_and_collect_stdout(

@@ -33,6 +33,7 @@ struct ManagersView: View {
                             enabled: enabled,
                             version: status?.version,
                             packageCount: packageCount,
+                            operationStatus: core.managerOperations[manager.id],
                             onToggle: {
                                 core.setManagerEnabled(manager.id, enabled: !enabled)
                             },
@@ -87,6 +88,7 @@ private struct ManagerRow: View {
     let enabled: Bool
     let version: String?
     let packageCount: Int
+    let operationStatus: String?
     let onToggle: () -> Void
     let onTap: () -> Void
     let onInstall: () -> Void
@@ -127,7 +129,7 @@ private struct ManagerRow: View {
                         .foregroundColor(manager.isImplemented ? .primary : .secondary)
 
                     HStack(spacing: 6) {
-                        if let version = version {
+                        if let version = version, !version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             Text("v\(version)")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
@@ -151,6 +153,15 @@ private struct ManagerRow: View {
             }
 
             if manager.isImplemented {
+                if let operationStatus {
+                    HStack(spacing: 4) {
+                        ProgressView()
+                            .scaleEffect(0.6)
+                        Text(operationStatus)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
                 if detected {
                     Text(enabled ? "Enabled" : "Disabled")
                         .font(.caption2)

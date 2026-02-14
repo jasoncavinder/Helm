@@ -2,10 +2,13 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use helm_core::models::{
-    CachedSearchResult, CoreErrorKind, InstalledPackage, ManagerId, OutdatedPackage,
-    PackageCandidate, PackageRef, PinKind, PinRecord, TaskId, TaskRecord, TaskStatus, TaskType,
+    CachedSearchResult, CoreErrorKind, HomebrewKegPolicy, InstalledPackage, ManagerId,
+    OutdatedPackage, PackageCandidate, PackageRef, PinKind, PinRecord, TaskId, TaskRecord,
+    TaskStatus, TaskType,
 };
-use helm_core::persistence::{MigrationStore, PackageStore, PinStore, SearchCacheStore, TaskStore};
+use helm_core::persistence::{
+    DetectionStore, MigrationStore, PackageStore, PinStore, SearchCacheStore, TaskStore,
+};
 use helm_core::sqlite::{SqliteStore, current_schema_version};
 
 fn test_db_path(test_name: &str) -> PathBuf {
@@ -150,6 +153,35 @@ fn upsert_and_list_outdated_roundtrip() {
 }
 
 #[test]
+fn replace_outdated_snapshot_clears_stale_rows_for_manager() {
+    let path = test_db_path("outdated-replace-snapshot");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    store
+        .upsert_outdated(&[OutdatedPackage {
+            package: PackageRef {
+                manager: ManagerId::HomebrewFormula,
+                name: "sevenzip".to_string(),
+            },
+            installed_version: Some("25.01".to_string()),
+            candidate_version: "26.00".to_string(),
+            pinned: false,
+            restart_required: false,
+        }])
+        .unwrap();
+
+    store
+        .replace_outdated_snapshot(ManagerId::HomebrewFormula, &[])
+        .unwrap();
+
+    let persisted = store.list_outdated().unwrap();
+    assert!(persisted.is_empty());
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn upsert_and_remove_pins_roundtrip() {
     let path = test_db_path("pins-roundtrip");
     let store = SqliteStore::new(&path);
@@ -186,6 +218,304 @@ fn remove_pin_requires_structured_package_key() {
     let error = store.remove_pin("git").unwrap_err();
     assert_eq!(error.kind, CoreErrorKind::StorageFailure);
     assert!(error.message.contains("package_key"));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn safe_mode_defaults_false_and_roundtrips() {
+    let path = test_db_path("safe-mode-roundtrip");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    assert!(!store.safe_mode().unwrap());
+    store.set_safe_mode(true).unwrap();
+    assert!(store.safe_mode().unwrap());
+    store.set_safe_mode(false).unwrap();
+    assert!(!store.safe_mode().unwrap());
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn homebrew_keg_policy_defaults_keep_and_roundtrips() {
+    let path = test_db_path("keg-policy-roundtrip");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    assert_eq!(
+        store.homebrew_keg_policy().unwrap(),
+        HomebrewKegPolicy::Keep
+    );
+    store
+        .set_homebrew_keg_policy(HomebrewKegPolicy::Cleanup)
+        .unwrap();
+    assert_eq!(
+        store.homebrew_keg_policy().unwrap(),
+        HomebrewKegPolicy::Cleanup
+    );
+    store
+        .set_homebrew_keg_policy(HomebrewKegPolicy::Keep)
+        .unwrap();
+    assert_eq!(
+        store.homebrew_keg_policy().unwrap(),
+        HomebrewKegPolicy::Keep
+    );
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn package_keg_policy_roundtrip_and_clear() {
+    let path = test_db_path("package-keg-policy-roundtrip");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let package = PackageRef {
+        manager: ManagerId::HomebrewFormula,
+        name: "sevenzip".to_string(),
+    };
+
+    assert!(store.package_keg_policy(&package).unwrap().is_none());
+
+    store
+        .set_package_keg_policy(&package, Some(HomebrewKegPolicy::Cleanup))
+        .unwrap();
+    assert_eq!(
+        store.package_keg_policy(&package).unwrap(),
+        Some(HomebrewKegPolicy::Cleanup)
+    );
+
+    let listed = store.list_package_keg_policies().unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].package.name, "sevenzip");
+    assert_eq!(listed[0].policy, HomebrewKegPolicy::Cleanup);
+
+    store.set_package_keg_policy(&package, None).unwrap();
+    assert!(store.package_keg_policy(&package).unwrap().is_none());
+    assert!(store.list_package_keg_policies().unwrap().is_empty());
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn list_installed_marks_package_pinned_when_pin_record_exists() {
+    let path = test_db_path("installed-pin-overlay");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    store
+        .upsert_installed(&[InstalledPackage {
+            package: PackageRef {
+                manager: ManagerId::HomebrewFormula,
+                name: "git".to_string(),
+            },
+            installed_version: Some("2.45.1".to_string()),
+            pinned: false,
+        }])
+        .unwrap();
+
+    store
+        .upsert_pin(&PinRecord {
+            package: PackageRef {
+                manager: ManagerId::HomebrewFormula,
+                name: "git".to_string(),
+            },
+            kind: PinKind::Virtual,
+            pinned_version: None,
+            created_at: UNIX_EPOCH + Duration::from_secs(500),
+        })
+        .unwrap();
+
+    let installed = store.list_installed().unwrap();
+    assert_eq!(installed.len(), 1);
+    assert!(installed[0].pinned);
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn list_outdated_marks_package_pinned_when_pin_record_exists() {
+    let path = test_db_path("outdated-pin-overlay");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    store
+        .upsert_outdated(&[OutdatedPackage {
+            package: PackageRef {
+                manager: ManagerId::Mas,
+                name: "Xcode".to_string(),
+            },
+            installed_version: Some("16.1".to_string()),
+            candidate_version: "16.2".to_string(),
+            pinned: false,
+            restart_required: false,
+        }])
+        .unwrap();
+
+    store
+        .upsert_pin(&PinRecord {
+            package: PackageRef {
+                manager: ManagerId::Mas,
+                name: "Xcode".to_string(),
+            },
+            kind: PinKind::Virtual,
+            pinned_version: Some("16.1".to_string()),
+            created_at: UNIX_EPOCH + Duration::from_secs(501),
+        })
+        .unwrap();
+
+    let outdated = store.list_outdated().unwrap();
+    assert_eq!(outdated.len(), 1);
+    assert!(outdated[0].pinned);
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn set_snapshot_pinned_updates_cached_rows_immediately() {
+    let path = test_db_path("set-snapshot-pinned");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let package = PackageRef {
+        manager: ManagerId::HomebrewFormula,
+        name: "libzip".to_string(),
+    };
+
+    store
+        .upsert_installed(&[InstalledPackage {
+            package: package.clone(),
+            installed_version: Some("1.11.4".to_string()),
+            pinned: true,
+        }])
+        .unwrap();
+    store
+        .upsert_outdated(&[OutdatedPackage {
+            package: package.clone(),
+            installed_version: Some("1.11.4".to_string()),
+            candidate_version: "1.11.4_1".to_string(),
+            pinned: true,
+            restart_required: false,
+        }])
+        .unwrap();
+
+    store.set_snapshot_pinned(&package, false).unwrap();
+
+    let installed = store.list_installed().unwrap();
+    let outdated = store.list_outdated().unwrap();
+    assert_eq!(installed.len(), 1);
+    assert_eq!(outdated.len(), 1);
+    assert!(!installed[0].pinned);
+    assert!(!outdated[0].pinned);
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn apply_upgrade_result_promotes_package_to_installed_snapshot() {
+    let path = test_db_path("apply-upgrade-result");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let package = PackageRef {
+        manager: ManagerId::HomebrewFormula,
+        name: "abseil".to_string(),
+    };
+
+    store
+        .upsert_installed(&[InstalledPackage {
+            package: package.clone(),
+            installed_version: Some("20250127.0".to_string()),
+            pinned: false,
+        }])
+        .unwrap();
+    store
+        .upsert_outdated(&[OutdatedPackage {
+            package: package.clone(),
+            installed_version: Some("20250127.0".to_string()),
+            candidate_version: "20250814.0".to_string(),
+            pinned: false,
+            restart_required: false,
+        }])
+        .unwrap();
+
+    store.apply_upgrade_result(&package).unwrap();
+
+    let installed = store.list_installed().unwrap();
+    let outdated = store.list_outdated().unwrap();
+
+    let upgraded = installed
+        .iter()
+        .find(|entry| entry.package == package)
+        .expect("upgraded package should remain installed");
+    assert_eq!(upgraded.installed_version.as_deref(), Some("20250814.0"));
+    assert!(outdated.iter().all(|entry| entry.package != package));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn upsert_detection_preserves_previous_version_when_new_version_is_missing() {
+    let path = test_db_path("detection-preserve-version");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    store
+        .upsert_detection(
+            ManagerId::HomebrewFormula,
+            &helm_core::models::DetectionInfo {
+                installed: true,
+                executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                version: Some("4.6.0".to_string()),
+            },
+        )
+        .unwrap();
+
+    store
+        .upsert_detection(
+            ManagerId::HomebrewFormula,
+            &helm_core::models::DetectionInfo {
+                installed: true,
+                executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                version: None,
+            },
+        )
+        .unwrap();
+
+    let detections = store.list_detections().unwrap();
+    let homebrew = detections
+        .into_iter()
+        .find(|(manager, _)| *manager == ManagerId::HomebrewFormula)
+        .expect("homebrew detection should exist");
+    assert_eq!(homebrew.1.version.as_deref(), Some("4.6.0"));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn upsert_detection_treats_empty_version_as_missing() {
+    let path = test_db_path("detection-empty-version");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    store
+        .upsert_detection(
+            ManagerId::HomebrewFormula,
+            &helm_core::models::DetectionInfo {
+                installed: true,
+                executable_path: Some(PathBuf::from("/usr/local/bin/brew")),
+                version: Some(String::new()),
+            },
+        )
+        .unwrap();
+
+    let detections = store.list_detections().unwrap();
+    let homebrew = detections
+        .into_iter()
+        .find(|(manager, _)| *manager == ManagerId::HomebrewFormula)
+        .expect("homebrew detection should exist");
+    assert_eq!(homebrew.1.version, None);
 
     let _ = std::fs::remove_file(path);
 }

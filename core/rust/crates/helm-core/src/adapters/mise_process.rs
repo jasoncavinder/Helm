@@ -4,7 +4,7 @@ use crate::adapters::detect_utils::which_executable;
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::mise::{
     MiseDetectOutput, MiseSource, mise_detect_request, mise_list_installed_request,
-    mise_list_outdated_request,
+    mise_list_outdated_request, mise_upgrade_request,
 };
 use crate::adapters::process_utils::{run_and_collect_stdout, run_and_collect_version_output};
 use crate::execution::{ProcessExecutor, ProcessSpawnRequest};
@@ -74,6 +74,11 @@ impl MiseSource for ProcessMiseSource {
 
     fn list_outdated(&self) -> AdapterResult<String> {
         let request = self.configure_request(mise_list_outdated_request(None));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn upgrade_tool(&self, name: &str) -> AdapterResult<String> {
+        let request = self.configure_request(mise_upgrade_request(None, name));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 }

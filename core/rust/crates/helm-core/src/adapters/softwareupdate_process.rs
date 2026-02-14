@@ -5,7 +5,7 @@ use crate::adapters::manager::AdapterResult;
 use crate::adapters::process_utils::run_and_collect_stdout;
 use crate::adapters::softwareupdate::{
     SoftwareUpdateDetectOutput, SoftwareUpdateSource, softwareupdate_detect_request,
-    softwareupdate_list_request,
+    softwareupdate_list_request, softwareupdate_upgrade_request,
 };
 use crate::execution::ProcessExecutor;
 
@@ -42,6 +42,11 @@ impl SoftwareUpdateSource for ProcessSoftwareUpdateSource {
 
     fn list_available(&self) -> AdapterResult<String> {
         let request = softwareupdate_list_request(None);
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn install_all_updates(&self) -> AdapterResult<String> {
+        let request = softwareupdate_upgrade_request(None);
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 }

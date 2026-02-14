@@ -5,9 +5,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use rusqlite::{Connection, params};
 
 use crate::models::{
-    CachedSearchResult, CoreError, CoreErrorKind, DetectionInfo, InstalledPackage, ManagerId,
-    OutdatedPackage, PackageCandidate, PackageRef, PinKind, PinRecord, TaskId, TaskRecord,
-    TaskStatus, TaskType,
+    CachedSearchResult, CoreError, CoreErrorKind, DetectionInfo, HomebrewKegPolicy,
+    InstalledPackage, ManagerId, OutdatedPackage, PackageCandidate, PackageKegPolicy, PackageRef,
+    PinKind, PinRecord, TaskId, TaskRecord, TaskStatus, TaskType,
 };
 use crate::persistence::{
     DetectionStore, MigrationStore, PackageStore, PersistenceResult, PinStore, SearchCacheStore,
@@ -180,14 +180,64 @@ ON CONFLICT(manager_id, package_name) DO UPDATE SET
         })
     }
 
+    fn replace_outdated_snapshot(
+        &self,
+        manager: ManagerId,
+        packages: &[OutdatedPackage],
+    ) -> PersistenceResult<()> {
+        self.with_connection("replace_outdated_snapshot", |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction = connection.transaction()?;
+
+            transaction.execute(
+                "DELETE FROM outdated_packages WHERE manager_id = ?1",
+                [manager.as_str()],
+            )?;
+
+            {
+                let mut statement = transaction.prepare(
+                    "
+INSERT INTO outdated_packages (
+    manager_id, package_name, installed_version, candidate_version, pinned, restart_required, updated_at_unix
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%s', 'now'))
+",
+                )?;
+
+                for package in packages {
+                    statement.execute((
+                        package.package.manager.as_str(),
+                        package.package.name.as_str(),
+                        package.installed_version.as_deref(),
+                        package.candidate_version.as_str(),
+                        bool_to_sqlite(package.pinned),
+                        bool_to_sqlite(package.restart_required),
+                    ))?;
+                }
+            }
+
+            transaction.commit()?;
+            Ok(())
+        })
+    }
+
     fn list_installed(&self) -> PersistenceResult<Vec<InstalledPackage>> {
         self.with_connection("list_installed", |connection| {
             ensure_schema_ready(connection)?;
             let mut statement = connection.prepare(
                 "
-SELECT manager_id, package_name, installed_version, pinned
-FROM installed_packages
-ORDER BY manager_id, package_name
+SELECT
+    ip.manager_id,
+    ip.package_name,
+    ip.installed_version,
+    CASE
+        WHEN pr.manager_id IS NOT NULL THEN 1
+        ELSE ip.pinned
+    END AS pinned
+FROM installed_packages ip
+LEFT JOIN pin_records pr
+    ON pr.manager_id = ip.manager_id
+   AND pr.package_name = ip.package_name
+ORDER BY ip.manager_id, ip.package_name
 ",
             )?;
 
@@ -217,9 +267,21 @@ ORDER BY manager_id, package_name
             ensure_schema_ready(connection)?;
             let mut statement = connection.prepare(
                 "
-SELECT manager_id, package_name, installed_version, candidate_version, pinned, restart_required
-FROM outdated_packages
-ORDER BY manager_id, package_name
+SELECT
+    op.manager_id,
+    op.package_name,
+    op.installed_version,
+    op.candidate_version,
+    CASE
+        WHEN pr.manager_id IS NOT NULL THEN 1
+        ELSE op.pinned
+    END AS pinned,
+    op.restart_required
+FROM outdated_packages op
+LEFT JOIN pin_records pr
+    ON pr.manager_id = op.manager_id
+   AND pr.package_name = op.package_name
+ORDER BY op.manager_id, op.package_name
 ",
             )?;
 
@@ -245,6 +307,96 @@ ORDER BY manager_id, package_name
             })?;
 
             rows.collect()
+        })
+    }
+
+    fn set_snapshot_pinned(&self, package: &PackageRef, pinned: bool) -> PersistenceResult<()> {
+        self.with_connection("set_snapshot_pinned", |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction = connection.transaction()?;
+
+            transaction.execute(
+                "
+UPDATE installed_packages
+SET pinned = ?3, updated_at_unix = strftime('%s', 'now')
+WHERE manager_id = ?1 AND package_name = ?2
+",
+                params![
+                    package.manager.as_str(),
+                    package.name.as_str(),
+                    bool_to_sqlite(pinned),
+                ],
+            )?;
+
+            transaction.execute(
+                "
+UPDATE outdated_packages
+SET pinned = ?3, updated_at_unix = strftime('%s', 'now')
+WHERE manager_id = ?1 AND package_name = ?2
+",
+                params![
+                    package.manager.as_str(),
+                    package.name.as_str(),
+                    bool_to_sqlite(pinned),
+                ],
+            )?;
+
+            transaction.commit()?;
+            Ok(())
+        })
+    }
+
+    fn apply_upgrade_result(&self, package: &PackageRef) -> PersistenceResult<()> {
+        self.with_connection("apply_upgrade_result", |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction = connection.transaction()?;
+
+            transaction.execute(
+                "
+INSERT INTO installed_packages (
+    manager_id, package_name, installed_version, pinned, updated_at_unix
+)
+SELECT
+    op.manager_id, op.package_name, op.candidate_version, op.pinned, strftime('%s', 'now')
+FROM outdated_packages op
+WHERE op.manager_id = ?1
+  AND op.package_name = ?2
+  AND NOT EXISTS (
+      SELECT 1 FROM installed_packages ip
+      WHERE ip.manager_id = op.manager_id
+        AND ip.package_name = op.package_name
+  )
+",
+                params![package.manager.as_str(), package.name.as_str()],
+            )?;
+
+            transaction.execute(
+                "
+UPDATE installed_packages
+SET installed_version = COALESCE(
+        (
+            SELECT candidate_version
+            FROM outdated_packages
+            WHERE manager_id = ?1 AND package_name = ?2
+        ),
+        installed_version
+    ),
+    updated_at_unix = strftime('%s', 'now')
+WHERE manager_id = ?1 AND package_name = ?2
+",
+                params![package.manager.as_str(), package.name.as_str()],
+            )?;
+
+            transaction.execute(
+                "
+DELETE FROM outdated_packages
+WHERE manager_id = ?1 AND package_name = ?2
+",
+                params![package.manager.as_str(), package.name.as_str()],
+            )?;
+
+            transaction.commit()?;
+            Ok(())
         })
     }
 }
@@ -545,11 +697,23 @@ impl DetectionStore for SqliteStore {
             connection.execute(
                 "
 INSERT INTO manager_detection (manager_id, detected, executable_path, version, detected_at_unix)
-VALUES (?1, ?2, ?3, ?4, strftime('%s', 'now'))
+VALUES (?1, ?2, NULLIF(?3, ''), NULLIF(?4, ''), strftime('%s', 'now'))
 ON CONFLICT(manager_id) DO UPDATE SET
     detected = excluded.detected,
-    executable_path = excluded.executable_path,
-    version = excluded.version,
+    executable_path = CASE
+        WHEN excluded.detected = 1 THEN COALESCE(
+            NULLIF(excluded.executable_path, ''),
+            NULLIF(manager_detection.executable_path, '')
+        )
+        ELSE excluded.executable_path
+    END,
+    version = CASE
+        WHEN excluded.detected = 1 THEN COALESCE(
+            NULLIF(excluded.version, ''),
+            NULLIF(manager_detection.version, '')
+        )
+        ELSE excluded.version
+    END,
     detected_at_unix = excluded.detected_at_unix
 ",
                 params![
@@ -630,6 +794,158 @@ ORDER BY manager_id
 
                 let manager = parse_manager_id(&manager_raw)?;
                 Ok((manager, sqlite_to_bool(enabled_int)))
+            })?;
+
+            rows.collect()
+        })
+    }
+
+    fn set_safe_mode(&self, enabled: bool) -> PersistenceResult<()> {
+        self.with_connection("set_safe_mode", |connection| {
+            ensure_schema_ready(connection)?;
+            connection.execute(
+                "
+INSERT INTO app_settings (key, value)
+VALUES ('safe_mode', ?1)
+ON CONFLICT(key) DO UPDATE SET
+    value = excluded.value
+",
+                params![if enabled { "1" } else { "0" }],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn safe_mode(&self) -> PersistenceResult<bool> {
+        self.with_connection("safe_mode", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement =
+                connection.prepare("SELECT value FROM app_settings WHERE key = 'safe_mode'")?;
+            let mut rows = statement.query([])?;
+            let Some(row) = rows.next()? else {
+                return Ok(false);
+            };
+            let value: String = row.get(0)?;
+            Ok(value.trim() == "1")
+        })
+    }
+
+    fn set_homebrew_keg_policy(&self, policy: HomebrewKegPolicy) -> PersistenceResult<()> {
+        self.with_connection("set_homebrew_keg_policy", |connection| {
+            ensure_schema_ready(connection)?;
+            connection.execute(
+                "
+INSERT INTO app_settings (key, value)
+VALUES ('homebrew_keg_policy', ?1)
+ON CONFLICT(key) DO UPDATE SET
+    value = excluded.value
+",
+                params![policy.as_str()],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn homebrew_keg_policy(&self) -> PersistenceResult<HomebrewKegPolicy> {
+        self.with_connection("homebrew_keg_policy", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection
+                .prepare("SELECT value FROM app_settings WHERE key = 'homebrew_keg_policy'")?;
+            let mut rows = statement.query([])?;
+            let Some(row) = rows.next()? else {
+                return Ok(HomebrewKegPolicy::Keep);
+            };
+            let value: String = row.get(0)?;
+            Ok(value
+                .trim()
+                .parse::<HomebrewKegPolicy>()
+                .unwrap_or(HomebrewKegPolicy::Keep))
+        })
+    }
+
+    fn set_package_keg_policy(
+        &self,
+        package: &PackageRef,
+        policy: Option<HomebrewKegPolicy>,
+    ) -> PersistenceResult<()> {
+        self.with_connection("set_package_keg_policy", |connection| {
+            ensure_schema_ready(connection)?;
+
+            match policy {
+                Some(policy) => {
+                    connection.execute(
+                        "
+INSERT INTO package_keg_policies (manager_id, package_name, policy, updated_at_unix)
+VALUES (?1, ?2, ?3, strftime('%s', 'now'))
+ON CONFLICT(manager_id, package_name) DO UPDATE SET
+    policy = excluded.policy,
+    updated_at_unix = excluded.updated_at_unix
+",
+                        params![package.manager.as_str(), package.name.as_str(), policy.as_str()],
+                    )?;
+                }
+                None => {
+                    connection.execute(
+                        "DELETE FROM package_keg_policies WHERE manager_id = ?1 AND package_name = ?2",
+                        params![package.manager.as_str(), package.name.as_str()],
+                    )?;
+                }
+            }
+
+            Ok(())
+        })
+    }
+
+    fn package_keg_policy(
+        &self,
+        package: &PackageRef,
+    ) -> PersistenceResult<Option<HomebrewKegPolicy>> {
+        self.with_connection("package_keg_policy", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection.prepare(
+                "
+SELECT policy
+FROM package_keg_policies
+WHERE manager_id = ?1 AND package_name = ?2
+",
+            )?;
+            let mut rows =
+                statement.query(params![package.manager.as_str(), package.name.as_str()])?;
+            let Some(row) = rows.next()? else {
+                return Ok(None);
+            };
+            let value: String = row.get(0)?;
+            Ok(value.trim().parse::<HomebrewKegPolicy>().ok())
+        })
+    }
+
+    fn list_package_keg_policies(&self) -> PersistenceResult<Vec<PackageKegPolicy>> {
+        self.with_connection("list_package_keg_policies", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection.prepare(
+                "
+SELECT manager_id, package_name, policy
+FROM package_keg_policies
+ORDER BY manager_id, package_name
+",
+            )?;
+            let rows = statement.query_map([], |row| {
+                let manager_raw: String = row.get(0)?;
+                let package_name: String = row.get(1)?;
+                let policy_raw: String = row.get(2)?;
+
+                let manager = parse_manager_id(&manager_raw)?;
+                let policy = policy_raw
+                    .parse::<HomebrewKegPolicy>()
+                    .map_err(|_| storage_error_sqlite("invalid keg policy value"))?;
+
+                Ok(PackageKegPolicy {
+                    package: PackageRef {
+                        manager,
+                        name: package_name,
+                    },
+                    policy,
+                })
             })?;
 
             rows.collect()

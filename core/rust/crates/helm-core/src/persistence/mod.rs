@@ -1,7 +1,8 @@
 pub mod detection_store;
 
 use crate::models::{
-    CachedSearchResult, CoreError, InstalledPackage, OutdatedPackage, PinRecord, TaskRecord,
+    CachedSearchResult, CoreError, InstalledPackage, ManagerId, OutdatedPackage, PackageRef,
+    PinRecord, TaskRecord,
 };
 
 pub use detection_store::DetectionStore;
@@ -19,9 +20,19 @@ pub trait PackageStore: Send + Sync {
 
     fn upsert_outdated(&self, packages: &[OutdatedPackage]) -> PersistenceResult<()>;
 
+    fn replace_outdated_snapshot(
+        &self,
+        manager: ManagerId,
+        packages: &[OutdatedPackage],
+    ) -> PersistenceResult<()>;
+
     fn list_installed(&self) -> PersistenceResult<Vec<InstalledPackage>>;
 
     fn list_outdated(&self) -> PersistenceResult<Vec<OutdatedPackage>>;
+
+    fn set_snapshot_pinned(&self, package: &PackageRef, pinned: bool) -> PersistenceResult<()>;
+
+    fn apply_upgrade_result(&self, package: &PackageRef) -> PersistenceResult<()>;
 }
 
 pub trait PinStore: Send + Sync {

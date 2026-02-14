@@ -13,6 +13,7 @@ const SOFTWAREUPDATE_READ_CAPABILITIES: &[Capability] = &[
     Capability::Detect,
     Capability::Refresh,
     Capability::ListOutdated,
+    Capability::Upgrade,
 ];
 
 const SOFTWAREUPDATE_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
@@ -27,6 +28,7 @@ const SW_VERS_COMMAND: &str = "/usr/bin/sw_vers";
 const SOFTWAREUPDATE_COMMAND: &str = "/usr/sbin/softwareupdate";
 const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
 const LIST_TIMEOUT: Duration = Duration::from_secs(120);
+const UPGRADE_TIMEOUT: Duration = Duration::from_secs(1800);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SoftwareUpdateDetectOutput {
@@ -37,6 +39,7 @@ pub struct SoftwareUpdateDetectOutput {
 pub trait SoftwareUpdateSource: Send + Sync {
     fn detect(&self) -> AdapterResult<SoftwareUpdateDetectOutput>;
     fn list_available(&self) -> AdapterResult<String>;
+    fn install_all_updates(&self) -> AdapterResult<String>;
 }
 
 pub struct SoftwareUpdateAdapter<S: SoftwareUpdateSource> {
@@ -82,6 +85,29 @@ impl<S: SoftwareUpdateSource> ManagerAdapter for SoftwareUpdateAdapter<S> {
                 let packages = parse_softwareupdate_list(&raw)?;
                 Ok(AdapterResponse::OutdatedPackages(packages))
             }
+            AdapterRequest::Upgrade(upgrade_request) => {
+                let package = upgrade_request.package.unwrap_or(PackageRef {
+                    manager: ManagerId::SoftwareUpdate,
+                    name: "__all__".to_string(),
+                });
+                if package.name != "__confirm_os_updates__" {
+                    return Err(CoreError {
+                        manager: Some(ManagerId::SoftwareUpdate),
+                        task: None,
+                        action: Some(ManagerAction::Upgrade),
+                        kind: CoreErrorKind::InvalidInput,
+                        message: "softwareupdate upgrades require explicit confirmation token"
+                            .to_string(),
+                    });
+                }
+                let _ = self.source.install_all_updates()?;
+                Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
+                    package,
+                    action: ManagerAction::Upgrade,
+                    before_version: None,
+                    after_version: None,
+                }))
+            }
             _ => Err(CoreError {
                 manager: Some(ManagerId::SoftwareUpdate),
                 task: None,
@@ -112,6 +138,17 @@ pub fn softwareupdate_list_request(task_id: Option<TaskId>) -> ProcessSpawnReque
         CommandSpec::new(SOFTWAREUPDATE_COMMAND).arg("-l"),
         LIST_TIMEOUT,
     )
+}
+
+pub fn softwareupdate_upgrade_request(task_id: Option<TaskId>) -> ProcessSpawnRequest {
+    softwareupdate_request(
+        task_id,
+        TaskType::Upgrade,
+        ManagerAction::Upgrade,
+        CommandSpec::new(SOFTWAREUPDATE_COMMAND).args(["-i", "-a"]),
+        UPGRADE_TIMEOUT,
+    )
+    .requires_elevation(true)
 }
 
 fn softwareupdate_request(
@@ -245,14 +282,14 @@ mod tests {
 
     use crate::adapters::manager::{
         AdapterRequest, AdapterResponse, AdapterResult, DetectRequest, ListInstalledRequest,
-        ListOutdatedRequest, ManagerAdapter,
+        ListOutdatedRequest, ManagerAdapter, UpgradeRequest,
     };
     use crate::models::{CoreErrorKind, ManagerAction, ManagerId, TaskId, TaskType};
 
     use super::{
         SoftwareUpdateAdapter, SoftwareUpdateDetectOutput, SoftwareUpdateSource,
         parse_softwareupdate_list, parse_softwareupdate_version, softwareupdate_detect_request,
-        softwareupdate_list_request,
+        softwareupdate_list_request, softwareupdate_upgrade_request,
     };
 
     const VERSION_FIXTURE: &str = include_str!("../../tests/fixtures/softwareupdate/version.txt");
@@ -330,6 +367,38 @@ mod tests {
     }
 
     #[test]
+    fn adapter_rejects_unconfirmed_upgrade_request() {
+        let source = FixtureSource::default();
+        let adapter = SoftwareUpdateAdapter::new(source);
+
+        let error = adapter
+            .execute(AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(crate::models::PackageRef {
+                    manager: ManagerId::SoftwareUpdate,
+                    name: "__all__".to_string(),
+                }),
+            }))
+            .unwrap_err();
+        assert_eq!(error.kind, CoreErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn adapter_executes_confirmed_upgrade_request() {
+        let source = FixtureSource::default();
+        let adapter = SoftwareUpdateAdapter::new(source);
+
+        let result = adapter
+            .execute(AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(crate::models::PackageRef {
+                    manager: ManagerId::SoftwareUpdate,
+                    name: "__confirm_os_updates__".to_string(),
+                }),
+            }))
+            .unwrap();
+        assert!(matches!(result, AdapterResponse::Mutation(_)));
+    }
+
+    #[test]
     fn adapter_rejects_unsupported_action() {
         let source = FixtureSource::default();
         let adapter = SoftwareUpdateAdapter::new(source);
@@ -381,6 +450,23 @@ mod tests {
         assert_eq!(request.task_type, TaskType::Refresh);
     }
 
+    #[test]
+    fn upgrade_command_spec_uses_structured_args_and_elevation() {
+        let request = softwareupdate_upgrade_request(Some(TaskId(100)));
+        assert_eq!(
+            request.command.program,
+            PathBuf::from("/usr/sbin/softwareupdate")
+        );
+        assert_eq!(
+            request.command.args,
+            vec!["-i".to_string(), "-a".to_string()]
+        );
+        assert_eq!(request.action, ManagerAction::Upgrade);
+        assert_eq!(request.task_type, TaskType::Upgrade);
+        assert!(request.requires_elevation);
+        assert_eq!(request.task_id, Some(TaskId(100)));
+    }
+
     #[derive(Default, Clone)]
     struct FixtureSource {
         detect_calls: Arc<AtomicUsize>,
@@ -397,6 +483,10 @@ mod tests {
 
         fn list_available(&self) -> AdapterResult<String> {
             Ok(LIST_AVAILABLE_FIXTURE.to_string())
+        }
+
+        fn install_all_updates(&self) -> AdapterResult<String> {
+            Ok(String::new())
         }
     }
 }

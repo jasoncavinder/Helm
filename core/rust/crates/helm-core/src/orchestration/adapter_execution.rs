@@ -136,7 +136,7 @@ impl AdapterExecutionRuntime {
 
     pub async fn snapshot(&self, task_id: TaskId) -> OrchestrationResult<AdapterTaskSnapshot> {
         let runtime = self.queue.snapshot(task_id).await?;
-        let terminal_state = self.terminal_state_for(task_id, runtime.status).await?;
+        let terminal_state = self.terminal_state_for(task_id, &runtime).await?;
         Ok(AdapterTaskSnapshot {
             runtime,
             terminal_state,
@@ -152,7 +152,7 @@ impl AdapterExecutionRuntime {
             .queue
             .wait_for_terminal(task_id, timeout_duration)
             .await?;
-        let terminal_state = self.terminal_state_for(task_id, runtime.status).await?;
+        let terminal_state = self.terminal_state_for(task_id, &runtime).await?;
         Ok(AdapterTaskSnapshot {
             runtime,
             terminal_state,
@@ -162,8 +162,9 @@ impl AdapterExecutionRuntime {
     async fn terminal_state_for(
         &self,
         task_id: TaskId,
-        status: TaskStatus,
+        runtime: &TaskRuntimeSnapshot,
     ) -> OrchestrationResult<Option<AdapterTaskTerminalState>> {
+        let status = runtime.status;
         let outcome_slot = {
             let outcomes = self.outcomes.lock().await;
             outcomes.get(&task_id).cloned()
@@ -180,8 +181,14 @@ impl AdapterExecutionRuntime {
             return Ok(Some(AdapterTaskTerminalState::Cancelled(None)));
         }
 
-        if matches!(status, TaskStatus::Completed | TaskStatus::Failed) {
-            return Err(missing_terminal_state_error(task_id, status));
+        if status == TaskStatus::Failed {
+            return Ok(Some(AdapterTaskTerminalState::Failed(
+                missing_terminal_state_error(task_id, runtime),
+            )));
+        }
+
+        if status == TaskStatus::Completed {
+            return Err(missing_terminal_state_error(task_id, runtime));
         }
 
         Ok(None)
@@ -228,16 +235,30 @@ fn attribute_error(
     }
 }
 
-fn missing_terminal_state_error(task_id: TaskId, status: TaskStatus) -> CoreError {
+fn missing_terminal_state_error(task_id: TaskId, runtime: &TaskRuntimeSnapshot) -> CoreError {
     CoreError {
-        manager: None,
-        task: None,
-        action: None,
+        manager: Some(runtime.manager),
+        task: Some(runtime.task_type),
+        action: Some(default_action_for_task_type(runtime.task_type)),
         kind: CoreErrorKind::Internal,
         message: format!(
             "task '{}' reached terminal status '{status:?}' without adapter terminal state",
-            task_id.0
+            task_id.0,
+            status = runtime.status
         ),
+    }
+}
+
+fn default_action_for_task_type(task_type: TaskType) -> ManagerAction {
+    match task_type {
+        TaskType::Detection => ManagerAction::Detect,
+        TaskType::Refresh => ManagerAction::Refresh,
+        TaskType::Search => ManagerAction::Search,
+        TaskType::Install => ManagerAction::Install,
+        TaskType::Uninstall => ManagerAction::Uninstall,
+        TaskType::Upgrade => ManagerAction::Upgrade,
+        TaskType::Pin => ManagerAction::Pin,
+        TaskType::Unpin => ManagerAction::Unpin,
     }
 }
 

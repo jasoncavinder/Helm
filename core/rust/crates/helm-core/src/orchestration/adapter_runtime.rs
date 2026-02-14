@@ -140,6 +140,14 @@ impl AdapterRuntime {
         }
     }
 
+    pub fn is_safe_mode(&self) -> bool {
+        if let Some(ds) = &self.detection_store {
+            ds.safe_mode().unwrap_or(false)
+        } else {
+            false
+        }
+    }
+
     pub async fn refresh_all_ordered(&self) -> Vec<(ManagerId, OrchestrationResult<()>)> {
         let adapter_refs: Vec<&dyn ManagerAdapter> =
             self.adapters.values().map(|a| a.as_ref()).collect();
@@ -289,6 +297,20 @@ impl AdapterRuntime {
     ) -> OrchestrationResult<TaskId> {
         let action = request.action();
         let task_type = task_type_for_action(action);
+
+        if manager == ManagerId::SoftwareUpdate
+            && action == ManagerAction::Upgrade
+            && self.is_safe_mode()
+        {
+            return Err(CoreError {
+                manager: Some(manager),
+                task: Some(task_type),
+                action: Some(action),
+                kind: CoreErrorKind::InvalidInput,
+                message: "safe mode blocks macOS software update upgrades".to_string(),
+            });
+        }
+
         let adapter = self
             .adapters
             .get(&manager)
@@ -535,7 +557,15 @@ async fn persist_adapter_response(
             AdapterResponse::InstalledPackages(packages) => {
                 package_store.upsert_installed(&packages)
             }
-            AdapterResponse::OutdatedPackages(packages) => package_store.upsert_outdated(&packages),
+            AdapterResponse::OutdatedPackages(packages) => {
+                package_store.replace_outdated_snapshot(manager, &packages)
+            }
+            AdapterResponse::Mutation(mutation) => match mutation.action {
+                ManagerAction::Pin => package_store.set_snapshot_pinned(&mutation.package, true),
+                ManagerAction::Unpin => package_store.set_snapshot_pinned(&mutation.package, false),
+                ManagerAction::Upgrade => package_store.apply_upgrade_result(&mutation.package),
+                _ => Ok(()),
+            },
             _ => Ok(()), // Other responses not persisted yet
         }
     })
