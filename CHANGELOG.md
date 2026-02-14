@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.9.0] - 2026-02-14
+
+### Added
+- **Internationalization (i18n) Foundation**:
+  - Centralized `LocalizationManager` for loading and resolving locale strings.
+  - Type-safe `L10n` accessor struct for all UI keys.
+  - JSON-based locale architecture (`locales/en/*.json`) supporting future language expansion.
+  - Language picker in Settings (persisted to UserDefaults).
+- **UI Localization**:
+  - All user-facing strings in Dashboard, Package List, Tasks, and Settings are now localized.
+  - Structured error keys defined for service layer communication.
+
+### Changed
+- Refactored `SettingsPopoverView` to use localized labels and grouped components to respect SwiftUI view limits.
+- Updated `LocalizationManager` to robustly handle both folder-referenced and flattened resource bundles.
+
 ## [0.7.1] - 2026-02-14
 
 ### Changed

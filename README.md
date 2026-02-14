@@ -79,9 +79,10 @@ Or open `apps/macos-ui/Helm.xcodeproj` in Xcode and run the **Helm** scheme. The
 | 0.4.x | SwiftUI shell — menu bar app, XPC service, Rust FFI bridge, live UI | Complete |
 | 0.5.x | Progressive search — local-first search, remote search, cache enrichment | Complete |
 | 0.6.x | Core toolchain managers — mise, rustup adapters, authority ordering | Complete |
-| 0.7.x | System & App Store managers — softwareupdate, mas, restart detection | Complete |
-| 0.8.x | Pinning & policy enforcement — native/virtual pins, safe mode, guarded updates | Planned (Next) |
-| 0.9.x | Core language package managers — npm, pipx, pip, Cargo, cargo-binstall, casks | Planned |
+| 0.7.x | System & App Store managers — softwareupdate, mas, restart detection | Completed |
+| 0.8.x | Pinning & policy enforcement — native/virtual pins, safe mode, guarded updates | In Progress (Beta) |
+| 0.9.x | Internationalization Foundation — centralized localization system, ICU format | Completed |
+| 0.10.x | Core language package managers — npm, pipx, pip, Cargo, cargo-binstall, casks | Planned |
 | 0.10.x | Extended language package managers — uv, pnpm, bun, gem, composer | Planned |
 | 0.11.x | Reliability and safety hardening — timeouts, retries, cancellation, conflict checks | Planned |
 | 0.12.x | UI and workflow expansion — manager controls, batch actions, onboarding polish | Planned |
