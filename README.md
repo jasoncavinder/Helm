@@ -124,4 +124,22 @@ See [`docs/VERSIONING.md`](docs/VERSIONING.md) for the versioning strategy.
 
 ## License
 
-Currently unlicensed. All rights reserved.
+Helm is currently released under a **source-available, non-commercial license** (pre-1.0).
+
+- Source code is visible for transparency and evaluation
+- Use is permitted for personal and non-commercial purposes
+- Commercial use is not permitted before 1.0
+- Redistribution of unmodified binaries is allowed for non-commercial use
+- Modification and reuse of the source code is not permitted
+
+See [LICENSE](LICENSE) for full terms.
+
+---
+
+## Contributions
+
+Contributions are welcome, but require agreement to the Contributor License Agreement (CLA).
+
+By submitting a contribution, you agree to the terms in [CLA.md](CLA.md).
+
+This ensures Helm can evolve its licensing model in the future (including commercial and open-source options).
