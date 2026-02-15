@@ -37,6 +37,7 @@ Helm is currently source-available to protect the project during its early devel
 
 ## Contributing
 
-We welcome contributions! To ensure we can evolve the licensing model in the future, all contributors must sign a [Contributor License Agreement (CLA)](https://github.com/jasoncavinder/Helm/blob/main/CLA.md).
+We welcome contributions! To ensure we can evolve the licensing model in the future, all contributors must sign a [Contributor License Agreement 
+(CLA)](https://github.com/jasoncavinder/Helm/blob/main/docs/legal/CLA.md).
 
 This agreement grants the project the necessary rights to relicense contributions as part of commercial or open-source releases.

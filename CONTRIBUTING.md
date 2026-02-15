@@ -34,7 +34,7 @@ All contributions require agreement to the Contributor License Agreement (CLA).
 
 By submitting a pull request or any contribution, you agree to the terms in:
 
-👉 `CLA.md`
+👉 `docs/legal/CLA.md`
 
 This ensures the project can be relicensed or dual-licensed in the future.
 

@@ -10,8 +10,30 @@ and architectural clarity are more important than speed or shortcuts.
 
 ## 1. Source of Truth
 
-- `PROJECT_BRIEF.md` is the authoritative product and architecture specification.
-- If instructions in prompts conflict with `PROJECT_BRIEF.md`, the brief wins.
+Helm's behavior is defined by structured documentation. AI agents must consult these documents 
+before making changes.
+
+### Required Reading (Always Load First)
+
+- `docs/PROJECT_BRIEF.md` - authoritative product and architecture specification
+- `docs/CURRENT_STATE.md` - current implementation status and known gaps
+- `docs/NEXT_STEPS.md` - prioritized upcoming work
+
+AI agents must not begin implementation until these documents have been read.
+
+### Supporting Documents (Load When Relevant)
+
+- `docs/ARCHITECTURE.md` — detailed system design and component boundaries
+- `docs/ROADMAP.md` — feature planning and release milestones
+- `docs/DECISIONS.md` — architectural decisions and rationale
+- `docs/legal/CLA.md` — contributor license agreement
+
+### Rules
+
+- If instructions in prompts conflict with documentation, the documentation wins.
+- If multiple documents conflict:
+  - `docs/PROJECT_BRIEF.md` takes precedence over all others.
+  - More recent documents (e.g., CURRENT_STATE, DECISIONS) override older plans.
 - If something is unclear or underspecified, pause and ask for clarification
   rather than making assumptions.
 
@@ -231,3 +253,32 @@ AI agents must not:
 - assume MIT/Apache-style reuse permissions
 
 All contributions are subject to the CLA.
+
+---
+
+## 15. Context Management
+
+Helm uses repository documents as persistent memory for AI agents.
+
+### Principles
+
+- Documentation is the system of record.
+- Agents must update documentation when making significant changes.
+- Documentation must reflect the current state of the system.
+
+### Required Updates
+
+Agents must update the following when relevant:
+
+- `docs/CURRENT_STATE.md` — when implementation changes
+- `docs/NEXT_STEPS.md` — when tasks are completed or reprioritized
+- `docs/DECISIONS.md` — when architectural decisions are made
+
+### Consistency Rule
+
+Code, tests, and documentation must remain consistent.
+
+If discrepancies are found:
+- prefer updating documentation to reflect reality
+- or pause and ask for clarification
+

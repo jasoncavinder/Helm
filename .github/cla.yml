@@ -1,7 +1,7 @@
 # CLA Assistant configuration
 
 # URL to CLA document
-cla_url: https://github.com/jasoncavinder/Helm/blob/main/CLA.md
+cla_url: https://github.com/jasoncavinder/Helm/blob/main/docs/legal/CLA.md
 
 # Require all contributors to sign
 require_all: true
