@@ -100,7 +100,7 @@ See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full roadmap through 1.x.
 apps/macos-ui/              SwiftUI app + XPC service
 core/rust/                   Rust workspace (helm-core, helm-ffi)
 docs/                        Roadmap, versioning, release criteria
-PROJECT_BRIEF.md             Product and architecture source of truth
+docs/PROJECT_BRIEF.md        Product and architecture source of truth
 AGENTS.md                    Engineering guardrails and constraints
 ```
 
@@ -130,7 +130,7 @@ Helm is currently released under a source-available, non-commercial license.
 
 The licensing model will evolve at or after version 1.0 to support commercial use and additional editions.
 
-See [docs/LICENSING_STRATEGY.md](docs/LICENSING_STRATEGY.md) for details.
+See [docs/legal/LICENSING_STRATEGY.md](docs/legal/LICENSING_STRATEGY.md) for details.
 
 ## License
 
@@ -150,6 +150,6 @@ See [LICENSE](LICENSE) for full terms.
 
 Contributions are welcome, but require agreement to the Contributor License Agreement (CLA).
 
-By submitting a contribution, you agree to the terms in [CLA.md](CLA.md).
+By submitting a contribution, you agree to the terms in [docs/legal/CLA.md](docs/legal/CLA.md).
 
 This ensures Helm can evolve its licensing model in the future (including commercial and open-source options).

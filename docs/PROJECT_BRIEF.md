@@ -379,7 +379,7 @@ Goals:
 
 All contributions are subject to a Contributor License Agreement (CLA), allowing relicensing in future versions.
 
-See docs/LICENSING_STRATEGY.md for planned post-1.0 licensing and distribution model.
+See docs/legal/LICENSING_STRATEGY.md for planned post-1.0 licensing and distribution model.
 
 ---
 
