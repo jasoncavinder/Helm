@@ -82,7 +82,6 @@ Completed:
 Remaining:
 
 - Validate UI overflow across es, fr, de, pt-BR, ja
-- Resolve current high-risk overflow candidates flagged by audit (es/de)
 - Expand fr, pt-BR, ja translations beyond onboarding/common/errors
 
 ---
