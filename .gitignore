@@ -24,3 +24,6 @@ web/dist/
 __pycache__/
 *.pyc
 venv/
+
+# direnv
+.envrc
