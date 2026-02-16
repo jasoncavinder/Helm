@@ -218,15 +218,15 @@ final class HelmCore: ObservableObject {
 
     private func normalizedManagerName(_ raw: String) -> String {
         switch raw.lowercased() {
-        case "homebrew_formula": return "Homebrew"
-        case "homebrew_cask": return "Homebrew Cask"
-        case "npm_global": return "npm"
-        case "pipx": return "pipx"
-        case "cargo": return "Cargo"
-        case "mise": return "mise"
-        case "rustup": return "rustup"
-        case "softwareupdate": return "Software Update"
-        case "mas": return "App Store"
+        case "homebrew_formula": return L10n.App.Managers.Name.homebrew.localized
+        case "homebrew_cask": return L10n.App.Managers.Name.homebrewCask.localized
+        case "npm_global": return L10n.App.Managers.Name.npm.localized
+        case "pipx": return L10n.App.Managers.Name.pipx.localized
+        case "cargo": return L10n.App.Managers.Name.cargo.localized
+        case "mise": return L10n.App.Managers.Name.mise.localized
+        case "rustup": return L10n.App.Managers.Name.rustup.localized
+        case "softwareupdate": return L10n.App.Managers.Name.softwareUpdate.localized
+        case "mas": return L10n.App.Managers.Name.appStore.localized
         default: return raw.replacingOccurrences(of: "_", with: " ").capitalized
         }
     }
@@ -310,7 +310,7 @@ final class HelmCore: ObservableObject {
                             description: overrideDescription
                                 ?? taskLabel
                                 ?? L10n.App.Tasks.fallbackDescription.localized(with: [
-                                    "task_type": task.taskType.capitalized,
+                                    "task_type": self?.localizedTaskType(task.taskType) ?? task.taskType.capitalized,
                                     "manager": managerName
                                 ]),
                             status: task.status.capitalized
@@ -546,6 +546,36 @@ final class HelmCore: ObservableObject {
                 logger.error("upgradeAll(includePinned: \(includePinned), allowOsUpdates: \(allowOsUpdates)) failed")
             }
         }
+    }
+
+    func upgradeAllPreviewCount(includePinned: Bool = false, allowOsUpdates: Bool = false) -> Int {
+        UpgradePreviewPlanner.count(
+            candidates: outdatedPackages.map {
+                UpgradePreviewPlanner.Candidate(managerId: $0.managerId, pinned: $0.pinned)
+            },
+            managerEnabled: managerStatuses.mapValues(\.enabled),
+            includePinned: includePinned,
+            allowOsUpdates: allowOsUpdates,
+            safeModeEnabled: safeModeEnabled
+        )
+    }
+
+    func upgradeAllPreviewBreakdown(
+        includePinned: Bool = false,
+        allowOsUpdates: Bool = false
+    ) -> [(manager: String, count: Int)] {
+        UpgradePreviewPlanner.breakdown(
+            candidates: outdatedPackages.map {
+                UpgradePreviewPlanner.Candidate(managerId: $0.managerId, pinned: $0.pinned)
+            },
+            managerEnabled: managerStatuses.mapValues(\.enabled),
+            includePinned: includePinned,
+            allowOsUpdates: allowOsUpdates,
+            safeModeEnabled: safeModeEnabled,
+            managerName: { [weak self] managerId in
+                self?.normalizedManagerName(managerId) ?? managerId
+            }
+        ).map { (manager: $0.manager, count: $0.count) }
     }
 
     func kegPolicySelection(for package: PackageItem) -> KegPolicySelection {
@@ -1019,7 +1049,31 @@ final class HelmCore: ObservableObject {
             } ?? [:]
             return labelKey.localized(with: args)
         }
-        return task.label
+        // `task.label` is persisted server-side in English; prefer localized fallback composition.
+        return nil
+    }
+
+    private func localizedTaskType(_ rawTaskType: String) -> String {
+        switch rawTaskType.lowercased() {
+        case "refresh":
+            return L10n.Common.refresh.localized
+        case "detection":
+            return L10n.Common.initializing.localized
+        case "search":
+            return L10n.App.Dashboard.Status.searchRemote.localized
+        case "install":
+            return L10n.Common.install.localized
+        case "uninstall":
+            return L10n.Common.uninstall.localized
+        case "upgrade":
+            return L10n.Common.update.localized
+        case "pin":
+            return L10n.App.Packages.Action.pin.localized
+        case "unpin":
+            return L10n.App.Packages.Action.unpin.localized
+        default:
+            return rawTaskType.capitalized
+        }
     }
 
     private func upgradeActionDescription(for package: PackageItem) -> String {

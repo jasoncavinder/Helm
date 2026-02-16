@@ -2,6 +2,31 @@
 
 This checklist is required before creating a release tag on `main`.
 
+## v0.9.3 (In Progress)
+
+### Scope and Documentation
+- [x] `CHANGELOG.md` includes `0.9.3` release notes for localization hardening and upgrade-preview test coverage.
+- [x] `README.md` reflects `v0.9.3`.
+- [x] Website docs status/roadmap pages reflect current pre-1.0 status and milestone progression.
+
+### Versioning
+- [x] Workspace version bumped to `0.9.3` in `core/rust/Cargo.toml`.
+- [x] Rust lockfile package versions aligned to `0.9.3` in `core/rust/Cargo.lock`.
+- [x] Generated app version artifacts updated:
+  - `apps/macos-ui/Generated/HelmVersion.swift`
+  - `apps/macos-ui/Generated/HelmVersion.xcconfig`
+
+### Validation
+- [x] Rust tests pass (`cargo test` in `core/rust`).
+- [x] macOS unit tests pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme HelmTests -destination 'platform=macOS' -derivedDataPath /tmp/helmtests-deriveddata CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test`).
+
+### Branch and Tag
+- [ ] `dev` merged into `main` for release.
+- [ ] Create annotated tag from `main`:
+  - `git tag -a v0.9.3 -m "Helm v0.9.3"`
+- [ ] Push tag:
+  - `git push origin v0.9.3`
+
 ## v0.9.2 (In Progress)
 
 ### Scope and Documentation

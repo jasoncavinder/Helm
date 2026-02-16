@@ -10,6 +10,36 @@ struct SettingsPopoverView: View {
     @State private var showUpgradeConfirmation = false
     @State private var isResetting = false
 
+    private var upgradePreviewSummary: String {
+        let noOsCount = core.upgradeAllPreviewCount(includePinned: false, allowOsUpdates: false)
+        let noOsLine = "\(L10n.App.Settings.Alert.UpgradeAll.upgradeNoOs.localized): \(L10n.App.Managers.Label.packageCount.localized(with: ["count": noOsCount]))"
+        let noOsBreakdown = core
+            .upgradeAllPreviewBreakdown(includePinned: false, allowOsUpdates: false)
+            .prefix(3)
+            .map { entry in
+                "\(entry.manager): \(L10n.App.Managers.Label.packageCount.localized(with: ["count": entry.count]))"
+            }
+            .joined(separator: "\n")
+
+        guard !core.safeModeEnabled else {
+            return noOsBreakdown.isEmpty ? noOsLine : "\(noOsLine)\n\(noOsBreakdown)"
+        }
+
+        let withOsCount = core.upgradeAllPreviewCount(includePinned: false, allowOsUpdates: true)
+        let withOsLine = "\(L10n.App.Settings.Alert.UpgradeAll.upgradeWithOs.localized): \(L10n.App.Managers.Label.packageCount.localized(with: ["count": withOsCount]))"
+        let withOsBreakdown = core
+            .upgradeAllPreviewBreakdown(includePinned: false, allowOsUpdates: true)
+            .prefix(3)
+            .map { entry in
+                "\(entry.manager): \(L10n.App.Managers.Label.packageCount.localized(with: ["count": entry.count]))"
+            }
+            .joined(separator: "\n")
+
+        let noOsSection = noOsBreakdown.isEmpty ? noOsLine : "\(noOsLine)\n\(noOsBreakdown)"
+        let withOsSection = withOsBreakdown.isEmpty ? withOsLine : "\(withOsLine)\n\(withOsBreakdown)"
+        return "\(noOsSection)\n\n\(withOsSection)"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Group {
@@ -27,9 +57,12 @@ struct SettingsPopoverView: View {
                         Text(L10n.App.Settings.Label.systemDefaultWithEnglish.localized).tag("en")
                         Text(L10n.App.Settings.Label.spanish.localized).tag("es")
                         Text(L10n.App.Settings.Label.german.localized).tag("de")
+                        Text(L10n.App.Settings.Label.french.localized).tag("fr")
+                        Text(L10n.App.Settings.Label.portugueseBrazilian.localized).tag("pt-BR")
+                        Text(L10n.App.Settings.Label.japanese.localized).tag("ja")
                     }
                     .labelsHidden()
-                    .frame(width: 170)
+                    .frame(width: 210)
                 }
                 
                 Divider()
@@ -123,7 +156,7 @@ struct SettingsPopoverView: View {
             }
         }
         .padding(16)
-        .frame(width: 240) // Slightly wider for language picker
+        .frame(width: 300)
         .alert(L10n.App.Settings.Alert.Reset.title.localized, isPresented: $showResetConfirmation) {
             Button(L10n.Common.cancel.localized, role: .cancel) {}
             Button(L10n.Common.reset.localized, role: .destructive) {
@@ -147,9 +180,9 @@ struct SettingsPopoverView: View {
             Button(L10n.Common.cancel.localized, role: .cancel) {}
         } message: {
             if core.safeModeEnabled {
-                Text(L10n.App.Settings.Alert.UpgradeAll.safeModeMessage.localized)
+                Text("\(L10n.App.Settings.Alert.UpgradeAll.safeModeMessage.localized)\n\n\(upgradePreviewSummary)")
             } else {
-                Text(L10n.App.Settings.Alert.UpgradeAll.standardMessage.localized)
+                Text("\(L10n.App.Settings.Alert.UpgradeAll.standardMessage.localized)\n\n\(upgradePreviewSummary)")
             }
         }
     }

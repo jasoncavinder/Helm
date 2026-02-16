@@ -11,15 +11,13 @@ Developers and power users on macOS who manage software through multiple package
 
 ## What it does today
 
-Helm v0.7.0 supports five package managers with more planned:
+Helm v0.9.3 supports fifteen managers:
 
-| Manager | Type | Capabilities | Status |
-|---------|------|-------------|--------|
-| **Homebrew** | System package manager | Detect, list installed, list outdated, search | Active |
-| **mise** | Tool/runtime manager | Detect, list installed, list outdated | Active |
-| **rustup** | Rust toolchain manager | Detect, list installed, list outdated | Active |
-| **softwareupdate** | macOS system updates | Detect, list outdated (with restart detection) | Active |
-| **mas** | Mac App Store | Detect, list installed, list outdated | Active |
+| Category | Managers |
+|---------|----------|
+| **Toolchain / Runtime** | mise, rustup |
+| **System / OS / App Store** | Homebrew, softwareupdate, mas |
+| **Language Package Managers** | npm (global), yarn (global), pnpm (global), pipx, pip (global), Cargo, cargo-binstall, RubyGems, poetry (self), bundler (plugin scope) |
 
 Key features:
 
@@ -27,9 +25,11 @@ Key features:
 - **Dashboard** — package stats, manager grid, and recent task activity at a glance
 - **Package list** — browse installed, upgradable, and available packages with status filters and manager filter
 - **Progressive search** — instant local filtering with debounced remote search
+- **Pinning and safe mode controls** — pin/unpin support plus guarded OS update policy
 - **Authority-ordered refresh** — Authoritative (mise, rustup) → Standard (mas) → Guarded (Homebrew, softwareupdate)
 - **Restart detection** — surface restart-required updates from macOS softwareupdate
 - **Background tasks** — real-time task tracking with per-manager serial execution
+- **Localization** — `en`, `es`, `de`, `fr`, `pt-BR`, and `ja` with locale override in Settings
 
 ## How it works
 

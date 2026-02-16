@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.9.3] - 2026-02-16
+
+### Added
+- Added localized manager-name keys used by upgrade-preview and task-fallback UI text across `en`, `es`, `de`, `fr`, `pt-BR`, and `ja`.
+- Added dedicated unit coverage for upgrade-preview filtering and breakdown sorting with a new `HelmTests` target and `UpgradePreviewPlannerTests`.
+- Added `UpgradePreviewPlanner` to centralize upgrade-preview inclusion and manager breakdown logic.
+
+### Changed
+- Localized manager display-name resolution in `HelmCore` so upgrade-plan summaries and fallback task text no longer show hardcoded English manager labels.
+- Updated release metadata and documentation for `v0.9.3`.
+
 ## [0.9.2] - 2026-02-14
 
 ### Added
