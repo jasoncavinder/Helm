@@ -19,6 +19,6 @@
   "app.onboarding.configure.title": "Configurer les gestionnaires",
   "app.onboarding.configure.subtitle": "Choisissez les gestionnaires de paquets\\nque Helm doit gérer.",
   "app.onboarding.configure.none_detected": "Aucun gestionnaire de paquets détecté.",
-  "app.onboarding.configure.install_later": "Vous pourrez installer des gestionnaires plus tard\\ndans l'onglet Gestionnaires.",
+  "app.onboarding.configure.install_later": "Installez des gestionnaires plus tard\\ndans l'onglet Gestionnaires.",
   "app.onboarding.configure.action.finish_setup": "Terminer la configuration"
 }
