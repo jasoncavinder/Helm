@@ -8,6 +8,8 @@ pub mod mise;
 pub mod mise_process;
 pub mod npm;
 pub mod npm_process;
+pub mod pipx;
+pub mod pipx_process;
 pub(crate) mod process_utils;
 pub mod rustup;
 pub mod rustup_process;
@@ -41,6 +43,11 @@ pub use npm::{
     npm_list_outdated_request, npm_search_request, npm_uninstall_request, npm_upgrade_request,
 };
 pub use npm_process::ProcessNpmSource;
+pub use pipx::{
+    PipxAdapter, PipxSource, pipx_detect_request, pipx_install_request, pipx_list_outdated_request,
+    pipx_list_request, pipx_uninstall_request, pipx_upgrade_request,
+};
+pub use pipx_process::ProcessPipxSource;
 pub use rustup::{
     RustupAdapter, RustupSource, rustup_check_request, rustup_detect_request,
     rustup_toolchain_list_request,

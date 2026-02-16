@@ -13,6 +13,8 @@ use helm_core::adapters::mise::MiseAdapter;
 use helm_core::adapters::mise_process::ProcessMiseSource;
 use helm_core::adapters::npm::NpmAdapter;
 use helm_core::adapters::npm_process::ProcessNpmSource;
+use helm_core::adapters::pipx::PipxAdapter;
+use helm_core::adapters::pipx_process::ProcessPipxSource;
 use helm_core::adapters::rustup::RustupAdapter;
 use helm_core::adapters::rustup_process::ProcessRustupSource;
 use helm_core::adapters::softwareupdate::SoftwareUpdateAdapter;
@@ -185,6 +187,7 @@ struct UpgradeAllTargets {
     homebrew: Vec<String>,
     mise: Vec<String>,
     npm: Vec<String>,
+    pipx: Vec<String>,
     rustup: Vec<String>,
     softwareupdate_outdated: bool,
 }
@@ -198,6 +201,7 @@ fn collect_upgrade_all_targets(
     let mut seen_homebrew = std::collections::HashSet::new();
     let mut seen_mise = std::collections::HashSet::new();
     let mut seen_npm = std::collections::HashSet::new();
+    let mut seen_pipx = std::collections::HashSet::new();
     let mut seen_rustup = std::collections::HashSet::new();
 
     for package in outdated {
@@ -224,6 +228,11 @@ fn collect_upgrade_all_targets(
             ManagerId::Npm => {
                 if seen_npm.insert(package.package.name.clone()) {
                     targets.npm.push(package.package.name.clone());
+                }
+            }
+            ManagerId::Pipx => {
+                if seen_pipx.insert(package.package.name.clone()) {
+                    targets.pipx.push(package.package.name.clone());
                 }
             }
             ManagerId::Rustup => {
@@ -316,6 +325,7 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
     )));
     let mise_adapter = Arc::new(MiseAdapter::new(ProcessMiseSource::new(executor.clone())));
     let npm_adapter = Arc::new(NpmAdapter::new(ProcessNpmSource::new(executor.clone())));
+    let pipx_adapter = Arc::new(PipxAdapter::new(ProcessPipxSource::new(executor.clone())));
     let rustup_adapter = Arc::new(RustupAdapter::new(ProcessRustupSource::new(
         executor.clone(),
     )));
@@ -328,6 +338,7 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
         homebrew_adapter,
         mise_adapter,
         npm_adapter,
+        pipx_adapter,
         rustup_adapter,
         softwareupdate_adapter,
         mas_adapter,
@@ -655,6 +666,7 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
         ManagerId::HomebrewFormula,
         ManagerId::Mise,
         ManagerId::Npm,
+        ManagerId::Pipx,
         ManagerId::Rustup,
         ManagerId::SoftwareUpdate,
         ManagerId::Mas,
@@ -1005,6 +1017,20 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
             }
         }
 
+        if runtime.is_manager_enabled(ManagerId::Pipx) {
+            for package_name in targets.pipx {
+                let request = AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::Pipx,
+                        name: package_name,
+                    }),
+                });
+                if let Err(error) = runtime.submit(ManagerId::Pipx, request).await {
+                    eprintln!("upgrade_all: failed to queue pipx upgrade task: {error}");
+                }
+            }
+        }
+
         if runtime.is_manager_enabled(ManagerId::Rustup) {
             for toolchain in targets.rustup {
                 let request = AdapterRequest::Upgrade(UpgradeRequest {
@@ -1144,6 +1170,17 @@ pub unsafe extern "C" fn helm_upgrade_package(
             AdapterRequest::Upgrade(UpgradeRequest {
                 package: Some(PackageRef {
                     manager: ManagerId::Npm,
+                    name: package_name.clone(),
+                }),
+            }),
+            None,
+            Vec::new(),
+        ),
+        ManagerId::Pipx => (
+            ManagerId::Pipx,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Pipx,
                     name: package_name.clone(),
                 }),
             }),

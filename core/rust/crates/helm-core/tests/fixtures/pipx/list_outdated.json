@@ -1,0 +1,23 @@
+{
+  "pipx_spec_version": "0.1",
+  "venvs": {
+    "black": {
+      "metadata": {
+        "main_package": {
+          "package": "black",
+          "package_version": "24.10.0",
+          "latest_version": "24.10.0"
+        }
+      }
+    },
+    "httpie": {
+      "metadata": {
+        "main_package": {
+          "package": "httpie",
+          "package_version": "3.2.2",
+          "latest_version": "3.2.4"
+        }
+      }
+    }
+  }
+}
