@@ -310,7 +310,7 @@ final class HelmCore: ObservableObject {
                             description: overrideDescription
                                 ?? taskLabel
                                 ?? L10n.App.Tasks.fallbackDescription.localized(with: [
-                                    "task_type": task.taskType.capitalized,
+                                    "task_type": self?.localizedTaskType(task.taskType) ?? task.taskType.capitalized,
                                     "manager": managerName
                                 ]),
                             status: task.status.capitalized
@@ -1063,7 +1063,31 @@ final class HelmCore: ObservableObject {
             } ?? [:]
             return labelKey.localized(with: args)
         }
-        return task.label
+        // `task.label` is persisted server-side in English; prefer localized fallback composition.
+        return nil
+    }
+
+    private func localizedTaskType(_ rawTaskType: String) -> String {
+        switch rawTaskType.lowercased() {
+        case "refresh":
+            return L10n.Common.refresh.localized
+        case "detection":
+            return L10n.Common.initializing.localized
+        case "search":
+            return L10n.App.Dashboard.Status.searchRemote.localized
+        case "install":
+            return L10n.Common.install.localized
+        case "uninstall":
+            return L10n.Common.uninstall.localized
+        case "upgrade":
+            return L10n.Common.update.localized
+        case "pin":
+            return L10n.App.Packages.Action.pin.localized
+        case "unpin":
+            return L10n.App.Packages.Action.unpin.localized
+        default:
+            return rawTaskType.capitalized
+        }
     }
 
     private func upgradeActionDescription(for package: PackageItem) -> String {
