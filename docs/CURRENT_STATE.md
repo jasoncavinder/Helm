@@ -59,6 +59,7 @@ Localization coverage:
 
 - en, es, de: broad app/service coverage
 - fr, pt-BR, ja: onboarding + common UI + service error coverage with fallback to en for remaining keys
+- Locale length audit script added at `apps/macos-ui/scripts/check_locale_lengths.sh` for overflow-risk preflight
 
 ---
 
