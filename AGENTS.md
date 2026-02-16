@@ -15,27 +15,38 @@ before making changes.
 
 ### Required Reading (Always Load First)
 
-- `docs/PROJECT_BRIEF.md` - authoritative product and architecture specification
-- `docs/CURRENT_STATE.md` - current implementation status and known gaps
-- `docs/NEXT_STEPS.md` - prioritized upcoming work
+- `docs/PROJECT_BRIEF.md` — authoritative product and architecture specification
+- `docs/CURRENT_STATE.md` — current implementation status and known gaps
+- `docs/NEXT_STEPS.md` — prioritized upcoming work
 
-AI agents must not begin implementation until these documents have been read.
+Agents must not begin implementation until these documents have been read.
+
+---
 
 ### Supporting Documents (Load When Relevant)
 
-- `docs/ARCHITECTURE.md` — detailed system design and component boundaries
-- `docs/ROADMAP.md` — feature planning and release milestones
-- `docs/DECISIONS.md` — architectural decisions and rationale
+- `docs/ARCHITECTURE.md` — canonical system design and invariants
+- `docs/ROADMAP.md` — milestone sequencing and feature planning
+- `docs/DECISIONS.md` — architectural decisions (ADR-style)
+- `docs/DEFINITION_OF_DONE.md` — 1.0 release criteria
+- `docs/I18N_STRATEGY.md` — localization requirements
+- `docs/INTERFACES.md` - stable contracts between Helm subsystems
 - `docs/legal/CLA.md` — contributor license agreement
 
-### Rules
+---
 
-- If instructions in prompts conflict with documentation, the documentation wins.
-- If multiple documents conflict:
-  - `docs/PROJECT_BRIEF.md` takes precedence over all others.
-  - More recent documents (e.g., CURRENT_STATE, DECISIONS) override older plans.
-- If something is unclear or underspecified, pause and ask for clarification
-  rather than making assumptions.
+### Precedence Rules
+
+If conflicts occur:
+
+1. `docs/PROJECT_BRIEF.md` (product truth)
+2. `docs/ARCHITECTURE.md` (system invariants)
+3. `docs/CURRENT_STATE.md` (reality)
+4. `docs/DECISIONS.md` (decisions override plans)
+5. `docs/ROADMAP.md` (intent)
+
+If unclear:
+- Ask for clarification instead of guessing.
 
 ---
 
@@ -77,6 +88,22 @@ Adapters must declare:
 - Supported capabilities.
 - Authority level.
 - Whether actions are mutating or read-only.
+
+---
+
+## 2.3 Architectural Invariants (Non-Negotiable)
+
+The following rules must never be violated:
+
+- No shell command construction via string concatenation
+- UI layer contains no business logic
+- Rust core is deterministic and testable
+- All operations execute through tasks
+- Authority ordering is respected
+- Tasks must be cancelable at process level
+- All user-facing text must be localized (no hardcoded strings)
+
+If a change would violate these, stop and ask.
 
 ---
 
@@ -256,29 +283,38 @@ All contributions are subject to the CLA.
 
 ---
 
-## 15. Context Management
+## 15. Context Management (Critical)
 
 Helm uses repository documents as persistent memory for AI agents.
 
-### Principles
+Documentation is the system of record.
 
-- Documentation is the system of record.
-- Agents must update documentation when making significant changes.
-- Documentation must reflect the current state of the system.
+---
 
-### Required Updates
+### Required Behavior
 
-Agents must update the following when relevant:
+When making changes, agents MUST update documentation when relevant:
 
-- `docs/CURRENT_STATE.md` — when implementation changes
-- `docs/NEXT_STEPS.md` — when tasks are completed or reprioritized
-- `docs/DECISIONS.md` — when architectural decisions are made
+- `docs/CURRENT_STATE.md` — reflect actual implementation
+- `docs/NEXT_STEPS.md` — update priorities and completed work
+- `docs/DECISIONS.md` — record architectural decisions
+- `docs/ARCHITECTURE.md` — only when system design changes
+
+---
 
 ### Consistency Rule
 
 Code, tests, and documentation must remain consistent.
 
-If discrepancies are found:
-- prefer updating documentation to reflect reality
-- or pause and ask for clarification
+If inconsistencies are found:
+
+1. Prefer updating documentation to match reality
+2. If unsure, pause and ask for clarification
+
+---
+
+### Forbidden
+
+- Do not leave documentation stale
+- Do not implement features not reflected in NEXT_STEPS or ROADMAP without approval
 
