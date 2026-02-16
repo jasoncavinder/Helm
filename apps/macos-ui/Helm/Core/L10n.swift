@@ -116,6 +116,7 @@ struct L10n {
                 static let pip = "app.managers.name.pip"
                 static let pipx = "app.managers.name.pipx"
                 static let cargo = "app.managers.name.cargo"
+                static let cargoBinstall = "app.managers.name.cargo_binstall"
                 static let mise = "app.managers.name.mise"
                 static let rustup = "app.managers.name.rustup"
                 static let softwareUpdate = "app.managers.name.software_update"

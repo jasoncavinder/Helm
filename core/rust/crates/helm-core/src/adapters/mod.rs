@@ -1,4 +1,6 @@
 pub mod cargo;
+pub mod cargo_binstall;
+pub mod cargo_binstall_process;
 pub mod cargo_process;
 pub(crate) mod detect_utils;
 pub mod homebrew;
@@ -25,6 +27,13 @@ pub use cargo::{
     cargo_list_installed_request, cargo_search_request, cargo_uninstall_request,
     cargo_upgrade_request,
 };
+pub use cargo_binstall::{
+    CargoBinstallAdapter, CargoBinstallSource, cargo_binstall_detect_request,
+    cargo_binstall_install_request, cargo_binstall_list_installed_request,
+    cargo_binstall_search_request, cargo_binstall_uninstall_request,
+    cargo_binstall_upgrade_request,
+};
+pub use cargo_binstall_process::ProcessCargoBinstallSource;
 pub use cargo_process::ProcessCargoSource;
 pub use homebrew::{
     HomebrewAdapter, HomebrewSource, homebrew_detect_request, homebrew_list_installed_request,

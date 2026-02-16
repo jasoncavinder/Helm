@@ -74,6 +74,7 @@ struct ManagersView: View {
         case "pip": return "pip"
         case "pipx": return "pipx"
         case "cargo": return "Cargo"
+        case "cargo_binstall": return "cargo-binstall"
         case "mise": return "mise"
         case "rustup": return "rustup"
         case "softwareupdate": return "Software Update"

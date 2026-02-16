@@ -53,6 +53,8 @@ Completed:
 - pipx parser fixtures and adapter unit tests added for version/list/outdated flows
 - cargo adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
 - cargo parser fixtures and adapter unit tests added for version/list/search/outdated flows
+- cargo-binstall adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
+- cargo-binstall parser fixtures and adapter unit tests added for version/list/search/outdated flows
 
 `v0.10.0-beta.1` checkpoint scope:
 
@@ -61,7 +63,7 @@ Completed:
   - pip (`python3 -m pip`, global) ✅
   - pipx ✅
   - cargo ✅
-  - cargo-binstall
+  - cargo-binstall ✅
 - Registry + FFI + XPC + UI wiring verified for all Priority 1 managers
 - Fixture-based parser coverage for list/search/version flows where supported
 - Capability declarations aligned with implemented actions

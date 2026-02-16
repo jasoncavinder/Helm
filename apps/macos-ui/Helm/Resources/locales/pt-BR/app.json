@@ -122,6 +122,7 @@
   "app.managers.name.pip": "pip",
   "app.managers.name.pipx": "pipx",
   "app.managers.name.cargo": "Cargo",
+  "app.managers.name.cargo_binstall": "cargo-binstall",
   "app.managers.name.mise": "mise",
   "app.managers.name.rustup": "rustup",
   "app.managers.name.software_update": "Atualizacao de software",

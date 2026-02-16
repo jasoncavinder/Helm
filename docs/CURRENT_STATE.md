@@ -39,6 +39,7 @@ Fully functional:
 - pip (`python3 -m pip`, global)
 - pipx
 - cargo
+- cargo-binstall
 - rustup
 - softwareupdate
 - mas
@@ -80,8 +81,8 @@ Localization coverage:
 ## Known Limitations
 
 - Priority 1 language manager coverage is partial:
-  - Implemented: npm (global), pip (`python3 -m pip`, global), pipx, cargo
-  - Pending: cargo-binstall
+  - Implemented: npm (global), pip (`python3 -m pip`, global), pipx, cargo, cargo-binstall
+  - Pending: none
 - Overflow validation is still heuristic/script-based until full on-device visual pass is completed
 - Upgrade-all transparency now provides summary counts + top manager breakdown in confirmation flow
 - Upgrade-preview filtering/sorting logic now has dedicated macOS UI unit coverage (`HelmTests/UpgradePreviewPlannerTests`)
@@ -103,7 +104,7 @@ Localization coverage:
 
 ## Summary
 
-Helm is a **functional control plane for 9 managers** with:
+Helm is a **functional control plane for 10 managers** with:
 
 - Working orchestration
 - Task system

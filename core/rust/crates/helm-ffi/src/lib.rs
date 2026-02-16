@@ -6,6 +6,8 @@ use std::time::Duration;
 use std::time::UNIX_EPOCH;
 
 use helm_core::adapters::cargo::CargoAdapter;
+use helm_core::adapters::cargo_binstall::CargoBinstallAdapter;
+use helm_core::adapters::cargo_binstall_process::ProcessCargoBinstallSource;
 use helm_core::adapters::cargo_process::ProcessCargoSource;
 use helm_core::adapters::homebrew::HomebrewAdapter;
 use helm_core::adapters::homebrew_process::ProcessHomebrewSource;
@@ -192,6 +194,7 @@ struct UpgradeAllTargets {
     mise: Vec<String>,
     npm: Vec<String>,
     cargo: Vec<String>,
+    cargo_binstall: Vec<String>,
     pip: Vec<String>,
     pipx: Vec<String>,
     rustup: Vec<String>,
@@ -208,6 +211,7 @@ fn collect_upgrade_all_targets(
     let mut seen_mise = std::collections::HashSet::new();
     let mut seen_npm = std::collections::HashSet::new();
     let mut seen_cargo = std::collections::HashSet::new();
+    let mut seen_cargo_binstall = std::collections::HashSet::new();
     let mut seen_pip = std::collections::HashSet::new();
     let mut seen_pipx = std::collections::HashSet::new();
     let mut seen_rustup = std::collections::HashSet::new();
@@ -241,6 +245,11 @@ fn collect_upgrade_all_targets(
             ManagerId::Cargo => {
                 if seen_cargo.insert(package.package.name.clone()) {
                     targets.cargo.push(package.package.name.clone());
+                }
+            }
+            ManagerId::CargoBinstall => {
+                if seen_cargo_binstall.insert(package.package.name.clone()) {
+                    targets.cargo_binstall.push(package.package.name.clone());
                 }
             }
             ManagerId::Pip => {
@@ -344,6 +353,9 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
     let mise_adapter = Arc::new(MiseAdapter::new(ProcessMiseSource::new(executor.clone())));
     let npm_adapter = Arc::new(NpmAdapter::new(ProcessNpmSource::new(executor.clone())));
     let cargo_adapter = Arc::new(CargoAdapter::new(ProcessCargoSource::new(executor.clone())));
+    let cargo_binstall_adapter = Arc::new(CargoBinstallAdapter::new(
+        ProcessCargoBinstallSource::new(executor.clone()),
+    ));
     let pip_adapter = Arc::new(PipAdapter::new(ProcessPipSource::new(executor.clone())));
     let pipx_adapter = Arc::new(PipxAdapter::new(ProcessPipxSource::new(executor.clone())));
     let rustup_adapter = Arc::new(RustupAdapter::new(ProcessRustupSource::new(
@@ -359,6 +371,7 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
         mise_adapter,
         npm_adapter,
         cargo_adapter,
+        cargo_binstall_adapter,
         pip_adapter,
         pipx_adapter,
         rustup_adapter,
@@ -689,6 +702,7 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
         ManagerId::Mise,
         ManagerId::Npm,
         ManagerId::Cargo,
+        ManagerId::CargoBinstall,
         ManagerId::Pip,
         ManagerId::Pipx,
         ManagerId::Rustup,
@@ -1055,6 +1069,20 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
             }
         }
 
+        if runtime.is_manager_enabled(ManagerId::CargoBinstall) {
+            for package_name in targets.cargo_binstall {
+                let request = AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::CargoBinstall,
+                        name: package_name,
+                    }),
+                });
+                if let Err(error) = runtime.submit(ManagerId::CargoBinstall, request).await {
+                    eprintln!("upgrade_all: failed to queue cargo-binstall upgrade task: {error}");
+                }
+            }
+        }
+
         if runtime.is_manager_enabled(ManagerId::Pip) {
             for package_name in targets.pip {
                 let request = AdapterRequest::Upgrade(UpgradeRequest {
@@ -1233,6 +1261,17 @@ pub unsafe extern "C" fn helm_upgrade_package(
             AdapterRequest::Upgrade(UpgradeRequest {
                 package: Some(PackageRef {
                     manager: ManagerId::Cargo,
+                    name: package_name.clone(),
+                }),
+            }),
+            None,
+            Vec::new(),
+        ),
+        ManagerId::CargoBinstall => (
+            ManagerId::CargoBinstall,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::CargoBinstall,
                     name: package_name.clone(),
                 }),
             }),

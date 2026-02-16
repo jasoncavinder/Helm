@@ -1,0 +1,12 @@
+[
+  {
+    "name": "bat",
+    "installed_version": "0.24.0",
+    "candidate_version": "0.25.0"
+  },
+  {
+    "name": "zellij",
+    "installed_version": "0.41.2",
+    "candidate_version": "0.42.1"
+  }
+]
