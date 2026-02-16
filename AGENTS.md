@@ -268,6 +268,30 @@ Use prefixes:
 - Ensure relevant tests pass (e.g., `cargo test`).
 - Keep PRs focused; split unrelated changes.
 
+### Branch Targeting Rules
+
+Helm uses different integration branches depending on change type.
+
+#### Code Changes
+- Branch from `dev`
+- Open PRs targeting `dev`
+
+#### Documentation-Only Changes
+- Use `docs/...` branches
+- Open PRs targeting `main`
+
+Documentation-only changes include:
+- README updates
+- docs/ directory changes
+- licensing, CLA, or policy updates
+
+If a change includes both code and documentation:
+- Prefer merging into `dev`
+- Or split into separate PRs if appropriate
+
+Agents must select the correct base branch before starting work.
+If unsure, ask for clarification.
+
 ---
 
 ## 14. Licensing Constraints
@@ -318,3 +342,121 @@ If inconsistencies are found:
 - Do not leave documentation stale
 - Do not implement features not reflected in NEXT_STEPS or ROADMAP without approval
 
+---
+
+## 16. Worktrees & Multi-Agent Coordination (Critical)
+
+Helm supports multiple AI agents working concurrently using Git worktrees.
+
+Each agent operates in a separate working directory with its own branch.
+
+### 16.1 Worktree Isolation
+
+Agents MUST:
+- Only operate within the current working directory
+- Never assume control of other worktrees
+- Never modify files outside their worktree
+
+Each worktree corresponds to a single agent session.
+
+---
+
+### 16.2 Branch Ownership
+
+Each agent is responsible for its own branch.
+
+Recommended naming:
+
+- `agent/codex/...`
+- `agent/claude/...`
+- `agent/gemini/...`
+
+Agents MUST NOT:
+- Commit to another agent's branch
+- Reuse another agent's branch without explicit instruction
+
+---
+
+### 16.3 Synchronization with Base Branch
+
+Before starting work, agents MUST:
+
+1. Fetch latest changes:
+   ```bash
+   git fetch origin
+````
+
+2. Update their branch:
+
+   ```bash
+   git rebase origin/dev
+   ```
+
+   or, for documentation branches:
+
+   ```bash
+   git rebase origin/main
+   ```
+
+Agents must ensure their branch is up-to-date before making changes.
+
+---
+
+### 16.4 Task Isolation
+
+Agents should avoid modifying the same files concurrently.
+
+If a change requires touching shared or high-risk files:
+
+* Prefer coordination via documentation
+* Or ask for clarification
+
+Large overlapping edits increase merge conflict risk.
+
+---
+
+### 16.5 Commit Discipline
+
+Agents MUST:
+
+* Make small, focused commits
+* Avoid bundling unrelated changes
+* Use clear commit messages
+
+Agents SHOULD:
+
+* Commit frequently during long tasks
+
+---
+
+### 16.6 Pull Requests
+
+Agents should:
+
+* Push their branch to origin
+* Open a PR targeting the correct base branch (`dev` or `main`)
+* Keep PRs small and focused
+
+---
+
+### 16.7 Safety Rule
+
+If uncertain about:
+
+* branch selection
+* merge target
+* overlapping work
+
+Agents must pause and ask instead of guessing.
+
+---
+
+### 16.8 Shared State Coordination
+
+Agents should consult:
+
+- `docs/NEXT_STEPS.md` for task prioritization
+- `docs/CURRENT_STATE.md` for current implementation
+- `docs/DECISIONS.md` for architectural constraints
+
+Agents should not duplicate work already described as in-progress or completed.

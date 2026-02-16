@@ -25,5 +25,6 @@ __pycache__/
 *.pyc
 venv/
 
-# direnv
+# Other
 .envrc
+.WORKTREE_ID
