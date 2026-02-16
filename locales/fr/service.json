@@ -1,11 +1,21 @@
 {
-  "service.error.not_installed": "Non installé : {manager}",
-  "service.error.unsupported_capability": "Le gestionnaire {manager} ne prend pas en charge cette action.",
-  "service.error.invalid_input": "Entrée invalide.",
-  "service.error.parse_failure": "Échec de l'analyse de la sortie.",
-  "service.error.timeout": "Délai d'attente dépassé.",
   "service.error.cancelled": "Opération annulée.",
+  "service.error.internal": "Erreur interne du service.",
+  "service.error.invalid_input": "Entrée invalide.",
+  "service.error.not_installed": "Non installé : {manager}",
+  "service.error.parse_failure": "Échec de l'analyse de la sortie.",
   "service.error.process_failure": "Échec d'exécution du sous-processus.",
   "service.error.storage_failure": "Erreur de stockage de la base de données.",
-  "service.error.internal": "Erreur interne du service."
+  "service.error.timeout": "Délai d'attente dépassé.",
+  "service.error.unsupported_capability": "Le gestionnaire {manager} ne prend pas en charge cette action.",
+  "service.task.label.upgrade.homebrew": "Mettre à jour {package} via Homebrew",
+  "service.task.label.upgrade.homebrew_cleanup": "Mettre à jour {package} via Homebrew (nettoyage des anciens kegs)",
+  "service.task.label.upgrade.mise": "Mettre à jour {package} via mise",
+  "service.task.label.upgrade.rustup_toolchain": "Mettre à jour la toolchain rustup {toolchain}",
+  "service.task.label.upgrade.softwareupdate_all": "Mettre à jour les mises à jour logicielles de macOS",
+  "service.task.status.cancelled": "Annulée",
+  "service.task.status.completed": "Terminée",
+  "service.task.status.failed": "Échec",
+  "service.task.status.pending": "En attente",
+  "service.task.status.running": "En cours"
 }

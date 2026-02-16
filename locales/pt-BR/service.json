@@ -1,11 +1,21 @@
 {
-  "service.error.not_installed": "Não instalado: {manager}",
-  "service.error.unsupported_capability": "O gerenciador {manager} não oferece suporte a esta ação.",
-  "service.error.invalid_input": "Entrada inválida.",
-  "service.error.parse_failure": "Falha ao processar a saída.",
-  "service.error.timeout": "A operação excedeu o tempo limite.",
   "service.error.cancelled": "Operação cancelada.",
+  "service.error.internal": "Erro interno do serviço.",
+  "service.error.invalid_input": "Entrada inválida.",
+  "service.error.not_installed": "Não instalado: {manager}",
+  "service.error.parse_failure": "Falha ao processar a saída.",
   "service.error.process_failure": "Falha na execução do subprocesso.",
   "service.error.storage_failure": "Erro de armazenamento no banco de dados.",
-  "service.error.internal": "Erro interno do serviço."
+  "service.error.timeout": "A operação excedeu o tempo limite.",
+  "service.error.unsupported_capability": "O gerenciador {manager} não oferece suporte a esta ação.",
+  "service.task.label.upgrade.homebrew": "Atualizar {package} via Homebrew",
+  "service.task.label.upgrade.homebrew_cleanup": "Atualizar {package} via Homebrew (limpar kegs antigos)",
+  "service.task.label.upgrade.mise": "Atualizar {package} via mise",
+  "service.task.label.upgrade.rustup_toolchain": "Atualizar toolchain rustup {toolchain}",
+  "service.task.label.upgrade.softwareupdate_all": "Atualizar atualizações de software do macOS",
+  "service.task.status.cancelled": "Cancelada",
+  "service.task.status.completed": "Concluída",
+  "service.task.status.failed": "Falhou",
+  "service.task.status.pending": "Pendente",
+  "service.task.status.running": "Em execução"
 }
