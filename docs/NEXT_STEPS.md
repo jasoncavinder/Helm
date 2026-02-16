@@ -20,6 +20,9 @@ Focus:
 - Manager expansion
 - Localization expansion
 
+Immediate target after `v0.9.3`:
+- `v0.10.0-beta.1` (core language-manager milestone checkpoint)
+
 ---
 
 ## Priority 1 — Core Language Managers
@@ -39,6 +42,25 @@ Requirements:
 - list_outdated
 - search (where possible)
 - install / uninstall / upgrade
+
+`v0.10.0-beta.1` checkpoint scope:
+
+- End-to-end adapter availability for:
+  - npm (global)
+  - pipx
+  - pip (`python3 -m pip`, global)
+  - cargo
+  - cargo-binstall
+- Registry + FFI + XPC + UI wiring verified for all Priority 1 managers
+- Fixture-based parser coverage for list/search/version flows where supported
+- Capability declarations aligned with implemented actions
+
+`v0.10.0-beta.1` acceptance criteria:
+
+- `cargo test` passes in `core/rust`
+- Existing `HelmTests` suite passes
+- Manager detection and package listing validate on at least one local dev environment
+- `CHANGELOG.md`, `CURRENT_STATE.md`, and website docs are updated for beta scope
 
 ---
 
