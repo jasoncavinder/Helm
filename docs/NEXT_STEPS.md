@@ -79,6 +79,7 @@ Completed:
 - Expanded fr, pt-BR, ja to full app/common/service key coverage
 - Exposed fr, pt-BR, ja in the macOS language picker
 - Added a locale overflow-risk audit script (`apps/macos-ui/scripts/check_locale_lengths.sh`)
+- Increased Settings popover and locale picker widths to reduce language-picker overflow risk
 
 Remaining:
 
