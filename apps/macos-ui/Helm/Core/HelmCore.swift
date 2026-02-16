@@ -218,15 +218,15 @@ final class HelmCore: ObservableObject {
 
     private func normalizedManagerName(_ raw: String) -> String {
         switch raw.lowercased() {
-        case "homebrew_formula": return "Homebrew"
-        case "homebrew_cask": return "Homebrew Cask"
-        case "npm_global": return "npm"
-        case "pipx": return "pipx"
-        case "cargo": return "Cargo"
-        case "mise": return "mise"
-        case "rustup": return "rustup"
-        case "softwareupdate": return "Software Update"
-        case "mas": return "App Store"
+        case "homebrew_formula": return L10n.App.Managers.Name.homebrew.localized
+        case "homebrew_cask": return L10n.App.Managers.Name.homebrewCask.localized
+        case "npm_global": return L10n.App.Managers.Name.npm.localized
+        case "pipx": return L10n.App.Managers.Name.pipx.localized
+        case "cargo": return L10n.App.Managers.Name.cargo.localized
+        case "mise": return L10n.App.Managers.Name.mise.localized
+        case "rustup": return L10n.App.Managers.Name.rustup.localized
+        case "softwareupdate": return L10n.App.Managers.Name.softwareUpdate.localized
+        case "mas": return L10n.App.Managers.Name.appStore.localized
         default: return raw.replacingOccurrences(of: "_", with: " ").capitalized
         }
     }
@@ -549,47 +549,33 @@ final class HelmCore: ObservableObject {
     }
 
     func upgradeAllPreviewCount(includePinned: Bool = false, allowOsUpdates: Bool = false) -> Int {
-        outdatedPackages.filter { package in
-            guard includePinned || !package.pinned else { return false }
-            guard managerStatuses[package.managerId]?.enabled ?? true else { return false }
-            if package.managerId == "softwareupdate" && !allowOsUpdates {
-                return false
-            }
-            if package.managerId == "softwareupdate" && safeModeEnabled {
-                return false
-            }
-            return true
-        }.count
+        UpgradePreviewPlanner.count(
+            candidates: outdatedPackages.map {
+                UpgradePreviewPlanner.Candidate(managerId: $0.managerId, pinned: $0.pinned)
+            },
+            managerEnabled: managerStatuses.mapValues(\.enabled),
+            includePinned: includePinned,
+            allowOsUpdates: allowOsUpdates,
+            safeModeEnabled: safeModeEnabled
+        )
     }
 
     func upgradeAllPreviewBreakdown(
         includePinned: Bool = false,
         allowOsUpdates: Bool = false
     ) -> [(manager: String, count: Int)] {
-        var counts: [String: Int] = [:]
-
-        for package in outdatedPackages {
-            guard includePinned || !package.pinned else { continue }
-            guard managerStatuses[package.managerId]?.enabled ?? true else { continue }
-            if package.managerId == "softwareupdate" && !allowOsUpdates {
-                continue
+        UpgradePreviewPlanner.breakdown(
+            candidates: outdatedPackages.map {
+                UpgradePreviewPlanner.Candidate(managerId: $0.managerId, pinned: $0.pinned)
+            },
+            managerEnabled: managerStatuses.mapValues(\.enabled),
+            includePinned: includePinned,
+            allowOsUpdates: allowOsUpdates,
+            safeModeEnabled: safeModeEnabled,
+            managerName: { [weak self] managerId in
+                self?.normalizedManagerName(managerId) ?? managerId
             }
-            if package.managerId == "softwareupdate" && safeModeEnabled {
-                continue
-            }
-
-            let manager = normalizedManagerName(package.managerId)
-            counts[manager, default: 0] += 1
-        }
-
-        return counts
-            .map { (manager: $0.key, count: $0.value) }
-            .sorted { lhs, rhs in
-                if lhs.count == rhs.count {
-                    return lhs.manager.localizedCaseInsensitiveCompare(rhs.manager) == .orderedAscending
-                }
-                return lhs.count > rhs.count
-            }
+        ).map { (manager: $0.manager, count: $0.count) }
     }
 
     func kegPolicySelection(for package: PackageItem) -> KegPolicySelection {

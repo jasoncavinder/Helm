@@ -16,21 +16,21 @@ Helm follows feature-driven milestones. Dates are intentionally omitted — mile
 | 0.5.x | Progressive Search — local-first search, remote search, cache enrichment |
 | 0.6.x | Core Toolchain Managers — mise, rustup adapters, authority ordering |
 | 0.7.x | System & App Store Managers — softwareupdate, mas, restart detection |
+| 0.8.x | Pinning & Policy Enforcement — native/virtual pins, safe mode, guarded updates |
+| 0.9.x | Internationalization Foundation — centralized localization system, ICU format |
 
 ## In Progress (Beta)
 
 | Version | Milestone |
 |---|---|
-| 0.8.x | Pinning & Policy Enforcement — native/virtual pins, safe mode, guarded updates |
+| 0.10.x | Core Language Package Managers — npm, pipx, pip, Cargo, cargo-binstall |
+| 0.11.x | Extended Language Package Managers — pnpm, yarn, poetry, RubyGems, bundler |
+| 0.12.x | Localization Expansion — non-English locale coverage hardening and overflow validation |
 
 ## Planned
 
 | Version | Milestone |
 |---|---|
-| 0.9.x | Internationalization Foundation — centralized localization system, ICU format |
-| 0.10.x | Core Language Package Managers — npm, pipx, pip, Cargo, cargo-binstall |
-| 0.11.x | Extended Language Package Managers — pnpm, yarn, poetry, RubyGems, bundler |
-| 0.12.x | Localization — non-English locales, translation coverage, locale UI |
 | 0.13.x | Platform, Detection & Optional Managers — Docker, Xcode, Rosetta, Sparkle |
 | 0.14.x | Upgrade Preview & Execution Transparency — bulk preview, dry-run, failure isolation |
 | 0.15.x | Self-Update & Installer Hardening — Sparkle integration, signed verification |

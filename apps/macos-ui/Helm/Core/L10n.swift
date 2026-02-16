@@ -109,6 +109,17 @@ struct L10n {
             struct Label {
                 static let packageCount = "app.managers.label.package_count"
             }
+            struct Name {
+                static let homebrew = "app.managers.name.homebrew"
+                static let homebrewCask = "app.managers.name.homebrew_cask"
+                static let npm = "app.managers.name.npm"
+                static let pipx = "app.managers.name.pipx"
+                static let cargo = "app.managers.name.cargo"
+                static let mise = "app.managers.name.mise"
+                static let rustup = "app.managers.name.rustup"
+                static let softwareUpdate = "app.managers.name.software_update"
+                static let appStore = "app.managers.name.app_store"
+            }
             struct Category {
                 static let toolchain = "app.managers.category.toolchain"
                 static let systemOs = "app.managers.category.system_os"

@@ -115,5 +115,14 @@
   "app.settings.tab.title": "設定",
   "app.tasks.fallback.description": "{task_type} {manager}",
   "app.tasks.help.cancel_unavailable": "キャンセルはまだ利用できません",
-  "app.tasks.no_recent_tasks": "最近のタスクはありません"
+  "app.tasks.no_recent_tasks": "最近のタスクはありません",
+  "app.managers.name.homebrew": "Homebrew",
+  "app.managers.name.homebrew_cask": "Homebrew Cask",
+  "app.managers.name.npm": "npm",
+  "app.managers.name.pipx": "pipx",
+  "app.managers.name.cargo": "Cargo",
+  "app.managers.name.mise": "mise",
+  "app.managers.name.rustup": "rustup",
+  "app.managers.name.software_update": "ソフトウェアアップデート",
+  "app.managers.name.app_store": "App Store"
 }

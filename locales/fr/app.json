@@ -115,5 +115,14 @@
   "app.settings.tab.title": "Réglages",
   "app.tasks.fallback.description": "{task_type} {manager}",
   "app.tasks.help.cancel_unavailable": "Annulation pas encore disponible",
-  "app.tasks.no_recent_tasks": "Aucune tâche récente"
+  "app.tasks.no_recent_tasks": "Aucune tâche récente",
+  "app.managers.name.homebrew": "Homebrew",
+  "app.managers.name.homebrew_cask": "Homebrew Cask",
+  "app.managers.name.npm": "npm",
+  "app.managers.name.pipx": "pipx",
+  "app.managers.name.cargo": "Cargo",
+  "app.managers.name.mise": "mise",
+  "app.managers.name.rustup": "rustup",
+  "app.managers.name.software_update": "Mise a jour logicielle",
+  "app.managers.name.app_store": "App Store"
 }

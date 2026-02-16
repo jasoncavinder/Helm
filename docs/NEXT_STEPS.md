@@ -20,6 +20,9 @@ Focus:
 - Manager expansion
 - Localization expansion
 
+Immediate release target after `v0.9.3`:
+- `v0.10.0-beta.1` (language-manager milestone checkpoint + transparency hardening)
+
 ---
 
 ## Priority 1 — Core Language Managers
@@ -80,6 +83,7 @@ Completed:
 - Exposed fr, pt-BR, ja in the macOS language picker
 - Added a locale overflow-risk audit script (`apps/macos-ui/scripts/check_locale_lengths.sh`)
 - Increased Settings popover and locale picker widths to reduce language-picker overflow risk
+- Added localized manager display-name keys used by upgrade-preview/task-fallback UI text
 
 Remaining:
 
@@ -99,6 +103,8 @@ Completed:
 
 - Added a localized execution-plan summary in the Upgrade All confirmation alert (no-OS vs with-OS counts)
 - Added manager-level package-count breakdown (top managers) in the Upgrade All confirmation alert
+- Localized manager labels used in the Upgrade All breakdown output
+- Added focused unit tests for upgrade-preview filtering and breakdown ordering (`UpgradePreviewPlannerTests`)
 
 Remaining:
 
