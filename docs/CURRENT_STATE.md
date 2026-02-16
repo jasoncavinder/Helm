@@ -55,6 +55,11 @@ Fully functional:
 - safe mode
 - localization system
 
+Localization coverage:
+
+- en, es, de: broad app/service coverage
+- fr, pt-BR, ja: onboarding + service error coverage with fallback to en for remaining keys
+
 ---
 
 ## Architecture Status
@@ -69,6 +74,7 @@ Fully functional:
 ## Known Limitations
 
 - Limited language package manager support (npm, pip, cargo not yet implemented)
+- fr / pt-BR / ja translations are currently partial outside onboarding and service errors
 - No upgrade preview UI
 - No dry-run mode exposed in UI
 - No self-update mechanism yet

@@ -70,6 +70,18 @@ Requirements:
 - errors translated
 - UI validated for overflow
 
+Completed:
+
+- Added locale scaffolding for fr, pt-BR, ja
+- Added onboarding flow translations for fr, pt-BR, ja
+- Added service error translations for fr, pt-BR, ja
+- Exposed fr, pt-BR, ja in the macOS language picker
+
+Remaining:
+
+- Validate UI overflow across es, fr, de, pt-BR, ja
+- Expand fr, pt-BR, ja translations beyond onboarding/errors
+
 ---
 
 ## Priority 4 — Upgrade Transparency
