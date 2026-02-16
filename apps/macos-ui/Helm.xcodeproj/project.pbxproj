@@ -41,6 +41,9 @@
 		B20000000000000000000015 /* LocalizationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000015 /* LocalizationManager.swift */; };
 		B20000000000000000000016 /* String+Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000016 /* String+Localization.swift */; };
 		B20000000000000000000017 /* L10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000017 /* L10n.swift */; };
+		C10000000000000000000001 /* UpgradePreviewPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000003 /* UpgradePreviewPlanner.swift */; };
+		C10000000000000000000002 /* UpgradePreviewPlannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000005 /* UpgradePreviewPlannerTests.swift */; };
+		C10000000000000000000018 /* UpgradePreviewPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000003 /* UpgradePreviewPlanner.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -108,6 +111,9 @@
 		B10000000000000000000015 /* LocalizationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationManager.swift; sourceTree = "<group>"; };
 		B10000000000000000000016 /* String+Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+Localization.swift"; sourceTree = "<group>"; };
 		B10000000000000000000017 /* L10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L10n.swift; sourceTree = "<group>"; };
+		C10000000000000000000003 /* UpgradePreviewPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpgradePreviewPlanner.swift; sourceTree = "<group>"; };
+		C10000000000000000000004 /* HelmTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HelmTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C10000000000000000000005 /* UpgradePreviewPlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpgradePreviewPlannerTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -120,6 +126,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		A10000030000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C10000000000000000000007 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -177,6 +190,7 @@
 			isa = PBXGroup;
 			children = (
 				8CFB6D4B2F3D1D1D002372B8 /* HelmCore.swift */,
+				C10000000000000000000003 /* UpgradePreviewPlanner.swift */,
 				B10000000000000000000015 /* LocalizationManager.swift */,
 				B10000000000000000000016 /* String+Localization.swift */,
 				B10000000000000000000017 /* L10n.swift */,
@@ -245,6 +259,7 @@
 			isa = PBXGroup;
 			children = (
 				A10000040000000000000002 /* Helm */,
+				C10000000000000000000006 /* HelmTests */,
 				8CE1FDC12F3D2AD7000A3945 /* HelmService */,
 				A10000040000000000000003 /* Products */,
 				8CFB6D472F3D1B24002372B8 /* Frameworks */,
@@ -276,8 +291,17 @@
 			children = (
 				A10000020000000000000006 /* Helm.app */,
 				8CE1FDC02F3D2AD7000A3945 /* HelmService.xpc */,
+				C10000000000000000000004 /* HelmTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		C10000000000000000000006 /* HelmTests */ = {
+			isa = PBXGroup;
+			children = (
+				C10000000000000000000005 /* UpgradePreviewPlannerTests.swift */,
+			);
+			path = HelmTests;
 			sourceTree = "<group>";
 		};
 		B30000000000000000000001 /* Components */ = {
@@ -343,6 +367,23 @@
 			productReference = A10000020000000000000006 /* Helm.app */;
 			productType = "com.apple.product-type.application";
 		};
+		C10000000000000000000009 /* HelmTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C10000000000000000000010 /* Build configuration list for PBXNativeTarget "HelmTests" */;
+			buildPhases = (
+				C10000000000000000000008 /* Sources */,
+				C10000000000000000000007 /* Frameworks */,
+				C10000000000000000000016 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HelmTests;
+			productName = HelmTests;
+			productReference = C10000000000000000000004 /* HelmTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -357,6 +398,9 @@
 						CreatedOnToolsVersion = 14.2;
 					};
 					A10000050000000000000001 = {
+						CreatedOnToolsVersion = 14.0;
+					};
+					C10000000000000000000009 = {
 						CreatedOnToolsVersion = 14.0;
 					};
 				};
@@ -376,6 +420,7 @@
 			targets = (
 				A10000050000000000000001 /* Helm */,
 				8CE1FDBF2F3D2AD7000A3945 /* HelmService */,
+				C10000000000000000000009 /* HelmTests */,
 			);
 		};
 /* End PBXProject section */
@@ -394,6 +439,13 @@
 			files = (
 				8CD965322F40F02800AE2AF5 /* Resources in Resources */,
 				A10000010000000000000003 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C10000000000000000000016 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -439,6 +491,7 @@
 			files = (
 				8CFB6D5A2F3D1D1D002372B8 /* Package.swift in Sources */,
 				8CFB6D572F3D1D1D002372B8 /* HelmCore.swift in Sources */,
+				C10000000000000000000001 /* UpgradePreviewPlanner.swift in Sources */,
 				B20000000000000000000015 /* LocalizationManager.swift in Sources */,
 				B20000000000000000000016 /* String+Localization.swift in Sources */,
 				B20000000000000000000017 /* L10n.swift in Sources */,
@@ -463,6 +516,15 @@
 				B20000000000000000000012 /* OnboardingWelcomeView.swift in Sources */,
 				B20000000000000000000013 /* OnboardingDetectionView.swift in Sources */,
 				B20000000000000000000014 /* OnboardingConfigureView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C10000000000000000000008 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C10000000000000000000018 /* UpgradePreviewPlanner.swift in Sources */,
+				C10000000000000000000002 /* UpgradePreviewPlannerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -724,6 +786,44 @@
 			};
 			name = Release;
 		};
+		C10000000000000000000013 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = V73WPJR9M4;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = HelmTests;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jasoncavinder.HelmTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		C10000000000000000000014 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = V73WPJR9M4;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = HelmTests;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jasoncavinder.HelmTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -750,6 +850,15 @@
 			buildConfigurations = (
 				A10000090000000000000003 /* Debug */,
 				A10000090000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C10000000000000000000010 /* Build configuration list for PBXNativeTarget "HelmTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C10000000000000000000013 /* Debug */,
+				C10000000000000000000014 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

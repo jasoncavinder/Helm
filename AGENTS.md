@@ -226,6 +226,15 @@ AI agents must NOT:
 - Introduce UI polish prematurely.
 - Add telemetry, analytics, or network services.
 
+### 11.1 Generated Artifacts
+
+- `apps/macos-ui/Generated/HelmVersion.xcconfig` is build-generated (updated by the macOS build flow/scripts).
+- Treat changes to this file as incidental build output unless the task is explicitly about version/build metadata generation.
+- Do not include this file in feature/fix commits by default.
+- If this file changes unexpectedly during work:
+  - leave it unstaged, or
+  - ask the user before including it in a commit.
+
 ---
 
 ## 12. Communication Style

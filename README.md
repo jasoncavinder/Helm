@@ -9,7 +9,7 @@
   <br>
   A native macOS menu bar app for unified package manager control.
   <br>
-  <strong>Pre-1.0 &middot; v0.9.2</strong>
+  <strong>Pre-1.0 &middot; v0.9.3</strong>
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
 
 Helm manages software across multiple package managers (Homebrew, npm, pip, Cargo, etc.) and runtime tools (mise, rustup) from a single menu bar interface. It is designed as infrastructure software: deterministic, safety-first, and explicit about authority, orchestration, and error handling.
 
-> **Status:** Active pre-1.0 development. Five adapters are functional (Homebrew, mise, rustup, softwareupdate, mas) with authority-ordered refresh and restart-required detection. Additional adapters and features are being added milestone by milestone.
+> **Status:** Active pre-1.0 development. Fifteen managers are functional with authority-ordered refresh, progressive search, pin/safe-mode policy controls, and localization coverage for `en`, `es`, `de`, `fr`, `pt-BR`, and `ja`.
 
 ## Features
 

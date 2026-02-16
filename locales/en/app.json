@@ -24,6 +24,9 @@
   "app.settings.label.language.english": "English",
   "app.settings.label.language.spanish": "Español",
   "app.settings.label.language.german": "Deutsch",
+  "app.settings.label.language.french": "Français",
+  "app.settings.label.language.portuguese_brazilian": "Português (Brasil)",
+  "app.settings.label.language.japanese": "日本語",
   "app.settings.label.auto_check": "Auto-check for updates",
   "app.settings.label.check_frequency": "Check every",
   "app.settings.label.safe_mode": "Safe Mode (block macOS updates)",
@@ -112,5 +115,14 @@
   "app.packages.keg_policy.cleanup_old": "Cleanup Old Kegs",
   "app.tasks.no_recent_tasks": "No recent tasks",
   "app.tasks.fallback.description": "{task_type} {manager}",
-  "app.tasks.help.cancel_unavailable": "Cancel not yet implemented"
+  "app.tasks.help.cancel_unavailable": "Cancel not yet implemented",
+  "app.managers.name.homebrew": "Homebrew",
+  "app.managers.name.homebrew_cask": "Homebrew Cask",
+  "app.managers.name.npm": "npm",
+  "app.managers.name.pipx": "pipx",
+  "app.managers.name.cargo": "Cargo",
+  "app.managers.name.mise": "mise",
+  "app.managers.name.rustup": "rustup",
+  "app.managers.name.software_update": "Software Update",
+  "app.managers.name.app_store": "App Store"
 }

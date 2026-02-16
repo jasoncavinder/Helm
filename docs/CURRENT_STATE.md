@@ -55,6 +55,13 @@ Fully functional:
 - safe mode
 - localization system
 
+Localization coverage:
+
+- en, es, de: broad app/service coverage
+- fr, pt-BR, ja: full app/common/service key coverage
+- Locale length audit script added at `apps/macos-ui/scripts/check_locale_lengths.sh` for overflow-risk preflight
+- Manager display-name localization keys now cover upgrade-preview/task-fallback manager labels (including software update/app store naming)
+
 ---
 
 ## Architecture Status
@@ -69,6 +76,9 @@ Fully functional:
 ## Known Limitations
 
 - Limited language package manager support (npm, pip, cargo not yet implemented)
+- Overflow validation is still heuristic/script-based until full on-device visual pass is completed
+- Upgrade-all transparency now provides summary counts + top manager breakdown in confirmation flow
+- Upgrade-preview filtering/sorting logic now has dedicated macOS UI unit coverage (`HelmTests/UpgradePreviewPlannerTests`)
 - No upgrade preview UI
 - No dry-run mode exposed in UI
 - No self-update mechanism yet
