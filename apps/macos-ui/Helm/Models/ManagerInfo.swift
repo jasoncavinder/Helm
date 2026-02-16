@@ -40,7 +40,7 @@ struct ManagerInfo: Identifiable {
         ManagerInfo(id: "npm", displayName: "npm (global)", shortName: "npm", category: "Language", isImplemented: true, installMethod: .notManageable),
         ManagerInfo(id: "pip", displayName: "pip", shortName: "pip", category: "Language", isImplemented: true, installMethod: .notManageable),
         ManagerInfo(id: "pipx", displayName: "pipx", shortName: "pipx", category: "Language", isImplemented: true, installMethod: .notManageable),
-        ManagerInfo(id: "cargo", displayName: "Cargo", shortName: "cargo", category: "Language", isImplemented: false, installMethod: .notManageable),
+        ManagerInfo(id: "cargo", displayName: "Cargo", shortName: "cargo", category: "Language", isImplemented: true, installMethod: .notManageable),
         ManagerInfo(id: "mise", displayName: "mise", shortName: "mise", category: "Toolchain", isImplemented: true, installMethod: .automatable),
         ManagerInfo(id: "rustup", displayName: "rustup", shortName: "rustup", category: "Toolchain", isImplemented: true, installMethod: .updateAndUninstall),
         ManagerInfo(id: "softwareupdate", displayName: "Software Update", shortName: "swupd", category: "System/OS", isImplemented: true, installMethod: .systemBinary),

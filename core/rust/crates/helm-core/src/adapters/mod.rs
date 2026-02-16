@@ -1,3 +1,5 @@
+pub mod cargo;
+pub mod cargo_process;
 pub(crate) mod detect_utils;
 pub mod homebrew;
 pub mod homebrew_process;
@@ -18,6 +20,12 @@ pub mod rustup_process;
 pub mod softwareupdate;
 pub mod softwareupdate_process;
 
+pub use cargo::{
+    CargoAdapter, CargoSource, cargo_detect_request, cargo_install_request,
+    cargo_list_installed_request, cargo_search_request, cargo_uninstall_request,
+    cargo_upgrade_request,
+};
+pub use cargo_process::ProcessCargoSource;
 pub use homebrew::{
     HomebrewAdapter, HomebrewSource, homebrew_detect_request, homebrew_list_installed_request,
     homebrew_list_outdated_request, homebrew_pin_request, homebrew_search_local_request,
