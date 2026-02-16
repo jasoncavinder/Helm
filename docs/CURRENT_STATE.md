@@ -76,7 +76,7 @@ Localization coverage:
 
 - Limited language package manager support (npm, pip, cargo not yet implemented)
 - Overflow validation is still heuristic/script-based until full on-device visual pass is completed
-- Upgrade-all transparency currently provides summary counts only (not full execution-plan detail)
+- Upgrade-all transparency now provides summary counts + top manager breakdown in confirmation flow
 - No upgrade preview UI
 - No dry-run mode exposed in UI
 - No self-update mechanism yet

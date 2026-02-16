@@ -98,10 +98,10 @@ Implement:
 Completed:
 
 - Added a localized execution-plan summary in the Upgrade All confirmation alert (no-OS vs with-OS counts)
+- Added manager-level package-count breakdown (top managers) in the Upgrade All confirmation alert
 
 Remaining:
 
-- Expand execution plan detail beyond counts (manager-level breakdown)
 - Add dedicated upgrade preview UI surface
 - Add dry-run support
 

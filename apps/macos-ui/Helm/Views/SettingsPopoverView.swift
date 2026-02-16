@@ -12,15 +12,32 @@ struct SettingsPopoverView: View {
 
     private var upgradePreviewSummary: String {
         let noOsCount = core.upgradeAllPreviewCount(includePinned: false, allowOsUpdates: false)
-        let noOsLine = "\(L10n.App.Settings.Alert.UpgradeAll.upgradeNoOs.localized): \(L10n.App.Managers.Label.packageCount.localized(with: [\"count\": noOsCount]))"
+        let noOsLine = "\(L10n.App.Settings.Alert.UpgradeAll.upgradeNoOs.localized): \(L10n.App.Managers.Label.packageCount.localized(with: ["count": noOsCount]))"
+        let noOsBreakdown = core
+            .upgradeAllPreviewBreakdown(includePinned: false, allowOsUpdates: false)
+            .prefix(3)
+            .map { entry in
+                "\(entry.manager): \(L10n.App.Managers.Label.packageCount.localized(with: ["count": entry.count]))"
+            }
+            .joined(separator: "\n")
 
         guard !core.safeModeEnabled else {
-            return noOsLine
+            return noOsBreakdown.isEmpty ? noOsLine : "\(noOsLine)\n\(noOsBreakdown)"
         }
 
         let withOsCount = core.upgradeAllPreviewCount(includePinned: false, allowOsUpdates: true)
-        let withOsLine = "\(L10n.App.Settings.Alert.UpgradeAll.upgradeWithOs.localized): \(L10n.App.Managers.Label.packageCount.localized(with: [\"count\": withOsCount]))"
-        return "\(noOsLine)\n\(withOsLine)"
+        let withOsLine = "\(L10n.App.Settings.Alert.UpgradeAll.upgradeWithOs.localized): \(L10n.App.Managers.Label.packageCount.localized(with: ["count": withOsCount]))"
+        let withOsBreakdown = core
+            .upgradeAllPreviewBreakdown(includePinned: false, allowOsUpdates: true)
+            .prefix(3)
+            .map { entry in
+                "\(entry.manager): \(L10n.App.Managers.Label.packageCount.localized(with: ["count": entry.count]))"
+            }
+            .joined(separator: "\n")
+
+        let noOsSection = noOsBreakdown.isEmpty ? noOsLine : "\(noOsLine)\n\(noOsBreakdown)"
+        let withOsSection = withOsBreakdown.isEmpty ? withOsLine : "\(withOsLine)\n\(withOsBreakdown)"
+        return "\(noOsSection)\n\n\(withOsSection)"
     }
 
     var body: some View {

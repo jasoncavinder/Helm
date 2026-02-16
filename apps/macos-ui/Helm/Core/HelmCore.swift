@@ -562,6 +562,36 @@ final class HelmCore: ObservableObject {
         }.count
     }
 
+    func upgradeAllPreviewBreakdown(
+        includePinned: Bool = false,
+        allowOsUpdates: Bool = false
+    ) -> [(manager: String, count: Int)] {
+        var counts: [String: Int] = [:]
+
+        for package in outdatedPackages {
+            guard includePinned || !package.pinned else { continue }
+            guard managerStatuses[package.managerId]?.enabled ?? true else { continue }
+            if package.managerId == "softwareupdate" && !allowOsUpdates {
+                continue
+            }
+            if package.managerId == "softwareupdate" && safeModeEnabled {
+                continue
+            }
+
+            let manager = normalizedManagerName(package.managerId)
+            counts[manager, default: 0] += 1
+        }
+
+        return counts
+            .map { (manager: $0.key, count: $0.value) }
+            .sorted { lhs, rhs in
+                if lhs.count == rhs.count {
+                    return lhs.manager.localizedCaseInsensitiveCompare(rhs.manager) == .orderedAscending
+                }
+                return lhs.count > rhs.count
+            }
+    }
+
     func kegPolicySelection(for package: PackageItem) -> KegPolicySelection {
         guard package.managerId == "homebrew_formula" else { return .useGlobal }
 
