@@ -76,13 +76,13 @@ Completed:
 - Added onboarding flow translations for fr, pt-BR, ja
 - Added common UI label translations for fr, pt-BR, ja
 - Added service error translations for fr, pt-BR, ja
+- Expanded fr, pt-BR, ja to full app/common/service key coverage
 - Exposed fr, pt-BR, ja in the macOS language picker
 - Added a locale overflow-risk audit script (`apps/macos-ui/scripts/check_locale_lengths.sh`)
 
 Remaining:
 
 - Validate UI overflow across es, fr, de, pt-BR, ja
-- Expand fr, pt-BR, ja translations beyond onboarding/common/errors
 
 ---
 
