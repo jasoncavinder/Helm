@@ -173,7 +173,7 @@ struct DashboardView: View {
         switch raw.lowercased() {
         case "homebrew_formula": return "Homebrew"
         case "homebrew_cask": return "Homebrew Cask"
-        case "npm_global": return "npm"
+        case "npm", "npm_global": return "npm"
         case "pipx": return "pipx"
         case "cargo": return "Cargo"
         case "mise": return "mise"

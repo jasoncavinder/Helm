@@ -35,6 +35,7 @@ Fully functional:
 
 - Homebrew
 - mise
+- npm (global)
 - rustup
 - softwareupdate
 - mas
@@ -75,7 +76,9 @@ Localization coverage:
 
 ## Known Limitations
 
-- Limited language package manager support (npm, pip, cargo not yet implemented)
+- Priority 1 language manager coverage is partial:
+  - Implemented: npm (global)
+  - Pending: pipx, pip, cargo, cargo-binstall
 - Overflow validation is still heuristic/script-based until full on-device visual pass is completed
 - Upgrade-all transparency now provides summary counts + top manager breakdown in confirmation flow
 - Upgrade-preview filtering/sorting logic now has dedicated macOS UI unit coverage (`HelmTests/UpgradePreviewPlannerTests`)
@@ -97,7 +100,7 @@ Localization coverage:
 
 ## Summary
 
-Helm is a **functional control plane for 5 managers** with:
+Helm is a **functional control plane for 6 managers** with:
 
 - Working orchestration
 - Task system

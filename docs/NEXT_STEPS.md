@@ -43,10 +43,15 @@ Requirements:
 - search (where possible)
 - install / uninstall / upgrade
 
+Completed:
+
+- npm (global) adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
+- npm parser fixtures and adapter unit tests added for version/list/search/outdated flows
+
 `v0.10.0-beta.1` checkpoint scope:
 
 - End-to-end adapter availability for:
-  - npm (global)
+  - npm (global) ✅
   - pipx
   - pip (`python3 -m pip`, global)
   - cargo

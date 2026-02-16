@@ -37,7 +37,7 @@ struct ManagerInfo: Identifiable {
     static let all: [ManagerInfo] = [
         ManagerInfo(id: "homebrew_formula", displayName: "Homebrew (formulae)", shortName: "brew", category: "System/OS", isImplemented: true, installMethod: .updateOnly),
         ManagerInfo(id: "homebrew_cask", displayName: "Homebrew (casks)", shortName: "cask", category: "App Store", isImplemented: false, installMethod: .notManageable),
-        ManagerInfo(id: "npm_global", displayName: "npm (global)", shortName: "npm", category: "Language", isImplemented: false, installMethod: .notManageable),
+        ManagerInfo(id: "npm", displayName: "npm (global)", shortName: "npm", category: "Language", isImplemented: true, installMethod: .notManageable),
         ManagerInfo(id: "pipx", displayName: "pipx", shortName: "pipx", category: "Language", isImplemented: false, installMethod: .notManageable),
         ManagerInfo(id: "cargo", displayName: "Cargo", shortName: "cargo", category: "Language", isImplemented: false, installMethod: .notManageable),
         ManagerInfo(id: "mise", displayName: "mise", shortName: "mise", category: "Toolchain", isImplemented: true, installMethod: .automatable),
