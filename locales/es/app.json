@@ -43,7 +43,7 @@
   "app.settings.alert.upgrade_all.title": "¿Actualizar todos los paquetes?",
   "app.settings.alert.upgrade_all.upgrade_no_os": "Actualizar (sin actualizaciones del SO)",
   "app.settings.alert.upgrade_all.upgrade_with_os": "Actualizar incluyendo actualizaciones del SO",
-  "app.settings.alert.upgrade_all.safe_mode_message": "El Modo seguro está habilitado, por lo que las actualizaciones de software de macOS se bloquearán. Los paquetes fijados quedan excluidos.",
+  "app.settings.alert.upgrade_all.safe_mode_message": "Modo seguro activado: se bloquean actualizaciones de macOS. Los paquetes fijados quedan excluidos.",
   "app.settings.alert.upgrade_all.standard_message": "Los paquetes fijados quedan excluidos. Elige la opción de actualización del SO solo cuando quieras ejecutar softwareupdate explícitamente.",
   "app.settings.action.quit": "Salir de Helm",
   "app.onboarding.welcome.title": "Bienvenido a Helm",

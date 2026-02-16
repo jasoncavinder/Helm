@@ -81,7 +81,7 @@
   "app.managers.alert.install.title": "{manager} installieren?",
   "app.managers.alert.install.message": "Dadurch wird {manager_short} über Homebrew installiert.",
   "app.managers.alert.update.title": "{manager} aktualisieren?",
-  "app.managers.alert.update.message": "Dadurch wird der unterstützte Aktualisierungsablauf des Managers ausgeführt.",
+  "app.managers.alert.update.message": "Dies führt den unterstützten Update-Ablauf des Managers aus.",
   "app.managers.alert.uninstall.title": "{manager} deinstallieren?",
   "app.managers.alert.uninstall.message": "Dadurch wird {manager_short} von deinem System entfernt.",
   "app.managers.operation.starting_install": "Installation wird gestartet...",
