@@ -1,1 +1,25 @@
-{}
+{
+  "common.button.ok": "OK",
+  "common.button.cancel": "キャンセル",
+  "common.button.continue": "続ける",
+  "common.button.refresh": "更新",
+  "common.button.install": "インストール",
+  "common.button.uninstall": "アンインストール",
+  "common.button.update": "アップデート",
+  "common.button.settings": "設定",
+  "common.button.quit": "終了",
+  "common.button.done": "完了",
+  "common.button.reset": "リセット",
+  "common.label.version": "v{version}",
+  "common.label.loading": "読み込み中...",
+  "common.label.initializing": "初期化中...",
+  "common.label.error": "エラー",
+  "common.label.warning": "警告",
+  "common.label.success": "成功",
+  "common.label.unknown": "不明",
+  "common.label.detected": "検出済み",
+  "common.label.enabled": "有効",
+  "common.label.disabled": "無効",
+  "common.label.not_installed": "未インストール",
+  "common.label.coming_soon": "近日対応"
+}

@@ -1,1 +1,25 @@
-{}
+{
+  "common.button.ok": "OK",
+  "common.button.cancel": "Annuler",
+  "common.button.continue": "Continuer",
+  "common.button.refresh": "Actualiser",
+  "common.button.install": "Installer",
+  "common.button.uninstall": "Désinstaller",
+  "common.button.update": "Mettre à jour",
+  "common.button.settings": "Réglages",
+  "common.button.quit": "Quitter",
+  "common.button.done": "Terminé",
+  "common.button.reset": "Réinitialiser",
+  "common.label.version": "v{version}",
+  "common.label.loading": "Chargement...",
+  "common.label.initializing": "Initialisation...",
+  "common.label.error": "Erreur",
+  "common.label.warning": "Avertissement",
+  "common.label.success": "Succès",
+  "common.label.unknown": "inconnu",
+  "common.label.detected": "Détecté",
+  "common.label.enabled": "Activé",
+  "common.label.disabled": "Désactivé",
+  "common.label.not_installed": "Non installé",
+  "common.label.coming_soon": "Bientôt disponible"
+}
