@@ -10,6 +10,19 @@ struct SettingsPopoverView: View {
     @State private var showUpgradeConfirmation = false
     @State private var isResetting = false
 
+    private var upgradePreviewSummary: String {
+        let noOsCount = core.upgradeAllPreviewCount(includePinned: false, allowOsUpdates: false)
+        let noOsLine = "\(L10n.App.Settings.Alert.UpgradeAll.upgradeNoOs.localized): \(L10n.App.Managers.Label.packageCount.localized(with: [\"count\": noOsCount]))"
+
+        guard !core.safeModeEnabled else {
+            return noOsLine
+        }
+
+        let withOsCount = core.upgradeAllPreviewCount(includePinned: false, allowOsUpdates: true)
+        let withOsLine = "\(L10n.App.Settings.Alert.UpgradeAll.upgradeWithOs.localized): \(L10n.App.Managers.Label.packageCount.localized(with: [\"count\": withOsCount]))"
+        return "\(noOsLine)\n\(withOsLine)"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Group {
@@ -150,9 +163,9 @@ struct SettingsPopoverView: View {
             Button(L10n.Common.cancel.localized, role: .cancel) {}
         } message: {
             if core.safeModeEnabled {
-                Text(L10n.App.Settings.Alert.UpgradeAll.safeModeMessage.localized)
+                Text("\(L10n.App.Settings.Alert.UpgradeAll.safeModeMessage.localized)\n\n\(upgradePreviewSummary)")
             } else {
-                Text(L10n.App.Settings.Alert.UpgradeAll.standardMessage.localized)
+                Text("\(L10n.App.Settings.Alert.UpgradeAll.standardMessage.localized)\n\n\(upgradePreviewSummary)")
             }
         }
     }

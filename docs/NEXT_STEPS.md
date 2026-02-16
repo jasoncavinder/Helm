@@ -95,6 +95,16 @@ Implement:
 - Execution plan display
 - Dry-run support
 
+Completed:
+
+- Added a localized execution-plan summary in the Upgrade All confirmation alert (no-OS vs with-OS counts)
+
+Remaining:
+
+- Expand execution plan detail beyond counts (manager-level breakdown)
+- Add dedicated upgrade preview UI surface
+- Add dry-run support
+
 ---
 
 ## Priority 5 — Self Update

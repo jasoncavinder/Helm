@@ -548,6 +548,20 @@ final class HelmCore: ObservableObject {
         }
     }
 
+    func upgradeAllPreviewCount(includePinned: Bool = false, allowOsUpdates: Bool = false) -> Int {
+        outdatedPackages.filter { package in
+            guard includePinned || !package.pinned else { return false }
+            guard managerStatuses[package.managerId]?.enabled ?? true else { return false }
+            if package.managerId == "softwareupdate" && !allowOsUpdates {
+                return false
+            }
+            if package.managerId == "softwareupdate" && safeModeEnabled {
+                return false
+            }
+            return true
+        }.count
+    }
+
     func kegPolicySelection(for package: PackageItem) -> KegPolicySelection {
         guard package.managerId == "homebrew_formula" else { return .useGlobal }
 
