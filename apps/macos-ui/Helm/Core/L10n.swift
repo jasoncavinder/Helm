@@ -113,6 +113,7 @@ struct L10n {
                 static let homebrew = "app.managers.name.homebrew"
                 static let homebrewCask = "app.managers.name.homebrew_cask"
                 static let npm = "app.managers.name.npm"
+                static let pip = "app.managers.name.pip"
                 static let pipx = "app.managers.name.pipx"
                 static let cargo = "app.managers.name.cargo"
                 static let mise = "app.managers.name.mise"

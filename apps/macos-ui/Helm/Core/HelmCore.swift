@@ -221,6 +221,7 @@ final class HelmCore: ObservableObject {
         case "homebrew_formula": return L10n.App.Managers.Name.homebrew.localized
         case "homebrew_cask": return L10n.App.Managers.Name.homebrewCask.localized
         case "npm", "npm_global": return L10n.App.Managers.Name.npm.localized
+        case "pip": return L10n.App.Managers.Name.pip.localized
         case "pipx": return L10n.App.Managers.Name.pipx.localized
         case "cargo": return L10n.App.Managers.Name.cargo.localized
         case "mise": return L10n.App.Managers.Name.mise.localized
@@ -624,7 +625,7 @@ final class HelmCore: ObservableObject {
     }
 
     func canUpgradeIndividually(_ package: PackageItem) -> Bool {
-        let upgradableManagers: Set<String> = ["homebrew_formula", "mise", "npm", "pipx", "rustup"]
+        let upgradableManagers: Set<String> = ["homebrew_formula", "mise", "npm", "pip", "pipx", "rustup"]
         return package.status == .upgradable
             && upgradableManagers.contains(package.managerId)
             && !package.pinned

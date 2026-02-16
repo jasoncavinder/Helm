@@ -47,6 +47,8 @@ Completed:
 
 - npm (global) adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
 - npm parser fixtures and adapter unit tests added for version/list/search/outdated flows
+- pip (`python3 -m pip`, global) adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
+- pip parser fixtures and adapter unit tests added for version/list/search/outdated flows
 - pipx adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
 - pipx parser fixtures and adapter unit tests added for version/list/outdated flows
 
@@ -54,8 +56,8 @@ Completed:
 
 - End-to-end adapter availability for:
   - npm (global) ✅
+  - pip (`python3 -m pip`, global) ✅
   - pipx ✅
-  - pip (`python3 -m pip`, global)
   - cargo
   - cargo-binstall
 - Registry + FFI + XPC + UI wiring verified for all Priority 1 managers

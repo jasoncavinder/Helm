@@ -174,6 +174,7 @@ struct DashboardView: View {
         case "homebrew_formula": return "Homebrew"
         case "homebrew_cask": return "Homebrew Cask"
         case "npm", "npm_global": return "npm"
+        case "pip": return "pip"
         case "pipx": return "pipx"
         case "cargo": return "Cargo"
         case "mise": return "mise"

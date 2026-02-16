@@ -119,6 +119,7 @@
   "app.managers.name.homebrew": "Homebrew",
   "app.managers.name.homebrew_cask": "Homebrew Cask",
   "app.managers.name.npm": "npm",
+  "app.managers.name.pip": "pip",
   "app.managers.name.pipx": "pipx",
   "app.managers.name.cargo": "Cargo",
   "app.managers.name.mise": "mise",

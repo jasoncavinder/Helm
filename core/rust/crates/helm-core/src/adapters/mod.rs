@@ -8,6 +8,8 @@ pub mod mise;
 pub mod mise_process;
 pub mod npm;
 pub mod npm_process;
+pub mod pip;
+pub mod pip_process;
 pub mod pipx;
 pub mod pipx_process;
 pub(crate) mod process_utils;
@@ -43,6 +45,11 @@ pub use npm::{
     npm_list_outdated_request, npm_search_request, npm_uninstall_request, npm_upgrade_request,
 };
 pub use npm_process::ProcessNpmSource;
+pub use pip::{
+    PipAdapter, PipSource, pip_detect_request, pip_install_request, pip_list_outdated_request,
+    pip_list_request, pip_search_request, pip_uninstall_request, pip_upgrade_request,
+};
+pub use pip_process::ProcessPipSource;
 pub use pipx::{
     PipxAdapter, PipxSource, pipx_detect_request, pipx_install_request, pipx_list_outdated_request,
     pipx_list_request, pipx_uninstall_request, pipx_upgrade_request,
