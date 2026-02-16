@@ -1,0 +1,11 @@
+{
+  "service.error.not_installed": "Não instalado: {manager}",
+  "service.error.unsupported_capability": "O gerenciador {manager} não oferece suporte a esta ação.",
+  "service.error.invalid_input": "Entrada inválida.",
+  "service.error.parse_failure": "Falha ao processar a saída.",
+  "service.error.timeout": "A operação excedeu o tempo limite.",
+  "service.error.cancelled": "Operação cancelada.",
+  "service.error.process_failure": "Falha na execução do subprocesso.",
+  "service.error.storage_failure": "Erro de armazenamento no banco de dados.",
+  "service.error.internal": "Erro interno do serviço."
+}

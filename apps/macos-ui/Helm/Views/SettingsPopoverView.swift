@@ -27,6 +27,9 @@ struct SettingsPopoverView: View {
                         Text(L10n.App.Settings.Label.systemDefaultWithEnglish.localized).tag("en")
                         Text(L10n.App.Settings.Label.spanish.localized).tag("es")
                         Text(L10n.App.Settings.Label.german.localized).tag("de")
+                        Text(L10n.App.Settings.Label.french.localized).tag("fr")
+                        Text(L10n.App.Settings.Label.portugueseBrazilian.localized).tag("pt-BR")
+                        Text(L10n.App.Settings.Label.japanese.localized).tag("ja")
                     }
                     .labelsHidden()
                     .frame(width: 170)

@@ -1,0 +1,11 @@
+{
+  "service.error.not_installed": "未インストール: {manager}",
+  "service.error.unsupported_capability": "マネージャー {manager} はこの操作に対応していません。",
+  "service.error.invalid_input": "無効な入力です。",
+  "service.error.parse_failure": "出力の解析に失敗しました。",
+  "service.error.timeout": "操作がタイムアウトしました。",
+  "service.error.cancelled": "操作はキャンセルされました。",
+  "service.error.process_failure": "サブプロセスの実行に失敗しました。",
+  "service.error.storage_failure": "データベース保存エラー。",
+  "service.error.internal": "サービス内部エラー。"
+}

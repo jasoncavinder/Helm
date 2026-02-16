@@ -1,0 +1,11 @@
+{
+  "service.error.not_installed": "Non installé : {manager}",
+  "service.error.unsupported_capability": "Le gestionnaire {manager} ne prend pas en charge cette action.",
+  "service.error.invalid_input": "Entrée invalide.",
+  "service.error.parse_failure": "Échec de l'analyse de la sortie.",
+  "service.error.timeout": "Délai d'attente dépassé.",
+  "service.error.cancelled": "Opération annulée.",
+  "service.error.process_failure": "Échec d'exécution du sous-processus.",
+  "service.error.storage_failure": "Erreur de stockage de la base de données.",
+  "service.error.internal": "Erreur interne du service."
+}
