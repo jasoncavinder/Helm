@@ -6,6 +6,8 @@ This checklist is required before creating a release tag on `main`.
 
 ### Scope and Documentation
 - [x] `CHANGELOG.md` includes `0.12.0-beta.1` notes for localization validation hardening.
+- [x] `README.md` reflects `v0.12.0-beta.1` status and manager coverage.
+- [x] Website docs status/overview/roadmap pages are updated for `v0.12.0-beta.1`.
 - [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect post-`v0.11.0-beta.2` state and `v0.12.0-beta.1` target kickoff.
 
 ### Validation
