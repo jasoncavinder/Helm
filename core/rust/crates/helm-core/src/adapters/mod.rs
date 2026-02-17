@@ -24,6 +24,8 @@ pub mod rustup;
 pub mod rustup_process;
 pub mod softwareupdate;
 pub mod softwareupdate_process;
+pub mod yarn;
+pub mod yarn_process;
 
 pub use cargo::{
     CargoAdapter, CargoSource, cargo_detect_request, cargo_install_request,
@@ -91,6 +93,12 @@ pub use softwareupdate::{
     softwareupdate_list_request, softwareupdate_upgrade_request,
 };
 pub use softwareupdate_process::ProcessSoftwareUpdateSource;
+pub use yarn::{
+    YarnAdapter, YarnSource, yarn_detect_request, yarn_install_request,
+    yarn_list_installed_request, yarn_list_outdated_request, yarn_search_request,
+    yarn_uninstall_request, yarn_upgrade_request,
+};
+pub use yarn_process::ProcessYarnSource;
 
 pub(crate) fn validate_package_identifier(
     manager: crate::models::ManagerId,

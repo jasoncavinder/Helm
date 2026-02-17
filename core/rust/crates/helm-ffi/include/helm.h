@@ -109,6 +109,7 @@ bool helm_upgrade_all(bool include_pinned, bool allow_os_updates);
  * - "mise"
  * - "npm"
  * - "pnpm"
+ * - "yarn"
  * - "cargo"
  * - "cargo_binstall"
  * - "pip"

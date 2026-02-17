@@ -222,6 +222,7 @@ final class HelmCore: ObservableObject {
         case "homebrew_cask": return L10n.App.Managers.Name.homebrewCask.localized
         case "npm", "npm_global": return L10n.App.Managers.Name.npm.localized
         case "pnpm": return L10n.App.Managers.Name.pnpm.localized
+        case "yarn": return L10n.App.Managers.Name.yarn.localized
         case "pip": return L10n.App.Managers.Name.pip.localized
         case "pipx": return L10n.App.Managers.Name.pipx.localized
         case "cargo": return L10n.App.Managers.Name.cargo.localized

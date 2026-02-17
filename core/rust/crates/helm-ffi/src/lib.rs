@@ -27,6 +27,8 @@ use helm_core::adapters::rustup::RustupAdapter;
 use helm_core::adapters::rustup_process::ProcessRustupSource;
 use helm_core::adapters::softwareupdate::SoftwareUpdateAdapter;
 use helm_core::adapters::softwareupdate_process::ProcessSoftwareUpdateSource;
+use helm_core::adapters::yarn::YarnAdapter;
+use helm_core::adapters::yarn_process::ProcessYarnSource;
 use helm_core::adapters::{
     AdapterRequest, InstallRequest, PinRequest, SearchRequest, UninstallRequest, UnpinRequest,
     UpgradeRequest,
@@ -215,6 +217,7 @@ struct UpgradeAllTargets {
     mise: Vec<String>,
     npm: Vec<String>,
     pnpm: Vec<String>,
+    yarn: Vec<String>,
     cargo: Vec<String>,
     cargo_binstall: Vec<String>,
     pip: Vec<String>,
@@ -233,6 +236,7 @@ fn collect_upgrade_all_targets(
     let mut seen_mise = std::collections::HashSet::new();
     let mut seen_npm = std::collections::HashSet::new();
     let mut seen_pnpm = std::collections::HashSet::new();
+    let mut seen_yarn = std::collections::HashSet::new();
     let mut seen_cargo = std::collections::HashSet::new();
     let mut seen_cargo_binstall = std::collections::HashSet::new();
     let mut seen_pip = std::collections::HashSet::new();
@@ -268,6 +272,11 @@ fn collect_upgrade_all_targets(
             ManagerId::Pnpm => {
                 if seen_pnpm.insert(package.package.name.clone()) {
                     targets.pnpm.push(package.package.name.clone());
+                }
+            }
+            ManagerId::Yarn => {
+                if seen_yarn.insert(package.package.name.clone()) {
+                    targets.yarn.push(package.package.name.clone());
                 }
             }
             ManagerId::Cargo => {
@@ -381,6 +390,7 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
     let mise_adapter = Arc::new(MiseAdapter::new(ProcessMiseSource::new(executor.clone())));
     let npm_adapter = Arc::new(NpmAdapter::new(ProcessNpmSource::new(executor.clone())));
     let pnpm_adapter = Arc::new(PnpmAdapter::new(ProcessPnpmSource::new(executor.clone())));
+    let yarn_adapter = Arc::new(YarnAdapter::new(ProcessYarnSource::new(executor.clone())));
     let cargo_adapter = Arc::new(CargoAdapter::new(ProcessCargoSource::new(executor.clone())));
     let cargo_binstall_adapter = Arc::new(CargoBinstallAdapter::new(
         ProcessCargoBinstallSource::new(executor.clone()),
@@ -400,6 +410,7 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
         mise_adapter,
         npm_adapter,
         pnpm_adapter,
+        yarn_adapter,
         cargo_adapter,
         cargo_binstall_adapter,
         pip_adapter,
@@ -732,6 +743,7 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
         ManagerId::Mise,
         ManagerId::Npm,
         ManagerId::Pnpm,
+        ManagerId::Yarn,
         ManagerId::Cargo,
         ManagerId::CargoBinstall,
         ManagerId::Pip,
@@ -1100,6 +1112,20 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
             }
         }
 
+        if runtime.is_manager_enabled(ManagerId::Yarn) {
+            for package_name in targets.yarn {
+                let request = AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::Yarn,
+                        name: package_name,
+                    }),
+                });
+                if let Err(error) = runtime.submit(ManagerId::Yarn, request).await {
+                    eprintln!("upgrade_all: failed to queue yarn upgrade task: {error}");
+                }
+            }
+        }
+
         if runtime.is_manager_enabled(ManagerId::Cargo) {
             for package_name in targets.cargo {
                 let request = AdapterRequest::Upgrade(UpgradeRequest {
@@ -1216,6 +1242,7 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
 /// - "mise"
 /// - "npm"
 /// - "pnpm"
+/// - "yarn"
 /// - "cargo"
 /// - "cargo_binstall"
 /// - "pip"
@@ -1312,6 +1339,17 @@ pub unsafe extern "C" fn helm_upgrade_package(
             AdapterRequest::Upgrade(UpgradeRequest {
                 package: Some(PackageRef {
                     manager: ManagerId::Pnpm,
+                    name: package_name.clone(),
+                }),
+            }),
+            None,
+            Vec::new(),
+        ),
+        ManagerId::Yarn => (
+            ManagerId::Yarn,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Yarn,
                     name: package_name.clone(),
                 }),
             }),
