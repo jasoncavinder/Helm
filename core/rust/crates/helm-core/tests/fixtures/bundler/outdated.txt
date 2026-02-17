@@ -1,0 +1,1 @@
+bundler (newest 2.5.23, installed 2.5.22, default: 1.17.2)
