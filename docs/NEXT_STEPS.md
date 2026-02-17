@@ -22,10 +22,17 @@ Focus:
 - UI/UX redesign planning
 
 Current checkpoint:
-- `v0.10.0` released (Priority 1 language-manager milestone + hardening checkpoint)
+- `v0.11.0-beta.1` released (Priority 2 extended language-manager milestone)
 
 Next release target:
-- `v0.11.0-beta.1` (extended language-manager expansion)
+- `v0.11.0-beta.2` (stabilization + validation pass)
+
+`v0.11.0-beta.2` stabilization work in progress:
+
+- Added repeatable stabilization check runner at `apps/macos-ui/scripts/run_v0110b2_stabilization_checks.sh`
+- Added Priority 2 manager smoke-matrix generator at `apps/macos-ui/scripts/smoke_priority2_managers.sh` (writes `docs/validation/v0.11.0-beta.2-smoke-matrix.md`)
+- Captured initial smoke matrix snapshot in this environment (`rubygems`/`bundler` detected; `pnpm`/`yarn`/`poetry` not installed)
+- Pending full execution and result capture on a real macOS validation host with all Priority 2 managers installed
 
 ---
 
