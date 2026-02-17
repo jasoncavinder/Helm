@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.12.0-beta.2] - 2026-02-17
+
+### Added
+- Expanded `LocalizationOverflowValidationTests` to validate localized width budgets for:
+  - onboarding constrained labels/actions
+  - navigation tabs and search placeholder
+  - package filter controls
+  - manager category/state labels
+- Added visual validation artifact at `docs/validation/v0.12.0-beta.2-visual-overflow-expansion.md`.
+
+### Changed
+- Promoted Priority 3 localization-overflow validation from Settings-only coverage to broader high-constrained app surfaces.
+
 ## [0.12.0-beta.1] - 2026-02-17
 
 ### Added
