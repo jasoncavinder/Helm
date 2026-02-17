@@ -12,18 +12,22 @@ Helm is in:
 
 ```
 
-0.10.x – 0.12.x
+0.10.x – 0.13.x
 
 ```
 
 Focus:
 - Manager expansion
 - Localization expansion
+- UI/UX redesign planning
 
 Current checkpoint:
 - `v0.10.0-beta.1` delivered (Priority 1 language-manager milestone checkpoint + transparency hardening)
 
 Next release target:
+- `v0.10.0-beta.2` (hardening/review checkpoint + roadmap sequencing update)
+
+After `v0.10.0-beta.2`:
 - `v0.11.0-beta.1` (extended language-manager expansion)
 
 ---
@@ -148,7 +152,19 @@ Remaining:
 
 ---
 
-## Priority 5 — Self Update
+## Priority 5 — UI/UX Analysis & Redesign
+
+Implement:
+
+- Full interaction-flow audit (onboarding, refresh, search, upgrade, error handling)
+- Information architecture review for dashboard/packages/tasks/managers/settings
+- Visual hierarchy, typography, spacing, and state-feedback redesign proposals
+- Usability test plan and acceptance metrics for redesigned flows
+- Incremental implementation plan with non-breaking migration checkpoints
+
+---
+
+## Priority 6 — Self Update
 
 Implement:
 
@@ -158,7 +174,7 @@ Implement:
 
 ---
 
-## Priority 6 — Diagnostics
+## Priority 7 — Diagnostics
 
 Implement:
 
@@ -168,7 +184,15 @@ Implement:
 
 ---
 
-## Priority 7 — Hardening
+## Priority 8 — Hardening
+
+Completed in `v0.10.0-beta.2`:
+
+- Targeted adapter hardening review for regression/robustness/security risks across Priority 1 language-manager paths
+- Package-identifier validation on mutating adapter actions for npm/pip/pipx/cargo/cargo-binstall
+- Shared cargo/cargo-binstall outdated synthesis logic to reduce duplication and drift risk
+
+Remaining:
 
 - Stress test orchestration
 - Cancellation reliability
@@ -193,5 +217,6 @@ Next steps are focused on:
 - Expanding manager coverage
 - Improving transparency
 - Hardening reliability
+- Preparing the UI/UX redesign milestone
 
 The goal is **closing 1.0 Definition of Done**.

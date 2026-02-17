@@ -99,6 +99,11 @@ impl<S: PipxSource> ManagerAdapter for PipxAdapter<S> {
                 Ok(AdapterResponse::OutdatedPackages(packages))
             }
             AdapterRequest::Install(install_request) => {
+                crate::adapters::validate_package_identifier(
+                    ManagerId::Pipx,
+                    ManagerAction::Install,
+                    install_request.package.name.as_str(),
+                )?;
                 let _ = self.source.install(
                     &install_request.package.name,
                     install_request.version.as_deref(),
@@ -111,6 +116,11 @@ impl<S: PipxSource> ManagerAdapter for PipxAdapter<S> {
                 }))
             }
             AdapterRequest::Uninstall(uninstall_request) => {
+                crate::adapters::validate_package_identifier(
+                    ManagerId::Pipx,
+                    ManagerAction::Uninstall,
+                    uninstall_request.package.name.as_str(),
+                )?;
                 let _ = self.source.uninstall(&uninstall_request.package.name)?;
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: uninstall_request.package,
@@ -127,6 +137,11 @@ impl<S: PipxSource> ManagerAdapter for PipxAdapter<S> {
                 let target_name = if package.name == "__all__" {
                     None
                 } else {
+                    crate::adapters::validate_package_identifier(
+                        ManagerId::Pipx,
+                        ManagerAction::Upgrade,
+                        package.name.as_str(),
+                    )?;
                     Some(package.name.as_str())
                 };
                 let _ = self.source.upgrade(target_name)?;
