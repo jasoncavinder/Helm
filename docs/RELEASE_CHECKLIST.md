@@ -2,7 +2,25 @@
 
 This checklist is required before creating a release tag on `main`.
 
-## v0.12.0-beta.1 (In Progress)
+## v0.12.0-beta.2 (In Progress)
+
+### Scope and Documentation
+- [x] `CHANGELOG.md` includes `0.12.0-beta.2` notes for expanded visual-overflow validation coverage.
+- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect Priority 3 overflow-validation expansion status.
+- [x] Validation report committed at `docs/validation/v0.12.0-beta.2-visual-overflow-expansion.md`.
+
+### Validation
+- [x] Run full on-device visual overflow validation across `es`, `fr`, `de`, `pt-BR`, and `ja` (`HelmTests/LocalizationOverflowValidationTests`) with expanded surface checks.
+- [x] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme HelmTests -destination 'platform=macOS' -derivedDataPath /tmp/helmtests-deriveddata CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test`).
+
+### Branch and Tag
+- [ ] `dev` merged into `main` for release.
+- [ ] Create annotated tag from `main`:
+  - `git tag -a v0.12.0-beta.2 -m "Helm v0.12.0-beta.2"`
+- [ ] Push tag:
+  - `git push origin v0.12.0-beta.2`
+
+## v0.12.0-beta.1 (Completed)
 
 ### Scope and Documentation
 - [x] `CHANGELOG.md` includes `0.12.0-beta.1` notes for localization validation hardening.
@@ -17,10 +35,10 @@ This checklist is required before creating a release tag on `main`.
 - [x] Validation report committed at `docs/validation/v0.12.0-beta.1-visual-overflow.md`.
 
 ### Branch and Tag
-- [ ] `dev` merged into `main` for release.
-- [ ] Create annotated tag from `main`:
+- [x] `dev` merged into `main` for release.
+- [x] Create annotated tag from `main`:
   - `git tag -a v0.12.0-beta.1 -m "Helm v0.12.0-beta.1"`
-- [ ] Push tag:
+- [x] Push tag:
   - `git push origin v0.12.0-beta.1`
 
 ## v0.11.0-beta.2 (Completed)

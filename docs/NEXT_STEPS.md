@@ -22,10 +22,10 @@ Focus:
 - UI/UX redesign planning
 
 Current checkpoint:
-- `v0.11.0-beta.2` released (stabilization + validation checkpoint)
+- `v0.12.0-beta.1` released (localization hardening + settings overflow validation)
 
 Next release target:
-- `v0.12.0-beta.1` (localization completion and validation hardening)
+- `v0.12.0-beta.2` (expanded visual overflow validation across onboarding/navigation/packages/managers)
 
 `v0.11.0-beta.2` stabilization work completed:
 
@@ -151,10 +151,12 @@ Completed:
 - Added `HelmTests`-based visual overflow validation for `SettingsPopoverView` locale-sensitive controls (`LocalizationOverflowValidationTests`)
 - Captured `v0.12.0-beta.1` visual overflow validation report at `docs/validation/v0.12.0-beta.1-visual-overflow.md`
 - Increased settings popover + language picker widths to resolve validated overflow failures
+- Expanded `LocalizationOverflowValidationTests` coverage to onboarding/navigation/package-filter/manager-surface constrained labels
+- Captured `v0.12.0-beta.2` overflow-expansion validation report at `docs/validation/v0.12.0-beta.2-visual-overflow-expansion.md`
 
 Remaining:
 
-- Expand visual overflow validation coverage beyond Settings (onboarding, package list, managers)
+- None for Priority 3 at this checkpoint
 
 ---
 
