@@ -147,6 +147,9 @@ struct SettingsPopoverView: View {
 private struct UpgradePreviewSheetView: View {
     @ObservedObject var core = HelmCore.shared
     @Binding var isPresented: Bool
+    @State private var dryRunEnabled = false
+    @State private var showDryRunResult = false
+    @State private var dryRunResultMessage = ""
 
     private var noOsCount: Int {
         core.upgradeAllPreviewCount(includePinned: false, allowOsUpdates: false)
@@ -176,6 +179,9 @@ private struct UpgradePreviewSheetView: View {
             )
             .font(.subheadline)
             .foregroundColor(.secondary)
+
+            Toggle(L10n.App.Settings.Alert.UpgradeAll.dryRunToggle.localized, isOn: $dryRunEnabled)
+                .font(.caption)
 
             Divider()
 
@@ -208,15 +214,13 @@ private struct UpgradePreviewSheetView: View {
                 Spacer()
 
                 Button(L10n.App.Settings.Alert.UpgradeAll.upgradeNoOs.localized) {
-                    core.upgradeAll(includePinned: false, allowOsUpdates: false)
-                    isPresented = false
+                    triggerUpgradeOrDryRun(allowOsUpdates: false)
                 }
                 .buttonStyle(.borderedProminent)
 
                 if !core.safeModeEnabled {
                     Button(L10n.App.Settings.Alert.UpgradeAll.upgradeWithOs.localized, role: .destructive) {
-                        core.upgradeAll(includePinned: false, allowOsUpdates: true)
-                        isPresented = false
+                        triggerUpgradeOrDryRun(allowOsUpdates: true)
                     }
                     .buttonStyle(.bordered)
                 }
@@ -224,6 +228,33 @@ private struct UpgradePreviewSheetView: View {
         }
         .padding(16)
         .frame(width: 460, height: 420)
+        .alert(L10n.App.Settings.Alert.UpgradeAll.dryRunResultTitle.localized, isPresented: $showDryRunResult) {
+            Button(L10n.Common.cancel.localized, role: .cancel) {}
+        } message: {
+            Text(dryRunResultMessage)
+        }
+    }
+
+    private func triggerUpgradeOrDryRun(allowOsUpdates: Bool) {
+        if dryRunEnabled {
+            let sectionTitle = allowOsUpdates
+                ? L10n.App.Settings.Alert.UpgradeAll.upgradeWithOs.localized
+                : L10n.App.Settings.Alert.UpgradeAll.upgradeNoOs.localized
+            let count = allowOsUpdates ? withOsCount : noOsCount
+            let entries = allowOsUpdates ? withOsBreakdown : noOsBreakdown
+            let breakdown = entries.prefix(8).map {
+                "\($0.manager): \(L10n.App.Managers.Label.packageCount.localized(with: ["count": $0.count]))"
+            }
+            let summaryLines = ["\(sectionTitle): \(L10n.App.Managers.Label.packageCount.localized(with: ["count": count]))"] + breakdown
+            dryRunResultMessage = L10n.App.Settings.Alert.UpgradeAll.dryRunResultMessage.localized(with: [
+                "summary": summaryLines.joined(separator: "\n")
+            ])
+            showDryRunResult = true
+            return
+        }
+
+        core.upgradeAll(includePinned: false, allowOsUpdates: allowOsUpdates)
+        isPresented = false
     }
 }
 

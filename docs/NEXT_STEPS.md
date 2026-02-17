@@ -22,10 +22,10 @@ Focus:
 - UI/UX redesign planning
 
 Current checkpoint:
-- `v0.12.0-beta.2` released (visual-overflow validation expansion)
+- `v0.12.0-beta.3` released (dedicated upgrade-preview UI surface)
 
 Next release target:
-- `v0.12.0-beta.3` (dedicated upgrade-preview UI surface)
+- `v0.12.0-beta.4` (dry-run support for upgrade preview flow)
 
 `v0.11.0-beta.2` stabilization work completed:
 
@@ -175,10 +175,11 @@ Completed:
 - Localized manager labels used in the Upgrade All breakdown output
 - Added focused unit tests for upgrade-preview filtering and breakdown ordering (`UpgradePreviewPlannerTests`)
 - Added a dedicated Upgrade Preview UI surface in macOS Settings with execution-plan sections and manager-level package breakdowns for both no-OS and with-OS modes
+- Added dry-run mode support in the upgrade-preview UI with explicit simulation results and no task submission
 
 Remaining:
 
-- Add dry-run support
+- None for Priority 4 at this checkpoint
 
 ---
 
