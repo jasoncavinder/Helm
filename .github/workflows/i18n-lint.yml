@@ -14,7 +14,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Ensure Locales Stay Synced
-        run: diff -ru locales/en apps/macos-ui/Helm/Resources/locales/en
+        run: |
+          set -euo pipefail
+          for locale in en es de fr pt-BR ja; do
+            diff -ru "locales/$locale" "apps/macos-ui/Helm/Resources/locales/$locale"
+          done
+
+      - name: Validate Locale Key and Placeholder Integrity
+        run: apps/macos-ui/scripts/check_locale_integrity.sh
 
       - name: Block Hardcoded UI Strings
         run: |
