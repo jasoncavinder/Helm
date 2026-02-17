@@ -1,3 +1,5 @@
+pub mod bundler;
+pub mod bundler_process;
 pub mod cargo;
 pub mod cargo_binstall;
 pub mod cargo_binstall_process;
@@ -17,12 +19,26 @@ pub mod pip;
 pub mod pip_process;
 pub mod pipx;
 pub mod pipx_process;
+pub mod pnpm;
+pub mod pnpm_process;
+pub mod poetry;
+pub mod poetry_process;
 pub(crate) mod process_utils;
+pub mod rubygems;
+pub mod rubygems_process;
 pub mod rustup;
 pub mod rustup_process;
 pub mod softwareupdate;
 pub mod softwareupdate_process;
+pub mod yarn;
+pub mod yarn_process;
 
+pub use bundler::{
+    BundlerAdapter, BundlerSource, bundler_detect_request, bundler_install_request,
+    bundler_list_installed_request, bundler_list_outdated_request, bundler_uninstall_request,
+    bundler_upgrade_request,
+};
+pub use bundler_process::ProcessBundlerSource;
 pub use cargo::{
     CargoAdapter, CargoSource, cargo_detect_request, cargo_install_request,
     cargo_list_installed_request, cargo_search_request, cargo_uninstall_request,
@@ -73,6 +89,24 @@ pub use pipx::{
     pipx_list_request, pipx_uninstall_request, pipx_upgrade_request,
 };
 pub use pipx_process::ProcessPipxSource;
+pub use pnpm::{
+    PnpmAdapter, PnpmSource, pnpm_detect_request, pnpm_install_request,
+    pnpm_list_installed_request, pnpm_list_outdated_request, pnpm_search_request,
+    pnpm_uninstall_request, pnpm_upgrade_request,
+};
+pub use pnpm_process::ProcessPnpmSource;
+pub use poetry::{
+    PoetryAdapter, PoetrySource, poetry_detect_request, poetry_install_plugin_request,
+    poetry_list_installed_request, poetry_list_outdated_plugins_request,
+    poetry_uninstall_plugin_request, poetry_upgrade_plugins_request,
+};
+pub use poetry_process::ProcessPoetrySource;
+pub use rubygems::{
+    RubyGemsAdapter, RubyGemsSource, rubygems_detect_request, rubygems_install_request,
+    rubygems_list_installed_request, rubygems_list_outdated_request, rubygems_search_request,
+    rubygems_uninstall_request, rubygems_upgrade_request,
+};
+pub use rubygems_process::ProcessRubyGemsSource;
 pub use rustup::{
     RustupAdapter, RustupSource, rustup_check_request, rustup_detect_request,
     rustup_toolchain_list_request,
@@ -83,6 +117,12 @@ pub use softwareupdate::{
     softwareupdate_list_request, softwareupdate_upgrade_request,
 };
 pub use softwareupdate_process::ProcessSoftwareUpdateSource;
+pub use yarn::{
+    YarnAdapter, YarnSource, yarn_detect_request, yarn_install_request,
+    yarn_list_installed_request, yarn_list_outdated_request, yarn_search_request,
+    yarn_uninstall_request, yarn_upgrade_request,
+};
+pub use yarn_process::ProcessYarnSource;
 
 pub(crate) fn validate_package_identifier(
     manager: crate::models::ManagerId,

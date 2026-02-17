@@ -1,0 +1,14 @@
+{
+  "name": "lib",
+  "dependencies": {
+    "npm": {
+      "version": "10.9.2"
+    },
+    "vercel": {
+      "version": "41.0.0"
+    },
+    "typescript": {
+      "version": "5.7.2"
+    }
+  }
+}

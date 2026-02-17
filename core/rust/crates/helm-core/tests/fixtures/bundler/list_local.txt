@@ -1,0 +1,1 @@
+bundler (2.5.22, default: 1.17.2)
