@@ -23,7 +23,7 @@ Helm follows feature-driven milestones. Dates are intentionally omitted — mile
 
 | Version | Milestone |
 |---|---|
-| 0.10.x | Core Language Package Managers — npm, pipx, pip, Cargo, cargo-binstall |
+| 0.10.x | Core Language Package Managers — checkpoint `v0.10.0-beta.1` delivered (npm, pipx, pip, Cargo, cargo-binstall) |
 | 0.11.x | Extended Language Package Managers — pnpm, yarn, poetry, RubyGems, bundler |
 | 0.12.x | Localization Expansion — non-English locale coverage hardening and overflow validation |
 

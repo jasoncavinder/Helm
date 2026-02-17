@@ -20,8 +20,11 @@ Focus:
 - Manager expansion
 - Localization expansion
 
-Immediate release target after `v0.9.3`:
-- `v0.10.0-beta.1` (language-manager milestone checkpoint + transparency hardening)
+Current checkpoint:
+- `v0.10.0-beta.1` delivered (Priority 1 language-manager milestone checkpoint + transparency hardening)
+
+Next release target:
+- `v0.11.0-beta.1` (extended language-manager expansion)
 
 ---
 
@@ -70,10 +73,10 @@ Completed:
 
 `v0.10.0-beta.1` acceptance criteria:
 
-- `cargo test` passes in `core/rust`
-- Existing `HelmTests` suite passes
-- Manager detection and package listing validate on at least one local dev environment
-- `CHANGELOG.md`, `CURRENT_STATE.md`, and website docs are updated for beta scope
+- `cargo test` passes in `core/rust` ✅
+- Existing `HelmTests` suite passes ✅
+- Manager detection and package listing validate on at least one local dev environment ✅
+- `CHANGELOG.md`, `CURRENT_STATE.md`, and website docs are updated for beta scope ✅
 
 ---
 

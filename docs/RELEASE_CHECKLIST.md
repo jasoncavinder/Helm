@@ -5,22 +5,22 @@ This checklist is required before creating a release tag on `main`.
 ## v0.10.0-beta.1 (Planned)
 
 ### Scope and Documentation
-- [ ] `CHANGELOG.md` includes `0.10.0-beta.1` notes for core language-manager milestone delivery.
-- [ ] `README.md` reflects `v0.10.0-beta.1` status.
-- [ ] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect completed Priority 1 milestone scope.
-- [ ] Website docs status/roadmap pages are updated for `0.10.0-beta.1`.
+- [x] `CHANGELOG.md` includes `0.10.0-beta.1` notes for core language-manager milestone delivery.
+- [x] `README.md` reflects `v0.10.0-beta.1` status.
+- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect completed Priority 1 milestone scope.
+- [x] Website docs status/roadmap pages are updated for `0.10.0-beta.1`.
 
 ### Versioning
-- [ ] Workspace version bumped to `0.10.0-beta.1` in `core/rust/Cargo.toml`.
-- [ ] Rust lockfile package versions aligned to `0.10.0-beta.1` in `core/rust/Cargo.lock`.
-- [ ] Generated app version artifacts updated:
+- [x] Workspace version bumped to `0.10.0-beta.1` in `core/rust/Cargo.toml`.
+- [x] Rust lockfile package versions aligned to `0.10.0-beta.1` in `core/rust/Cargo.lock`.
+- [x] Generated app version artifacts updated:
   - `apps/macos-ui/Generated/HelmVersion.swift`
   - `apps/macos-ui/Generated/HelmVersion.xcconfig`
 
 ### Validation
-- [ ] Rust tests pass (`cargo test` in `core/rust`).
-- [ ] macOS unit tests pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme HelmTests -destination 'platform=macOS' -derivedDataPath /tmp/helmtests-deriveddata CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test`).
-- [ ] Website build succeeds (`ASTRO_TELEMETRY_DISABLED=1 npm --prefix web run build`).
+- [x] Rust tests pass (`cargo test` in `core/rust`).
+- [x] macOS unit tests pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme HelmTests -destination 'platform=macOS' -derivedDataPath /tmp/helmtests-deriveddata CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test`).
+- [x] Website build succeeds (`ASTRO_TELEMETRY_DISABLED=1 npm --prefix web run build`).
 
 ### Branch and Tag
 - [ ] `dev` merged into `main` for release.

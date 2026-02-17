@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.10.0-beta.1] - 2026-02-17
+
+### Added
+- Added end-to-end adapter implementations for Priority 1 language managers: `npm` (global), `pipx`, `pip` (`python3 -m pip`, global), `cargo`, and `cargo-binstall`.
+- Added parser fixtures and adapter unit coverage for version/list/search/outdated flows across the Priority 1 manager set where supported.
+- Added manager wiring across runtime boundaries (registry, FFI, XPC/UI metadata) so the new managers are exposed in app manager status and task routing.
+
+### Changed
+- Updated release metadata and docs for the `v0.10.0-beta.1` checkpoint.
+- Updated website status/overview/roadmap content to reflect current pre-1.0 manager coverage and beta milestone progress.
+
 ## [0.9.3] - 2026-02-16
 
 ### Added

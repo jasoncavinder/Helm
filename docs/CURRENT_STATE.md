@@ -8,7 +8,7 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.9.x**
+Current version: **0.10.0-beta.1**
 
 See:
 - CHANGELOG.md
@@ -26,6 +26,7 @@ See:
 - 0.7.x — System & App Store managers (softwareupdate, mas)
 - 0.8.x — Pinning & policy
 - 0.9.x — Internationalization foundation
+- 0.10.0-beta.1 — Priority 1 language-manager checkpoint
 
 ---
 
@@ -80,7 +81,7 @@ Localization coverage:
 
 ## Known Limitations
 
-- Priority 1 language manager coverage is partial:
+- Priority 1 language manager coverage is complete for the beta checkpoint:
   - Implemented: npm (global), pip (`python3 -m pip`, global), pipx, cargo, cargo-binstall
   - Pending: none
 - Overflow validation is still heuristic/script-based until full on-device visual pass is completed
