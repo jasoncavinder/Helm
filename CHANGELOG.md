@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.11.0-beta.2] - 2026-02-17
+
+### Added
+- Added repeatable stabilization and validation artifacts for `v0.11.0-beta.2`, including:
+  - Priority 2 manager smoke matrix (`docs/validation/v0.11.0-beta.2-smoke-matrix.md`)
+  - Localization overflow heuristic report (`docs/validation/v0.11.0-beta.2-l10n-overflow.md`)
+- Added bounded retry handling for transient task-store persistence failures in orchestration runtime paths.
+- Added regression coverage for refresh-response error attribution and transient task-persistence recovery behavior.
+
+### Changed
+- Updated release metadata and docs for the `v0.11.0-beta.2` stabilization checkpoint.
+- Clarified localization overflow status as heuristic-pass complete with on-device visual validation still pending.
+
 ## [0.11.0-beta.1] - 2026-02-17
 
 ### Added

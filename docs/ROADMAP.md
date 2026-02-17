@@ -303,6 +303,11 @@ Delivered:
 - Implemented `pnpm` (global), `yarn` (global), `poetry` (self/plugins), `RubyGems`, and `bundler` adapters end-to-end.
 - Wired all five managers through core adapter registry, FFI runtime registration, upgrade routing, and macOS UI manager metadata.
 - Added parser fixtures and adapter unit tests for version/list/search/outdated flows where supported.
+- Added bounded retry handling for transient task-store persistence failures in orchestration runtime paths.
+- Added regression coverage for refresh-response error attribution and transient task-persistence recovery behavior.
+- Added repeatable stabilization artifacts for beta checkpoint validation:
+  - `docs/validation/v0.11.0-beta.2-smoke-matrix.md`
+  - `docs/validation/v0.11.0-beta.2-l10n-overflow.md`
 
 ---
 
