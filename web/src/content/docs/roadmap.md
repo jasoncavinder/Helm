@@ -20,21 +20,21 @@ Helm follows feature-driven milestones. Dates are intentionally omitted — mile
 | 0.8.x | Pinning & Policy Enforcement — native/virtual pins, safe mode, guarded updates |
 | 0.9.x | Internationalization Foundation — centralized localization system, ICU format |
 | 0.10.x | Core Language Package Managers — npm, pipx, pip, Cargo, cargo-binstall |
+| 0.12.x | Localization + Upgrade Transparency — locale hardening, overflow validation expansion, dedicated upgrade preview, dry-run |
 
 ## In Progress (Beta)
 
 | Version | Milestone |
 |---|---|
 | 0.11.x | Extended Language Package Managers — pnpm, yarn, poetry, RubyGems, bundler (completed) |
-| 0.12.x | Localization Expansion — non-English locale coverage hardening and overflow validation (in progress) |
+| 0.13.x | UI/UX Analysis & Redesign — full UX audit, interaction model, and visual system refresh (next) |
 
 ## Planned
 
 | Version | Milestone |
 |---|---|
-| 0.13.x | UI/UX Analysis & Redesign — full UX audit, interaction model, and visual system refresh |
 | 0.14.x | Platform, Detection & Optional Managers — Docker, Xcode, Rosetta, Sparkle |
-| 0.15.x | Upgrade Preview & Execution Transparency — bulk preview, dry-run, failure isolation |
+| 0.15.x | Advanced Upgrade Transparency — richer execution-plan visibility, failure isolation, and operator controls |
 | 0.16.x | Self-Update & Installer Hardening — Sparkle integration, signed verification |
 | 0.17.x | Diagnostics & Logging — log viewer, structured error export, health panel |
 | 0.18.x | Stability & Pre-1.0 Hardening — stress tests, crash recovery, memory audit |

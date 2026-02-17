@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.12.0] - 2026-02-17
+
+### Added
+- Completed localization hardening for shipped locales (`en`, `es`, `de`, `fr`, `pt-BR`, `ja`) including:
+  - locale key/placeholder integrity checks
+  - expanded locale parity CI enforcement
+  - on-device visual overflow validation expansion beyond Settings
+- Added a dedicated Upgrade Preview UI surface in macOS Settings with execution-plan sections.
+- Added dry-run support in the Upgrade Preview flow with simulation results and no task submission.
+
+### Changed
+- Promoted `0.12.x` beta slices into the stable `v0.12.0` checkpoint.
+- Aligned version metadata and release/docs status to `0.12.0`.
+
 ## [0.12.0-beta.4] - 2026-02-17
 
 ### Added

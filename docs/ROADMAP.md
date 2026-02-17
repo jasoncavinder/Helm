@@ -306,7 +306,7 @@ Delivered:
 
 ---
 
-## 0.12.x — Localization (beta)
+## 0.12.x — Localization + Upgrade Transparency (beta) - Completed
 
 Goal:
 
@@ -320,6 +320,8 @@ Goal:
 - Locale selection UI (Settings)
 - Text expansion and layout validation
 - Tagline transcreation support
+- Dedicated upgrade preview UI
+- Dry-run simulation path in upgrade preview
 
 Exit Criteria:
 
@@ -327,6 +329,15 @@ Exit Criteria:
 - No UI truncation or layout breakage
 - Pluralization verified across locales
 - Tagline displays correctly per locale strategy
+- Upgrade preview exposes execution-mode breakdowns before submission
+- Dry-run mode presents planned actions without submitting tasks
+
+Delivered:
+- Locale coverage expanded to `en`, `es`, `de`, `fr`, `pt-BR`, and `ja` with full app/common/service key parity.
+- Added locale integrity checks and locale mirror parity enforcement in CI.
+- Added on-device visual overflow validation for settings plus expanded onboarding/navigation/packages/managers surfaces.
+- Added dedicated upgrade preview UI in settings with manager-level package breakdowns for no-OS and with-OS paths.
+- Added dry-run mode in upgrade preview with explicit simulation result messaging and no task submission.
 
 ---
 
@@ -398,15 +409,14 @@ Exit Criteria:
 
 Goal:
 
-- Bulk upgrade preview modal
-- Dry-run execution
+- Advanced execution-plan visibility
+- Failure isolation reporting improvements
+- Operator controls for large-plan workflows
 - Ordered plan rendering
-- Failure isolation reporting
 
 Exit Criteria:
 
-- Users can inspect full execution plan
-- Dry-run matches actual execution order
+- Users can inspect full execution plan with expanded operator context
 - Partial failure clearly reported
 
 ---

@@ -12,7 +12,7 @@ Developers and power users on macOS who manage software through multiple package
 
 ## What it does today
 
-Helm v0.12.0-beta.1 supports fifteen managers:
+Helm v0.12.0 supports fifteen managers:
 
 | Category | Managers |
 |---------|----------|
@@ -32,6 +32,7 @@ Key features:
 - **Restart detection** — surface restart-required updates from macOS softwareupdate
 - **Background tasks** — real-time task tracking with per-manager serial execution
 - **Localization** — `en`, `es`, `de`, `fr`, `pt-BR`, and `ja` with locale override in Settings
+- **Upgrade transparency** — dedicated upgrade preview surface with dry-run simulation mode
 
 ## How it works
 
