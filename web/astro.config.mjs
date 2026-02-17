@@ -16,7 +16,7 @@ export default defineConfig({
 				{ label: 'GitHub', href: 'https://github.com/jasoncavinder/Helm', icon: 'github' },
 			],
 			sidebar: [
-				{ label: 'Overview', slug: 'overview' },
+				{ label: 'Overview', link: '/product-overview/' },
 				{
 					label: 'Guides',
 					items: [
@@ -24,7 +24,7 @@ export default defineConfig({
 						{ label: 'Usage', slug: 'guides/usage' },
 					],
 				},
-				{ label: 'Roadmap', slug: 'roadmap' },
+				{ label: 'Roadmap', link: '/product-roadmap/' },
 				{ label: 'Licensing', slug: 'licensing' },
 			],
 		}),

@@ -9,7 +9,7 @@
   <br>
   A native macOS menu bar app for unified package manager control.
   <br>
-  <strong>Pre-1.0 &middot; v0.10.0-beta.2</strong>
+  <strong>Pre-1.0 &middot; v0.10.0</strong>
 </p>
 
 <p align="center">
@@ -82,7 +82,7 @@ Or open `apps/macos-ui/Helm.xcodeproj` in Xcode and run the **Helm** scheme. The
 | 0.7.x | System & App Store Managers — softwareupdate, mas, restart detection | Completed |
 | 0.8.x | Pinning & Policy Enforcement — native/virtual pins, safe mode, guarded updates | Completed |
 | 0.9.x | Internationalization Foundation — centralized localization system, ICU format | Completed |
-| 0.10.x | Core Language Package Managers — npm, pipx, pip, Cargo, cargo-binstall | In Progress (`0.10.0-beta.2`) |
+| 0.10.x | Core Language Package Managers — npm, pipx, pip, Cargo, cargo-binstall | Completed |
 | 0.11.x | Extended Language Package Managers — pnpm, yarn, poetry, RubyGems, bundler | Planned |
 | 0.12.x | Localization — non-English locales, translation coverage, locale UI | Planned |
 | 0.13.x | UI/UX Analysis & Redesign — full UX audit, interaction model, information architecture refresh | Planned |

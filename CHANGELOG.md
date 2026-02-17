@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.10.0] - 2026-02-17
+
+### Added
+- Delivered Priority 1 core language-manager support end-to-end for `npm` (global), `pipx`, `pip` (`python3 -m pip`, global), `cargo`, and `cargo-binstall`.
+- Added fixture-based parser and adapter coverage for language-manager version/list/search/outdated flows where supported.
+- Added a dedicated roadmap milestone for full UI/UX analysis and redesign (`0.13.x`) before later pre-1.0 platform/hardening phases.
+
+### Changed
+- Hardened mutating language-manager adapter paths with package-identifier validation to reject invalid or option-like package names.
+- Consolidated cargo/cargo-binstall outdated synthesis logic into a shared helper to reduce duplication and drift risk.
+- Replaced panic-prone FFI mutex lock unwrap paths with poisoned-lock recovery to avoid lock-poison panics at the FFI boundary.
+- Resolved website duplicate docs-id warnings by moving overview/roadmap pages to unique slugs (`/product-overview/`, `/product-roadmap/`).
+- Promoted release metadata from beta to stable `v0.10.0` across core/app/docs/website references.
+
 ## [0.10.0-beta.2] - 2026-02-17
 
 ### Added

@@ -257,7 +257,7 @@ Exit Criteria:
 
 ---
 
-## 0.10.x — Core Language Package Managers (beta)
+## 0.10.x — Core Language Package Managers (beta) - Completed
 
 Goal:
 

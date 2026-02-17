@@ -1,5 +1,6 @@
 ---
 title: Overview
+slug: product-overview
 description: What Helm is and how it works.
 ---
 
@@ -11,7 +12,7 @@ Developers and power users on macOS who manage software through multiple package
 
 ## What it does today
 
-Helm v0.10.0-beta.2 supports ten managers:
+Helm v0.10.0 supports ten managers:
 
 | Category | Managers |
 |---------|----------|
