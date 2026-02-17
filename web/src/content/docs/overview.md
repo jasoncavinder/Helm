@@ -12,13 +12,14 @@ Developers and power users on macOS who manage software through multiple package
 
 ## What it does today
 
-Helm v0.10.0 supports ten managers:
+Helm v0.12.0-beta.1 supports fifteen managers:
 
 | Category | Managers |
 |---------|----------|
 | **Toolchain / Runtime** | mise, rustup |
 | **System / OS / App Store** | Homebrew, softwareupdate, mas |
-| **Language Package Managers** | npm (global), pipx, pip (global), Cargo, cargo-binstall |
+| **Core Language Package Managers** | npm (global), pipx, pip (global), Cargo, cargo-binstall |
+| **Extended Language Package Managers** | pnpm (global), yarn (global), poetry (self/plugins), RubyGems, bundler |
 
 Key features:
 
