@@ -2,7 +2,34 @@
 
 This checklist is required before creating a release tag on `main`.
 
-## v0.10.0-beta.1 (Planned)
+## v0.10.0-beta.2 (Planned)
+
+### Scope and Documentation
+- [x] `CHANGELOG.md` includes `0.10.0-beta.2` notes for hardening/review and roadmap milestone updates.
+- [x] `README.md` reflects `v0.10.0-beta.2` status and resequenced milestone table.
+- [x] `docs/CURRENT_STATE.md`, `docs/NEXT_STEPS.md`, and `docs/ROADMAP.md` reflect the beta2 checkpoint and inserted UI/UX milestone.
+- [x] Website docs status/overview/roadmap pages are updated for `0.10.0-beta.2`.
+
+### Versioning
+- [x] Workspace version bumped to `0.10.0-beta.2` in `core/rust/Cargo.toml`.
+- [x] Rust lockfile package versions aligned to `0.10.0-beta.2` in `core/rust/Cargo.lock`.
+- [ ] Generated app version artifacts updated (if release flow requires regeneration):
+  - `apps/macos-ui/Generated/HelmVersion.swift`
+  - `apps/macos-ui/Generated/HelmVersion.xcconfig`
+
+### Validation
+- [x] Rust tests pass (`cargo test` in `core/rust`).
+- [x] macOS unit tests pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme HelmTests -destination 'platform=macOS' -derivedDataPath /tmp/helmtests-deriveddata CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test`).
+- [x] Website build succeeds (`ASTRO_TELEMETRY_DISABLED=1 npm --prefix web run build`).
+
+### Branch and Tag
+- [ ] `dev` merged into `main` for release.
+- [ ] Create annotated tag from `main`:
+  - `git tag -a v0.10.0-beta.2 -m "Helm v0.10.0-beta.2"`
+- [ ] Push tag:
+  - `git push origin v0.10.0-beta.2`
+
+## v0.10.0-beta.1 (Completed)
 
 ### Scope and Documentation
 - [x] `CHANGELOG.md` includes `0.10.0-beta.1` notes for core language-manager milestone delivery.
@@ -23,10 +50,10 @@ This checklist is required before creating a release tag on `main`.
 - [x] Website build succeeds (`ASTRO_TELEMETRY_DISABLED=1 npm --prefix web run build`).
 
 ### Branch and Tag
-- [ ] `dev` merged into `main` for release.
-- [ ] Create annotated tag from `main`:
+- [x] `dev` merged into `main` for release.
+- [x] Create annotated tag from `main`:
   - `git tag -a v0.10.0-beta.1 -m "Helm v0.10.0-beta.1"`
-- [ ] Push tag:
+- [x] Push tag:
   - `git push origin v0.10.0-beta.1`
 
 ## v0.9.3 (Completed)

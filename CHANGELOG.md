@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.10.0-beta.2] - 2026-02-17
+
+### Added
+- Added adapter input hardening for language-manager mutating actions to reject invalid package identifiers (empty/whitespace, option-like `-` prefixes, oversized identifiers).
+- Added regression tests for invalid package-identifier handling in npm and pip adapters.
+- Added a new roadmap milestone for full UI/UX analysis and redesign in the pre-1.0 sequence.
+
+### Changed
+- Refactored duplicated cargo/cargo-binstall outdated synthesis into shared logic to reduce drift risk and unnecessary duplicate probes.
+- Removed unused pip search query environment propagation from process command specs.
+- Updated release metadata and docs for `v0.10.0-beta.2`, including roadmap resequencing and website docs alignment.
+
 ## [0.10.0-beta.1] - 2026-02-17
 
 ### Added

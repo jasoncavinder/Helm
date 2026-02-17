@@ -325,7 +325,36 @@ Exit Criteria:
 
 ---
 
-## 0.13.x — Platform, Detection & Optional Managers (beta)
+## 0.13.x — UI/UX Analysis & Redesign (beta)
+
+Goal:
+
+- Full UX audit across onboarding, dashboard, packages, managers, tasks, and settings
+- Information architecture redesign for core operator flows:
+  - detect and refresh
+  - search and package actions
+  - upgrade-all confirmation and execution visibility
+- Visual system refresh:
+  - typography and spacing scale
+  - hierarchy and state affordances
+  - accessibility contrast and focus behavior
+- Interaction and feedback consistency:
+  - loading, error, and empty states
+  - long-running task and cancellation visibility
+- Validation plan:
+  - usability scenario checklist
+  - regression-safe incremental rollout strategy
+
+Exit Criteria:
+
+- UX audit findings documented with prioritized redesign decisions
+- Updated interaction map and component-level redesign spec approved
+- At least one end-to-end flow implemented using redesigned patterns without breaking orchestration invariants
+- Accessibility and localization implications captured for subsequent milestone execution
+
+---
+
+## 0.14.x — Platform, Detection & Optional Managers (beta)
 
 Goal:
 
@@ -360,7 +389,7 @@ Exit Criteria:
 
 ---
 
-## 0.14.x — Upgrade Preview & Execution Transparency (beta)
+## 0.15.x — Upgrade Preview & Execution Transparency (beta)
 
 Goal:
 
@@ -377,7 +406,7 @@ Exit Criteria:
 
 ---
 
-## 0.15.x — Self-Update & Installer Hardening (beta)
+## 0.16.x — Self-Update & Installer Hardening (beta)
 
 Goal:
 
@@ -394,7 +423,7 @@ Exit Criteria:
 
 ---
 
-## 0.16.x — Diagnostics & Logging (rc)
+## 0.17.x — Diagnostics & Logging (rc)
 
 Goal:
 
@@ -411,7 +440,7 @@ Exit Criteria:
 
 ---
 
-## 0.17.x — Stability & Pre-1.0 Hardening (rc)
+## 0.18.x — Stability & Pre-1.0 Hardening (rc)
 
 Goal:
 

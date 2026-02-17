@@ -8,7 +8,7 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.10.0-beta.1**
+Current version: **0.10.0-beta.2**
 
 See:
 - CHANGELOG.md
@@ -27,6 +27,7 @@ See:
 - 0.8.x — Pinning & policy
 - 0.9.x — Internationalization foundation
 - 0.10.0-beta.1 — Priority 1 language-manager checkpoint
+- 0.10.0-beta.2 — Adapter hardening and roadmap resequencing checkpoint
 
 ---
 
@@ -84,6 +85,7 @@ Localization coverage:
 - Priority 1 language manager coverage is complete for the beta checkpoint:
   - Implemented: npm (global), pip (`python3 -m pip`, global), pipx, cargo, cargo-binstall
   - Pending: none
+- UI/UX redesign milestone is documented in roadmap sequencing but not yet implemented
 - Overflow validation is still heuristic/script-based until full on-device visual pass is completed
 - Upgrade-all transparency now provides summary counts + top manager breakdown in confirmation flow
 - Upgrade-preview filtering/sorting logic now has dedicated macOS UI unit coverage (`HelmTests/UpgradePreviewPlannerTests`)
@@ -92,6 +94,9 @@ Localization coverage:
 - No self-update mechanism yet
 - Limited diagnostics UI
 - No CLI interface
+- Low-priority deferred hardening:
+  - FFI boundary still uses multiple `Mutex::lock().unwrap()` sites; a poisoned mutex would currently panic instead of surfacing a structured recoverable error
+  - Website docs build emits duplicate Starlight doc-id warnings for `overview` and `roadmap`; build succeeds but warning debt remains
 
 ---
 

@@ -11,7 +11,7 @@ Developers and power users on macOS who manage software through multiple package
 
 ## What it does today
 
-Helm v0.10.0-beta.1 supports ten managers:
+Helm v0.10.0-beta.2 supports ten managers:
 
 | Category | Managers |
 |---------|----------|
