@@ -15,7 +15,7 @@ This checklist is required before creating a release tag on `main`.
 - [x] Priority 2 manager smoke matrix captured: `apps/macos-ui/scripts/smoke_priority2_managers.sh`.
 - [x] Validation notes committed at `docs/validation/v0.11.0-beta.2-smoke-matrix.md`.
 - [x] Localization overflow heuristic validation notes committed at `docs/validation/v0.11.0-beta.2-l10n-overflow.md`.
-- [ ] Run `HelmTests` on a host without testmanagerd sandbox IPC restrictions (current sandbox run skips this step by design when blocked).
+- [x] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme HelmTests -destination 'platform=macOS' -derivedDataPath /tmp/helmtests-deriveddata CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test`).
 
 ### Branch and Tag
 - [ ] `dev` merged into `main` for release.
