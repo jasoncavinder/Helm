@@ -8,7 +8,7 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.10.0-beta.2**
+Current version: **0.10.0**
 
 See:
 - CHANGELOG.md
@@ -26,8 +26,7 @@ See:
 - 0.7.x — System & App Store managers (softwareupdate, mas)
 - 0.8.x — Pinning & policy
 - 0.9.x — Internationalization foundation
-- 0.10.0-beta.1 — Priority 1 language-manager checkpoint
-- 0.10.0-beta.2 — Adapter hardening and roadmap resequencing checkpoint
+- 0.10.x — Core language managers + hardening checkpoint
 
 ---
 
@@ -69,6 +68,12 @@ Localization coverage:
 - Locale length audit script added at `apps/macos-ui/scripts/check_locale_lengths.sh` for overflow-risk preflight
 - Manager display-name localization keys now cover upgrade-preview/task-fallback manager labels (including software update/app store naming)
 
+Validation snapshot for `v0.10.0` stabilization:
+
+- Priority 1 language-manager local smoke matrix captured on a macOS dev host:
+  - Detected and smoke-tested: npm, pip (`python3 -m pip`), cargo
+  - Not installed in the validation host environment: pipx, cargo-binstall
+
 ---
 
 ## Architecture Status
@@ -94,9 +99,6 @@ Localization coverage:
 - No self-update mechanism yet
 - Limited diagnostics UI
 - No CLI interface
-- Low-priority deferred hardening:
-  - FFI boundary still uses multiple `Mutex::lock().unwrap()` sites; a poisoned mutex would currently panic instead of surfacing a structured recoverable error
-  - Website docs build emits duplicate Starlight doc-id warnings for `overview` and `roadmap`; build succeeds but warning debt remains
 
 ---
 

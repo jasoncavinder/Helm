@@ -12,7 +12,7 @@ Helm is in:
 
 ```
 
-0.10.x – 0.13.x
+0.11.x – 0.13.x
 
 ```
 
@@ -22,12 +22,9 @@ Focus:
 - UI/UX redesign planning
 
 Current checkpoint:
-- `v0.10.0-beta.1` delivered (Priority 1 language-manager milestone checkpoint + transparency hardening)
+- `v0.10.0` released (Priority 1 language-manager milestone + hardening checkpoint)
 
 Next release target:
-- `v0.10.0-beta.2` (hardening/review checkpoint + roadmap sequencing update)
-
-After `v0.10.0-beta.2`:
 - `v0.11.0-beta.1` (extended language-manager expansion)
 
 ---
@@ -63,7 +60,7 @@ Completed:
 - cargo-binstall adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
 - cargo-binstall parser fixtures and adapter unit tests added for version/list/search/outdated flows
 
-`v0.10.0-beta.1` checkpoint scope:
+`v0.10.0` completion scope:
 
 - End-to-end adapter availability for:
   - npm (global) ✅
@@ -75,12 +72,12 @@ Completed:
 - Fixture-based parser coverage for list/search/version flows where supported
 - Capability declarations aligned with implemented actions
 
-`v0.10.0-beta.1` acceptance criteria:
+`v0.10.0` validation summary:
 
 - `cargo test` passes in `core/rust` ✅
 - Existing `HelmTests` suite passes ✅
 - Manager detection and package listing validate on at least one local dev environment ✅
-- `CHANGELOG.md`, `CURRENT_STATE.md`, and website docs are updated for beta scope ✅
+- `CHANGELOG.md`, `CURRENT_STATE.md`, and website docs are updated for stable scope ✅
 
 ---
 
@@ -186,11 +183,13 @@ Implement:
 
 ## Priority 8 — Hardening
 
-Completed in `v0.10.0-beta.2`:
+Completed in `v0.10.0` checkpoint:
 
 - Targeted adapter hardening review for regression/robustness/security risks across Priority 1 language-manager paths
 - Package-identifier validation on mutating adapter actions for npm/pip/pipx/cargo/cargo-binstall
 - Shared cargo/cargo-binstall outdated synthesis logic to reduce duplication and drift risk
+- Replaced panic-prone FFI `lock().unwrap()` usage with poisoned-lock recovery
+- Resolved website duplicate docs-id build warnings for overview/roadmap pages
 
 Remaining:
 
@@ -198,8 +197,6 @@ Remaining:
 - Cancellation reliability
 - Memory audit
 - FFI stability
-- Replace panic-prone FFI mutex lock paths (`lock().unwrap()`) with explicit poisoned-lock handling and structured error propagation
-- Resolve website docs duplicate id warnings (`overview`, `roadmap`) in Starlight content to remove persistent build warnings
 
 ---
 

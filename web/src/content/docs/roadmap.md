@@ -1,5 +1,6 @@
 ---
 title: Roadmap
+slug: product-roadmap
 description: Helm milestones from alpha to 1.0.
 ---
 
@@ -18,12 +19,12 @@ Helm follows feature-driven milestones. Dates are intentionally omitted — mile
 | 0.7.x | System & App Store Managers — softwareupdate, mas, restart detection |
 | 0.8.x | Pinning & Policy Enforcement — native/virtual pins, safe mode, guarded updates |
 | 0.9.x | Internationalization Foundation — centralized localization system, ICU format |
+| 0.10.x | Core Language Package Managers — npm, pipx, pip, Cargo, cargo-binstall |
 
 ## In Progress (Beta)
 
 | Version | Milestone |
 |---|---|
-| 0.10.x | Core Language Package Managers — checkpoints `v0.10.0-beta.1` and `v0.10.0-beta.2` delivered |
 | 0.11.x | Extended Language Package Managers — pnpm, yarn, poetry, RubyGems, bundler |
 | 0.12.x | Localization Expansion — non-English locale coverage hardening and overflow validation |
 
