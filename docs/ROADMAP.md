@@ -280,7 +280,7 @@ Exit Criteria:
 
 ---
 
-## 0.11.x — Extended Language Package Managers (beta)
+## 0.11.x — Extended Language Package Managers (beta) - Completed
 
 Goal:
 
@@ -298,6 +298,11 @@ Exit Criteria:
 - Search returns results for managers that support it
 - Fixture-based parser tests for each adapter's output format
 - Patterns established in 0.10.x reused consistently
+
+Delivered:
+- Implemented `pnpm` (global), `yarn` (global), `poetry` (self/plugins), `RubyGems`, and `bundler` adapters end-to-end.
+- Wired all five managers through core adapter registry, FFI runtime registration, upgrade routing, and macOS UI manager metadata.
+- Added parser fixtures and adapter unit tests for version/list/search/outdated flows where supported.
 
 ---
 

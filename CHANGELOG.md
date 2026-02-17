@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.11.0-beta.1] - 2026-02-17
+
+### Added
+- Delivered Priority 2 extended language-manager support end-to-end for `pnpm` (global), `yarn` (global), `poetry` (self/plugins), `RubyGems`, and `bundler`.
+- Added fixture-based parser and adapter coverage for Priority 2 manager version/list/search/outdated flows where supported.
+- Added manager wiring across runtime boundaries (registry, FFI, XPC/UI metadata) so the Priority 2 managers are exposed in app manager status and upgrade task routing.
+- Added localized manager-name keys for the newly implemented managers across `en`, `es`, `de`, `fr`, `pt-BR`, and `ja`.
+
+### Changed
+- Marked the `0.11.x` extended language-manager milestone scope complete at the `v0.11.0-beta.1` checkpoint in roadmap/state/next-step docs.
+- Synced mirrored locale app bundles between `locales/*` and `apps/macos-ui/Helm/Resources/locales/*` to satisfy i18n lint parity checks in CI.
+
 ## [0.10.0] - 2026-02-17
 
 ### Added

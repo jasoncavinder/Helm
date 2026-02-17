@@ -22,10 +22,10 @@ Focus:
 - UI/UX redesign planning
 
 Current checkpoint:
-- `v0.10.0` released (Priority 1 language-manager milestone + hardening checkpoint)
+- `v0.11.0-beta.1` released (Priority 2 extended language-manager milestone)
 
 Next release target:
-- `v0.11.0-beta.1` (extended language-manager expansion)
+- `v0.11.0-beta.2` (stabilization + validation pass)
 
 ---
 
@@ -91,6 +91,23 @@ Implement:
 - RubyGems
 - bundler
 
+Completed (`v0.11.0-beta.1` released):
+
+- pnpm adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
+- pnpm parser fixtures and adapter unit tests added for version/list/search/outdated flows
+- pnpm manager metadata wired through macOS UI + localization keys
+- yarn adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
+- yarn parser fixtures and adapter unit tests added for version/list/search/outdated flows
+- yarn manager metadata wired through macOS UI + localization keys
+- RubyGems adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
+- RubyGems parser fixtures and adapter unit tests added for version/list/search/outdated flows
+- RubyGems manager metadata wired through macOS UI + localization keys
+- poetry adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
+- poetry parser fixtures and adapter unit tests added for self/plugin version/list/search/outdated flows
+- poetry manager metadata wired through macOS UI + localization keys
+- bundler adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
+- bundler parser fixtures and adapter unit tests added for runtime version/list/search/outdated flows
+- bundler manager metadata wired through macOS UI + localization keys
 ---
 
 ## Priority 3 — Localization Expansion
