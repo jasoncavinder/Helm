@@ -148,10 +148,13 @@ Completed:
 - Added localized manager display-name keys used by upgrade-preview/task-fallback UI text
 - Added locale key/placeholder integrity audit script (`apps/macos-ui/scripts/check_locale_integrity.sh`)
 - Added CI enforcement for locale parity + locale integrity checks in `.github/workflows/i18n-lint.yml`
+- Added `HelmTests`-based visual overflow validation for `SettingsPopoverView` locale-sensitive controls (`LocalizationOverflowValidationTests`)
+- Captured `v0.12.0-beta.1` visual overflow validation report at `docs/validation/v0.12.0-beta.1-visual-overflow.md`
+- Increased settings popover + language picker widths to resolve validated overflow failures
 
 Remaining:
 
-- Run full on-device visual overflow validation across es, fr, de, pt-BR, ja
+- Expand visual overflow validation coverage beyond Settings (onboarding, package list, managers)
 
 ---
 

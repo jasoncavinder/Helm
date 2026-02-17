@@ -62,7 +62,7 @@ struct SettingsPopoverView: View {
                         Text(L10n.App.Settings.Label.japanese.localized).tag("ja")
                     }
                     .labelsHidden()
-                    .frame(width: 210)
+                    .frame(width: 260)
                 }
                 
                 Divider()
@@ -156,7 +156,7 @@ struct SettingsPopoverView: View {
             }
         }
         .padding(16)
-        .frame(width: 300)
+        .frame(width: 440)
         .alert(L10n.App.Settings.Alert.Reset.title.localized, isPresented: $showResetConfirmation) {
             Button(L10n.Common.cancel.localized, role: .cancel) {}
             Button(L10n.Common.reset.localized, role: .destructive) {
