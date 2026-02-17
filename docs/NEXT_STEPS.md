@@ -22,18 +22,18 @@ Focus:
 - UI/UX redesign planning
 
 Current checkpoint:
-- `v0.11.0-beta.2` stabilization in progress (Priority 2 hardening + validation)
+- `v0.11.0-beta.2` released (stabilization + validation checkpoint)
 
 Next release target:
-- `v0.11.0-beta.2` (stabilization + validation pass)
+- `v0.12.0-beta.1` (localization completion and validation hardening)
 
-`v0.11.0-beta.2` stabilization work in progress:
+`v0.11.0-beta.2` stabilization work completed:
 
 - Added repeatable stabilization check runner at `apps/macos-ui/scripts/run_v0110b2_stabilization_checks.sh`
 - Added Priority 2 manager smoke-matrix generator at `apps/macos-ui/scripts/smoke_priority2_managers.sh` (writes `docs/validation/v0.11.0-beta.2-smoke-matrix.md`)
 - Captured initial smoke matrix snapshot in this environment (`rubygems`/`bundler` detected; `pnpm`/`yarn`/`poetry` not installed)
 - Captured localization overflow heuristic validation at `docs/validation/v0.11.0-beta.2-l10n-overflow.md` (no high-risk candidates flagged)
-- Pending full execution and result capture on a real macOS validation host with all Priority 2 managers installed
+- Completed on macOS validation host, including `HelmTests` execution and release tagging (`v0.11.0-beta.2`)
 
 ---
 
@@ -99,7 +99,7 @@ Implement:
 - RubyGems
 - bundler
 
-Completed (`v0.11.0-beta.1` released):
+Completed (`v0.11.0-beta.1` scope complete):
 
 - pnpm adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
 - pnpm parser fixtures and adapter unit tests added for version/list/search/outdated flows
@@ -116,6 +116,7 @@ Completed (`v0.11.0-beta.1` released):
 - bundler adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
 - bundler parser fixtures and adapter unit tests added for runtime version/list/search/outdated flows
 - bundler manager metadata wired through macOS UI + localization keys
+
 ---
 
 ## Priority 3 — Localization Expansion
@@ -145,10 +146,15 @@ Completed:
 - Added a locale overflow-risk audit script (`apps/macos-ui/scripts/check_locale_lengths.sh`)
 - Increased Settings popover and locale picker widths to reduce language-picker overflow risk
 - Added localized manager display-name keys used by upgrade-preview/task-fallback UI text
+- Added locale key/placeholder integrity audit script (`apps/macos-ui/scripts/check_locale_integrity.sh`)
+- Added CI enforcement for locale parity + locale integrity checks in `.github/workflows/i18n-lint.yml`
+- Added `HelmTests`-based visual overflow validation for `SettingsPopoverView` locale-sensitive controls (`LocalizationOverflowValidationTests`)
+- Captured `v0.12.0-beta.1` visual overflow validation report at `docs/validation/v0.12.0-beta.1-visual-overflow.md`
+- Increased settings popover + language picker widths to resolve validated overflow failures
 
 Remaining:
 
-- Run full on-device visual overflow validation across es, fr, de, pt-BR, ja
+- Expand visual overflow validation coverage beyond Settings (onboarding, package list, managers)
 
 ---
 

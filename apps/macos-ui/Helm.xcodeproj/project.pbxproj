@@ -43,6 +43,7 @@
 		B20000000000000000000017 /* L10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000017 /* L10n.swift */; };
 		C10000000000000000000001 /* UpgradePreviewPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000003 /* UpgradePreviewPlanner.swift */; };
 		C10000000000000000000002 /* UpgradePreviewPlannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000005 /* UpgradePreviewPlannerTests.swift */; };
+		C10000000000000000000019 /* LocalizationOverflowValidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000000000000000000001A /* LocalizationOverflowValidationTests.swift */; };
 		C10000000000000000000018 /* UpgradePreviewPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000003 /* UpgradePreviewPlanner.swift */; };
 /* End PBXBuildFile section */
 
@@ -114,6 +115,7 @@
 		C10000000000000000000003 /* UpgradePreviewPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpgradePreviewPlanner.swift; sourceTree = "<group>"; };
 		C10000000000000000000004 /* HelmTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HelmTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C10000000000000000000005 /* UpgradePreviewPlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpgradePreviewPlannerTests.swift; sourceTree = "<group>"; };
+		C1000000000000000000001A /* LocalizationOverflowValidationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationOverflowValidationTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -299,6 +301,7 @@
 		C10000000000000000000006 /* HelmTests */ = {
 			isa = PBXGroup;
 			children = (
+				C1000000000000000000001A /* LocalizationOverflowValidationTests.swift */,
 				C10000000000000000000005 /* UpgradePreviewPlannerTests.swift */,
 			);
 			path = HelmTests;
@@ -523,6 +526,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C10000000000000000000019 /* LocalizationOverflowValidationTests.swift in Sources */,
 				C10000000000000000000018 /* UpgradePreviewPlanner.swift in Sources */,
 				C10000000000000000000002 /* UpgradePreviewPlannerTests.swift in Sources */,
 			);
