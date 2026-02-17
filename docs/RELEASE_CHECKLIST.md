@@ -2,7 +2,23 @@
 
 This checklist is required before creating a release tag on `main`.
 
-## v0.12.0-beta.2 (In Progress)
+## v0.12.0-beta.3 (In Progress)
+
+### Scope and Documentation
+- [x] `CHANGELOG.md` includes `0.12.0-beta.3` notes for dedicated upgrade-preview UI delivery.
+- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect Priority 4 preview-surface completion status.
+
+### Validation
+- [x] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme HelmTests -destination 'platform=macOS' -derivedDataPath /tmp/helmtests-deriveddata CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test`).
+
+### Branch and Tag
+- [ ] `dev` merged into `main` for release.
+- [ ] Create annotated tag from `main`:
+  - `git tag -a v0.12.0-beta.3 -m "Helm v0.12.0-beta.3"`
+- [ ] Push tag:
+  - `git push origin v0.12.0-beta.3`
+
+## v0.12.0-beta.2 (Completed)
 
 ### Scope and Documentation
 - [x] `CHANGELOG.md` includes `0.12.0-beta.2` notes for expanded visual-overflow validation coverage.
@@ -14,10 +30,10 @@ This checklist is required before creating a release tag on `main`.
 - [x] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme HelmTests -destination 'platform=macOS' -derivedDataPath /tmp/helmtests-deriveddata CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test`).
 
 ### Branch and Tag
-- [ ] `dev` merged into `main` for release.
-- [ ] Create annotated tag from `main`:
+- [x] `dev` merged into `main` for release.
+- [x] Create annotated tag from `main`:
   - `git tag -a v0.12.0-beta.2 -m "Helm v0.12.0-beta.2"`
-- [ ] Push tag:
+- [x] Push tag:
   - `git push origin v0.12.0-beta.2`
 
 ## v0.12.0-beta.1 (Completed)
