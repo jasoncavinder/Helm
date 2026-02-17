@@ -8,7 +8,7 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.10.0**
+Current version: **0.11.0-beta.1**
 
 See:
 - CHANGELOG.md
@@ -27,6 +27,7 @@ See:
 - 0.8.x — Pinning & policy
 - 0.9.x — Internationalization foundation
 - 0.10.x — Core language managers + hardening checkpoint
+- 0.11.x — Extended language managers (beta checkpoint)
 
 ---
 
@@ -37,6 +38,11 @@ Fully functional:
 - Homebrew
 - mise
 - npm (global)
+- pnpm (global)
+- yarn (global)
+- RubyGems
+- Poetry (self/plugins)
+- Bundler
 - pip (`python3 -m pip`, global)
 - pipx
 - cargo
@@ -68,7 +74,7 @@ Localization coverage:
 - Locale length audit script added at `apps/macos-ui/scripts/check_locale_lengths.sh` for overflow-risk preflight
 - Manager display-name localization keys now cover upgrade-preview/task-fallback manager labels (including software update/app store naming)
 
-Validation snapshot for `v0.10.0` stabilization:
+Validation snapshot for `v0.11.0-beta.1` expansion:
 
 - Priority 1 language-manager local smoke matrix captured on a macOS dev host:
   - Detected and smoke-tested: npm, pip (`python3 -m pip`), cargo
@@ -89,6 +95,9 @@ Validation snapshot for `v0.10.0` stabilization:
 
 - Priority 1 language manager coverage is complete for the beta checkpoint:
   - Implemented: npm (global), pip (`python3 -m pip`, global), pipx, cargo, cargo-binstall
+  - Pending: none
+- Priority 2 extended language-manager expansion is complete at this checkpoint:
+  - Implemented: pnpm (global), yarn (global), RubyGems, Poetry (self/plugins), Bundler
   - Pending: none
 - UI/UX redesign milestone is documented in roadmap sequencing but not yet implemented
 - Overflow validation is still heuristic/script-based until full on-device visual pass is completed
@@ -112,7 +121,7 @@ Validation snapshot for `v0.10.0` stabilization:
 
 ## Summary
 
-Helm is a **functional control plane for 10 managers** with:
+Helm is a **functional control plane for 15 managers** with:
 
 - Working orchestration
 - Task system

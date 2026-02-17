@@ -2,6 +2,26 @@
 
 This checklist is required before creating a release tag on `main`.
 
+## v0.11.0-beta.1 (Completed)
+
+### Scope and Documentation
+- [x] `CHANGELOG.md` includes `0.11.0-beta.1` notes for Priority 2 extended language-manager delivery.
+- [x] `README.md` reflects `v0.11.0-beta.1` status and milestone progression.
+- [x] `docs/CURRENT_STATE.md`, `docs/NEXT_STEPS.md`, and `docs/ROADMAP.md` reflect the `v0.11.0-beta.1` checkpoint.
+- [x] Website-facing docs/state pages are updated for `v0.11.0-beta.1`.
+
+### Validation
+- [x] Rust tests pass (`cargo test -p helm-core -p helm-ffi`).
+- [x] macOS unit tests pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme HelmTests -destination 'platform=macOS' test`).
+- [x] i18n lint parity is satisfied (`diff -ru locales/en apps/macos-ui/Helm/Resources/locales/en`).
+
+### Branch and Tag
+- [x] Extended manager scope merged to `dev` via PR.
+- [x] Create annotated beta tag from `dev` lineage:
+  - `git tag -a v0.11.0-beta.1 -m "Helm v0.11.0-beta.1"`
+- [x] Push tag:
+  - `git push origin v0.11.0-beta.1`
+
 ## v0.10.0 (Planned)
 
 ### Scope and Documentation
