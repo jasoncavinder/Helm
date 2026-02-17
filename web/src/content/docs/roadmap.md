@@ -25,7 +25,7 @@ Helm follows feature-driven milestones. Dates are intentionally omitted — mile
 
 | Version | Milestone |
 |---|---|
-| 0.11.x | Extended Language Package Managers — pnpm, yarn, poetry, RubyGems, bundler |
+| 0.11.x | Extended Language Package Managers — pnpm, yarn, poetry, RubyGems, bundler (beta.1 delivered; beta.2 stabilization in progress) |
 | 0.12.x | Localization Expansion — non-English locale coverage hardening and overflow validation |
 
 ## Planned

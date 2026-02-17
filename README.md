@@ -9,7 +9,7 @@
   <br>
   A native macOS menu bar app for unified package manager control.
   <br>
-  <strong>Pre-1.0 &middot; v0.11.0-beta.1</strong>
+  <strong>Pre-1.0 &middot; v0.11.0-beta.2</strong>
 </p>
 
 <p align="center">
@@ -32,7 +32,7 @@ Helm manages software across multiple package managers (Homebrew, npm, pip, Carg
 - **Package list** — Browse installed, upgradable, and available packages with status filters
 - **Progressive search** — Instant local filtering with debounced remote search and cache enrichment
 - **Background tasks** — Real-time task tracking with per-manager serial execution
-- **Multi-manager refresh** — Authority-ordered refresh across 5 managers (Homebrew, mise, rustup, softwareupdate, mas)
+- **Multi-manager refresh** — Authority-ordered refresh across installed managers with phased execution
 - **Restart detection** — Surface restart-required updates from macOS softwareupdate
 
 ## Architecture
@@ -83,7 +83,7 @@ Or open `apps/macos-ui/Helm.xcodeproj` in Xcode and run the **Helm** scheme. The
 | 0.8.x | Pinning & Policy Enforcement — native/virtual pins, safe mode, guarded updates | Completed |
 | 0.9.x | Internationalization Foundation — centralized localization system, ICU format | Completed |
 | 0.10.x | Core Language Package Managers — npm, pipx, pip, Cargo, cargo-binstall | Completed |
-| 0.11.x | Extended Language Package Managers — pnpm, yarn, poetry, RubyGems, bundler | Completed (`v0.11.0-beta.1`) |
+| 0.11.x | Extended Language Package Managers — pnpm, yarn, poetry, RubyGems, bundler | In progress (`v0.11.0-beta.2` stabilization) |
 | 0.12.x | Localization — non-English locales, translation coverage, locale UI | Planned |
 | 0.13.x | UI/UX Analysis & Redesign — full UX audit, interaction model, information architecture refresh | Planned |
 | 0.14.x | Platform, Detection & Optional Managers — Docker, Xcode, Rosetta, Sparkle | Planned |
