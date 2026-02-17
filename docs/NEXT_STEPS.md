@@ -102,6 +102,9 @@ Completed (`v0.11.0-beta.1` in progress):
 - RubyGems adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
 - RubyGems parser fixtures and adapter unit tests added for version/list/search/outdated flows
 - RubyGems manager metadata wired through macOS UI + localization keys
+- poetry adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
+- poetry parser fixtures and adapter unit tests added for self/plugin version/list/search/outdated flows
+- poetry manager metadata wired through macOS UI + localization keys
 
 ---
 

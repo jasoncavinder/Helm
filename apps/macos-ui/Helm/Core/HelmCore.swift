@@ -223,6 +223,7 @@ final class HelmCore: ObservableObject {
         case "npm", "npm_global": return L10n.App.Managers.Name.npm.localized
         case "pnpm": return L10n.App.Managers.Name.pnpm.localized
         case "yarn": return L10n.App.Managers.Name.yarn.localized
+        case "poetry": return L10n.App.Managers.Name.poetry.localized
         case "rubygems": return L10n.App.Managers.Name.rubygems.localized
         case "pip": return L10n.App.Managers.Name.pip.localized
         case "pipx": return L10n.App.Managers.Name.pipx.localized

@@ -40,6 +40,7 @@ Fully functional:
 - pnpm (global)
 - yarn (global)
 - RubyGems
+- Poetry (self/plugins)
 - pip (`python3 -m pip`, global)
 - pipx
 - cargo
@@ -94,8 +95,8 @@ Validation snapshot for `v0.10.0` stabilization:
   - Implemented: npm (global), pip (`python3 -m pip`, global), pipx, cargo, cargo-binstall
   - Pending: none
 - Priority 2 extended language-manager expansion has started:
-  - Implemented: pnpm (global), yarn (global), RubyGems
-  - Pending: poetry, bundler
+  - Implemented: pnpm (global), yarn (global), RubyGems, Poetry (self/plugins)
+  - Pending: bundler
 - UI/UX redesign milestone is documented in roadmap sequencing but not yet implemented
 - Overflow validation is still heuristic/script-based until full on-device visual pass is completed
 - Upgrade-all transparency now provides summary counts + top manager breakdown in confirmation flow
@@ -118,7 +119,7 @@ Validation snapshot for `v0.10.0` stabilization:
 
 ## Summary
 
-Helm is a **functional control plane for 13 managers** with:
+Helm is a **functional control plane for 14 managers** with:
 
 - Working orchestration
 - Task system

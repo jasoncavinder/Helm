@@ -23,6 +23,8 @@ use helm_core::adapters::pipx::PipxAdapter;
 use helm_core::adapters::pipx_process::ProcessPipxSource;
 use helm_core::adapters::pnpm::PnpmAdapter;
 use helm_core::adapters::pnpm_process::ProcessPnpmSource;
+use helm_core::adapters::poetry::PoetryAdapter;
+use helm_core::adapters::poetry_process::ProcessPoetrySource;
 use helm_core::adapters::rubygems::RubyGemsAdapter;
 use helm_core::adapters::rubygems_process::ProcessRubyGemsSource;
 use helm_core::adapters::rustup::RustupAdapter;
@@ -224,6 +226,7 @@ struct UpgradeAllTargets {
     cargo_binstall: Vec<String>,
     pip: Vec<String>,
     pipx: Vec<String>,
+    poetry: Vec<String>,
     rubygems: Vec<String>,
     rustup: Vec<String>,
     softwareupdate_outdated: bool,
@@ -244,6 +247,7 @@ fn collect_upgrade_all_targets(
     let mut seen_cargo_binstall = std::collections::HashSet::new();
     let mut seen_pip = std::collections::HashSet::new();
     let mut seen_pipx = std::collections::HashSet::new();
+    let mut seen_poetry = std::collections::HashSet::new();
     let mut seen_rubygems = std::collections::HashSet::new();
     let mut seen_rustup = std::collections::HashSet::new();
 
@@ -301,6 +305,11 @@ fn collect_upgrade_all_targets(
             ManagerId::Pipx => {
                 if seen_pipx.insert(package.package.name.clone()) {
                     targets.pipx.push(package.package.name.clone());
+                }
+            }
+            ManagerId::Poetry => {
+                if seen_poetry.insert(package.package.name.clone()) {
+                    targets.poetry.push(package.package.name.clone());
                 }
             }
             ManagerId::RubyGems => {
@@ -406,6 +415,9 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
     ));
     let pip_adapter = Arc::new(PipAdapter::new(ProcessPipSource::new(executor.clone())));
     let pipx_adapter = Arc::new(PipxAdapter::new(ProcessPipxSource::new(executor.clone())));
+    let poetry_adapter = Arc::new(PoetryAdapter::new(ProcessPoetrySource::new(
+        executor.clone(),
+    )));
     let rubygems_adapter = Arc::new(RubyGemsAdapter::new(ProcessRubyGemsSource::new(
         executor.clone(),
     )));
@@ -427,6 +439,7 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
         cargo_binstall_adapter,
         pip_adapter,
         pipx_adapter,
+        poetry_adapter,
         rubygems_adapter,
         rustup_adapter,
         softwareupdate_adapter,
@@ -761,6 +774,7 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
         ManagerId::CargoBinstall,
         ManagerId::Pip,
         ManagerId::Pipx,
+        ManagerId::Poetry,
         ManagerId::RubyGems,
         ManagerId::Rustup,
         ManagerId::SoftwareUpdate,
@@ -1196,6 +1210,20 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
             }
         }
 
+        if runtime.is_manager_enabled(ManagerId::Poetry) {
+            for package_name in targets.poetry {
+                let request = AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::Poetry,
+                        name: package_name,
+                    }),
+                });
+                if let Err(error) = runtime.submit(ManagerId::Poetry, request).await {
+                    eprintln!("upgrade_all: failed to queue poetry upgrade task: {error}");
+                }
+            }
+        }
+
         if runtime.is_manager_enabled(ManagerId::RubyGems) {
             for package_name in targets.rubygems {
                 let request = AdapterRequest::Upgrade(UpgradeRequest {
@@ -1275,6 +1303,7 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
 /// - "cargo_binstall"
 /// - "pip"
 /// - "pipx"
+/// - "poetry"
 /// - "rubygems"
 /// - "rustup"
 ///
@@ -1423,6 +1452,17 @@ pub unsafe extern "C" fn helm_upgrade_package(
             AdapterRequest::Upgrade(UpgradeRequest {
                 package: Some(PackageRef {
                     manager: ManagerId::Pipx,
+                    name: package_name.clone(),
+                }),
+            }),
+            None,
+            Vec::new(),
+        ),
+        ManagerId::Poetry => (
+            ManagerId::Poetry,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Poetry,
                     name: package_name.clone(),
                 }),
             }),

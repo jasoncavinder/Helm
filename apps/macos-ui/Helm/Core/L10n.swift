@@ -115,6 +115,7 @@ struct L10n {
                 static let npm = "app.managers.name.npm"
                 static let pnpm = "app.managers.name.pnpm"
                 static let yarn = "app.managers.name.yarn"
+                static let poetry = "app.managers.name.poetry"
                 static let rubygems = "app.managers.name.rubygems"
                 static let pip = "app.managers.name.pip"
                 static let pipx = "app.managers.name.pipx"

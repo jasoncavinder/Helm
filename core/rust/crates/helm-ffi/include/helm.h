@@ -114,6 +114,7 @@ bool helm_upgrade_all(bool include_pinned, bool allow_os_updates);
  * - "cargo_binstall"
  * - "pip"
  * - "pipx"
+ * - "poetry"
  * - "rubygems"
  * - "rustup"
  *
