@@ -131,5 +131,8 @@
   "app.managers.name.mise": "mise",
   "app.managers.name.rustup": "rustup",
   "app.managers.name.software_update": "Atualizacao de software",
-  "app.managers.name.app_store": "App Store"
+  "app.managers.name.app_store": "App Store",
+  "app.settings.alert.upgrade_all.dry_run_toggle": "Modo de simulação (sem alterações)",
+  "app.settings.alert.upgrade_all.dry_run_result_title": "Resultado da simulação",
+  "app.settings.alert.upgrade_all.dry_run_result_message": "Simulação concluída. Nenhuma tarefa foi enfileirada.\\n\\nAções planejadas:\\n{summary}"
 }

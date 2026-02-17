@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.12.0-beta.4] - 2026-02-17
+
+### Added
+- Added dry-run support to the dedicated Upgrade Preview sheet in macOS Settings:
+  - localized Dry Run mode toggle
+  - dry-run result dialog with planned execution summary
+  - no task submission when dry-run mode is enabled
+- Added new localized keys for dry-run controls/results across shipped locales (`en`, `es`, `de`, `fr`, `pt-BR`, `ja`).
+
 ## [0.12.0-beta.3] - 2026-02-17
 
 ### Added

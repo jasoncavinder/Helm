@@ -2,7 +2,25 @@
 
 This checklist is required before creating a release tag on `main`.
 
-## v0.12.0-beta.3 (In Progress)
+## v0.12.0-beta.4 (In Progress)
+
+### Scope and Documentation
+- [x] `CHANGELOG.md` includes `0.12.0-beta.4` notes for dry-run support in upgrade preview flow.
+- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect dry-run support completion for Priority 4.
+- [x] Locale files updated for new dry-run strings across shipped locales and resource mirrors.
+
+### Validation
+- [x] Locale integrity checks pass (`apps/macos-ui/scripts/check_locale_integrity.sh`).
+- [x] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme HelmTests -destination 'platform=macOS' -derivedDataPath /tmp/helmtests-deriveddata CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test`).
+
+### Branch and Tag
+- [ ] `dev` merged into `main` for release.
+- [ ] Create annotated tag from `main`:
+  - `git tag -a v0.12.0-beta.4 -m "Helm v0.12.0-beta.4"`
+- [ ] Push tag:
+  - `git push origin v0.12.0-beta.4`
+
+## v0.12.0-beta.3 (Completed)
 
 ### Scope and Documentation
 - [x] `CHANGELOG.md` includes `0.12.0-beta.3` notes for dedicated upgrade-preview UI delivery.
@@ -12,10 +30,10 @@ This checklist is required before creating a release tag on `main`.
 - [x] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme HelmTests -destination 'platform=macOS' -derivedDataPath /tmp/helmtests-deriveddata CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test`).
 
 ### Branch and Tag
-- [ ] `dev` merged into `main` for release.
-- [ ] Create annotated tag from `main`:
+- [x] `dev` merged into `main` for release.
+- [x] Create annotated tag from `main`:
   - `git tag -a v0.12.0-beta.3 -m "Helm v0.12.0-beta.3"`
-- [ ] Push tag:
+- [x] Push tag:
   - `git push origin v0.12.0-beta.3`
 
 ## v0.12.0-beta.2 (Completed)
