@@ -20,8 +20,11 @@ Focus:
 - Manager expansion
 - Localization expansion
 
-Immediate release target after `v0.9.3`:
-- `v0.10.0-beta.1` (language-manager milestone checkpoint + transparency hardening)
+Current checkpoint:
+- `v0.10.0-beta.1` delivered (Priority 1 language-manager milestone checkpoint + transparency hardening)
+
+Next release target:
+- `v0.11.0-beta.1` (extended language-manager expansion)
 
 ---
 
@@ -42,6 +45,38 @@ Requirements:
 - list_outdated
 - search (where possible)
 - install / uninstall / upgrade
+
+Completed:
+
+- npm (global) adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
+- npm parser fixtures and adapter unit tests added for version/list/search/outdated flows
+- pip (`python3 -m pip`, global) adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
+- pip parser fixtures and adapter unit tests added for version/list/search/outdated flows
+- pipx adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
+- pipx parser fixtures and adapter unit tests added for version/list/outdated flows
+- cargo adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
+- cargo parser fixtures and adapter unit tests added for version/list/search/outdated flows
+- cargo-binstall adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
+- cargo-binstall parser fixtures and adapter unit tests added for version/list/search/outdated flows
+
+`v0.10.0-beta.1` checkpoint scope:
+
+- End-to-end adapter availability for:
+  - npm (global) ✅
+  - pip (`python3 -m pip`, global) ✅
+  - pipx ✅
+  - cargo ✅
+  - cargo-binstall ✅
+- Registry + FFI + XPC + UI wiring verified for all Priority 1 managers
+- Fixture-based parser coverage for list/search/version flows where supported
+- Capability declarations aligned with implemented actions
+
+`v0.10.0-beta.1` acceptance criteria:
+
+- `cargo test` passes in `core/rust` ✅
+- Existing `HelmTests` suite passes ✅
+- Manager detection and package listing validate on at least one local dev environment ✅
+- `CHANGELOG.md`, `CURRENT_STATE.md`, and website docs are updated for beta scope ✅
 
 ---
 

@@ -8,7 +8,7 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.9.x**
+Current version: **0.10.0-beta.1**
 
 See:
 - CHANGELOG.md
@@ -26,6 +26,7 @@ See:
 - 0.7.x — System & App Store managers (softwareupdate, mas)
 - 0.8.x — Pinning & policy
 - 0.9.x — Internationalization foundation
+- 0.10.0-beta.1 — Priority 1 language-manager checkpoint
 
 ---
 
@@ -35,6 +36,11 @@ Fully functional:
 
 - Homebrew
 - mise
+- npm (global)
+- pip (`python3 -m pip`, global)
+- pipx
+- cargo
+- cargo-binstall
 - rustup
 - softwareupdate
 - mas
@@ -75,7 +81,9 @@ Localization coverage:
 
 ## Known Limitations
 
-- Limited language package manager support (npm, pip, cargo not yet implemented)
+- Priority 1 language manager coverage is complete for the beta checkpoint:
+  - Implemented: npm (global), pip (`python3 -m pip`, global), pipx, cargo, cargo-binstall
+  - Pending: none
 - Overflow validation is still heuristic/script-based until full on-device visual pass is completed
 - Upgrade-all transparency now provides summary counts + top manager breakdown in confirmation flow
 - Upgrade-preview filtering/sorting logic now has dedicated macOS UI unit coverage (`HelmTests/UpgradePreviewPlannerTests`)
@@ -97,7 +105,7 @@ Localization coverage:
 
 ## Summary
 
-Helm is a **functional control plane for 5 managers** with:
+Helm is a **functional control plane for 10 managers** with:
 
 - Working orchestration
 - Task system

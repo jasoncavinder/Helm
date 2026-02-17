@@ -1,0 +1,6 @@
+ripgrep v14.1.1:
+    rg
+bat v0.24.0:
+    bat
+zellij v0.41.2:
+    zellij

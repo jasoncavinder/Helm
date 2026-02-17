@@ -5,12 +5,22 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::time::UNIX_EPOCH;
 
+use helm_core::adapters::cargo::CargoAdapter;
+use helm_core::adapters::cargo_binstall::CargoBinstallAdapter;
+use helm_core::adapters::cargo_binstall_process::ProcessCargoBinstallSource;
+use helm_core::adapters::cargo_process::ProcessCargoSource;
 use helm_core::adapters::homebrew::HomebrewAdapter;
 use helm_core::adapters::homebrew_process::ProcessHomebrewSource;
 use helm_core::adapters::mas::MasAdapter;
 use helm_core::adapters::mas_process::ProcessMasSource;
 use helm_core::adapters::mise::MiseAdapter;
 use helm_core::adapters::mise_process::ProcessMiseSource;
+use helm_core::adapters::npm::NpmAdapter;
+use helm_core::adapters::npm_process::ProcessNpmSource;
+use helm_core::adapters::pip::PipAdapter;
+use helm_core::adapters::pip_process::ProcessPipSource;
+use helm_core::adapters::pipx::PipxAdapter;
+use helm_core::adapters::pipx_process::ProcessPipxSource;
 use helm_core::adapters::rustup::RustupAdapter;
 use helm_core::adapters::rustup_process::ProcessRustupSource;
 use helm_core::adapters::softwareupdate::SoftwareUpdateAdapter;
@@ -70,11 +80,7 @@ fn return_error_i64(error_key: &str) -> i64 {
     -1
 }
 
-fn set_task_label(
-    task_id: helm_core::models::TaskId,
-    key: &str,
-    args: &[(&str, String)],
-) {
+fn set_task_label(task_id: helm_core::models::TaskId, key: &str, args: &[(&str, String)]) {
     let mut args_map = std::collections::BTreeMap::new();
     for (arg_key, arg_value) in args {
         args_map.insert((*arg_key).to_string(), arg_value.clone());
@@ -186,6 +192,11 @@ fn parse_homebrew_config_version(output: &str) -> Option<String> {
 struct UpgradeAllTargets {
     homebrew: Vec<String>,
     mise: Vec<String>,
+    npm: Vec<String>,
+    cargo: Vec<String>,
+    cargo_binstall: Vec<String>,
+    pip: Vec<String>,
+    pipx: Vec<String>,
     rustup: Vec<String>,
     softwareupdate_outdated: bool,
 }
@@ -198,6 +209,11 @@ fn collect_upgrade_all_targets(
     let mut targets = UpgradeAllTargets::default();
     let mut seen_homebrew = std::collections::HashSet::new();
     let mut seen_mise = std::collections::HashSet::new();
+    let mut seen_npm = std::collections::HashSet::new();
+    let mut seen_cargo = std::collections::HashSet::new();
+    let mut seen_cargo_binstall = std::collections::HashSet::new();
+    let mut seen_pip = std::collections::HashSet::new();
+    let mut seen_pipx = std::collections::HashSet::new();
     let mut seen_rustup = std::collections::HashSet::new();
 
     for package in outdated {
@@ -219,6 +235,31 @@ fn collect_upgrade_all_targets(
             ManagerId::Mise => {
                 if seen_mise.insert(package.package.name.clone()) {
                     targets.mise.push(package.package.name.clone());
+                }
+            }
+            ManagerId::Npm => {
+                if seen_npm.insert(package.package.name.clone()) {
+                    targets.npm.push(package.package.name.clone());
+                }
+            }
+            ManagerId::Cargo => {
+                if seen_cargo.insert(package.package.name.clone()) {
+                    targets.cargo.push(package.package.name.clone());
+                }
+            }
+            ManagerId::CargoBinstall => {
+                if seen_cargo_binstall.insert(package.package.name.clone()) {
+                    targets.cargo_binstall.push(package.package.name.clone());
+                }
+            }
+            ManagerId::Pip => {
+                if seen_pip.insert(package.package.name.clone()) {
+                    targets.pip.push(package.package.name.clone());
+                }
+            }
+            ManagerId::Pipx => {
+                if seen_pipx.insert(package.package.name.clone()) {
+                    targets.pipx.push(package.package.name.clone());
                 }
             }
             ManagerId::Rustup => {
@@ -310,6 +351,13 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
         executor.clone(),
     )));
     let mise_adapter = Arc::new(MiseAdapter::new(ProcessMiseSource::new(executor.clone())));
+    let npm_adapter = Arc::new(NpmAdapter::new(ProcessNpmSource::new(executor.clone())));
+    let cargo_adapter = Arc::new(CargoAdapter::new(ProcessCargoSource::new(executor.clone())));
+    let cargo_binstall_adapter = Arc::new(CargoBinstallAdapter::new(
+        ProcessCargoBinstallSource::new(executor.clone()),
+    ));
+    let pip_adapter = Arc::new(PipAdapter::new(ProcessPipSource::new(executor.clone())));
+    let pipx_adapter = Arc::new(PipxAdapter::new(ProcessPipxSource::new(executor.clone())));
     let rustup_adapter = Arc::new(RustupAdapter::new(ProcessRustupSource::new(
         executor.clone(),
     )));
@@ -321,6 +369,11 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
     let adapters: Vec<Arc<dyn helm_core::adapters::ManagerAdapter>> = vec![
         homebrew_adapter,
         mise_adapter,
+        npm_adapter,
+        cargo_adapter,
+        cargo_binstall_adapter,
+        pip_adapter,
+        pipx_adapter,
         rustup_adapter,
         softwareupdate_adapter,
         mas_adapter,
@@ -647,6 +700,11 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
     let implemented_ids: &[ManagerId] = &[
         ManagerId::HomebrewFormula,
         ManagerId::Mise,
+        ManagerId::Npm,
+        ManagerId::Cargo,
+        ManagerId::CargoBinstall,
+        ManagerId::Pip,
+        ManagerId::Pipx,
         ManagerId::Rustup,
         ManagerId::SoftwareUpdate,
         ManagerId::Mas,
@@ -983,6 +1041,76 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
             }
         }
 
+        if runtime.is_manager_enabled(ManagerId::Npm) {
+            for package_name in targets.npm {
+                let request = AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::Npm,
+                        name: package_name,
+                    }),
+                });
+                if let Err(error) = runtime.submit(ManagerId::Npm, request).await {
+                    eprintln!("upgrade_all: failed to queue npm upgrade task: {error}");
+                }
+            }
+        }
+
+        if runtime.is_manager_enabled(ManagerId::Cargo) {
+            for package_name in targets.cargo {
+                let request = AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::Cargo,
+                        name: package_name,
+                    }),
+                });
+                if let Err(error) = runtime.submit(ManagerId::Cargo, request).await {
+                    eprintln!("upgrade_all: failed to queue cargo upgrade task: {error}");
+                }
+            }
+        }
+
+        if runtime.is_manager_enabled(ManagerId::CargoBinstall) {
+            for package_name in targets.cargo_binstall {
+                let request = AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::CargoBinstall,
+                        name: package_name,
+                    }),
+                });
+                if let Err(error) = runtime.submit(ManagerId::CargoBinstall, request).await {
+                    eprintln!("upgrade_all: failed to queue cargo-binstall upgrade task: {error}");
+                }
+            }
+        }
+
+        if runtime.is_manager_enabled(ManagerId::Pip) {
+            for package_name in targets.pip {
+                let request = AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::Pip,
+                        name: package_name,
+                    }),
+                });
+                if let Err(error) = runtime.submit(ManagerId::Pip, request).await {
+                    eprintln!("upgrade_all: failed to queue pip upgrade task: {error}");
+                }
+            }
+        }
+
+        if runtime.is_manager_enabled(ManagerId::Pipx) {
+            for package_name in targets.pipx {
+                let request = AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::Pipx,
+                        name: package_name,
+                    }),
+                });
+                if let Err(error) = runtime.submit(ManagerId::Pipx, request).await {
+                    eprintln!("upgrade_all: failed to queue pipx upgrade task: {error}");
+                }
+            }
+        }
+
         if runtime.is_manager_enabled(ManagerId::Rustup) {
             for toolchain in targets.rustup {
                 let request = AdapterRequest::Upgrade(UpgradeRequest {
@@ -1076,7 +1204,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
     let (target_manager, request, label_key, label_args): (
         ManagerId,
         AdapterRequest,
-        &str,
+        Option<&str>,
         Vec<(&str, String)>,
     ) = match manager {
         ManagerId::HomebrewFormula => {
@@ -1098,11 +1226,11 @@ pub unsafe extern "C" fn helm_upgrade_package(
                         name: target_name,
                     }),
                 }),
-                if cleanup_old_kegs {
+                Some(if cleanup_old_kegs {
                     "service.task.label.upgrade.homebrew_cleanup"
                 } else {
                     "service.task.label.upgrade.homebrew"
-                },
+                }),
                 vec![("package", package_name.clone())],
             )
         }
@@ -1114,8 +1242,63 @@ pub unsafe extern "C" fn helm_upgrade_package(
                     name: package_name.clone(),
                 }),
             }),
-            "service.task.label.upgrade.mise",
+            Some("service.task.label.upgrade.mise"),
             vec![("package", package_name.clone())],
+        ),
+        ManagerId::Npm => (
+            ManagerId::Npm,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Npm,
+                    name: package_name.clone(),
+                }),
+            }),
+            None,
+            Vec::new(),
+        ),
+        ManagerId::Cargo => (
+            ManagerId::Cargo,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Cargo,
+                    name: package_name.clone(),
+                }),
+            }),
+            None,
+            Vec::new(),
+        ),
+        ManagerId::CargoBinstall => (
+            ManagerId::CargoBinstall,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::CargoBinstall,
+                    name: package_name.clone(),
+                }),
+            }),
+            None,
+            Vec::new(),
+        ),
+        ManagerId::Pip => (
+            ManagerId::Pip,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Pip,
+                    name: package_name.clone(),
+                }),
+            }),
+            None,
+            Vec::new(),
+        ),
+        ManagerId::Pipx => (
+            ManagerId::Pipx,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Pipx,
+                    name: package_name.clone(),
+                }),
+            }),
+            None,
+            Vec::new(),
         ),
         ManagerId::Rustup => {
             let label_key = if package_name == "__self__" {
@@ -1131,7 +1314,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
                         name: package_name.clone(),
                     }),
                 }),
-                label_key,
+                Some(label_key),
                 if package_name == "__self__" {
                     Vec::new()
                 } else {
@@ -1153,7 +1336,9 @@ pub unsafe extern "C" fn helm_upgrade_package(
 
     match rt_handle.block_on(runtime.submit(target_manager, request)) {
         Ok(task_id) => {
-            set_task_label(task_id, label_key, &label_args);
+            if let Some(label_key) = label_key {
+                set_task_label(task_id, label_key, &label_args);
+            }
             task_id.0 as i64
         }
         Err(error) => {

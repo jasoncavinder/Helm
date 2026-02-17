@@ -1,3 +1,7 @@
+pub mod cargo;
+pub mod cargo_binstall;
+pub mod cargo_binstall_process;
+pub mod cargo_process;
 pub(crate) mod detect_utils;
 pub mod homebrew;
 pub mod homebrew_process;
@@ -6,12 +10,31 @@ pub mod mas;
 pub mod mas_process;
 pub mod mise;
 pub mod mise_process;
+pub mod npm;
+pub mod npm_process;
+pub mod pip;
+pub mod pip_process;
+pub mod pipx;
+pub mod pipx_process;
 pub(crate) mod process_utils;
 pub mod rustup;
 pub mod rustup_process;
 pub mod softwareupdate;
 pub mod softwareupdate_process;
 
+pub use cargo::{
+    CargoAdapter, CargoSource, cargo_detect_request, cargo_install_request,
+    cargo_list_installed_request, cargo_search_request, cargo_uninstall_request,
+    cargo_upgrade_request,
+};
+pub use cargo_binstall::{
+    CargoBinstallAdapter, CargoBinstallSource, cargo_binstall_detect_request,
+    cargo_binstall_install_request, cargo_binstall_list_installed_request,
+    cargo_binstall_search_request, cargo_binstall_uninstall_request,
+    cargo_binstall_upgrade_request,
+};
+pub use cargo_binstall_process::ProcessCargoBinstallSource;
+pub use cargo_process::ProcessCargoSource;
 pub use homebrew::{
     HomebrewAdapter, HomebrewSource, homebrew_detect_request, homebrew_list_installed_request,
     homebrew_list_outdated_request, homebrew_pin_request, homebrew_search_local_request,
@@ -34,6 +57,21 @@ pub use mise::{
     mise_list_outdated_request,
 };
 pub use mise_process::ProcessMiseSource;
+pub use npm::{
+    NpmAdapter, NpmSource, npm_detect_request, npm_install_request, npm_list_installed_request,
+    npm_list_outdated_request, npm_search_request, npm_uninstall_request, npm_upgrade_request,
+};
+pub use npm_process::ProcessNpmSource;
+pub use pip::{
+    PipAdapter, PipSource, pip_detect_request, pip_install_request, pip_list_outdated_request,
+    pip_list_request, pip_search_request, pip_uninstall_request, pip_upgrade_request,
+};
+pub use pip_process::ProcessPipSource;
+pub use pipx::{
+    PipxAdapter, PipxSource, pipx_detect_request, pipx_install_request, pipx_list_outdated_request,
+    pipx_list_request, pipx_uninstall_request, pipx_upgrade_request,
+};
+pub use pipx_process::ProcessPipxSource;
 pub use rustup::{
     RustupAdapter, RustupSource, rustup_check_request, rustup_detect_request,
     rustup_toolchain_list_request,
