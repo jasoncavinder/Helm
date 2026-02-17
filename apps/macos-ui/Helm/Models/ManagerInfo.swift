@@ -42,6 +42,7 @@ struct ManagerInfo: Identifiable {
         ManagerInfo(id: "yarn", displayName: "yarn (global)", shortName: "yarn", category: "Language", isImplemented: true, installMethod: .notManageable),
         ManagerInfo(id: "poetry", displayName: "Poetry", shortName: "poetry", category: "Language", isImplemented: true, installMethod: .notManageable),
         ManagerInfo(id: "rubygems", displayName: "RubyGems", shortName: "gem", category: "Language", isImplemented: true, installMethod: .notManageable),
+        ManagerInfo(id: "bundler", displayName: "Bundler", shortName: "bundle", category: "Language", isImplemented: true, installMethod: .notManageable),
         ManagerInfo(id: "pip", displayName: "pip", shortName: "pip", category: "Language", isImplemented: true, installMethod: .notManageable),
         ManagerInfo(id: "pipx", displayName: "pipx", shortName: "pipx", category: "Language", isImplemented: true, installMethod: .notManageable),
         ManagerInfo(id: "cargo", displayName: "Cargo", shortName: "cargo", category: "Language", isImplemented: true, installMethod: .notManageable),

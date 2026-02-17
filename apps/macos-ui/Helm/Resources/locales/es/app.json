@@ -123,6 +123,7 @@
   "app.managers.name.yarn": "yarn",
   "app.managers.name.poetry": "Poetry",
   "app.managers.name.rubygems": "RubyGems",
+  "app.managers.name.bundler": "Bundler",
   "app.managers.name.pip": "pip",
   "app.managers.name.pipx": "pipx",
   "app.managers.name.cargo": "Cargo",

@@ -5,6 +5,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 use std::time::UNIX_EPOCH;
 
+use helm_core::adapters::bundler::BundlerAdapter;
+use helm_core::adapters::bundler_process::ProcessBundlerSource;
 use helm_core::adapters::cargo::CargoAdapter;
 use helm_core::adapters::cargo_binstall::CargoBinstallAdapter;
 use helm_core::adapters::cargo_binstall_process::ProcessCargoBinstallSource;
@@ -228,6 +230,7 @@ struct UpgradeAllTargets {
     pipx: Vec<String>,
     poetry: Vec<String>,
     rubygems: Vec<String>,
+    bundler: Vec<String>,
     rustup: Vec<String>,
     softwareupdate_outdated: bool,
 }
@@ -249,6 +252,7 @@ fn collect_upgrade_all_targets(
     let mut seen_pipx = std::collections::HashSet::new();
     let mut seen_poetry = std::collections::HashSet::new();
     let mut seen_rubygems = std::collections::HashSet::new();
+    let mut seen_bundler = std::collections::HashSet::new();
     let mut seen_rustup = std::collections::HashSet::new();
 
     for package in outdated {
@@ -315,6 +319,11 @@ fn collect_upgrade_all_targets(
             ManagerId::RubyGems => {
                 if seen_rubygems.insert(package.package.name.clone()) {
                     targets.rubygems.push(package.package.name.clone());
+                }
+            }
+            ManagerId::Bundler => {
+                if seen_bundler.insert(package.package.name.clone()) {
+                    targets.bundler.push(package.package.name.clone());
                 }
             }
             ManagerId::Rustup => {
@@ -421,6 +430,9 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
     let rubygems_adapter = Arc::new(RubyGemsAdapter::new(ProcessRubyGemsSource::new(
         executor.clone(),
     )));
+    let bundler_adapter = Arc::new(BundlerAdapter::new(ProcessBundlerSource::new(
+        executor.clone(),
+    )));
     let rustup_adapter = Arc::new(RustupAdapter::new(ProcessRustupSource::new(
         executor.clone(),
     )));
@@ -441,6 +453,7 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
         pipx_adapter,
         poetry_adapter,
         rubygems_adapter,
+        bundler_adapter,
         rustup_adapter,
         softwareupdate_adapter,
         mas_adapter,
@@ -776,6 +789,7 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
         ManagerId::Pipx,
         ManagerId::Poetry,
         ManagerId::RubyGems,
+        ManagerId::Bundler,
         ManagerId::Rustup,
         ManagerId::SoftwareUpdate,
         ManagerId::Mas,
@@ -1238,6 +1252,20 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
             }
         }
 
+        if runtime.is_manager_enabled(ManagerId::Bundler) {
+            for package_name in targets.bundler {
+                let request = AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::Bundler,
+                        name: package_name,
+                    }),
+                });
+                if let Err(error) = runtime.submit(ManagerId::Bundler, request).await {
+                    eprintln!("upgrade_all: failed to queue bundler upgrade task: {error}");
+                }
+            }
+        }
+
         if runtime.is_manager_enabled(ManagerId::Rustup) {
             for toolchain in targets.rustup {
                 let request = AdapterRequest::Upgrade(UpgradeRequest {
@@ -1305,6 +1333,7 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
 /// - "pipx"
 /// - "poetry"
 /// - "rubygems"
+/// - "bundler"
 /// - "rustup"
 ///
 /// # Safety
@@ -1474,6 +1503,17 @@ pub unsafe extern "C" fn helm_upgrade_package(
             AdapterRequest::Upgrade(UpgradeRequest {
                 package: Some(PackageRef {
                     manager: ManagerId::RubyGems,
+                    name: package_name.clone(),
+                }),
+            }),
+            None,
+            Vec::new(),
+        ),
+        ManagerId::Bundler => (
+            ManagerId::Bundler,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Bundler,
                     name: package_name.clone(),
                 }),
             }),

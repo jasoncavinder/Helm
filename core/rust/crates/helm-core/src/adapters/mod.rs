@@ -1,3 +1,5 @@
+pub mod bundler;
+pub mod bundler_process;
 pub mod cargo;
 pub mod cargo_binstall;
 pub mod cargo_binstall_process;
@@ -31,6 +33,12 @@ pub mod softwareupdate_process;
 pub mod yarn;
 pub mod yarn_process;
 
+pub use bundler::{
+    BundlerAdapter, BundlerSource, bundler_detect_request, bundler_install_request,
+    bundler_list_installed_request, bundler_list_outdated_request, bundler_uninstall_request,
+    bundler_upgrade_request,
+};
+pub use bundler_process::ProcessBundlerSource;
 pub use cargo::{
     CargoAdapter, CargoSource, cargo_detect_request, cargo_install_request,
     cargo_list_installed_request, cargo_search_request, cargo_uninstall_request,

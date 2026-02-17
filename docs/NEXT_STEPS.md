@@ -91,7 +91,7 @@ Implement:
 - RubyGems
 - bundler
 
-Completed (`v0.11.0-beta.1` in progress):
+Completed (`v0.11.0-beta.1` scope complete):
 
 - pnpm adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
 - pnpm parser fixtures and adapter unit tests added for version/list/search/outdated flows
@@ -105,6 +105,9 @@ Completed (`v0.11.0-beta.1` in progress):
 - poetry adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
 - poetry parser fixtures and adapter unit tests added for self/plugin version/list/search/outdated flows
 - poetry manager metadata wired through macOS UI + localization keys
+- bundler adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
+- bundler parser fixtures and adapter unit tests added for runtime version/list/search/outdated flows
+- bundler manager metadata wired through macOS UI + localization keys
 
 ---
 
