@@ -33,6 +33,7 @@ if ! xcodebuild -project "$ROOT_DIR/apps/macos-ui/Helm.xcodeproj" \
 fi
 
 run "$ROOT_DIR/apps/macos-ui/scripts/check_locale_lengths.sh"
+run "$ROOT_DIR/apps/macos-ui/scripts/check_locale_integrity.sh"
 
 echo
 run /bin/bash -lc '

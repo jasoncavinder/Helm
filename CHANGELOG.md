@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.12.0-beta.1] - 2026-02-17
+
+### Added
+- Added locale integrity validation script at `apps/macos-ui/scripts/check_locale_integrity.sh` to enforce:
+  - key parity against base `en` locale
+  - placeholder token parity for localized strings
+- Added locale integrity validation to CI (`.github/workflows/i18n-lint.yml`).
+- Added `LocalizationOverflowValidationTests` in `HelmTests` for locale-aware width checks on constrained `SettingsPopoverView` controls.
+- Added visual overflow validation artifact at `docs/validation/v0.12.0-beta.1-visual-overflow.md`.
+
+### Changed
+- Expanded i18n locale mirror parity checks to include `en`, `es`, `de`, `fr`, `pt-BR`, and `ja`.
+- Included locale integrity validation in `apps/macos-ui/scripts/run_v0110b2_stabilization_checks.sh`.
+- Increased `SettingsPopoverView` width and language picker width to clear validated locale overflow cases.
+
 ## [0.11.0-beta.2] - 2026-02-17
 
 ### Added
@@ -16,18 +31,6 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 ### Changed
 - Updated release metadata and docs for the `v0.11.0-beta.2` stabilization checkpoint.
 - Clarified localization overflow status as heuristic-pass complete with on-device visual validation still pending.
-
-## [0.11.0-beta.1] - 2026-02-17
-
-### Added
-- Delivered Priority 2 extended language-manager support end-to-end for `pnpm` (global), `yarn` (global), `poetry` (self/plugins), `RubyGems`, and `bundler`.
-- Added fixture-based parser and adapter coverage for Priority 2 manager version/list/search/outdated flows where supported.
-- Added manager wiring across runtime boundaries (registry, FFI, XPC/UI metadata) so the Priority 2 managers are exposed in app manager status and upgrade task routing.
-- Added localized manager-name keys for the newly implemented managers across `en`, `es`, `de`, `fr`, `pt-BR`, and `ja`.
-
-### Changed
-- Marked the `0.11.x` extended language-manager milestone scope complete at the `v0.11.0-beta.1` checkpoint in roadmap/state/next-step docs.
-- Synced mirrored locale app bundles between `locales/*` and `apps/macos-ui/Helm/Resources/locales/*` to satisfy i18n lint parity checks in CI.
 
 ## [0.10.0] - 2026-02-17
 
