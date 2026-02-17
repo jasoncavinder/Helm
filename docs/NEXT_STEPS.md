@@ -216,6 +216,11 @@ Completed in `v0.10.0` checkpoint:
 - Replaced panic-prone FFI `lock().unwrap()` usage with poisoned-lock recovery
 - Resolved website duplicate docs-id build warnings for overview/roadmap pages
 
+Completed in `v0.11.0-beta.2` stabilization:
+
+- Added bounded retry handling for transient task-store create/update persistence failures in orchestration runtime paths
+- Added regression coverage for refresh-response error attribution and transient task-persistence recovery
+
 Remaining:
 
 - Stress test orchestration
