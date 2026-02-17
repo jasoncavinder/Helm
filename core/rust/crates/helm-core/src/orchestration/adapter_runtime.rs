@@ -16,6 +16,9 @@ use crate::orchestration::{
 };
 use crate::persistence::{DetectionStore, PackageStore, SearchCacheStore, TaskStore};
 
+const TASK_PERSIST_RETRY_ATTEMPTS: usize = 3;
+const TASK_PERSIST_RETRY_DELAY_MS: u64 = 15;
+
 #[derive(Clone)]
 pub struct AdapterRuntime {
     execution: AdapterExecutionRuntime,
@@ -266,24 +269,33 @@ impl AdapterRuntime {
         manager: ManagerId,
         request: AdapterRequest,
     ) -> OrchestrationResult<AdapterResponse> {
-        let task_id = self.submit(manager, request).await?;
+        let action = request.action();
+        let task_type = task_type_for_action(action);
+
+        let task_id = self
+            .submit(manager, request)
+            .await
+            .map_err(|error| attribute_error(error, manager, task_type, action))?;
         let snapshot = self
             .wait_for_terminal(task_id, Some(Duration::from_secs(60)))
-            .await?;
+            .await
+            .map_err(|error| attribute_error(error, manager, task_type, action))?;
         match snapshot.terminal_state {
             Some(AdapterTaskTerminalState::Succeeded(response)) => Ok(response),
-            Some(AdapterTaskTerminalState::Failed(e)) => Err(e),
+            Some(AdapterTaskTerminalState::Failed(e)) => {
+                Err(attribute_error(e, manager, task_type, action))
+            }
             Some(AdapterTaskTerminalState::Cancelled(e)) => Err(e.unwrap_or(CoreError {
                 manager: Some(manager),
-                task: None,
-                action: None,
-                kind: CoreErrorKind::Internal,
+                task: Some(task_type),
+                action: Some(action),
+                kind: CoreErrorKind::Cancelled,
                 message: "task was cancelled".to_string(),
             })),
             None => Err(CoreError {
                 manager: Some(manager),
-                task: None,
-                action: None,
+                task: Some(task_type),
+                action: Some(action),
                 kind: CoreErrorKind::Internal,
                 message: "task reached terminal state with no result".to_string(),
             }),
@@ -637,16 +649,15 @@ async fn persist_create_task(
     task_type: TaskType,
     action: ManagerAction,
 ) -> OrchestrationResult<()> {
-    tokio::task::spawn_blocking(move || task_store.create_task(&task_record))
-        .await
-        .map_err(|join_error| CoreError {
-            manager: Some(manager),
-            task: Some(task_type),
-            action: Some(action),
-            kind: CoreErrorKind::Internal,
-            message: format!("task persistence join failure: {join_error}"),
-        })?
-        .map_err(|error| attribute_error(error, manager, task_type, action))
+    persist_task_record_with_retry(
+        task_store,
+        task_record,
+        manager,
+        task_type,
+        action,
+        TaskStoreOperation::Create,
+    )
+    .await
 }
 
 async fn persist_update_task(
@@ -656,7 +667,39 @@ async fn persist_update_task(
     task_type: TaskType,
     action: ManagerAction,
 ) -> OrchestrationResult<()> {
-    tokio::task::spawn_blocking(move || task_store.update_task(&task_record))
+    persist_task_record_with_retry(
+        task_store,
+        task_record,
+        manager,
+        task_type,
+        action,
+        TaskStoreOperation::Update,
+    )
+    .await
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TaskStoreOperation {
+    Create,
+    Update,
+}
+
+async fn persist_task_record_with_retry(
+    task_store: Arc<dyn TaskStore>,
+    task_record: TaskRecord,
+    manager: ManagerId,
+    task_type: TaskType,
+    action: ManagerAction,
+    operation: TaskStoreOperation,
+) -> OrchestrationResult<()> {
+    let mut remaining_attempts = TASK_PERSIST_RETRY_ATTEMPTS;
+    loop {
+        let store = task_store.clone();
+        let record = task_record.clone();
+        let op_result = tokio::task::spawn_blocking(move || match operation {
+            TaskStoreOperation::Create => store.create_task(&record),
+            TaskStoreOperation::Update => store.update_task(&record),
+        })
         .await
         .map_err(|join_error| CoreError {
             manager: Some(manager),
@@ -664,8 +707,21 @@ async fn persist_update_task(
             action: Some(action),
             kind: CoreErrorKind::Internal,
             message: format!("task persistence join failure: {join_error}"),
-        })?
-        .map_err(|error| attribute_error(error, manager, task_type, action))
+        })?;
+
+        match op_result {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                let attributed = attribute_error(error, manager, task_type, action);
+                remaining_attempts = remaining_attempts.saturating_sub(1);
+                if remaining_attempts == 0 || attributed.kind != CoreErrorKind::StorageFailure {
+                    return Err(attributed);
+                }
+
+                tokio::time::sleep(Duration::from_millis(TASK_PERSIST_RETRY_DELAY_MS)).await;
+            }
+        }
+    }
 }
 
 fn attribute_error(

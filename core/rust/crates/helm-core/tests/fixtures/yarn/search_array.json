@@ -1,0 +1,12 @@
+[
+  {
+    "name": "typescript",
+    "version": "5.7.2",
+    "description": "TypeScript is a language for application scale JavaScript development"
+  },
+  {
+    "name": "typescript-eslint",
+    "version": "8.18.0",
+    "description": "Tooling which enables you to use TypeScript with ESLint"
+  }
+]

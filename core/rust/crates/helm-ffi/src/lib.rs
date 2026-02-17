@@ -5,6 +5,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 use std::time::UNIX_EPOCH;
 
+use helm_core::adapters::bundler::BundlerAdapter;
+use helm_core::adapters::bundler_process::ProcessBundlerSource;
 use helm_core::adapters::cargo::CargoAdapter;
 use helm_core::adapters::cargo_binstall::CargoBinstallAdapter;
 use helm_core::adapters::cargo_binstall_process::ProcessCargoBinstallSource;
@@ -21,10 +23,18 @@ use helm_core::adapters::pip::PipAdapter;
 use helm_core::adapters::pip_process::ProcessPipSource;
 use helm_core::adapters::pipx::PipxAdapter;
 use helm_core::adapters::pipx_process::ProcessPipxSource;
+use helm_core::adapters::pnpm::PnpmAdapter;
+use helm_core::adapters::pnpm_process::ProcessPnpmSource;
+use helm_core::adapters::poetry::PoetryAdapter;
+use helm_core::adapters::poetry_process::ProcessPoetrySource;
+use helm_core::adapters::rubygems::RubyGemsAdapter;
+use helm_core::adapters::rubygems_process::ProcessRubyGemsSource;
 use helm_core::adapters::rustup::RustupAdapter;
 use helm_core::adapters::rustup_process::ProcessRustupSource;
 use helm_core::adapters::softwareupdate::SoftwareUpdateAdapter;
 use helm_core::adapters::softwareupdate_process::ProcessSoftwareUpdateSource;
+use helm_core::adapters::yarn::YarnAdapter;
+use helm_core::adapters::yarn_process::ProcessYarnSource;
 use helm_core::adapters::{
     AdapterRequest, InstallRequest, PinRequest, SearchRequest, UninstallRequest, UnpinRequest,
     UpgradeRequest,
@@ -212,10 +222,15 @@ struct UpgradeAllTargets {
     homebrew: Vec<String>,
     mise: Vec<String>,
     npm: Vec<String>,
+    pnpm: Vec<String>,
+    yarn: Vec<String>,
     cargo: Vec<String>,
     cargo_binstall: Vec<String>,
     pip: Vec<String>,
     pipx: Vec<String>,
+    poetry: Vec<String>,
+    rubygems: Vec<String>,
+    bundler: Vec<String>,
     rustup: Vec<String>,
     softwareupdate_outdated: bool,
 }
@@ -229,10 +244,15 @@ fn collect_upgrade_all_targets(
     let mut seen_homebrew = std::collections::HashSet::new();
     let mut seen_mise = std::collections::HashSet::new();
     let mut seen_npm = std::collections::HashSet::new();
+    let mut seen_pnpm = std::collections::HashSet::new();
+    let mut seen_yarn = std::collections::HashSet::new();
     let mut seen_cargo = std::collections::HashSet::new();
     let mut seen_cargo_binstall = std::collections::HashSet::new();
     let mut seen_pip = std::collections::HashSet::new();
     let mut seen_pipx = std::collections::HashSet::new();
+    let mut seen_poetry = std::collections::HashSet::new();
+    let mut seen_rubygems = std::collections::HashSet::new();
+    let mut seen_bundler = std::collections::HashSet::new();
     let mut seen_rustup = std::collections::HashSet::new();
 
     for package in outdated {
@@ -261,6 +281,16 @@ fn collect_upgrade_all_targets(
                     targets.npm.push(package.package.name.clone());
                 }
             }
+            ManagerId::Pnpm => {
+                if seen_pnpm.insert(package.package.name.clone()) {
+                    targets.pnpm.push(package.package.name.clone());
+                }
+            }
+            ManagerId::Yarn => {
+                if seen_yarn.insert(package.package.name.clone()) {
+                    targets.yarn.push(package.package.name.clone());
+                }
+            }
             ManagerId::Cargo => {
                 if seen_cargo.insert(package.package.name.clone()) {
                     targets.cargo.push(package.package.name.clone());
@@ -279,6 +309,21 @@ fn collect_upgrade_all_targets(
             ManagerId::Pipx => {
                 if seen_pipx.insert(package.package.name.clone()) {
                     targets.pipx.push(package.package.name.clone());
+                }
+            }
+            ManagerId::Poetry => {
+                if seen_poetry.insert(package.package.name.clone()) {
+                    targets.poetry.push(package.package.name.clone());
+                }
+            }
+            ManagerId::RubyGems => {
+                if seen_rubygems.insert(package.package.name.clone()) {
+                    targets.rubygems.push(package.package.name.clone());
+                }
+            }
+            ManagerId::Bundler => {
+                if seen_bundler.insert(package.package.name.clone()) {
+                    targets.bundler.push(package.package.name.clone());
                 }
             }
             ManagerId::Rustup => {
@@ -371,12 +416,23 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
     )));
     let mise_adapter = Arc::new(MiseAdapter::new(ProcessMiseSource::new(executor.clone())));
     let npm_adapter = Arc::new(NpmAdapter::new(ProcessNpmSource::new(executor.clone())));
+    let pnpm_adapter = Arc::new(PnpmAdapter::new(ProcessPnpmSource::new(executor.clone())));
+    let yarn_adapter = Arc::new(YarnAdapter::new(ProcessYarnSource::new(executor.clone())));
     let cargo_adapter = Arc::new(CargoAdapter::new(ProcessCargoSource::new(executor.clone())));
     let cargo_binstall_adapter = Arc::new(CargoBinstallAdapter::new(
         ProcessCargoBinstallSource::new(executor.clone()),
     ));
     let pip_adapter = Arc::new(PipAdapter::new(ProcessPipSource::new(executor.clone())));
     let pipx_adapter = Arc::new(PipxAdapter::new(ProcessPipxSource::new(executor.clone())));
+    let poetry_adapter = Arc::new(PoetryAdapter::new(ProcessPoetrySource::new(
+        executor.clone(),
+    )));
+    let rubygems_adapter = Arc::new(RubyGemsAdapter::new(ProcessRubyGemsSource::new(
+        executor.clone(),
+    )));
+    let bundler_adapter = Arc::new(BundlerAdapter::new(ProcessBundlerSource::new(
+        executor.clone(),
+    )));
     let rustup_adapter = Arc::new(RustupAdapter::new(ProcessRustupSource::new(
         executor.clone(),
     )));
@@ -389,10 +445,15 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
         homebrew_adapter,
         mise_adapter,
         npm_adapter,
+        pnpm_adapter,
+        yarn_adapter,
         cargo_adapter,
         cargo_binstall_adapter,
         pip_adapter,
         pipx_adapter,
+        poetry_adapter,
+        rubygems_adapter,
+        bundler_adapter,
         rustup_adapter,
         softwareupdate_adapter,
         mas_adapter,
@@ -720,10 +781,15 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
         ManagerId::HomebrewFormula,
         ManagerId::Mise,
         ManagerId::Npm,
+        ManagerId::Pnpm,
+        ManagerId::Yarn,
         ManagerId::Cargo,
         ManagerId::CargoBinstall,
         ManagerId::Pip,
         ManagerId::Pipx,
+        ManagerId::Poetry,
+        ManagerId::RubyGems,
+        ManagerId::Bundler,
         ManagerId::Rustup,
         ManagerId::SoftwareUpdate,
         ManagerId::Mas,
@@ -1074,6 +1140,34 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
             }
         }
 
+        if runtime.is_manager_enabled(ManagerId::Pnpm) {
+            for package_name in targets.pnpm {
+                let request = AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::Pnpm,
+                        name: package_name,
+                    }),
+                });
+                if let Err(error) = runtime.submit(ManagerId::Pnpm, request).await {
+                    eprintln!("upgrade_all: failed to queue pnpm upgrade task: {error}");
+                }
+            }
+        }
+
+        if runtime.is_manager_enabled(ManagerId::Yarn) {
+            for package_name in targets.yarn {
+                let request = AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::Yarn,
+                        name: package_name,
+                    }),
+                });
+                if let Err(error) = runtime.submit(ManagerId::Yarn, request).await {
+                    eprintln!("upgrade_all: failed to queue yarn upgrade task: {error}");
+                }
+            }
+        }
+
         if runtime.is_manager_enabled(ManagerId::Cargo) {
             for package_name in targets.cargo {
                 let request = AdapterRequest::Upgrade(UpgradeRequest {
@@ -1126,6 +1220,48 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                 });
                 if let Err(error) = runtime.submit(ManagerId::Pipx, request).await {
                     eprintln!("upgrade_all: failed to queue pipx upgrade task: {error}");
+                }
+            }
+        }
+
+        if runtime.is_manager_enabled(ManagerId::Poetry) {
+            for package_name in targets.poetry {
+                let request = AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::Poetry,
+                        name: package_name,
+                    }),
+                });
+                if let Err(error) = runtime.submit(ManagerId::Poetry, request).await {
+                    eprintln!("upgrade_all: failed to queue poetry upgrade task: {error}");
+                }
+            }
+        }
+
+        if runtime.is_manager_enabled(ManagerId::RubyGems) {
+            for package_name in targets.rubygems {
+                let request = AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::RubyGems,
+                        name: package_name,
+                    }),
+                });
+                if let Err(error) = runtime.submit(ManagerId::RubyGems, request).await {
+                    eprintln!("upgrade_all: failed to queue rubygems upgrade task: {error}");
+                }
+            }
+        }
+
+        if runtime.is_manager_enabled(ManagerId::Bundler) {
+            for package_name in targets.bundler {
+                let request = AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::Bundler,
+                        name: package_name,
+                    }),
+                });
+                if let Err(error) = runtime.submit(ManagerId::Bundler, request).await {
+                    eprintln!("upgrade_all: failed to queue bundler upgrade task: {error}");
                 }
             }
         }
@@ -1188,6 +1324,16 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
 /// Currently supported manager IDs:
 /// - "homebrew_formula"
 /// - "mise"
+/// - "npm"
+/// - "pnpm"
+/// - "yarn"
+/// - "cargo"
+/// - "cargo_binstall"
+/// - "pip"
+/// - "pipx"
+/// - "poetry"
+/// - "rubygems"
+/// - "bundler"
 /// - "rustup"
 ///
 /// # Safety
@@ -1275,6 +1421,28 @@ pub unsafe extern "C" fn helm_upgrade_package(
             None,
             Vec::new(),
         ),
+        ManagerId::Pnpm => (
+            ManagerId::Pnpm,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Pnpm,
+                    name: package_name.clone(),
+                }),
+            }),
+            None,
+            Vec::new(),
+        ),
+        ManagerId::Yarn => (
+            ManagerId::Yarn,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Yarn,
+                    name: package_name.clone(),
+                }),
+            }),
+            None,
+            Vec::new(),
+        ),
         ManagerId::Cargo => (
             ManagerId::Cargo,
             AdapterRequest::Upgrade(UpgradeRequest {
@@ -1313,6 +1481,39 @@ pub unsafe extern "C" fn helm_upgrade_package(
             AdapterRequest::Upgrade(UpgradeRequest {
                 package: Some(PackageRef {
                     manager: ManagerId::Pipx,
+                    name: package_name.clone(),
+                }),
+            }),
+            None,
+            Vec::new(),
+        ),
+        ManagerId::Poetry => (
+            ManagerId::Poetry,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Poetry,
+                    name: package_name.clone(),
+                }),
+            }),
+            None,
+            Vec::new(),
+        ),
+        ManagerId::RubyGems => (
+            ManagerId::RubyGems,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::RubyGems,
+                    name: package_name.clone(),
+                }),
+            }),
+            None,
+            Vec::new(),
+        ),
+        ManagerId::Bundler => (
+            ManagerId::Bundler,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Bundler,
                     name: package_name.clone(),
                 }),
             }),

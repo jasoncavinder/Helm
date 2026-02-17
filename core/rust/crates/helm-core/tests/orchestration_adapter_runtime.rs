@@ -45,14 +45,18 @@ impl TestAdapter {
 #[derive(Default)]
 struct RecordingTaskStore {
     records: Mutex<HashMap<TaskId, TaskRecord>>,
-    fail_create: bool,
+    remaining_create_failures: Mutex<usize>,
 }
 
 impl RecordingTaskStore {
     fn failing_create() -> Self {
+        Self::with_create_failures(5)
+    }
+
+    fn with_create_failures(failures: usize) -> Self {
         Self {
             records: Mutex::new(HashMap::new()),
-            fail_create: true,
+            remaining_create_failures: Mutex::new(failures),
         }
     }
 
@@ -63,14 +67,24 @@ impl RecordingTaskStore {
 
 impl TaskStore for RecordingTaskStore {
     fn create_task(&self, task: &TaskRecord) -> PersistenceResult<()> {
-        if self.fail_create {
-            return Err(CoreError {
+        {
+            let mut remaining = self.remaining_create_failures.lock().map_err(|_| CoreError {
                 manager: None,
                 task: None,
                 action: None,
-                kind: CoreErrorKind::StorageFailure,
-                message: "create_task forced failure".to_string(),
-            });
+                kind: CoreErrorKind::Internal,
+                message: "recording store mutex poisoned".to_string(),
+            })?;
+            if *remaining > 0 {
+                *remaining -= 1;
+                return Err(CoreError {
+                    manager: None,
+                    task: None,
+                    action: None,
+                    kind: CoreErrorKind::StorageFailure,
+                    message: "create_task forced failure".to_string(),
+                });
+            }
         }
 
         let mut records = self.records.lock().map_err(|_| CoreError {
@@ -295,6 +309,68 @@ async fn submit_returns_error_when_initial_task_persistence_fails() {
         .expect_err("expected task store failure");
 
     assert_eq!(error.kind, CoreErrorKind::StorageFailure);
+    assert_eq!(error.manager, Some(ManagerId::Npm));
+    assert_eq!(error.task, Some(TaskType::Refresh));
+    assert_eq!(error.action, Some(ManagerAction::Refresh));
+}
+
+#[tokio::test]
+async fn submit_retries_initial_task_persistence_and_succeeds_after_transient_failure() {
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(TestAdapter::new(
+        ManagerId::Npm,
+        AdapterBehavior::Succeeds(AdapterResponse::Refreshed),
+    ));
+    let task_store = Arc::new(RecordingTaskStore::with_create_failures(1));
+    let runtime = AdapterRuntime::with_task_store([adapter], task_store.clone()).unwrap();
+
+    let task_id = runtime
+        .submit(ManagerId::Npm, AdapterRequest::Refresh(RefreshRequest))
+        .await
+        .expect("transient create failure should be retried");
+    let snapshot = runtime
+        .wait_for_terminal(task_id, Some(Duration::from_secs(1)))
+        .await
+        .expect("task should reach terminal state");
+
+    assert_eq!(snapshot.runtime.status, TaskStatus::Completed);
+
+    let mut persisted = None;
+    for _ in 0..20 {
+        if let Some(record) = task_store.get(task_id)
+            && record.status == TaskStatus::Completed
+        {
+            persisted = Some(record);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    let record = persisted.expect("expected completed persisted task record");
+    assert_eq!(record.id, task_id);
+    assert_eq!(record.manager, ManagerId::Npm);
+    assert_eq!(record.task_type, TaskType::Refresh);
+}
+
+#[tokio::test]
+async fn submit_refresh_request_response_returns_attributed_failure() {
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(TestAdapter::new(
+        ManagerId::Npm,
+        AdapterBehavior::Fails(CoreError {
+            manager: None,
+            task: None,
+            action: None,
+            kind: CoreErrorKind::ProcessFailure,
+            message: "forced adapter failure".to_string(),
+        }),
+    ));
+    let runtime = AdapterRuntime::new([adapter]).unwrap();
+
+    let error = runtime
+        .submit_refresh_request_response(ManagerId::Npm, AdapterRequest::Refresh(RefreshRequest))
+        .await
+        .expect_err("expected attributed refresh failure");
+
+    assert_eq!(error.kind, CoreErrorKind::ProcessFailure);
     assert_eq!(error.manager, Some(ManagerId::Npm));
     assert_eq!(error.task, Some(TaskType::Refresh));
     assert_eq!(error.action, Some(ManagerAction::Refresh));
