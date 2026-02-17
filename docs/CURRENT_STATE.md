@@ -8,7 +8,7 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.12.0-beta.1**
+Current version: **0.12.0-beta.2**
 
 See:
 - CHANGELOG.md
@@ -107,7 +107,7 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 - Overflow validation now has both heuristic and on-device executable coverage for Settings, onboarding, navigation, package filters, and manager labels/states
 - Upgrade-all transparency now provides summary counts + top manager breakdown in confirmation flow
 - Upgrade-preview filtering/sorting logic now has dedicated macOS UI unit coverage (`HelmTests/UpgradePreviewPlannerTests`)
-- No upgrade preview UI
+- Dedicated upgrade preview UI surface is implemented in macOS Settings (execution-plan sections with manager breakdown)
 - No dry-run mode exposed in UI
 - No self-update mechanism yet
 - Limited diagnostics UI
