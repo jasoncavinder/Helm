@@ -17,6 +17,8 @@ pub mod pip;
 pub mod pip_process;
 pub mod pipx;
 pub mod pipx_process;
+pub mod pnpm;
+pub mod pnpm_process;
 pub(crate) mod process_utils;
 pub mod rustup;
 pub mod rustup_process;
@@ -73,6 +75,12 @@ pub use pipx::{
     pipx_list_request, pipx_uninstall_request, pipx_upgrade_request,
 };
 pub use pipx_process::ProcessPipxSource;
+pub use pnpm::{
+    PnpmAdapter, PnpmSource, pnpm_detect_request, pnpm_install_request,
+    pnpm_list_installed_request, pnpm_list_outdated_request, pnpm_search_request,
+    pnpm_uninstall_request, pnpm_upgrade_request,
+};
+pub use pnpm_process::ProcessPnpmSource;
 pub use rustup::{
     RustupAdapter, RustupSource, rustup_check_request, rustup_detect_request,
     rustup_toolchain_list_request,

@@ -21,6 +21,8 @@ use helm_core::adapters::pip::PipAdapter;
 use helm_core::adapters::pip_process::ProcessPipSource;
 use helm_core::adapters::pipx::PipxAdapter;
 use helm_core::adapters::pipx_process::ProcessPipxSource;
+use helm_core::adapters::pnpm::PnpmAdapter;
+use helm_core::adapters::pnpm_process::ProcessPnpmSource;
 use helm_core::adapters::rustup::RustupAdapter;
 use helm_core::adapters::rustup_process::ProcessRustupSource;
 use helm_core::adapters::softwareupdate::SoftwareUpdateAdapter;
@@ -212,6 +214,7 @@ struct UpgradeAllTargets {
     homebrew: Vec<String>,
     mise: Vec<String>,
     npm: Vec<String>,
+    pnpm: Vec<String>,
     cargo: Vec<String>,
     cargo_binstall: Vec<String>,
     pip: Vec<String>,
@@ -229,6 +232,7 @@ fn collect_upgrade_all_targets(
     let mut seen_homebrew = std::collections::HashSet::new();
     let mut seen_mise = std::collections::HashSet::new();
     let mut seen_npm = std::collections::HashSet::new();
+    let mut seen_pnpm = std::collections::HashSet::new();
     let mut seen_cargo = std::collections::HashSet::new();
     let mut seen_cargo_binstall = std::collections::HashSet::new();
     let mut seen_pip = std::collections::HashSet::new();
@@ -259,6 +263,11 @@ fn collect_upgrade_all_targets(
             ManagerId::Npm => {
                 if seen_npm.insert(package.package.name.clone()) {
                     targets.npm.push(package.package.name.clone());
+                }
+            }
+            ManagerId::Pnpm => {
+                if seen_pnpm.insert(package.package.name.clone()) {
+                    targets.pnpm.push(package.package.name.clone());
                 }
             }
             ManagerId::Cargo => {
@@ -371,6 +380,7 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
     )));
     let mise_adapter = Arc::new(MiseAdapter::new(ProcessMiseSource::new(executor.clone())));
     let npm_adapter = Arc::new(NpmAdapter::new(ProcessNpmSource::new(executor.clone())));
+    let pnpm_adapter = Arc::new(PnpmAdapter::new(ProcessPnpmSource::new(executor.clone())));
     let cargo_adapter = Arc::new(CargoAdapter::new(ProcessCargoSource::new(executor.clone())));
     let cargo_binstall_adapter = Arc::new(CargoBinstallAdapter::new(
         ProcessCargoBinstallSource::new(executor.clone()),
@@ -389,6 +399,7 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
         homebrew_adapter,
         mise_adapter,
         npm_adapter,
+        pnpm_adapter,
         cargo_adapter,
         cargo_binstall_adapter,
         pip_adapter,
@@ -720,6 +731,7 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
         ManagerId::HomebrewFormula,
         ManagerId::Mise,
         ManagerId::Npm,
+        ManagerId::Pnpm,
         ManagerId::Cargo,
         ManagerId::CargoBinstall,
         ManagerId::Pip,
@@ -1074,6 +1086,20 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
             }
         }
 
+        if runtime.is_manager_enabled(ManagerId::Pnpm) {
+            for package_name in targets.pnpm {
+                let request = AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::Pnpm,
+                        name: package_name,
+                    }),
+                });
+                if let Err(error) = runtime.submit(ManagerId::Pnpm, request).await {
+                    eprintln!("upgrade_all: failed to queue pnpm upgrade task: {error}");
+                }
+            }
+        }
+
         if runtime.is_manager_enabled(ManagerId::Cargo) {
             for package_name in targets.cargo {
                 let request = AdapterRequest::Upgrade(UpgradeRequest {
@@ -1188,6 +1214,12 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
 /// Currently supported manager IDs:
 /// - "homebrew_formula"
 /// - "mise"
+/// - "npm"
+/// - "pnpm"
+/// - "cargo"
+/// - "cargo_binstall"
+/// - "pip"
+/// - "pipx"
 /// - "rustup"
 ///
 /// # Safety
@@ -1269,6 +1301,17 @@ pub unsafe extern "C" fn helm_upgrade_package(
             AdapterRequest::Upgrade(UpgradeRequest {
                 package: Some(PackageRef {
                     manager: ManagerId::Npm,
+                    name: package_name.clone(),
+                }),
+            }),
+            None,
+            Vec::new(),
+        ),
+        ManagerId::Pnpm => (
+            ManagerId::Pnpm,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Pnpm,
                     name: package_name.clone(),
                 }),
             }),

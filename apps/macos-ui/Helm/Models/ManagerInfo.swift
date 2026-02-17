@@ -38,6 +38,7 @@ struct ManagerInfo: Identifiable {
         ManagerInfo(id: "homebrew_formula", displayName: "Homebrew (formulae)", shortName: "brew", category: "System/OS", isImplemented: true, installMethod: .updateOnly),
         ManagerInfo(id: "homebrew_cask", displayName: "Homebrew (casks)", shortName: "cask", category: "App Store", isImplemented: false, installMethod: .notManageable),
         ManagerInfo(id: "npm", displayName: "npm (global)", shortName: "npm", category: "Language", isImplemented: true, installMethod: .notManageable),
+        ManagerInfo(id: "pnpm", displayName: "pnpm (global)", shortName: "pnpm", category: "Language", isImplemented: true, installMethod: .notManageable),
         ManagerInfo(id: "pip", displayName: "pip", shortName: "pip", category: "Language", isImplemented: true, installMethod: .notManageable),
         ManagerInfo(id: "pipx", displayName: "pipx", shortName: "pipx", category: "Language", isImplemented: true, installMethod: .notManageable),
         ManagerInfo(id: "cargo", displayName: "Cargo", shortName: "cargo", category: "Language", isImplemented: true, installMethod: .notManageable),

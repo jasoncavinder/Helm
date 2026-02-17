@@ -91,6 +91,12 @@ Implement:
 - RubyGems
 - bundler
 
+Completed (`v0.11.0-beta.1` in progress):
+
+- pnpm adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
+- pnpm parser fixtures and adapter unit tests added for version/list/search/outdated flows
+- pnpm manager metadata wired through macOS UI + localization keys
+
 ---
 
 ## Priority 3 — Localization Expansion

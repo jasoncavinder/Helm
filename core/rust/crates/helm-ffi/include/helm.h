@@ -107,6 +107,12 @@ bool helm_upgrade_all(bool include_pinned, bool allow_os_updates);
  * Currently supported manager IDs:
  * - "homebrew_formula"
  * - "mise"
+ * - "npm"
+ * - "pnpm"
+ * - "cargo"
+ * - "cargo_binstall"
+ * - "pip"
+ * - "pipx"
  * - "rustup"
  *
  * # Safety
