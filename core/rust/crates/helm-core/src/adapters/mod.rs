@@ -1,6 +1,7 @@
 pub mod cargo;
 pub mod cargo_binstall;
 pub mod cargo_binstall_process;
+pub(crate) mod cargo_outdated;
 pub mod cargo_process;
 pub(crate) mod detect_utils;
 pub mod homebrew;
@@ -82,3 +83,52 @@ pub use softwareupdate::{
     softwareupdate_list_request, softwareupdate_upgrade_request,
 };
 pub use softwareupdate_process::ProcessSoftwareUpdateSource;
+
+pub(crate) fn validate_package_identifier(
+    manager: crate::models::ManagerId,
+    action: crate::models::ManagerAction,
+    name: &str,
+) -> crate::adapters::manager::AdapterResult<()> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err(crate::models::CoreError {
+            manager: Some(manager),
+            task: None,
+            action: Some(action),
+            kind: crate::models::CoreErrorKind::InvalidInput,
+            message: "package identifier cannot be empty".to_string(),
+        });
+    }
+
+    if trimmed.starts_with('-') {
+        return Err(crate::models::CoreError {
+            manager: Some(manager),
+            task: None,
+            action: Some(action),
+            kind: crate::models::CoreErrorKind::InvalidInput,
+            message: "package identifier cannot start with '-'".to_string(),
+        });
+    }
+
+    if trimmed.chars().any(char::is_whitespace) {
+        return Err(crate::models::CoreError {
+            manager: Some(manager),
+            task: None,
+            action: Some(action),
+            kind: crate::models::CoreErrorKind::InvalidInput,
+            message: "package identifier cannot contain whitespace".to_string(),
+        });
+    }
+
+    if trimmed.len() > 256 {
+        return Err(crate::models::CoreError {
+            manager: Some(manager),
+            task: None,
+            action: Some(action),
+            kind: crate::models::CoreErrorKind::InvalidInput,
+            message: "package identifier exceeds 256 characters".to_string(),
+        });
+    }
+
+    Ok(())
+}

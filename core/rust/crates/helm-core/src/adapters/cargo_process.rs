@@ -6,6 +6,7 @@ use crate::adapters::cargo::{
     cargo_uninstall_request, cargo_upgrade_request, parse_cargo_installed,
     parse_cargo_search_version,
 };
+use crate::adapters::cargo_outdated::synthesize_outdated_payload;
 use crate::adapters::detect_utils::which_executable;
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::process_utils::{run_and_collect_stdout, run_and_collect_version_output};
@@ -71,48 +72,12 @@ impl CargoSource for ProcessCargoSource {
     }
 
     fn list_outdated(&self) -> AdapterResult<String> {
-        // cargo has no built-in global outdated list command for installed binaries.
-        // Build a synthetic outdated JSON payload by checking each installed crate's latest
-        // crates.io version via `cargo search --limit 1 <crate>`.
         let installed_raw = self.list_installed()?;
-        let installed = parse_cargo_installed(&installed_raw)?;
-
-        #[derive(serde::Serialize)]
-        struct OutdatedEntry {
-            name: String,
-            installed_version: String,
-            candidate_version: String,
-        }
-
-        let mut outdated = Vec::new();
-        for package in installed {
-            let Some(installed_version) = package.installed_version.as_deref() else {
-                continue;
-            };
-
-            let request =
-                self.configure_request(cargo_search_single_request(None, &package.package.name));
+        // cargo has no built-in global outdated list command for installed binaries.
+        synthesize_outdated_payload(ManagerId::Cargo, &installed_raw, |crate_name| {
+            let request = self.configure_request(cargo_search_single_request(None, crate_name));
             let search_output = run_and_collect_stdout(self.executor.as_ref(), request)?;
-            let Some(latest) = parse_cargo_search_version(&search_output, &package.package.name)
-            else {
-                continue;
-            };
-
-            if latest != installed_version {
-                outdated.push(OutdatedEntry {
-                    name: package.package.name,
-                    installed_version: installed_version.to_string(),
-                    candidate_version: latest,
-                });
-            }
-        }
-
-        serde_json::to_string(&outdated).map_err(|e| crate::models::CoreError {
-            manager: Some(ManagerId::Cargo),
-            task: Some(crate::models::TaskType::Refresh),
-            action: Some(crate::models::ManagerAction::ListOutdated),
-            kind: crate::models::CoreErrorKind::ParseFailure,
-            message: format!("failed to encode cargo outdated payload: {e}"),
+            Ok(parse_cargo_search_version(&search_output, crate_name))
         })
     }
 

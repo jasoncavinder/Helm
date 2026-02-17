@@ -1,7 +1,7 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::process::Command;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 use std::time::UNIX_EPOCH;
 
@@ -62,12 +62,31 @@ lazy_static! {
     static ref LAST_ERROR_KEY: Mutex<Option<String>> = Mutex::new(None);
 }
 
+const LOCK_POISONED_ERROR_KEY: &str = "error.ffi.lock_poisoned";
+
+fn note_lock_poisoned(context: &str) {
+    eprintln!("helm-ffi: recovering from poisoned mutex: {context}");
+    if let Ok(mut key) = LAST_ERROR_KEY.try_lock() {
+        *key = Some(LOCK_POISONED_ERROR_KEY.to_string());
+    }
+}
+
+fn lock_or_recover<'a, T>(mutex: &'a Mutex<T>, context: &str) -> MutexGuard<'a, T> {
+    match mutex.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            note_lock_poisoned(context);
+            poisoned.into_inner()
+        }
+    }
+}
+
 fn clear_last_error_key() {
-    LAST_ERROR_KEY.lock().unwrap().take();
+    lock_or_recover(&LAST_ERROR_KEY, "last_error_key").take();
 }
 
 fn set_last_error_key(error_key: &str) {
-    *LAST_ERROR_KEY.lock().unwrap() = Some(error_key.to_string());
+    *lock_or_recover(&LAST_ERROR_KEY, "last_error_key") = Some(error_key.to_string());
 }
 
 fn return_error_bool(error_key: &str) -> bool {
@@ -85,7 +104,7 @@ fn set_task_label(task_id: helm_core::models::TaskId, key: &str, args: &[(&str, 
     for (arg_key, arg_value) in args {
         args_map.insert((*arg_key).to_string(), arg_value.clone());
     }
-    TASK_LABELS.lock().unwrap().insert(
+    lock_or_recover(&TASK_LABELS, "task_labels").insert(
         task_id.0,
         TaskLabel {
             key: key.to_string(),
@@ -312,7 +331,7 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
     }
 
     // If already initialized, return true
-    if STATE.lock().unwrap().is_some() {
+    if lock_or_recover(&STATE, "state").is_some() {
         return true;
     }
 
@@ -403,14 +422,14 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
         _tokio_rt: rt,
     };
 
-    *STATE.lock().unwrap() = Some(state);
+    *lock_or_recover(&STATE, "state") = Some(state);
 
     true
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_list_installed_packages() -> *mut c_char {
-    let guard = STATE.lock().unwrap();
+    let guard = lock_or_recover(&STATE, "state");
     let state = match guard.as_ref() {
         Some(s) => s,
         None => return std::ptr::null_mut(),
@@ -437,7 +456,7 @@ pub extern "C" fn helm_list_installed_packages() -> *mut c_char {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_list_outdated_packages() -> *mut c_char {
-    let guard = STATE.lock().unwrap();
+    let guard = lock_or_recover(&STATE, "state");
     let state = match guard.as_ref() {
         Some(s) => s,
         None => return std::ptr::null_mut(),
@@ -464,7 +483,7 @@ pub extern "C" fn helm_list_outdated_packages() -> *mut c_char {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_list_tasks() -> *mut c_char {
-    let guard = STATE.lock().unwrap();
+    let guard = lock_or_recover(&STATE, "state");
     let state = match guard.as_ref() {
         Some(s) => s,
         None => return std::ptr::null_mut(),
@@ -492,7 +511,7 @@ pub extern "C" fn helm_list_tasks() -> *mut c_char {
         label_args: Option<std::collections::BTreeMap<String, String>>,
     }
 
-    let mut labels = TASK_LABELS.lock().unwrap();
+    let mut labels = lock_or_recover(&TASK_LABELS, "task_labels");
     let active_ids: std::collections::HashSet<u64> = tasks.iter().map(|task| task.id.0).collect();
     labels.retain(|task_id, _| active_ids.contains(task_id));
 
@@ -529,7 +548,7 @@ pub extern "C" fn helm_list_tasks() -> *mut c_char {
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_trigger_refresh() -> bool {
     clear_last_error_key();
-    let guard = STATE.lock().unwrap();
+    let guard = lock_or_recover(&STATE, "state");
     let state = match guard.as_ref() {
         Some(s) => s,
         None => return return_error_bool("service.error.internal"),
@@ -566,7 +585,7 @@ pub unsafe extern "C" fn helm_search_local(query: *const c_char) -> *mut c_char 
         Err(_) => return std::ptr::null_mut(),
     };
 
-    let guard = STATE.lock().unwrap();
+    let guard = lock_or_recover(&STATE, "state");
     let state = match guard.as_ref() {
         Some(s) => s,
         None => return std::ptr::null_mut(),
@@ -629,7 +648,7 @@ pub unsafe extern "C" fn helm_trigger_remote_search(query: *const c_char) -> i64
     };
 
     let (runtime, rt_handle) = {
-        let guard = STATE.lock().unwrap();
+        let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
             None => return -1,
@@ -661,7 +680,7 @@ pub extern "C" fn helm_cancel_task(task_id: i64) -> bool {
     }
 
     let (runtime, rt_handle) = {
-        let guard = STATE.lock().unwrap();
+        let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
             None => return false,
@@ -685,7 +704,7 @@ pub extern "C" fn helm_cancel_task(task_id: i64) -> bool {
 /// List manager status: detection info + preferences + implementation status as JSON.
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_list_manager_status() -> *mut c_char {
-    let guard = STATE.lock().unwrap();
+    let guard = lock_or_recover(&STATE, "state");
     let state = match guard.as_ref() {
         Some(s) => s,
         None => return std::ptr::null_mut(),
@@ -787,7 +806,7 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
 /// Return whether safe mode is enabled.
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_get_safe_mode() -> bool {
-    let guard = STATE.lock().unwrap();
+    let guard = lock_or_recover(&STATE, "state");
     let state = match guard.as_ref() {
         Some(s) => s,
         None => return false,
@@ -798,7 +817,7 @@ pub extern "C" fn helm_get_safe_mode() -> bool {
 /// Set safe mode state. Returns true on success.
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_set_safe_mode(enabled: bool) -> bool {
-    let guard = STATE.lock().unwrap();
+    let guard = lock_or_recover(&STATE, "state");
     let state = match guard.as_ref() {
         Some(s) => s,
         None => return false,
@@ -809,7 +828,7 @@ pub extern "C" fn helm_set_safe_mode(enabled: bool) -> bool {
 /// Return whether Homebrew upgrades should auto-clean old kegs by default.
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_get_homebrew_keg_auto_cleanup() -> bool {
-    let guard = STATE.lock().unwrap();
+    let guard = lock_or_recover(&STATE, "state");
     let state = match guard.as_ref() {
         Some(s) => s,
         None => return false,
@@ -824,7 +843,7 @@ pub extern "C" fn helm_get_homebrew_keg_auto_cleanup() -> bool {
 /// Set the global Homebrew keg policy.
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_set_homebrew_keg_auto_cleanup(enabled: bool) -> bool {
-    let guard = STATE.lock().unwrap();
+    let guard = lock_or_recover(&STATE, "state");
     let state = match guard.as_ref() {
         Some(s) => s,
         None => return false,
@@ -841,7 +860,7 @@ pub extern "C" fn helm_set_homebrew_keg_auto_cleanup(enabled: bool) -> bool {
 /// List per-package Homebrew keg policy overrides as JSON.
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_list_package_keg_policies() -> *mut c_char {
-    let guard = STATE.lock().unwrap();
+    let guard = lock_or_recover(&STATE, "state");
     let state = match guard.as_ref() {
         Some(s) => s,
         None => return std::ptr::null_mut(),
@@ -937,7 +956,7 @@ pub unsafe extern "C" fn helm_set_package_keg_policy(
         name: package_name,
     };
 
-    let guard = STATE.lock().unwrap();
+    let guard = lock_or_recover(&STATE, "state");
     let state = match guard.as_ref() {
         Some(s) => s,
         None => return false,
@@ -954,7 +973,7 @@ pub unsafe extern "C" fn helm_set_package_keg_policy(
 pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool) -> bool {
     clear_last_error_key();
     let (store, runtime, tokio_rt) = {
-        let guard = STATE.lock().unwrap();
+        let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
             None => return return_error_bool("service.error.internal"),
@@ -1209,7 +1228,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
     ) = match manager {
         ManagerId::HomebrewFormula => {
             let policy = {
-                let guard = STATE.lock().unwrap();
+                let guard = lock_or_recover(&STATE, "state");
                 let state = match guard.as_ref() {
                     Some(s) => s,
                     None => return return_error_i64("service.error.internal"),
@@ -1326,7 +1345,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
     };
 
     let (runtime, rt_handle) = {
-        let guard = STATE.lock().unwrap();
+        let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
             None => return return_error_i64("service.error.internal"),
@@ -1351,7 +1370,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
 /// List pin records as JSON.
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_list_pins() -> *mut c_char {
-    let guard = STATE.lock().unwrap();
+    let guard = lock_or_recover(&STATE, "state");
     let state = match guard.as_ref() {
         Some(s) => s,
         None => return std::ptr::null_mut(),
@@ -1456,7 +1475,7 @@ pub unsafe extern "C" fn helm_pin_package(
     };
 
     let (store, runtime, rt_handle) = {
-        let guard = STATE.lock().unwrap();
+        let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
             None => return return_error_bool("service.error.internal"),
@@ -1550,7 +1569,7 @@ pub unsafe extern "C" fn helm_unpin_package(
     };
 
     let (store, runtime, rt_handle) = {
-        let guard = STATE.lock().unwrap();
+        let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
             None => return return_error_bool("service.error.internal"),
@@ -1624,7 +1643,7 @@ pub unsafe extern "C" fn helm_set_manager_enabled(
         Err(_) => return return_error_bool("service.error.invalid_input"),
     };
 
-    let guard = STATE.lock().unwrap();
+    let guard = lock_or_recover(&STATE, "state");
     let state = match guard.as_ref() {
         Some(s) => s,
         None => return return_error_bool("service.error.internal"),
@@ -1665,7 +1684,7 @@ pub unsafe extern "C" fn helm_install_manager(manager_id: *const c_char) -> i64 
     };
 
     let (runtime, rt_handle) = {
-        let guard = STATE.lock().unwrap();
+        let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
             None => return return_error_i64("service.error.internal"),
@@ -1740,7 +1759,7 @@ pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
         ),
         "mise" => {
             let (target_name, label_key) = {
-                let guard = STATE.lock().unwrap();
+                let guard = lock_or_recover(&STATE, "state");
                 let state = match guard.as_ref() {
                     Some(s) => s,
                     None => return return_error_i64("service.error.internal"),
@@ -1769,7 +1788,7 @@ pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
         }
         "mas" => {
             let (target_name, label_key) = {
-                let guard = STATE.lock().unwrap();
+                let guard = lock_or_recover(&STATE, "state");
                 let state = match guard.as_ref() {
                     Some(s) => s,
                     None => return return_error_i64("service.error.internal"),
@@ -1811,7 +1830,7 @@ pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
     };
 
     let (runtime, rt_handle) = {
-        let guard = STATE.lock().unwrap();
+        let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
             None => return return_error_i64("service.error.internal"),
@@ -1852,7 +1871,7 @@ pub unsafe extern "C" fn helm_uninstall_manager(manager_id: *const c_char) -> i6
     };
 
     let (runtime, rt_handle) = {
-        let guard = STATE.lock().unwrap();
+        let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
             None => return return_error_i64("service.error.internal"),
@@ -1921,7 +1940,7 @@ pub unsafe extern "C" fn helm_uninstall_manager(manager_id: *const c_char) -> i6
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_reset_database() -> bool {
     clear_last_error_key();
-    let guard = STATE.lock().unwrap();
+    let guard = lock_or_recover(&STATE, "state");
     let state = match guard.as_ref() {
         Some(s) => s,
         None => return return_error_bool("service.error.internal"),
@@ -1949,7 +1968,7 @@ pub extern "C" fn helm_reset_database() -> bool {
 /// Return and clear the most recent service error localization key.
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_take_last_error_key() -> *mut c_char {
-    let key = LAST_ERROR_KEY.lock().unwrap().take();
+    let key = lock_or_recover(&LAST_ERROR_KEY, "last_error_key").take();
     let Some(key) = key else {
         return std::ptr::null_mut();
     };

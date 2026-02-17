@@ -107,6 +107,11 @@ impl<S: PipSource> ManagerAdapter for PipAdapter<S> {
                 Ok(AdapterResponse::SearchResults(results))
             }
             AdapterRequest::Install(install_request) => {
+                crate::adapters::validate_package_identifier(
+                    ManagerId::Pip,
+                    ManagerAction::Install,
+                    install_request.package.name.as_str(),
+                )?;
                 let _ = self.source.install(
                     &install_request.package.name,
                     install_request.version.as_deref(),
@@ -119,6 +124,11 @@ impl<S: PipSource> ManagerAdapter for PipAdapter<S> {
                 }))
             }
             AdapterRequest::Uninstall(uninstall_request) => {
+                crate::adapters::validate_package_identifier(
+                    ManagerId::Pip,
+                    ManagerAction::Uninstall,
+                    uninstall_request.package.name.as_str(),
+                )?;
                 let _ = self.source.uninstall(&uninstall_request.package.name)?;
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: uninstall_request.package,
@@ -136,6 +146,11 @@ impl<S: PipSource> ManagerAdapter for PipAdapter<S> {
                 let target_name = if package.name == "__self__" {
                     None
                 } else {
+                    crate::adapters::validate_package_identifier(
+                        ManagerId::Pip,
+                        ManagerAction::Upgrade,
+                        package.name.as_str(),
+                    )?;
                     Some(package.name.as_str())
                 };
                 let _ = self.source.upgrade(target_name)?;
@@ -201,22 +216,20 @@ pub fn pip_list_outdated_request(task_id: Option<TaskId>) -> ProcessSpawnRequest
     )
 }
 
-pub fn pip_search_request(task_id: Option<TaskId>, query: &SearchQuery) -> ProcessSpawnRequest {
+pub fn pip_search_request(task_id: Option<TaskId>, _query: &SearchQuery) -> ProcessSpawnRequest {
     // Search is implemented via local installed package filtering.
     // Command shape remains deterministic for task attribution.
     pip_request(
         task_id,
         TaskType::Search,
         ManagerAction::Search,
-        CommandSpec::new(PYTHON_COMMAND)
-            .args([
-                "-m",
-                "pip",
-                "list",
-                "--format=json",
-                "--disable-pip-version-check",
-            ])
-            .env("HELM_QUERY", query.text.clone()),
+        CommandSpec::new(PYTHON_COMMAND).args([
+            "-m",
+            "pip",
+            "list",
+            "--format=json",
+            "--disable-pip-version-check",
+        ]),
         SEARCH_TIMEOUT,
     )
 }
@@ -713,6 +726,22 @@ mod tests {
             }
             other => panic!("unexpected response: {other:?}"),
         }
+    }
+
+    #[test]
+    fn install_rejects_option_like_package_name() {
+        let adapter = PipAdapter::new(StubPipSource::success());
+
+        let error = adapter
+            .execute(AdapterRequest::Install(crate::adapters::InstallRequest {
+                package: PackageRef {
+                    manager: ManagerId::Pip,
+                    name: "--index-url=https://invalid".to_string(),
+                },
+                version: None,
+            }))
+            .expect_err("expected invalid input");
+        assert_eq!(error.kind, CoreErrorKind::InvalidInput);
     }
 
     #[test]

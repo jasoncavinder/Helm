@@ -108,6 +108,11 @@ impl<S: NpmSource> ManagerAdapter for NpmAdapter<S> {
                 Ok(AdapterResponse::SearchResults(results))
             }
             AdapterRequest::Install(install_request) => {
+                crate::adapters::validate_package_identifier(
+                    ManagerId::Npm,
+                    ManagerAction::Install,
+                    install_request.package.name.as_str(),
+                )?;
                 let _ = self.source.install_global(
                     install_request.package.name.as_str(),
                     install_request.version.as_deref(),
@@ -120,6 +125,11 @@ impl<S: NpmSource> ManagerAdapter for NpmAdapter<S> {
                 }))
             }
             AdapterRequest::Uninstall(uninstall_request) => {
+                crate::adapters::validate_package_identifier(
+                    ManagerId::Npm,
+                    ManagerAction::Uninstall,
+                    uninstall_request.package.name.as_str(),
+                )?;
                 let _ = self
                     .source
                     .uninstall_global(uninstall_request.package.name.as_str())?;
@@ -138,6 +148,11 @@ impl<S: NpmSource> ManagerAdapter for NpmAdapter<S> {
                 let target_name = if package.name == "__all__" {
                     None
                 } else {
+                    crate::adapters::validate_package_identifier(
+                        ManagerId::Npm,
+                        ManagerAction::Upgrade,
+                        package.name.as_str(),
+                    )?;
                     Some(package.name.as_str())
                 };
                 let _ = self.source.upgrade_global(target_name)?;
@@ -694,6 +709,22 @@ mod tests {
             }
             other => panic!("unexpected response: {other:?}"),
         }
+    }
+
+    #[test]
+    fn install_rejects_option_like_package_name() {
+        let adapter = NpmAdapter::new(StubNpmSource::success());
+
+        let error = adapter
+            .execute(AdapterRequest::Install(crate::adapters::InstallRequest {
+                package: PackageRef {
+                    manager: ManagerId::Npm,
+                    name: "--registry=http://malicious".to_string(),
+                },
+                version: None,
+            }))
+            .expect_err("expected invalid input");
+        assert_eq!(error.kind, CoreErrorKind::InvalidInput);
     }
 
     #[test]

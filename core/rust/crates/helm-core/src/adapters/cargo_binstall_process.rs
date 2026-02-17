@@ -7,11 +7,12 @@ use crate::adapters::cargo_binstall::{
     cargo_binstall_search_request, cargo_binstall_search_single_request,
     cargo_binstall_uninstall_request, cargo_binstall_upgrade_request,
 };
+use crate::adapters::cargo_outdated::synthesize_outdated_payload;
 use crate::adapters::detect_utils::which_executable;
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::process_utils::{run_and_collect_stdout, run_and_collect_version_output};
 use crate::execution::{ProcessExecutor, ProcessSpawnRequest};
-use crate::models::{CoreError, CoreErrorKind, ManagerAction, ManagerId, SearchQuery, TaskType};
+use crate::models::{ManagerId, SearchQuery};
 
 pub struct ProcessCargoBinstallSource {
     executor: Arc<dyn ProcessExecutor>,
@@ -84,46 +85,11 @@ impl CargoBinstallSource for ProcessCargoBinstallSource {
 
     fn list_outdated(&self) -> AdapterResult<String> {
         let installed_raw = self.list_installed()?;
-        let installed = parse_cargo_installed(&installed_raw)?;
-
-        #[derive(serde::Serialize)]
-        struct OutdatedEntry {
-            name: String,
-            installed_version: String,
-            candidate_version: String,
-        }
-
-        let mut outdated = Vec::new();
-        for package in installed {
-            let Some(installed_version) = package.installed_version.as_deref() else {
-                continue;
-            };
-
-            let request = self.configure_request(cargo_binstall_search_single_request(
-                None,
-                &package.package.name,
-            ));
+        synthesize_outdated_payload(ManagerId::CargoBinstall, &installed_raw, |crate_name| {
+            let request =
+                self.configure_request(cargo_binstall_search_single_request(None, crate_name));
             let search_output = run_and_collect_stdout(self.executor.as_ref(), request)?;
-            let Some(latest) = parse_cargo_search_version(&search_output, &package.package.name)
-            else {
-                continue;
-            };
-
-            if latest != installed_version {
-                outdated.push(OutdatedEntry {
-                    name: package.package.name,
-                    installed_version: installed_version.to_string(),
-                    candidate_version: latest,
-                });
-            }
-        }
-
-        serde_json::to_string(&outdated).map_err(|e| CoreError {
-            manager: Some(ManagerId::CargoBinstall),
-            task: Some(TaskType::Refresh),
-            action: Some(ManagerAction::ListOutdated),
-            kind: CoreErrorKind::ParseFailure,
-            message: format!("failed to encode cargo-binstall outdated payload: {e}"),
+            Ok(parse_cargo_search_version(&search_output, crate_name))
         })
     }
 
