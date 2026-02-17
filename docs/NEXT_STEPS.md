@@ -22,10 +22,10 @@ Focus:
 - UI/UX redesign planning
 
 Current checkpoint:
-- `v0.12.0-beta.1` released (localization hardening + settings overflow validation)
+- `v0.12.0-beta.2` released (visual-overflow validation expansion)
 
 Next release target:
-- `v0.12.0-beta.2` (expanded visual overflow validation across onboarding/navigation/packages/managers)
+- `v0.12.0-beta.3` (dedicated upgrade-preview UI surface)
 
 `v0.11.0-beta.2` stabilization work completed:
 
@@ -174,10 +174,10 @@ Completed:
 - Added manager-level package-count breakdown (top managers) in the Upgrade All confirmation alert
 - Localized manager labels used in the Upgrade All breakdown output
 - Added focused unit tests for upgrade-preview filtering and breakdown ordering (`UpgradePreviewPlannerTests`)
+- Added a dedicated Upgrade Preview UI surface in macOS Settings with execution-plan sections and manager-level package breakdowns for both no-OS and with-OS modes
 
 Remaining:
 
-- Add dedicated upgrade preview UI surface
 - Add dry-run support
 
 ---

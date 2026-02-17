@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.12.0-beta.3] - 2026-02-17
+
+### Added
+- Added a dedicated Upgrade Preview sheet in macOS Settings that shows:
+  - a no-OS-updates execution plan section
+  - an optional include-OS-updates section (when Safe Mode is off)
+  - manager-level package-count breakdown for each execution mode
+- Wired direct execution actions from the preview surface for both upgrade modes.
+
+### Changed
+- Replaced the previous Upgrade All confirmation alert with a dedicated preview UI surface.
+
 ## [0.12.0-beta.2] - 2026-02-17
 
 ### Added

@@ -7,38 +7,8 @@ struct SettingsPopoverView: View {
     @State private var autoCheckEnabled = false
     @State private var checkFrequency = 60
     @State private var showResetConfirmation = false
-    @State private var showUpgradeConfirmation = false
+    @State private var showUpgradePreview = false
     @State private var isResetting = false
-
-    private var upgradePreviewSummary: String {
-        let noOsCount = core.upgradeAllPreviewCount(includePinned: false, allowOsUpdates: false)
-        let noOsLine = "\(L10n.App.Settings.Alert.UpgradeAll.upgradeNoOs.localized): \(L10n.App.Managers.Label.packageCount.localized(with: ["count": noOsCount]))"
-        let noOsBreakdown = core
-            .upgradeAllPreviewBreakdown(includePinned: false, allowOsUpdates: false)
-            .prefix(3)
-            .map { entry in
-                "\(entry.manager): \(L10n.App.Managers.Label.packageCount.localized(with: ["count": entry.count]))"
-            }
-            .joined(separator: "\n")
-
-        guard !core.safeModeEnabled else {
-            return noOsBreakdown.isEmpty ? noOsLine : "\(noOsLine)\n\(noOsBreakdown)"
-        }
-
-        let withOsCount = core.upgradeAllPreviewCount(includePinned: false, allowOsUpdates: true)
-        let withOsLine = "\(L10n.App.Settings.Alert.UpgradeAll.upgradeWithOs.localized): \(L10n.App.Managers.Label.packageCount.localized(with: ["count": withOsCount]))"
-        let withOsBreakdown = core
-            .upgradeAllPreviewBreakdown(includePinned: false, allowOsUpdates: true)
-            .prefix(3)
-            .map { entry in
-                "\(entry.manager): \(L10n.App.Managers.Label.packageCount.localized(with: ["count": entry.count]))"
-            }
-            .joined(separator: "\n")
-
-        let noOsSection = noOsBreakdown.isEmpty ? noOsLine : "\(noOsLine)\n\(noOsBreakdown)"
-        let withOsSection = withOsBreakdown.isEmpty ? withOsLine : "\(withOsLine)\n\(withOsBreakdown)"
-        return "\(noOsSection)\n\n\(withOsSection)"
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -118,7 +88,7 @@ struct SettingsPopoverView: View {
                 .disabled(core.isRefreshing)
 
                 Button(action: {
-                    showUpgradeConfirmation = true
+                    showUpgradePreview = true
                 }) {
                     HStack {
                         Image(systemName: "arrow.up.square")
@@ -168,21 +138,127 @@ struct SettingsPopoverView: View {
         } message: {
             Text(L10n.App.Settings.Alert.Reset.message.localized)
         }
-        .alert(L10n.App.Settings.Alert.UpgradeAll.title.localized, isPresented: $showUpgradeConfirmation) {
-            Button(L10n.App.Settings.Alert.UpgradeAll.upgradeNoOs.localized) {
-                core.upgradeAll(includePinned: false, allowOsUpdates: false)
-            }
-            if !core.safeModeEnabled {
-                Button(L10n.App.Settings.Alert.UpgradeAll.upgradeWithOs.localized, role: .destructive) {
-                    core.upgradeAll(includePinned: false, allowOsUpdates: true)
+        .sheet(isPresented: $showUpgradePreview) {
+            UpgradePreviewSheetView(isPresented: $showUpgradePreview)
+        }
+    }
+}
+
+private struct UpgradePreviewSheetView: View {
+    @ObservedObject var core = HelmCore.shared
+    @Binding var isPresented: Bool
+
+    private var noOsCount: Int {
+        core.upgradeAllPreviewCount(includePinned: false, allowOsUpdates: false)
+    }
+
+    private var noOsBreakdown: [UpgradePreviewPlanner.Entry] {
+        core.upgradeAllPreviewBreakdown(includePinned: false, allowOsUpdates: false)
+    }
+
+    private var withOsCount: Int {
+        core.upgradeAllPreviewCount(includePinned: false, allowOsUpdates: true)
+    }
+
+    private var withOsBreakdown: [UpgradePreviewPlanner.Entry] {
+        core.upgradeAllPreviewBreakdown(includePinned: false, allowOsUpdates: true)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(L10n.App.Settings.Alert.UpgradeAll.title.localized)
+                .font(.headline)
+
+            Text(
+                core.safeModeEnabled
+                    ? L10n.App.Settings.Alert.UpgradeAll.safeModeMessage.localized
+                    : L10n.App.Settings.Alert.UpgradeAll.standardMessage.localized
+            )
+            .font(.subheadline)
+            .foregroundColor(.secondary)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    UpgradePreviewSectionView(
+                        title: L10n.App.Settings.Alert.UpgradeAll.upgradeNoOs.localized,
+                        count: noOsCount,
+                        entries: noOsBreakdown
+                    )
+
+                    if !core.safeModeEnabled {
+                        Divider()
+                        UpgradePreviewSectionView(
+                            title: L10n.App.Settings.Alert.UpgradeAll.upgradeWithOs.localized,
+                            count: withOsCount,
+                            entries: withOsBreakdown
+                        )
+                    }
                 }
             }
-            Button(L10n.Common.cancel.localized, role: .cancel) {}
-        } message: {
-            if core.safeModeEnabled {
-                Text("\(L10n.App.Settings.Alert.UpgradeAll.safeModeMessage.localized)\n\n\(upgradePreviewSummary)")
+
+            Divider()
+
+            HStack(spacing: 10) {
+                Button(L10n.Common.cancel.localized, role: .cancel) {
+                    isPresented = false
+                }
+
+                Spacer()
+
+                Button(L10n.App.Settings.Alert.UpgradeAll.upgradeNoOs.localized) {
+                    core.upgradeAll(includePinned: false, allowOsUpdates: false)
+                    isPresented = false
+                }
+                .buttonStyle(.borderedProminent)
+
+                if !core.safeModeEnabled {
+                    Button(L10n.App.Settings.Alert.UpgradeAll.upgradeWithOs.localized, role: .destructive) {
+                        core.upgradeAll(includePinned: false, allowOsUpdates: true)
+                        isPresented = false
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+        }
+        .padding(16)
+        .frame(width: 460, height: 420)
+    }
+}
+
+private struct UpgradePreviewSectionView: View {
+    let title: String
+    let count: Int
+    let entries: [UpgradePreviewPlanner.Entry]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+
+            Text(L10n.App.Managers.Label.packageCount.localized(with: ["count": count]))
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            if entries.isEmpty {
+                Text(L10n.App.Packages.State.noPackagesFound.localized)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             } else {
-                Text("\(L10n.App.Settings.Alert.UpgradeAll.standardMessage.localized)\n\n\(upgradePreviewSummary)")
+                ForEach(Array(entries.prefix(8)), id: \.manager) { entry in
+                    HStack(spacing: 6) {
+                        Text(entry.manager)
+                            .font(.caption)
+                        Text("·")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text(L10n.App.Managers.Label.packageCount.localized(with: ["count": entry.count]))
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
             }
         }
     }
