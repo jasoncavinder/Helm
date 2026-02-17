@@ -2,26 +2,44 @@
 
 This checklist is required before creating a release tag on `main`.
 
-## v0.11.0-beta.2 (In Progress)
+## v0.12.0-beta.1 (In Progress)
 
 ### Scope and Documentation
-- [ ] `CHANGELOG.md` includes `0.11.0-beta.2` notes for stabilization and validation results.
-- [ ] `README.md` reflects `v0.11.0-beta.2` status.
-- [ ] `docs/CURRENT_STATE.md`, `docs/NEXT_STEPS.md`, and `docs/ROADMAP.md` reflect the beta2 checkpoint.
-- [ ] Website docs status/overview/roadmap pages are updated for `v0.11.0-beta.2`.
+- [x] `CHANGELOG.md` includes `0.12.0-beta.1` notes for localization validation hardening.
+- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect post-`v0.11.0-beta.2` state and `v0.12.0-beta.1` target kickoff.
+
+### Validation
+- [x] Locale key/placeholder integrity script added: `apps/macos-ui/scripts/check_locale_integrity.sh`.
+- [x] i18n CI runs locale mirror parity for all shipped locales plus locale integrity checks.
+- [ ] Run full on-device visual overflow validation across `es`, `fr`, `de`, `pt-BR`, and `ja`.
+
+### Branch and Tag
+- [ ] `dev` merged into `main` for release.
+- [ ] Create annotated tag from `main`:
+  - `git tag -a v0.12.0-beta.1 -m "Helm v0.12.0-beta.1"`
+- [ ] Push tag:
+  - `git push origin v0.12.0-beta.1`
+
+## v0.11.0-beta.2 (Completed)
+
+### Scope and Documentation
+- [x] `CHANGELOG.md` includes `0.11.0-beta.2` notes for stabilization and validation results.
+- [x] `README.md` reflects `v0.11.0-beta.2` status.
+- [x] `docs/CURRENT_STATE.md`, `docs/NEXT_STEPS.md`, and `docs/ROADMAP.md` reflect the beta2 checkpoint.
+- [x] Website docs status/overview/roadmap pages are updated for `v0.11.0-beta.2`.
 
 ### Validation
 - [x] Stabilization script passes: `apps/macos-ui/scripts/run_v0110b2_stabilization_checks.sh`.
 - [x] Priority 2 manager smoke matrix captured: `apps/macos-ui/scripts/smoke_priority2_managers.sh`.
 - [x] Validation notes committed at `docs/validation/v0.11.0-beta.2-smoke-matrix.md`.
 - [x] Localization overflow heuristic validation notes committed at `docs/validation/v0.11.0-beta.2-l10n-overflow.md`.
-- [ ] Run `HelmTests` on a host without testmanagerd sandbox IPC restrictions (current sandbox run skips this step by design when blocked).
+- [x] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme HelmTests -destination 'platform=macOS' -derivedDataPath /tmp/helmtests-deriveddata CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test`).
 
 ### Branch and Tag
-- [ ] `dev` merged into `main` for release.
-- [ ] Create annotated tag from `main`:
+- [x] `dev` merged into `main` for release.
+- [x] Create annotated tag from `main`:
   - `git tag -a v0.11.0-beta.2 -m "Helm v0.11.0-beta.2"`
-- [ ] Push tag:
+- [x] Push tag:
   - `git push origin v0.11.0-beta.2`
 
 ## v0.11.0-beta.1 (Completed)

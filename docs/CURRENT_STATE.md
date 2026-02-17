@@ -8,7 +8,7 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.11.0-beta.1**
+Current version: **0.11.0-beta.2**
 
 See:
 - CHANGELOG.md
@@ -72,6 +72,7 @@ Localization coverage:
 - en, es, de: broad app/service coverage
 - fr, pt-BR, ja: full app/common/service key coverage
 - Locale length audit script added at `apps/macos-ui/scripts/check_locale_lengths.sh` for overflow-risk preflight
+- Locale key/placeholder integrity audit script added at `apps/macos-ui/scripts/check_locale_integrity.sh`
 - `v0.11.0-beta.2` heuristic overflow audit captured at `docs/validation/v0.11.0-beta.2-l10n-overflow.md` (no high-risk candidates flagged)
 - Manager display-name localization keys now cover upgrade-preview/task-fallback manager labels (including software update/app store naming)
 
