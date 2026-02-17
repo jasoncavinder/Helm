@@ -240,6 +240,9 @@ struct L10n {
                     static let upgradeWithOs = "app.settings.alert.upgrade_all.upgrade_with_os"
                     static let safeModeMessage = "app.settings.alert.upgrade_all.safe_mode_message"
                     static let standardMessage = "app.settings.alert.upgrade_all.standard_message"
+                    static let dryRunToggle = "app.settings.alert.upgrade_all.dry_run_toggle"
+                    static let dryRunResultTitle = "app.settings.alert.upgrade_all.dry_run_result_title"
+                    static let dryRunResultMessage = "app.settings.alert.upgrade_all.dry_run_result_message"
                 }
             }
         }

@@ -8,7 +8,7 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.12.0-beta.2**
+Current version: **0.12.0-beta.3**
 
 See:
 - CHANGELOG.md
@@ -108,7 +108,7 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 - Upgrade-all transparency now provides summary counts + top manager breakdown in confirmation flow
 - Upgrade-preview filtering/sorting logic now has dedicated macOS UI unit coverage (`HelmTests/UpgradePreviewPlannerTests`)
 - Dedicated upgrade preview UI surface is implemented in macOS Settings (execution-plan sections with manager breakdown)
-- No dry-run mode exposed in UI
+- Dry-run mode is exposed in the upgrade preview UI (simulation path with no task submission)
 - No self-update mechanism yet
 - Limited diagnostics UI
 - No CLI interface

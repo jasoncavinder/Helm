@@ -131,5 +131,8 @@
   "app.managers.name.mise": "mise",
   "app.managers.name.rustup": "rustup",
   "app.managers.name.software_update": "ソフトウェアアップデート",
-  "app.managers.name.app_store": "App Store"
+  "app.managers.name.app_store": "App Store",
+  "app.settings.alert.upgrade_all.dry_run_toggle": "ドライランモード（変更なし）",
+  "app.settings.alert.upgrade_all.dry_run_result_title": "ドライラン結果",
+  "app.settings.alert.upgrade_all.dry_run_result_message": "ドライランが完了しました。タスクはキューに追加されていません。\\n\\n計画されたアクション:\\n{summary}"
 }
