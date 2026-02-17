@@ -74,6 +74,7 @@ Localization coverage:
 - Locale length audit script added at `apps/macos-ui/scripts/check_locale_lengths.sh` for overflow-risk preflight
 - Locale key/placeholder integrity audit script added at `apps/macos-ui/scripts/check_locale_integrity.sh`
 - `v0.11.0-beta.2` heuristic overflow audit captured at `docs/validation/v0.11.0-beta.2-l10n-overflow.md` (no high-risk candidates flagged)
+- `v0.12.0-beta.1` on-device overflow validation captured at `docs/validation/v0.12.0-beta.1-visual-overflow.md` (Settings surface checks passing)
 - Manager display-name localization keys now cover upgrade-preview/task-fallback manager labels (including software update/app store naming)
 
 Validation snapshot for `v0.11.0-beta.1` expansion:
@@ -102,7 +103,7 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
   - Implemented: pnpm (global), yarn (global), RubyGems, Poetry (self/plugins), Bundler
   - Pending: none
 - UI/UX redesign milestone is documented in roadmap sequencing but not yet implemented
-- Overflow validation now has a documented heuristic pass (`v0.11.0-beta.2`), with full on-device visual pass still pending
+- Overflow validation now has both heuristic and on-device executable coverage for Settings; broader UI surface validation is still in progress
 - Upgrade-all transparency now provides summary counts + top manager breakdown in confirmation flow
 - Upgrade-preview filtering/sorting logic now has dedicated macOS UI unit coverage (`HelmTests/UpgradePreviewPlannerTests`)
 - No upgrade preview UI

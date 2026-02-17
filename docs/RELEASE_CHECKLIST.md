@@ -11,7 +11,8 @@ This checklist is required before creating a release tag on `main`.
 ### Validation
 - [x] Locale key/placeholder integrity script added: `apps/macos-ui/scripts/check_locale_integrity.sh`.
 - [x] i18n CI runs locale mirror parity for all shipped locales plus locale integrity checks.
-- [ ] Run full on-device visual overflow validation across `es`, `fr`, `de`, `pt-BR`, and `ja`.
+- [x] Run full on-device visual overflow validation across `es`, `fr`, `de`, `pt-BR`, and `ja` (`HelmTests/LocalizationOverflowValidationTests`).
+- [x] Validation report committed at `docs/validation/v0.12.0-beta.1-visual-overflow.md`.
 
 ### Branch and Tag
 - [ ] `dev` merged into `main` for release.

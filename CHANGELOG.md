@@ -11,10 +11,13 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
   - key parity against base `en` locale
   - placeholder token parity for localized strings
 - Added locale integrity validation to CI (`.github/workflows/i18n-lint.yml`).
+- Added `LocalizationOverflowValidationTests` in `HelmTests` for locale-aware width checks on constrained `SettingsPopoverView` controls.
+- Added visual overflow validation artifact at `docs/validation/v0.12.0-beta.1-visual-overflow.md`.
 
 ### Changed
 - Expanded i18n locale mirror parity checks to include `en`, `es`, `de`, `fr`, `pt-BR`, and `ja`.
 - Included locale integrity validation in `apps/macos-ui/scripts/run_v0110b2_stabilization_checks.sh`.
+- Increased `SettingsPopoverView` width and language picker width to clear validated locale overflow cases.
 
 ## [0.11.0-beta.2] - 2026-02-17
 
