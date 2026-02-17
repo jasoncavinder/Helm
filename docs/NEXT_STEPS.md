@@ -198,6 +198,8 @@ Remaining:
 - Cancellation reliability
 - Memory audit
 - FFI stability
+- Replace panic-prone FFI mutex lock paths (`lock().unwrap()`) with explicit poisoned-lock handling and structured error propagation
+- Resolve website docs duplicate id warnings (`overview`, `roadmap`) in Starlight content to remove persistent build warnings
 
 ---
 

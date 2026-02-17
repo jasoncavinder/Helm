@@ -94,6 +94,9 @@ Localization coverage:
 - No self-update mechanism yet
 - Limited diagnostics UI
 - No CLI interface
+- Low-priority deferred hardening:
+  - FFI boundary still uses multiple `Mutex::lock().unwrap()` sites; a poisoned mutex would currently panic instead of surfacing a structured recoverable error
+  - Website docs build emits duplicate Starlight doc-id warnings for `overview` and `roadmap`; build succeeds but warning debt remains
 
 ---
 
