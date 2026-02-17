@@ -14,6 +14,7 @@ This checklist is required before creating a release tag on `main`.
 - [x] Stabilization script passes: `apps/macos-ui/scripts/run_v0110b2_stabilization_checks.sh`.
 - [x] Priority 2 manager smoke matrix captured: `apps/macos-ui/scripts/smoke_priority2_managers.sh`.
 - [x] Validation notes committed at `docs/validation/v0.11.0-beta.2-smoke-matrix.md`.
+- [x] Localization overflow heuristic validation notes committed at `docs/validation/v0.11.0-beta.2-l10n-overflow.md`.
 - [ ] Run `HelmTests` on a host without testmanagerd sandbox IPC restrictions (current sandbox run skips this step by design when blocked).
 
 ### Branch and Tag
