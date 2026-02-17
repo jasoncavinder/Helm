@@ -18,14 +18,14 @@ Helm is in:
 
 Focus:
 - Manager expansion
-- Localization expansion
 - UI/UX redesign planning
+- Hardening and diagnostics
 
 Current checkpoint:
-- `v0.12.0-beta.3` released (dedicated upgrade-preview UI surface)
+- `v0.12.0-beta.4` released (upgrade-preview dry-run support)
 
 Next release target:
-- `v0.12.0-beta.4` (dry-run support for upgrade preview flow)
+- `v0.12.0` (stable consolidation release)
 
 `v0.11.0-beta.2` stabilization work completed:
 

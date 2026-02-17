@@ -8,7 +8,7 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.12.0-beta.3**
+Current version: **0.12.0**
 
 See:
 - CHANGELOG.md
@@ -28,6 +28,7 @@ See:
 - 0.9.x — Internationalization foundation
 - 0.10.x — Core language managers + hardening checkpoint
 - 0.11.x — Extended language managers (beta checkpoint)
+- 0.12.x — Localization hardening + upgrade transparency (stable checkpoint)
 
 ---
 
