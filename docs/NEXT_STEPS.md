@@ -99,6 +99,9 @@ Completed (`v0.11.0-beta.1` in progress):
 - yarn adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
 - yarn parser fixtures and adapter unit tests added for version/list/search/outdated flows
 - yarn manager metadata wired through macOS UI + localization keys
+- RubyGems adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
+- RubyGems parser fixtures and adapter unit tests added for version/list/search/outdated flows
+- RubyGems manager metadata wired through macOS UI + localization keys
 
 ---
 

@@ -23,6 +23,8 @@ use helm_core::adapters::pipx::PipxAdapter;
 use helm_core::adapters::pipx_process::ProcessPipxSource;
 use helm_core::adapters::pnpm::PnpmAdapter;
 use helm_core::adapters::pnpm_process::ProcessPnpmSource;
+use helm_core::adapters::rubygems::RubyGemsAdapter;
+use helm_core::adapters::rubygems_process::ProcessRubyGemsSource;
 use helm_core::adapters::rustup::RustupAdapter;
 use helm_core::adapters::rustup_process::ProcessRustupSource;
 use helm_core::adapters::softwareupdate::SoftwareUpdateAdapter;
@@ -222,6 +224,7 @@ struct UpgradeAllTargets {
     cargo_binstall: Vec<String>,
     pip: Vec<String>,
     pipx: Vec<String>,
+    rubygems: Vec<String>,
     rustup: Vec<String>,
     softwareupdate_outdated: bool,
 }
@@ -241,6 +244,7 @@ fn collect_upgrade_all_targets(
     let mut seen_cargo_binstall = std::collections::HashSet::new();
     let mut seen_pip = std::collections::HashSet::new();
     let mut seen_pipx = std::collections::HashSet::new();
+    let mut seen_rubygems = std::collections::HashSet::new();
     let mut seen_rustup = std::collections::HashSet::new();
 
     for package in outdated {
@@ -297,6 +301,11 @@ fn collect_upgrade_all_targets(
             ManagerId::Pipx => {
                 if seen_pipx.insert(package.package.name.clone()) {
                     targets.pipx.push(package.package.name.clone());
+                }
+            }
+            ManagerId::RubyGems => {
+                if seen_rubygems.insert(package.package.name.clone()) {
+                    targets.rubygems.push(package.package.name.clone());
                 }
             }
             ManagerId::Rustup => {
@@ -397,6 +406,9 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
     ));
     let pip_adapter = Arc::new(PipAdapter::new(ProcessPipSource::new(executor.clone())));
     let pipx_adapter = Arc::new(PipxAdapter::new(ProcessPipxSource::new(executor.clone())));
+    let rubygems_adapter = Arc::new(RubyGemsAdapter::new(ProcessRubyGemsSource::new(
+        executor.clone(),
+    )));
     let rustup_adapter = Arc::new(RustupAdapter::new(ProcessRustupSource::new(
         executor.clone(),
     )));
@@ -415,6 +427,7 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
         cargo_binstall_adapter,
         pip_adapter,
         pipx_adapter,
+        rubygems_adapter,
         rustup_adapter,
         softwareupdate_adapter,
         mas_adapter,
@@ -748,6 +761,7 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
         ManagerId::CargoBinstall,
         ManagerId::Pip,
         ManagerId::Pipx,
+        ManagerId::RubyGems,
         ManagerId::Rustup,
         ManagerId::SoftwareUpdate,
         ManagerId::Mas,
@@ -1182,6 +1196,20 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
             }
         }
 
+        if runtime.is_manager_enabled(ManagerId::RubyGems) {
+            for package_name in targets.rubygems {
+                let request = AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::RubyGems,
+                        name: package_name,
+                    }),
+                });
+                if let Err(error) = runtime.submit(ManagerId::RubyGems, request).await {
+                    eprintln!("upgrade_all: failed to queue rubygems upgrade task: {error}");
+                }
+            }
+        }
+
         if runtime.is_manager_enabled(ManagerId::Rustup) {
             for toolchain in targets.rustup {
                 let request = AdapterRequest::Upgrade(UpgradeRequest {
@@ -1247,6 +1275,7 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
 /// - "cargo_binstall"
 /// - "pip"
 /// - "pipx"
+/// - "rubygems"
 /// - "rustup"
 ///
 /// # Safety
@@ -1394,6 +1423,17 @@ pub unsafe extern "C" fn helm_upgrade_package(
             AdapterRequest::Upgrade(UpgradeRequest {
                 package: Some(PackageRef {
                     manager: ManagerId::Pipx,
+                    name: package_name.clone(),
+                }),
+            }),
+            None,
+            Vec::new(),
+        ),
+        ManagerId::RubyGems => (
+            ManagerId::RubyGems,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::RubyGems,
                     name: package_name.clone(),
                 }),
             }),
