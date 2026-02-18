@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.13.0-beta.1] - 2026-02-18
+
+### Added
+- Delivered the redesigned menu bar popover shell with:
+  - top updates attention banner and custom upgrade-all action
+  - layered overlays (search, quick settings, about, quit confirmation) with dimmed underlay
+  - right-click status-item quick actions and in-icon status badge indicators
+- Delivered the redesigned control-center shell with:
+  - titlebar-hidden compact header and integrated global search
+  - full-row interactive sidebar with hover/press states
+  - redesigned card-based Settings surface and manager-aware action badges
+  - keyboard shortcuts (`Cmd+F`, `Esc`, `Cmd+W`) and reduced-motion-aware overlay transitions
+
+### Changed
+- Updated menu bar icon rendering to preserve monochrome anchor treatment (black/white by appearance) while keeping status indicators colorized.
+- Extended custom Helm primary/secondary button styling across non-destructive workflows.
+- Added explicit manager health classification for undetected managers (`Not Installed`) instead of reporting them as `Healthy`/`Attention`.
+- Bumped release metadata and documentation/website status to `v0.13.0-beta.1`.
+
 ## [0.12.0] - 2026-02-17
 
 ### Added

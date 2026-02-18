@@ -8,10 +8,13 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.12.0**
+Current version: **0.13.0-beta.1**
 
 See:
 - CHANGELOG.md
+
+Active milestone:
+- 0.13.x — UI/UX analysis and redesign (beta in progress)
 
 ---
 
@@ -96,6 +99,46 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 
 ---
 
+## UI Redesign Artifacts (Integrated Baseline)
+
+- A complete redesign concept package now exists under `docs/ui/`:
+  - `REDESIGN_CONCEPT.md`
+  - `INFORMATION_ARCHITECTURE.md`
+  - `USER_FLOWS.md`
+  - `VISUAL_SYSTEM.md`
+  - `SWIFTUI_ARCHITECTURE.md`
+  - `MOCKUPS.md`
+- A standalone SwiftUI redesign scaffold now exists at `apps/macos/Helm/`:
+  - menu bar app entry + popover
+  - control-center window with section placeholders
+  - shared state store and deterministic mock data
+  - localized string resources for scaffold surfaces
+- The redesign baseline is now integrated into the production macOS target at `apps/macos-ui/Helm/`:
+  - redesigned menu bar popover shell
+  - top-of-popover updates attention banner with custom-styled upgrade-all action
+  - layered overlay panels (search, quick settings, about, quit confirmation) with dimmed-underlay transitions
+  - footer utility actions (search/settings/quit) + version-triggered About panel
+  - dynamic status-item signal (Helm icon + update/error/running cues)
+  - in-icon status badge overlays for update/error/running cues (no numeric title text)
+  - status-item anchor glyph now preserves menu-appearance monochrome (black/white) while only badge indicators are colorized
+  - right-click status-item quick actions (About, Upgrade All, Basic/Advanced Settings, Refresh, Quit)
+  - popover panel now auto-sizes to content height to avoid unnecessary scrollbar appearance in normal active-task states
+  - explicit light-mode brightness tuning for popover overlays/cards and control-center background gradients
+  - dedicated control-center window (overview/updates/packages/tasks/managers/settings)
+  - titlebar-hidden control-center presentation with integrated global search bar
+  - control-center keyboard shortcuts (`Cmd+F` global search focus, `Cmd+W` window close)
+  - full-row clickable sidebar navigation targets for control-center sections
+  - tactile sidebar hover/press states and broader pointer affordance cues for interactive rows/actions
+  - seamless full-height sidebar surface treatment with refined top-cap blending and darker sidebar step
+  - redesigned control-center Settings surface (card-based layout, policy toggles, and operational actions)
+  - manager-aware action badges in Settings, including explicit software-update blocked signal when Safe Mode is enabled
+  - redesigned button language now favors custom Helm gradient/secondary controls across primary workflows (system button styling retained for destructive/reset-style actions)
+  - manager health state model includes a dedicated gray "Not Installed" badge for undetected managers
+  - inspector pane for manager/package context
+  - live wiring to `HelmCore` data/actions for refresh, upgrade, package actions, and manager operations
+
+---
+
 ## Known Limitations
 
 - Priority 1 language manager coverage is complete for the beta checkpoint:
@@ -104,7 +147,9 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 - Priority 2 extended language-manager expansion is complete at this checkpoint:
   - Implemented: pnpm (global), yarn (global), RubyGems, Poetry (self/plugins), Bundler
   - Pending: none
-- UI/UX redesign milestone is documented in roadmap sequencing but not yet implemented
+- Redesign integration is functional and now includes layered popover UX + control-center search, but still needs iterative UX polish + accessibility validation
+- Popover overlay transitions now respect reduced-motion settings, but a full VoiceOver + keyboard-only redesign sweep is still pending
+- New redesign localization keys are currently expanded in `en` and require full non-English locale rollout parity
 - Overflow validation now has both heuristic and on-device executable coverage for Settings, onboarding, navigation, package filters, and manager labels/states
 - Upgrade-all transparency now provides summary counts + top manager breakdown in confirmation flow
 - Upgrade-preview filtering/sorting logic now has dedicated macOS UI unit coverage (`HelmTests/UpgradePreviewPlannerTests`)

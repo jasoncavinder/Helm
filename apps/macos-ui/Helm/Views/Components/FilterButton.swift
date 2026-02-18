@@ -19,5 +19,6 @@ struct FilterButton: View {
                 .foregroundColor(isSelected ? .accentColor : .secondary)
         }
         .buttonStyle(.plain)
+        .helmPointer()
     }
 }
