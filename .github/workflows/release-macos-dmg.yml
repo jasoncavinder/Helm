@@ -136,21 +136,91 @@ jobs:
             echo "HelmService: no get-task-allow ✓"
           fi
 
-      - name: Create drag-to-Applications DMG
+      - name: Create polished drag-to-Applications DMG
         run: |
           set -euo pipefail
+
           APP_PATH="$PWD/build/DerivedData/Build/Products/Release/Helm.app"
           STAGING_DIR="$PWD/build/dmg-staging"
           OUTPUT_DIR="$PWD/build/release-assets"
+          DMG_TMP="$PWD/build/tmp.dmg"
+
           VERSIONED_DMG="$OUTPUT_DIR/Helm-${TAG_NAME}-macos-universal.dmg"
           LATEST_DMG="$OUTPUT_DIR/Helm.dmg"
+          VOLUME_NAME="Helm"
+          MOUNT_PATH="/Volumes/$VOLUME_NAME"
 
-          rm -rf "$STAGING_DIR" "$OUTPUT_DIR"
+          # Sanity checks
+          test -d "$APP_PATH"
+          test -f "$PWD/assets/dmg/background.png"
+
+          rm -rf "$STAGING_DIR" "$OUTPUT_DIR" "$DMG_TMP"
           mkdir -p "$STAGING_DIR" "$OUTPUT_DIR"
+
           cp -R "$APP_PATH" "$STAGING_DIR/"
           ln -s /Applications "$STAGING_DIR/Applications"
 
-          hdiutil create -volname "Helm" -srcfolder "$STAGING_DIR" -ov -format UDZO "$VERSIONED_DMG"
+          # Create writable DMG so we can set Finder metadata
+          hdiutil create \
+            -volname "$VOLUME_NAME" \
+            -srcfolder "$STAGING_DIR" \
+            -ov \
+            -format UDRW \
+            "$DMG_TMP"
+
+          # Mount (read/write), no Finder auto-open
+          DEVICE="$(hdiutil attach -readwrite -noverify -noautoopen "$DMG_TMP" | awk '/^\/dev/ {print $1; exit}')"
+
+          # Ensure detach happens even if AppleScript fails
+          cleanup() {
+            if mount | rg -q "$MOUNT_PATH"; then
+              hdiutil detach "$DEVICE" || hdiutil detach -force "$DEVICE" || true
+            fi
+          }
+          trap cleanup EXIT
+
+          # Give the system a moment to mount
+          sleep 3
+
+          # Background image (600x400)
+          mkdir -p "$MOUNT_PATH/.background"
+          cp "$PWD/assets/dmg/background.png" "$MOUNT_PATH/.background/background.png"
+
+          # Configure Finder window:
+          # bounds {x1,y1,x2,y2} => width=600 height=400 (700-100, 500-100)
+          osascript <<EOF
+          tell application "Finder"
+            tell disk "$VOLUME_NAME"
+              open
+              set current view of container window to icon view
+              set toolbar visible of container window to false
+              set statusbar visible of container window to false
+              set bounds of container window to {100, 100, 700, 500}
+
+              set viewOptions to the icon view options of container window
+              set arrangement of viewOptions to not arranged
+              set icon size of viewOptions to 128
+              set background picture of viewOptions to file ".background:background.png"
+
+              set position of item "Helm.app" of container window to {150, 210}
+              set position of item "Applications" of container window to {450, 210}
+
+              close
+              open
+              update without registering applications
+              delay 3
+            end tell
+          end tell
+          EOF
+
+          sync
+          sleep 1
+
+          # Detach (trap will also attempt)
+          hdiutil detach "$DEVICE"
+
+          # Convert to compressed readonly DMG
+          hdiutil convert "$DMG_TMP" -format UDZO -o "$VERSIONED_DMG"
           cp "$VERSIONED_DMG" "$LATEST_DMG"
 
       - name: Notarize DMG (App Store Connect API key)
