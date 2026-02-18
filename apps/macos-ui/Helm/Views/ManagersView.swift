@@ -1,261 +1,231 @@
 import SwiftUI
 
-struct ManagersView: View {
-    @ObservedObject var core = HelmCore.shared
-    @Binding var selectedTab: HelmTab
+struct ManagersSectionView: View {
+    @ObservedObject private var core = HelmCore.shared
+    @EnvironmentObject private var context: ControlCenterContext
+
+    private var groupedManagers: [(authority: ManagerAuthority, managers: [ManagerInfo])] {
+        ManagerAuthority.allCases.map { authorityLevel in
+            let managers = ManagerInfo.implemented
+                .filter { authority(for: $0.id) == authorityLevel }
+                .sorted { localizedManagerDisplayName($0.id).localizedCaseInsensitiveCompare(localizedManagerDisplayName($1.id)) == .orderedAscending }
+            return (authority: authorityLevel, managers: managers)
+        }
+    }
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 0) {
-                ForEach(ManagerInfo.groupedByCategory, id: \.category) { group in
-                    // Section header
-                    HStack {
-                        Text(localizedCategory(group.category))
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.secondary)
-                            .textCase(.uppercase)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.top, 10)
-                    .padding(.bottom, 4)
+            VStack(alignment: .leading, spacing: 12) {
+                Text(ControlCenterSection.managers.title)
+                    .font(.title2.weight(.semibold))
+                    .padding(.horizontal, 20)
+                    .padding(.top, 20)
 
-                    ForEach(group.managers) { manager in
-                        let status = core.managerStatuses[manager.id]
-                        let detected = status?.detected ?? false
-                        let enabled = status?.enabled ?? true
-                        let packageCount = countFor(manager: manager)
+                ForEach(groupedManagers, id: \.authority) { group in
+                    if !group.managers.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(group.authority.key.localized)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .textCase(.uppercase)
+                                .padding(.horizontal, 20)
 
-                        ManagerRow(
-                            manager: manager,
-                            detected: detected,
-                            enabled: enabled,
-                            version: status?.version,
-                            packageCount: packageCount,
-                            operationStatus: core.managerOperations[manager.id],
-                            onToggle: {
-                                core.setManagerEnabled(manager.id, enabled: !enabled)
-                            },
-                            onTap: {
-                                core.selectedManagerFilter = normalizedManagerName(manager.id)
-                                selectedTab = .packages
-                            },
-                            onInstall: {
-                                core.installManager(manager.id)
-                            },
-                            onUpdate: {
-                                core.updateManager(manager.id)
-                            },
-                            onUninstall: {
-                                core.uninstallManager(manager.id)
+                            ForEach(group.managers) { manager in
+                                ManagerSectionRow(
+                                    manager: manager,
+                                    status: core.managerStatuses[manager.id],
+                                    outdatedCount: core.outdatedCount(forManagerId: manager.id),
+                                    packageCount: core.installedPackages.filter { $0.managerId == manager.id }.count,
+                                    operationStatus: core.managerOperations[manager.id],
+                                    onSelect: {
+                                        context.selectedManagerId = manager.id
+                                    },
+                                    onViewPackages: {
+                                        context.selectedManagerId = manager.id
+                                        context.managerFilterId = manager.id
+                                        context.selectedSection = .packages
+                                    }
+                                )
                             }
-                        )
-
-                        Divider()
-                            .padding(.leading, 44)
+                        }
                     }
                 }
+
+                if ManagerInfo.implemented.isEmpty {
+                    Text("app.redesign.managers.empty".localized)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 20)
+                }
             }
-        }
-    }
-
-    private func countFor(manager: ManagerInfo) -> Int {
-        core.installedPackages.filter {
-            $0.manager.lowercased().contains(manager.shortName.lowercased())
-        }.count
-    }
-
-    private func normalizedManagerName(_ raw: String) -> String {
-        switch raw.lowercased() {
-        case "homebrew_formula": return "Homebrew"
-        case "homebrew_cask": return "Homebrew Cask"
-        case "npm", "npm_global": return "npm"
-        case "pip": return "pip"
-        case "pipx": return "pipx"
-        case "cargo": return "Cargo"
-        case "cargo_binstall": return "cargo-binstall"
-        case "mise": return "mise"
-        case "rustup": return "rustup"
-        case "softwareupdate": return "Software Update"
-        case "mas": return "App Store"
-        default: return raw.replacingOccurrences(of: "_", with: " ").capitalized
-        }
-    }
-
-    private func localizedCategory(_ category: String) -> String {
-        switch category {
-        case "Toolchain":
-            return L10n.App.Managers.Category.toolchain.localized
-        case "System/OS":
-            return L10n.App.Managers.Category.systemOs.localized
-        case "Language":
-            return L10n.App.Managers.Category.language.localized
-        case "App Store":
-            return L10n.App.Managers.Category.appStore.localized
-        default:
-            return category
+            .padding(.bottom, 18)
         }
     }
 }
 
-private struct ManagerRow: View {
+private struct ManagerSectionRow: View {
+    @ObservedObject private var core = HelmCore.shared
+
     let manager: ManagerInfo
-    let detected: Bool
-    let enabled: Bool
-    let version: String?
+    let status: ManagerStatus?
+    let outdatedCount: Int
     let packageCount: Int
     let operationStatus: String?
-    let onToggle: () -> Void
-    let onTap: () -> Void
-    let onInstall: () -> Void
-    let onUpdate: () -> Void
-    let onUninstall: () -> Void
+    let onSelect: () -> Void
+    let onViewPackages: () -> Void
 
-    @State private var confirmAction: ConfirmAction? = nil
+    @State private var confirmAction: ConfirmAction?
 
     private enum ConfirmAction: Identifiable {
-        case install, update, uninstall
+        case install
+        case update
+        case uninstall
+
         var id: String {
             switch self {
-            case .install: return "install"
-            case .update: return "update"
-            case .uninstall: return "uninstall"
+            case .install:
+                return "install"
+            case .update:
+                return "update"
+            case .uninstall:
+                return "uninstall"
             }
         }
     }
 
-    private var indicatorColor: Color {
-        if !manager.isImplemented { return .gray }
-        if !enabled { return .gray }
-        return detected ? .green : .red
+    private var detected: Bool {
+        status?.detected ?? false
+    }
+
+    private var enabled: Bool {
+        status?.enabled ?? true
+    }
+
+    private var currentHealth: OperationalHealth {
+        core.health(forManagerId: manager.id)
     }
 
     var body: some View {
-        HStack(spacing: 10) {
-            // Info area — tappable to navigate to packages
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
-                Circle()
-                    .fill(indicatorColor)
-                    .frame(width: 8, height: 8)
+                HealthBadgeView(status: currentHealth)
 
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(manager.displayName)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(manager.isImplemented ? .primary : .secondary)
-
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(localizedManagerDisplayName(manager.id))
+                        .font(.body.weight(.medium))
                     HStack(spacing: 6) {
-                        if let version = version, !version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            Text(L10n.Common.version.localized(with: ["version": version]))
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-
-                        if packageCount > 0 {
-                            Text(L10n.App.Managers.Label.packageCount.localized(with: ["count": packageCount]))
-                                .font(.caption2)
-                                .foregroundColor(.blue)
-                        }
+                        Text(L10n.App.Managers.Label.packageCount.localized(with: ["count": packageCount]))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("|")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(L10n.App.Managers.Tooltip.outdated.localized(with: ["count": outdatedCount]))
+                            .font(.caption)
+                            .foregroundStyle(outdatedCount == 0 ? Color.secondary : Color.orange)
                     }
                 }
 
                 Spacer()
-            }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                if manager.isImplemented && detected && packageCount > 0 {
-                    onTap()
-                }
-            }
 
-            if manager.isImplemented {
                 if let operationStatus {
                     HStack(spacing: 4) {
                         ProgressView()
-                            .scaleEffect(0.6)
+                            .controlSize(.mini)
                         Text(operationStatus)
                             .font(.caption2)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
+                } else {
+                    Text(detected ? (enabled ? L10n.App.Managers.State.enabled.localized : L10n.App.Managers.State.disabled.localized) : L10n.App.Managers.State.notInstalled.localized)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                if detected {
-                    Text(enabled ? L10n.App.Managers.State.enabled.localized : L10n.App.Managers.State.disabled.localized)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
 
+                if detected {
                     Toggle("", isOn: Binding(
                         get: { enabled },
-                        set: { _ in onToggle() }
+                        set: { _ in
+                            core.setManagerEnabled(manager.id, enabled: !enabled)
+                        }
                     ))
                     .toggleStyle(.switch)
-                    .scaleEffect(0.7)
                     .labelsHidden()
-                    .help(L10n.App.Managers.Help.enableDisable.localized)
-                } else {
-                    Text(L10n.App.Managers.State.notInstalled.localized)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-            } else {
-                Text(L10n.App.Managers.State.comingSoon.localized)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.gray.opacity(0.1))
-                    .cornerRadius(4)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .contextMenu {
-            if manager.canInstall && !detected {
-                Button(L10n.App.Managers.Action.install.localized(with: ["manager": manager.shortName])) {
-                    confirmAction = .install
+                    .scaleEffect(0.75)
                 }
             }
-            if manager.canUpdate && detected {
-                Button(L10n.App.Managers.Action.update.localized(with: ["manager": manager.shortName])) {
-                    confirmAction = .update
+
+            HStack(spacing: 8) {
+                if manager.canInstall && !detected {
+                    Button(L10n.Common.install.localized) {
+                        confirmAction = .install
+                    }
+                    .helmPointer()
                 }
-            }
-            if manager.canUninstall && detected {
-                Button(L10n.App.Managers.Action.uninstall.localized(with: ["manager": manager.shortName])) {
-                    confirmAction = .uninstall
+                if manager.canUpdate && detected {
+                    Button(L10n.Common.update.localized) {
+                        confirmAction = .update
+                    }
+                    .helmPointer()
                 }
-            }
-            if manager.isImplemented && detected && packageCount > 0 {
+                if manager.canUninstall && detected {
+                    Button(L10n.Common.uninstall.localized) {
+                        confirmAction = .uninstall
+                    }
+                    .helmPointer()
+                }
+
+                Spacer()
+
                 Button(L10n.App.Managers.Action.viewPackages.localized) {
-                    onTap()
+                    onViewPackages()
                 }
+                .disabled(packageCount == 0)
+                .helmPointer(enabled: packageCount > 0)
             }
+            .font(.caption)
         }
+        .padding(12)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal, 20)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onSelect()
+        }
+        .helmPointer()
         .alert(item: $confirmAction) { action in
             switch action {
             case .install:
                 return Alert(
-                    title: Text(L10n.App.Managers.Alert.installTitle.localized(with: ["manager": manager.displayName])),
+                    title: Text(L10n.App.Managers.Alert.installTitle.localized(with: ["manager": localizedManagerDisplayName(manager.id)])),
                     message: Text(L10n.App.Managers.Alert.installMessage.localized(with: ["manager_short": manager.shortName])),
-                    primaryButton: .default(Text(L10n.Common.install.localized)) { onInstall() },
+                    primaryButton: .default(Text(L10n.Common.install.localized)) { core.installManager(manager.id) },
                     secondaryButton: .cancel()
                 )
             case .update:
                 return Alert(
-                    title: Text(L10n.App.Managers.Alert.updateTitle.localized(with: ["manager": manager.displayName])),
+                    title: Text(L10n.App.Managers.Alert.updateTitle.localized(with: ["manager": localizedManagerDisplayName(manager.id)])),
                     message: Text(L10n.App.Managers.Alert.updateMessage.localized),
-                    primaryButton: .default(Text(L10n.Common.update.localized)) { onUpdate() },
+                    primaryButton: .default(Text(L10n.Common.update.localized)) { core.updateManager(manager.id) },
                     secondaryButton: .cancel()
                 )
             case .uninstall:
                 return Alert(
-                    title: Text(L10n.App.Managers.Alert.uninstallTitle.localized(with: ["manager": manager.displayName])),
+                    title: Text(L10n.App.Managers.Alert.uninstallTitle.localized(with: ["manager": localizedManagerDisplayName(manager.id)])),
                     message: Text(L10n.App.Managers.Alert.uninstallMessage.localized(with: ["manager_short": manager.shortName])),
-                    primaryButton: .destructive(Text(L10n.Common.uninstall.localized)) { onUninstall() },
+                    primaryButton: .destructive(Text(L10n.Common.uninstall.localized)) { core.uninstallManager(manager.id) },
                     secondaryButton: .cancel()
                 )
             }
         }
-        .opacity(manager.isImplemented ? 1.0 : 0.6)
+    }
+}
+
+// Backward compatibility wrapper for legacy references.
+struct ManagersView: View {
+    @Binding var selectedTab: HelmTab
+
+    var body: some View {
+        ManagersSectionView()
     }
 }

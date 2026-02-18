@@ -91,6 +91,7 @@ struct PackageRowView: View {
                         }
                         .menuStyle(.borderlessButton)
                         .help(L10n.App.Packages.Label.homebrewKegPolicy.localized)
+                        .helmPointer()
                     }
 
                     if let onUpgrade {
@@ -107,6 +108,7 @@ struct PackageRowView: View {
                             }
                             .buttonStyle(.borderless)
                             .help(L10n.App.Packages.Action.upgradePackage.localized)
+                            .helmPointer()
                         }
                     }
 
@@ -128,6 +130,7 @@ struct PackageRowView: View {
                                     ? L10n.App.Packages.Action.unpin.localized
                                     : L10n.App.Packages.Action.pin.localized
                             )
+                            .helmPointer()
                         }
                     }
                 }

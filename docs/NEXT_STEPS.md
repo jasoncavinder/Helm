@@ -11,29 +11,20 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-
-0.11.x – 0.13.x
-
+0.13.x
 ```
 
 Focus:
-- Manager expansion
-- UI/UX redesign planning
+- UI/UX redesign hardening and accessibility validation
+- Localization parity for redesign-specific keys
+- Release-quality polish and diagnostics follow-through
 - Hardening and diagnostics
 
 Current checkpoint:
-- `v0.12.0-beta.4` released (upgrade-preview dry-run support)
+- `v0.13.0-beta.1` released (redesigned popover/control-center shell integrated in production app target)
 
 Next release target:
-- `v0.12.0` (stable consolidation release)
-
-`v0.11.0-beta.2` stabilization work completed:
-
-- Added repeatable stabilization check runner at `apps/macos-ui/scripts/run_v0110b2_stabilization_checks.sh`
-- Added Priority 2 manager smoke-matrix generator at `apps/macos-ui/scripts/smoke_priority2_managers.sh` (writes `docs/validation/v0.11.0-beta.2-smoke-matrix.md`)
-- Captured initial smoke matrix snapshot in this environment (`rubygems`/`bundler` detected; `pnpm`/`yarn`/`poetry` not installed)
-- Captured localization overflow heuristic validation at `docs/validation/v0.11.0-beta.2-l10n-overflow.md` (no high-risk candidates flagged)
-- Completed on macOS validation host, including `HelmTests` execution and release tagging (`v0.11.0-beta.2`)
+- `v0.13.0-beta.2` (redesign accessibility + locale parity + usability validation checkpoint)
 
 ---
 
@@ -185,13 +176,47 @@ Remaining:
 
 ## Priority 5 — UI/UX Analysis & Redesign
 
-Implement:
+Completed:
 
-- Full interaction-flow audit (onboarding, refresh, search, upgrade, error handling)
-- Information architecture review for dashboard/packages/tasks/managers/settings
-- Visual hierarchy, typography, spacing, and state-feedback redesign proposals
+- Created redesign concept, IA, flows, visual system, SwiftUI architecture proposal, and annotated mockups under `docs/ui/`
+- Added standalone SwiftUI redesign scaffold under `apps/macos/Helm/` with:
+  - menu bar integration and status popover
+  - control-center window + section placeholders
+  - deterministic mock state/data for previews and iteration
+  - localization-first string resources for user-facing scaffold text
+- Integrated redesign baseline into `apps/macos-ui` target with:
+  - redesigned menu bar popover and control-center window
+  - section surfaces for overview/updates/packages/tasks/managers/settings
+  - inspector pane and manager/package/task interaction wiring
+  - live `HelmCore`-backed actions for refresh/upgrade/package pin-update and manager operations
+- Refined redesigned shell behavior in `apps/macos-ui` with:
+  - top attention banner in popover for pending updates + custom update-all affordance
+  - layered popover panels (search/settings/about/quit confirmation) with dimmed-underlay transitions
+  - compact utility footer actions (search/settings/quit) and version-triggered About panel
+  - dynamic menu-bar status signal (Helm icon with update/error/running cues)
+  - in-icon status-item badge overlay and right-click quick action menu
+  - status-item icon treatment updated to monochrome anchor + colorized state badge indicators
+  - popover outside-click dismissal hardening + overlay cursor/hit-testing cleanup
+  - auto-sized popover height to reduce avoidable scrollbar churn at active-task peaks
+  - reduced-motion-aware overlay transitions and keyboard shortcuts (`Cmd+F`, `Esc`, `Cmd+W`)
+  - titlebar-hidden control-center window chrome with integrated global search routing into Packages
+  - compacted control-center top bar alignment with window controls and fixed-size non-resizable window behavior
+  - tuned light-mode visual balance for popover overlays/cards and control-center gradients
+  - full-row clickable control-center sidebar navigation behavior
+  - tactile sidebar hover/press states and broadened pointer affordance cues
+  - seamless/darker full-height sidebar surface integration through the titlebar cap region
+  - redesigned control-center Settings section to card-based production-quality layout
+  - manager-aware Settings action badges (including software-update blocked signaling under Safe Mode)
+  - migrated core non-destructive workflows to custom Helm primary/secondary button styles
+  - introduced explicit gray "Not Installed" manager health badge state
+
+Implement (remaining):
+
 - Usability test plan and acceptance metrics for redesigned flows
-- Incremental implementation plan with non-breaking migration checkpoints
+- On-device validation sweep for redesigned states (loading/success/error/partial failure) across supported locales
+- Localization parity update for redesign-specific keys across shipped non-English locales
+- Remove or archive legacy UI component paths no longer used by the redesigned shell
+- Accessibility QA pass for keyboard traversal and VoiceOver labels in redesigned surfaces
 
 ---
 
@@ -255,6 +280,6 @@ Next steps are focused on:
 - Expanding manager coverage
 - Improving transparency
 - Hardening reliability
-- Preparing the UI/UX redesign milestone
+- Integrating and validating the UI/UX redesign baseline
 
 The goal is **closing 1.0 Definition of Done**.
