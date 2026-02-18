@@ -64,6 +64,17 @@ Install the latest beta DMG from GitHub Releases:
 
 DMG builds target **Any Mac (Apple Silicon + Intel)** on **macOS 12+** and use standard drag-to-`Applications` installation.
 
+## Support Helm
+
+Helm is an independent project.
+
+If you find it useful, consider supporting development:
+
+- GitHub Sponsors: https://github.com/sponsors/jasoncavinder
+- Patreon: https://patreon.com/yourname
+
+Your support helps fund continued development and long-term sustainability.
+
 ## Features
 
 - **Menu bar app** — Lightweight floating panel, no Dock icon
