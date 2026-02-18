@@ -1,0 +1,30 @@
+name: SwiftLint
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  swiftlint:
+    name: Lint Swift
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install SwiftLint
+        run: |
+          brew update
+          brew install swiftlint
+
+      # If you have a .swiftlint.yml config, SwiftLint will pick it up automatically.
+      # If your Swift code lives in a subdir, you can `cd` first.
+      - name: Run SwiftLint
+        run: |
+          swiftlint lint --strict
