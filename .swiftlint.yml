@@ -1,0 +1,15 @@
+disabled_rules:
+  - trailing_whitespace
+opt_in_rules:
+  - empty_count
+  - force_unwrapping
+
+# Adjust paths to match your repo layout:
+included:
+  - Sources
+  - Tests
+excluded:
+  - .build
+  - Packages
+  - Carthage
+  - vendor
