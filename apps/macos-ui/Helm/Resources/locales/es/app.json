@@ -131,7 +131,7 @@
   "app.managers.name.cargo_binstall": "cargo-binstall",
   "app.managers.name.mise": "mise",
   "app.managers.name.rustup": "rustup",
-  "app.managers.name.software_update": "Actualizacion de software",
+  "app.managers.name.software_update": "Actualización de software",
   "app.managers.name.app_store": "App Store",
   "app.settings.alert.upgrade_all.dry_run_toggle": "Modo de simulación (sin cambios)",
   "app.settings.alert.upgrade_all.dry_run_result_title": "Resultado de simulación",
