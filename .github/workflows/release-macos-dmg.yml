@@ -140,7 +140,7 @@ jobs:
           xcrun stapler staple "$DMG_PATH"
           xcrun stapler staple "$PWD/build/release-assets/Helm.dmg"
 
-            - name: Upload build artifacts to workflow run
+      - name: Upload build artifacts to workflow run
         uses: actions/upload-artifact@v4
         with:
           name: helm-macos-dmg-${{ env.TAG_NAME }}
