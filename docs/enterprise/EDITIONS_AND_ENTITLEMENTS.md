@@ -1,94 +1,330 @@
-# Helm Editions and Entitlements
+# Helm Editions & Entitlements
 
-This document defines Helm distribution variants and runtime feature gating from 1.0 onward.
+This document defines Helm’s product editions, feature boundaries, and runtime entitlement model.
 
-## 1. Build Variants
+It is the canonical source of truth for:
 
-Helm ships as two build variants:
+- Feature gating
+- Edition behavior
+- Beta access rules
+- Enforcement guarantees
 
-1. Debug build
-- Intended for engineering and internal validation.
-- Includes debug diagnostics and development toggles.
-- Not supported for production deployment.
+---
 
-2. Release build
-- Signed production artifact for public and enterprise distribution.
-- Contains all code paths; feature access is controlled by entitlements.
+## 1. Principles
 
-Recommendation: keep a single release artifact and gate features via verified entitlements to reduce packaging drift and support burden.
+Helm is a **local control plane** for system and package management.
 
-## 2. Runtime Editions
+All editions must preserve the following invariants:
 
-The release build supports three runtime editions:
+- Local-first execution
+- Deterministic behavior
+- Explicit user authority
+- No hidden automation
+- Transparent operations
 
-1. Free
-- Core local package management workflows.
-- Local-first search, refresh, install/uninstall/upgrade, baseline pinning.
+No edition may violate these principles.
 
-2. Pro (subscription/pay-gated)
-- Advanced individual/team workflows.
-- Enhanced scheduling/policy controls for local operations.
-- Expanded diagnostics and export features for power users.
+---
 
-3. Business (subscription/pay-gated)
-- Central management for enterprise consistency.
-- Scoped policy baselines, drift/compliance, rollout rings, and audit export.
+## 2. Edition Overview
 
-## 3. Capability Matrix
+Helm provides three editions:
 
-| Capability | Debug | Free | Pro | Business |
-|---|---|---|---|---|
-| Core manager detection, refresh, install/uninstall/upgrade | Yes | Yes | Yes | Yes |
-| Local-first progressive search | Yes | Yes | Yes | Yes |
-| Local pinning and pin-aware bulk upgrades | Yes | Yes | Yes | Yes |
-| Advanced local policy controls (single device/team) | Yes | No | Yes | Yes |
-| Extended diagnostics/export UX | Yes | Limited | Yes | Yes |
-| Central policy scopes (org/department/team/device groups) | Optional test | No | No | Yes |
-| Central compliance/drift reporting | Optional test | No | No | Yes |
-| Central rollout rings and approvals | Optional test | No | No | Yes |
+| Edition | Purpose |
+|--------|--------|
+| **Free** | Core execution layer |
+| **Pro** | Automation, intelligence, and advanced workflows |
+| **Business** | Governance, policy, and compliance |
 
-Notes:
+---
 
-- "Optional test" means available only in developer/test environments, not licensed production use.
-- Exact feature cuts can evolve by minor release, but Free/Pro/Business boundaries must remain explicit.
+## 3. Free Edition — Execution Layer
 
-## 4. Entitlement Model
+The Free edition must remain **fully usable** and **non-degraded**.
 
-Entitlement claims should include:
+It includes all core functionality required to manage a system.
 
-- edition (`free`, `pro`, `business`)
-- tenant context (business only)
-- enabled feature flags
-- issued-at and expiration timestamps
-- signature metadata (key id, algorithm)
+### Included Capabilities
 
-Validation rules:
+- Manager detection and enable/disable
+- Package listing (installed, outdated, available)
+- Install / uninstall / upgrade
+- Upgrade-all (authority-ordered)
+- Search (local + remote enrichment)
+- Task system (queue, progress, cancellation)
+- Pinning (native + virtual)
+- Upgrade preview and dry-run
+- Safe mode guardrails
+- Diagnostics and logs
+- Localization
 
-- Verify signature before enabling gated features.
-- Fail closed for business-only management actions when claims are invalid.
-- Keep core read-only functionality available when entitlement checks fail.
+### Guarantees
 
-## 5. Degradation Behavior
+- No feature required for normal operation is paywalled
+- Free must remain stable even if entitlement fails
+- No remote service is required
 
-If entitlement becomes invalid/expired:
+---
 
-- Free capabilities continue.
-- Pro capabilities downgrade to Free.
-- Business central enforcement downgrades to managed read-only or local safe mode (policy dependent).
-- All degradations are surfaced in UI and logs with clear cause.
+## 4. Pro Edition — Automation & Intelligence Layer
 
-## 6. Distribution and Licensing
+Pro enhances Helm for individual power users.
 
-- Distribution vehicle: signed release package/app deployable by users or MDM.
-- Licensing: runtime activation and periodic entitlement refresh.
-- No hidden "enterprise-only" binary fork.
+It adds:
 
-This approach preserves deterministic behavior across all customers and limits support matrix complexity.
+- Automation
+- Safety intelligence
+- Advanced workflows
+- Enhanced visibility
 
-## 7. 1.0 Boundary
+Pro does not introduce cloud dependencies.
 
-For 1.0 release readiness:
+---
 
-- Debug and release builds are defined and reproducible.
-- Release build supports entitlement-aware gating scaffolding.
-- Central business control plane capabilities may be delivered incrementally in 1.x.
+### 4.1 Automation
+
+- Scheduled refresh (daily/weekly/monthly)
+- Scheduled upgrade-all
+- Quiet hours
+- Conditional execution (network, battery, etc.)
+- Deferred execution windows
+
+---
+
+### 4.2 Security Advisory System (CVE Awareness)
+
+Helm Pro includes a **local security advisory system**.
+
+Capabilities:
+
+- Detect vulnerabilities affecting installed packages
+- Surface severity (low, medium, high, critical)
+- Show affected version ranges
+- Identify fixed versions where available
+
+Recommendations (advisory only):
+
+- Upgrade to safe version
+- Pin to known-safe version
+- Avoid upgrade (risk of regression)
+- Remove package
+
+### Constraints
+
+- Advisory only — Helm does not enforce decisions
+- Local-first evaluation (no required cloud)
+- Deterministic results based on local data
+
+---
+
+### 4.3 Advanced Safety Controls
+
+- Upgrade policies (major/minor restrictions)
+- Safe mode profiles
+- Risk indicators (breaking changes, major version jumps)
+- Enhanced upgrade preview
+
+---
+
+### 4.4 Advanced Visibility
+
+- Historical logs
+- Upgrade history timeline
+- Failure analytics
+- Manager health insights
+
+---
+
+### 4.5 Power UX
+
+- Advanced filtering (e.g., only minor updates)
+- Saved views
+- Bulk operations
+- Enhanced search
+
+---
+
+## 5. Business Edition — Governance Layer
+
+Business edition extends Helm for organizational environments.
+
+It adds:
+
+- Policy enforcement
+- Compliance visibility
+- Fleet management (future)
+
+---
+
+### 5.1 Policy Enforcement
+
+- Allowed / blocked packages
+- Version constraints
+- Mandatory updates
+- Safe mode enforcement
+
+---
+
+### 5.2 Drift Detection
+
+- Compare actual vs desired state
+- Detect non-compliant systems
+- Local evaluation of compliance
+
+---
+
+### 5.3 Audit & Reporting
+
+- Event logs
+- Exportable reports
+- Compliance summaries
+
+---
+
+### 5.4 Managed Configuration
+
+- MDM-based deployment
+- Managed settings
+- Locked configuration
+
+---
+
+### 5.5 Future Scope (Post-1.0)
+
+- Central policy service
+- Rollout strategies
+- Approval workflows
+
+---
+
+## 6. Entitlement Model
+
+Helm uses a runtime entitlement system.
+
+---
+
+### 6.1 Edition Enum
+
+```rust
+enum Edition {
+    Free,
+    Pro,
+    Business,
+}
+````
+
+---
+
+### 6.2 Feature Gating
+
+Each feature is mapped to an edition:
+
+```rust
+enum Feature {
+    Scheduling,
+    SecurityAdvisories,
+    AdvancedPolicies,
+    History,
+    AuditLogs,
+}
+```
+
+```rust
+fn is_enabled(feature: Feature, edition: Edition) -> bool
+```
+
+---
+
+### 6.3 Enforcement Rules
+
+* Free features must always be available
+* Entitlement failure must not break core functionality
+* Gating must be deterministic and local
+
+---
+
+## 7. Beta Entitlement Mode
+
+During pre-1.0:
+
+All features are enabled for testing.
+
+---
+
+### 7.1 Behavior
+
+* Pro features are enabled
+* Business features may be partially enabled
+* No feature is blocked
+
+---
+
+### 7.2 UI Requirements
+
+All non-Free features must be labeled:
+
+* **"Pro (Beta)"**
+* **"Business (Beta)"**
+
+Tooltip:
+
+> "Included during beta. Will require a paid license after 1.0."
+
+---
+
+### 7.3 Implementation
+
+```rust
+enum EntitlementMode {
+    BetaAllUnlocked,
+    Licensed,
+}
+```
+
+---
+
+## 8. Post-1.0 Behavior
+
+After 1.0:
+
+* Feature access is enforced by license
+* Free remains fully usable
+* Pro requires individual license
+* Business requires organizational license
+
+---
+
+## 9. Failure Modes
+
+Entitlement system must fail safely:
+
+* Default to Free capabilities
+* Never block critical operations
+* Never crash UI
+
+---
+
+## 10. Non-Goals
+
+The entitlement system must not:
+
+* Require constant network access
+* Degrade core functionality
+* Introduce hidden behavior
+
+---
+
+## 11. Summary
+
+Helm editions are structured as:
+
+* **Free** — Execution
+* **Pro** — Intelligence + Automation
+* **Business** — Governance
+
+All editions respect Helm’s core principles:
+
+* Local-first
+* Deterministic
+* Transparent

@@ -14,7 +14,7 @@ See:
 - CHANGELOG.md
 
 Active milestone:
-- 0.13.x — UI/UX analysis and redesign (beta in progress)
+- 0.13.x — UI/UX redesign, accessibility, onboarding walkthrough, and hardening (beta in progress)
 
 ---
 
@@ -73,14 +73,14 @@ Fully functional:
 
 Localization coverage:
 
-- en, es, de: broad app/service coverage
-- fr, pt-BR, ja: full app/common/service key coverage
+- All 6 locales (en, es, de, fr, pt-BR, ja) have full key parity across app/common/service files
 - Locale length audit script added at `apps/macos-ui/scripts/check_locale_lengths.sh` for overflow-risk preflight
 - Locale key/placeholder integrity audit script added at `apps/macos-ui/scripts/check_locale_integrity.sh`
 - `v0.11.0-beta.2` heuristic overflow audit captured at `docs/validation/v0.11.0-beta.2-l10n-overflow.md` (no high-risk candidates flagged)
 - `v0.12.0-beta.1` on-device overflow validation captured at `docs/validation/v0.12.0-beta.1-visual-overflow.md` (Settings surface checks passing)
 - Expanded on-device overflow validation coverage for onboarding/navigation/packages/managers captured at `docs/validation/v0.12.0-beta.2-visual-overflow-expansion.md`
 - Manager display-name localization keys now cover upgrade-preview/task-fallback manager labels (including software update/app store naming)
+- Redesign-specific keys (control center sidebar labels, walkthrough content, additional task names) still require non-English locale rollout
 
 Validation snapshot for `v0.11.0-beta.1` expansion:
 
@@ -92,10 +92,55 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 
 ## Architecture Status
 
-- Rust core: stable
-- XPC service: stable
-- FFI boundary: functional
-- UI: feature-complete for current scope
+- Rust core: stable (190+ unit/integration tests, zero shell injection vectors, structured process invocation throughout)
+- XPC service: stable (code-signing validation, graceful reconnection)
+- FFI boundary: functional (poisoned-lock recovery, JSON interchange, thread-safe static state)
+- UI: feature-complete for current scope, pending accessibility and architecture cleanup
+
+---
+
+## v0.13.0-beta.2 Audit Findings
+
+A full codebase audit was conducted on 2026-02-17 covering Rust core, SwiftUI UI, XPC service, localization, and CI/CD.
+
+### Rust Core
+
+- All architectural invariants pass: no shell injection, structured args, authority ordering, cancelable tasks, deterministic and testable
+- 190+ unit/integration tests cover adapters, parsing, orchestration, authority ordering, cancellation, and end-to-end flows
+- Package identifier validation on all mutating operations prevents flag injection
+- SQLite persistence uses versioned migrations (v1–v3), parameterized queries, and transactional multi-record ops
+- No critical or high-priority issues identified
+
+### SwiftUI UI
+
+- All user-facing text uses L10n localization keys — no hardcoded English strings detected
+- XPC service boundary has proper code-signing validation, async patterns, and reconnection logic
+- State management is sound (single ObservableObject, @Published properties, weak-self captures)
+- Minor UI layer purity violations: search merge logic, safe-mode badge filtering, and task-to-manager inference in views
+- HelmCore.swift is 1,133 lines and should be decomposed
+- Task cancel button is disabled in UI despite XPC cancel method existing
+
+### Accessibility (Critical Gap)
+
+- Reduced-motion support is implemented for overlay transitions
+- No VoiceOver accessibility labels on interactive elements (package rows, task rows, manager items, status badges)
+- No `accessibilityValue` for dynamic content (task status, package counts)
+- No `accessibilityElement` semantic grouping
+- No keyboard-only traversal validation
+
+### CI/CD
+
+- `i18n-lint.yml`: comprehensive locale parity, hardcoded string detection, mirror sync enforcement
+- `release-macos-dmg.yml`: signed universal DMG + notarization — functional but no test gate
+- No `cargo test` execution in any CI workflow
+- No `xcodebuild test` execution in any CI workflow
+- Release workflow can produce artifacts without running tests
+
+### Localization
+
+- All 6 locales pass key parity, placeholder consistency, and ICU format checks
+- `check_locale_lengths.sh` not included in CI workflow
+- Minor: Spanish locale has missing accent in "Actualizacion" (should be "Actualización")
 
 ---
 
@@ -151,14 +196,21 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 - Priority 2 extended language-manager expansion is complete at this checkpoint:
   - Implemented: pnpm (global), yarn (global), RubyGems, Poetry (self/plugins), Bundler
   - Pending: none
-- Redesign integration is functional and now includes layered popover UX + control-center search, but still needs iterative UX polish + accessibility validation
-- Popover overlay transitions now respect reduced-motion settings, but a full VoiceOver + keyboard-only redesign sweep is still pending
-- New redesign localization keys are currently expanded in `en` and require full non-English locale rollout parity
+- Redesign integration is functional and now includes layered popover UX + control-center search, but still needs accessibility validation, onboarding walkthrough, and architecture cleanup
+- Accessibility is a critical gap: no VoiceOver labels, no semantic grouping, no keyboard-only traversal validation
+- Task cancel button is disabled in UI despite XPC/FFI cancel infrastructure existing
+- Minor business logic in view layer (search merge, safe-mode badge filtering, task-to-manager inference) needs extraction to HelmCore
+- HelmCore.swift (1,133 lines) needs ViewModel/coordinator decomposition
+- No CI enforcement of Rust or Swift tests; release workflow has no test gate
+- New redesign and onboarding walkthrough localization keys require non-English locale rollout parity
+- `check_locale_lengths.sh` is not included in CI workflow
+- No XPC call timeout enforcement (hung service could stall UI)
 - Overflow validation now has both heuristic and on-device executable coverage for Settings, onboarding, navigation, package filters, and manager labels/states
 - Upgrade-all transparency now provides summary counts + top manager breakdown in confirmation flow
 - Upgrade-preview filtering/sorting logic now has dedicated macOS UI unit coverage (`HelmTests/UpgradePreviewPlannerTests`)
 - Dedicated upgrade preview UI surface is implemented in macOS Settings (execution-plan sections with manager breakdown)
 - Dry-run mode is exposed in the upgrade preview UI (simulation path with no task submission)
+- Onboarding flow is functional but needs friendlier tone and guided walkthrough (spotlight/coach marks)
 - No self-update mechanism yet
 - Limited diagnostics UI
 - No CLI interface
@@ -180,8 +232,8 @@ Helm is a **functional control plane for 15 managers** with:
 - Working orchestration
 - Task system
 - Pinning and policy
-- Localization foundation
+- Localization foundation (6 locales at full key parity)
 
-The core architecture is in place.
+The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-Remaining work is **feature expansion and hardening toward 1.0**.
+Remaining work is **accessibility, onboarding walkthrough, architecture cleanup, CI hardening, and localization parity toward 0.13.x stable**.
