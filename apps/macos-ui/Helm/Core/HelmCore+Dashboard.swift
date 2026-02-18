@@ -1,0 +1,88 @@
+import Foundation
+
+extension HelmCore {
+    var allKnownPackages: [PackageItem] {
+        let outdatedIds = Set(outdatedPackages.map(\.id))
+        var combined = outdatedPackages
+        combined.append(contentsOf: installedPackages.filter { !outdatedIds.contains($0.id) })
+
+        let existing = Set(combined.map(\.id))
+        combined.append(contentsOf: cachedAvailablePackages.filter { !existing.contains($0.id) })
+
+        return combined
+            .sorted { lhs, rhs in
+                lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+    }
+
+    var visibleManagers: [ManagerInfo] {
+        ManagerInfo.implemented.filter { manager in
+            let status = managerStatuses[manager.id]
+            let enabled = status?.enabled ?? true
+            let detected = status?.detected ?? false
+            return enabled && detected
+        }
+    }
+
+    var failedTaskCount: Int {
+        activeTasks.filter { $0.status.lowercased() == "failed" }.count
+    }
+
+    var runningTaskCount: Int {
+        activeTasks.filter(\.isRunning).count
+    }
+
+    var aggregateHealth: OperationalHealth {
+        if failedTaskCount > 0 {
+            return .error
+        }
+        if runningTaskCount > 0 || isRefreshing {
+            return .running
+        }
+        if !outdatedPackages.isEmpty {
+            return .attention
+        }
+        return .healthy
+    }
+
+    func outdatedCount(forManagerId managerId: String) -> Int {
+        outdatedPackages.filter { $0.managerId == managerId }.count
+    }
+
+    func upgradeAllPackages(forManagerId managerId: String) {
+        let packages = outdatedPackages.filter {
+            $0.managerId == managerId && !$0.pinned && canUpgradeIndividually($0)
+        }
+        for package in packages {
+            upgradePackage(package)
+        }
+    }
+
+    func health(forManagerId managerId: String) -> OperationalHealth {
+        if let status = managerStatuses[managerId], status.detected == false {
+            return .notInstalled
+        }
+        if managerStatuses[managerId] == nil && !detectedManagers.contains(managerId) {
+            return .notInstalled
+        }
+
+        let managerName = localizedManagerDisplayName(managerId)
+
+        let hasFailedTask = activeTasks.contains {
+            $0.status.lowercased() == "failed" && $0.description.localizedCaseInsensitiveContains(managerName)
+        }
+
+        if hasFailedTask {
+            return .error
+        }
+        if activeTasks.contains(where: {
+            $0.isRunning && $0.description.localizedCaseInsensitiveContains(managerName)
+        }) {
+            return .running
+        }
+        if outdatedPackages.contains(where: { $0.managerId == managerId }) {
+            return .attention
+        }
+        return .healthy
+    }
+}
