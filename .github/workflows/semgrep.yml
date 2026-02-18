@@ -12,7 +12,6 @@ jobs:
   semgrep:
     name: Semgrep scan
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,5 +19,4 @@ jobs:
       - name: Run Semgrep
         uses: returntocorp/semgrep-action@v1
         with:
-          # "auto" runs a sensible default ruleset.
           config: "auto"
