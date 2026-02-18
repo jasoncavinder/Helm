@@ -4,6 +4,28 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.13.0-beta.2] - 2026-02-18
+
+### Added
+- Added universal-build support in the macOS Rust bridge script:
+  - architecture-aware `helm-ffi` builds for `arm64` and `x86_64`
+  - universal static library output via `lipo` when multiple slices are requested
+  - optional rustup target auto-install for local non-Release builds
+- Added release automation workflow for signed DMG packaging:
+  - `.github/workflows/release-macos-dmg.yml`
+  - release assets: `Helm-<tag>-macos-universal.dmg` and `Helm.dmg`
+  - DMG layout includes drag-to-`Applications` alias
+- Added beta binary installation guidance to website docs:
+  - `web/src/content/docs/guides/installation.md`
+
+### Changed
+- Updated macOS project signing defaults:
+  - Debug signing identity uses `Apple Development`
+  - Release signing identity uses `Developer ID Application`
+  - team IDs aligned to current project team settings
+- Updated project architecture defaults to keep local Debug builds fast (`ONLY_ACTIVE_ARCH = YES`) while enabling universal release builds.
+- Bumped release metadata and docs/website status to `v0.13.0-beta.2`.
+
 ## [0.13.0-beta.1] - 2026-02-18
 
 ### Added

@@ -2,33 +2,40 @@
 
 This checklist is required before creating a release tag on `main`.
 
-## v0.13.0-beta.1 (In Progress)
+## v0.13.0-beta.2 (In Progress)
 
 ### Scope and Documentation
-- [x] `CHANGELOG.md` includes `0.13.0-beta.1` notes for redesign-shell integration and interaction/accessibility refinements.
-- [x] `README.md` reflects `v0.13.0-beta.1` status and includes beta-testing callout with GitHub Issues link.
-- [x] Website docs landing/overview/roadmap pages are updated for `v0.13.0-beta.1`, including beta-test invitation.
+- [x] `CHANGELOG.md` includes `0.13.0-beta.2` notes for universal-build/signing/distribution follow-through.
+- [x] `README.md` reflects `v0.13.0-beta.2` status and includes beta-testing callout with GitHub Issues link.
+- [x] Website docs landing/overview/roadmap pages are updated for `v0.13.0-beta.2`, including beta-test invitation.
+- [x] Website installation guide documents beta DMG distribution and drag-to-`Applications` installation flow.
 - [x] `docs/CURRENT_STATE.md`, `docs/NEXT_STEPS.md`, and `docs/ROADMAP.md` reflect the redesign beta checkpoint.
+- [x] Release workflow exists for signed universal DMG artifacts (`.github/workflows/release-macos-dmg.yml`).
 
 ### Validation
 - [x] Rust tests pass (`cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`).
 - [x] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme HelmTests -destination 'platform=macOS' -derivedDataPath /tmp/helmtests-deriveddata CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test`).
 - [x] Website build succeeds (`ASTRO_TELEMETRY_DISABLED=1 npm --prefix web run build`).
+- [ ] Release workflow secrets are configured:
+  - `APPLE_TEAM_ID`
+  - `MACOS_DEVELOPER_ID_APP_CERT_BASE64`
+  - `MACOS_DEVELOPER_ID_APP_CERT_PASSWORD`
+  - optional: `MACOS_KEYCHAIN_PASSWORD`
 
 ### Versioning
-- [x] Workspace version bumped to `0.13.0-beta.1` in `core/rust/Cargo.toml`.
-- [x] Rust lockfile package versions aligned to `0.13.0-beta.1` in `core/rust/Cargo.lock`.
-- [x] Generated app version artifacts aligned to `0.13.0-beta.1`:
+- [x] Workspace version bumped to `0.13.0-beta.2` in `core/rust/Cargo.toml`.
+- [x] Rust lockfile package versions aligned to `0.13.0-beta.2` in `core/rust/Cargo.lock`.
+- [x] Generated app version artifacts aligned to `0.13.0-beta.2`:
   - `apps/macos-ui/Generated/HelmVersion.swift`
   - `apps/macos-ui/Generated/HelmVersion.xcconfig`
 
 ### Branch and Tag
 - [ ] `dev` merged into `main` for release.
 - [ ] Create annotated tag from `main`:
-  - `git tag -a v0.13.0-beta.1 -m "Helm v0.13.0-beta.1"`
+  - `git tag -a v0.13.0-beta.2 -m "Helm v0.13.0-beta.2"`
 - [ ] Push tag:
-  - `git push origin v0.13.0-beta.1`
-- [ ] Publish GitHub release for `v0.13.0-beta.1` with beta-testing instructions.
+  - `git push origin v0.13.0-beta.2`
+- [ ] Publish GitHub release for `v0.13.0-beta.2` with beta-testing instructions.
 
 ## v0.12.0 (Completed)
 
