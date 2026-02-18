@@ -112,31 +112,35 @@ jobs:
         run: |
           set -euo pipefail
 
-          required=(ASC_KEY_ID ASC_ISSUER_ID ASC_PRIVATE_KEY_BASE64)
-          for key in "${required[@]}"; do
-            if [ -z "${!key}" ]; then
-              echo "::error::Missing required notarization secret: $key"
-              exit 1
-            fi
-          done
-
           KEY_PATH="$RUNNER_TEMP/AuthKey_${ASC_KEY_ID}.p8"
-
-          # Decode base64 key
           if ! echo "$ASC_PRIVATE_KEY_BASE64" | base64 --decode > "$KEY_PATH" 2>/dev/null; then
             echo "$ASC_PRIVATE_KEY_BASE64" | base64 -D > "$KEY_PATH"
           fi
 
           DMG_PATH="$PWD/build/release-assets/Helm-${TAG_NAME}-macos-universal.dmg"
 
-          # Submit to Apple and wait for result
+          # Submit and capture JSON output so we can always fetch the log
+          OUT_JSON="$RUNNER_TEMP/notarytool-submit.json"
           xcrun notarytool submit "$DMG_PATH" \
             --key "$KEY_PATH" \
             --key-id "$ASC_KEY_ID" \
             --issuer "$ASC_ISSUER_ID" \
-            --wait
+            --wait --output-format json | tee "$OUT_JSON"
 
-          # Staple the notarization ticket
+          SUB_ID="$(python3 -c 'import json;print(json.load(open("'"$OUT_JSON"'"))["id"])')"
+          STATUS="$(python3 -c 'import json;print(json.load(open("'"$OUT_JSON"'"))["status"])')"
+
+          # If invalid, fetch and print the full log, then fail (don’t try stapling)
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "::error::Notarization failed with status: $STATUS (submission id: $SUB_ID)"
+            xcrun notarytool log "$SUB_ID" \
+              --key "$KEY_PATH" \
+              --key-id "$ASC_KEY_ID" \
+              --issuer "$ASC_ISSUER_ID"
+            exit 1
+          fi
+
+          # Only staple if accepted
           xcrun stapler staple "$DMG_PATH"
           xcrun stapler staple "$PWD/build/release-assets/Helm.dmg"
 
