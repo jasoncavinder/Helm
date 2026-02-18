@@ -625,8 +625,7 @@ fn normalize_installed_version(version_part: &str) -> Option<String> {
         let latest = normalized
             .split(',')
             .map(str::trim)
-            .filter(|token| !token.is_empty())
-            .next_back();
+            .rfind(|token| !token.is_empty());
         return latest.map(str::to_owned);
     }
 

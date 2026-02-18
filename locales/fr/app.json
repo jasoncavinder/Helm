@@ -135,7 +135,7 @@
   "app.managers.name.app_store": "App Store",
   "app.settings.alert.upgrade_all.dry_run_toggle": "Mode simulation (aucune modification)",
   "app.settings.alert.upgrade_all.dry_run_result_title": "Résultat de la simulation",
-  "app.settings.alert.upgrade_all.dry_run_result_message": "Simulation terminée. Aucune tâche n'a été mise en file d'attente.\n\nActions planifiées :\n{summary}",
+  "app.settings.alert.upgrade_all.dry_run_result_message": "Simulation terminée. Aucune tâche lancée.\n\nActions planifiées :\n{summary}",
   "app.redesign.window.control_center": "Helm Control Center",
   "app.redesign.health.healthy": "Sain",
   "app.redesign.health.attention": "Attention",
