@@ -16,11 +16,11 @@ enum ControlCenterSection: String, CaseIterable, Identifiable {
         case .overview:
             return L10n.App.Navigation.dashboard.localized
         case .updates:
-            return "app.redesign.section.updates".localized
+            return L10n.App.Redesign.Section.updates.localized
         case .packages:
             return L10n.App.Navigation.packages.localized
         case .tasks:
-            return "app.redesign.section.tasks".localized
+            return L10n.App.Redesign.Section.tasks.localized
         case .managers:
             return L10n.App.Navigation.managers.localized
         case .settings:
@@ -54,11 +54,11 @@ enum ManagerAuthority: CaseIterable {
     var key: String {
         switch self {
         case .authoritative:
-            return "app.redesign.updates.authority.authoritative"
+            return L10n.App.Redesign.Updates.Authority.authoritative
         case .standard:
-            return "app.redesign.updates.authority.standard"
+            return L10n.App.Redesign.Updates.Authority.standard
         case .guarded:
-            return "app.redesign.updates.authority.guarded"
+            return L10n.App.Redesign.Updates.Authority.guarded
         }
     }
 }
@@ -103,15 +103,15 @@ enum OperationalHealth {
     var key: String {
         switch self {
         case .healthy:
-            return "app.redesign.health.healthy"
+            return L10n.App.Redesign.Health.healthy
         case .attention:
-            return "app.redesign.health.attention"
+            return L10n.App.Redesign.Health.attention
         case .error:
-            return "app.redesign.health.error"
+            return L10n.App.Redesign.Health.error
         case .running:
-            return "app.redesign.health.running"
+            return L10n.App.Redesign.Health.running
         case .notInstalled:
-            return "app.redesign.health.not_installed"
+            return L10n.App.Redesign.Health.notInstalled
         }
     }
 }
@@ -274,7 +274,7 @@ struct RedesignPopoverView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(L10n.App.Dashboard.title.localized)
                             .font(.headline.weight(.semibold))
-                        Text("app.redesign.popover.system_health".localized)
+                        Text(L10n.App.Redesign.Popover.systemHealth.localized)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -285,15 +285,15 @@ struct RedesignPopoverView: View {
 
                 HStack(spacing: 8) {
                     MetricChipView(
-                        label: "app.redesign.popover.pending_updates".localized,
+                        label: L10n.App.Redesign.Popover.pendingUpdates.localized,
                         value: core.outdatedPackages.count
                     )
                     MetricChipView(
-                        label: "app.redesign.popover.failures".localized,
+                        label: L10n.App.Redesign.Popover.failures.localized,
                         value: core.failedTaskCount
                     )
                     MetricChipView(
-                        label: "app.redesign.popover.running_tasks".localized,
+                        label: L10n.App.Redesign.Popover.runningTasks.localized,
                         value: core.runningTaskCount
                     )
                 }
@@ -424,10 +424,10 @@ struct RedesignPopoverView: View {
     private var managerSnapshotCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("app.redesign.popover.manager_snapshot".localized)
+                Text(L10n.App.Redesign.Popover.managerSnapshot.localized)
                     .font(.subheadline.weight(.semibold))
                 Spacer()
-                Button("app.redesign.action.open_control_center".localized) {
+                Button(L10n.App.Redesign.Action.openControlCenter.localized) {
                     context.selectedSection = .managers
                     onOpenControlCenter()
                 }
@@ -470,7 +470,7 @@ struct RedesignPopoverView: View {
     private var tasksCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("app.redesign.popover.active_tasks".localized)
+                Text(L10n.App.Redesign.Popover.activeTasks.localized)
                     .font(.subheadline.weight(.semibold))
                 Spacer()
                 Button {
@@ -501,7 +501,7 @@ struct RedesignPopoverView: View {
 
     private var popoverFooter: some View {
         HStack(spacing: 10) {
-            Button("app.redesign.popover.version".localized(with: ["version": helmVersion])) {
+            Button(L10n.App.Redesign.Popover.version.localized(with: ["version": helmVersion])) {
                 activeOverlay = .about
             }
             .buttonStyle(.plain)
@@ -526,28 +526,28 @@ struct RedesignPopoverView: View {
         switch route {
         case .search:
             PopoverOverlayCard(
-                title: "app.redesign.overlay.search.title".localized,
+                title: L10n.App.Redesign.Overlay.Search.title.localized,
                 onClose: closeOverlay
             ) {
                 searchOverlayContent
             }
         case .quickSettings:
             PopoverOverlayCard(
-                title: "app.redesign.overlay.settings.title".localized,
+                title: L10n.App.Redesign.Overlay.Settings.title.localized,
                 onClose: closeOverlay
             ) {
                 settingsOverlayContent
             }
         case .about:
             PopoverOverlayCard(
-                title: "app.redesign.overlay.about.title".localized,
+                title: L10n.App.Redesign.Overlay.About.title.localized,
                 onClose: closeOverlay
             ) {
                 aboutOverlayContent
             }
         case .confirmQuit:
             PopoverOverlayCard(
-                title: "app.redesign.overlay.quit.title".localized,
+                title: L10n.App.Redesign.Overlay.Quit.title.localized,
                 onClose: closeOverlay
             ) {
                 quitOverlayContent
@@ -561,7 +561,7 @@ struct RedesignPopoverView: View {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
                 TextField(
-                    "app.redesign.popover.search_placeholder".localized,
+                    L10n.App.Redesign.Popover.searchPlaceholder.localized,
                     text: Binding(
                         get: { popoverSearchQuery },
                         set: { newValue in
@@ -587,7 +587,7 @@ struct RedesignPopoverView: View {
             )
 
             if searchResults.isEmpty && !popoverSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text("app.redesign.overlay.search.empty".localized)
+                Text(L10n.App.Redesign.Overlay.Search.empty.localized)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -648,7 +648,7 @@ struct RedesignPopoverView: View {
 
                 Spacer()
 
-                Button("app.redesign.overlay.search.open_packages".localized) {
+                Button(L10n.App.Redesign.Overlay.Search.openPackages.localized) {
                     context.selectedSection = .packages
                     onOpenControlCenter()
                     closeOverlay()
@@ -706,7 +706,7 @@ struct RedesignPopoverView: View {
 
                 Spacer()
 
-                Button("app.redesign.overlay.settings.open_advanced".localized) {
+                Button(L10n.App.Redesign.Overlay.Settings.openAdvanced.localized) {
                     context.selectedSection = .settings
                     onOpenControlCenter()
                     closeOverlay()
@@ -727,19 +727,19 @@ struct RedesignPopoverView: View {
                     .scaledToFit()
                     .frame(width: 22, height: 22)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("app.redesign.overlay.about.name".localized)
+                    Text(L10n.App.Redesign.Overlay.About.name.localized)
                         .font(.headline)
-                    Text("app.redesign.overlay.about.subtitle".localized)
+                    Text(L10n.App.Redesign.Overlay.About.subtitle.localized)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
             }
 
-            Text("app.redesign.overlay.about.version".localized(with: ["version": helmVersion]))
+            Text(L10n.App.Redesign.Overlay.About.version.localized(with: ["version": helmVersion]))
                 .font(.caption)
 
-            Text("app.redesign.overlay.about.summary".localized(with: [
+            Text(L10n.App.Redesign.Overlay.About.summary.localized(with: [
                 "managers": core.visibleManagers.count,
                 "updates": core.outdatedPackages.count
             ]))
@@ -759,7 +759,7 @@ struct RedesignPopoverView: View {
 
     private var quitOverlayContent: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("app.redesign.overlay.quit.message".localized(with: ["tasks": core.runningTaskCount]))
+            Text(L10n.App.Redesign.Overlay.Quit.message.localized(with: ["tasks": core.runningTaskCount]))
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
@@ -798,22 +798,22 @@ struct RedesignPopoverView: View {
 
     private var bannerTitle: String {
         if !core.isConnected {
-            return "app.redesign.popover.banner.disconnected.title".localized
+            return L10n.App.Redesign.Popover.Banner.disconnectedTitle.localized
         }
         if core.failedTaskCount > 0 {
-            return "app.redesign.popover.banner.failed.title".localized(with: ["count": core.failedTaskCount])
+            return L10n.App.Redesign.Popover.Banner.failedTitle.localized(with: ["count": core.failedTaskCount])
         }
-        return "app.redesign.popover.banner.updates.title".localized(with: ["count": core.outdatedPackages.count])
+        return L10n.App.Redesign.Popover.Banner.updatesTitle.localized(with: ["count": core.outdatedPackages.count])
     }
 
     private var bannerMessage: String {
         if !core.isConnected {
-            return "app.redesign.popover.banner.disconnected.message".localized
+            return L10n.App.Redesign.Popover.Banner.disconnectedMessage.localized
         }
         if core.failedTaskCount > 0 {
-            return "app.redesign.popover.banner.failed.message".localized
+            return L10n.App.Redesign.Popover.Banner.failedMessage.localized
         }
-        return "app.redesign.popover.banner.updates.message".localized
+        return L10n.App.Redesign.Popover.Banner.updatesMessage.localized
     }
 
     private var cardBackground: some View {
@@ -1069,7 +1069,7 @@ private struct ControlCenterTopBar: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Text("app.redesign.window.control_center".localized)
+            Text(L10n.App.Redesign.Window.controlCenter.localized)
                 .font(.headline.weight(.semibold))
                 .padding(.leading, 72)
 
@@ -1079,7 +1079,7 @@ private struct ControlCenterTopBar: View {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
                 TextField(
-                    "app.redesign.control_center.search_placeholder".localized,
+                    L10n.App.Redesign.ControlCenter.searchPlaceholder.localized,
                     text: Binding(
                         get: { context.searchQuery },
                         set: { newValue in
@@ -1117,7 +1117,7 @@ private struct ControlCenterTopBar: View {
             .disabled(core.isRefreshing)
             .helmPointer(enabled: !core.isRefreshing)
 
-            Button("app.redesign.control_center.upgrade_all".localized) {
+            Button(L10n.App.Redesign.ControlCenter.upgradeAll.localized) {
                 context.showUpgradeSheet = true
                 context.selectedSection = .updates
             }
@@ -1305,20 +1305,20 @@ private struct RedesignOverviewSectionView: View {
 
                 HStack(spacing: 14) {
                     MetricCardView(
-                        title: "app.redesign.popover.pending_updates".localized,
+                        title: L10n.App.Redesign.Popover.pendingUpdates.localized,
                         value: core.outdatedPackages.count
                     )
                     MetricCardView(
-                        title: "app.redesign.popover.failures".localized,
+                        title: L10n.App.Redesign.Popover.failures.localized,
                         value: core.failedTaskCount
                     )
                     MetricCardView(
-                        title: "app.redesign.popover.running_tasks".localized,
+                        title: L10n.App.Redesign.Popover.runningTasks.localized,
                         value: core.runningTaskCount
                     )
                 }
 
-                Text("app.redesign.overview.manager_health".localized)
+                Text(L10n.App.Redesign.Overview.managerHealth.localized)
                     .font(.headline)
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], spacing: 12) {
@@ -1336,7 +1336,7 @@ private struct RedesignOverviewSectionView: View {
                     }
                 }
 
-                Text("app.redesign.overview.recent_tasks".localized)
+                Text(L10n.App.Redesign.Overview.recentTasks.localized)
                     .font(.headline)
 
                 if core.activeTasks.isEmpty {
@@ -1405,18 +1405,18 @@ private struct RedesignUpdatesSectionView: View {
                 Text(ControlCenterSection.updates.title)
                     .font(.title2.weight(.semibold))
                 Spacer()
-                Button("app.redesign.action.refresh_plan".localized) {
+                Button(L10n.App.Redesign.Action.refreshPlan.localized) {
                     core.triggerRefresh()
                 }
                 .buttonStyle(HelmSecondaryButtonStyle())
                 .disabled(core.isRefreshing)
             }
 
-            Text("app.redesign.updates.execution_plan".localized)
+            Text(L10n.App.Redesign.Updates.executionPlan.localized)
                 .font(.headline)
 
             if !core.safeModeEnabled {
-                Toggle("app.redesign.updates.include_os".localized, isOn: $includeOsUpdates)
+                Toggle(L10n.App.Redesign.Updates.includeOs.localized, isOn: $includeOsUpdates)
                     .toggleStyle(.switch)
             }
 
@@ -1428,11 +1428,11 @@ private struct RedesignUpdatesSectionView: View {
                         Spacer()
                         Text("\(row.managerCount)")
                             .font(.body.monospacedDigit())
-                        Text("app.redesign.updates.managers".localized)
+                        Text(L10n.App.Redesign.Updates.managers.localized)
                             .foregroundStyle(.secondary)
                         Text("\(row.packageCount)")
                             .font(.body.monospacedDigit())
-                        Text("app.redesign.updates.packages".localized)
+                        Text(L10n.App.Redesign.Updates.packages.localized)
                             .foregroundStyle(.secondary)
                     }
                     .padding(.vertical, 4)
@@ -1440,16 +1440,16 @@ private struct RedesignUpdatesSectionView: View {
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("app.redesign.updates.risk_flags".localized)
+                Text(L10n.App.Redesign.Updates.riskFlags.localized)
                     .font(.headline)
-                riskRow(flag: "app.redesign.updates.risk.privileged".localized, active: requiresPrivileges)
-                riskRow(flag: "app.redesign.updates.risk.reboot".localized, active: mayRequireReboot)
+                riskRow(flag: L10n.App.Redesign.Updates.Risk.privileged.localized, active: requiresPrivileges)
+                riskRow(flag: L10n.App.Redesign.Updates.Risk.reboot.localized, active: mayRequireReboot)
             }
 
             HStack {
-                Button("app.redesign.action.dry_run".localized) {
+                Button(L10n.App.Redesign.Action.dryRun.localized) {
                     let lines = previewBreakdown.prefix(8).map { "\($0.manager): \($0.count)" }
-                    dryRunMessage = "app.redesign.dry_run.message".localized(with: [
+                    dryRunMessage = L10n.App.Redesign.DryRun.message.localized(with: [
                         "count": totalCount,
                         "summary": lines.joined(separator: "\n")
                     ])
@@ -1457,7 +1457,7 @@ private struct RedesignUpdatesSectionView: View {
                 }
                 .buttonStyle(HelmSecondaryButtonStyle())
 
-                Button("app.redesign.action.run_plan".localized) {
+                Button(L10n.App.Redesign.Action.runPlan.localized) {
                     core.upgradeAll(includePinned: false, allowOsUpdates: includeOsUpdates)
                 }
                 .buttonStyle(HelmPrimaryButtonStyle())
@@ -1469,7 +1469,7 @@ private struct RedesignUpdatesSectionView: View {
             Spacer()
         }
         .padding(20)
-        .alert("app.redesign.dry_run.title".localized, isPresented: $showDryRun) {
+        .alert(L10n.App.Redesign.DryRun.title.localized, isPresented: $showDryRun) {
             Button(L10n.Common.ok.localized, role: .cancel) {}
         } message: {
             Text(dryRunMessage)
@@ -1503,32 +1503,32 @@ private struct ControlCenterInspectorView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("app.redesign.inspector.title".localized)
+            Text(L10n.App.Redesign.Inspector.title.localized)
                 .font(.headline)
 
             if let package = selectedPackage {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(package.name)
                         .font(.title3.weight(.semibold))
-                    Text("app.redesign.inspector.manager".localized)
+                    Text(L10n.App.Redesign.Inspector.manager.localized)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text(package.manager)
                         .font(.callout)
-                    Text("app.redesign.inspector.installed".localized)
+                    Text(L10n.App.Redesign.Inspector.installed.localized)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text(package.version)
                         .font(.caption.monospaced())
                     if let latest = package.latestVersion {
-                        Text("app.redesign.inspector.latest".localized)
+                        Text(L10n.App.Redesign.Inspector.latest.localized)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Text(latest)
                             .font(.caption.monospaced())
                     }
                     if let query = package.summary, !query.isEmpty {
-                        Text("app.redesign.inspector.source_query".localized)
+                        Text(L10n.App.Redesign.Inspector.sourceQuery.localized)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Text(query)
@@ -1542,7 +1542,7 @@ private struct ControlCenterInspectorView: View {
                     Text(authority(for: manager.id).key.localized)
                         .font(.callout)
                         .foregroundStyle(.secondary)
-                    Text("app.redesign.inspector.capabilities".localized)
+                    Text(L10n.App.Redesign.Inspector.capabilities.localized)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     ForEach(capabilities(for: manager), id: \.self) { capabilityKey in
@@ -1551,7 +1551,7 @@ private struct ControlCenterInspectorView: View {
                     }
                 }
             } else {
-                Text("app.redesign.inspector.empty".localized)
+                Text(L10n.App.Redesign.Inspector.empty.localized)
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -1662,16 +1662,16 @@ struct RedesignUpgradeSheetView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("app.redesign.updates.execution_plan".localized)
+            Text(L10n.App.Redesign.Updates.executionPlan.localized)
                 .font(.title3.weight(.semibold))
 
             if !core.safeModeEnabled {
-                Toggle("app.redesign.updates.include_os".localized, isOn: $includeOsUpdates)
+                Toggle(L10n.App.Redesign.Updates.includeOs.localized, isOn: $includeOsUpdates)
                     .toggleStyle(.switch)
             }
 
             HStack {
-                Text("app.redesign.updates.authority.standard".localized)
+                Text(L10n.App.Redesign.Updates.Authority.standard.localized)
                 Spacer()
                 Text("\(includeOsUpdates ? withOsCount : noOsCount)")
                     .font(.callout.monospacedDigit())
@@ -1686,10 +1686,10 @@ struct RedesignUpgradeSheetView: View {
                 }
                 .buttonStyle(HelmSecondaryButtonStyle())
                 Spacer()
-                Button("app.redesign.action.dry_run".localized) {}
+                Button(L10n.App.Redesign.Action.dryRun.localized) {}
                     .buttonStyle(HelmSecondaryButtonStyle())
                     .disabled(true)
-                Button("app.redesign.action.run_plan".localized) {
+                Button(L10n.App.Redesign.Action.runPlan.localized) {
                     core.upgradeAll(includePinned: false, allowOsUpdates: includeOsUpdates)
                     context.showUpgradeSheet = false
                     dismiss()
@@ -1749,28 +1749,28 @@ private func authority(forDisplayName managerName: String) -> ManagerAuthority {
 
 private func capabilities(for manager: ManagerInfo) -> [String] {
     var result: [String] = [
-        "app.redesign.capability.list",
-        "app.redesign.capability.outdated",
+        L10n.App.Redesign.Capability.list,
+        L10n.App.Redesign.Capability.outdated,
     ]
 
     if manager.canInstall {
-        result.append("app.redesign.capability.install")
+        result.append(L10n.App.Redesign.Capability.install)
     }
 
     if manager.canUninstall {
-        result.append("app.redesign.capability.uninstall")
+        result.append(L10n.App.Redesign.Capability.uninstall)
     }
 
     if manager.canUpdate {
-        result.append("app.redesign.capability.upgrade")
+        result.append(L10n.App.Redesign.Capability.upgrade)
     }
 
     if ["npm", "pnpm", "yarn", "pip", "cargo", "cargo_binstall", "poetry", "rubygems", "bundler"].contains(manager.id) {
-        result.append("app.redesign.capability.search")
+        result.append(L10n.App.Redesign.Capability.search)
     }
 
     if manager.id == "homebrew_formula" {
-        result.append("app.redesign.capability.pin")
+        result.append(L10n.App.Redesign.Capability.pin)
     }
 
     return result

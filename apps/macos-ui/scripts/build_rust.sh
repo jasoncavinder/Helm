@@ -3,6 +3,9 @@ set -euo pipefail
 
 echo "Building Rust core..."
 
+# Ensure rustup toolchain is available in Xcode build environment
+export PATH="$HOME/.cargo/bin:$PATH"
+
 # Go to repo root
 REPO_ROOT=$(git rev-parse --show-toplevel)
 cd "$REPO_ROOT/core/rust"
