@@ -35,6 +35,8 @@ struct NavigationBarView: View {
                             .padding(.horizontal, 12)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(tab.title)
+                    .accessibilityAddTraits(selectedTab == tab ? .isSelected : [])
                 }
 
                 Spacer()
@@ -45,6 +47,7 @@ struct NavigationBarView: View {
                         .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(L10n.App.Settings.Tab.title.localized)
                 .popover(isPresented: $showSettings, arrowEdge: .top) {
                     SettingsPopoverView()
                 }
@@ -70,6 +73,7 @@ struct NavigationBarView: View {
                             .font(.caption)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(L10n.Common.clear.localized)
                 }
             }
             .padding(.horizontal, 8)

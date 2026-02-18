@@ -27,6 +27,33 @@ Helm manages software across multiple package managers (Homebrew, npm, pip, Carg
 >
 > **Beta testing:** Please test `v0.13.0-beta.2` and report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
+## Editions (Beta)
+
+Helm is currently in pre-1.0 beta.
+
+All features are available during beta. Some features are marked **Pro (Beta)** and will require a paid Pro license after version 1.0.
+
+### Planned Editions
+
+- **Free** — Core package management and control plane
+- **Pro** — Automation, safety intelligence, and advanced workflows
+- **Business** — Policy, compliance, and organizational management
+
+We will provide advance notice before introducing paid tiers.
+
+---
+
+## Support Helm
+
+Helm is an independent project.
+
+If you find it useful, consider supporting development:
+
+- GitHub Sponsors (coming soon)
+- Early access and lifetime licenses (planned)
+
+Your support helps fund continued development.
+
 ## Beta Download
 
 Install the latest beta DMG from GitHub Releases:

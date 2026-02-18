@@ -15,5 +15,7 @@ struct LabeledContentRow: View {
                 .font(.subheadline)
                 .foregroundColor(valueColor)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(value)")
     }
 }

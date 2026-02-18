@@ -26,6 +26,15 @@ struct ManagerItemView: View {
         return L10n.App.Managers.Tooltip.allUpToDate.localized
     }
 
+    private var accessibilityDescription: String {
+        var parts = [manager.displayName]
+        parts.append(statusTooltip)
+        if packageCount > 0 {
+            parts.append("\(packageCount)")
+        }
+        return parts.joined(separator: ", ")
+    }
+
     var body: some View {
         VStack(spacing: 4) {
             ZStack(alignment: .topTrailing) {
@@ -66,5 +75,8 @@ struct ManagerItemView: View {
             Divider()
             Text(statusTooltip)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityDescription)
+        .accessibilityAddTraits(.isButton)
     }
 }

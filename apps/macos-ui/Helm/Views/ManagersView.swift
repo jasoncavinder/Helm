@@ -177,6 +177,13 @@ private struct ManagerSectionRow: View {
 
                 Spacer()
 
+                if outdatedCount > 0 {
+                    Button(L10n.App.Settings.Action.upgradeAll.localized) {
+                        core.upgradeAllPackages(forManagerId: manager.id)
+                    }
+                    .helmPointer()
+                }
+
                 Button(L10n.App.Managers.Action.viewPackages.localized) {
                     onViewPackages()
                 }
@@ -193,6 +200,13 @@ private struct ManagerSectionRow: View {
             onSelect()
         }
         .helmPointer()
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(localizedManagerDisplayName(manager.id))
+        .accessibilityValue([
+            currentHealth.key.localized,
+            detected ? (enabled ? L10n.App.Managers.State.enabled.localized : L10n.App.Managers.State.disabled.localized) : L10n.App.Managers.State.notInstalled.localized,
+            L10n.App.Managers.Label.packageCount.localized(with: ["count": packageCount])
+        ].joined(separator: ", "))
         .alert(item: $confirmAction) { action in
             switch action {
             case .install:

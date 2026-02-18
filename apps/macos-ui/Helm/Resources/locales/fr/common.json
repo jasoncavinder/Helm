@@ -21,5 +21,7 @@
   "common.label.enabled": "Activé",
   "common.label.disabled": "Désactivé",
   "common.label.not_installed": "Non installé",
-  "common.label.coming_soon": "Bientôt disponible"
+  "common.label.coming_soon": "Bientôt disponible",
+  "common.button.clear": "Effacer",
+  "common.button.close": "Fermer"
 }

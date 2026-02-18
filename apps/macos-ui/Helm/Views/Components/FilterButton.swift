@@ -20,5 +20,7 @@ struct FilterButton: View {
         }
         .buttonStyle(.plain)
         .helmPointer()
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityLabel(title)
     }
 }

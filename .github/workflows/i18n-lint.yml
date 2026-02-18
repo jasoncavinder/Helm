@@ -26,6 +26,9 @@ jobs:
       - name: Validate Locale Key and Placeholder Integrity
         run: apps/macos-ui/scripts/check_locale_integrity.sh
 
+      - name: Check Locale String Length Overflow
+        run: apps/macos-ui/scripts/check_locale_lengths.sh
+
       - name: Block Hardcoded UI Strings
         run: |
           set -euo pipefail

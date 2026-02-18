@@ -21,5 +21,7 @@
   "common.label.enabled": "Enabled",
   "common.label.disabled": "Disabled",
   "common.label.not_installed": "Not Installed",
-  "common.label.coming_soon": "Coming Soon"
+  "common.label.coming_soon": "Coming Soon",
+  "common.button.clear": "Clear",
+  "common.button.close": "Close"
 }

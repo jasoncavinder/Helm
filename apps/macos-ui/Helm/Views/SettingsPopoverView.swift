@@ -271,6 +271,9 @@ private struct SettingsMetricPill: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color.primary.opacity(0.06))
         )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(title)
+        .accessibilityValue("\(value)")
     }
 }
 
@@ -381,6 +384,7 @@ private struct SettingsBadgeView: View {
                 ? L10n.App.Settings.Label.safeMode.localized
                 : badge.label
         )
+        .accessibilityLabel(badge.label)
     }
 }
 

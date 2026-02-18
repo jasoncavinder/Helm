@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import os.log
 
@@ -105,6 +106,8 @@ final class HelmCore: ObservableObject {
     private var onboardingDetectionAnchorTaskId: UInt64 = 0
     private var onboardingDetectionPendingManagers: Set<String> = []
     private var onboardingDetectionStartedAt: Date?
+    private var previousFailedTaskCount: Int = 0
+    private var previousRefreshState: Bool = false
 
     private init() {
         setupConnection()
@@ -308,6 +311,8 @@ final class HelmCore: ObservableObject {
                         self?.lastObservedTaskId = max(self?.lastObservedTaskId ?? 0, maxTaskId)
                     }
 
+                    let previousFailed = self?.previousFailedTaskCount ?? 0
+
                     self?.activeTasks = coreTasks.map { task in
                         let overrideDescription = self?.managerActionTaskDescriptions[task.id]
                         let managerName = self?.normalizedManagerName(task.manager) ?? task.manager
@@ -325,6 +330,16 @@ final class HelmCore: ObservableObject {
                     }
                     self?.syncManagerOperations(from: coreTasks)
                     self?.syncUpgradeActions(from: coreTasks)
+
+                    // Announce new task failures to VoiceOver
+                    let currentFailed = self?.activeTasks.filter({ $0.status.lowercased() == "failed" }).count ?? 0
+                    if currentFailed > previousFailed {
+                        let newFailures = currentFailed - previousFailed
+                        self?.postAccessibilityAnnouncement(
+                            "app.redesign.status_item.error".localized(with: ["count": newFailures])
+                        )
+                    }
+                    self?.previousFailedTaskCount = currentFailed
 
                     // Derive detection status from Detection-type tasks specifically.
                     // Tasks are ordered most-recent-first. A manager is "detected" if
@@ -355,6 +370,7 @@ final class HelmCore: ObservableObject {
                     // Only show "refreshing" when we triggered a refresh this session.
                     // Without this guard, stale running tasks from a previous session
                     // would permanently lock isRefreshing = true.
+                    let wasRefreshing = self?.previousRefreshState ?? false
                     if let lastTrigger = self?.lastRefreshTrigger {
                         if Date().timeIntervalSince(lastTrigger) > 120.0 {
                             // Safety valve: clear stuck refresh after 2 minutes
@@ -371,6 +387,15 @@ final class HelmCore: ObservableObject {
                     } else {
                         self?.isRefreshing = false
                     }
+
+                    // Announce refresh completion to VoiceOver
+                    let nowRefreshing = self?.isRefreshing ?? false
+                    if wasRefreshing && !nowRefreshing {
+                        self?.postAccessibilityAnnouncement(
+                            L10n.Common.success.localized
+                        )
+                    }
+                    self?.previousRefreshState = nowRefreshing
 
                     // Detect remote search completion
                     if let searchTaskId = self?.activeRemoteSearchTaskId {
@@ -628,6 +653,41 @@ final class HelmCore: ObservableObject {
                 }
             }
         }
+    }
+
+    func cancelTask(_ task: TaskItem) {
+        guard task.isRunning, let taskId = Int64(task.id) else { return }
+        service()?.cancelTask(taskId: taskId) { [weak self] success in
+            DispatchQueue.main.async {
+                if success {
+                    // Optimistically mark the task as cancelled before the next poll
+                    if let idx = self?.activeTasks.firstIndex(where: { $0.id == task.id }) {
+                        self?.activeTasks[idx] = TaskItem(
+                            id: task.id,
+                            description: task.description,
+                            status: "Cancelled"
+                        )
+                    }
+                    self?.postAccessibilityAnnouncement(
+                        L10n.Service.Task.Status.cancelled.localized
+                    )
+                } else {
+                    logger.warning("cancelTask(\(taskId)) returned false")
+                }
+            }
+        }
+    }
+
+    /// Posts a VoiceOver announcement for state changes.
+    private func postAccessibilityAnnouncement(_ message: String) {
+        NSAccessibility.post(
+            element: NSApp as Any,
+            notification: .announcementRequested,
+            userInfo: [
+                .announcement: message,
+                .priority: NSAccessibilityPriorityLevel.high.rawValue
+            ]
+        )
     }
 
     func canUpgradeIndividually(_ package: PackageItem) -> Bool {

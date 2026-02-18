@@ -21,5 +21,7 @@
   "common.label.enabled": "有効",
   "common.label.disabled": "無効",
   "common.label.not_installed": "未インストール",
-  "common.label.coming_soon": "近日対応"
+  "common.label.coming_soon": "近日対応",
+  "common.button.clear": "クリア",
+  "common.button.close": "閉じる"
 }
