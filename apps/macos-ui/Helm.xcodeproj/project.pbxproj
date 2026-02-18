@@ -469,6 +469,10 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
+				"$(SRCROOT)/Generated/HelmVersion.swift",
+				"$(SRCROOT)/Generated/HelmVersion.xcconfig",
+				"$(SRCROOT)/Generated/libhelm_ffi.a",
+				"$(SRCROOT)/Generated/helm.h",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
