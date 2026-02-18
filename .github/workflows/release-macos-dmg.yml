@@ -1,0 +1,122 @@
+name: Release macOS DMG
+
+on:
+  release:
+    types: [published, prereleased]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Git tag to build and upload (e.g. v0.13.0-beta.2)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-upload-dmg:
+    runs-on: macos-14
+    env:
+      APP_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      SIGNING_CERT_BASE64: ${{ secrets.MACOS_DEVELOPER_ID_APP_CERT_BASE64 }}
+      SIGNING_CERT_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_APP_CERT_PASSWORD }}
+      KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+      TAG_NAME: ${{ github.event.release.tag_name || github.event.inputs.tag }}
+
+    steps:
+      - name: Validate required secrets
+        run: |
+          set -euo pipefail
+          required=(APP_TEAM_ID SIGNING_CERT_BASE64 SIGNING_CERT_PASSWORD)
+          for key in "${required[@]}"; do
+            if [ -z "${!key}" ]; then
+              echo "::error::Missing required secret: $key"
+              exit 1
+            fi
+          done
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG_NAME }}
+
+      - name: Install Rust toolchain (universal targets)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Configure temporary keychain and import Developer ID certificate
+        env:
+          RUNNER_KEYCHAIN: build-signing.keychain-db
+        run: |
+          set -euo pipefail
+          CERT_P12="$RUNNER_TEMP/developer-id-app.p12"
+          if ! echo "$SIGNING_CERT_BASE64" | base64 --decode > "$CERT_P12" 2>/dev/null; then
+            echo "$SIGNING_CERT_BASE64" | base64 -D > "$CERT_P12"
+          fi
+
+          KEYCHAIN_PWD="${KEYCHAIN_PASSWORD:-$(openssl rand -base64 24)}"
+          security create-keychain -p "$KEYCHAIN_PWD" "$RUNNER_KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$RUNNER_KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PWD" "$RUNNER_KEYCHAIN"
+          security list-keychains -d user -s "$RUNNER_KEYCHAIN" login.keychain-db
+          security import "$CERT_P12" -k "$RUNNER_KEYCHAIN" -P "$SIGNING_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/xcodebuild
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PWD" "$RUNNER_KEYCHAIN"
+
+      - name: Build signed universal app
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project apps/macos-ui/Helm.xcodeproj \
+            -scheme Helm \
+            -configuration Release \
+            -destination "generic/platform=macOS" \
+            -derivedDataPath "$PWD/build/DerivedData" \
+            ARCHS="arm64 x86_64" \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="$APP_TEAM_ID" \
+            CODE_SIGN_IDENTITY="Developer ID Application" \
+            build
+
+      - name: Verify app signature and architecture
+        run: |
+          set -euo pipefail
+          APP_PATH="$PWD/build/DerivedData/Build/Products/Release/Helm.app"
+          test -d "$APP_PATH"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          lipo -archs "$APP_PATH/Contents/MacOS/Helm"
+
+      - name: Create drag-to-Applications DMG
+        run: |
+          set -euo pipefail
+          APP_PATH="$PWD/build/DerivedData/Build/Products/Release/Helm.app"
+          STAGING_DIR="$PWD/build/dmg-staging"
+          OUTPUT_DIR="$PWD/build/release-assets"
+          VERSIONED_DMG="$OUTPUT_DIR/Helm-${TAG_NAME}-macos-universal.dmg"
+          LATEST_DMG="$OUTPUT_DIR/Helm.dmg"
+
+          rm -rf "$STAGING_DIR" "$OUTPUT_DIR"
+          mkdir -p "$STAGING_DIR" "$OUTPUT_DIR"
+          cp -R "$APP_PATH" "$STAGING_DIR/"
+          ln -s /Applications "$STAGING_DIR/Applications"
+
+          hdiutil create -volname "Helm" -srcfolder "$STAGING_DIR" -ov -format UDZO "$VERSIONED_DMG"
+          cp "$VERSIONED_DMG" "$LATEST_DMG"
+
+      - name: Upload build artifacts to workflow run
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-macos-dmg-${{ env.TAG_NAME }}
+          path: build/release-assets/*.dmg
+
+      - name: Upload DMGs to GitHub release
+        if: ${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG_NAME" \
+            "build/release-assets/Helm-${TAG_NAME}-macos-universal.dmg#Helm-${TAG_NAME}-macos-universal.dmg" \
+            "build/release-assets/Helm.dmg#Helm.dmg" \
+            --clobber

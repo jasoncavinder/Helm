@@ -9,7 +9,7 @@
   <br>
   A native macOS menu bar app for unified package manager control.
   <br>
-  <strong>Pre-1.0 &middot; v0.13.0-beta.1</strong>
+  <strong>Pre-1.0 &middot; v0.13.0-beta.2</strong>
 </p>
 
 <p align="center">
@@ -23,9 +23,16 @@
 
 Helm manages software across multiple package managers (Homebrew, npm, pip, Cargo, etc.) and runtime tools (mise, rustup) from a single menu bar interface. It is designed as infrastructure software: deterministic, safety-first, and explicit about authority, orchestration, and error handling.
 
-> **Status:** Active pre-1.0 development at `v0.13.0-beta.1`. Fifteen managers are functional with authority-ordered refresh, progressive search, pin/safe-mode policy controls, and localization coverage for `en`, `es`, `de`, `fr`, `pt-BR`, and `ja`.
+> **Status:** Active pre-1.0 development at `v0.13.0-beta.2`. Fifteen managers are functional with authority-ordered refresh, progressive search, pin/safe-mode policy controls, and localization coverage for `en`, `es`, `de`, `fr`, `pt-BR`, and `ja`.
 >
-> **Beta testing:** Please test `v0.13.0-beta.1` and report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Beta testing:** Please test `v0.13.0-beta.2` and report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+
+## Beta Download
+
+Install the latest beta DMG from GitHub Releases:
+- https://github.com/jasoncavinder/Helm/releases
+
+DMG builds target **Any Mac (Apple Silicon + Intel)** on **macOS 12+** and use standard drag-to-`Applications` installation.
 
 ## Features
 
@@ -87,7 +94,7 @@ Or open `apps/macos-ui/Helm.xcodeproj` in Xcode and run the **Helm** scheme. The
 | 0.10.x | Core Language Package Managers — npm, pipx, pip, Cargo, cargo-binstall | Completed |
 | 0.11.x | Extended Language Package Managers — pnpm, yarn, poetry, RubyGems, bundler | Completed |
 | 0.12.x | Localization + Upgrade Transparency — locale hardening, visual validation expansion, upgrade preview, dry-run | Completed (`v0.12.0`) |
-| 0.13.x | UI/UX Analysis & Redesign — full UX audit, interaction model, information architecture refresh | In Progress (`v0.13.0-beta.1`) |
+| 0.13.x | UI/UX Analysis & Redesign — full UX audit, interaction model, information architecture refresh | In Progress (`v0.13.0-beta.2`) |
 | 0.14.x | Platform, Detection & Optional Managers — Docker, Xcode, Rosetta, Sparkle | Planned |
 | 0.15.x | Upgrade Preview & Execution Transparency — bulk preview, dry-run, failure isolation | Planned |
 | 0.16.x | Self-Update & Installer Hardening — Sparkle integration, signed verification | Planned |

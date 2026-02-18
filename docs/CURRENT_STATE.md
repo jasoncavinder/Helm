@@ -8,7 +8,7 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.13.0-beta.1**
+Current version: **0.13.0-beta.2**
 
 See:
 - CHANGELOG.md
@@ -136,6 +136,10 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
   - manager health state model includes a dedicated gray "Not Installed" badge for undetected managers
   - inspector pane for manager/package context
   - live wiring to `HelmCore` data/actions for refresh, upgrade, package actions, and manager operations
+- Release packaging now includes a GitHub Actions workflow for signed universal DMG artifacts:
+  - workflow: `.github/workflows/release-macos-dmg.yml`
+  - output assets: versioned `Helm-<tag>-macos-universal.dmg` plus stable `Helm.dmg`
+  - DMG layout includes standard drag-to-`Applications` alias
 
 ---
 

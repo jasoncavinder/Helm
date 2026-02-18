@@ -3,7 +3,19 @@ title: Installation
 description: Build and run Helm from source.
 ---
 
-Helm is pre-1.0 software and is currently built from source. Binary distribution is planned for a future release.
+Helm is pre-1.0 software and now ships beta binaries in addition to source builds.
+
+## Download Beta DMG (Recommended)
+
+Download the latest beta DMG from GitHub Releases:
+- [Helm Releases](https://github.com/jasoncavinder/Helm/releases)
+
+When you open the DMG, install like a standard macOS app:
+1. Drag `Helm.app` to `Applications`.
+2. Launch Helm from `Applications`.
+3. If macOS prompts, confirm opening the app and grant requested permissions.
+
+The beta DMG is built for **Any Mac (Apple Silicon + Intel)** with a **macOS 12+** deployment target.
 
 ## Prerequisites
 

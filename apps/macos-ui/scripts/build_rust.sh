@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 echo "Building Rust core..."
 
@@ -16,15 +16,99 @@ else
     CARGO_FLAGS=""
 fi
 
-# Build
-cargo build -p helm-ffi $CARGO_FLAGS
+# Map Xcode architecture names to Rust target triples.
+map_arch_to_target() {
+    case "$1" in
+        arm64|arm64e)
+            echo "aarch64-apple-darwin"
+            ;;
+        x86_64)
+            echo "x86_64-apple-darwin"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# Xcode provides ARCHS (e.g. "arm64 x86_64") when building for "Any Mac".
+REQUESTED_ARCHS="${ARCHS:-$(uname -m)}"
+IFS=' ' read -r -a XCODE_ARCHS <<< "$REQUESTED_ARCHS"
+
+RUST_TARGETS=()
+for arch in "${XCODE_ARCHS[@]}"; do
+    target=$(map_arch_to_target "$arch" || true)
+    if [ -n "${target:-}" ]; then
+        already_present=0
+        for existing in "${RUST_TARGETS[@]:-}"; do
+            if [ "$existing" = "$target" ]; then
+                already_present=1
+                break
+            fi
+        done
+        if [ "$already_present" -eq 0 ]; then
+            RUST_TARGETS+=("$target")
+        fi
+    fi
+done
+
+if [ "${#RUST_TARGETS[@]}" -eq 0 ]; then
+    host_target=$(map_arch_to_target "$(uname -m)" || true)
+    if [ -z "${host_target:-}" ]; then
+        echo "Unsupported host architecture: $(uname -m)" >&2
+        exit 1
+    fi
+    RUST_TARGETS+=("$host_target")
+fi
+
+echo "Requested Xcode ARCHS: $REQUESTED_ARCHS"
+echo "Rust targets: ${RUST_TARGETS[*]}"
+
+LIB_INPUTS=()
+installed_targets=""
+if command -v rustup >/dev/null 2>&1; then
+    installed_targets=$(rustup target list --installed || true)
+fi
+
+for target in "${RUST_TARGETS[@]}"; do
+    if [ -n "$installed_targets" ] && ! printf '%s\n' "$installed_targets" | grep -qx "$target"; then
+        if [ "${HELM_AUTO_INSTALL_RUST_TARGETS:-1}" = "1" ] && command -v rustup >/dev/null 2>&1; then
+            echo "Installing missing Rust target: $target"
+            rustup target add "$target" || true
+            installed_targets=$(rustup target list --installed || true)
+        fi
+    fi
+
+    if [ -n "$installed_targets" ] && ! printf '%s\n' "$installed_targets" | grep -qx "$target"; then
+        if [ "$CONFIGURATION" = "Release" ]; then
+            echo "Required Rust target is missing for Release build: $target" >&2
+            exit 1
+        fi
+        echo "Skipping unavailable Rust target in non-Release build: $target"
+        continue
+    fi
+
+    echo "Building helm-ffi for $target..."
+    cargo build -p helm-ffi $CARGO_FLAGS --target "$target"
+    LIB_INPUTS+=("target/$target/$PROFILE/libhelm_ffi.a")
+done
+
+if [ "${#LIB_INPUTS[@]}" -eq 0 ]; then
+    echo "No Rust targets were built. Ensure rustup targets are installed." >&2
+    exit 1
+fi
 
 # Copy artifacts to a build directory inside apps/macos-ui
 # ensuring Xcode can find them
 DEST_DIR="$REPO_ROOT/apps/macos-ui/Generated"
 mkdir -p "$DEST_DIR"
 
-cp "target/$PROFILE/libhelm_ffi.a" "$DEST_DIR/"
+if [ "${#LIB_INPUTS[@]}" -eq 1 ]; then
+    cp "${LIB_INPUTS[0]}" "$DEST_DIR/libhelm_ffi.a"
+else
+    echo "Creating universal static library..."
+    lipo -create "${LIB_INPUTS[@]}" -output "$DEST_DIR/libhelm_ffi.a"
+fi
 cp "crates/helm-ffi/include/helm.h" "$DEST_DIR/"
 
 # Extract version from workspace Cargo.toml and generate Swift constant

@@ -43,8 +43,8 @@
 		B20000000000000000000017 /* L10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000017 /* L10n.swift */; };
 		C10000000000000000000001 /* UpgradePreviewPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000003 /* UpgradePreviewPlanner.swift */; };
 		C10000000000000000000002 /* UpgradePreviewPlannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000005 /* UpgradePreviewPlannerTests.swift */; };
-		C10000000000000000000019 /* LocalizationOverflowValidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000000000000000000001A /* LocalizationOverflowValidationTests.swift */; };
 		C10000000000000000000018 /* UpgradePreviewPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000003 /* UpgradePreviewPlanner.swift */; };
+		C10000000000000000000019 /* LocalizationOverflowValidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000000000000000000001A /* LocalizationOverflowValidationTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -298,15 +298,6 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		C10000000000000000000006 /* HelmTests */ = {
-			isa = PBXGroup;
-			children = (
-				C1000000000000000000001A /* LocalizationOverflowValidationTests.swift */,
-				C10000000000000000000005 /* UpgradePreviewPlannerTests.swift */,
-			);
-			path = HelmTests;
-			sourceTree = "<group>";
-		};
 		B30000000000000000000001 /* Components */ = {
 			isa = PBXGroup;
 			children = (
@@ -328,6 +319,15 @@
 				B10000000000000000000012 /* OnboardingWelcomeView.swift */,
 			);
 			path = Onboarding;
+			sourceTree = "<group>";
+		};
+		C10000000000000000000006 /* HelmTests */ = {
+			isa = PBXGroup;
+			children = (
+				C1000000000000000000001A /* LocalizationOverflowValidationTests.swift */,
+				C10000000000000000000005 /* UpgradePreviewPlannerTests.swift */,
+			);
+			path = HelmTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -548,10 +548,12 @@
 			baseConfigurationReference = A40000000000000000000001 /* HelmVersion.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "-";
-				CODE_SIGN_STYLE = Automatic;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = V73WPJR9M4;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = 82VSX8SQ5Q;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/Generated";
@@ -565,6 +567,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_BUNDLE_IDENTIFIER = app.jasoncavinder.Helm.HelmService;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "$(PROJECT_DIR)/../../service/macos-service/HelmService-Bridging-Header.h";
@@ -577,10 +580,12 @@
 			baseConfigurationReference = A40000000000000000000001 /* HelmVersion.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "-";
-				CODE_SIGN_STYLE = Automatic;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = V73WPJR9M4;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = 82VSX8SQ5Q;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/Generated";
@@ -594,6 +599,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_BUNDLE_IDENTIFIER = app.jasoncavinder.Helm.HelmService;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "$(PROJECT_DIR)/../../service/macos-service/HelmService-Bridging-Header.h";
@@ -605,6 +611,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = "$(ARCHS_STANDARD)";
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
@@ -669,6 +676,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = "$(ARCHS_STANDARD)";
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
@@ -732,10 +740,11 @@
 				CODE_SIGN_ENTITLEMENTS = Helm/Helm.entitlements;
 				CODE_SIGN_IDENTITY = "-";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = V73WPJR9M4;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = 82VSX8SQ5Q;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Helm/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -751,6 +760,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.jasoncavinder.Helm;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -765,11 +775,12 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Helm/Helm.entitlements;
 				CODE_SIGN_IDENTITY = "-";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = V73WPJR9M4;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = 82VSX8SQ5Q;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Helm/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -785,6 +796,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.jasoncavinder.Helm;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -795,7 +807,7 @@
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = V73WPJR9M4;
+				DEVELOPMENT_TEAM = 82VSX8SQ5Q;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = HelmTests;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -814,7 +826,7 @@
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = V73WPJR9M4;
+				DEVELOPMENT_TEAM = 82VSX8SQ5Q;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = HelmTests;
 				LD_RUNPATH_SEARCH_PATHS = (

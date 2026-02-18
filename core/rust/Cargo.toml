@@ -3,4 +3,4 @@ members = ["crates/helm-core", "crates/helm-ffi"]
 resolver = "2"
 
 [workspace.package]
-version = "0.13.0-beta.1"
+version = "0.13.0-beta.2"

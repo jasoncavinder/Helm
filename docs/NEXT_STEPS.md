@@ -21,10 +21,10 @@ Focus:
 - Hardening and diagnostics
 
 Current checkpoint:
-- `v0.13.0-beta.1` released (redesigned popover/control-center shell integrated in production app target)
+- `v0.13.0-beta.2` released (redesigned shell + universal build/distribution pipeline checkpoint)
 
 Next release target:
-- `v0.13.0-beta.2` (redesign accessibility + locale parity + usability validation checkpoint)
+- `v0.13.0-beta.3` (redesign accessibility + locale parity + usability validation checkpoint)
 
 ---
 
@@ -209,6 +209,9 @@ Completed:
   - manager-aware Settings action badges (including software-update blocked signaling under Safe Mode)
   - migrated core non-destructive workflows to custom Helm primary/secondary button styles
   - introduced explicit gray "Not Installed" manager health badge state
+- Added release artifact pipeline for macOS beta distribution:
+  - signed universal build intent (`arm64` + `x86_64`) in Xcode/Rust build flow
+  - GitHub Actions DMG packaging with drag-to-`Applications` installer UX
 
 Implement (remaining):
 
