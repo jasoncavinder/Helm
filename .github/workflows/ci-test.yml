@@ -1,0 +1,63 @@
+name: CI Tests
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+
+jobs:
+  rust-tests:
+    name: Rust Core Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: core/rust
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            core/rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('core/rust/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Run cargo test
+        run: cargo test --workspace
+
+      - name: Run cargo clippy
+        run: cargo clippy --workspace -- -D warnings
+
+  xcode-build:
+    name: Xcode Build Check
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build and test Xcode project
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project apps/macos-ui/Helm.xcodeproj \
+            -scheme Helm \
+            -destination "platform=macOS" \
+            -configuration Debug \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build

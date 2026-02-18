@@ -22,6 +22,8 @@ struct OnboardingContainerView: View {
                 }
             }
             .padding(.top, 16)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Step \(currentStep.rawValue + 1) of \(OnboardingStep.allCases.count)")
 
             Group {
                 switch currentStep {

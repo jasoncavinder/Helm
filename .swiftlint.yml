@@ -18,7 +18,43 @@ excluded:
 disabled_rules:
   - trailing_whitespace
   - line_length
-
-opt_in_rules:
-  - empty_count
+  - nesting
+  - trailing_comma
   - implicit_return
+  - implicit_optional_initialization
+  - multiple_closures_with_trailing_closure
+  - for_where
+  - large_tuple
+  - opening_brace
+
+# Thresholds tuned for the existing codebase.
+type_body_length:
+  warning: 1000
+  error: 1500
+
+file_length:
+  warning: 2000
+  error: 2500
+
+function_body_length:
+  warning: 100
+  error: 150
+
+cyclomatic_complexity:
+  warning: 18
+  error: 25
+
+function_parameter_count:
+  warning: 6
+  error: 8
+
+identifier_name:
+  min_length:
+    warning: 1
+  max_length:
+    warning: 60
+  allowed_symbols:
+    - _
+  excluded:
+    - id
+    - s

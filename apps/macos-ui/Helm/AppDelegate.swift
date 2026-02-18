@@ -171,19 +171,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         button.title = ""
         button.imagePosition = .imageOnly
 
+        let statusDescription: String
         if failedTaskCount > 0 {
-            button.toolTip = "app.redesign.status_item.error".localized(with: ["count": failedTaskCount])
-            return
+            statusDescription = "app.redesign.status_item.error".localized(with: ["count": failedTaskCount])
+        } else if outdatedCount > 0 {
+            statusDescription = "app.redesign.status_item.updates".localized(with: ["count": outdatedCount])
+        } else if running {
+            statusDescription = "app.redesign.status_item.running".localized
+        } else {
+            statusDescription = "app.redesign.status_item.healthy".localized
         }
-
-        if outdatedCount > 0 {
-            button.toolTip = "app.redesign.status_item.updates".localized(with: ["count": outdatedCount])
-            return
-        }
-
-        button.toolTip = running
-            ? "app.redesign.status_item.running".localized
-            : "app.redesign.status_item.healthy".localized
+        button.toolTip = statusDescription
+        button.setAccessibilityLabel(statusDescription)
     }
 
     private func statusItemImage(anchorTint: NSColor, button: NSStatusBarButton, badge: StatusBadge?) -> NSImage? {
@@ -253,6 +252,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 window.titlebarSeparatorStyle = .none
             }
             window.contentViewController = hostingController
+            window.autorecalculatesKeyViewLoop = true
             window.isReleasedWhenClosed = false
             window.standardWindowButton(.miniaturizeButton)?.isEnabled = false
             window.standardWindowButton(.zoomButton)?.isEnabled = false
@@ -441,10 +441,13 @@ final class FloatingPanel: NSPanel {
         isMovableByWindowBackground = false
         isReleasedWhenClosed = false
         hidesOnDeactivate = false
+        // Enable Tab traversal for SwiftUI controls within this borderless panel
+        autorecalculatesKeyViewLoop = true
     }
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+    override var acceptsFirstResponder: Bool { true }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard event.type == .keyDown else { return super.performKeyEquivalent(with: event) }

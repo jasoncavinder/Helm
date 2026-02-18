@@ -74,6 +74,7 @@ struct OnboardingConfigureView: View {
                                 .toggleStyle(.switch)
                                 .scaleEffect(0.7)
                                 .labelsHidden()
+                                .accessibilityLabel(manager.displayName)
                             }
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)

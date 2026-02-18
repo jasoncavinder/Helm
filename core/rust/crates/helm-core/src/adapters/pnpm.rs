@@ -305,13 +305,11 @@ fn parse_pnpm_list_installed(output: &str) -> AdapterResult<Vec<InstalledPackage
     let mut dependencies = BTreeMap::new();
     if let Some(map) = dependencies_value.and_then(Value::as_object) {
         for (name, payload) in map {
-            let version = if let Some(version) = payload.get("version").and_then(Value::as_str) {
-                Some(version.trim().to_string())
-            } else if let Some(version) = payload.as_str() {
-                Some(version.trim().to_string())
-            } else {
-                None
-            };
+            let version = payload
+                .get("version")
+                .and_then(Value::as_str)
+                .or_else(|| payload.as_str())
+                .map(|v| v.trim().to_string());
 
             if let Some(version) = version
                 && !version.is_empty()

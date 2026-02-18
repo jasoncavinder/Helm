@@ -101,6 +101,7 @@ struct PackagesSectionView: View {
                     }
                     .buttonStyle(.plain)
                     .helmPointer()
+                    .accessibilityLabel(L10n.Common.clear.localized)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
@@ -149,6 +150,7 @@ struct PackagesSectionView: View {
                 }
                 .menuStyle(.borderlessButton)
                 .helmPointer()
+                .accessibilityLabel(managerLabel)
             }
 
             if displayedPackages.isEmpty {

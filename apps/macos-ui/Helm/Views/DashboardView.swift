@@ -402,6 +402,7 @@ struct RedesignPopoverView: View {
                 }
                 .buttonStyle(.plain)
                 .helmPointer()
+                .accessibilityLabel(L10n.Common.clear.localized)
             }
         }
         .padding(.horizontal, 10)
@@ -419,6 +420,7 @@ struct RedesignPopoverView: View {
             isOverlaySearchFocused = true
         }
         .helmPointer()
+        .accessibilityLabel(L10n.App.Redesign.Popover.searchPlaceholder.localized)
     }
 
     private var managerSnapshotCard: some View {
@@ -443,23 +445,28 @@ struct RedesignPopoverView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(managerRows.prefix(4)) { manager in
-                    HStack(spacing: 8) {
-                        Text(localizedManagerDisplayName(manager.id))
-                            .font(.caption)
-                            .lineLimit(1)
-                        Spacer()
-                        Text("\(core.outdatedCount(forManagerId: manager.id))")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                        HealthBadgeView(status: core.health(forManagerId: manager.id))
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture {
+                    Button {
                         context.selectedManagerId = manager.id
                         context.selectedSection = .managers
                         onOpenControlCenter()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text(localizedManagerDisplayName(manager.id))
+                                .font(.caption)
+                                .lineLimit(1)
+                            Spacer()
+                            Text("\(core.outdatedCount(forManagerId: manager.id))")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                            HealthBadgeView(status: core.health(forManagerId: manager.id))
+                        }
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                     .helmPointer()
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(localizedManagerDisplayName(manager.id))
+                    .accessibilityValue("\(core.outdatedCount(forManagerId: manager.id)) \(L10n.App.Packages.Filter.upgradable.localized)")
                 }
             }
         }
@@ -483,6 +490,7 @@ struct RedesignPopoverView: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
                 .helmPointer()
+                .accessibilityLabel(L10n.App.Redesign.Action.openControlCenter.localized)
             }
 
             if popoverTasks.isEmpty {
@@ -491,7 +499,7 @@ struct RedesignPopoverView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(popoverTasks) { task in
-                    TaskRowView(task: task)
+                    TaskRowView(task: task, onCancel: task.isRunning ? { core.cancelTask(task) } : nil)
                 }
             }
         }
@@ -511,11 +519,11 @@ struct RedesignPopoverView: View {
 
             Spacer(minLength: 10)
 
-            footerIconButton(symbol: "gearshape", action: {
+            footerIconButton(symbol: "gearshape", accessibilityText: L10n.Common.settings.localized, action: {
                 activeOverlay = .quickSettings
             })
 
-            footerIconButton(symbol: "power", action: {
+            footerIconButton(symbol: "power", accessibilityText: L10n.App.Settings.Action.quit.localized, action: {
                 activeOverlay = .confirmQuit
             })
         }
@@ -596,41 +604,44 @@ struct RedesignPopoverView: View {
                 ScrollView {
                     VStack(spacing: 6) {
                         ForEach(searchResults) { result in
-                            HStack(spacing: 8) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(result.name)
-                                        .font(.subheadline.weight(.medium))
-                                        .lineLimit(1)
-                                    Text(result.manager)
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                if let latest = result.latestVersion {
-                                    Text(latest)
-                                        .font(.caption.monospacedDigit())
-                                        .foregroundStyle(Color.orange)
-                                } else {
-                                    Text(result.version)
-                                        .font(.caption.monospacedDigit())
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 8)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .fill(Color.primary.opacity(0.05))
-                            )
-                            .contentShape(Rectangle())
-                            .onTapGesture {
+                            Button {
                                 context.selectedPackageId = result.id
                                 context.selectedManagerId = result.managerId
                                 context.selectedSection = .packages
                                 onOpenControlCenter()
                                 closeOverlay()
+                            } label: {
+                                HStack(spacing: 8) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(result.name)
+                                            .font(.subheadline.weight(.medium))
+                                            .lineLimit(1)
+                                        Text(result.manager)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    if let latest = result.latestVersion {
+                                        Text(latest)
+                                            .font(.caption.monospacedDigit())
+                                            .foregroundStyle(Color.orange)
+                                    } else {
+                                        Text(result.version)
+                                            .font(.caption.monospacedDigit())
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(Color.primary.opacity(0.05))
+                                )
+                                .contentShape(Rectangle())
                             }
+                            .buttonStyle(.plain)
                             .helmPointer()
+                            .accessibilityElement(children: .combine)
                         }
                     }
                 }
@@ -843,7 +854,7 @@ struct RedesignPopoverView: View {
     }
 
     @ViewBuilder
-    private func footerIconButton(symbol: String, action: @escaping () -> Void) -> some View {
+    private func footerIconButton(symbol: String, accessibilityText: String? = nil, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 11, weight: .semibold))
@@ -855,6 +866,7 @@ struct RedesignPopoverView: View {
         }
         .buttonStyle(.plain)
         .helmPointer()
+        .accessibilityLabel(accessibilityText ?? symbol)
     }
 }
 
@@ -877,6 +889,7 @@ private struct PopoverOverlayCard<Content: View>: View {
                 .buttonStyle(.plain)
                 .keyboardShortcut(.escape, modifiers: [])
                 .helmPointer()
+                .accessibilityLabel(L10n.Common.close.localized)
             }
 
             content
@@ -1116,6 +1129,7 @@ private struct ControlCenterTopBar: View {
             .buttonStyle(HelmIconButtonStyle())
             .disabled(core.isRefreshing)
             .helmPointer(enabled: !core.isRefreshing)
+            .accessibilityLabel(L10n.App.Settings.Action.refreshNow.localized)
 
             Button(L10n.App.Redesign.ControlCenter.upgradeAll.localized) {
                 context.showUpgradeSheet = true
@@ -1197,6 +1211,7 @@ private struct ControlCenterSidebarSurface: View {
 }
 
 private struct ControlCenterSidebarRow: View {
+    @ObservedObject private var localization = LocalizationManager.shared
     let section: ControlCenterSection
     let isSelected: Bool
     let onSelect: () -> Void
@@ -1222,6 +1237,8 @@ private struct ControlCenterSidebarRow: View {
         )
         .onHover { isHovered = $0 }
         .helmPointer()
+        .accessibilityLabel(section.title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -1346,7 +1363,7 @@ private struct RedesignOverviewSectionView: View {
                 } else {
                     VStack(spacing: 0) {
                         ForEach(Array(core.activeTasks.prefix(10))) { task in
-                            TaskRowView(task: task)
+                            TaskRowView(task: task, onCancel: task.isRunning ? { core.cancelTask(task) } : nil)
                             Divider()
                         }
                     }
@@ -1572,6 +1589,7 @@ struct HealthBadgeView: View {
             .padding(.vertical, 4)
             .foregroundStyle(status.color)
             .background(status.color.opacity(0.15), in: Capsule())
+            .accessibilityLabel(status.key.localized)
     }
 }
 
@@ -1590,6 +1608,9 @@ private struct MetricChipView: View {
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(label)
+        .accessibilityValue("\(value)")
     }
 }
 
@@ -1608,6 +1629,9 @@ private struct MetricCardView: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(title)
+        .accessibilityValue("\(value)")
     }
 }
 
@@ -1643,6 +1667,9 @@ private struct ManagerHealthCardView: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title), \(authority.key.localized)")
+        .accessibilityValue("\(status.key.localized), \(outdatedCount) \(L10n.App.Packages.Filter.upgradable.localized)")
     }
 }
 
@@ -1823,6 +1850,15 @@ extension HelmCore {
 
     func outdatedCount(forManagerId managerId: String) -> Int {
         outdatedPackages.filter { $0.managerId == managerId }.count
+    }
+
+    func upgradeAllPackages(forManagerId managerId: String) {
+        let packages = outdatedPackages.filter {
+            $0.managerId == managerId && !$0.pinned && canUpgradeIndividually($0)
+        }
+        for package in packages {
+            upgradePackage(package)
+        }
     }
 
     func health(forManagerId managerId: String) -> OperationalHealth {

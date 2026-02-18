@@ -15,235 +15,299 @@ Helm is in:
 ```
 
 Focus:
-- UI/UX redesign hardening and accessibility validation
-- Localization parity for redesign-specific keys
-- Release-quality polish and diagnostics follow-through
-- Hardening and diagnostics
+- Accessibility QA and VoiceOver/keyboard support
+- CI test enforcement (Rust + Swift)
+- Onboarding walkthrough (guided spotlight/coach marks tour)
+- Localization parity for redesign, onboarding walkthrough, and control center keys
+- UI layer purity fixes and architecture cleanup
+- Validation and hardening
 
 Current checkpoint:
 - `v0.13.0-beta.2` released (redesigned shell + universal build/distribution pipeline checkpoint)
+- Full codebase audit completed 2026-02-17 (Rust core, SwiftUI UI, XPC, localization, CI/CD)
 
-Next release target:
-- `v0.13.0-beta.3` (redesign accessibility + locale parity + usability validation checkpoint)
+Next release targets:
+- `v0.13.0-beta.3` — Accessibility + CI foundation
+- `v0.13.0-beta.4` — Localization parity + onboarding walkthrough
+- `v0.13.0-beta.5` — Architecture cleanup + UI purity
+- `v0.13.0-beta.6` — Validation + hardening + documentation
 
 ---
 
-## Priority 1 — Core Language Managers
+## v0.13.0-beta.3 — Accessibility + CI Foundation
+
+### Accessibility QA Pass
 
 Implement:
 
-- npm (global)
-- pipx
-- pip
-- cargo
-- cargo-binstall
+- Add `accessibilityLabel` modifiers to all interactive elements:
+  - Package rows (name, version, status description)
+  - Task rows (description, status)
+  - Manager items (name, authority level, health state)
+  - Status badges (update count, error count, running indicator)
+  - Pin indicators and action buttons
+  - Menu bar status item and badge overlay
+- Add `accessibilityValue` for dynamic content:
+  - Task status (queued, running, completed, failed, cancelled)
+  - Package counts (installed, outdated, available)
+  - Manager detection state and version
+- Add `accessibilityElement(children: .combine)` semantic grouping:
+  - Package rows (combine icon + name + version + status into single element)
+  - Task rows (combine spinner/icon + description + status)
+  - Manager cards (combine name + authority + health badge)
+- Validate keyboard-only traversal:
+  - Full Tab traversal through popover (banner → task list → managers → footer actions)
+  - Full Tab traversal through control center sidebar and section content
+  - Escape key behavior consistent across all overlay states
+  - Enter/Space activation for all focusable elements
+- Validate VoiceOver announcements for state changes:
+  - Refresh start/completion
+  - Task status transitions
+  - Error/failure notifications
+- Respect `accessibilityReduceMotion` in all transition contexts (already partial — extend to any remaining animations)
 
-Requirements:
-
-- detection
-- list_installed
-- list_outdated
-- search (where possible)
-- install / uninstall / upgrade
-
-Completed:
-
-- npm (global) adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
-- npm parser fixtures and adapter unit tests added for version/list/search/outdated flows
-- pip (`python3 -m pip`, global) adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
-- pip parser fixtures and adapter unit tests added for version/list/search/outdated flows
-- pipx adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
-- pipx parser fixtures and adapter unit tests added for version/list/outdated flows
-- cargo adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
-- cargo parser fixtures and adapter unit tests added for version/list/search/outdated flows
-- cargo-binstall adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
-- cargo-binstall parser fixtures and adapter unit tests added for version/list/search/outdated flows
-
-`v0.10.0` completion scope:
-
-- End-to-end adapter availability for:
-  - npm (global) ✅
-  - pip (`python3 -m pip`, global) ✅
-  - pipx ✅
-  - cargo ✅
-  - cargo-binstall ✅
-- Registry + FFI + XPC + UI wiring verified for all Priority 1 managers
-- Fixture-based parser coverage for list/search/version flows where supported
-- Capability declarations aligned with implemented actions
-
-`v0.10.0` validation summary:
-
-- `cargo test` passes in `core/rust` ✅
-- Existing `HelmTests` suite passes ✅
-- Manager detection and package listing validate on at least one local dev environment ✅
-- `CHANGELOG.md`, `CURRENT_STATE.md`, and website docs are updated for stable scope ✅
-
----
-
-## Priority 2 — Extended Managers
+### Task Cancellation in UI
 
 Implement:
 
-- pnpm
-- yarn
-- poetry
-- RubyGems
-- bundler
+- Wire the existing XPC `cancelTask` method to the task cancel button in UI
+- Enable the cancel button for running tasks (currently disabled)
+- Handle cancellation response and update task state in HelmCore
+- Verify cancellation state transitions in UI (Running → Cancelled)
+- This is a non-negotiable architectural invariant: "Tasks must be cancelable at process level"
 
-Completed (`v0.11.0-beta.1` scope complete):
-
-- pnpm adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
-- pnpm parser fixtures and adapter unit tests added for version/list/search/outdated flows
-- pnpm manager metadata wired through macOS UI + localization keys
-- yarn adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
-- yarn parser fixtures and adapter unit tests added for version/list/search/outdated flows
-- yarn manager metadata wired through macOS UI + localization keys
-- RubyGems adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
-- RubyGems parser fixtures and adapter unit tests added for version/list/search/outdated flows
-- RubyGems manager metadata wired through macOS UI + localization keys
-- poetry adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
-- poetry parser fixtures and adapter unit tests added for self/plugin version/list/search/outdated flows
-- poetry manager metadata wired through macOS UI + localization keys
-- bundler adapter implemented end-to-end (core adapter + process source + FFI/runtime wiring)
-- bundler parser fixtures and adapter unit tests added for runtime version/list/search/outdated flows
-- bundler manager metadata wired through macOS UI + localization keys
-
----
-
-## Priority 3 — Localization Expansion
-
-Add locales:
-
-- es
-- fr
-- de
-- pt-BR
-- ja
-
-Requirements:
-
-- onboarding flows translated
-- errors translated
-- UI validated for overflow
-
-Completed:
-
-- Added locale scaffolding for fr, pt-BR, ja
-- Added onboarding flow translations for fr, pt-BR, ja
-- Added common UI label translations for fr, pt-BR, ja
-- Added service error translations for fr, pt-BR, ja
-- Expanded fr, pt-BR, ja to full app/common/service key coverage
-- Exposed fr, pt-BR, ja in the macOS language picker
-- Added a locale overflow-risk audit script (`apps/macos-ui/scripts/check_locale_lengths.sh`)
-- Increased Settings popover and locale picker widths to reduce language-picker overflow risk
-- Added localized manager display-name keys used by upgrade-preview/task-fallback UI text
-- Added locale key/placeholder integrity audit script (`apps/macos-ui/scripts/check_locale_integrity.sh`)
-- Added CI enforcement for locale parity + locale integrity checks in `.github/workflows/i18n-lint.yml`
-- Added `HelmTests`-based visual overflow validation for `SettingsPopoverView` locale-sensitive controls (`LocalizationOverflowValidationTests`)
-- Captured `v0.12.0-beta.1` visual overflow validation report at `docs/validation/v0.12.0-beta.1-visual-overflow.md`
-- Increased settings popover + language picker widths to resolve validated overflow failures
-- Expanded `LocalizationOverflowValidationTests` coverage to onboarding/navigation/package-filter/manager-surface constrained labels
-- Captured `v0.12.0-beta.2` overflow-expansion validation report at `docs/validation/v0.12.0-beta.2-visual-overflow-expansion.md`
-
-Remaining:
-
-- None for Priority 3 at this checkpoint
-
----
-
-## Priority 4 — Upgrade Transparency
+### CI Test Enforcement
 
 Implement:
 
-- Upgrade preview UI
-- Execution plan display
-- Dry-run support
-
-Completed:
-
-- Added a localized execution-plan summary in the Upgrade All confirmation alert (no-OS vs with-OS counts)
-- Added manager-level package-count breakdown (top managers) in the Upgrade All confirmation alert
-- Localized manager labels used in the Upgrade All breakdown output
-- Added focused unit tests for upgrade-preview filtering and breakdown ordering (`UpgradePreviewPlannerTests`)
-- Added a dedicated Upgrade Preview UI surface in macOS Settings with execution-plan sections and manager-level package breakdowns for both no-OS and with-OS modes
-- Added dry-run mode support in the upgrade-preview UI with explicit simulation results and no task submission
-
-Remaining:
-
-- None for Priority 4 at this checkpoint
+- Add a `ci-test.yml` GitHub Actions workflow:
+  - Trigger on PR and push to `main` and `dev`
+  - Run `cargo test --all` in `core/rust/`
+  - Run `xcodebuild test` for `HelmTests` target
+  - Fail workflow on any test failure
+- Add test gate steps to `release-macos-dmg.yml`:
+  - Run `cargo test --all --release` before DMG build
+  - Run `xcodebuild test` before signing
+  - Fail release if tests fail
+- Add `check_locale_lengths.sh` to `i18n-lint.yml` workflow
 
 ---
 
-## Priority 5 — UI/UX Analysis & Redesign
+## v0.13.0-beta.4 — Localization Parity + Onboarding Walkthrough
 
-Completed:
-
-- Created redesign concept, IA, flows, visual system, SwiftUI architecture proposal, and annotated mockups under `docs/ui/`
-- Added standalone SwiftUI redesign scaffold under `apps/macos/Helm/` with:
-  - menu bar integration and status popover
-  - control-center window + section placeholders
-  - deterministic mock state/data for previews and iteration
-  - localization-first string resources for user-facing scaffold text
-- Integrated redesign baseline into `apps/macos-ui` target with:
-  - redesigned menu bar popover and control-center window
-  - section surfaces for overview/updates/packages/tasks/managers/settings
-  - inspector pane and manager/package/task interaction wiring
-  - live `HelmCore`-backed actions for refresh/upgrade/package pin-update and manager operations
-- Refined redesigned shell behavior in `apps/macos-ui` with:
-  - top attention banner in popover for pending updates + custom update-all affordance
-  - layered popover panels (search/settings/about/quit confirmation) with dimmed-underlay transitions
-  - compact utility footer actions (search/settings/quit) and version-triggered About panel
-  - dynamic menu-bar status signal (Helm icon with update/error/running cues)
-  - in-icon status-item badge overlay and right-click quick action menu
-  - status-item icon treatment updated to monochrome anchor + colorized state badge indicators
-  - popover outside-click dismissal hardening + overlay cursor/hit-testing cleanup
-  - auto-sized popover height to reduce avoidable scrollbar churn at active-task peaks
-  - reduced-motion-aware overlay transitions and keyboard shortcuts (`Cmd+F`, `Esc`, `Cmd+W`)
-  - titlebar-hidden control-center window chrome with integrated global search routing into Packages
-  - compacted control-center top bar alignment with window controls and fixed-size non-resizable window behavior
-  - tuned light-mode visual balance for popover overlays/cards and control-center gradients
-  - full-row clickable control-center sidebar navigation behavior
-  - tactile sidebar hover/press states and broadened pointer affordance cues
-  - seamless/darker full-height sidebar surface integration through the titlebar cap region
-  - redesigned control-center Settings section to card-based production-quality layout
-  - manager-aware Settings action badges (including software-update blocked signaling under Safe Mode)
-  - migrated core non-destructive workflows to custom Helm primary/secondary button styles
-  - introduced explicit gray "Not Installed" manager health badge state
-- Added release artifact pipeline for macOS beta distribution:
-  - signed universal build intent (`arm64` + `x86_64`) in Xcode/Rust build flow
-  - GitHub Actions DMG packaging with drag-to-`Applications` installer UX
-
-Implement (remaining):
-
-- Usability test plan and acceptance metrics for redesigned flows
-- On-device validation sweep for redesigned states (loading/success/error/partial failure) across supported locales
-- Localization parity update for redesign-specific keys across shipped non-English locales
-- Remove or archive legacy UI component paths no longer used by the redesigned shell
-- Accessibility QA pass for keyboard traversal and VoiceOver labels in redesigned surfaces
-
----
-
-## Priority 6 — Self Update
+### Localization Parity
 
 Implement:
 
-- Signed updates
-- Integrity verification
-- Update recovery
+- Audit all redesign-specific UI surfaces for missing localization keys:
+  - Control center sidebar section labels (Overview, Updates, Packages, Tasks, Managers, Settings)
+  - Task names and descriptions in task list and popover
+  - Inspector pane labels and actions
+  - Upgrade preview section headers and dry-run labels
+  - Manager health state labels (Healthy, Warning, Error, Not Installed)
+  - Status badge descriptions and tooltip text
+  - Right-click context menu items
+  - About panel content
+  - Any other surfaces added or modified in the 0.13.x redesign
+- Add missing keys to `en` locale files first, then roll out to all 5 non-English locales (es, de, fr, pt-BR, ja)
+- Fix Spanish accent typo: "Actualizacion" → "Actualización" in `locales/es/app.json`
+- Run `check_locale_integrity.sh` to verify key parity and placeholder consistency
+- Run `check_locale_lengths.sh` to verify no overflow-risk regressions
 
----
-
-## Priority 7 — Diagnostics
+### Onboarding Walkthrough Redesign
 
 Implement:
 
-- Task log viewer
-- Error export
-- Manager diagnostics panel
+- Update existing onboarding steps (Welcome → Detection → Configure) with friendlier tone:
+  - Warmer welcome copy that explains Helm's value proposition simply
+  - More encouraging detection step with progress feedback
+  - Clearer configuration step with sensible defaults and brief explanations
+  - Localize all updated copy across all 6 locales
+
+- Add guided walkthrough after onboarding setup completes:
+
+  **Spotlight/Coach Marks System:**
+  - Implement a reusable `SpotlightOverlay` view component:
+    - Full-screen dimmed overlay with a transparent cutout around the target element
+    - Descriptive tooltip/card adjacent to the cutout explaining the focused feature
+    - "Next" / "Skip" / step indicator controls
+    - Smooth transition between spotlight targets
+    - Respect `accessibilityReduceMotion` for transitions
+    - VoiceOver-compatible: announce step descriptions, support Skip via accessibility action
+
+  **Popover Walkthrough (4–6 steps):**
+  - Step 1: Status icon — "This is your Helm status icon. It shows your system health at a glance."
+  - Step 2: Updates banner — "When updates are available, they appear here. Tap to upgrade all at once."
+  - Step 3: Active tasks — "Running operations appear here so you always know what Helm is doing."
+  - Step 4: Manager summary — "A quick snapshot of your detected package managers and their status."
+  - Step 5: Footer actions — "Search packages, open settings, or access the full control center from here."
+  - Step 6: Quick search — "Search across all your package managers instantly."
+
+  **Control Center Walkthrough (5–7 steps):**
+  - Step 1: Sidebar navigation — "Navigate between sections to manage your entire development environment."
+  - Step 2: Overview — "Your system health dashboard. See everything at a glance."
+  - Step 3: Packages — "Browse, search, install, and manage packages across all managers."
+  - Step 4: Tasks — "Every operation Helm runs is tracked here. Cancel running tasks anytime."
+  - Step 5: Managers — "Enable, disable, and monitor your package managers."
+  - Step 6: Settings — "Configure safe mode, language, and automatic update policies."
+  - Step 7: Upgrade preview — "Preview exactly what will happen before running upgrades."
+
+  **Walkthrough State Management:**
+  - Track walkthrough completion in UserDefaults (separate from onboarding completion)
+  - Allow skipping at any point
+  - Allow re-triggering from Settings ("Replay Walkthrough" action)
+  - Do not block app usage — walkthrough is dismissible at every step
+
+  **Localization:**
+  - Add all walkthrough step titles and descriptions to `app.json` under `app.walkthrough.*` key namespace
+  - Translate across all 6 locales (en, es, de, fr, pt-BR, ja)
+  - Run overflow validation for walkthrough tooltip content
 
 ---
 
-## Priority 8 — Hardening
+## v0.13.0-beta.5 — Architecture Cleanup + UI Purity
+
+### UI Layer Purity Fixes
+
+Implement:
+
+- Move search deduplication/merge logic from `PackageListView.swift` to a computed property on HelmCore:
+  - `displayedPackages` should combine local matches + remote results with dedup in HelmCore, not the view
+- Move safe-mode upgrade action badge filtering from `SettingsPopoverView.swift` to HelmCore:
+  - `upgradeActionBadges` should be a computed property on HelmCore
+- Move task-to-manager inference from `TaskListView.swift` (`inferManagerId`) to structured task data:
+  - Tasks returned from XPC/FFI should include `manager_id` as a field, not parsed from description strings
+  - Update `CoreTaskRecord` to include `manager_id` and propagate through XPC protocol
+- Consolidate authority/capability lookup functions from `DashboardView.swift` into `ManagerInfo` struct:
+  - Remove standalone `authority(for:)` and `capabilities(for:)` functions
+  - Query from `ManagerInfo.all` or expose as computed properties on `ManagerInfo`
+
+### HelmCore Decomposition
+
+Implement:
+
+- Extract service coordination logic from `HelmCore.swift` into a `ServiceCoordinator` class:
+  - XPC connection setup, reconnection, polling timer
+  - Task tracking dictionaries (managerActionTaskByManager, upgradeActionTaskByPackage)
+  - Search debounce timer and remote search management
+- Keep HelmCore as a thin ViewModel:
+  - @Published state properties
+  - Computed derived properties (allKnownPackages, visibleManagers, aggregateHealth)
+  - Intent methods that delegate to ServiceCoordinator
+- Target: HelmCore under 400 lines, ServiceCoordinator owns service lifecycle
+
+### Legacy UI Cleanup
+
+Implement:
+
+- Identify and remove or archive legacy UI component paths no longer used by the redesigned shell
+- Remove dead code paths for pre-redesign views (if any remain)
+- Verify no orphaned localization keys after cleanup
+
+### XPC Robustness
+
+Implement:
+
+- Add timeout enforcement on individual XPC service calls:
+  - Wrap XPC calls with a reasonable timeout (e.g., 30s for data fetches, 5min for mutations)
+  - Surface timeout errors in UI rather than silently hanging
+- Add error feedback for JSON decode failures:
+  - Log decode errors with context (which method, what was received)
+  - Surface a user-visible error state when decode fails (e.g., "Failed to load packages")
+- Add exponential backoff to XPC reconnection (currently flat 2s delay)
+
+---
+
+## v0.13.0-beta.6 — Validation + Hardening + Documentation
+
+### On-Device Validation
+
+Implement:
+
+- Full on-device validation sweep for redesigned states across all 6 locales:
+  - Loading states (refresh in progress, search in progress)
+  - Success states (packages loaded, tasks completed)
+  - Error states (service disconnected, task failed, manager not installed)
+  - Partial failure states (some managers failed during refresh)
+  - Empty states (no packages, no tasks, no managers detected)
+- Validate onboarding walkthrough renders correctly in all 6 locales:
+  - Spotlight overlay positioning
+  - Tooltip/card content fits without truncation
+  - Step indicators visible and accessible
+- Capture validation report at `docs/validation/v0.13.0-beta.6-redesign-validation.md`
+
+### Usability Test Plan
+
+Implement:
+
+- Document usability test plan and acceptance metrics for redesigned flows:
+  - Core scenarios: first launch, refresh, search, install, upgrade, upgrade-all, pin/unpin
+  - Error scenarios: service crash/reconnection, manager failure, network unavailable
+  - Accessibility scenarios: VoiceOver-only navigation, keyboard-only navigation, reduced-motion
+  - Locale scenarios: complete each core flow in at least 2 non-English locales
+- Document pass/fail criteria for each scenario
+
+### Rust Core Hardening
+
+Implement:
+
+- Add structured logging spans (`tracing`) in Rust adapter execution paths for long-running operations
+- Add unit test for Homebrew `split_upgrade_target()` with `@@helm.cleanup` marker
+- Document FFI lifecycle: no explicit `helm_shutdown()`, runtime spans process lifetime
+- Document `execute_batch_tolerant()` error swallowing scope in SQLite migration comments
+
+### Documentation Alignment
+
+Implement:
+
+- Update `docs/INTERFACES.md` Section 10 open items:
+  - Add explicit list of current XPC protocol methods with parameter schemas
+  - Add explicit list of current FFI exports with JSON schemas
+  - Add SQLite schema summary (tables + key fields)
+  - Document confirmation token TTL and storage model
+- Final documentation consistency sweep:
+  - CURRENT_STATE.md reflects beta.6 reality
+  - CHANGELOG.md updated for all beta.3–6 changes
+  - ROADMAP.md 0.13.x section updated with delivered scope
+
+---
+
+## Completed Priorities (Pre-0.13.x)
+
+### Priority 1 — Core Language Managers (Completed)
+
+- npm (global) ✅
+- pip (`python3 -m pip`, global) ✅
+- pipx ✅
+- cargo ✅
+- cargo-binstall ✅
+
+### Priority 2 — Extended Managers (Completed)
+
+- pnpm (global) ✅
+- yarn (global) ✅
+- RubyGems ✅
+- Poetry (self/plugins) ✅
+- Bundler ✅
+
+### Priority 3 — Localization Expansion (Completed)
+
+- All 6 locales (en, es, de, fr, pt-BR, ja) at full key parity ✅
+- CI enforcement for locale parity + integrity ✅
+- On-device overflow validation ✅
+
+### Priority 4 — Upgrade Transparency (Completed)
+
+- Upgrade preview UI ✅
+- Execution plan display ✅
+- Dry-run support ✅
+
+### Priority 5 — UI/UX Redesign (Partially Complete)
+
+- Redesign concept + integration into production target ✅
+- Remaining items allocated to v0.13.0-beta.3–6 above
+
+### Hardening (Partially Complete)
 
 Completed in `v0.10.0` checkpoint:
 
@@ -258,12 +322,40 @@ Completed in `v0.11.0-beta.2` stabilization:
 - Added bounded retry handling for transient task-store create/update persistence failures in orchestration runtime paths
 - Added regression coverage for refresh-response error attribution and transient task-persistence recovery
 
-Remaining:
+Remaining (allocated to v0.13.0-beta.6):
+
+- Structured logging in adapter execution paths
+- Homebrew upgrade-target encoding test coverage
+- FFI lifecycle and migration error documentation
+
+---
+
+## Post-0.13.x Priorities
+
+### Priority 6 — Self Update
+
+Implement:
+
+- Signed updates
+- Integrity verification
+- Update recovery
+
+### Priority 7 — Diagnostics
+
+Implement:
+
+- Task log viewer
+- Error export
+- Manager diagnostics panel
+
+### Priority 8 — Hardening (Remaining)
+
+Implement:
 
 - Stress test orchestration
-- Cancellation reliability
+- Cancellation reliability under load
 - Memory audit
-- FFI stability
+- FFI stability under extended runtime
 
 ---
 
@@ -278,11 +370,11 @@ Remaining:
 
 ## Summary
 
-Next steps are focused on:
+The 0.13.x milestone is structured across four remaining beta releases:
 
-- Expanding manager coverage
-- Improving transparency
-- Hardening reliability
-- Integrating and validating the UI/UX redesign baseline
+- **beta.3**: Accessibility (VoiceOver, keyboard, semantic grouping), task cancellation UI, CI test enforcement
+- **beta.4**: Localization parity (redesign + walkthrough keys across 6 locales), onboarding walkthrough with spotlight/coach marks
+- **beta.5**: Architecture cleanup (UI purity fixes, HelmCore decomposition, legacy removal, XPC robustness)
+- **beta.6**: Validation sweep (on-device locale validation, usability test plan, Rust hardening, documentation alignment)
 
-The goal is **closing 1.0 Definition of Done**.
+The goal is **closing 0.13.x as a stable, accessible, well-tested redesign checkpoint** before moving to platform expansion (0.14.x).

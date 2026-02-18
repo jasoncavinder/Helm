@@ -15,12 +15,43 @@ struct PackageRowView: View {
     var onUpgrade: (() -> Void)? = nil
     var onTogglePin: (() -> Void)? = nil
 
+    private var accessibilityDescription: String {
+        var parts = [package.name, package.status.displayName]
+        parts.append(package.version)
+        if let latest = package.latestVersion {
+            parts.append(L10n.App.Packages.Action.upgradePackage.localized + " " + latest)
+        }
+        if package.pinned {
+            parts.append(L10n.App.Packages.Label.pinned.localized)
+        }
+        if package.restartRequired {
+            parts.append(L10n.App.Packages.Label.restartRequired.localized)
+        }
+        parts.append(package.manager)
+        return parts.joined(separator: ", ")
+    }
+
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: package.status.iconName)
-                .foregroundColor(package.status.iconColor)
-                .font(.body)
-                .frame(width: 20)
+            if let onUpgrade, package.status == .upgradable {
+                Button(action: onUpgrade) {
+                    Image(systemName: package.status.iconName)
+                        .foregroundColor(package.status.iconColor)
+                        .font(.body)
+                        .frame(width: 20)
+                }
+                .buttonStyle(.borderless)
+                .disabled(isUpgradeActionInFlight)
+                .help(L10n.App.Packages.Action.upgradePackage.localized)
+                .helmPointer(enabled: !isUpgradeActionInFlight)
+                .accessibilityHidden(true)
+            } else {
+                Image(systemName: package.status.iconName)
+                    .foregroundColor(package.status.iconColor)
+                    .font(.body)
+                    .frame(width: 20)
+                    .accessibilityHidden(true)
+            }
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
@@ -32,6 +63,7 @@ struct PackageRowView: View {
                             .font(.caption2)
                             .foregroundColor(.secondary)
                             .help(L10n.App.Packages.Label.pinned.localized)
+                            .accessibilityHidden(true)
                     }
                 }
 
@@ -159,5 +191,7 @@ struct PackageRowView: View {
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityDescription)
     }
 }

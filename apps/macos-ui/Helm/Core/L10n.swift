@@ -13,6 +13,8 @@ struct L10n {
         static let quit = "common.button.quit"
         static let done = "common.button.done"
         static let reset = "common.button.reset"
+        static let clear = "common.button.clear"
+        static let close = "common.button.close"
         
         static let version = "common.label.version"
         static let loading = "common.label.loading"
@@ -251,6 +253,10 @@ struct L10n {
             static let noRecentTasks = "app.tasks.no_recent_tasks"
             static let fallbackDescription = "app.tasks.fallback.description"
             static let cancelUnavailable = "app.tasks.help.cancel_unavailable"
+
+            struct Action {
+                static let cancel = "app.tasks.action.cancel"
+            }
         }
 
         struct Redesign {

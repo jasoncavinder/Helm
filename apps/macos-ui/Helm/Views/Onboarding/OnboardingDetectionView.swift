@@ -90,6 +90,7 @@ private struct FoundManagerRow: View {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundColor(.green)
                 .frame(width: 20, height: 20)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(manager.displayName)
@@ -111,5 +112,6 @@ private struct FoundManagerRow: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+        .accessibilityElement(children: .combine)
     }
 }

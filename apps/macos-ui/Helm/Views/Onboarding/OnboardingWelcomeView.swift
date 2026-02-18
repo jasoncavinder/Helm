@@ -11,6 +11,7 @@ struct OnboardingWelcomeView: View {
                 .resizable()
                 .frame(width: 80, height: 80)
                 .cornerRadius(16)
+                .accessibilityHidden(true)
 
             VStack(spacing: 8) {
                 Text(L10n.App.Onboarding.Welcome.title.localized)
