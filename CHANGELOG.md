@@ -4,6 +4,34 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.13.0-beta.3] - 2026-02-18
+
+### Added
+- VoiceOver accessibility support across all interactive UI elements:
+  - `accessibilityLabel` on package rows, task rows, manager items, status badges, and menu bar status item
+  - `accessibilityElement(children: .combine)` semantic grouping on composite rows (packages, tasks, managers)
+  - `accessibilityValue` for dynamic content (task status, package counts, manager state)
+  - VoiceOver announcements for refresh start/completion, task cancellation, task failures, and refresh failure
+- Task cancel button wired to XPC `cancelTask` method with optimistic UI state update
+- Per-manager "Upgrade All" button in control-center Managers view
+- CI test enforcement:
+  - `ci-test.yml` GitHub Actions workflow with `cargo test --workspace` and `xcodebuild test`
+  - `xcodebuild test` gate added to `release-macos-dmg.yml` before signing
+  - `check_locale_lengths.sh` added to `i18n-lint.yml` workflow
+- L10n key additions for cancel action and status announcements across 6 locales
+
+### Changed
+- Refactored `HelmCore.swift` (1,133 lines) into HelmCore.swift (314 lines) plus 4 extension files:
+  HelmCore+Actions.swift, HelmCore+Fetching.swift, HelmCore+Settings.swift, HelmCore+Dashboard.swift
+- Refactored `DashboardView.swift` (1,919 lines) into DashboardView.swift plus ControlCenterModels.swift,
+  ControlCenterViews.swift, HelmButtonStyles.swift, and HelmCore+Dashboard.swift
+- Tightened SwiftLint thresholds (type_body_length: 400/600, file_length: 500/750, function_body_length: 80/120)
+
+### Fixed
+- Sidebar labels now update immediately on locale change (added missing @ObservedObject)
+- Dry-run panel no longer displays literal `\n` (fixed JSON escape sequence handling)
+- Spanish locale accent typo: "Actualizacion de software" → "Actualización de software"
+
 ## [0.13.0-beta.2] - 2026-02-18
 
 ### Added
