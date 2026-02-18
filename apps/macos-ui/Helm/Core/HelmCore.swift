@@ -189,6 +189,7 @@ final class HelmCore: ObservableObject {
         logger.info("triggerRefresh called")
         self.lastRefreshTrigger = Date()
         self.isRefreshing = true
+        postAccessibilityAnnouncement(L10n.Common.refresh.localized)
         service()?.triggerRefresh { success in
             if !success {
                 logger.error("triggerRefresh failed")
@@ -196,6 +197,7 @@ final class HelmCore: ObservableObject {
                     self.isRefreshing = false
                     self.lastRefreshTrigger = nil
                     self.completeOnboardingDetectionProgress()
+                    self.postAccessibilityAnnouncement(L10n.Common.error.localized)
                 }
             }
         }
