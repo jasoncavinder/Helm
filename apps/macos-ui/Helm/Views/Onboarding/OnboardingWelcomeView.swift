@@ -32,7 +32,7 @@ struct OnboardingWelcomeView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(HelmPrimaryButtonStyle())
             .padding(.horizontal, 40)
             .padding(.bottom, 32)
         }

@@ -373,6 +373,22 @@ Exit Criteria:
 - At least one end-to-end flow implemented using redesigned patterns without breaking orchestration invariants
 - Accessibility and localization implications captured for subsequent milestone execution
 
+Delivered (`v0.13.0-beta.1` checkpoint):
+- Redesigned menu bar popover shell integrated into `apps/macos-ui` with:
+  - top updates attention banner + custom upgrade-all action
+  - layered overlays for search/settings/about/quit with dimmed underlay
+  - right-click status-item quick action menu and in-icon status badges
+- Redesigned control-center shell integrated with:
+  - compact titlebar-hidden top bar and global search routing
+  - full-row sidebar section targets with hover/press tactile states
+  - card-based Settings surface and manager-aware action badges
+- Accessibility and interaction upgrades:
+  - reduced-motion-aware overlay transitions
+  - keyboard shortcuts (`Cmd+F`, `Esc`, `Cmd+W`)
+  - pointer affordance/hit-testing cleanup for overlay states
+- Manager health model refinement:
+  - explicit gray `Not Installed` state for undetected managers
+
 ---
 
 ## 0.14.x — Platform, Detection & Optional Managers (beta)

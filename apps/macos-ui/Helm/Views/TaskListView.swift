@@ -1,21 +1,57 @@
 import SwiftUI
 
+struct TasksSectionView: View {
+    @ObservedObject private var core = HelmCore.shared
+    @EnvironmentObject private var context: ControlCenterContext
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(ControlCenterSection.tasks.title)
+                    .font(.title2.weight(.semibold))
+                Spacer()
+                if core.isRefreshing {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+
+            if core.activeTasks.isEmpty {
+                Spacer()
+                Text("app.redesign.tasks.empty".localized)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            } else {
+                List(core.activeTasks) { task in
+                    TaskRowView(task: task)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if let managerId = inferManagerId(from: task.description) {
+                                context.selectedManagerId = managerId
+                            }
+                        }
+                        .helmPointer()
+                }
+                .listStyle(.inset)
+            }
+        }
+        .padding(20)
+    }
+
+    private func inferManagerId(from description: String) -> String? {
+        let candidates = ManagerInfo.implemented
+        return candidates.first {
+            description.localizedCaseInsensitiveContains(localizedManagerDisplayName($0.id))
+        }?.id
+    }
+}
+
+// Backward compatibility wrapper for legacy references.
 struct TaskListView: View {
-    @ObservedObject var core = HelmCore.shared
     var maxTasks: Int = 10
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if core.activeTasks.isEmpty {
-                Text(L10n.App.Tasks.noRecentTasks.localized)
-                    .foregroundColor(.secondary)
-                    .font(.caption)
-                    .padding(.horizontal, 16)
-            } else {
-                ForEach(Array(core.activeTasks.prefix(maxTasks))) { task in
-                    TaskRowView(task: task)
-                }
-            }
-        }
+        TasksSectionView()
     }
 }
