@@ -77,15 +77,63 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM="$APP_TEAM_ID" \
             CODE_SIGN_IDENTITY="Developer ID Application" \
+            ENABLE_HARDENED_RUNTIME=YES \
+            OTHER_CODE_SIGN_FLAGS="--timestamp" \
             build
 
-      - name: Verify app signature and architecture
+      - name: Verify signature, architecture, and notarization prerequisites
         run: |
           set -euo pipefail
           APP_PATH="$PWD/build/DerivedData/Build/Products/Release/Helm.app"
+          HELM_BIN="$APP_PATH/Contents/MacOS/Helm"
+          XPC_BIN="$APP_PATH/Contents/XPCServices/HelmService.xpc/Contents/MacOS/HelmService"
+
           test -d "$APP_PATH"
+
+          echo "=== Architectures ==="
+          lipo -archs "$HELM_BIN"
+
+          echo "=== Codesign verify (deep, strict) ==="
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
-          lipo -archs "$APP_PATH/Contents/MacOS/Helm"
+
+          echo "=== Helm binary: entitlements ==="
+          codesign -d --entitlements :- "$HELM_BIN" 2>/dev/null || echo "(no entitlements)"
+
+          echo "=== Helm binary: codesign details ==="
+          codesign -dv --verbose=4 "$HELM_BIN" 2>&1
+
+          echo "=== HelmService binary: entitlements ==="
+          codesign -d --entitlements :- "$XPC_BIN" 2>/dev/null || echo "(no entitlements)"
+
+          echo "=== HelmService binary: codesign details ==="
+          codesign -dv --verbose=4 "$XPC_BIN" 2>&1
+
+          echo "=== Notarization pre-check: hardened runtime flags ==="
+          # CodeDirectory flags should include 'runtime' for hardened runtime
+          if codesign -dv --verbose=4 "$HELM_BIN" 2>&1 | grep -q "flags=0x10000(runtime)"; then
+            echo "Helm: hardened runtime flag present ✓"
+          else
+            echo "::warning::Helm: hardened runtime flag NOT detected in codesign output"
+          fi
+          if codesign -dv --verbose=4 "$XPC_BIN" 2>&1 | grep -q "flags=0x10000(runtime)"; then
+            echo "HelmService: hardened runtime flag present ✓"
+          else
+            echo "::warning::HelmService: hardened runtime flag NOT detected in codesign output"
+          fi
+
+          echo "=== Notarization pre-check: get-task-allow must be absent ==="
+          if codesign -d --entitlements :- "$HELM_BIN" 2>/dev/null | grep -q "get-task-allow"; then
+            echo "::error::Helm: get-task-allow entitlement present — notarization will fail"
+            exit 1
+          else
+            echo "Helm: no get-task-allow ✓"
+          fi
+          if codesign -d --entitlements :- "$XPC_BIN" 2>/dev/null | grep -q "get-task-allow"; then
+            echo "::error::HelmService: get-task-allow entitlement present — notarization will fail"
+            exit 1
+          else
+            echo "HelmService: no get-task-allow ✓"
+          fi
 
       - name: Create drag-to-Applications DMG
         run: |
