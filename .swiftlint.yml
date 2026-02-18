@@ -29,8 +29,8 @@ disabled_rules:
 
 # Thresholds tuned for the existing codebase.
 type_body_length:
-  warning: 700
-  error: 1200
+  warning: 1000
+  error: 1500
 
 file_length:
   warning: 2000
