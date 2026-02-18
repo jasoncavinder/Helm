@@ -8,7 +8,7 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.13.0-beta.2**
+Current version: **0.13.0-beta.3**
 
 See:
 - CHANGELOG.md
@@ -95,13 +95,13 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 - Rust core: stable (190+ unit/integration tests, zero shell injection vectors, structured process invocation throughout)
 - XPC service: stable (code-signing validation, graceful reconnection)
 - FFI boundary: functional (poisoned-lock recovery, JSON interchange, thread-safe static state)
-- UI: feature-complete for current scope, pending accessibility and architecture cleanup
+- UI: feature-complete for current scope; VoiceOver accessibility labels, semantic grouping, and state-change announcements implemented; HelmCore decomposed into 5 files (314-line main + 4 extensions); pending keyboard traversal validation and architecture cleanup
 
 ---
 
-## v0.13.0-beta.2 Audit Findings
+## v0.13.0-beta.3 Audit Status
 
-A full codebase audit was conducted on 2026-02-17 covering Rust core, SwiftUI UI, XPC service, localization, and CI/CD.
+Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 remediation work.
 
 ### Rust Core
 
@@ -116,31 +116,31 @@ A full codebase audit was conducted on 2026-02-17 covering Rust core, SwiftUI UI
 - All user-facing text uses L10n localization keys — no hardcoded English strings detected
 - XPC service boundary has proper code-signing validation, async patterns, and reconnection logic
 - State management is sound (single ObservableObject, @Published properties, weak-self captures)
-- Minor UI layer purity violations: search merge logic, safe-mode badge filtering, and task-to-manager inference in views
-- HelmCore.swift is 1,133 lines and should be decomposed
-- Task cancel button is disabled in UI despite XPC cancel method existing
+- Minor UI layer purity violations remain: search merge logic, safe-mode badge filtering, and task-to-manager inference in views
+- HelmCore.swift decomposed from 1,133 lines into HelmCore.swift (314 lines) + 4 extension files (Actions, Fetching, Settings, Dashboard)
+- DashboardView.swift decomposed from 1,919 lines into DashboardView.swift + ControlCenterModels, ControlCenterViews, HelmButtonStyles
+- Task cancel button now wired and functional via XPC cancelTask method
 
-### Accessibility (Critical Gap)
+### Accessibility (Substantially Resolved)
 
-- Reduced-motion support is implemented for overlay transitions
-- No VoiceOver accessibility labels on interactive elements (package rows, task rows, manager items, status badges)
-- No `accessibilityValue` for dynamic content (task status, package counts)
-- No `accessibilityElement` semantic grouping
-- No keyboard-only traversal validation
+- Reduced-motion support implemented for overlay transitions
+- VoiceOver `accessibilityLabel` on all interactive elements (package rows, task rows, manager items, status badges, menu bar status item)
+- `accessibilityValue` for dynamic content (task status, package counts, manager state)
+- `accessibilityElement(children: .combine)` semantic grouping on composite rows
+- VoiceOver announcements for refresh start/completion, task cancellation, task failures, and refresh failure
+- Remaining gap: keyboard-only traversal validation not yet systematically tested
 
-### CI/CD
+### CI/CD (Resolved)
 
-- `i18n-lint.yml`: comprehensive locale parity, hardcoded string detection, mirror sync enforcement
-- `release-macos-dmg.yml`: signed universal DMG + notarization — functional but no test gate
-- No `cargo test` execution in any CI workflow
-- No `xcodebuild test` execution in any CI workflow
-- Release workflow can produce artifacts without running tests
+- `ci-test.yml`: runs `cargo test --workspace` and `xcodebuild test` on PR and push to main/dev
+- `i18n-lint.yml`: comprehensive locale parity, hardcoded string detection, mirror sync enforcement, and `check_locale_lengths.sh` overflow validation
+- `release-macos-dmg.yml`: signed universal DMG + notarization with Rust and Swift test gates before build
 
 ### Localization
 
 - All 6 locales pass key parity, placeholder consistency, and ICU format checks
-- `check_locale_lengths.sh` not included in CI workflow
-- Minor: Spanish locale has missing accent in "Actualizacion" (should be "Actualización")
+- `check_locale_lengths.sh` included in CI workflow
+- Spanish accent typo in "Actualización" has been corrected
 
 ---
 
@@ -196,14 +196,10 @@ A full codebase audit was conducted on 2026-02-17 covering Rust core, SwiftUI UI
 - Priority 2 extended language-manager expansion is complete at this checkpoint:
   - Implemented: pnpm (global), yarn (global), RubyGems, Poetry (self/plugins), Bundler
   - Pending: none
-- Redesign integration is functional and now includes layered popover UX + control-center search, but still needs accessibility validation, onboarding walkthrough, and architecture cleanup
-- Accessibility is a critical gap: no VoiceOver labels, no semantic grouping, no keyboard-only traversal validation
-- Task cancel button is disabled in UI despite XPC/FFI cancel infrastructure existing
+- Redesign integration is functional with layered popover UX + control-center search; accessibility labels and semantic grouping implemented; still needs keyboard traversal validation, onboarding walkthrough, and UI layer purity cleanup
+- Keyboard-only traversal validation still pending (Tab order, Escape behavior, focusable modifiers not systematically applied)
 - Minor business logic in view layer (search merge, safe-mode badge filtering, task-to-manager inference) needs extraction to HelmCore
-- HelmCore.swift (1,133 lines) needs ViewModel/coordinator decomposition
-- No CI enforcement of Rust or Swift tests; release workflow has no test gate
 - New redesign and onboarding walkthrough localization keys require non-English locale rollout parity
-- `check_locale_lengths.sh` is not included in CI workflow
 - No XPC call timeout enforcement (hung service could stall UI)
 - Overflow validation now has both heuristic and on-device executable coverage for Settings, onboarding, navigation, package filters, and manager labels/states
 - Upgrade-all transparency now provides summary counts + top manager breakdown in confirmation flow
@@ -236,4 +232,4 @@ Helm is a **functional control plane for 15 managers** with:
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-Remaining work is **accessibility, onboarding walkthrough, architecture cleanup, CI hardening, and localization parity toward 0.13.x stable**.
+Remaining work is **keyboard traversal validation, onboarding walkthrough, architecture cleanup, and localization parity toward 0.13.x stable**.
