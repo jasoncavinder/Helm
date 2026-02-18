@@ -23,8 +23,6 @@ jobs:
           brew update
           brew install swiftlint
 
-      # If you have a .swiftlint.yml config, SwiftLint will pick it up automatically.
-      # If your Swift code lives in a subdir, you can `cd` first.
       - name: Run SwiftLint
         run: |
-          swiftlint lint --strict
+          swiftlint lint --strict --reporter github-actions-logging
