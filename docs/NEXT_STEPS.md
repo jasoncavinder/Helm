@@ -23,73 +23,55 @@ Focus:
 - Validation and hardening
 
 Current checkpoint:
-- `v0.13.0-beta.2` released (redesigned shell + universal build/distribution pipeline checkpoint)
+- `v0.13.0-beta.3` released (accessibility, task cancellation, CI test enforcement, HelmCore/DashboardView decomposition)
 - Full codebase audit completed 2026-02-17 (Rust core, SwiftUI UI, XPC, localization, CI/CD)
 
 Next release targets:
-- `v0.13.0-beta.3` — Accessibility + CI foundation
 - `v0.13.0-beta.4` — Localization parity + onboarding walkthrough
 - `v0.13.0-beta.5` — Architecture cleanup + UI purity
 - `v0.13.0-beta.6` — Validation + hardening + documentation
 
 ---
 
-## v0.13.0-beta.3 — Accessibility + CI Foundation
+## v0.13.0-beta.3 — Accessibility + CI Foundation (Completed)
 
-### Accessibility QA Pass
+### Accessibility QA Pass (Completed)
 
-Implement:
+Delivered:
 
-- Add `accessibilityLabel` modifiers to all interactive elements:
-  - Package rows (name, version, status description)
-  - Task rows (description, status)
-  - Manager items (name, authority level, health state)
-  - Status badges (update count, error count, running indicator)
-  - Pin indicators and action buttons
-  - Menu bar status item and badge overlay
-- Add `accessibilityValue` for dynamic content:
-  - Task status (queued, running, completed, failed, cancelled)
-  - Package counts (installed, outdated, available)
-  - Manager detection state and version
-- Add `accessibilityElement(children: .combine)` semantic grouping:
-  - Package rows (combine icon + name + version + status into single element)
-  - Task rows (combine spinner/icon + description + status)
-  - Manager cards (combine name + authority + health badge)
-- Validate keyboard-only traversal:
-  - Full Tab traversal through popover (banner → task list → managers → footer actions)
-  - Full Tab traversal through control center sidebar and section content
-  - Escape key behavior consistent across all overlay states
-  - Enter/Space activation for all focusable elements
-- Validate VoiceOver announcements for state changes:
-  - Refresh start/completion
-  - Task status transitions
-  - Error/failure notifications
-- Respect `accessibilityReduceMotion` in all transition contexts (already partial — extend to any remaining animations)
+- ✅ `accessibilityLabel` modifiers on all interactive elements (package rows, task rows, manager items, status badges, menu bar status item)
+- ✅ `accessibilityValue` for dynamic content (task status, package counts, manager state)
+- ✅ `accessibilityElement(children: .combine)` semantic grouping on composite rows
+- ✅ VoiceOver announcements for refresh start/completion, task cancellation, task failures, and refresh failure
+- ✅ `accessibilityReduceMotion` respected in overlay transitions
 
-### Task Cancellation in UI
+Carry-forward to beta.5:
+- Keyboard-only traversal validation (Tab order, Escape behavior, `.focusable()` modifiers not systematically applied)
 
-Implement:
+### Task Cancellation in UI (Completed)
 
-- Wire the existing XPC `cancelTask` method to the task cancel button in UI
-- Enable the cancel button for running tasks (currently disabled)
-- Handle cancellation response and update task state in HelmCore
-- Verify cancellation state transitions in UI (Running → Cancelled)
-- This is a non-negotiable architectural invariant: "Tasks must be cancelable at process level"
+Delivered:
 
-### CI Test Enforcement
+- ✅ XPC `cancelTask` wired to cancel button with optimistic UI state update
+- ✅ Cancel button enabled for running tasks
+- ✅ Cancellation state transitions verified (Running → Cancelled)
+- ✅ VoiceOver announcement on successful cancellation
 
-Implement:
+### CI Test Enforcement (Completed)
 
-- Add a `ci-test.yml` GitHub Actions workflow:
-  - Trigger on PR and push to `main` and `dev`
-  - Run `cargo test --all` in `core/rust/`
-  - Run `xcodebuild test` for `HelmTests` target
-  - Fail workflow on any test failure
-- Add test gate steps to `release-macos-dmg.yml`:
-  - Run `cargo test --all --release` before DMG build
-  - Run `xcodebuild test` before signing
-  - Fail release if tests fail
-- Add `check_locale_lengths.sh` to `i18n-lint.yml` workflow
+Delivered:
+
+- ✅ `ci-test.yml` with `cargo test --workspace` and `xcodebuild test` on PR/push to main/dev
+- ✅ `xcodebuild test` gate added to `release-macos-dmg.yml` before signing
+- ✅ `check_locale_lengths.sh` added to `i18n-lint.yml` workflow
+
+### Additional Deliverables (Not Originally Planned)
+
+- ✅ HelmCore.swift decomposed into 5 files (originally beta.5 scope)
+- ✅ DashboardView.swift decomposed into 4 files (originally beta.5 scope)
+- ✅ SwiftLint thresholds tightened (type_body_length: 400/600, file_length: 500/750)
+- ✅ Per-manager "Upgrade All" button in Managers view
+- ✅ Spanish accent typo fix ("Actualización")
 
 ---
 
@@ -182,19 +164,24 @@ Implement:
   - Remove standalone `authority(for:)` and `capabilities(for:)` functions
   - Query from `ManagerInfo.all` or expose as computed properties on `ManagerInfo`
 
-### HelmCore Decomposition
+### HelmCore Decomposition (Delivered Early in beta.3)
+
+Delivered in beta.3:
+- ✅ HelmCore.swift decomposed from 1,133 lines into HelmCore.swift (314 lines) + 4 extension files
+- ✅ DashboardView.swift decomposed from 1,919 lines into 4 focused files
+
+Remaining (optional further refinement):
+- Extract service coordination into a dedicated `ServiceCoordinator` class if HelmCore extensions grow beyond current thresholds
+
+### Keyboard Traversal Validation (Carry-Forward from beta.3)
 
 Implement:
 
-- Extract service coordination logic from `HelmCore.swift` into a `ServiceCoordinator` class:
-  - XPC connection setup, reconnection, polling timer
-  - Task tracking dictionaries (managerActionTaskByManager, upgradeActionTaskByPackage)
-  - Search debounce timer and remote search management
-- Keep HelmCore as a thin ViewModel:
-  - @Published state properties
-  - Computed derived properties (allKnownPackages, visibleManagers, aggregateHealth)
-  - Intent methods that delegate to ServiceCoordinator
-- Target: HelmCore under 400 lines, ServiceCoordinator owns service lifecycle
+- Add `.focusable()` modifiers to all interactive elements systematically
+- Validate full Tab traversal through popover (banner → task list → managers → footer actions)
+- Validate full Tab traversal through control center sidebar and section content
+- Validate Escape key behavior consistent across all overlay states
+- Validate Enter/Space activation for all focusable elements
 
 ### Legacy UI Cleanup
 
