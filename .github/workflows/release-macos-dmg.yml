@@ -69,6 +69,19 @@ jobs:
           cd core/rust
           cargo test --workspace
 
+      - name: Run Swift tests before release build
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project apps/macos-ui/Helm.xcodeproj \
+            -scheme Helm \
+            -destination "platform=macOS" \
+            -configuration Debug \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            test
+
       - name: Build signed universal app
         run: |
           set -euo pipefail
