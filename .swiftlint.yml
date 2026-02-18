@@ -1,15 +1,24 @@
+# Keep this conservative to start; you can tighten later.
+strict: true
+
+included:
+  - apps/macos
+  - apps/macos-ui
+  - service/macos-service
+
+excluded:
+  - apps/macos-ui/Generated
+  - build
+  - core
+  - web
+  - docs
+  - locales
+
+# Good defaults: avoid wars over whitespace early on.
 disabled_rules:
   - trailing_whitespace
+  - line_length
+
 opt_in_rules:
   - empty_count
-  - force_unwrapping
-
-# Adjust paths to match your repo layout:
-included:
-  - Sources
-  - Tests
-excluded:
-  - .build
-  - Packages
-  - Carthage
-  - vendor
+  - implicit_return
