@@ -252,6 +252,128 @@ struct L10n {
             static let fallbackDescription = "app.tasks.fallback.description"
             static let cancelUnavailable = "app.tasks.help.cancel_unavailable"
         }
+
+        struct Redesign {
+            struct Window {
+                static let controlCenter = "app.redesign.window.control_center"
+            }
+            struct Section {
+                static let updates = "app.redesign.section.updates"
+                static let tasks = "app.redesign.section.tasks"
+            }
+            struct Health {
+                static let healthy = "app.redesign.health.healthy"
+                static let attention = "app.redesign.health.attention"
+                static let error = "app.redesign.health.error"
+                static let running = "app.redesign.health.running"
+                static let notInstalled = "app.redesign.health.not_installed"
+            }
+            struct Popover {
+                static let systemHealth = "app.redesign.popover.system_health"
+                static let pendingUpdates = "app.redesign.popover.pending_updates"
+                static let failures = "app.redesign.popover.failures"
+                static let runningTasks = "app.redesign.popover.running_tasks"
+                static let managerSnapshot = "app.redesign.popover.manager_snapshot"
+                static let activeTasks = "app.redesign.popover.active_tasks"
+                static let searchPlaceholder = "app.redesign.popover.search_placeholder"
+                static let version = "app.redesign.popover.version"
+                struct Banner {
+                    static let disconnectedTitle = "app.redesign.popover.banner.disconnected.title"
+                    static let disconnectedMessage = "app.redesign.popover.banner.disconnected.message"
+                    static let failedTitle = "app.redesign.popover.banner.failed.title"
+                    static let failedMessage = "app.redesign.popover.banner.failed.message"
+                    static let updatesTitle = "app.redesign.popover.banner.updates.title"
+                    static let updatesMessage = "app.redesign.popover.banner.updates.message"
+                }
+            }
+            struct Action {
+                static let openControlCenter = "app.redesign.action.open_control_center"
+                static let refreshPlan = "app.redesign.action.refresh_plan"
+                static let dryRun = "app.redesign.action.dry_run"
+                static let runPlan = "app.redesign.action.run_plan"
+            }
+            struct Overview {
+                static let managerHealth = "app.redesign.overview.manager_health"
+                static let recentTasks = "app.redesign.overview.recent_tasks"
+            }
+            struct Updates {
+                static let executionPlan = "app.redesign.updates.execution_plan"
+                static let includeOs = "app.redesign.updates.include_os"
+                static let managers = "app.redesign.updates.managers"
+                static let packages = "app.redesign.updates.packages"
+                static let riskFlags = "app.redesign.updates.risk_flags"
+                struct Authority {
+                    static let authoritative = "app.redesign.updates.authority.authoritative"
+                    static let standard = "app.redesign.updates.authority.standard"
+                    static let guarded = "app.redesign.updates.authority.guarded"
+                }
+                struct Risk {
+                    static let privileged = "app.redesign.updates.risk.privileged"
+                    static let reboot = "app.redesign.updates.risk.reboot"
+                }
+            }
+            struct DryRun {
+                static let title = "app.redesign.dry_run.title"
+                static let message = "app.redesign.dry_run.message"
+            }
+            struct Inspector {
+                static let title = "app.redesign.inspector.title"
+                static let empty = "app.redesign.inspector.empty"
+                static let manager = "app.redesign.inspector.manager"
+                static let installed = "app.redesign.inspector.installed"
+                static let latest = "app.redesign.inspector.latest"
+                static let sourceQuery = "app.redesign.inspector.source_query"
+                static let capabilities = "app.redesign.inspector.capabilities"
+            }
+            struct Overlay {
+                struct Search {
+                    static let title = "app.redesign.overlay.search.title"
+                    static let empty = "app.redesign.overlay.search.empty"
+                    static let openPackages = "app.redesign.overlay.search.open_packages"
+                }
+                struct Settings {
+                    static let title = "app.redesign.overlay.settings.title"
+                    static let openAdvanced = "app.redesign.overlay.settings.open_advanced"
+                }
+                struct About {
+                    static let title = "app.redesign.overlay.about.title"
+                    static let name = "app.redesign.overlay.about.name"
+                    static let subtitle = "app.redesign.overlay.about.subtitle"
+                    static let version = "app.redesign.overlay.about.version"
+                    static let summary = "app.redesign.overlay.about.summary"
+                }
+                struct Quit {
+                    static let title = "app.redesign.overlay.quit.title"
+                    static let message = "app.redesign.overlay.quit.message"
+                }
+            }
+            struct ControlCenter {
+                static let searchPlaceholder = "app.redesign.control_center.search_placeholder"
+                static let upgradeAll = "app.redesign.control_center.upgrade_all"
+            }
+            struct TasksSection {
+                static let empty = "app.redesign.tasks.empty"
+            }
+            struct ManagersSection {
+                static let empty = "app.redesign.managers.empty"
+            }
+            struct Capability {
+                static let list = "app.redesign.capability.list"
+                static let outdated = "app.redesign.capability.outdated"
+                static let search = "app.redesign.capability.search"
+                static let install = "app.redesign.capability.install"
+                static let uninstall = "app.redesign.capability.uninstall"
+                static let upgrade = "app.redesign.capability.upgrade"
+                static let pin = "app.redesign.capability.pin"
+            }
+            struct Settings {
+                struct Metric {
+                    static let managers = "app.redesign.settings.metric.managers"
+                    static let updates = "app.redesign.settings.metric.updates"
+                    static let tasks = "app.redesign.settings.metric.tasks"
+                }
+            }
+        }
     }
     
     struct Service {
