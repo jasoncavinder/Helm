@@ -106,15 +106,15 @@ struct SettingsSectionView: View {
 
                 HStack(spacing: 8) {
                     SettingsMetricPill(
-                        title: "app.redesign.settings.metric.managers".localized,
+                        title: L10n.App.Redesign.Settings.Metric.managers.localized,
                         value: core.visibleManagers.count
                     )
                     SettingsMetricPill(
-                        title: "app.redesign.settings.metric.updates".localized,
+                        title: L10n.App.Redesign.Settings.Metric.updates.localized,
                         value: core.outdatedPackages.count
                     )
                     SettingsMetricPill(
-                        title: "app.redesign.settings.metric.tasks".localized,
+                        title: L10n.App.Redesign.Settings.Metric.tasks.localized,
                         value: core.runningTaskCount
                     )
                 }
