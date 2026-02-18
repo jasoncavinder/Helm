@@ -81,6 +81,34 @@ jobs:
             OTHER_CODE_SIGN_FLAGS="--timestamp" \
             build
 
+      - name: Re-sign with clean entitlements (strip Xcode-injected get-task-allow)
+        run: |
+          set -euo pipefail
+          APP_PATH="$PWD/build/DerivedData/Build/Products/Release/Helm.app"
+
+          # Xcode's Process Product Packaging phase injects get-task-allow from the
+          # resolved provisioning profile even in Manual signing mode when
+          # DEVELOPMENT_TEAM is set.  Bypass this by re-signing with codesign
+          # directly, which uses exactly the entitlements file specified and nothing
+          # else.  Must sign inside-out so the outer bundle seals the updated inner
+          # component signatures.
+
+          # 1. XPC service — inner bundle first
+          codesign --force \
+            --sign "Developer ID Application" \
+            --timestamp \
+            --options runtime \
+            --entitlements "apps/macos-ui/Helm/HelmServiceRelease.entitlements" \
+            "$APP_PATH/Contents/XPCServices/HelmService.xpc"
+
+          # 2. Main app bundle — last, seals everything inside
+          codesign --force \
+            --sign "Developer ID Application" \
+            --timestamp \
+            --options runtime \
+            --entitlements "apps/macos-ui/Helm/HelmRelease.entitlements" \
+            "$APP_PATH"
+
       - name: Verify signature, architecture, and notarization prerequisites
         run: |
           set -euo pipefail
