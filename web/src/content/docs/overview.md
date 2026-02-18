@@ -12,7 +12,7 @@ Developers and power users on macOS who manage software through multiple package
 
 ## What it does today
 
-Helm v0.13.0-beta.1 supports fifteen managers:
+Helm v0.13.0-beta.2 supports fifteen managers:
 
 | Category | Managers |
 |---------|----------|
@@ -34,7 +34,7 @@ Key features:
 - **Localization** — `en`, `es`, `de`, `fr`, `pt-BR`, and `ja` with locale override in Settings
 - **Upgrade transparency** — dedicated upgrade preview surface with dry-run simulation mode
 
-> **Beta Testing Program:** `v0.13.0-beta.1` is available for pre-1.0 testing. Please report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Beta Testing Program:** `v0.13.0-beta.2` is available for pre-1.0 testing. Please report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
 ## How it works
 
