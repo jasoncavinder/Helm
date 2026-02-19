@@ -63,7 +63,7 @@ struct SettingsSectionView: View {
                 managerId: managerId,
                 label: localizedManagerDisplayName(managerId),
                 symbol: managerSymbol(for: managerId),
-                tint: authority(for: managerId) == .guarded ? .orange : .accentColor
+                tint: (ManagerInfo.find(byId: managerId)?.authority ?? .standard) == .guarded ? .orange : .accentColor
             )
         }
 

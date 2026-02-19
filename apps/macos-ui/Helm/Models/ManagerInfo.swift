@@ -34,6 +34,17 @@ struct ManagerInfo: Identifiable {
             || installMethod == .updateOnly
     }
 
+    var authority: ManagerAuthority {
+        switch id {
+        case "mise", "rustup":
+            return .authoritative
+        case "homebrew_formula", "softwareupdate", "homebrew_cask":
+            return .guarded
+        default:
+            return .standard
+        }
+    }
+
     static let all: [ManagerInfo] = [
         ManagerInfo(id: "homebrew_formula", displayName: "Homebrew (formulae)", shortName: "brew", category: "System/OS", isImplemented: true, installMethod: .updateOnly),
         ManagerInfo(id: "homebrew_cask", displayName: "Homebrew (casks)", shortName: "cask", category: "App Store", isImplemented: false, installMethod: .notManageable),
@@ -52,6 +63,14 @@ struct ManagerInfo: Identifiable {
         ManagerInfo(id: "softwareupdate", displayName: "Software Update", shortName: "swupd", category: "System/OS", isImplemented: true, installMethod: .systemBinary),
         ManagerInfo(id: "mas", displayName: "Mac App Store", shortName: "mas", category: "App Store", isImplemented: true, installMethod: .automatable),
     ]
+
+    static func find(byId managerId: String) -> ManagerInfo? {
+        all.first { $0.id == managerId }
+    }
+
+    static func find(byDisplayName displayName: String) -> ManagerInfo? {
+        all.first { localizedManagerDisplayName($0.id) == displayName }
+    }
 
     static var implemented: [ManagerInfo] {
         all.filter { $0.isImplemented }

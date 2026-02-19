@@ -357,7 +357,7 @@ private struct RedesignOverviewSectionView: View {
                     ForEach(core.visibleManagers) { manager in
                         ManagerHealthCardView(
                             title: localizedManagerDisplayName(manager.id),
-                            authority: authority(for: manager.id),
+                            authority: manager.authority,
                             status: core.health(forManagerId: manager.id),
                             outdatedCount: core.outdatedCount(forManagerId: manager.id)
                         )
@@ -410,10 +410,10 @@ private struct RedesignUpdatesSectionView: View {
             let managersInAuthority = Set(
                 previewBreakdown
                     .map(\.manager)
-                    .filter { authority(forDisplayName: $0) == authorityLevel }
+                    .filter { (ManagerInfo.find(byDisplayName: $0)?.authority ?? .standard) == authorityLevel }
             )
             let count = previewBreakdown
-                .filter { authority(forDisplayName: $0.manager) == authorityLevel }
+                .filter { (ManagerInfo.find(byDisplayName: $0.manager)?.authority ?? .standard) == authorityLevel }
                 .reduce(0) { $0 + $1.count }
 
             return (authority: authorityLevel, managerCount: managersInAuthority.count, packageCount: count)
@@ -571,7 +571,7 @@ private struct ControlCenterInspectorView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(localizedManagerDisplayName(manager.id))
                         .font(.title3.weight(.semibold))
-                    Text(authority(for: manager.id).key.localized)
+                    Text(manager.authority.key.localized)
                         .font(.callout)
                         .foregroundStyle(.secondary)
                     Text(L10n.App.Inspector.capabilities.localized)
@@ -708,16 +708,6 @@ private struct ManagerHealthCardView: View {
         .accessibilityLabel("\(title), \(authority.key.localized)")
         .accessibilityValue("\(status.key.localized), \(outdatedCount) \(L10n.App.Packages.Filter.upgradable.localized)")
     }
-}
-
-private func authority(forDisplayName managerName: String) -> ManagerAuthority {
-    if managerName == localizedManagerDisplayName("mise") || managerName == localizedManagerDisplayName("rustup") {
-        return .authoritative
-    }
-    if managerName == localizedManagerDisplayName("homebrew_formula") || managerName == localizedManagerDisplayName("softwareupdate") {
-        return .guarded
-    }
-    return .standard
 }
 
 private func capabilities(for manager: ManagerInfo) -> [String] {

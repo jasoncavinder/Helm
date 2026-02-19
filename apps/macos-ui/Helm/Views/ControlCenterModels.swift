@@ -176,12 +176,8 @@ func localizedManagerDisplayName(_ managerId: String) -> String {
 }
 
 func authority(for managerId: String) -> ManagerAuthority {
-    switch managerId {
-    case "mise", "rustup":
-        return .authoritative
-    case "homebrew_formula", "softwareupdate", "homebrew_cask":
-        return .guarded
-    default:
+    guard let manager = ManagerInfo.all.first(where: { $0.id == managerId }) else {
         return .standard
     }
+    return manager.authority
 }
