@@ -18,7 +18,7 @@ Focus:
 - 0.15.x upgrade preview and execution transparency
 
 Current checkpoint:
-- `v0.14.0` stable release alignment completed (manager rollout + docs/version alignment)
+- `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
 - `v0.13.0` stable released (website updates, documentation alignment, version bump)
 - `v0.13.0-rc.2` released (support & feedback entry points, diagnostics copy, GitHub Sponsors integration)
 - `v0.13.0-rc.1` released (inspector sidebar, upgrade reliability, status menu, documentation)
@@ -430,7 +430,7 @@ Delivered:
 
 ---
 
-## v0.14.0 — Stable Release Cut (In Progress)
+## v0.14.0 — Stable Release Cut (Completed)
 
 ### Delivered
 
@@ -447,14 +447,14 @@ Delivered:
   - consumer vs fleet lifecycle separation
   - roadmap phases for Sparkle, MAS, Setapp, Fleet, PKG/MDM, and offline licensing
 
-### Next Up (Release Execution)
+### Release Execution (Completed)
 
 - Branch/PR execution:
   - ✅ merge release finalization branch into `dev`
   - ✅ open PR from `dev` to `main` and run CI checks (`#60`)
 - Release finalization:
-  - merge `dev` into `main`
-  - create/push annotated tag `v0.14.0`
+  - ✅ merge `dev` into `main` (via `#60`)
+  - ✅ create/push annotated tag `v0.14.0`
 
 ---
 
@@ -567,4 +567,4 @@ Implement:
 - Manager capability sweep artifact is now in place for 0.14 release prep (`docs/validation/v0.14.0-alpha.5-manager-capability-sweep.md`).
 - 0.14 stable release alignment for `v0.14.0` is complete (README/website + version artifacts).
 - Distribution/licensing future-state planning documentation is aligned for 0.14 release notes and roadmap planning (no implementation yet).
-- Remaining slice is CI completion on PR `#60`, final merge/tag execution for `v0.14.0`, then 0.15.x delivery.
+- 0.14 release execution is complete on `main` with tag `v0.14.0`; next delivery slice is 0.15.x.

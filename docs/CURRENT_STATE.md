@@ -391,11 +391,11 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
 - Fleet lifecycle is documented as separate from consumer lifecycle.
 - These are roadmap/planning decisions only; channel-specific implementation work is still pending future milestones.
 
-### Remaining for Final Release Execution
-- Execute branch/release flow from `docs/RELEASE_CHECKLIST.md`:
-  - monitor/resolve CI on PR `#60` (`dev` -> `main`)
-  - merge `dev` into `main`
-  - create/push `v0.14.0` annotated tag
+### Final Release Execution (Completed)
+- Completed branch/release flow from `docs/RELEASE_CHECKLIST.md`:
+  - merged release finalization branch into `dev`
+  - merged `dev` into `main` via PR `#60` after CI completion
+  - created/pushed `v0.14.0` annotated tag
 
 ---
 
@@ -488,4 +488,4 @@ Helm is a **functional control plane for 28 implemented managers** with:
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-0.13.x and 0.14.x stable checkpoints are complete in-repo, including version and docs alignment. Remaining release execution is CI completion on `dev` -> `main`, final main merge, and `v0.14.0` tag cut, then 0.15.x delivery.
+0.13.x and 0.14.x stable checkpoints are complete, with `v0.14.0` now merged to `main` and tagged. Next delivery focus is 0.15.x.
