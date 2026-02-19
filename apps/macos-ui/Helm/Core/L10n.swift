@@ -193,6 +193,12 @@ struct L10n {
                 static let installLater = "app.onboarding.configure.install_later"
                 static let finishSetup = "app.onboarding.configure.action.finish_setup"
             }
+            struct Settings {
+                static let title = "app.onboarding.settings.title"
+                static let subtitle = "app.onboarding.settings.subtitle"
+                static let safeModeDescription = "app.onboarding.settings.safe_mode_description"
+                static let autoCleanDescription = "app.onboarding.settings.auto_clean_description"
+            }
         }
 
         struct Walkthrough {
