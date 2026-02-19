@@ -31,39 +31,6 @@ struct SettingsSectionView: View {
         return AnyShapeStyle(Color.white.opacity(0.92))
     }
 
-    private var refreshActionBadges: [SettingsActionBadge] {
-        managerBadges(for: core.visibleManagers.map(\.id))
-    }
-
-    private func managerBadges(for managerIds: [String], maxCount: Int = 3) -> [SettingsActionBadge] {
-        let ordered = Array(Set(managerIds)).sorted {
-            localizedManagerDisplayName($0).localizedCaseInsensitiveCompare(localizedManagerDisplayName($1)) == .orderedAscending
-        }
-        var badges = Array(ordered.prefix(maxCount)).map { managerId in
-            SettingsActionBadge(
-                id: managerId,
-                managerId: managerId,
-                label: localizedManagerDisplayName(managerId),
-                symbol: ManagerInfo.find(byId: managerId)?.symbolName ?? "shippingbox.fill",
-                tint: (ManagerInfo.find(byId: managerId)?.authority ?? .standard) == .guarded ? .orange : .accentColor
-            )
-        }
-
-        let hiddenCount = ordered.count - maxCount
-        if hiddenCount > 0 {
-            badges.append(
-                SettingsActionBadge(
-                    id: "more-\(hiddenCount)",
-                    managerId: nil,
-                    label: "+\(hiddenCount)",
-                    symbol: nil,
-                    tint: .secondary
-                )
-            )
-        }
-        return badges
-    }
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -144,7 +111,7 @@ struct SettingsSectionView: View {
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                         SettingsActionButton(
                             title: L10n.App.Settings.Action.refreshNow.localized,
-                            badges: refreshActionBadges,
+                            badges: [],
                             isProminent: false,
                             useSystemStyle: true
                         ) {
