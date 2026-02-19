@@ -29,7 +29,7 @@ We are designing Helm to support multiple editions:
 
 - **Free Edition**: Core functionality for individual users.
 - **Pro Edition**: Advanced features for power users.
-- **Enterprise Edition**: Policy enforcement, compliance, and management features for organizations.
+- **Business Edition**: Policy enforcement, compliance, and management features for organizations.
 
 ### Why not Open Source?
 

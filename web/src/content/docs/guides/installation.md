@@ -56,4 +56,4 @@ Launch the built app. Helm appears as a menu bar icon — click it to open the f
 
 ## Verify
 
-After launching, click **Refresh** to populate the package list. You should see packages from any installed and supported manager (Homebrew, mise, rustup).
+After launching, click **Refresh** to populate the package list. You should see packages from any installed and supported manager — Homebrew, mise, rustup, npm, pip, cargo, and others.

@@ -1,0 +1,148 @@
+name: Bug report
+description: Report a Helm bug, crash, incorrect state, or unexpected behavior.
+title: "[Bug]: "
+labels:
+  - bug
+  - needs-triage
+assignees:
+  - jasoncavinder
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug.
+
+        **Tip:** If you used the in-app "Report a Bug" action, it should have prefilled a diagnostics block. Please keep it if you can.
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      description: How severe is this issue?
+      options:
+        - Minor (cosmetic / low friction)
+        - Moderate (workflow disruption, workaround exists)
+        - Major (core feature broken, hard to work around)
+        - Critical (data loss, security concern, crash on launch)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Where does the issue appear?
+      options:
+        - UI / UX
+        - Search
+        - Refresh / Detection
+        - Install / Uninstall
+        - Upgrade / Upgrade All
+        - Pinning / Safe Mode
+        - Tasks / Cancellation
+        - Manager Adapter (Homebrew / mise / rustup / etc.)
+        - XPC / Service Boundary
+        - Rust Core / Persistence (SQLite)
+        - Localization / i18n
+        - Release / DMG / Signing
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: A short description of what happened.
+      placeholder: "When I click Upgrade All, Helm starts tasks but the UI never updates and tasks remain stuck in Running."
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Please provide a reliable sequence of steps.
+      placeholder: |
+        1. Open Helm
+        2. Click Refresh
+        3. Search for "foo"
+        4. Click Install
+        5. Observe error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: "Helm should complete the install task and show the package as installed."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      placeholder: "Install task fails with an error and the package remains in an inconsistent state."
+    validations:
+      required: true
+
+  - type: textarea
+    id: frequency
+    attributes:
+      label: Frequency
+      description: How often does it occur?
+      placeholder: "Every time / Sometimes / Once / Only after reboot / Only with one manager enabled, etc."
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots / screen recordings
+      description: If you can, attach visuals that show the issue. (Drag-and-drop into this field.)
+    validations:
+      required: false
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics (from Helm)
+      description: |
+        Paste the diagnostics block from Helm’s "Copy Diagnostics" button.
+        Please remove anything you consider sensitive before posting.
+      render: text
+      placeholder: |
+        Helm Diagnostics
+        - Version:
+        - macOS:
+        - Arch:
+        - Locale:
+        - Enabled Managers:
+        - Recent Tasks:
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs (optional)
+      description: |
+        Paste only the relevant section (or attach a file).
+        Avoid secrets and tokens. Helm should never require secrets to reproduce.
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Quick checks
+      options:
+        - label: I searched existing issues to avoid duplicates.
+          required: true
+        - label: I’m using the latest Helm beta available on GitHub Releases.
+          required: false
+        - label: I am comfortable sharing diagnostics (with sensitive info removed).
+          required: false

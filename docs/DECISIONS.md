@@ -164,6 +164,97 @@ Plan Free / Pro / Business editions.
 
 ---
 
+## Decision 013 — Dual-Surface UI Model
+
+**Decision:**
+Use a menu bar popover for quick triage and a separate control center window for sustained workflows.
+
+**Rationale:**
+
+- Popover provides at-a-glance status and quick actions
+- Control center window supports deep exploration, inspector, and settings
+- AppDelegate manages both via `NSStatusItem`, `FloatingPanel`, and `ControlCenterWindow`
+
+---
+
+## Decision 014 — Locale Mirror Architecture
+
+**Decision:**
+Maintain locale files in two locations: `locales/` (canonical source) and `apps/macos-ui/Helm/Resources/locales/` (app resource copy), enforced in sync by CI.
+
+**Rationale:**
+
+- `locales/` is the single source of truth for translations
+- The app bundle requires resources in its own directory
+- CI `diff -ru` enforcement prevents drift
+
+---
+
+## Decision 015 — Post-Upgrade Validation Pattern
+
+**Decision:**
+After an upgrade command reports success, re-check `list_outdated` and return `ProcessFailure` if the package remains outdated.
+
+**Rationale:**
+
+- Exit code 0 does not guarantee the package was actually updated
+- Silent upgrade failures are a significant usability problem
+- Applied to all 11 adapters with per-package upgrade capability
+
+---
+
+## Decision 016 — Onboarding Walkthrough via SpotlightOverlay
+
+**Decision:**
+Implement guided onboarding as a spotlight/coach marks system using SwiftUI preference keys for anchor positioning.
+
+**Rationale:**
+
+- Non-intrusive: overlays existing UI rather than blocking it
+- Reusable across popover (6 steps) and control center (7 steps)
+- Persisted separately from onboarding wizard via UserDefaults
+
+---
+
+## Decision 017 — Universal Binary Distribution
+
+**Decision:**
+Build universal (arm64 + x86_64) binaries using `lipo` and distribute via signed DMG.
+
+**Rationale:**
+
+- Single artifact supports Apple Silicon and Intel Macs
+- DMG provides familiar macOS installation experience
+- GitHub Actions workflow automates signing and notarization
+
+---
+
+## Decision 018 — XPC Timeout and Reconnection Policy
+
+**Decision:**
+Enforce timeouts on all XPC calls (30s data fetches, 300s mutations) and use exponential backoff for reconnection (2s base, doubling to 60s cap).
+
+**Rationale:**
+
+- Prevents UI hangs from unresponsive service
+- Exponential backoff avoids thundering herd on service restart
+- Reset on successful connection restores normal responsiveness
+
+---
+
+## Decision 019 — Homebrew Casks Deferred
+
+**Decision:**
+Defer Homebrew Casks adapter to 0.14.x. Originally planned for 0.10.x but dropped from that milestone.
+
+**Rationale:**
+
+- Homebrew formula adapter covers the primary use case
+- Cask handling requires different upgrade and detection semantics
+- 0.14.x (Platform, Detection & Optional Managers) is the appropriate milestone
+
+---
+
 ## Summary
 
 Helm prioritizes:

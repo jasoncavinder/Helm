@@ -36,7 +36,7 @@ A clear separation must be maintained between:
 - Core CLI functionality
 - Basic UI
 
-### Commercial Features (Pro / Enterprise)
+### Commercial Features (Pro / Business)
 
 - Advanced orchestration logic
 - Policy enforcement

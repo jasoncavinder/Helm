@@ -90,20 +90,18 @@ Requires additional UX or linguistic complexity:
 
 ```
 
-locales/
-en/
-common.json
-app.json
-service.json
-website.json
+locales/                              ← canonical source
+  en/
+    common.json
+    app.json
+    service.json
+  es/
+    common.json
+    app.json
+    service.json
+  ...
 
-es/
-common.json
-app.json
-service.json
-website.json
-
-...
+apps/macos-ui/Helm/Resources/locales/ ← app resource mirror (must stay in sync)
 
 ```
 
@@ -114,7 +112,8 @@ website.json
 | common.json | Shared strings (buttons, labels, brand) |
 | app.json | macOS UI |
 | service.json | Service/XPC errors |
-| website.json | Marketing site |
+
+Note: `website.json` is planned for website localization (milestone 1.1.x) but does not exist yet.
 
 ---
 
@@ -291,6 +290,15 @@ Example:
 
 ```
 
+### 8.5 Dual-Directory Locale Mirror
+
+Locale files exist in two locations that must stay in sync:
+
+1. `locales/` — canonical source of truth for all translations
+2. `apps/macos-ui/Helm/Resources/locales/` — app bundle resource copy
+
+The CI `i18n-lint.yml` workflow enforces parity between these directories using `diff -ru`. When adding or modifying locale strings, update the canonical `locales/` directory and copy the changes to the app resource mirror.
+
 ---
 
 ## 9) Formatting (Dates, Numbers, Currency)
@@ -354,9 +362,12 @@ Return structured errors:
 
 ### 11.2 CI Jobs
 
-- `i18n:lint`
-- `i18n:coverage`
-- `i18n:extract`
+The `i18n-lint.yml` workflow runs these checks:
+
+- **Locale sync** — ensures `locales/` and `apps/macos-ui/Helm/Resources/locales/` are identical (`diff -ru`)
+- **Key and placeholder integrity** — validates key parity and placeholder consistency across locales (`check_locale_integrity.sh`)
+- **String length overflow** — flags strings that may cause UI overflow (`check_locale_lengths.sh`)
+- **Hardcoded string detection** — blocks new hardcoded English UI strings
 
 ---
 

@@ -63,7 +63,7 @@ Helm may be offered in multiple editions:
 
 - Free
 - Pro
-- Enterprise
+- Business
 
 Features may be gated via:
 

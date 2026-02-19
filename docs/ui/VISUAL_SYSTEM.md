@@ -47,6 +47,7 @@ Semantic tokens (light/dark adaptive):
 - `state.attention`
 - `state.error`
 - `state.running`
+- `state.notInstalled`
 
 Rules:
 - Color communicates state, not decoration.
@@ -62,6 +63,7 @@ Rules:
 - attention: exclamationmark.triangle.fill
 - error: xmark.octagon.fill
 - running: arrow.triangle.2.circlepath
+- notInstalled: minus.circle.fill
 
 ## Motion and Animation
 

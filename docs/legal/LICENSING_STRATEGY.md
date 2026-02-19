@@ -75,7 +75,7 @@ By contributing, you agree that:
 After version 1.0, Helm is expected to transition to a model that:
 
 - Allows commercial usage
-- Introduces product editions (Free, Pro, Enterprise)
+- Introduces product editions (Free, Pro, Business)
 - Maintains control over core intellectual property
 - Supports sustainable development
 
@@ -110,7 +110,7 @@ Helm is being designed as a **multi-edition product**, not just a codebase.
 - Enhanced UI/UX
 - Extended integrations
 
-#### Enterprise Edition
+#### Business Edition
 
 - Policy enforcement
 - Organization-wide management
@@ -197,7 +197,7 @@ Helm is expected to evolve its licensing model at or after version 1.0.
 ### Planned Changes
 
 - Remove non-commercial restriction
-- Introduce product licensing (Free / Pro / Enterprise)
+- Introduce product licensing (Free / Pro / Business)
 - Define commercial usage terms
 - Maintain or revise source availability
 
@@ -280,7 +280,7 @@ Helm is currently:
 Helm is expected to become:
 
 - Commercially available
-- Multi-edition (Free / Pro / Enterprise)
+- Multi-edition (Free / Pro / Business)
 - Sustainable and professionally supported
 
 The exact licensing model remains intentionally flexible.

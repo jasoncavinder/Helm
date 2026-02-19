@@ -269,7 +269,7 @@ When a contract changes:
 
 ## 10. Concrete Interface Inventories
 
-### 10.1 XPC Protocol Methods (26 methods)
+### 10.1 XPC Protocol Methods (25 methods)
 
 Source: `apps/macos-ui/Helm/Shared/HelmServiceProtocol.swift`
 

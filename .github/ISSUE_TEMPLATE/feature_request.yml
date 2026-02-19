@@ -1,0 +1,102 @@
+name: Feature request
+description: Suggest an enhancement, new manager, UX improvement, or workflow.
+title: "[Feature]: "
+labels:
+  - enhancement
+  - needs-triage
+assignees:
+  - jasoncavinder
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping shape Helm.
+
+        Helm is infrastructure software: local-first, deterministic, and explicit about authority and safety.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      description: What kind of feature is this?
+      options:
+        - New manager adapter
+        - Existing manager improvement
+        - Search / discovery
+        - Install / uninstall
+        - Upgrade / upgrade-all
+        - Pinning / safe mode / policy controls
+        - Tasks / progress / cancellation
+        - Diagnostics / transparency
+        - UI / UX / accessibility
+        - Localization / i18n
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What problem are you trying to solve? (The “why”.)
+      placeholder: "I manage multiple toolchains and want a safe way to schedule refreshes without running upgrades automatically."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like Helm to do?
+      placeholder: "Add a Scheduled Refresh option with quiet hours and a summary notification of changes."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What have you tried today (scripts, other tools, workflows)?
+      placeholder: "I currently use a cron job calling brew/npm, but it’s noisy and breaks authority ordering."
+    validations:
+      required: false
+
+  - type: textarea
+    id: ux
+    attributes:
+      label: UX notes (optional)
+      description: How do you imagine this appearing in the UI? Mockups welcome.
+      placeholder: "A toggle in Settings → Automation, plus a banner suggesting the schedule when updates are detected."
+    validations:
+      required: false
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority (your perspective)
+      options:
+        - Nice-to-have
+        - Important
+        - Urgent
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics (optional, helps for manager-specific features)
+      description: Paste the diagnostics block from Helm’s "Copy Diagnostics" if relevant.
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Quick checks
+      options:
+        - label: I searched existing issues to avoid duplicates.
+          required: true
+        - label: This request matches Helm’s local-first, deterministic design goals.
+          required: false
