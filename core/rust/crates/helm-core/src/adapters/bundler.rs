@@ -136,6 +136,7 @@ impl<S: BundlerSource> ManagerAdapter for BundlerAdapter<S> {
                 });
                 validate_bundler_package_name(ManagerAction::Upgrade, package.name.as_str())?;
                 let _ = self.source.upgrade()?;
+                ensure_bundler_no_longer_outdated(&self.source, package.name.as_str())?;
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
                     action: ManagerAction::Upgrade,
@@ -309,6 +310,29 @@ fn parse_bundler_list_installed(output: &str) -> AdapterResult<Vec<InstalledPack
     }
 
     Ok(packages)
+}
+
+fn ensure_bundler_no_longer_outdated<S: BundlerSource>(
+    source: &S,
+    package_name: &str,
+) -> AdapterResult<()> {
+    let raw = source.list_outdated()?;
+    let outdated = parse_bundler_outdated(&raw)?;
+    if outdated
+        .iter()
+        .any(|item| item.package.name == package_name)
+    {
+        return Err(CoreError {
+            manager: Some(ManagerId::Bundler),
+            task: Some(TaskType::Upgrade),
+            action: Some(ManagerAction::Upgrade),
+            kind: CoreErrorKind::ProcessFailure,
+            message: format!(
+                "bundler update reported success but '{package_name}' remains outdated"
+            ),
+        });
+    }
+    Ok(())
 }
 
 fn parse_bundler_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
@@ -625,7 +649,10 @@ mod tests {
 
     #[test]
     fn upgrade_defaults_to_bundler_package() {
-        let adapter = BundlerAdapter::new(FakeBundlerSource::default());
+        let adapter = BundlerAdapter::new(FakeBundlerSource {
+            list_outdated_output: Some(String::new()),
+            ..Default::default()
+        });
 
         let response = adapter
             .execute(AdapterRequest::Upgrade(UpgradeRequest { package: None }))
@@ -639,6 +666,18 @@ mod tests {
             }
             _ => panic!("expected mutation"),
         }
+    }
+
+    #[test]
+    fn upgrade_fails_when_bundler_remains_outdated() {
+        let adapter = BundlerAdapter::new(FakeBundlerSource::default());
+
+        let error = adapter
+            .execute(AdapterRequest::Upgrade(UpgradeRequest { package: None }))
+            .expect_err("upgrade should fail when bundler remains outdated");
+
+        assert_eq!(error.kind, CoreErrorKind::ProcessFailure);
+        assert!(error.message.contains("remains outdated"));
     }
 
     #[test]

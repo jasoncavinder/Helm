@@ -6,23 +6,14 @@ This project is currently in active development and pre-1.0. We welcome feedback
 
 ---
 
-## 🚫 Not Open Source (Yet)
-
-Helm is source-available but not open source at this stage.
-
-You may not reuse or redistribute the source code in other projects.
-
-This will likely change in the future.
-
----
-
 ## ⚠️ License Notice
 
-Helm is **not open source at this time**.
+Helm is **source-available but not open source** at this stage.
 
 - Source code is visible for transparency and evaluation
 - Usage is limited to non-commercial purposes (see LICENSE)
 - Code reuse and redistribution are restricted
+- This will likely change in the future
 
 Please review the LICENSE file before contributing.
 
@@ -66,6 +57,8 @@ This ensures the project can be relicensed or dual-licensed in the future.
 1. Open an issue to discuss the change
 2. Ensure the change aligns with project direction
 3. Keep changes focused and minimal
+4. Target the `dev` branch for code changes; `main` for documentation-only changes
+5. All user-facing text must use localization keys (no hardcoded English strings)
 
 ---
 

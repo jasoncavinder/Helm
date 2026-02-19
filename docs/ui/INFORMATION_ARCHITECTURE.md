@@ -112,3 +112,5 @@ Error recovery:
 
 First launch:
 - Onboarding modal -> manager detection -> policy defaults -> Overview
+
+After onboarding wizard (Welcome -> Detection -> Configure), a guided walkthrough highlights key UI elements across the popover (6 steps) and control center (7 steps).

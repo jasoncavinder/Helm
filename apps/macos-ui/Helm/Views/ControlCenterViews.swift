@@ -363,6 +363,8 @@ private struct RedesignOverviewSectionView: View {
                         )
                         .onTapGesture {
                             context.selectedManagerId = manager.id
+                            context.selectedPackageId = nil
+                            context.selectedTaskId = nil
                         }
                         .helmPointer()
                     }
@@ -379,6 +381,13 @@ private struct RedesignOverviewSectionView: View {
                     VStack(spacing: 0) {
                         ForEach(Array(core.activeTasks.prefix(10))) { task in
                             TaskRowView(task: task, onCancel: task.isRunning ? { core.cancelTask(task) } : nil)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    context.selectedTaskId = task.id
+                                    context.selectedPackageId = nil
+                                    context.selectedManagerId = task.managerId
+                                }
+                                .helmPointer()
                             Divider()
                         }
                     }
@@ -516,81 +525,6 @@ private struct RedesignUpdatesSectionView: View {
                 .font(.subheadline)
                 .foregroundStyle(active ? Color.primary : Color.secondary)
         }
-    }
-}
-
-private struct ControlCenterInspectorView: View {
-    @ObservedObject private var core = HelmCore.shared
-    @EnvironmentObject private var context: ControlCenterContext
-
-    private var selectedManager: ManagerInfo? {
-        guard let managerId = context.selectedManagerId else { return nil }
-        return ManagerInfo.all.first { $0.id == managerId }
-    }
-
-    private var selectedPackage: PackageItem? {
-        guard let packageId = context.selectedPackageId else { return nil }
-        return core.allKnownPackages.first { $0.id == packageId }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(L10n.App.Inspector.title.localized)
-                .font(.headline)
-
-            if let package = selectedPackage {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(package.name)
-                        .font(.title3.weight(.semibold))
-                    Text(L10n.App.Inspector.manager.localized)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(package.manager)
-                        .font(.callout)
-                    Text(L10n.App.Inspector.installed.localized)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(package.version)
-                        .font(.caption.monospaced())
-                    if let latest = package.latestVersion {
-                        Text(L10n.App.Inspector.latest.localized)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(latest)
-                            .font(.caption.monospaced())
-                    }
-                    if let query = package.summary, !query.isEmpty {
-                        Text(L10n.App.Inspector.sourceQuery.localized)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(query)
-                            .font(.caption)
-                    }
-                }
-            } else if let manager = selectedManager {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(localizedManagerDisplayName(manager.id))
-                        .font(.title3.weight(.semibold))
-                    Text(manager.authority.key.localized)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                    Text(L10n.App.Inspector.capabilities.localized)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    ForEach(manager.capabilities, id: \.self) { capabilityKey in
-                        Text(capabilityKey.localized)
-                            .font(.caption)
-                    }
-                }
-            } else {
-                Text(L10n.App.Inspector.empty.localized)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-        }
-        .padding(14)
     }
 }
 

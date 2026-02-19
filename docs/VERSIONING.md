@@ -35,6 +35,7 @@ Examples:
 0.2.0-alpha.1 → first working adapter
 0.3.0-beta.1 → orchestration engine complete
 0.8.0 → pinning and policy enforcement milestone complete
+0.13.0-rc.1 → UI/UX redesign release candidate
 
 Pre-1.0 milestones beyond 0.10 may be used to represent capability layers.
 Version numbers are not constrained to single digits.
@@ -70,12 +71,13 @@ Pre-1.0:
 
 ## Tagging Rules
 
-- Only tag from `main`.
-- Do not tag from `dev`.
+- Stable releases: tag from `main` after merging from `dev`.
+- Pre-release tags (alpha, beta, rc): may be tagged from `dev` lineage when the release is not yet merged to `main`.
 - Format: vX.Y.Z[-tag]
 
 Examples:
 v0.3.0-beta.1
+v0.13.0-rc.1
 v0.4.0
 v1.0.0
 
@@ -85,8 +87,8 @@ v1.0.0
 
 1. Complete milestone work on `dev`.
 2. Update version in:
-   - Cargo.toml
-   - Swift bundle version
+   - `core/rust/Cargo.toml` (workspace version)
+   - Generated files: `apps/macos-ui/Generated/HelmVersion.swift` and `apps/macos-ui/Generated/HelmVersion.xcconfig` (auto-generated from build script)
 3. Update changelog and release checklist.
 4. Merge `dev` → `main`.
 5. Create annotated tag.

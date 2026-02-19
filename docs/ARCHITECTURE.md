@@ -65,8 +65,10 @@ Responsibilities:
 
 - Render application state
 - Dispatch user intents
-- Display tasks, logs, and status
+- Display tasks, logs, and status via menu bar popover and control center window
 - Handle user interaction (search, install, upgrade)
+- Inspector sidebar for task/package/manager detail
+- Guided onboarding walkthrough (SpotlightOverlay system)
 - Perform no business logic
 
 Constraints:
@@ -133,13 +135,12 @@ This layer is:
 
 Each package manager is implemented as an adapter.
 
-Examples:
+Helm currently implements 15 adapters:
 
-- Homebrew
-- mise
-- rustup
-- softwareupdate
-- mas
+- **Toolchain / Runtime:** mise, rustup
+- **System / OS / App Store:** Homebrew, softwareupdate, mas
+- **Core Language:** npm (global), pip (global), pipx, cargo, cargo-binstall
+- **Extended Language:** pnpm (global), yarn (global), RubyGems, Poetry (self/plugins), Bundler
 
 Adapters declare capabilities:
 
@@ -183,15 +184,13 @@ This avoids false assumptions about manager behavior.
 Managers are grouped by authority level:
 
 1. **Authoritative**
-   - mise
-   - rustup
+   - mise, rustup
 
 2. **Standard**
-   - npm, pip, cargo, mas
+   - npm, pnpm, yarn, pip, pipx, cargo, cargo-binstall, RubyGems, Poetry, Bundler, mas
 
 3. **Guarded**
-   - Homebrew
-   - softwareupdate
+   - Homebrew, softwareupdate
 
 Execution order is enforced:
 
@@ -381,9 +380,11 @@ Adapter executes command
 ↓
 Output parsed
 ↓
+Post-upgrade validation (re-check list_outdated)
+↓
 SQLite updated
 ↓
-UI refreshed
+UI refreshed (inspector shows task detail)
 
 ```
 

@@ -145,6 +145,9 @@ impl<S: PipxSource> ManagerAdapter for PipxAdapter<S> {
                     Some(package.name.as_str())
                 };
                 let _ = self.source.upgrade(target_name)?;
+                if let Some(name) = target_name {
+                    ensure_pipx_no_longer_outdated(&self.source, name)?;
+                }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
                     action: ManagerAction::Upgrade,
@@ -343,6 +346,29 @@ fn parse_pipx_list(output: &str) -> AdapterResult<Vec<InstalledPackage>> {
 
     packages.sort_by(|a, b| a.package.name.cmp(&b.package.name));
     Ok(packages)
+}
+
+fn ensure_pipx_no_longer_outdated<S: PipxSource>(
+    source: &S,
+    package_name: &str,
+) -> AdapterResult<()> {
+    let raw = source.list_outdated()?;
+    let outdated = parse_pipx_outdated(&raw)?;
+    if outdated
+        .iter()
+        .any(|item| item.package.name == package_name)
+    {
+        return Err(CoreError {
+            manager: Some(ManagerId::Pipx),
+            task: Some(TaskType::Upgrade),
+            action: Some(ManagerAction::Upgrade),
+            kind: CoreErrorKind::ProcessFailure,
+            message: format!(
+                "pipx upgrade reported success but '{package_name}' remains outdated"
+            ),
+        });
+    }
+    Ok(())
 }
 
 fn parse_pipx_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {

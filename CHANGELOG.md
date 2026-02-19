@@ -4,6 +4,28 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.13.0-rc.1] - 2026-02-18
+
+### Added
+- Inspector sidebar task detail view with status badge, task type, manager name, label key, and label args display
+- Post-upgrade validation across all 11 adapter upgrade handlers: after a successful upgrade command, each adapter re-checks `list_outdated` to verify the package was actually updated; returns `ProcessFailure` error if the package remains outdated (prevents silent upgrade failures)
+- Control Center menu item in status menu right-click (opens dashboard overview)
+- Overview task rows wired to inspector via tap handling with pointer affordance
+- Manager inspector enriched with health badge, installed/outdated package counts, and View Packages navigation button
+- Security Advisory System milestone added to ROADMAP.md (1.3.x, Pro edition)
+- 16 new L10n keys for inspector task/package/manager detail views across all 6 locales
+- 4 new Rust unit tests for RubyGems upgrade validation and 1 for bundler upgrade validation
+
+### Fixed
+- Inspector selection clearing: selecting a manager no longer shows a stale package inspector (all selection handlers now clear conflicting selections)
+- RubyGems upgrade tasks showing "completed" when packages were not actually updated (root cause: no post-execution verification — same fix applied across all adapters)
+- Inspector empty state text updated to include "task" alongside "package" and "manager" in all 12 locale files
+
+### Changed
+- Task labels now include package names for upgrade tasks across all managers (e.g., "Upgrading rake" instead of generic task description)
+- Roadmap renumbered: Business Policy (1.3.x → 1.4.x), Enterprise Rollout (1.4.x → 1.5.x) to accommodate Security Advisory System (1.3.x)
+- InspectorManagerDetailView refactored to accept health, packageCount, outdatedCount, and onViewPackages callback parameters
+
 ## [0.13.0-beta.6] - 2026-02-18
 
 ### Added

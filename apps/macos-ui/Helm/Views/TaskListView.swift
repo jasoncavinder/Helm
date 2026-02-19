@@ -27,6 +27,8 @@ struct TasksSectionView: View {
                     TaskRowView(task: task, onCancel: task.isRunning ? { core.cancelTask(task) } : nil)
                         .contentShape(Rectangle())
                         .onTapGesture {
+                            context.selectedTaskId = task.id
+                            context.selectedPackageId = nil
                             if let managerId = task.managerId {
                                 context.selectedManagerId = managerId
                             }

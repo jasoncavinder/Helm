@@ -206,8 +206,8 @@ extension HelmCore {
         case "rustup":
             return L10n.Service.Task.Label.upgradeRustupToolchain.localized(with: ["toolchain": package.name])
         default:
-            return L10n.App.Tasks.fallbackDescription.localized(with: [
-                "task_type": L10n.Common.update.localized,
+            return L10n.Service.Task.Label.upgradePackage.localized(with: [
+                "package": package.name,
                 "manager": normalizedManagerName(package.managerId)
             ])
         }

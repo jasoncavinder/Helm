@@ -23,7 +23,7 @@ Focus:
 - Validation and hardening
 
 Current checkpoint:
-- `v0.13.0-beta.6` released (validation, hardening, documentation alignment)
+- `v0.13.0-rc.1` released (inspector sidebar, upgrade reliability, status menu, documentation)
 - Full codebase audit completed 2026-02-17 (Rust core, SwiftUI UI, XPC, localization, CI/CD)
 
 Next release targets:
@@ -126,7 +126,7 @@ SwiftUI's `.focusable()` modifier does not integrate with AppKit's key view loop
 - NSViewRepresentable bridging to manually wire the key view loop
 - A future SwiftUI API that bridges focus scopes to AppKit
 
-Carry-forward to beta.6 or post-0.13.x:
+Deferred to post-0.13.x:
 - Investigate NSViewRepresentable approach for Tab traversal
 - Validate Escape key behavior consistent across all overlay states
 - Validate Enter/Space activation for focusable elements
@@ -196,6 +196,40 @@ Delivered:
 
 ---
 
+## v0.13.0-rc.1 — Inspector + Upgrade Reliability + Status Menu (Completed)
+
+### Inspector Sidebar (Completed)
+
+Delivered:
+
+- Inspector task detail view with status badge, task type, manager, label key/args
+- Inspector manager detail enriched with health badge, package/outdated counts, View Packages navigation
+- Selection clearing fixes across all selection handlers (overview, managers, dashboard, popover)
+- Overview task rows wired to inspector via tap handling
+
+### Upgrade Reliability (Completed)
+
+Delivered:
+
+- Post-upgrade validation on all 11 adapter upgrade handlers
+- After upgrade command succeeds, each adapter re-checks `list_outdated` and returns `ProcessFailure` if the package remains outdated
+- 5 new Rust unit tests covering upgrade validation scenarios
+
+### Status Menu (Completed)
+
+Delivered:
+
+- "Control Center" item added to right-click status menu (opens dashboard overview)
+
+### Documentation (Completed)
+
+Delivered:
+
+- Security Advisory System milestone added to ROADMAP.md (1.3.x)
+- CHANGELOG.md, CURRENT_STATE.md, NEXT_STEPS.md, ROADMAP.md updated for rc.1
+
+---
+
 ## Completed Priorities (Pre-0.13.x)
 
 ### Priority 1 — Core Language Managers (Completed)
@@ -226,10 +260,10 @@ Delivered:
 - Execution plan display ✅
 - Dry-run support ✅
 
-### Priority 5 — UI/UX Redesign (Partially Complete)
+### Priority 5 — UI/UX Redesign (Completed)
 
 - Redesign concept + integration into production target ✅
-- Remaining items allocated to v0.13.0-beta.3–6 above
+- Delivered in v0.13.0-beta.3 through rc.1 above
 
 ### Hardening (Partially Complete)
 
@@ -295,12 +329,13 @@ Implement:
 
 ## Summary
 
-The 0.13.x milestone beta releases are complete:
+The 0.13.x milestone beta and rc releases are complete:
 
 - **beta.3**: Accessibility (VoiceOver, keyboard, semantic grouping), task cancellation UI, CI test enforcement — **completed**
 - **beta.4**: Localization parity (redesign + walkthrough keys across 6 locales), onboarding walkthrough with spotlight/coach marks — **completed**
 - **beta.5**: Architecture cleanup (UI purity fixes, legacy removal, XPC robustness, keyboard traversal) — **completed**
 - **beta.6**: Validation + hardening + documentation (tracing spans, unit tests, FFI docs, INTERFACES.md, validation report, usability test plan) — **completed**
+- **rc.1**: Inspector sidebar, upgrade reliability (post-upgrade validation on all 11 adapters), status menu, documentation — **completed**
 
 Remaining for 0.13.0 stable: execute the validation sweep and usability test plan, resolve any findings, and cut the stable release.
 

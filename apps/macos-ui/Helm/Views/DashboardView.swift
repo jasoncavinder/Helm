@@ -326,6 +326,8 @@ struct RedesignPopoverView: View {
                 ForEach(managerRows.prefix(4)) { manager in
                     Button {
                         context.selectedManagerId = manager.id
+                        context.selectedPackageId = nil
+                        context.selectedTaskId = nil
                         context.selectedSection = .managers
                         onOpenControlCenter()
                     } label: {
@@ -486,6 +488,7 @@ struct RedesignPopoverView: View {
                             Button {
                                 context.selectedPackageId = result.id
                                 context.selectedManagerId = result.managerId
+                                context.selectedTaskId = nil
                                 context.selectedSection = .packages
                                 onOpenControlCenter()
                                 closeOverlay()

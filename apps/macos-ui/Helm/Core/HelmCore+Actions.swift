@@ -16,7 +16,10 @@ extension HelmCore {
                             id: task.id,
                             description: task.description,
                             status: "Cancelled",
-                            managerId: task.managerId
+                            managerId: task.managerId,
+                            taskType: task.taskType,
+                            labelKey: task.labelKey,
+                            labelArgs: task.labelArgs
                         )
                     }
                     self?.postAccessibilityAnnouncement(
@@ -234,7 +237,10 @@ extension HelmCore {
                     id: idString,
                     description: description,
                     status: "Queued",
-                    managerId: managerId
+                    managerId: managerId,
+                    taskType: nil,
+                    labelKey: nil,
+                    labelArgs: nil
                 ),
                 at: 0
             )

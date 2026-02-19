@@ -168,6 +168,9 @@ impl<S: CargoBinstallSource> ManagerAdapter for CargoBinstallAdapter<S> {
                     Some(package.name.as_str())
                 };
                 let _ = self.source.upgrade(target_name)?;
+                if let Some(name) = target_name {
+                    ensure_cargo_binstall_no_longer_outdated(&self.source, name)?;
+                }
 
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
@@ -186,6 +189,32 @@ impl<S: CargoBinstallSource> ManagerAdapter for CargoBinstallAdapter<S> {
             }),
         }
     }
+}
+
+fn ensure_cargo_binstall_no_longer_outdated<S: CargoBinstallSource>(
+    source: &S,
+    package_name: &str,
+) -> AdapterResult<()> {
+    let raw = source.list_outdated()?;
+    let outdated = parse_cargo_outdated(&raw).map_err(|mut error| {
+        error.manager = Some(ManagerId::CargoBinstall);
+        error
+    })?;
+    if outdated
+        .iter()
+        .any(|item| item.package.name == package_name)
+    {
+        return Err(CoreError {
+            manager: Some(ManagerId::CargoBinstall),
+            task: Some(TaskType::Upgrade),
+            action: Some(ManagerAction::Upgrade),
+            kind: CoreErrorKind::ProcessFailure,
+            message: format!(
+                "cargo-binstall upgrade reported success but '{package_name}' remains outdated"
+            ),
+        });
+    }
+    Ok(())
 }
 
 pub fn cargo_binstall_detect_request(task_id: Option<TaskId>) -> ProcessSpawnRequest {

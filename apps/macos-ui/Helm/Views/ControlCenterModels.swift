@@ -119,6 +119,7 @@ final class ControlCenterContext: ObservableObject {
     @Published var selectedSection: ControlCenterSection? = .overview
     @Published var selectedManagerId: String?
     @Published var selectedPackageId: String?
+    @Published var selectedTaskId: String?
     @Published var searchQuery: String = ""
     @Published var managerFilterId: String?
     @Published var showUpgradeSheet: Bool = false

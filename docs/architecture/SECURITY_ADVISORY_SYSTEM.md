@@ -39,7 +39,7 @@ Data may be aggregated.
 
 CVE Sources → Local Cache → Matching Engine → UI
 
-````
+```
 
 ---
 
@@ -60,7 +60,7 @@ struct SecurityAdvisory {
     description: String,
     fixed_version: Option<String>,
 }
-````
+```
 
 ---
 

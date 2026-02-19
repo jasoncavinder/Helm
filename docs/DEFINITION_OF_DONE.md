@@ -28,7 +28,7 @@ Toolchain:
 - rustup
 
 System:
-- Homebrew (formula + cask)
+- Homebrew (formula; cask adapter deferred to 0.14.x per Decision 019)
 - macOS softwareupdate
 
 App Store:

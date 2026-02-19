@@ -3,33 +3,57 @@ title: Usage
 description: How to use Helm to manage your packages.
 ---
 
-Helm runs as a menu bar app with a floating panel UI. It has two main tabs: **Dashboard** and **Packages**.
+Helm runs as a menu bar app with two surfaces: a **menu bar popover** for quick triage and a separate **Control Center window** for deeper management.
 
-## Dashboard
+## Menu Bar Popover
 
-The Dashboard gives you an at-a-glance view of your software environment:
+The popover opens with a single click on the menu bar icon and provides an at-a-glance summary:
 
-- **Package counts** — installed, upgradable, and available (from search cache)
-- **Manager grid** — shows all supported managers and whether they're detected on your system
-- **Recent tasks** — the latest refresh, search, and other background operations with their status
+- **Health status** — overall environment posture (healthy, attention, error)
+- **Pending updates count** — how many packages have upgrades available
+- **Quick actions** — Refresh, Upgrade All, and Open Control Center
+- **Live task strip** — currently running tasks with progress
 
-## Packages
+## Control Center Window
 
-The Packages tab is where you browse and filter your software:
+The Control Center is a standalone window with sidebar navigation across six domains:
 
-- **Status filters** — filter by Installed, Upgradable, or Available
-- **Manager filter** — narrow the list to a specific manager (Homebrew, mise, rustup, etc.)
-- **Search** — type to instantly filter the local list; after a brief pause, Helm searches remote sources and merges results
-- **Package details** — click any package to see version info and manager attribution
+1. **Overview** — health posture, package stats, manager grid, and recent task activity
+2. **Updates** — pending upgrades grouped by authority tier with bulk-plan builder
+3. **Packages** — browse installed, upgradable, and available packages with status and manager filters
+4. **Tasks** — real-time task tracking with lifecycle states (queued, running, completed, failed, canceled)
+5. **Managers** — per-manager health, capabilities, and configuration
+6. **Settings** — cadence, policy, localization, accessibility, and diagnostics
+
+## Inspector Sidebar
+
+Selecting any task, package, or manager in the Control Center opens the **inspector sidebar** on the right. It shows contextual detail: version delta, pin state, manager attribution, available actions, task logs, or manager capabilities — depending on what is selected.
+
+## Supported Managers
+
+Helm supports fifteen package managers across four categories:
+
+| Category | Managers |
+|---------|----------|
+| **Toolchain / Runtime** | mise, rustup |
+| **System / OS / App Store** | Homebrew, softwareupdate, mas |
+| **Core Language** | npm (global), pipx, pip (global), Cargo, cargo-binstall |
+| **Extended Language** | pnpm (global), yarn (global), Poetry (self/plugins), RubyGems, Bundler |
 
 ## Refreshing
 
-Click the refresh button in the navigation bar to update all package data. Helm refreshes managers in **authority order**:
+Click the refresh button to update all package data. Helm refreshes managers in a **3-phase authority model**:
 
-1. **Toolchain managers first** (mise, rustup) — these define the runtime environment
-2. **Package managers second** (Homebrew) — these depend on the toolchain state
+1. **Authoritative** (mise, rustup) — toolchain managers that define the runtime environment; refreshed first
+2. **Standard** (npm, pnpm, yarn, pip, pipx, cargo, cargo-binstall, RubyGems, Poetry, Bundler, mas) — language and app store managers
+3. **Guarded** (Homebrew, softwareupdate) — system-level managers that may require privileges or restarts; refreshed last
 
 Within each phase, managers refresh in parallel. If one manager fails, the others continue unaffected.
+
+## Pinning and Safe Mode
+
+- **Pinning** — pin individual packages to prevent them from being included in bulk upgrades. Pinned packages still appear in the updates list but are skipped during Upgrade All.
+- **Safe mode** — guarded managers (Homebrew, softwareupdate) require explicit confirmation before executing upgrades, and OS updates that require a restart show a dedicated warning.
 
 ## Search
 

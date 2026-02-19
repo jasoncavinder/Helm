@@ -164,6 +164,7 @@ struct PackagesSectionView: View {
                     .onTapGesture {
                         context.selectedPackageId = package.id
                         context.selectedManagerId = package.managerId
+                        context.selectedTaskId = nil
                     }
                     .helmPointer()
                 }
