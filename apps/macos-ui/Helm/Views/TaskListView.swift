@@ -26,6 +26,7 @@ struct TasksSectionView: View {
                 List(core.activeTasks) { task in
                     TaskRowView(task: task, onCancel: task.isRunning ? { core.cancelTask(task) } : nil)
                         .contentShape(Rectangle())
+                        .focusable()
                         .onTapGesture {
                             if let managerId = task.managerId {
                                 context.selectedManagerId = managerId

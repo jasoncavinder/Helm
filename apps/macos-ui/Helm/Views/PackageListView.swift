@@ -161,6 +161,7 @@ struct PackagesSectionView: View {
                             }
                     )
                     .contentShape(Rectangle())
+                    .focusable()
                     .onTapGesture {
                         context.selectedPackageId = package.id
                         context.selectedManagerId = package.managerId
