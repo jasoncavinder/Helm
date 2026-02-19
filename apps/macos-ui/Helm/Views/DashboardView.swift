@@ -3,6 +3,7 @@ import AppKit
 
 struct RedesignPopoverView: View {
     @ObservedObject private var core = HelmCore.shared
+    @ObservedObject private var walkthrough = WalkthroughManager.shared
     @EnvironmentObject private var context: ControlCenterContext
     @ObservedObject private var localization = LocalizationManager.shared
     @Environment(\.colorScheme) private var colorScheme
@@ -62,6 +63,11 @@ struct RedesignPopoverView: View {
                 OnboardingContainerView {
                     core.completeOnboarding()
                     core.triggerRefresh()
+                    if !walkthrough.hasCompletedPopoverWalkthrough {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                            walkthrough.startPopoverWalkthrough()
+                        }
+                    }
                 }
             } else {
                 ZStack {
@@ -121,6 +127,11 @@ struct RedesignPopoverView: View {
             RedesignUpgradeSheetView()
                 .environmentObject(context)
         }
+        .overlayPreferenceValue(SpotlightAnchorKey.self) { anchors in
+            if walkthrough.isPopoverWalkthroughActive {
+                SpotlightOverlay(manager: walkthrough, anchors: anchors)
+            }
+        }
     }
 
     private var popoverBaseContent: some View {
@@ -128,40 +139,45 @@ struct RedesignPopoverView: View {
             VStack(alignment: .leading, spacing: 12) {
                 if hasAttentionBanner {
                     attentionBanner
+                        .spotlightAnchor("attentionBanner")
                 }
 
                 popoverSearchField
+                    .spotlightAnchor("searchField")
 
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(L10n.App.Dashboard.title.localized)
                             .font(.headline.weight(.semibold))
-                        Text(L10n.App.Redesign.Popover.systemHealth.localized)
+                        Text(L10n.App.Popover.systemHealth.localized)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
                     HealthBadgeView(status: core.aggregateHealth)
                 }
+                .spotlightAnchor("healthBadge")
                 .padding(.top, 4)
 
                 HStack(spacing: 8) {
                     MetricChipView(
-                        label: L10n.App.Redesign.Popover.pendingUpdates.localized,
+                        label: L10n.App.Popover.pendingUpdates.localized,
                         value: core.outdatedPackages.count
                     )
                     MetricChipView(
-                        label: L10n.App.Redesign.Popover.failures.localized,
+                        label: L10n.App.Popover.failures.localized,
                         value: core.failedTaskCount
                     )
                     MetricChipView(
-                        label: L10n.App.Redesign.Popover.runningTasks.localized,
+                        label: L10n.App.Popover.runningTasks.localized,
                         value: core.runningTaskCount
                     )
                 }
 
                 managerSnapshotCard
+                    .spotlightAnchor("managerSnapshot")
                 tasksCard
+                    .spotlightAnchor("activeTasks")
             }
             .padding(16)
 
@@ -170,6 +186,7 @@ struct RedesignPopoverView: View {
             popoverFooter
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
+                .spotlightAnchor("footerActions")
         }
         .frame(width: 400)
         .background(
@@ -237,7 +254,7 @@ struct RedesignPopoverView: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
             TextField(
-                "app.redesign.popover.search_placeholder".localized,
+                "app.popover.search_placeholder".localized,
                 text: Binding(
                     get: { popoverSearchQuery },
                     set: { newValue in
@@ -282,16 +299,16 @@ struct RedesignPopoverView: View {
             isOverlaySearchFocused = true
         }
         .helmPointer()
-        .accessibilityLabel(L10n.App.Redesign.Popover.searchPlaceholder.localized)
+        .accessibilityLabel(L10n.App.Popover.searchPlaceholder.localized)
     }
 
     private var managerSnapshotCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(L10n.App.Redesign.Popover.managerSnapshot.localized)
+                Text(L10n.App.Popover.managerSnapshot.localized)
                     .font(.subheadline.weight(.semibold))
                 Spacer()
-                Button(L10n.App.Redesign.Action.openControlCenter.localized) {
+                Button(L10n.App.Action.openControlCenter.localized) {
                     context.selectedSection = .managers
                     onOpenControlCenter()
                 }
@@ -339,7 +356,7 @@ struct RedesignPopoverView: View {
     private var tasksCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(L10n.App.Redesign.Popover.activeTasks.localized)
+                Text(L10n.App.Popover.activeTasks.localized)
                     .font(.subheadline.weight(.semibold))
                 Spacer()
                 Button {
@@ -352,7 +369,7 @@ struct RedesignPopoverView: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
                 .helmPointer()
-                .accessibilityLabel(L10n.App.Redesign.Action.openControlCenter.localized)
+                .accessibilityLabel(L10n.App.Action.openControlCenter.localized)
             }
 
             if popoverTasks.isEmpty {
@@ -371,7 +388,7 @@ struct RedesignPopoverView: View {
 
     private var popoverFooter: some View {
         HStack(spacing: 10) {
-            Button(L10n.App.Redesign.Popover.version.localized(with: ["version": helmVersion])) {
+            Button(L10n.App.Popover.version.localized(with: ["version": helmVersion])) {
                 activeOverlay = .about
             }
             .buttonStyle(.plain)
@@ -396,28 +413,28 @@ struct RedesignPopoverView: View {
         switch route {
         case .search:
             PopoverOverlayCard(
-                title: L10n.App.Redesign.Overlay.Search.title.localized,
+                title: L10n.App.Overlay.Search.title.localized,
                 onClose: closeOverlay
             ) {
                 searchOverlayContent
             }
         case .quickSettings:
             PopoverOverlayCard(
-                title: L10n.App.Redesign.Overlay.Settings.title.localized,
+                title: L10n.App.Overlay.Settings.title.localized,
                 onClose: closeOverlay
             ) {
                 settingsOverlayContent
             }
         case .about:
             PopoverOverlayCard(
-                title: L10n.App.Redesign.Overlay.About.title.localized,
+                title: L10n.App.Overlay.About.title.localized,
                 onClose: closeOverlay
             ) {
                 aboutOverlayContent
             }
         case .confirmQuit:
             PopoverOverlayCard(
-                title: L10n.App.Redesign.Overlay.Quit.title.localized,
+                title: L10n.App.Overlay.Quit.title.localized,
                 onClose: closeOverlay
             ) {
                 quitOverlayContent
@@ -431,7 +448,7 @@ struct RedesignPopoverView: View {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
                 TextField(
-                    L10n.App.Redesign.Popover.searchPlaceholder.localized,
+                    L10n.App.Popover.searchPlaceholder.localized,
                     text: Binding(
                         get: { popoverSearchQuery },
                         set: { newValue in
@@ -457,7 +474,7 @@ struct RedesignPopoverView: View {
             )
 
             if searchResults.isEmpty && !popoverSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text(L10n.App.Redesign.Overlay.Search.empty.localized)
+                Text(L10n.App.Overlay.Search.empty.localized)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -521,7 +538,7 @@ struct RedesignPopoverView: View {
 
                 Spacer()
 
-                Button(L10n.App.Redesign.Overlay.Search.openPackages.localized) {
+                Button(L10n.App.Overlay.Search.openPackages.localized) {
                     context.selectedSection = .packages
                     onOpenControlCenter()
                     closeOverlay()
@@ -579,7 +596,7 @@ struct RedesignPopoverView: View {
 
                 Spacer()
 
-                Button(L10n.App.Redesign.Overlay.Settings.openAdvanced.localized) {
+                Button(L10n.App.Overlay.Settings.openAdvanced.localized) {
                     context.selectedSection = .settings
                     onOpenControlCenter()
                     closeOverlay()
@@ -600,19 +617,19 @@ struct RedesignPopoverView: View {
                     .scaledToFit()
                     .frame(width: 22, height: 22)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(L10n.App.Redesign.Overlay.About.name.localized)
+                    Text(L10n.App.Overlay.About.name.localized)
                         .font(.headline)
-                    Text(L10n.App.Redesign.Overlay.About.subtitle.localized)
+                    Text(L10n.App.Overlay.About.subtitle.localized)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
             }
 
-            Text(L10n.App.Redesign.Overlay.About.version.localized(with: ["version": helmVersion]))
+            Text(L10n.App.Overlay.About.version.localized(with: ["version": helmVersion]))
                 .font(.caption)
 
-            Text(L10n.App.Redesign.Overlay.About.summary.localized(with: [
+            Text(L10n.App.Overlay.About.summary.localized(with: [
                 "managers": core.visibleManagers.count,
                 "updates": core.outdatedPackages.count
             ]))
@@ -632,7 +649,7 @@ struct RedesignPopoverView: View {
 
     private var quitOverlayContent: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(L10n.App.Redesign.Overlay.Quit.message.localized(with: ["tasks": core.runningTaskCount]))
+            Text(L10n.App.Overlay.Quit.message.localized(with: ["tasks": core.runningTaskCount]))
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
@@ -671,22 +688,22 @@ struct RedesignPopoverView: View {
 
     private var bannerTitle: String {
         if !core.isConnected {
-            return L10n.App.Redesign.Popover.Banner.disconnectedTitle.localized
+            return L10n.App.Popover.Banner.disconnectedTitle.localized
         }
         if core.failedTaskCount > 0 {
-            return L10n.App.Redesign.Popover.Banner.failedTitle.localized(with: ["count": core.failedTaskCount])
+            return L10n.App.Popover.Banner.failedTitle.localized(with: ["count": core.failedTaskCount])
         }
-        return L10n.App.Redesign.Popover.Banner.updatesTitle.localized(with: ["count": core.outdatedPackages.count])
+        return L10n.App.Popover.Banner.updatesTitle.localized(with: ["count": core.outdatedPackages.count])
     }
 
     private var bannerMessage: String {
         if !core.isConnected {
-            return L10n.App.Redesign.Popover.Banner.disconnectedMessage.localized
+            return L10n.App.Popover.Banner.disconnectedMessage.localized
         }
         if core.failedTaskCount > 0 {
-            return L10n.App.Redesign.Popover.Banner.failedMessage.localized
+            return L10n.App.Popover.Banner.failedMessage.localized
         }
-        return L10n.App.Redesign.Popover.Banner.updatesMessage.localized
+        return L10n.App.Popover.Banner.updatesMessage.localized
     }
 
     private var cardBackground: some View {

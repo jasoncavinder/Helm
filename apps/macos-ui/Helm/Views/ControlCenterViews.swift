@@ -4,8 +4,21 @@ import AppKit
 struct ControlCenterWindowView: View {
     @EnvironmentObject private var context: ControlCenterContext
     @ObservedObject private var core = HelmCore.shared
+    @ObservedObject private var walkthrough = WalkthroughManager.shared
     @Environment(\.colorScheme) private var colorScheme
     private let sidebarWidth: CGFloat = 232
+
+    private func navigateToSection(for anchor: String) {
+        switch anchor {
+        case "ccOverview": context.selectedSection = .overview
+        case "ccUpdates": context.selectedSection = .updates
+        case "ccPackages": context.selectedSection = .packages
+        case "ccTasks": context.selectedSection = .tasks
+        case "ccManagers": context.selectedSection = .managers
+        case "ccSettings": context.selectedSection = .settings
+        default: break
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -14,6 +27,7 @@ struct ControlCenterWindowView: View {
 
             HStack(spacing: 0) {
                 ControlCenterSidebarView(sidebarWidth: sidebarWidth)
+                    .spotlightAnchor("ccSidebar")
                 Divider()
                 HSplitView {
                     ControlCenterSectionHostView()
@@ -44,9 +58,24 @@ struct ControlCenterWindowView: View {
             RedesignUpgradeSheetView()
                 .environmentObject(context)
         }
+        .overlayPreferenceValue(SpotlightAnchorKey.self) { anchors in
+            if walkthrough.isControlCenterWalkthroughActive {
+                SpotlightOverlay(manager: walkthrough, anchors: anchors)
+            }
+        }
+        .onChange(of: walkthrough.currentStepIndex) { _ in
+            guard walkthrough.isControlCenterWalkthroughActive,
+                  let step = walkthrough.currentStep else { return }
+            navigateToSection(for: step.targetAnchor)
+        }
         .onAppear {
             if core.hasCompletedOnboarding {
                 core.triggerRefresh()
+            }
+            if !walkthrough.hasCompletedControlCenterWalkthrough {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    walkthrough.startControlCenterWalkthrough()
+                }
             }
         }
         .ignoresSafeArea(.all, edges: .top)
@@ -62,7 +91,7 @@ private struct ControlCenterTopBar: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(L10n.App.Redesign.Window.controlCenter.localized)
+            Text(L10n.App.Window.controlCenter.localized)
                 .font(.headline.weight(.semibold))
                 .padding(.leading, 72)
 
@@ -72,7 +101,7 @@ private struct ControlCenterTopBar: View {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
                 TextField(
-                    L10n.App.Redesign.ControlCenter.searchPlaceholder.localized,
+                    L10n.App.ControlCenter.searchPlaceholder.localized,
                     text: Binding(
                         get: { context.searchQuery },
                         set: { newValue in
@@ -111,7 +140,7 @@ private struct ControlCenterTopBar: View {
             .helmPointer(enabled: !core.isRefreshing)
             .accessibilityLabel(L10n.App.Settings.Action.refreshNow.localized)
 
-            Button(L10n.App.Redesign.ControlCenter.upgradeAll.localized) {
+            Button(L10n.App.ControlCenter.upgradeAll.localized) {
                 context.showUpgradeSheet = true
                 context.selectedSection = .updates
             }
@@ -272,16 +301,22 @@ private struct ControlCenterSectionHostView: View {
         switch context.selectedSection ?? .overview {
         case .overview:
             RedesignOverviewSectionView()
+                .spotlightAnchor("ccOverview")
         case .updates:
             RedesignUpdatesSectionView()
+                .spotlightAnchor("ccUpdates")
         case .packages:
             PackagesSectionView()
+                .spotlightAnchor("ccPackages")
         case .tasks:
             TasksSectionView()
+                .spotlightAnchor("ccTasks")
         case .managers:
             ManagersSectionView()
+                .spotlightAnchor("ccManagers")
         case .settings:
             SettingsSectionView()
+                .spotlightAnchor("ccSettings")
         }
     }
 }
@@ -302,20 +337,20 @@ private struct RedesignOverviewSectionView: View {
 
                 HStack(spacing: 14) {
                     MetricCardView(
-                        title: L10n.App.Redesign.Popover.pendingUpdates.localized,
+                        title: L10n.App.Popover.pendingUpdates.localized,
                         value: core.outdatedPackages.count
                     )
                     MetricCardView(
-                        title: L10n.App.Redesign.Popover.failures.localized,
+                        title: L10n.App.Popover.failures.localized,
                         value: core.failedTaskCount
                     )
                     MetricCardView(
-                        title: L10n.App.Redesign.Popover.runningTasks.localized,
+                        title: L10n.App.Popover.runningTasks.localized,
                         value: core.runningTaskCount
                     )
                 }
 
-                Text(L10n.App.Redesign.Overview.managerHealth.localized)
+                Text(L10n.App.Overview.managerHealth.localized)
                     .font(.headline)
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], spacing: 12) {
@@ -333,7 +368,7 @@ private struct RedesignOverviewSectionView: View {
                     }
                 }
 
-                Text(L10n.App.Redesign.Overview.recentTasks.localized)
+                Text(L10n.App.Overview.recentTasks.localized)
                     .font(.headline)
 
                 if core.activeTasks.isEmpty {
@@ -402,18 +437,18 @@ private struct RedesignUpdatesSectionView: View {
                 Text(ControlCenterSection.updates.title)
                     .font(.title2.weight(.semibold))
                 Spacer()
-                Button(L10n.App.Redesign.Action.refreshPlan.localized) {
+                Button(L10n.App.Action.refreshPlan.localized) {
                     core.triggerRefresh()
                 }
                 .buttonStyle(HelmSecondaryButtonStyle())
                 .disabled(core.isRefreshing)
             }
 
-            Text(L10n.App.Redesign.Updates.executionPlan.localized)
+            Text(L10n.App.Updates.executionPlan.localized)
                 .font(.headline)
 
             if !core.safeModeEnabled {
-                Toggle(L10n.App.Redesign.Updates.includeOs.localized, isOn: $includeOsUpdates)
+                Toggle(L10n.App.Updates.includeOs.localized, isOn: $includeOsUpdates)
                     .toggleStyle(.switch)
             }
 
@@ -425,11 +460,11 @@ private struct RedesignUpdatesSectionView: View {
                         Spacer()
                         Text("\(row.managerCount)")
                             .font(.body.monospacedDigit())
-                        Text(L10n.App.Redesign.Updates.managers.localized)
+                        Text(L10n.App.Updates.managers.localized)
                             .foregroundStyle(.secondary)
                         Text("\(row.packageCount)")
                             .font(.body.monospacedDigit())
-                        Text(L10n.App.Redesign.Updates.packages.localized)
+                        Text(L10n.App.Updates.packages.localized)
                             .foregroundStyle(.secondary)
                     }
                     .padding(.vertical, 4)
@@ -437,16 +472,16 @@ private struct RedesignUpdatesSectionView: View {
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                Text(L10n.App.Redesign.Updates.riskFlags.localized)
+                Text(L10n.App.Updates.riskFlags.localized)
                     .font(.headline)
-                riskRow(flag: L10n.App.Redesign.Updates.Risk.privileged.localized, active: requiresPrivileges)
-                riskRow(flag: L10n.App.Redesign.Updates.Risk.reboot.localized, active: mayRequireReboot)
+                riskRow(flag: L10n.App.Updates.Risk.privileged.localized, active: requiresPrivileges)
+                riskRow(flag: L10n.App.Updates.Risk.reboot.localized, active: mayRequireReboot)
             }
 
             HStack {
-                Button(L10n.App.Redesign.Action.dryRun.localized) {
+                Button(L10n.App.Action.dryRun.localized) {
                     let lines = previewBreakdown.prefix(8).map { "\($0.manager): \($0.count)" }
-                    dryRunMessage = L10n.App.Redesign.DryRun.message.localized(with: [
+                    dryRunMessage = L10n.App.DryRun.message.localized(with: [
                         "count": totalCount,
                         "summary": lines.joined(separator: "\n")
                     ])
@@ -454,7 +489,7 @@ private struct RedesignUpdatesSectionView: View {
                 }
                 .buttonStyle(HelmSecondaryButtonStyle())
 
-                Button(L10n.App.Redesign.Action.runPlan.localized) {
+                Button(L10n.App.Action.runPlan.localized) {
                     core.upgradeAll(includePinned: false, allowOsUpdates: includeOsUpdates)
                 }
                 .buttonStyle(HelmPrimaryButtonStyle())
@@ -466,7 +501,7 @@ private struct RedesignUpdatesSectionView: View {
             Spacer()
         }
         .padding(20)
-        .alert(L10n.App.Redesign.DryRun.title.localized, isPresented: $showDryRun) {
+        .alert(L10n.App.DryRun.title.localized, isPresented: $showDryRun) {
             Button(L10n.Common.ok.localized, role: .cancel) {}
         } message: {
             Text(dryRunMessage)
@@ -500,32 +535,32 @@ private struct ControlCenterInspectorView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(L10n.App.Redesign.Inspector.title.localized)
+            Text(L10n.App.Inspector.title.localized)
                 .font(.headline)
 
             if let package = selectedPackage {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(package.name)
                         .font(.title3.weight(.semibold))
-                    Text(L10n.App.Redesign.Inspector.manager.localized)
+                    Text(L10n.App.Inspector.manager.localized)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text(package.manager)
                         .font(.callout)
-                    Text(L10n.App.Redesign.Inspector.installed.localized)
+                    Text(L10n.App.Inspector.installed.localized)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text(package.version)
                         .font(.caption.monospaced())
                     if let latest = package.latestVersion {
-                        Text(L10n.App.Redesign.Inspector.latest.localized)
+                        Text(L10n.App.Inspector.latest.localized)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Text(latest)
                             .font(.caption.monospaced())
                     }
                     if let query = package.summary, !query.isEmpty {
-                        Text(L10n.App.Redesign.Inspector.sourceQuery.localized)
+                        Text(L10n.App.Inspector.sourceQuery.localized)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Text(query)
@@ -539,7 +574,7 @@ private struct ControlCenterInspectorView: View {
                     Text(authority(for: manager.id).key.localized)
                         .font(.callout)
                         .foregroundStyle(.secondary)
-                    Text(L10n.App.Redesign.Inspector.capabilities.localized)
+                    Text(L10n.App.Inspector.capabilities.localized)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     ForEach(capabilities(for: manager), id: \.self) { capabilityKey in
@@ -548,7 +583,7 @@ private struct ControlCenterInspectorView: View {
                     }
                 }
             } else {
-                Text(L10n.App.Redesign.Inspector.empty.localized)
+                Text(L10n.App.Inspector.empty.localized)
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -575,16 +610,16 @@ struct RedesignUpgradeSheetView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(L10n.App.Redesign.Updates.executionPlan.localized)
+            Text(L10n.App.Updates.executionPlan.localized)
                 .font(.title3.weight(.semibold))
 
             if !core.safeModeEnabled {
-                Toggle(L10n.App.Redesign.Updates.includeOs.localized, isOn: $includeOsUpdates)
+                Toggle(L10n.App.Updates.includeOs.localized, isOn: $includeOsUpdates)
                     .toggleStyle(.switch)
             }
 
             HStack {
-                Text(L10n.App.Redesign.Updates.Authority.standard.localized)
+                Text(L10n.App.Updates.Authority.standard.localized)
                 Spacer()
                 Text("\(includeOsUpdates ? withOsCount : noOsCount)")
                     .font(.callout.monospacedDigit())
@@ -599,10 +634,10 @@ struct RedesignUpgradeSheetView: View {
                 }
                 .buttonStyle(HelmSecondaryButtonStyle())
                 Spacer()
-                Button(L10n.App.Redesign.Action.dryRun.localized) {}
+                Button(L10n.App.Action.dryRun.localized) {}
                     .buttonStyle(HelmSecondaryButtonStyle())
                     .disabled(true)
-                Button(L10n.App.Redesign.Action.runPlan.localized) {
+                Button(L10n.App.Action.runPlan.localized) {
                     core.upgradeAll(includePinned: false, allowOsUpdates: includeOsUpdates)
                     context.showUpgradeSheet = false
                     dismiss()
@@ -687,28 +722,28 @@ private func authority(forDisplayName managerName: String) -> ManagerAuthority {
 
 private func capabilities(for manager: ManagerInfo) -> [String] {
     var result: [String] = [
-        L10n.App.Redesign.Capability.list,
-        L10n.App.Redesign.Capability.outdated,
+        L10n.App.Capability.list,
+        L10n.App.Capability.outdated,
     ]
 
     if manager.canInstall {
-        result.append(L10n.App.Redesign.Capability.install)
+        result.append(L10n.App.Capability.install)
     }
 
     if manager.canUninstall {
-        result.append(L10n.App.Redesign.Capability.uninstall)
+        result.append(L10n.App.Capability.uninstall)
     }
 
     if manager.canUpdate {
-        result.append(L10n.App.Redesign.Capability.upgrade)
+        result.append(L10n.App.Capability.upgrade)
     }
 
     if ["npm", "pnpm", "yarn", "pip", "cargo", "cargo_binstall", "poetry", "rubygems", "bundler"].contains(manager.id) {
-        result.append(L10n.App.Redesign.Capability.search)
+        result.append(L10n.App.Capability.search)
     }
 
     if manager.id == "homebrew_formula" {
-        result.append(L10n.App.Redesign.Capability.pin)
+        result.append(L10n.App.Capability.pin)
     }
 
     return result

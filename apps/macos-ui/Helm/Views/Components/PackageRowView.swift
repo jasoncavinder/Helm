@@ -10,9 +10,11 @@ struct PackageRowView: View {
     let package: PackageItem
     var isPinActionInFlight: Bool = false
     var isUpgradeActionInFlight: Bool = false
+    var isInstallActionInFlight: Bool = false
     var kegPolicySelection: KegPolicyMenuSelection? = nil
     var onSelectKegPolicy: ((KegPolicyMenuSelection) -> Void)? = nil
     var onUpgrade: (() -> Void)? = nil
+    var onInstall: (() -> Void)? = nil
     var onTogglePin: (() -> Void)? = nil
 
     private var accessibilityDescription: String {
@@ -44,6 +46,18 @@ struct PackageRowView: View {
                 .disabled(isUpgradeActionInFlight)
                 .help(L10n.App.Packages.Action.upgradePackage.localized)
                 .helmPointer(enabled: !isUpgradeActionInFlight)
+                .accessibilityHidden(true)
+            } else if let onInstall, package.status == .available {
+                Button(action: onInstall) {
+                    Image(systemName: package.status.iconName)
+                        .foregroundColor(package.status.iconColor)
+                        .font(.body)
+                        .frame(width: 20)
+                }
+                .buttonStyle(.borderless)
+                .disabled(isInstallActionInFlight)
+                .help(L10n.App.Packages.Action.install.localized)
+                .helmPointer(enabled: !isInstallActionInFlight)
                 .accessibilityHidden(true)
             } else {
                 Image(systemName: package.status.iconName)

@@ -38,6 +38,7 @@
 		B20000000000000000000012 /* OnboardingWelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000012 /* OnboardingWelcomeView.swift */; };
 		B20000000000000000000013 /* OnboardingDetectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000013 /* OnboardingDetectionView.swift */; };
 		B20000000000000000000014 /* OnboardingConfigureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000014 /* OnboardingConfigureView.swift */; };
+		D20000000000000000000010 /* OnboardingSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000010 /* OnboardingSettingsView.swift */; };
 		B20000000000000000000015 /* LocalizationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000015 /* LocalizationManager.swift */; };
 		B20000000000000000000016 /* String+Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000016 /* String+Localization.swift */; };
 		B20000000000000000000017 /* L10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000017 /* L10n.swift */; };
@@ -52,6 +53,8 @@
 		D20000000000000000000005 /* HelmCore+Fetching.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000005 /* HelmCore+Fetching.swift */; };
 		D20000000000000000000006 /* HelmCore+Actions.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000006 /* HelmCore+Actions.swift */; };
 		D20000000000000000000007 /* HelmCore+Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000007 /* HelmCore+Settings.swift */; };
+		D20000000000000000000008 /* WalkthroughState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000008 /* WalkthroughState.swift */; };
+		D20000000000000000000009 /* SpotlightOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000009 /* SpotlightOverlay.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -118,6 +121,7 @@
 		B10000000000000000000012 /* OnboardingWelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWelcomeView.swift; sourceTree = "<group>"; };
 		B10000000000000000000013 /* OnboardingDetectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingDetectionView.swift; sourceTree = "<group>"; };
 		B10000000000000000000014 /* OnboardingConfigureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingConfigureView.swift; sourceTree = "<group>"; };
+		D10000000000000000000010 /* OnboardingSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingSettingsView.swift; sourceTree = "<group>"; };
 		B10000000000000000000015 /* LocalizationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationManager.swift; sourceTree = "<group>"; };
 		B10000000000000000000016 /* String+Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+Localization.swift"; sourceTree = "<group>"; };
 		B10000000000000000000017 /* L10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L10n.swift; sourceTree = "<group>"; };
@@ -132,6 +136,8 @@
 		D10000000000000000000005 /* HelmCore+Fetching.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HelmCore+Fetching.swift"; sourceTree = "<group>"; };
 		D10000000000000000000006 /* HelmCore+Actions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HelmCore+Actions.swift"; sourceTree = "<group>"; };
 		D10000000000000000000007 /* HelmCore+Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HelmCore+Settings.swift"; sourceTree = "<group>"; };
+		D10000000000000000000008 /* WalkthroughState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughState.swift; sourceTree = "<group>"; };
+		D10000000000000000000009 /* SpotlightOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotlightOverlay.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -225,6 +231,7 @@
 			children = (
 				B30000000000000000000001 /* Components */,
 				B30000000000000000000002 /* Onboarding */,
+				B30000000000000000000003 /* Walkthrough */,
 				D10000000000000000000001 /* ControlCenterModels.swift */,
 				D10000000000000000000003 /* ControlCenterViews.swift */,
 				B10000000000000000000008 /* DashboardView.swift */,
@@ -340,10 +347,20 @@
 			children = (
 				B10000000000000000000011 /* OnboardingContainerView.swift */,
 				B10000000000000000000014 /* OnboardingConfigureView.swift */,
+				D10000000000000000000010 /* OnboardingSettingsView.swift */,
 				B10000000000000000000013 /* OnboardingDetectionView.swift */,
 				B10000000000000000000012 /* OnboardingWelcomeView.swift */,
 			);
 			path = Onboarding;
+			sourceTree = "<group>";
+		};
+		B30000000000000000000003 /* Walkthrough */ = {
+			isa = PBXGroup;
+			children = (
+				D10000000000000000000009 /* SpotlightOverlay.swift */,
+				D10000000000000000000008 /* WalkthroughState.swift */,
+			);
+			path = Walkthrough;
 			sourceTree = "<group>";
 		};
 		C10000000000000000000006 /* HelmTests */ = {
@@ -548,6 +565,7 @@
 				B20000000000000000000012 /* OnboardingWelcomeView.swift in Sources */,
 				B20000000000000000000013 /* OnboardingDetectionView.swift in Sources */,
 				B20000000000000000000014 /* OnboardingConfigureView.swift in Sources */,
+				D20000000000000000000010 /* OnboardingSettingsView.swift in Sources */,
 				D20000000000000000000001 /* ControlCenterModels.swift in Sources */,
 				D20000000000000000000002 /* HelmButtonStyles.swift in Sources */,
 				D20000000000000000000003 /* ControlCenterViews.swift in Sources */,
@@ -555,6 +573,8 @@
 				D20000000000000000000005 /* HelmCore+Fetching.swift in Sources */,
 				D20000000000000000000006 /* HelmCore+Actions.swift in Sources */,
 				D20000000000000000000007 /* HelmCore+Settings.swift in Sources */,
+				D20000000000000000000008 /* WalkthroughState.swift in Sources */,
+				D20000000000000000000009 /* SpotlightOverlay.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -4,6 +4,30 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.13.0-beta.4] - 2026-02-18
+
+### Added
+- Guided onboarding walkthrough system with SpotlightOverlay component:
+  - Reusable anchor preference system for tagging UI elements as walkthrough targets
+  - Even-odd fill cutout shape with animated transitions between spotlight targets
+  - Tooltip card with step dots, Next/Done button, Skip link, and VoiceOver support
+  - `accessibilityReduceMotion` respected in all walkthrough animations
+- Popover walkthrough (6 steps): status badge, attention banner, active tasks, manager snapshot, footer actions, search field
+- Control center walkthrough (7 steps): sidebar, overview, packages, tasks, managers, settings, updates — with auto-navigation to matching section on step advance
+- WalkthroughManager singleton with UserDefaults persistence, step progression, skip, and reset
+- "Replay Walkthrough" action button in Settings advanced grid
+- 31 walkthrough L10n keys (controls, popover steps, CC steps) across all 6 locales
+- Walkthrough files registered in Xcode project under Views/Walkthrough group
+
+### Changed
+- Onboarding copy updated across all 6 locales for friendlier tone:
+  - Warmer subtitle, "Let's Go" / "All Set!" CTAs
+  - Encouraging detection feedback ("— great start!", "— looking good!")
+  - More reassuring configure step fallback messages
+
+### Fixed
+- Spanish locale overflow for CC walkthrough step 4 description (shortened to pass length threshold)
+
 ## [0.13.0-beta.3] - 2026-02-18
 
 ### Added

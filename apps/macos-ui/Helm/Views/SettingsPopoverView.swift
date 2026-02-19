@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsSectionView: View {
     @ObservedObject private var core = HelmCore.shared
     @ObservedObject private var localization = LocalizationManager.shared
+    @ObservedObject private var walkthrough = WalkthroughManager.shared
     @EnvironmentObject private var context: ControlCenterContext
     @Environment(\.colorScheme) private var colorScheme
 
@@ -106,15 +107,15 @@ struct SettingsSectionView: View {
 
                 HStack(spacing: 8) {
                     SettingsMetricPill(
-                        title: L10n.App.Redesign.Settings.Metric.managers.localized,
+                        title: L10n.App.Settings.Metric.managers.localized,
                         value: core.visibleManagers.count
                     )
                     SettingsMetricPill(
-                        title: L10n.App.Redesign.Settings.Metric.updates.localized,
+                        title: L10n.App.Settings.Metric.updates.localized,
                         value: core.outdatedPackages.count
                     )
                     SettingsMetricPill(
-                        title: L10n.App.Redesign.Settings.Metric.tasks.localized,
+                        title: L10n.App.Settings.Metric.tasks.localized,
                         value: core.runningTaskCount
                     )
                 }
@@ -207,6 +208,16 @@ struct SettingsSectionView: View {
                             useSystemStyle: true
                         ) {
                             NSApplication.shared.terminate(nil)
+                        }
+
+                        SettingsActionButton(
+                            title: L10n.App.Settings.Action.replayWalkthrough.localized,
+                            badges: [],
+                            isProminent: false,
+                            useSystemStyle: true
+                        ) {
+                            walkthrough.resetWalkthroughs()
+                            walkthrough.startPopoverWalkthrough()
                         }
                     }
                 }

@@ -69,7 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let clickInControlCenter = self.controlCenterWindowController?.window?.frame.contains(clickPoint) ?? false
             let clickInStatusItem = self.statusItemButtonFrame()?.contains(clickPoint) ?? false
 
-            if !clickInPanel && !clickInControlCenter && !clickInStatusItem {
+            if !clickInPanel && !clickInStatusItem {
                 self.closePanel()
             }
         }
@@ -173,13 +173,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let statusDescription: String
         if failedTaskCount > 0 {
-            statusDescription = "app.redesign.status_item.error".localized(with: ["count": failedTaskCount])
+            statusDescription = "app.status_item.error".localized(with: ["count": failedTaskCount])
         } else if outdatedCount > 0 {
-            statusDescription = "app.redesign.status_item.updates".localized(with: ["count": outdatedCount])
+            statusDescription = "app.status_item.updates".localized(with: ["count": outdatedCount])
         } else if running {
-            statusDescription = "app.redesign.status_item.running".localized
+            statusDescription = "app.status_item.running".localized
         } else {
-            statusDescription = "app.redesign.status_item.healthy".localized
+            statusDescription = "app.status_item.healthy".localized
         }
         button.toolTip = statusDescription
         button.setAccessibilityLabel(statusDescription)
@@ -204,21 +204,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let bounds = NSRect(origin: .zero, size: targetSize)
         let iconRect = bounds.insetBy(dx: 1, dy: 1)
         baseImage.draw(in: iconRect, from: .zero, operation: .sourceOver, fraction: 1.0)
-        anchorTint.set()
-        iconRect.fill(using: .sourceAtop)
 
         if let badge {
+            // Manual tint needed when compositing colored badges
+            anchorTint.set()
+            iconRect.fill(using: .sourceAtop)
             drawBadge(badge, in: bounds)
         }
         rendered.unlockFocus()
-        rendered.isTemplate = false
+        rendered.isTemplate = badge == nil
         return rendered
     }
 
     private func menuBaseTint(for button: NSStatusBarButton) -> NSColor {
         var color = NSColor.labelColor
         button.effectiveAppearance.performAsCurrentDrawingAppearance {
-            color = NSColor.labelColor
+            color = NSColor.labelColor.usingColorSpace(.sRGB) ?? NSColor.labelColor
         }
         return color
     }
@@ -241,7 +242,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.onEscape = { [weak self] in
                 self?.handlePopoverEscape()
             }
-            window.title = "app.redesign.window.control_center".localized
+            window.title = "app.window.control_center".localized
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
             window.isMovableByWindowBackground = false
@@ -273,7 +274,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
 
         let aboutItem = NSMenuItem(
-            title: "app.redesign.overlay.about.title".localized,
+            title: "app.overlay.about.title".localized,
             action: #selector(openAboutFromMenu),
             keyEquivalent: ""
         )
@@ -292,7 +293,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settingsItem = NSMenuItem(title: L10n.Common.settings.localized, action: nil, keyEquivalent: "")
         let settingsMenu = NSMenu()
         let basicSettingsItem = NSMenuItem(
-            title: "app.redesign.overlay.settings.title".localized,
+            title: "app.overlay.settings.title".localized,
             action: #selector(openQuickSettingsFromMenu),
             keyEquivalent: ""
         )
@@ -300,7 +301,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsMenu.addItem(basicSettingsItem)
 
         let advancedSettingsItem = NSMenuItem(
-            title: "app.redesign.overlay.settings.open_advanced".localized,
+            title: "app.overlay.settings.open_advanced".localized,
             action: #selector(openAdvancedSettingsFromMenu),
             keyEquivalent: ""
         )

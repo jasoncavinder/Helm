@@ -18,7 +18,7 @@ struct TasksSectionView: View {
 
             if core.activeTasks.isEmpty {
                 Spacer()
-                Text(L10n.App.Redesign.TasksSection.empty.localized)
+                Text(L10n.App.TasksSection.empty.localized)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 Spacer()

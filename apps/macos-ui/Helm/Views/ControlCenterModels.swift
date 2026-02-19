@@ -15,11 +15,11 @@ enum ControlCenterSection: String, CaseIterable, Identifiable {
         case .overview:
             return L10n.App.Navigation.dashboard.localized
         case .updates:
-            return L10n.App.Redesign.Section.updates.localized
+            return L10n.App.Section.updates.localized
         case .packages:
             return L10n.App.Navigation.packages.localized
         case .tasks:
-            return L10n.App.Redesign.Section.tasks.localized
+            return L10n.App.Section.tasks.localized
         case .managers:
             return L10n.App.Navigation.managers.localized
         case .settings:
@@ -30,7 +30,7 @@ enum ControlCenterSection: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .overview:
-            return "gauge.with.dots.needle.50percent"
+            return "speedometer"
         case .updates:
             return "square.and.arrow.down.on.square"
         case .packages:
@@ -53,11 +53,11 @@ enum ManagerAuthority: CaseIterable {
     var key: String {
         switch self {
         case .authoritative:
-            return L10n.App.Redesign.Updates.Authority.authoritative
+            return L10n.App.Updates.Authority.authoritative
         case .standard:
-            return L10n.App.Redesign.Updates.Authority.standard
+            return L10n.App.Updates.Authority.standard
         case .guarded:
-            return L10n.App.Redesign.Updates.Authority.guarded
+            return L10n.App.Updates.Authority.guarded
         }
     }
 }
@@ -102,15 +102,15 @@ enum OperationalHealth {
     var key: String {
         switch self {
         case .healthy:
-            return L10n.App.Redesign.Health.healthy
+            return L10n.App.Health.healthy
         case .attention:
-            return L10n.App.Redesign.Health.attention
+            return L10n.App.Health.attention
         case .error:
-            return L10n.App.Redesign.Health.error
+            return L10n.App.Health.error
         case .running:
-            return L10n.App.Redesign.Health.running
+            return L10n.App.Health.running
         case .notInstalled:
-            return L10n.App.Redesign.Health.notInstalled
+            return L10n.App.Health.notInstalled
         }
     }
 }
