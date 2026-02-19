@@ -144,9 +144,9 @@ Capabilities:
 ## 11. Editions and Distribution Baseline
 
 - Reproducible debug and release builds are defined.
-- Release build includes entitlement-aware gating scaffolding.
+- Channel-aware release builds include entitlement-aware gating scaffolding.
 - Free capabilities remain available under entitlement failure.
-- Mutating business-only controls fail closed when entitlement validation fails.
+- Fleet-only business controls fail closed when entitlement validation fails.
 - Centralized business control plane remains post-1.0 scope.
 
 ---
@@ -154,7 +154,7 @@ Capabilities:
 ## 12. Licensing & Distribution
 
 - License model defined for release builds
-- Commercial usage terms defined for Free / Pro / Business editions
+- Commercial usage terms defined for Helm (Consumer Free/Pro) and Helm Business (Fleet)
 - Contributor License Agreement (CLA) in place for all contributions
 - License and usage terms documented in README
 - Distribution model aligned with licensing (binary distribution, update mechanism)

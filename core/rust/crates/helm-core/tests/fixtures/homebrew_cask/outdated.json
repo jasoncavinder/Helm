@@ -1,0 +1,15 @@
+{
+  "formulae": [],
+  "casks": [
+    {
+      "token": "google-chrome",
+      "installed_versions": ["133.0.6943.142"],
+      "current_version": "134.0.6998.89"
+    },
+    {
+      "name": "iterm2",
+      "installed_versions": ["3.5.6"],
+      "current_version": "3.5.7"
+    }
+  ]
+}

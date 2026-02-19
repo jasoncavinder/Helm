@@ -16,11 +16,12 @@ extension HelmCore {
     }
 
     var visibleManagers: [ManagerInfo] {
-        ManagerInfo.implemented.filter { manager in
+        ManagerInfo.all.filter { manager in
             let status = managerStatuses[manager.id]
+            let isImplemented = status?.isImplemented ?? manager.isImplemented
             let enabled = status?.enabled ?? true
             let detected = status?.detected ?? false
-            return enabled && detected
+            return isImplemented && enabled && detected
         }
     }
 

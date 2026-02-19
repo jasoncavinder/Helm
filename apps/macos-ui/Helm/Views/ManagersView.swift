@@ -4,9 +4,15 @@ struct ManagersSectionView: View {
     @ObservedObject private var core = HelmCore.shared
     @EnvironmentObject private var context: ControlCenterContext
 
+    private var implementedManagers: [ManagerInfo] {
+        ManagerInfo.all.filter { manager in
+            core.managerStatuses[manager.id]?.isImplemented ?? manager.isImplemented
+        }
+    }
+
     private var groupedManagers: [(authority: ManagerAuthority, managers: [ManagerInfo])] {
         ManagerAuthority.allCases.map { authorityLevel in
-            let managers = ManagerInfo.implemented
+            let managers = implementedManagers
                 .filter { $0.authority == authorityLevel }
                 .sorted { localizedManagerDisplayName($0.id).localizedCaseInsensitiveCompare(localizedManagerDisplayName($1.id)) == .orderedAscending }
             return (authority: authorityLevel, managers: managers)
@@ -54,7 +60,7 @@ struct ManagersSectionView: View {
                     }
                 }
 
-                if ManagerInfo.implemented.isEmpty {
+                if implementedManagers.isEmpty {
                     Text(L10n.App.ManagersSection.empty.localized)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)

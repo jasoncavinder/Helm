@@ -29,11 +29,10 @@ Helm is a software-governance control plane for developer environments on macOS 
 
 ## 4. Packaging and Offer Strategy
 
-- Free release: core local control plane and package orchestration.
-- Pro release entitlement: advanced local controls and diagnostics for power users/small teams.
-- Business release entitlement: central management, scope policy, compliance and audit integrations.
+- Helm (Consumer): Free + Pro entitlement model for local control-plane workflows.
+- Helm Business (Fleet): separate fleet product for central management, policy scope, compliance, and audit integrations.
 
-Commercial packaging should keep one release artifact with runtime entitlements to minimize enterprise deployment complexity.
+Commercial packaging should keep one shared core codebase while separating consumer and fleet release artifacts/lifecycles.
 
 ## 5. Pilot Motions by Persona
 

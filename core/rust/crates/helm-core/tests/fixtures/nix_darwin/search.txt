@@ -1,0 +1,2 @@
+nixpkgs.hello  hello-2.12.2
+nixpkgs.ripgrep  ripgrep-14.1.1

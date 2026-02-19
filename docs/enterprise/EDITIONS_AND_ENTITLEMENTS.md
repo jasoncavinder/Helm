@@ -27,15 +27,33 @@ No edition may violate these principles.
 
 ---
 
-## 2. Edition Overview
+## 2. Product and Edition Overview
 
-Helm provides three editions:
+Helm is planned as two products:
 
-| Edition | Purpose |
-|--------|--------|
-| **Free** | Core execution layer |
-| **Pro** | Automation, intelligence, and advanced workflows |
-| **Business** | Governance, policy, and compliance |
+| Product | Edition Model | Primary Scope |
+|---|---|---|
+| **Helm (Consumer)** | Free + Pro | Individual/local control plane workflows |
+| **Helm Business (Fleet)** | Business | Organizational policy, compliance, and fleet operations |
+
+Business is not a runtime tier inside the same consumer artifact; it is a separate fleet product lifecycle.
+
+### 2.1 Planned Distribution and Licensing Architecture (Future State)
+
+This is planned architecture and milestone direction, not implemented behavior.
+
+| Artifact | Product | Channel | Licensing Authority | Update Authority |
+|---|---|---|---|---|
+| Helm (MAS build) | Helm (Consumer) | Mac App Store | App Store commerce/receipt model | Mac App Store |
+| Helm (Developer ID build) | Helm (Consumer) | Direct DMG, Homebrew, MacPorts | Helm consumer entitlement model | Sparkle (direct channel) |
+| Helm (Setapp build) | Helm (Consumer) | Setapp | Setapp subscription/license model | Setapp |
+| Helm Business (Fleet build) | Helm Business | Enterprise PKG deployment | Offline organizational license files | Admin-controlled PKG/MDM rollout |
+
+Channel rules:
+
+- Update authority and licensing authority are decoupled.
+- Sparkle is only for direct Developer ID consumer builds.
+- Sparkle is excluded from MAS, Setapp, and Helm Business fleet builds.
 
 ---
 
@@ -145,9 +163,9 @@ Recommendations (advisory only):
 
 ---
 
-## 5. Business Edition — Governance Layer
+## 5. Helm Business — Governance Layer
 
-Business edition extends Helm for organizational environments.
+Helm Business extends Helm for organizational environments.
 
 It adds:
 
@@ -200,43 +218,12 @@ It adds:
 
 ## 6. Entitlement Model
 
-Helm uses a runtime entitlement system.
+Helm uses runtime entitlement gating, but by product boundary:
 
----
+- Helm (Consumer): Free vs Pro feature gates.
+- Helm Business (Fleet): business/fleet entitlement scope.
 
-### 6.1 Edition Enum
-
-```rust
-enum Edition {
-    Free,
-    Pro,
-    Business,
-}
-````
-
----
-
-### 6.2 Feature Gating
-
-Each feature is mapped to an edition:
-
-```rust
-enum Feature {
-    Scheduling,
-    SecurityAdvisories,
-    AdvancedPolicies,
-    History,
-    AuditLogs,
-}
-```
-
-```rust
-fn is_enabled(feature: Feature, edition: Edition) -> bool
-```
-
----
-
-### 6.3 Enforcement Rules
+### 6.1 Enforcement Rules
 
 * Free features must always be available
 * Entitlement failure must not break core functionality
@@ -291,7 +278,7 @@ After 1.0:
 * Feature access is enforced by license
 * Free remains fully usable
 * Pro requires individual license
-* Business requires organizational license
+* Helm Business requires organizational license and follows a separate fleet lifecycle
 
 ---
 
@@ -317,11 +304,10 @@ The entitlement system must not:
 
 ## 11. Summary
 
-Helm editions are structured as:
+Helm is structured as:
 
-* **Free** — Execution
-* **Pro** — Intelligence + Automation
-* **Business** — Governance
+* **Helm (Consumer)** — Free + Pro
+* **Helm Business (Fleet)** — Governance/fleet product
 
 All editions respect Helm’s core principles:
 

@@ -1,0 +1,3 @@
+The following installed ports are outdated:
+  git                         2.48.1_0 < 2.49.0_0
+  ripgrep                     14.1.0_0 < 14.1.1_0

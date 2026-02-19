@@ -8,13 +8,13 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.13.0**
+Current version: **0.14.0-rc.1**
 
 See:
 - CHANGELOG.md
 
 Active milestone:
-- 0.13.x — UI/UX redesign, accessibility, onboarding walkthrough, and hardening (stable)
+- 0.14.x — Platform, Detection & Optional Managers (in progress)
 
 ---
 
@@ -202,6 +202,200 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
 
 ---
 
+## v0.14.0-alpha.1 Status
+
+### Manager Metadata Scaffolding
+- Rust FFI manager status payload now includes:
+  - `isOptional` (optional manager marker)
+  - `isDetectionOnly` (detection-only manager marker)
+- Optional managers now default to disabled when no explicit preference is set:
+  - `asdf`
+  - `macports`
+  - `nix_darwin`
+- SwiftUI manager metadata expanded to full 0.14 manager inventory (toolchain, system, language, app, container/VM, security/firmware sets) with explicit `isOptional` and `isDetectionOnly` flags
+- Manager implementation visibility in SwiftUI now prefers runtime `ManagerStatus.isImplemented` (with static metadata fallback) for:
+  - managers section grouping
+  - onboarding detection/configure flows
+  - visible manager cards in dashboard/control center
+- 0.14 manager capability matrix artifact added at:
+  - `docs/validation/v0.14.0-alpha.1-manager-capability-matrix.md`
+- `helm-ffi` unit tests added for manager-status policy behavior:
+  - optional manager default-disabled policy
+  - explicit preference override behavior
+  - detection-only status export flags
+- Rust `helm-ffi` tests pass and macOS `HelmTests` pass after scaffolding updates
+
+---
+
+## v0.14.0-alpha.2 Status
+
+### Container/VM Adapter Slice
+- Added first 0.14 container/VM adapter implementations in `helm-core`:
+  - `docker_desktop` (detect, refresh, list_installed, list_outdated)
+  - `podman` (detect, refresh, list_installed, list_outdated)
+  - `colima` (detect, refresh, list_installed, list_outdated)
+- Added process-backed sources for all three adapters with constrained PATH handling for XPC runtime environments
+- Added parser + behavior test coverage for each new adapter:
+  - version parsing
+  - Homebrew outdated JSON parsing (upgrade prompting surface)
+  - request-shape assertions
+  - adapter execute-flow assertions for detection/installed/outdated behavior
+- Added fixture artifacts for adapter parsing:
+  - `core/rust/crates/helm-core/tests/fixtures/docker_desktop/outdated_brew.json`
+  - `core/rust/crates/helm-core/tests/fixtures/podman/outdated_brew.json`
+  - `core/rust/crates/helm-core/tests/fixtures/colima/outdated_brew.json`
+- Wired new adapters into FFI runtime initialization and marked them implemented in manager status export:
+  - `isImplemented=true` now includes `docker_desktop`, `podman`, `colima`
+- Swift fallback metadata updated so container/VM managers reflect implemented state even when runtime status is unavailable
+
+### Detection-Only Manager Slice
+- Added detection-only adapters in `helm-core`:
+  - `sparkle` (detect Sparkle-based updaters by local app bundle framework presence)
+  - `setapp` (detect Setapp app bundle presence/version)
+  - `parallels_desktop` (detect app bundle presence/version)
+- Added process-backed sources for all three detection-only managers using structured `defaults` reads for version probing
+- Added adapter test coverage for each detection-only manager:
+  - request-shape assertions
+  - detection parsing behavior
+  - unsupported action rejection
+- Wired detection-only adapters into FFI runtime initialization and manager status export:
+  - `isImplemented=true` now includes `sparkle`, `setapp`, `parallels_desktop`
+- Swift fallback metadata updated so detection-only managers reflect implemented state when runtime status is unavailable
+
+### Alpha.2 Scope Decision
+- Deferred manager self-update action surfacing for container/VM managers to a later milestone.
+- Alpha.2 scope finalized as:
+  - container/VM status adapters (`docker_desktop`, `podman`, `colima`)
+  - detection-only manager surfaces (`sparkle`, `setapp`, `parallels_desktop`)
+
+### Validation
+- `cargo test -p helm-core --manifest-path core/rust/Cargo.toml`
+- `cargo test -p helm-ffi --manifest-path core/rust/Cargo.toml`
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' -derivedDataPath /tmp/helmtests-deriveddata CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -only-testing:HelmTests test`
+- 0.14 manager capability sweep artifact:
+  - `docs/validation/v0.14.0-alpha.5-manager-capability-sweep.md`
+
+---
+
+## v0.14.0-alpha.3 Status
+
+### Security/Firmware Adapter Slice
+- Added `helm-core` adapters:
+  - `xcode_command_line_tools` (detect, refresh, list_installed, list_outdated, upgrade)
+  - `rosetta2` (detect, refresh, install)
+  - `firmware_updates` (detect, refresh via `softwareupdate --history`)
+- Added process-backed sources for all three adapters with structured command invocation:
+  - `pkgutil` receipt/version probing for Xcode CLT + Rosetta 2
+  - `softwareupdate --history` probing for firmware history state
+  - `softwareupdate --install-rosetta --agree-to-license` install path for Rosetta 2
+  - `softwareupdate -i <label>` upgrade path for Xcode CLT
+- Added fixtures + adapter tests for:
+  - version parsing
+  - request-shape/elevation assertions
+  - detection/status behavior
+  - unsupported-capability rejection
+- Wired new adapters into FFI runtime initialization and manager status export:
+  - `isImplemented=true` now includes:
+    - `xcode_command_line_tools`
+    - `rosetta2`
+    - `firmware_updates`
+- Swift fallback metadata updated so security/firmware managers reflect implemented state when runtime status is unavailable
+
+### Validation
+- `cargo test -p helm-core --manifest-path core/rust/Cargo.toml`
+- `cargo test -p helm-ffi --manifest-path core/rust/Cargo.toml`
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' -derivedDataPath /tmp/helmtests-deriveddata CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -only-testing:HelmTests test`
+
+---
+
+## v0.14.0-alpha.4 Status
+
+### Optional Manager Adapter Slice
+- Added `helm-core` adapters:
+  - `asdf`
+  - `macports`
+  - `nix_darwin`
+- Added process-backed sources for all three optional managers with XPC-safe PATH handling and structured command invocation
+- Hardened optional-manager execution in constrained service environments:
+  - `asdf` process source now resolves executable via structured `which` lookup with absolute-path fallback and rewrites request program paths
+  - `asdf` outdated scan now tolerates per-tool latest-version probe failures (skips failing tool probes instead of failing the full scan)
+- Implemented adapter capabilities for this slice:
+  - `asdf`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade (compatibility mode)
+  - `macports`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade
+  - `nix_darwin`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade (compatibility mode via `nix-env`)
+- Added fixtures + adapter tests for:
+  - version parsing
+  - installed/outdated/search parser behavior
+  - request-shape/elevation assertions
+  - execute-flow assertions
+- Wired new adapters into FFI runtime initialization and manager status export:
+  - `isImplemented=true` now includes:
+    - `asdf`
+    - `macports`
+    - `nix_darwin`
+- Swift fallback metadata updated so optional managers reflect implemented state when runtime status is unavailable
+
+### Validation
+- `cargo test -p helm-core --manifest-path core/rust/Cargo.toml`
+- `cargo test -p helm-ffi --manifest-path core/rust/Cargo.toml`
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' -derivedDataPath /tmp/helmtests-deriveddata CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -only-testing:HelmTests test`
+
+---
+
+## v0.14.0-alpha.5 Status
+
+### Homebrew Cask Adapter Slice
+- Added `helm-core` adapter:
+  - `homebrew_cask`
+- Added process-backed source with XPC-safe PATH handling and Homebrew environment guards
+- Implemented adapter capabilities for this slice:
+  - `homebrew_cask`: detect, refresh, list_installed, list_outdated
+- Added JSON-backed parsing for installed/outdated casks using structured Homebrew output (`--json=v2`)
+- Added fixtures + adapter tests for:
+  - request-shape assertions
+  - installed/outdated parsing behavior
+  - read-only execute flow + unsupported mutating action rejection
+- Wired adapter into FFI runtime initialization and manager status export:
+  - `isImplemented=true` now includes `homebrew_cask`
+- Swift fallback metadata updated so `homebrew_cask` reflects implemented state when runtime status is unavailable
+
+### Validation
+- `cargo test -p helm-core --manifest-path core/rust/Cargo.toml`
+- `cargo test -p helm-ffi --manifest-path core/rust/Cargo.toml`
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' -derivedDataPath /tmp/helmtests-deriveddata CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -only-testing:HelmTests test`
+
+---
+
+## v0.14.0-rc.1 Status
+
+### Release-Readiness Alignment
+- README and website release-status pages aligned to `v0.14.0-rc.1`
+- Workspace version bumped to `0.14.0-rc.1` in `core/rust/Cargo.toml`
+- Rust lockfile workspace package versions aligned:
+  - `helm-core` `0.14.0-rc.1`
+  - `helm-ffi` `0.14.0-rc.1`
+- Generated app version artifacts aligned:
+  - `apps/macos-ui/Generated/HelmVersion.swift` (`0.14.0-rc.1`)
+  - `apps/macos-ui/Generated/HelmVersion.xcconfig` (`MARKETING_VERSION=0.14.0`, `CURRENT_PROJECT_VERSION=1`)
+
+### Distribution/Licensing Planning Alignment (Documentation-Only)
+- Architecture and planning docs now reflect planned multi-channel distribution:
+  - MAS consumer build
+  - Developer ID consumer build (direct DMG + Homebrew + MacPorts)
+  - Setapp consumer build
+  - Helm Business fleet build (PKG + MDM)
+- Channel licensing authority and update authority are now documented as decoupled.
+- Sparkle scope is documented as direct Developer ID consumer build only.
+- Fleet lifecycle is documented as separate from consumer lifecycle.
+- These are roadmap/planning decisions only; channel-specific implementation work is still pending future milestones.
+
+### Remaining for Release Cut
+- Execute branch/tag release flow from `docs/RELEASE_CHECKLIST.md`:
+  - merge `dev` into `main`
+  - create/push `v0.14.0-rc.1` annotated tag
+
+---
+
 ## UI Redesign Artifacts (Integrated Baseline)
 
 - A complete redesign concept package now exists under `docs/ui/`:
@@ -261,6 +455,10 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
 - Dedicated upgrade preview UI surface is implemented in macOS Settings (execution-plan sections with manager breakdown)
 - Dry-run mode is exposed in the upgrade preview UI (simulation path with no task submission)
 - Onboarding flow updated with friendlier tone; guided walkthrough (spotlight/coach marks) now implemented
+- 0.14 manager inventory is scaffolded in metadata; alpha.2/alpha.3/alpha.4 delivered container/VM, detection-only, security/firmware, and optional-manager slices
+- Optional-manager compatibility caveats:
+  - `asdf` support currently assumes plugin already exists; Helm currently manages install/uninstall/upgrade of tool versions, not plugin bootstrap/removal
+  - `nix_darwin` support currently operates through `nix-env` compatibility flows and does not edit declarative nix-darwin configuration files
 - No self-update mechanism yet
 - Limited diagnostics UI
 - No CLI interface
@@ -277,13 +475,14 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
 
 ## Summary
 
-Helm is a **functional control plane for 15 managers** with:
+Helm is a **functional control plane for 28 implemented managers** with:
 
 - Working orchestration
 - Task system
 - Pinning and policy
 - Localization foundation (6 locales at full key parity)
+- 0.14 platform/detection/optional manager rollout implemented
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-Architecture cleanup completed in beta.5. Remaining work is **validation, hardening, and documentation toward 0.13.x stable**.
+0.13.x stable has shipped. `0.14.0-rc.1` is staged with manager rollout + version/docs alignment complete; remaining work is final branch/tag release execution and follow-on milestones (0.15+).

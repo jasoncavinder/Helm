@@ -65,6 +65,8 @@ struct ManagerStatus: Codable {
     let executablePath: String?
     let enabled: Bool
     let isImplemented: Bool
+    let isOptional: Bool
+    let isDetectionOnly: Bool
 }
 
 final class HelmCore: ObservableObject {
@@ -257,8 +259,13 @@ final class HelmCore: ObservableObject {
         onboardingDetectionAnchorTaskId = max(lastObservedTaskId, visibleMaxTaskId)
 
         let enabledImplementedManagers = Set(
-            ManagerInfo.implemented
-                .filter { managerStatuses[$0.id]?.enabled ?? true }
+            ManagerInfo.all
+                .filter {
+                    let status = managerStatuses[$0.id]
+                    let isImplemented = status?.isImplemented ?? $0.isImplemented
+                    let isEnabled = status?.enabled ?? true
+                    return isImplemented && isEnabled
+                }
                 .map(\.id)
         )
         onboardingDetectionPendingManagers = enabledImplementedManagers

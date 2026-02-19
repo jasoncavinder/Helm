@@ -2,7 +2,7 @@
 
 This document describes the current SwiftUI architecture of the Helm macOS app.
 
-It reflects the actual implementation as of v0.13.0-rc.1.
+It reflects the actual implementation as of v0.14.0-rc.1.
 
 ---
 
@@ -188,7 +188,7 @@ Uses `SpotlightAnchorKey` preference system with even-odd fill cutout and animat
 | `TaskItem` | Models/Task.swift | id, description, status, managerId, taskType, labelKey, labelArgs |
 | `ManagerInfo` | Models/ManagerInfo.swift | id, displayName, category, authority, capabilities, isImplemented |
 
-`ManagerInfo.all` defines metadata for all 16 known managers (15 implemented + HomebrewCask as `isImplemented: false`).
+`ManagerInfo.all` defines metadata for the full 0.14 manager inventory (28 managers) with optional and detection-only flags.
 
 ---
 

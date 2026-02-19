@@ -1,0 +1,2 @@
+these 1 derivations will be built:
+upgrading 'hello-2.12.1' to 'hello-2.12.2'

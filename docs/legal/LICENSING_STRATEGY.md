@@ -90,103 +90,26 @@ Helm’s licensing strategy will prioritize:
 
 ---
 
-## 5. Product Editions (Planned)
+## 5. Product and Edition Model (Planned)
 
-Helm is being designed as a **multi-edition product**, not just a codebase.
+Helm is being designed as two products:
 
-### Planned Editions
+- **Helm (Consumer)** with Free + Pro entitlement-gated capabilities
+- **Helm Business (Fleet)** as a separate product lifecycle for organizational governance
 
-#### Free Edition
-
-- Core functionality
-- Local device management
-- Basic update orchestration
-- No organizational features
-
-#### Pro Edition
-
-- Advanced workflows
-- Automation features
-- Enhanced UI/UX
-- Extended integrations
-
-#### Business Edition
-
-- Policy enforcement
-- Organization-wide management
-- Compliance and audit features
-- Managed environments
-- Role-based access
-
-### Implementation
-
-Edition differences will be enforced via:
-
-- Feature gating
-- Entitlement systems
-- Configuration policies
+Edition differences are planned to be enforced via runtime feature gating and entitlement verification.
 
 ---
 
-## 6. Potential Licensing Models (Under Consideration)
+## 6. Licensing Model Selection Status
 
-Helm has not yet committed to a final post-1.0 licensing model.
+The exact post-1.0 legal license model remains intentionally flexible.
 
-The following approaches are under consideration:
+However, distribution and entitlement architecture direction is now defined for planning:
 
----
-
-### Option A — Proprietary Source-Available
-
-- Source remains visible
-- Commercial use requires a paid license
-- Redistribution is restricted
-
-**Pros:**
-- Maximum control
-- Strong monetization
-
-**Cons:**
-- Not open source
-- Lower community adoption
-
----
-
-### Option B — Open Core
-
-- Core functionality is open source (permissive license)
-- Advanced features remain proprietary
-
-**Pros:**
-- Community adoption
-- Commercial viability
-
-**Cons:**
-- Increased maintenance complexity
-- Potential fragmentation
-
----
-
-### Option C — Full Open Source + Commercial Add-Ons
-
-- Entire codebase open source
-- Revenue via hosted services, enterprise tools, or support
-
-**Pros:**
-- Maximum adoption
-- Strong community contributions
-
-**Cons:**
-- Weaker control over monetization
-- Risk of competitive forks
-
----
-
-### Current Position
-
-Helm has **not yet selected a final model**.
-
-The architecture is being designed to support multiple possible outcomes.
+- Consumer and fleet products have separate release lifecycles.
+- Licensing authority is channel-specific.
+- Update authority is channel-specific and decoupled from licensing authority.
 
 ---
 
@@ -211,19 +134,21 @@ Helm is expected to evolve its licensing model at or after version 1.0.
 
 ## 8. Binary Distribution
 
-Helm may be distributed via:
+Planned distribution matrix:
 
-- GitHub Releases
-- Package managers
-- Installer tools
-- Third-party distribution systems
+| Artifact | Product | Channel | Licensing Authority | Update Authority |
+|---|---|---|---|---|
+| Helm (MAS build) | Helm (Consumer) | Mac App Store | App Store commerce/receipt model | Mac App Store |
+| Helm (Developer ID build) | Helm (Consumer) | Direct DMG, Homebrew, MacPorts | Helm consumer entitlement model | Sparkle (direct channel only) |
+| Helm (Setapp build) | Helm (Consumer) | Setapp | Setapp subscription/license model | Setapp |
+| Helm Business (Fleet build) | Helm Business | Enterprise PKG deployment | Offline organizational license files | Admin-controlled PKG/MDM rollout |
 
-### Policy Direction
+Policy direction:
 
-- Official binaries will be distributed by the Helm project
-- Redistribution of unmodified binaries may be allowed
-- Redistribution of modified versions may be restricted
-- Branding may not be used without permission
+- Official binaries are distributed by the Helm project and approved channel partners.
+- Sparkle is planned only for the direct Developer ID consumer build.
+- Sparkle is not planned for MAS, Setapp, or Helm Business fleet builds.
+- Homebrew and MacPorts are planned to redistribute the same Developer ID consumer binary.
 
 ---
 
@@ -280,10 +205,9 @@ Helm is currently:
 Helm is expected to become:
 
 - Commercially available
-- Multi-edition (Free / Pro / Business)
+- Multi-product (Helm Consumer + Helm Business fleet)
+- Multi-edition where applicable (Free / Pro for consumer)
 - Sustainable and professionally supported
-
-The exact licensing model remains intentionally flexible.
 
 ---
 

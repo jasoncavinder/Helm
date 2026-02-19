@@ -4,6 +4,28 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.14.0-rc.1] - 2026-02-19
+
+### Added
+- Completed 0.14 manager rollout across alpha.1–alpha.5 slices:
+  - container/VM managers: Docker Desktop, podman, colima
+  - detection-only managers: Sparkle, Setapp, Parallels Desktop
+  - security/firmware managers: Xcode Command Line Tools, Rosetta 2, Firmware Updates
+  - optional managers: asdf, MacPorts, nix-darwin
+  - app-store status manager: Homebrew casks (`homebrew_cask`)
+- Added capability/implementation sweep artifact for 0.14 manager inventory:
+  - `docs/validation/v0.14.0-alpha.5-manager-capability-sweep.md`
+- Added distribution/licensing planning documentation for future-state architecture:
+  - multi-channel build matrix (MAS, Developer ID, Setapp, Fleet)
+  - channel licensing-vs-update authority mapping
+  - staged milestone planning for Sparkle, MAS, Setapp, Fleet, PKG/MDM, offline licensing
+
+### Changed
+- FFI manager status now reflects full 0.14 implementation baseline (`isImplemented=true` for all registry managers).
+- Optional managers remain default-disabled when no explicit preference is stored (`asdf`, `macports`, `nix_darwin`).
+- Swift fallback metadata aligned to 0.14 manager implementation coverage.
+- Clarified consumer vs fleet product lifecycle separation in architecture and enterprise planning docs (documentation-only; implementation pending).
+
 ## [0.13.0] - 2026-02-19
 
 ### Added

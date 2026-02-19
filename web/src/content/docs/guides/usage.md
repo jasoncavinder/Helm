@@ -31,22 +31,24 @@ Selecting any task, package, or manager in the Control Center opens the **inspec
 
 ## Supported Managers
 
-Helm supports fifteen package managers across four categories:
+Helm currently supports twenty-eight managers across six categories:
 
 | Category | Managers |
 |---------|----------|
-| **Toolchain / Runtime** | mise, rustup |
-| **System / OS / App Store** | Homebrew, softwareupdate, mas |
-| **Core Language** | npm (global), pipx, pip (global), Cargo, cargo-binstall |
-| **Extended Language** | pnpm (global), yarn (global), Poetry (self/plugins), RubyGems, Bundler |
+| **Toolchain / Runtime** | mise, asdf (optional), rustup |
+| **System / OS** | Homebrew (formulae), softwareupdate, MacPorts (optional), nix-darwin (optional) |
+| **Language** | npm (global), pnpm (global), yarn (global), Poetry (self/plugins), RubyGems, Bundler, pip (global), pipx, Cargo, cargo-binstall |
+| **App / GUI** | mas, Homebrew casks, Sparkle updaters (detection-only), Setapp (detection-only) |
+| **Container / VM** | Docker Desktop, podman, colima, Parallels Desktop (detection-only) |
+| **Security / Firmware** | Xcode Command Line Tools, Rosetta 2, Firmware Updates |
 
 ## Refreshing
 
 Click the refresh button to update all package data. Helm refreshes managers in a **3-phase authority model**:
 
-1. **Authoritative** (mise, rustup) — toolchain managers that define the runtime environment; refreshed first
-2. **Standard** (npm, pnpm, yarn, pip, pipx, cargo, cargo-binstall, RubyGems, Poetry, Bundler, mas) — language and app store managers
-3. **Guarded** (Homebrew, softwareupdate) — system-level managers that may require privileges or restarts; refreshed last
+1. **Authoritative** (mise, asdf, rustup) — toolchain managers that define the runtime environment; refreshed first
+2. **Standard** (language, app/GUI, and container managers) — includes npm/pnpm/yarn/pip/pipx/cargo/cargo-binstall/RubyGems/Poetry/Bundler, plus mas/homebrew_cask/docker/podman/colima and detection-only app/container signals
+3. **Guarded** (Homebrew/system managers) — Homebrew, softwareupdate, MacPorts, nix-darwin, Xcode CLT, Rosetta 2, Firmware Updates; refreshed last
 
 Within each phase, managers refresh in parallel. If one manager fails, the others continue unaffected.
 
