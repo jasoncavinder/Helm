@@ -15,7 +15,8 @@ extension HelmCore {
                         self?.activeTasks[idx] = TaskItem(
                             id: task.id,
                             description: task.description,
-                            status: "Cancelled"
+                            status: "Cancelled",
+                            managerId: task.managerId
                         )
                     }
                     self?.postAccessibilityAnnouncement(
@@ -221,7 +222,8 @@ extension HelmCore {
                 TaskItem(
                     id: idString,
                     description: description,
-                    status: "Queued"
+                    status: "Queued",
+                    managerId: managerId
                 ),
                 at: 0
             )

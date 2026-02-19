@@ -91,7 +91,8 @@ extension HelmCore {
                                     "task_type": self?.localizedTaskType(task.taskType) ?? task.taskType.capitalized,
                                     "manager": managerName
                                 ]),
-                            status: task.status.capitalized
+                            status: task.status.capitalized,
+                            managerId: task.manager
                         )
                     }
                     self?.syncManagerOperations(from: coreTasks)

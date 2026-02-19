@@ -66,17 +66,15 @@ extension HelmCore {
             return .notInstalled
         }
 
-        let managerName = localizedManagerDisplayName(managerId)
-
         let hasFailedTask = activeTasks.contains {
-            $0.status.lowercased() == "failed" && $0.description.localizedCaseInsensitiveContains(managerName)
+            $0.status.lowercased() == "failed" && $0.managerId == managerId
         }
 
         if hasFailedTask {
             return .error
         }
         if activeTasks.contains(where: {
-            $0.isRunning && $0.description.localizedCaseInsensitiveContains(managerName)
+            $0.isRunning && $0.managerId == managerId
         }) {
             return .running
         }

@@ -4,6 +4,7 @@ struct TaskItem: Identifiable {
     let id: String
     let description: String
     let status: String
+    let managerId: String?
 
     var isRunning: Bool {
         let s = status.lowercased()
