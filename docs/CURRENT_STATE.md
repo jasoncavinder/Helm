@@ -8,7 +8,7 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.13.0-beta.3**
+Current version: **0.13.0-beta.4**
 
 See:
 - CHANGELOG.md
@@ -80,7 +80,7 @@ Localization coverage:
 - `v0.12.0-beta.1` on-device overflow validation captured at `docs/validation/v0.12.0-beta.1-visual-overflow.md` (Settings surface checks passing)
 - Expanded on-device overflow validation coverage for onboarding/navigation/packages/managers captured at `docs/validation/v0.12.0-beta.2-visual-overflow-expansion.md`
 - Manager display-name localization keys now cover upgrade-preview/task-fallback manager labels (including software update/app store naming)
-- Redesign-specific keys (control center sidebar labels, walkthrough content, additional task names) still require non-English locale rollout
+- All walkthrough keys (31 keys) translated and validated across all 6 locales
 
 Validation snapshot for `v0.11.0-beta.1` expansion:
 
@@ -181,6 +181,8 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
   - manager health state model includes a dedicated gray "Not Installed" badge for undetected managers
   - inspector pane for manager/package context
   - live wiring to `HelmCore` data/actions for refresh, upgrade, package actions, and manager operations
+  - guided onboarding walkthrough with SpotlightOverlay system (6 popover steps + 7 control center steps)
+  - WalkthroughManager with UserDefaults persistence, skip, and replay from Settings
 - Release packaging now includes a GitHub Actions workflow for signed universal DMG artifacts:
   - workflow: `.github/workflows/release-macos-dmg.yml`
   - output assets: versioned `Helm-<tag>-macos-universal.dmg` plus stable `Helm.dmg`
@@ -196,17 +198,17 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
 - Priority 2 extended language-manager expansion is complete at this checkpoint:
   - Implemented: pnpm (global), yarn (global), RubyGems, Poetry (self/plugins), Bundler
   - Pending: none
-- Redesign integration is functional with layered popover UX + control-center search; accessibility labels and semantic grouping implemented; still needs keyboard traversal validation, onboarding walkthrough, and UI layer purity cleanup
+- Redesign integration is functional with layered popover UX + control-center search; accessibility labels and semantic grouping implemented; onboarding walkthrough delivered; still needs keyboard traversal validation and UI layer purity cleanup
 - Keyboard-only traversal validation still pending (Tab order, Escape behavior, focusable modifiers not systematically applied)
 - Minor business logic in view layer (search merge, safe-mode badge filtering, task-to-manager inference) needs extraction to HelmCore
-- New redesign and onboarding walkthrough localization keys require non-English locale rollout parity
+- All walkthrough and redesign localization keys have been rolled out to all 6 locales
 - No XPC call timeout enforcement (hung service could stall UI)
 - Overflow validation now has both heuristic and on-device executable coverage for Settings, onboarding, navigation, package filters, and manager labels/states
 - Upgrade-all transparency now provides summary counts + top manager breakdown in confirmation flow
 - Upgrade-preview filtering/sorting logic now has dedicated macOS UI unit coverage (`HelmTests/UpgradePreviewPlannerTests`)
 - Dedicated upgrade preview UI surface is implemented in macOS Settings (execution-plan sections with manager breakdown)
 - Dry-run mode is exposed in the upgrade preview UI (simulation path with no task submission)
-- Onboarding flow is functional but needs friendlier tone and guided walkthrough (spotlight/coach marks)
+- Onboarding flow updated with friendlier tone; guided walkthrough (spotlight/coach marks) now implemented
 - No self-update mechanism yet
 - Limited diagnostics UI
 - No CLI interface
@@ -232,4 +234,4 @@ Helm is a **functional control plane for 15 managers** with:
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-Remaining work is **keyboard traversal validation, onboarding walkthrough, architecture cleanup, and localization parity toward 0.13.x stable**.
+Remaining work is **keyboard traversal validation, architecture cleanup, and hardening toward 0.13.x stable**.

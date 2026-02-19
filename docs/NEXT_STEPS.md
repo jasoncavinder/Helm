@@ -23,11 +23,10 @@ Focus:
 - Validation and hardening
 
 Current checkpoint:
-- `v0.13.0-beta.3` released (accessibility, task cancellation, CI test enforcement, HelmCore/DashboardView decomposition)
+- `v0.13.0-beta.4` released (walkthrough system, localization parity, onboarding tone refresh)
 - Full codebase audit completed 2026-02-17 (Rust core, SwiftUI UI, XPC, localization, CI/CD)
 
 Next release targets:
-- `v0.13.0-beta.4` — Localization parity + onboarding walkthrough
 - `v0.13.0-beta.5` — Architecture cleanup + UI purity
 - `v0.13.0-beta.6` — Validation + hardening + documentation
 
@@ -75,75 +74,27 @@ Delivered:
 
 ---
 
-## v0.13.0-beta.4 — Localization Parity + Onboarding Walkthrough
+## v0.13.0-beta.4 — Localization Parity + Onboarding Walkthrough (Completed)
 
-### Localization Parity
+### Localization Parity (Completed)
 
-Implement:
+Delivered:
 
-- Audit all redesign-specific UI surfaces for missing localization keys:
-  - Control center sidebar section labels (Overview, Updates, Packages, Tasks, Managers, Settings)
-  - Task names and descriptions in task list and popover
-  - Inspector pane labels and actions
-  - Upgrade preview section headers and dry-run labels
-  - Manager health state labels (Healthy, Warning, Error, Not Installed)
-  - Status badge descriptions and tooltip text
-  - Right-click context menu items
-  - About panel content
-  - Any other surfaces added or modified in the 0.13.x redesign
-- Add missing keys to `en` locale files first, then roll out to all 5 non-English locales (es, de, fr, pt-BR, ja)
-- Fix Spanish accent typo: "Actualizacion" → "Actualización" in `locales/es/app.json`
-- Run `check_locale_integrity.sh` to verify key parity and placeholder consistency
-- Run `check_locale_lengths.sh` to verify no overflow-risk regressions
+- ✅ 31 walkthrough L10n keys added to `en` and translated across all 5 non-English locales
+- ✅ All locale integrity and overflow checks passing
+- ✅ Spanish accent typo previously fixed in beta.3
 
-### Onboarding Walkthrough Redesign
+### Onboarding Walkthrough Redesign (Completed)
 
-Implement:
+Delivered:
 
-- Update existing onboarding steps (Welcome → Detection → Configure) with friendlier tone:
-  - Warmer welcome copy that explains Helm's value proposition simply
-  - More encouraging detection step with progress feedback
-  - Clearer configuration step with sensible defaults and brief explanations
-  - Localize all updated copy across all 6 locales
-
-- Add guided walkthrough after onboarding setup completes:
-
-  **Spotlight/Coach Marks System:**
-  - Implement a reusable `SpotlightOverlay` view component:
-    - Full-screen dimmed overlay with a transparent cutout around the target element
-    - Descriptive tooltip/card adjacent to the cutout explaining the focused feature
-    - "Next" / "Skip" / step indicator controls
-    - Smooth transition between spotlight targets
-    - Respect `accessibilityReduceMotion` for transitions
-    - VoiceOver-compatible: announce step descriptions, support Skip via accessibility action
-
-  **Popover Walkthrough (4–6 steps):**
-  - Step 1: Status icon — "This is your Helm status icon. It shows your system health at a glance."
-  - Step 2: Updates banner — "When updates are available, they appear here. Tap to upgrade all at once."
-  - Step 3: Active tasks — "Running operations appear here so you always know what Helm is doing."
-  - Step 4: Manager summary — "A quick snapshot of your detected package managers and their status."
-  - Step 5: Footer actions — "Search packages, open settings, or access the full control center from here."
-  - Step 6: Quick search — "Search across all your package managers instantly."
-
-  **Control Center Walkthrough (5–7 steps):**
-  - Step 1: Sidebar navigation — "Navigate between sections to manage your entire development environment."
-  - Step 2: Overview — "Your system health dashboard. See everything at a glance."
-  - Step 3: Packages — "Browse, search, install, and manage packages across all managers."
-  - Step 4: Tasks — "Every operation Helm runs is tracked here. Cancel running tasks anytime."
-  - Step 5: Managers — "Enable, disable, and monitor your package managers."
-  - Step 6: Settings — "Configure safe mode, language, and automatic update policies."
-  - Step 7: Upgrade preview — "Preview exactly what will happen before running upgrades."
-
-  **Walkthrough State Management:**
-  - Track walkthrough completion in UserDefaults (separate from onboarding completion)
-  - Allow skipping at any point
-  - Allow re-triggering from Settings ("Replay Walkthrough" action)
-  - Do not block app usage — walkthrough is dismissible at every step
-
-  **Localization:**
-  - Add all walkthrough step titles and descriptions to `app.json` under `app.walkthrough.*` key namespace
-  - Translate across all 6 locales (en, es, de, fr, pt-BR, ja)
-  - Run overflow validation for walkthrough tooltip content
+- ✅ Onboarding copy updated across all 6 locales for friendlier tone (warmer subtitle, encouraging detection feedback, reassuring configure fallback)
+- ✅ Reusable `SpotlightOverlay` component with anchor preference system, even-odd fill cutout, animated transitions, `accessibilityReduceMotion` support, and VoiceOver compatibility
+- ✅ `WalkthroughManager` singleton with UserDefaults persistence (separate from onboarding), step progression, skip, and reset
+- ✅ Popover walkthrough (6 steps): health badge, attention banner, active tasks, manager snapshot, footer actions, search field
+- ✅ Control center walkthrough (7 steps): sidebar, overview, packages, tasks, managers, settings, updates — with auto-navigation on step advance
+- ✅ "Replay Walkthrough" action in Settings advanced grid
+- ✅ All walkthrough L10n keys translated across 6 locales with overflow validation passing
 
 ---
 
@@ -357,11 +308,11 @@ Implement:
 
 ## Summary
 
-The 0.13.x milestone is structured across four remaining beta releases:
+The 0.13.x milestone is structured across two remaining beta releases:
 
-- **beta.3**: Accessibility (VoiceOver, keyboard, semantic grouping), task cancellation UI, CI test enforcement
-- **beta.4**: Localization parity (redesign + walkthrough keys across 6 locales), onboarding walkthrough with spotlight/coach marks
-- **beta.5**: Architecture cleanup (UI purity fixes, HelmCore decomposition, legacy removal, XPC robustness)
+- **beta.3**: Accessibility (VoiceOver, keyboard, semantic grouping), task cancellation UI, CI test enforcement — **completed**
+- **beta.4**: Localization parity (redesign + walkthrough keys across 6 locales), onboarding walkthrough with spotlight/coach marks — **completed**
+- **beta.5**: Architecture cleanup (UI purity fixes, legacy removal, XPC robustness, keyboard traversal)
 - **beta.6**: Validation sweep (on-device locale validation, usability test plan, Rust hardening, documentation alignment)
 
 The goal is **closing 0.13.x as a stable, accessible, well-tested redesign checkpoint** before moving to platform expansion (0.14.x).
