@@ -35,19 +35,6 @@ struct SettingsSectionView: View {
         managerBadges(for: core.visibleManagers.map(\.id))
     }
 
-    private var upgradeActionBadges: [SettingsActionBadge] {
-        managerBadges(for: core.upgradeActionManagerIds).map { badge in
-            guard badge.managerId == "softwareupdate", core.safeModeEnabled else { return badge }
-            return SettingsActionBadge(
-                id: "softwareupdate-blocked",
-                managerId: "softwareupdate",
-                label: localizedManagerDisplayName("softwareupdate"),
-                symbol: "nosign",
-                tint: .red
-            )
-        }
-    }
-
     private func managerBadges(for managerIds: [String], maxCount: Int = 3) -> [SettingsActionBadge] {
         let ordered = Array(Set(managerIds)).sorted {
             localizedManagerDisplayName($0).localizedCaseInsensitiveCompare(localizedManagerDisplayName($1)) == .orderedAscending
@@ -158,20 +145,12 @@ struct SettingsSectionView: View {
                         SettingsActionButton(
                             title: L10n.App.Settings.Action.refreshNow.localized,
                             badges: refreshActionBadges,
-                            isProminent: false
+                            isProminent: false,
+                            useSystemStyle: true
                         ) {
                             core.triggerRefresh()
                         }
                         .disabled(core.isRefreshing)
-
-                        SettingsActionButton(
-                            title: L10n.App.Settings.Action.upgradeAll.localized,
-                            badges: upgradeActionBadges,
-                            isProminent: true
-                        ) {
-                            context.showUpgradeSheet = true
-                        }
-                        .disabled(core.outdatedPackages.isEmpty)
 
                         SettingsActionButton(
                             title: L10n.App.Settings.Action.reset.localized,

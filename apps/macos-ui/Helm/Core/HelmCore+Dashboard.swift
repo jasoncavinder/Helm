@@ -45,16 +45,6 @@ extension HelmCore {
         return .healthy
     }
 
-    /// Manager IDs that should show upgrade action badges.
-    /// Includes managers with outdated packages, plus softwareupdate when safe mode blocks it.
-    var upgradeActionManagerIds: [String] {
-        var managerIds = Set(outdatedPackages.map(\.managerId))
-        if safeModeEnabled {
-            managerIds.insert("softwareupdate")
-        }
-        return Array(managerIds)
-    }
-
     /// Returns a filtered and deduplicated package list.
     /// Merges local matches with remote search results (deduped by ID),
     /// then applies optional manager and status filters.
