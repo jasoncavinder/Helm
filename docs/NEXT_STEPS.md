@@ -450,8 +450,8 @@ Delivered:
 ### Next Up (Release Execution)
 
 - Branch/PR execution:
-  - merge release finalization branch into `dev`
-  - open PR from `dev` to `main` and run CI checks
+  - ✅ merge release finalization branch into `dev`
+  - ✅ open PR from `dev` to `main` and run CI checks (`#60`)
 - Release finalization:
   - merge `dev` into `main`
   - create/push annotated tag `v0.14.0`
@@ -567,4 +567,4 @@ Implement:
 - Manager capability sweep artifact is now in place for 0.14 release prep (`docs/validation/v0.14.0-alpha.5-manager-capability-sweep.md`).
 - 0.14 stable release alignment for `v0.14.0` is complete (README/website + version artifacts).
 - Distribution/licensing future-state planning documentation is aligned for 0.14 release notes and roadmap planning (no implementation yet).
-- Next slice is branch/PR/tag release execution for `v0.14.0`, then 0.15.x delivery.
+- Remaining slice is CI completion on PR `#60`, final merge/tag execution for `v0.14.0`, then 0.15.x delivery.

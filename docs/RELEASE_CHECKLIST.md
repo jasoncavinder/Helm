@@ -25,8 +25,8 @@ This checklist is required before creating a release tag on `main`.
 - [x] Generated app version artifacts aligned to `0.14.0`.
 
 ### Branch and Tag
-- [ ] Release finalization branch merged to `dev`.
-- [ ] PR opened from `dev` to `main` for `v0.14.0` and CI checks running.
+- [x] Release finalization branch merged to `dev`.
+- [x] PR opened from `dev` to `main` for `v0.14.0` and CI checks running (`#60`).
 - [ ] `dev` merged into `main` for release.
 - [ ] Create annotated tag: `git tag -a v0.14.0 -m "Helm v0.14.0"`
 - [ ] Push tag: `git push origin v0.14.0`
