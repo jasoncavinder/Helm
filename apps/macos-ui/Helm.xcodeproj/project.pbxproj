@@ -59,6 +59,8 @@
 		F20000000000000000000001 /* PopoverHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000001 /* PopoverHelpers.swift */; };
 		F20000000000000000000002 /* PopoverOverlayViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000002 /* PopoverOverlayViews.swift */; };
 		F20000000000000000000003 /* ControlCenterSectionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000003 /* ControlCenterSectionViews.swift */; };
+		G20000000000000000000001 /* L10n+App.swift in Sources */ = {isa = PBXBuildFile; fileRef = G10000000000000000000001 /* L10n+App.swift */; };
+		G20000000000000000000002 /* AppDelegate+Windows.swift in Sources */ = {isa = PBXBuildFile; fileRef = G10000000000000000000002 /* AppDelegate+Windows.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -146,6 +148,8 @@
 		F10000000000000000000001 /* PopoverHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverHelpers.swift; sourceTree = "<group>"; };
 		F10000000000000000000002 /* PopoverOverlayViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverOverlayViews.swift; sourceTree = "<group>"; };
 		F10000000000000000000003 /* ControlCenterSectionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlCenterSectionViews.swift; sourceTree = "<group>"; };
+		G10000000000000000000001 /* L10n+App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "L10n+App.swift"; sourceTree = "<group>"; };
+		G10000000000000000000002 /* AppDelegate+Windows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppDelegate+Windows.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -230,6 +234,7 @@
 				B10000000000000000000015 /* LocalizationManager.swift */,
 				B10000000000000000000016 /* String+Localization.swift */,
 				B10000000000000000000017 /* L10n.swift */,
+				G10000000000000000000001 /* L10n+App.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -323,6 +328,7 @@
 				8CFB6D4C2F3D1D1D002372B8 /* Views */,
 				A10000020000000000000001 /* HelmApp.swift */,
 				A10000020000000000000002 /* AppDelegate.swift */,
+				G10000000000000000000002 /* AppDelegate+Windows.swift */,
 				A30000000000000000000001 /* HelmVersion.swift */,
 				A10000020000000000000003 /* Assets.xcassets */,
 				A10000020000000000000004 /* Helm.entitlements */,
@@ -591,6 +597,8 @@
 				F20000000000000000000001 /* PopoverHelpers.swift in Sources */,
 				F20000000000000000000002 /* PopoverOverlayViews.swift in Sources */,
 				F20000000000000000000003 /* ControlCenterSectionViews.swift in Sources */,
+				G20000000000000000000001 /* L10n+App.swift in Sources */,
+				G20000000000000000000002 /* AppDelegate+Windows.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
