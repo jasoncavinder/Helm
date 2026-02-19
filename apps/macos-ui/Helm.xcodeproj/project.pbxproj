@@ -38,6 +38,7 @@
 		B20000000000000000000012 /* OnboardingWelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000012 /* OnboardingWelcomeView.swift */; };
 		B20000000000000000000013 /* OnboardingDetectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000013 /* OnboardingDetectionView.swift */; };
 		B20000000000000000000014 /* OnboardingConfigureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000014 /* OnboardingConfigureView.swift */; };
+		D20000000000000000000010 /* OnboardingSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000010 /* OnboardingSettingsView.swift */; };
 		B20000000000000000000015 /* LocalizationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000015 /* LocalizationManager.swift */; };
 		B20000000000000000000016 /* String+Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000016 /* String+Localization.swift */; };
 		B20000000000000000000017 /* L10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000017 /* L10n.swift */; };
@@ -120,6 +121,7 @@
 		B10000000000000000000012 /* OnboardingWelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWelcomeView.swift; sourceTree = "<group>"; };
 		B10000000000000000000013 /* OnboardingDetectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingDetectionView.swift; sourceTree = "<group>"; };
 		B10000000000000000000014 /* OnboardingConfigureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingConfigureView.swift; sourceTree = "<group>"; };
+		D10000000000000000000010 /* OnboardingSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingSettingsView.swift; sourceTree = "<group>"; };
 		B10000000000000000000015 /* LocalizationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationManager.swift; sourceTree = "<group>"; };
 		B10000000000000000000016 /* String+Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+Localization.swift"; sourceTree = "<group>"; };
 		B10000000000000000000017 /* L10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L10n.swift; sourceTree = "<group>"; };
@@ -345,6 +347,7 @@
 			children = (
 				B10000000000000000000011 /* OnboardingContainerView.swift */,
 				B10000000000000000000014 /* OnboardingConfigureView.swift */,
+				D10000000000000000000010 /* OnboardingSettingsView.swift */,
 				B10000000000000000000013 /* OnboardingDetectionView.swift */,
 				B10000000000000000000012 /* OnboardingWelcomeView.swift */,
 			);
@@ -562,6 +565,7 @@
 				B20000000000000000000012 /* OnboardingWelcomeView.swift in Sources */,
 				B20000000000000000000013 /* OnboardingDetectionView.swift in Sources */,
 				B20000000000000000000014 /* OnboardingConfigureView.swift in Sources */,
+				D20000000000000000000010 /* OnboardingSettingsView.swift in Sources */,
 				D20000000000000000000001 /* ControlCenterModels.swift in Sources */,
 				D20000000000000000000002 /* HelmButtonStyles.swift in Sources */,
 				D20000000000000000000003 /* ControlCenterViews.swift in Sources */,
