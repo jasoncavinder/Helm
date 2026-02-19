@@ -48,7 +48,7 @@ enum WalkthroughSteps {
             titleKey: L10n.App.Walkthrough.Popover.Step3.title,
             descriptionKey: L10n.App.Walkthrough.Popover.Step3.description,
             targetAnchor: "activeTasks",
-            tooltipEdge: .bottom
+            tooltipEdge: .top
         ),
         WalkthroughStepDefinition(
             id: "popover_4",

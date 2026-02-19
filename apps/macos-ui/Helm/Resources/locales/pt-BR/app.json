@@ -234,7 +234,7 @@
   "app.walkthrough.popover.step4.title": "Visão dos gerenciadores",
   "app.walkthrough.popover.step4.description": "Um resumo rápido dos gerenciadores de pacotes detectados e seu status.",
   "app.walkthrough.popover.step5.title": "Ações do rodapé",
-  "app.walkthrough.popover.step5.description": "Pesquise pacotes, abra configurações ou acesse o painel de controle completo daqui.",
+  "app.walkthrough.popover.step5.description": "Veja a versão, abra configurações ou encerre o Helm daqui.",
   "app.walkthrough.popover.step6.title": "Pesquisa rápida",
   "app.walkthrough.popover.step6.description": "Pesquise em todos os seus gerenciadores de pacotes instantaneamente.",
 

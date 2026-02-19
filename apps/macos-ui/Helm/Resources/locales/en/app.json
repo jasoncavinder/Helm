@@ -234,7 +234,7 @@
   "app.walkthrough.popover.step4.title": "Manager Snapshot",
   "app.walkthrough.popover.step4.description": "A quick snapshot of your detected package managers and their status.",
   "app.walkthrough.popover.step5.title": "Footer Actions",
-  "app.walkthrough.popover.step5.description": "Search packages, open settings, or access the full control center from here.",
+  "app.walkthrough.popover.step5.description": "Check version info, open settings, or quit Helm from here.",
   "app.walkthrough.popover.step6.title": "Quick Search",
   "app.walkthrough.popover.step6.description": "Search across all your package managers instantly.",
 

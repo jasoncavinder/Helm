@@ -234,7 +234,7 @@
   "app.walkthrough.popover.step4.title": "マネージャー概要",
   "app.walkthrough.popover.step4.description": "検出されたパッケージマネージャーとその状態の概要です。",
   "app.walkthrough.popover.step5.title": "フッターアクション",
-  "app.walkthrough.popover.step5.description": "ここからパッケージを検索、設定を開く、またはコントロールセンターにアクセスできます。",
+  "app.walkthrough.popover.step5.description": "バージョン情報の確認、設定を開く、またはHelmを終了できます。",
   "app.walkthrough.popover.step6.title": "クイック検索",
   "app.walkthrough.popover.step6.description": "すべてのパッケージマネージャーを横断して即座に検索できます。",
 

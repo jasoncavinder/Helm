@@ -234,7 +234,7 @@
   "app.walkthrough.popover.step4.title": "Manager-Übersicht",
   "app.walkthrough.popover.step4.description": "Ein schneller Überblick über deine erkannten Paketmanager und deren Status.",
   "app.walkthrough.popover.step5.title": "Fußzeilenaktionen",
-  "app.walkthrough.popover.step5.description": "Suche Pakete, öffne Einstellungen oder greife von hier auf das Control Center zu.",
+  "app.walkthrough.popover.step5.description": "Versionsinformationen, Einstellungen öffnen oder Helm von hier beenden.",
   "app.walkthrough.popover.step6.title": "Schnellsuche",
   "app.walkthrough.popover.step6.description": "Durchsuche alle deine Paketmanager sofort.",
 

@@ -159,6 +159,7 @@ struct SpotlightOverlay: View {
                                 Color.white
                                 SpotlightCutoutShape(cutoutRect: targetRect)
                                     .fill(Color.white)
+                                    .blur(radius: 3)
                                     .blendMode(.destinationOut)
                             }
                             .compositingGroup()

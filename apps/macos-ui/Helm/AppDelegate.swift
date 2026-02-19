@@ -204,14 +204,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let bounds = NSRect(origin: .zero, size: targetSize)
         let iconRect = bounds.insetBy(dx: 1, dy: 1)
         baseImage.draw(in: iconRect, from: .zero, operation: .sourceOver, fraction: 1.0)
-        anchorTint.set()
-        iconRect.fill(using: .sourceAtop)
 
         if let badge {
+            // Manual tint needed when compositing colored badges
+            anchorTint.set()
+            iconRect.fill(using: .sourceAtop)
             drawBadge(badge, in: bounds)
         }
         rendered.unlockFocus()
-        rendered.isTemplate = false
+        rendered.isTemplate = badge == nil
         return rendered
     }
 
