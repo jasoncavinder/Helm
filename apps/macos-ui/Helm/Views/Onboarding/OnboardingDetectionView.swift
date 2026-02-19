@@ -11,8 +11,10 @@ struct OnboardingDetectionView: View {
     }
 
     private var foundManagers: [ManagerInfo] {
-        ManagerInfo.implemented.filter { manager in
-            core.managerStatuses[manager.id]?.detected == true
+        ManagerInfo.all.filter { manager in
+            let status = core.managerStatuses[manager.id]
+            let isImplemented = status?.isImplemented ?? manager.isImplemented
+            return isImplemented && status?.detected == true
         }
     }
 

@@ -7,7 +7,7 @@
 //!
 //! - **Initialization**: [`helm_init`] must be called once with a valid SQLite
 //!   database path. It creates a Tokio runtime, initializes the SQLite store with
-//!   migrations, registers all 15 manager adapters, and stores the engine state in
+//!   migrations, registers all implemented manager adapters, and stores the engine state in
 //!   a process-global `Mutex<Option<HelmState>>`.
 //!
 //! - **No explicit shutdown**: There is no `helm_shutdown()` function. The Tokio
@@ -60,34 +60,60 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 use std::time::UNIX_EPOCH;
 
+use helm_core::adapters::asdf::AsdfAdapter;
+use helm_core::adapters::asdf_process::ProcessAsdfSource;
 use helm_core::adapters::bundler::BundlerAdapter;
 use helm_core::adapters::bundler_process::ProcessBundlerSource;
 use helm_core::adapters::cargo::CargoAdapter;
 use helm_core::adapters::cargo_binstall::CargoBinstallAdapter;
 use helm_core::adapters::cargo_binstall_process::ProcessCargoBinstallSource;
 use helm_core::adapters::cargo_process::ProcessCargoSource;
+use helm_core::adapters::colima::ColimaAdapter;
+use helm_core::adapters::colima_process::ProcessColimaSource;
+use helm_core::adapters::docker_desktop::DockerDesktopAdapter;
+use helm_core::adapters::docker_desktop_process::ProcessDockerDesktopSource;
+use helm_core::adapters::firmware_updates::FirmwareUpdatesAdapter;
+use helm_core::adapters::firmware_updates_process::ProcessFirmwareUpdatesSource;
 use helm_core::adapters::homebrew::HomebrewAdapter;
+use helm_core::adapters::homebrew_cask::HomebrewCaskAdapter;
+use helm_core::adapters::homebrew_cask_process::ProcessHomebrewCaskSource;
 use helm_core::adapters::homebrew_process::ProcessHomebrewSource;
+use helm_core::adapters::macports::MacPortsAdapter;
+use helm_core::adapters::macports_process::ProcessMacPortsSource;
 use helm_core::adapters::mas::MasAdapter;
 use helm_core::adapters::mas_process::ProcessMasSource;
 use helm_core::adapters::mise::MiseAdapter;
 use helm_core::adapters::mise_process::ProcessMiseSource;
+use helm_core::adapters::nix_darwin::NixDarwinAdapter;
+use helm_core::adapters::nix_darwin_process::ProcessNixDarwinSource;
 use helm_core::adapters::npm::NpmAdapter;
 use helm_core::adapters::npm_process::ProcessNpmSource;
+use helm_core::adapters::parallels_desktop::ParallelsDesktopAdapter;
+use helm_core::adapters::parallels_desktop_process::ProcessParallelsDesktopSource;
 use helm_core::adapters::pip::PipAdapter;
 use helm_core::adapters::pip_process::ProcessPipSource;
 use helm_core::adapters::pipx::PipxAdapter;
 use helm_core::adapters::pipx_process::ProcessPipxSource;
 use helm_core::adapters::pnpm::PnpmAdapter;
 use helm_core::adapters::pnpm_process::ProcessPnpmSource;
+use helm_core::adapters::podman::PodmanAdapter;
+use helm_core::adapters::podman_process::ProcessPodmanSource;
 use helm_core::adapters::poetry::PoetryAdapter;
 use helm_core::adapters::poetry_process::ProcessPoetrySource;
+use helm_core::adapters::rosetta2::Rosetta2Adapter;
+use helm_core::adapters::rosetta2_process::ProcessRosetta2Source;
 use helm_core::adapters::rubygems::RubyGemsAdapter;
 use helm_core::adapters::rubygems_process::ProcessRubyGemsSource;
 use helm_core::adapters::rustup::RustupAdapter;
 use helm_core::adapters::rustup_process::ProcessRustupSource;
+use helm_core::adapters::setapp::SetappAdapter;
+use helm_core::adapters::setapp_process::ProcessSetappSource;
 use helm_core::adapters::softwareupdate::SoftwareUpdateAdapter;
 use helm_core::adapters::softwareupdate_process::ProcessSoftwareUpdateSource;
+use helm_core::adapters::sparkle::SparkleAdapter;
+use helm_core::adapters::sparkle_process::ProcessSparkleSource;
+use helm_core::adapters::xcode_command_line_tools::XcodeCommandLineToolsAdapter;
+use helm_core::adapters::xcode_command_line_tools_process::ProcessXcodeCommandLineToolsSource;
 use helm_core::adapters::yarn::YarnAdapter;
 use helm_core::adapters::yarn_process::ProcessYarnSource;
 use helm_core::adapters::{
@@ -96,8 +122,8 @@ use helm_core::adapters::{
 };
 use helm_core::execution::tokio_process::TokioProcessExecutor;
 use helm_core::models::{
-    DetectionInfo, HomebrewKegPolicy, ManagerId, OutdatedPackage, PackageRef, PinKind, PinRecord,
-    SearchQuery,
+    DetectionInfo, HomebrewKegPolicy, ManagerAuthority, ManagerId, OutdatedPackage, PackageRef,
+    PinKind, PinRecord, SearchQuery,
 };
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
 use helm_core::orchestration::{AdapterTaskTerminalState, CancellationMode};
@@ -183,6 +209,110 @@ fn manager_display_name(id: ManagerId) -> &'static str {
         ManagerId::Mas => "App Store",
         _ => id.as_str(),
     }
+}
+
+fn is_optional_manager(id: ManagerId) -> bool {
+    matches!(
+        id,
+        ManagerId::Asdf | ManagerId::MacPorts | ManagerId::NixDarwin
+    )
+}
+
+fn is_detection_only_manager(id: ManagerId) -> bool {
+    matches!(
+        helm_core::registry::manager(id).map(|descriptor| descriptor.authority),
+        Some(ManagerAuthority::DetectionOnly)
+    )
+}
+
+fn default_enabled_for_manager(id: ManagerId) -> bool {
+    !is_optional_manager(id)
+}
+
+fn is_implemented_manager(id: ManagerId) -> bool {
+    matches!(
+        id,
+        ManagerId::HomebrewFormula
+            | ManagerId::HomebrewCask
+            | ManagerId::Mise
+            | ManagerId::Asdf
+            | ManagerId::Npm
+            | ManagerId::Pnpm
+            | ManagerId::Yarn
+            | ManagerId::Cargo
+            | ManagerId::CargoBinstall
+            | ManagerId::Pip
+            | ManagerId::Pipx
+            | ManagerId::Poetry
+            | ManagerId::RubyGems
+            | ManagerId::Bundler
+            | ManagerId::Rustup
+            | ManagerId::SoftwareUpdate
+            | ManagerId::MacPorts
+            | ManagerId::NixDarwin
+            | ManagerId::Mas
+            | ManagerId::DockerDesktop
+            | ManagerId::Podman
+            | ManagerId::Colima
+            | ManagerId::Sparkle
+            | ManagerId::Setapp
+            | ManagerId::ParallelsDesktop
+            | ManagerId::XcodeCommandLineTools
+            | ManagerId::Rosetta2
+            | ManagerId::FirmwareUpdates
+    )
+}
+
+#[derive(serde::Serialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct FfiManagerStatus {
+    manager_id: String,
+    detected: bool,
+    version: Option<String>,
+    executable_path: Option<String>,
+    enabled: bool,
+    is_implemented: bool,
+    is_optional: bool,
+    is_detection_only: bool,
+}
+
+fn build_manager_statuses(
+    detection_map: &std::collections::HashMap<ManagerId, DetectionInfo>,
+    pref_map: &std::collections::HashMap<ManagerId, bool>,
+) -> Vec<FfiManagerStatus> {
+    ManagerId::ALL
+        .iter()
+        .map(|&id| {
+            let detection = detection_map.get(&id);
+            let enabled = pref_map
+                .get(&id)
+                .copied()
+                .unwrap_or_else(|| default_enabled_for_manager(id));
+            let is_implemented = is_implemented_manager(id);
+            let is_optional = is_optional_manager(id);
+            let is_detection_only = is_detection_only_manager(id);
+            let detected = detection.map(|d| d.installed).unwrap_or(false);
+            let executable_path = detection.and_then(|d| {
+                normalize_nonempty(
+                    d.executable_path
+                        .as_ref()
+                        .map(|p| p.to_string_lossy().to_string()),
+                )
+            });
+            let version = detection.and_then(|d| normalize_nonempty(d.version.clone()));
+
+            FfiManagerStatus {
+                manager_id: id.as_str().to_string(),
+                detected,
+                version,
+                executable_path,
+                enabled,
+                is_implemented,
+                is_optional,
+                is_detection_only,
+            }
+        })
+        .collect()
 }
 
 fn set_task_label(task_id: helm_core::models::TaskId, key: &str, args: &[(&str, String)]) {
@@ -490,7 +620,11 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
     let homebrew_adapter = Arc::new(HomebrewAdapter::new(ProcessHomebrewSource::new(
         executor.clone(),
     )));
+    let homebrew_cask_adapter = Arc::new(HomebrewCaskAdapter::new(ProcessHomebrewCaskSource::new(
+        executor.clone(),
+    )));
     let mise_adapter = Arc::new(MiseAdapter::new(ProcessMiseSource::new(executor.clone())));
+    let asdf_adapter = Arc::new(AsdfAdapter::new(ProcessAsdfSource::new(executor.clone())));
     let npm_adapter = Arc::new(NpmAdapter::new(ProcessNpmSource::new(executor.clone())));
     let pnpm_adapter = Arc::new(PnpmAdapter::new(ProcessPnpmSource::new(executor.clone())));
     let yarn_adapter = Arc::new(YarnAdapter::new(ProcessYarnSource::new(executor.clone())));
@@ -515,11 +649,46 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
     let softwareupdate_adapter = Arc::new(SoftwareUpdateAdapter::new(
         ProcessSoftwareUpdateSource::new(executor.clone()),
     ));
+    let macports_adapter = Arc::new(MacPortsAdapter::new(ProcessMacPortsSource::new(
+        executor.clone(),
+    )));
+    let nix_darwin_adapter = Arc::new(NixDarwinAdapter::new(ProcessNixDarwinSource::new(
+        executor.clone(),
+    )));
     let mas_adapter = Arc::new(MasAdapter::new(ProcessMasSource::new(executor.clone())));
+    let docker_desktop_adapter = Arc::new(DockerDesktopAdapter::new(
+        ProcessDockerDesktopSource::new(executor.clone()),
+    ));
+    let podman_adapter = Arc::new(PodmanAdapter::new(ProcessPodmanSource::new(
+        executor.clone(),
+    )));
+    let colima_adapter = Arc::new(ColimaAdapter::new(ProcessColimaSource::new(
+        executor.clone(),
+    )));
+    let sparkle_adapter = Arc::new(SparkleAdapter::new(ProcessSparkleSource::new(
+        executor.clone(),
+    )));
+    let setapp_adapter = Arc::new(SetappAdapter::new(ProcessSetappSource::new(
+        executor.clone(),
+    )));
+    let parallels_desktop_adapter = Arc::new(ParallelsDesktopAdapter::new(
+        ProcessParallelsDesktopSource::new(executor.clone()),
+    ));
+    let xcode_command_line_tools_adapter = Arc::new(XcodeCommandLineToolsAdapter::new(
+        ProcessXcodeCommandLineToolsSource::new(executor.clone()),
+    ));
+    let rosetta2_adapter = Arc::new(Rosetta2Adapter::new(ProcessRosetta2Source::new(
+        executor.clone(),
+    )));
+    let firmware_updates_adapter = Arc::new(FirmwareUpdatesAdapter::new(
+        ProcessFirmwareUpdatesSource::new(executor.clone()),
+    ));
 
     let adapters: Vec<Arc<dyn helm_core::adapters::ManagerAdapter>> = vec![
         homebrew_adapter,
+        homebrew_cask_adapter,
         mise_adapter,
+        asdf_adapter,
         npm_adapter,
         pnpm_adapter,
         yarn_adapter,
@@ -532,7 +701,18 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
         bundler_adapter,
         rustup_adapter,
         softwareupdate_adapter,
+        macports_adapter,
+        nix_darwin_adapter,
         mas_adapter,
+        docker_desktop_adapter,
+        podman_adapter,
+        colima_adapter,
+        sparkle_adapter,
+        setapp_adapter,
+        parallels_desktop_adapter,
+        xcode_command_line_tools_adapter,
+        rosetta2_adapter,
+        firmware_updates_adapter,
     ];
 
     // Initialize Orchestration
@@ -853,86 +1033,40 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
     let detection_map: std::collections::HashMap<_, _> = detections.into_iter().collect();
     let pref_map: std::collections::HashMap<_, _> = preferences.into_iter().collect();
 
-    let implemented_ids: &[ManagerId] = &[
-        ManagerId::HomebrewFormula,
-        ManagerId::Mise,
-        ManagerId::Npm,
-        ManagerId::Pnpm,
-        ManagerId::Yarn,
-        ManagerId::Cargo,
-        ManagerId::CargoBinstall,
-        ManagerId::Pip,
-        ManagerId::Pipx,
-        ManagerId::Poetry,
-        ManagerId::RubyGems,
-        ManagerId::Bundler,
-        ManagerId::Rustup,
-        ManagerId::SoftwareUpdate,
-        ManagerId::Mas,
-    ];
+    let mut statuses = build_manager_statuses(&detection_map, &pref_map);
 
-    #[derive(serde::Serialize)]
-    #[serde(rename_all = "camelCase")]
-    struct FfiManagerStatus {
-        manager_id: String,
-        detected: bool,
-        version: Option<String>,
-        executable_path: Option<String>,
-        enabled: bool,
-        is_implemented: bool,
+    // Homebrew detection/version probing is occasionally flaky during first detection.
+    // If status is missing or incomplete, probe directly from brew.
+    if let Some(status) = statuses
+        .iter_mut()
+        .find(|status| status.manager_id == ManagerId::HomebrewFormula.as_str())
+        && (status.version.is_none() || !status.detected)
+        && let Some(probed) = probe_homebrew_version(
+            detection_map
+                .get(&ManagerId::HomebrewFormula)
+                .and_then(|d| d.executable_path.as_deref()),
+        )
+    {
+        status.version = Some(probed.clone());
+        status.detected = true;
+
+        let refreshed = if let Some(existing) = detection_map.get(&ManagerId::HomebrewFormula) {
+            DetectionInfo {
+                installed: true,
+                executable_path: existing.executable_path.clone(),
+                version: Some(probed),
+            }
+        } else {
+            DetectionInfo {
+                installed: true,
+                executable_path: None,
+                version: Some(probed),
+            }
+        };
+        let _ = state
+            .store
+            .upsert_detection(ManagerId::HomebrewFormula, &refreshed);
     }
-
-    let statuses: Vec<FfiManagerStatus> = ManagerId::ALL
-        .iter()
-        .map(|&id| {
-            let detection = detection_map.get(&id);
-            let enabled = pref_map.get(&id).copied().unwrap_or(true);
-            let is_implemented = implemented_ids.contains(&id);
-            let mut detected = detection.map(|d| d.installed).unwrap_or(false);
-            let executable_path = detection.and_then(|d| {
-                normalize_nonempty(
-                    d.executable_path
-                        .as_ref()
-                        .map(|p| p.to_string_lossy().to_string()),
-                )
-            });
-            let mut version = detection.and_then(|d| normalize_nonempty(d.version.clone()));
-
-            // Homebrew detection/version probing is occasionally flaky during first detection.
-            // If status is missing or incomplete, probe directly from brew.
-            if id == ManagerId::HomebrewFormula
-                && (version.is_none() || !detected)
-                && let Some(probed) =
-                    probe_homebrew_version(detection.and_then(|d| d.executable_path.as_deref()))
-            {
-                version = Some(probed.clone());
-                detected = true;
-                if let Some(existing) = detection {
-                    let refreshed = DetectionInfo {
-                        installed: true,
-                        executable_path: existing.executable_path.clone(),
-                        version: Some(probed),
-                    };
-                    let _ = state.store.upsert_detection(id, &refreshed);
-                } else {
-                    let refreshed = DetectionInfo {
-                        installed: true,
-                        executable_path: None,
-                        version: Some(probed),
-                    };
-                    let _ = state.store.upsert_detection(id, &refreshed);
-                }
-            }
-            FfiManagerStatus {
-                manager_id: id.as_str().to_string(),
-                detected,
-                version,
-                executable_path,
-                enabled,
-                is_implemented,
-            }
-        })
-        .collect();
 
     let json = match serde_json::to_string(&statuses) {
         Ok(j) => j,
@@ -1288,7 +1422,10 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                         "service.task.label.upgrade.package",
                         &[
                             ("package", package_name.clone()),
-                            ("manager", manager_display_name(ManagerId::Cargo).to_string()),
+                            (
+                                "manager",
+                                manager_display_name(ManagerId::Cargo).to_string(),
+                            ),
                         ],
                     ),
                     Err(error) => {
@@ -1312,11 +1449,16 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                         "service.task.label.upgrade.package",
                         &[
                             ("package", package_name.clone()),
-                            ("manager", manager_display_name(ManagerId::CargoBinstall).to_string()),
+                            (
+                                "manager",
+                                manager_display_name(ManagerId::CargoBinstall).to_string(),
+                            ),
                         ],
                     ),
                     Err(error) => {
-                        eprintln!("upgrade_all: failed to queue cargo-binstall upgrade task: {error}");
+                        eprintln!(
+                            "upgrade_all: failed to queue cargo-binstall upgrade task: {error}"
+                        );
                     }
                 }
             }
@@ -1384,7 +1526,10 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                         "service.task.label.upgrade.package",
                         &[
                             ("package", package_name.clone()),
-                            ("manager", manager_display_name(ManagerId::Poetry).to_string()),
+                            (
+                                "manager",
+                                manager_display_name(ManagerId::Poetry).to_string(),
+                            ),
                         ],
                     ),
                     Err(error) => {
@@ -1408,7 +1553,10 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                         "service.task.label.upgrade.package",
                         &[
                             ("package", package_name.clone()),
-                            ("manager", manager_display_name(ManagerId::RubyGems).to_string()),
+                            (
+                                "manager",
+                                manager_display_name(ManagerId::RubyGems).to_string(),
+                            ),
                         ],
                     ),
                     Err(error) => {
@@ -1432,7 +1580,10 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                         "service.task.label.upgrade.package",
                         &[
                             ("package", package_name.clone()),
-                            ("manager", manager_display_name(ManagerId::Bundler).to_string()),
+                            (
+                                "manager",
+                                manager_display_name(ManagerId::Bundler).to_string(),
+                            ),
                         ],
                     ),
                     Err(error) => {
@@ -1639,7 +1790,10 @@ pub unsafe extern "C" fn helm_upgrade_package(
             Some("service.task.label.upgrade.package"),
             vec![
                 ("package", package_name.clone()),
-                ("manager", manager_display_name(ManagerId::Cargo).to_string()),
+                (
+                    "manager",
+                    manager_display_name(ManagerId::Cargo).to_string(),
+                ),
             ],
         ),
         ManagerId::CargoBinstall => (
@@ -1653,7 +1807,10 @@ pub unsafe extern "C" fn helm_upgrade_package(
             Some("service.task.label.upgrade.package"),
             vec![
                 ("package", package_name.clone()),
-                ("manager", manager_display_name(ManagerId::CargoBinstall).to_string()),
+                (
+                    "manager",
+                    manager_display_name(ManagerId::CargoBinstall).to_string(),
+                ),
             ],
         ),
         ManagerId::Pip => (
@@ -1695,7 +1852,10 @@ pub unsafe extern "C" fn helm_upgrade_package(
             Some("service.task.label.upgrade.package"),
             vec![
                 ("package", package_name.clone()),
-                ("manager", manager_display_name(ManagerId::Poetry).to_string()),
+                (
+                    "manager",
+                    manager_display_name(ManagerId::Poetry).to_string(),
+                ),
             ],
         ),
         ManagerId::RubyGems => (
@@ -1709,7 +1869,10 @@ pub unsafe extern "C" fn helm_upgrade_package(
             Some("service.task.label.upgrade.package"),
             vec![
                 ("package", package_name.clone()),
-                ("manager", manager_display_name(ManagerId::RubyGems).to_string()),
+                (
+                    "manager",
+                    manager_display_name(ManagerId::RubyGems).to_string(),
+                ),
             ],
         ),
         ManagerId::Bundler => (
@@ -1723,7 +1886,10 @@ pub unsafe extern "C" fn helm_upgrade_package(
             Some("service.task.label.upgrade.package"),
             vec![
                 ("package", package_name.clone()),
-                ("manager", manager_display_name(ManagerId::Bundler).to_string()),
+                (
+                    "manager",
+                    manager_display_name(ManagerId::Bundler).to_string(),
+                ),
             ],
         ),
         ManagerId::Rustup => {
@@ -2404,9 +2570,11 @@ pub unsafe extern "C" fn helm_free_string(s: *mut c_char) {
 #[cfg(test)]
 mod tests {
     use super::{
-        collect_upgrade_all_targets, homebrew_probe_candidates, parse_homebrew_config_version,
+        build_manager_statuses, collect_upgrade_all_targets, homebrew_probe_candidates,
+        parse_homebrew_config_version,
     };
     use helm_core::models::{ManagerId, OutdatedPackage, PackageRef};
+    use std::collections::HashMap;
     use std::path::Path;
 
     #[test]
@@ -2473,6 +2641,82 @@ mod tests {
         assert!(targets.mise.is_empty());
         assert!(targets.rustup.is_empty());
         assert!(!targets.softwareupdate_outdated);
+    }
+
+    #[test]
+    fn manager_status_defaults_disable_optional_managers() {
+        let statuses = build_manager_statuses(&HashMap::new(), &HashMap::new());
+
+        assert!(!status_for(&statuses, ManagerId::Asdf).enabled);
+        assert!(!status_for(&statuses, ManagerId::MacPorts).enabled);
+        assert!(!status_for(&statuses, ManagerId::NixDarwin).enabled);
+        assert!(status_for(&statuses, ManagerId::Mise).enabled);
+    }
+
+    #[test]
+    fn manager_status_preferences_override_default_enabled_policy() {
+        let pref_map = HashMap::from([
+            (ManagerId::Asdf, true),
+            (ManagerId::MacPorts, true),
+            (ManagerId::Mise, false),
+        ]);
+        let statuses = build_manager_statuses(&HashMap::new(), &pref_map);
+
+        assert!(status_for(&statuses, ManagerId::Asdf).enabled);
+        assert!(status_for(&statuses, ManagerId::MacPorts).enabled);
+        assert!(!status_for(&statuses, ManagerId::Mise).enabled);
+    }
+
+    #[test]
+    fn manager_status_exports_detection_only_flags() {
+        let statuses = build_manager_statuses(&HashMap::new(), &HashMap::new());
+
+        assert!(status_for(&statuses, ManagerId::Sparkle).is_detection_only);
+        assert!(status_for(&statuses, ManagerId::Setapp).is_detection_only);
+        assert!(status_for(&statuses, ManagerId::ParallelsDesktop).is_detection_only);
+        assert!(!status_for(&statuses, ManagerId::HomebrewFormula).is_detection_only);
+        assert!(!status_for(&statuses, ManagerId::Npm).is_detection_only);
+    }
+
+    #[test]
+    fn manager_status_marks_alpha2_through_alpha5_slices_as_implemented() {
+        let statuses = build_manager_statuses(&HashMap::new(), &HashMap::new());
+
+        assert!(status_for(&statuses, ManagerId::HomebrewCask).is_implemented);
+        assert!(status_for(&statuses, ManagerId::Asdf).is_implemented);
+        assert!(status_for(&statuses, ManagerId::MacPorts).is_implemented);
+        assert!(status_for(&statuses, ManagerId::NixDarwin).is_implemented);
+        assert!(status_for(&statuses, ManagerId::DockerDesktop).is_implemented);
+        assert!(status_for(&statuses, ManagerId::Podman).is_implemented);
+        assert!(status_for(&statuses, ManagerId::Colima).is_implemented);
+        assert!(status_for(&statuses, ManagerId::Sparkle).is_implemented);
+        assert!(status_for(&statuses, ManagerId::Setapp).is_implemented);
+        assert!(status_for(&statuses, ManagerId::ParallelsDesktop).is_implemented);
+        assert!(status_for(&statuses, ManagerId::XcodeCommandLineTools).is_implemented);
+        assert!(status_for(&statuses, ManagerId::Rosetta2).is_implemented);
+        assert!(status_for(&statuses, ManagerId::FirmwareUpdates).is_implemented);
+    }
+
+    #[test]
+    fn manager_status_marks_all_0_14_registry_managers_as_implemented() {
+        let statuses = build_manager_statuses(&HashMap::new(), &HashMap::new());
+
+        for manager_id in ManagerId::ALL {
+            assert!(
+                status_for(&statuses, manager_id).is_implemented,
+                "manager {manager_id:?} expected implemented in 0.14 baseline"
+            );
+        }
+    }
+
+    fn status_for(
+        statuses: &[super::FfiManagerStatus],
+        manager_id: ManagerId,
+    ) -> &super::FfiManagerStatus {
+        statuses
+            .iter()
+            .find(|status| status.manager_id == manager_id.as_str())
+            .expect("manager status should exist")
     }
 
     fn outdated_pkg(manager: ManagerId, name: &str, pinned: bool) -> OutdatedPackage {

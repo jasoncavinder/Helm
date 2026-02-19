@@ -172,6 +172,9 @@ func localizedManagerDisplayName(_ managerId: String) -> String {
     case "softwareupdate": return L10n.App.Managers.Name.softwareUpdate.localized
     case "mas": return L10n.App.Managers.Name.appStore.localized
     default:
+        if let manager = ManagerInfo.find(byId: managerId) {
+            return manager.displayName
+        }
         return managerId.replacingOccurrences(of: "_", with: " ").capitalized
     }
 }

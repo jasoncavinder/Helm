@@ -1,0 +1,2 @@
+ripgrep @14.1.1_0 (sysutils)
+    line-oriented search tool
