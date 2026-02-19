@@ -173,7 +173,7 @@
   "app.dry_run.title": "Simulation",
   "app.dry_run.message": "{count} actions planifiées :\n{summary}",
   "app.inspector.title": "Inspecteur",
-  "app.inspector.empty": "Sélectionnez une tâche, un paquet ou un gestionnaire pour inspecter les détails.",
+  "app.inspector.empty": "Sélectionnez un élément pour afficher ses détails.",
   "app.inspector.manager": "Gestionnaire",
   "app.inspector.installed": "Version installée",
   "app.inspector.latest": "Dernière version",
