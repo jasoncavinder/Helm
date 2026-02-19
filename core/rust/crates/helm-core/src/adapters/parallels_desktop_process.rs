@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::adapters::manager::AdapterResult;
@@ -23,7 +23,7 @@ impl ParallelsDesktopSource for ProcessParallelsDesktopSource {
         let app_path = locate_parallels_desktop_app();
         let executable_path = app_path
             .as_ref()
-            .map(resolve_parallels_desktop_executable_path)
+            .map(|path| resolve_parallels_desktop_executable_path(path.as_path()))
             .filter(|path| path.exists())
             .or(app_path.clone());
 
@@ -50,6 +50,6 @@ fn locate_parallels_desktop_app() -> Option<PathBuf> {
     candidates.into_iter().find(|path| path.exists())
 }
 
-fn resolve_parallels_desktop_executable_path(app_path: &PathBuf) -> PathBuf {
+fn resolve_parallels_desktop_executable_path(app_path: &Path) -> PathBuf {
     app_path.join("Contents/MacOS/Parallels Desktop")
 }
