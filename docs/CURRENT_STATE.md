@@ -8,13 +8,13 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.14.0-rc.1**
+Current version: **0.14.0**
 
 See:
 - CHANGELOG.md
 
 Active milestone:
-- 0.14.x — Platform, Detection & Optional Managers (in progress)
+- 0.15.x — Upgrade Preview & Execution Transparency (planning)
 
 ---
 
@@ -32,6 +32,8 @@ Active milestone:
 - 0.10.x — Core language managers + hardening checkpoint
 - 0.11.x — Extended language managers (beta checkpoint)
 - 0.12.x — Localization hardening + upgrade transparency (stable checkpoint)
+- 0.13.x — UI/UX analysis & redesign (stable checkpoint)
+- 0.14.x — Platform, detection & optional managers (stable checkpoint)
 
 ---
 
@@ -366,17 +368,17 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
 
 ---
 
-## v0.14.0-rc.1 Status
+## v0.14.0 Status
 
-### Release-Readiness Alignment
-- README and website release-status pages aligned to `v0.14.0-rc.1`
-- Workspace version bumped to `0.14.0-rc.1` in `core/rust/Cargo.toml`
+### Stable Release Alignment
+- README and website release-status pages aligned to `v0.14.0`
+- Workspace version bumped to `0.14.0` in `core/rust/Cargo.toml`
 - Rust lockfile workspace package versions aligned:
-  - `helm-core` `0.14.0-rc.1`
-  - `helm-ffi` `0.14.0-rc.1`
+  - `helm-core` `0.14.0`
+  - `helm-ffi` `0.14.0`
 - Generated app version artifacts aligned:
-  - `apps/macos-ui/Generated/HelmVersion.swift` (`0.14.0-rc.1`)
-  - `apps/macos-ui/Generated/HelmVersion.xcconfig` (`MARKETING_VERSION=0.14.0`, `CURRENT_PROJECT_VERSION=1`)
+  - `apps/macos-ui/Generated/HelmVersion.swift` (`0.14.0`)
+  - `apps/macos-ui/Generated/HelmVersion.xcconfig` (`MARKETING_VERSION=0.14.0`, `CURRENT_PROJECT_VERSION=0`)
 
 ### Distribution/Licensing Planning Alignment (Documentation-Only)
 - Architecture and planning docs now reflect planned multi-channel distribution:
@@ -389,10 +391,12 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
 - Fleet lifecycle is documented as separate from consumer lifecycle.
 - These are roadmap/planning decisions only; channel-specific implementation work is still pending future milestones.
 
-### Remaining for Release Cut
-- Execute branch/tag release flow from `docs/RELEASE_CHECKLIST.md`:
+### Remaining for Final Release Execution
+- Execute branch/release flow from `docs/RELEASE_CHECKLIST.md`:
+  - merge release branch into `dev`
+  - open PR from `dev` to `main` and run CI
   - merge `dev` into `main`
-  - create/push `v0.14.0-rc.1` annotated tag
+  - create/push `v0.14.0` annotated tag
 
 ---
 
@@ -485,4 +489,4 @@ Helm is a **functional control plane for 28 implemented managers** with:
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-0.13.x stable has shipped. `0.14.0-rc.1` is staged with manager rollout + version/docs alignment complete; remaining work is final branch/tag release execution and follow-on milestones (0.15+).
+0.13.x and 0.14.x stable checkpoints are complete in-repo, including version and docs alignment. Remaining release execution is branch/PR/tag flow on `main`, then 0.15.x delivery.
