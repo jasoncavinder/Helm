@@ -267,12 +267,72 @@ When a contract changes:
 
 ---
 
-## 10. Open Items / TODO
+## 10. Concrete Interface Inventories
 
-- Explicit list of current XPC methods + parameter schemas
-- Explicit list of current FFI exports + JSON schemas
-- Task log payload schema (terminal output vs structured logs)
-- SQLite schema summary (tables + key fields)
-- Confirmation token TTL and storage model
+### 10.1 XPC Protocol Methods (26 methods)
 
-These should be filled in as the implementation stabilizes.
+Source: `apps/macos-ui/Helm/Shared/HelmServiceProtocol.swift`
+
+All methods use asynchronous `withReply` closures. Connection security is enforced via code-signing team ID validation at `NSXPCListener` acceptance.
+
+| Method | Category | Reply Type |
+|--------|----------|------------|
+| `listInstalledPackages` | Package queries | `String?` (JSON) |
+| `listOutdatedPackages` | Package queries | `String?` (JSON) |
+| `listTasks` | Task management | `String?` (JSON) |
+| `triggerRefresh` | Task management | `Bool` |
+| `cancelTask(taskId:)` | Task management | `Bool` |
+| `searchLocal(query:)` | Search | `String?` (JSON) |
+| `triggerRemoteSearch(query:)` | Search | `Int64` (task ID) |
+| `listPins` | Pinning | `String?` (JSON) |
+| `pinPackage(managerId:packageName:version:)` | Pinning | `Bool` |
+| `unpinPackage(managerId:packageName:)` | Pinning | `Bool` |
+| `listManagerStatus` | Manager control | `String?` (JSON) |
+| `setManagerEnabled(managerId:enabled:)` | Manager control | `Bool` |
+| `installManager(managerId:)` | Manager control | `Int64` (task ID) |
+| `updateManager(managerId:)` | Manager control | `Int64` (task ID) |
+| `uninstallManager(managerId:)` | Manager control | `Int64` (task ID) |
+| `getSafeMode` | Settings | `Bool` |
+| `setSafeMode(enabled:)` | Settings | `Bool` |
+| `getHomebrewKegAutoCleanup` | Settings | `Bool` |
+| `setHomebrewKegAutoCleanup(enabled:)` | Settings | `Bool` |
+| `listPackageKegPolicies` | Keg policies | `String?` (JSON) |
+| `setPackageKegPolicy(managerId:packageName:policyMode:)` | Keg policies | `Bool` |
+| `upgradeAll(includePinned:allowOsUpdates:)` | Upgrade | `Bool` |
+| `upgradePackage(managerId:packageName:)` | Upgrade | `Int64` (task ID) |
+| `resetDatabase` | Database | `Bool` |
+| `takeLastErrorKey` | Error | `String?` |
+
+Client-side timeout enforcement: 30s for data fetch calls, 300s for mutation calls. Exponential backoff reconnection on invalidation/interruption (2s base, doubling to 60s cap).
+
+### 10.2 FFI Exports (27 functions)
+
+Source: `core/rust/crates/helm-ffi/src/lib.rs`
+
+See the module-level documentation in `lib.rs` for the full export table with categories. All data exchange uses JSON-encoded UTF-8 `*mut c_char` strings, freed via `helm_free_string`. The FFI layer has no explicit shutdown; runtime state spans the XPC service process lifetime.
+
+### 10.3 SQLite Schema Summary (9 tables, 5 migrations)
+
+Source: `core/rust/crates/helm-core/src/sqlite/migrations.rs`
+
+| Table | Migration | Primary Key | Purpose |
+|-------|-----------|-------------|---------|
+| `installed_packages` | v1 | `(manager_id, package_name)` | Cached installed package state |
+| `outdated_packages` | v1 (+v3 adds `restart_required`) | `(manager_id, package_name)` | Cached outdated package state |
+| `pin_records` | v1 | `(manager_id, package_name)` | Native and virtual pin records |
+| `search_cache` | v1 | none (indexed on `originating_query` + `cached_at_unix`) | Remote search result cache |
+| `task_records` | v1 | `task_id INTEGER` | Task execution history |
+| `manager_detection` | v2 | `manager_id` | Manager install detection state |
+| `manager_preferences` | v2 | `manager_id` | Per-manager enable/disable preferences |
+| `app_settings` | v4 | `key` | App-level key-value settings |
+| `package_keg_policies` | v5 | `(manager_id, package_name)` | Homebrew keg cleanup policy overrides |
+
+Migrations are applied idempotently via `execute_batch_tolerant()` (see `sqlite/store.rs`).
+
+### 10.4 Task Log Payload
+
+Task terminal output is not currently persisted as a structured payload. Task outcomes are stored via `task_records` (status transitions only). Adapter responses are persisted to domain tables (installed/outdated/search/detection) but raw terminal/process output is not retained. This is a known gap tracked for the Diagnostics milestone (0.17.x).
+
+### 10.5 Confirmation Token Model
+
+Confirmation tokens are **not used** in the current implementation. Security is enforced at the XPC connection acceptance level via code-signing team ID verification (`SecCode` + `SecRequirement`). Safe mode policy enforcement blocks guarded operations (softwareupdate upgrades) at the Rust core level before task submission. The `upgrade_all` FFI function accepts boolean parameters (`include_pinned`, `allow_os_updates`) rather than a cryptographic token. The guardrail contract described in Section 6.2 is satisfied by this policy model rather than a token-based exchange.
