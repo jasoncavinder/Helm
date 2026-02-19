@@ -4,8 +4,21 @@ import AppKit
 struct ControlCenterWindowView: View {
     @EnvironmentObject private var context: ControlCenterContext
     @ObservedObject private var core = HelmCore.shared
+    @ObservedObject private var walkthrough = WalkthroughManager.shared
     @Environment(\.colorScheme) private var colorScheme
     private let sidebarWidth: CGFloat = 232
+
+    private func navigateToSection(for anchor: String) {
+        switch anchor {
+        case "ccOverview": context.selectedSection = .overview
+        case "ccUpdates": context.selectedSection = .updates
+        case "ccPackages": context.selectedSection = .packages
+        case "ccTasks": context.selectedSection = .tasks
+        case "ccManagers": context.selectedSection = .managers
+        case "ccSettings": context.selectedSection = .settings
+        default: break
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -14,6 +27,7 @@ struct ControlCenterWindowView: View {
 
             HStack(spacing: 0) {
                 ControlCenterSidebarView(sidebarWidth: sidebarWidth)
+                    .spotlightAnchor("ccSidebar")
                 Divider()
                 HSplitView {
                     ControlCenterSectionHostView()
@@ -44,9 +58,24 @@ struct ControlCenterWindowView: View {
             RedesignUpgradeSheetView()
                 .environmentObject(context)
         }
+        .overlayPreferenceValue(SpotlightAnchorKey.self) { anchors in
+            if walkthrough.isControlCenterWalkthroughActive {
+                SpotlightOverlay(manager: walkthrough, anchors: anchors)
+            }
+        }
+        .onChange(of: walkthrough.currentStepIndex) { _ in
+            guard walkthrough.isControlCenterWalkthroughActive,
+                  let step = walkthrough.currentStep else { return }
+            navigateToSection(for: step.targetAnchor)
+        }
         .onAppear {
             if core.hasCompletedOnboarding {
                 core.triggerRefresh()
+            }
+            if !walkthrough.hasCompletedControlCenterWalkthrough {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    walkthrough.startControlCenterWalkthrough()
+                }
             }
         }
         .ignoresSafeArea(.all, edges: .top)
@@ -272,16 +301,22 @@ private struct ControlCenterSectionHostView: View {
         switch context.selectedSection ?? .overview {
         case .overview:
             RedesignOverviewSectionView()
+                .spotlightAnchor("ccOverview")
         case .updates:
             RedesignUpdatesSectionView()
+                .spotlightAnchor("ccUpdates")
         case .packages:
             PackagesSectionView()
+                .spotlightAnchor("ccPackages")
         case .tasks:
             TasksSectionView()
+                .spotlightAnchor("ccTasks")
         case .managers:
             ManagersSectionView()
+                .spotlightAnchor("ccManagers")
         case .settings:
             SettingsSectionView()
+                .spotlightAnchor("ccSettings")
         }
     }
 }
