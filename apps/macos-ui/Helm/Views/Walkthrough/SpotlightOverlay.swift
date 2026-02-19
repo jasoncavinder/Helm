@@ -157,8 +157,7 @@ struct SpotlightOverlay: View {
                 let targetRect = resolveTargetRect(step: step, proxy: proxy)
                 ZStack {
                     SpotlightCutoutShape(cutoutRect: targetRect)
-                        .fill(style: FillStyle(eoFill: true))
-                        .foregroundStyle(Color.black.opacity(0.5))
+                        .fill(Color.black.opacity(0.5), style: FillStyle(eoFill: true))
                         .allowsHitTesting(true)
                         .onTapGesture {
                             manager.advanceStep()
