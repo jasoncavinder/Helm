@@ -45,6 +45,16 @@ extension HelmCore {
         return .healthy
     }
 
+    /// Manager IDs that should show upgrade action badges.
+    /// Includes managers with outdated packages, plus softwareupdate when safe mode blocks it.
+    var upgradeActionManagerIds: [String] {
+        var managerIds = Set(outdatedPackages.map(\.managerId))
+        if safeModeEnabled {
+            managerIds.insert("softwareupdate")
+        }
+        return Array(managerIds)
+    }
+
     func outdatedCount(forManagerId managerId: String) -> Int {
         outdatedPackages.filter { $0.managerId == managerId }.count
     }

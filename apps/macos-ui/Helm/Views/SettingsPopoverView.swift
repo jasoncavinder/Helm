@@ -36,12 +36,7 @@ struct SettingsSectionView: View {
     }
 
     private var upgradeActionBadges: [SettingsActionBadge] {
-        var managerIds = Set(core.outdatedPackages.map(\.managerId))
-        if core.safeModeEnabled {
-            managerIds.insert("softwareupdate")
-        }
-
-        return managerBadges(for: Array(managerIds)).map { badge in
+        managerBadges(for: core.upgradeActionManagerIds).map { badge in
             guard badge.managerId == "softwareupdate", core.safeModeEnabled else { return badge }
             return SettingsActionBadge(
                 id: "softwareupdate-blocked",
