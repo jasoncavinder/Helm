@@ -1012,6 +1012,23 @@ fn apply_up_migration(
 
 /// Execute a SQL batch, tolerating "duplicate column name" errors from
 /// `ALTER TABLE ADD COLUMN` which is not idempotent in SQLite.
+///
+/// # Design rationale
+///
+/// SQLite's `ALTER TABLE ADD COLUMN` does not support `IF NOT EXISTS`. When
+/// migrations are replayed idempotently (e.g., to repair a state where the
+/// migration version was recorded but tables are missing), the `ADD COLUMN`
+/// statement fails with "duplicate column name: \<column\>".
+///
+/// This function deliberately swallows that specific error class to allow
+/// idempotent migration replay. The scope of error tolerance is narrow:
+///
+/// - **Tolerated**: errors whose message contains "duplicate column name"
+/// - **Propagated**: all other `rusqlite::Error` variants (syntax errors,
+///   constraint violations, I/O failures, etc.)
+///
+/// Called from `apply_up_migration()` (normal forward migration within a
+/// transaction) and idempotent DDL replay when the version matches current.
 fn execute_batch_tolerant(connection: &Connection, sql: &str) -> rusqlite::Result<()> {
     match connection.execute_batch(sql) {
         Ok(()) => Ok(()),

@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use tokio::sync::Mutex;
+use tracing::instrument;
 
 use crate::adapters::{
     AdapterRequest, AdapterResponse, ManagerAdapter, execute_with_capability_check,
@@ -50,6 +51,7 @@ impl AdapterExecutionRuntime {
         }
     }
 
+    #[instrument(skip(self, adapter, request), fields(manager = ?adapter.descriptor().id))]
     pub async fn submit(
         &self,
         adapter: Arc<dyn ManagerAdapter>,

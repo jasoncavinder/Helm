@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
+use tracing::instrument;
+
 use crate::adapters::{
     AdapterRequest, AdapterResponse, DetectRequest, ListInstalledRequest, ListOutdatedRequest,
     ManagerAdapter,
@@ -151,6 +153,7 @@ impl AdapterRuntime {
         }
     }
 
+    #[instrument(skip(self))]
     pub async fn refresh_all_ordered(&self) -> Vec<(ManagerId, OrchestrationResult<()>)> {
         let adapter_refs: Vec<&dyn ManagerAdapter> =
             self.adapters.values().map(|a| a.as_ref()).collect();
@@ -253,6 +256,7 @@ impl AdapterRuntime {
         all_results
     }
 
+    #[instrument(skip(self, request), fields(manager = ?manager))]
     pub async fn submit_refresh_request(
         &self,
         manager: ManagerId,
@@ -264,6 +268,7 @@ impl AdapterRuntime {
         Ok(())
     }
 
+    #[instrument(skip(self, request), fields(manager = ?manager))]
     pub async fn submit_refresh_request_response(
         &self,
         manager: ManagerId,
@@ -302,6 +307,7 @@ impl AdapterRuntime {
         }
     }
 
+    #[instrument(skip(self, request), fields(manager = ?manager))]
     pub async fn submit(
         &self,
         manager: ManagerId,

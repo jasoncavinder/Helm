@@ -8,7 +8,7 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.13.0-beta.5**
+Current version: **0.13.0-beta.6**
 
 See:
 - CHANGELOG.md
@@ -92,9 +92,9 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 
 ## Architecture Status
 
-- Rust core: stable (190+ unit/integration tests, zero shell injection vectors, structured process invocation throughout)
+- Rust core: stable (194+ unit/integration tests, zero shell injection vectors, structured process invocation throughout, `#[instrument]` tracing spans on adapter execution paths)
 - XPC service: stable (code-signing validation, graceful reconnection with exponential backoff, timeout enforcement on all calls)
-- FFI boundary: functional (poisoned-lock recovery, JSON interchange, thread-safe static state)
+- FFI boundary: functional (poisoned-lock recovery, JSON interchange, thread-safe static state, lifecycle documented in module-level docs)
 - UI: feature-complete for current scope; VoiceOver accessibility labels, semantic grouping, and state-change announcements implemented; HelmCore decomposed into 5 files; UI layer purity cleanup completed (business logic extracted from views to HelmCore/ManagerInfo); keyboard Tab traversal still pending (macOS SwiftUI limitation)
 
 ---
@@ -141,6 +141,25 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
 - All 6 locales pass key parity, placeholder consistency, and ICU format checks
 - `check_locale_lengths.sh` included in CI workflow
 - Spanish accent typo in "Actualización" has been corrected
+
+---
+
+## v0.13.0-beta.6 Audit Status
+
+### Rust Core Hardening
+
+- Structured `#[instrument]` tracing spans added to adapter execution entry points (submit, refresh_all_ordered, submit_refresh_request, submit_refresh_request_response)
+- Unit tests added for `split_upgrade_target()` with cleanup marker parsing (4 cases)
+- FFI lifecycle documented: no explicit shutdown, process-global state, poisoned-lock recovery
+- `execute_batch_tolerant()` error scope documented: deliberate design choice for idempotent migration replay
+
+### Documentation Alignment
+
+- INTERFACES.md Section 10 filled with concrete inventories: 26 XPC methods, 27 FFI exports, 9 SQLite tables, task log status, confirmation token model
+- On-device validation report template created with test matrices for all 6 locales
+- Usability test plan created with core, error, accessibility, and locale scenarios plus acceptance criteria
+- ROADMAP.md updated with cumulative beta.2-6 delivered scope
+- CHANGELOG.md updated with beta.5 and beta.6 entries
 
 ---
 

@@ -389,6 +389,33 @@ Delivered (`v0.13.0-beta.1` checkpoint):
 - Manager health model refinement:
   - explicit gray `Not Installed` state for undetected managers
 
+Delivered (`v0.13.0-beta.2` checkpoint):
+- Universal-build support (arm64/x86_64) for signed DMG packaging
+- Release automation workflow for signed artifacts
+
+Delivered (`v0.13.0-beta.3` checkpoint):
+- VoiceOver accessibility labels, semantic grouping, and state-change announcements
+- Task cancel button wired via XPC
+- CI test enforcement (cargo test + xcodebuild test)
+- HelmCore and DashboardView decomposition
+
+Delivered (`v0.13.0-beta.4` checkpoint):
+- Guided onboarding walkthrough with SpotlightOverlay (6 popover + 7 CC steps)
+- WalkthroughManager with persistence, skip, and replay
+- 31 walkthrough L10n keys across all 6 locales
+
+Delivered (`v0.13.0-beta.5` checkpoint):
+- UI layer purity fixes (business logic extracted from views to HelmCore/ManagerInfo)
+- Legacy redesign scaffold removed
+- XPC robustness: timeout enforcement, exponential backoff, decode error logging
+
+Delivered (`v0.13.0-beta.6` checkpoint):
+- Structured tracing spans on adapter execution paths
+- Homebrew split_upgrade_target() unit test coverage
+- FFI lifecycle and migration error documentation
+- INTERFACES.md Section 10 filled with concrete inventories
+- On-device validation report template and usability test plan
+
 ---
 
 ## 0.14.x — Platform, Detection & Optional Managers (beta)
