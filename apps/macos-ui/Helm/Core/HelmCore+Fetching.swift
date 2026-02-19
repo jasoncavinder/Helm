@@ -106,6 +106,7 @@ extension HelmCore {
                             managerId: task.manager
                         )
                     }
+                    .sorted { $0.statusSortOrder < $1.statusSortOrder }
                     self?.syncManagerOperations(from: coreTasks)
                     self?.syncUpgradeActions(from: coreTasks)
 

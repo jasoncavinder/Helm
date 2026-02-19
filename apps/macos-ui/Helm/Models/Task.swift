@@ -11,6 +11,18 @@ struct TaskItem: Identifiable {
         return s == "running" || s == "queued"
     }
 
+    /// Sort order: running first, then queued, then terminal states.
+    var statusSortOrder: Int {
+        switch status.lowercased() {
+        case "running":   return 0
+        case "queued":    return 1
+        case "failed":    return 2
+        case "cancelled": return 3
+        case "completed": return 4
+        default:          return 5
+        }
+    }
+
     var statusIcon: String {
         switch status.lowercased() {
         case "running":   return "arrow.triangle.2.circlepath"
