@@ -4,6 +4,49 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.13.0-beta.6] - 2026-02-18
+
+### Added
+- Structured `#[instrument]` tracing spans on adapter execution entry points (`submit`, `refresh_all_ordered`, `submit_refresh_request`, `submit_refresh_request_response`) for long-running operation visibility in logs
+- Unit tests for Homebrew `split_upgrade_target()` function (plain name, cleanup marker, empty string, marker-only)
+- On-device validation report template for redesigned states across all 6 locales (`docs/validation/v0.13.0-beta.6-redesign-validation.md`)
+- Usability test plan with core, error, accessibility, and locale scenarios plus acceptance criteria (`docs/validation/v0.13.0-beta.6-usability-test-plan.md`)
+- INTERFACES.md Section 10 filled with concrete XPC protocol (26 methods), FFI export (27 functions), and SQLite schema (9 tables) inventories
+
+### Changed
+- Expanded `execute_batch_tolerant()` documentation to clarify deliberate error tolerance scope for idempotent migration replay
+- Added FFI lifecycle module documentation explaining process-global state, no explicit shutdown, and poisoned-lock recovery
+- Updated ROADMAP.md 0.13.x section to reflect cumulative beta.2-6 delivery
+- Updated CURRENT_STATE.md to reflect beta.6 implementation status
+
+## [0.13.0-beta.5] - 2026-02-18
+
+### Added
+- XPC timeout enforcement on all service calls (30s data fetches, 300s mutations) via `withTimeout` helper
+- Exponential backoff on XPC reconnection (2s base, doubling to 60s cap, reset on success)
+- JSON decode error logging enhanced with method name and raw data length context
+- `@Published var lastError` for surfacing decode/timeout failures to the UI
+- Task list sorted by status (running first, then queued, then terminal states)
+
+### Changed
+- Extracted search deduplication/merge logic from `PackageListView` to `HelmCore.filteredPackages(query:managerId:statusFilter:)`
+- Removed task-to-manager inference: `TaskItem` now carries `managerId` directly from `CoreTaskRecord`; `inferManagerId` deleted
+- Consolidated `authority(for:)` as `ManagerInfo` computed property with `find(byId:)` and `find(byDisplayName:)` lookups
+- Moved `capabilities(for:)` to `ManagerInfo.capabilities` computed property with `canSearch`/`canPin` helpers
+- Moved `managerSymbol(for:)` to `ManagerInfo.symbolName` computed property
+- Changed `health(forManagerId:)` to use structured `managerId` field instead of localized description matching
+- Changed Settings Advanced buttons to consistent system style (Refresh Now, Reset, Quit Helm, Replay Walkthrough)
+
+### Removed
+- Legacy redesign scaffold (`apps/macos/`, 18 files) removed entirely
+- Removed Upgrade All button from Settings Advanced card (available elsewhere in UI)
+- Removed manager badge tags from Settings action buttons
+
+### Fixed
+- Removed unused `clickInControlCenter` variable in AppDelegate (Xcode warning)
+- Reverted ineffective `.focusable()` modifiers (macOS SwiftUI limitation documented)
+- Frozen menu bar icon tint to concrete sRGB color to prevent appearance-mode drift
+
 ## [0.13.0-beta.4] - 2026-02-18
 
 ### Added
