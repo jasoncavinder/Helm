@@ -352,8 +352,8 @@ This scope is planned for 1.x and is not a 1.0 release gate.
 4. `0.8.x` pinning and policy enforcement (completed): native/virtual pin model, pin-aware upgrade-all, safe mode guardrails.
 5. `0.9.x` internationalization foundation (completed): centralized locale loading, key-based UI string accessors, locale preference persistence.
 6. `0.10.x` core language manager delivery (completed): npm/pipx/pip/cargo/cargo-binstall end-to-end plus hardening baseline.
-7. `0.11.x-0.12.x` language + localization expansion (planned): extended language adapters (pnpm/yarn/poetry/rubygems/bundler), non-English locale hardening.
-8. `0.13.x-0.18.x` UX/platform, reliability & hardening (planned): UI/UX analysis and redesign, platform managers (docker/xcode), upgrade previews, self-update, diagnostics, stress testing.
+7. `0.11.x-0.12.x` language + localization expansion (completed): extended language adapters (pnpm/yarn/poetry/rubygems/bundler), non-English locale hardening, upgrade preview, dry-run.
+8. `0.13.x-0.18.x` UX/platform, reliability & hardening (in progress — 0.13.x at rc.1): UI/UX analysis and redesign, platform managers (docker/xcode), self-update, diagnostics, stress testing.
 9. `1.0.0` stabilization: release criteria closure, documentation lock, and production readiness sign-off.
 
 ---

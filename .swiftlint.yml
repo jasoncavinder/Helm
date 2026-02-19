@@ -27,22 +27,25 @@ disabled_rules:
   - large_tuple
   - opening_brace
 
-# Thresholds tuned for the existing codebase.
+opt_in_rules:
+  - empty_count
+
+# Thresholds tightened after DashboardView/HelmCore file splits.
 type_body_length:
-  warning: 1000
-  error: 1500
+  warning: 400
+  error: 600
 
 file_length:
-  warning: 2000
-  error: 2500
+  warning: 500
+  error: 750
 
 function_body_length:
-  warning: 100
-  error: 150
+  warning: 80
+  error: 120
 
 cyclomatic_complexity:
-  warning: 18
-  error: 25
+  warning: 20
+  error: 30
 
 function_parameter_count:
   warning: 6

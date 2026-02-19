@@ -7,7 +7,7 @@ struct ManagersSectionView: View {
     private var groupedManagers: [(authority: ManagerAuthority, managers: [ManagerInfo])] {
         ManagerAuthority.allCases.map { authorityLevel in
             let managers = ManagerInfo.implemented
-                .filter { authority(for: $0.id) == authorityLevel }
+                .filter { $0.authority == authorityLevel }
                 .sorted { localizedManagerDisplayName($0.id).localizedCaseInsensitiveCompare(localizedManagerDisplayName($1.id)) == .orderedAscending }
             return (authority: authorityLevel, managers: managers)
         }
@@ -39,10 +39,13 @@ struct ManagersSectionView: View {
                                     operationStatus: core.managerOperations[manager.id],
                                     onSelect: {
                                         context.selectedManagerId = manager.id
+                                        context.selectedPackageId = nil
+                                        context.selectedTaskId = nil
                                     },
                                     onViewPackages: {
                                         context.selectedManagerId = manager.id
                                         context.managerFilterId = manager.id
+                                        context.selectedTaskId = nil
                                         context.selectedSection = .packages
                                     }
                                 )
@@ -52,7 +55,7 @@ struct ManagersSectionView: View {
                 }
 
                 if ManagerInfo.implemented.isEmpty {
-                    Text(L10n.App.Redesign.ManagersSection.empty.localized)
+                    Text(L10n.App.ManagersSection.empty.localized)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 20)

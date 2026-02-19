@@ -29,8 +29,10 @@ Agents must not begin implementation until these documents have been read.
 - `docs/ROADMAP.md` — milestone sequencing and feature planning
 - `docs/DECISIONS.md` — architectural decisions (ADR-style)
 - `docs/DEFINITION_OF_DONE.md` — 1.0 release criteria
+- `docs/VERSIONING.md` — semantic versioning strategy and release flow
+- `docs/RELEASE_CHECKLIST.md` — required ship checklist and tag steps
 - `docs/I18N_STRATEGY.md` — localization requirements
-- `docs/INTERFACES.md` - stable contracts between Helm subsystems
+- `docs/INTERFACES.md` — stable contracts between Helm subsystems
 - `docs/legal/CLA.md` — contributor license agreement
 
 ---
@@ -102,6 +104,7 @@ The following rules must never be violated:
 - Authority ordering is respected
 - Tasks must be cancelable at process level
 - All user-facing text must be localized (no hardcoded strings)
+- Locale files exist in two synced directories: `locales/` (canonical source) and `apps/macos-ui/Helm/Resources/locales/` (app resource mirror). CI enforces parity via `diff -ru`. Always update both when changing locale strings.
 
 If a change would violate these, stop and ask.
 

@@ -89,6 +89,7 @@ Steps:
 3. User reviews detected managers and enables/disables optional ones.
 4. Policy step sets update cadence and auto-apply default (off).
 5. Finish routes to Overview with first refresh running.
+6. Guided walkthrough begins — SpotlightOverlay highlights key UI elements across the popover (6 steps) and control center (7 steps). Users can skip at any point.
 
 State behavior:
 - Loading: manager detection progress by source

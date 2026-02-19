@@ -1,148 +1,10 @@
 import SwiftUI
 import AppKit
 
-enum ControlCenterSection: String, CaseIterable, Identifiable {
-    case overview
-    case updates
-    case packages
-    case tasks
-    case managers
-    case settings
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .overview:
-            return L10n.App.Navigation.dashboard.localized
-        case .updates:
-            return L10n.App.Redesign.Section.updates.localized
-        case .packages:
-            return L10n.App.Navigation.packages.localized
-        case .tasks:
-            return L10n.App.Redesign.Section.tasks.localized
-        case .managers:
-            return L10n.App.Navigation.managers.localized
-        case .settings:
-            return L10n.App.Settings.Tab.title.localized
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .overview:
-            return "gauge.with.dots.needle.50percent"
-        case .updates:
-            return "square.and.arrow.down.on.square"
-        case .packages:
-            return "shippingbox.fill"
-        case .tasks:
-            return "checklist"
-        case .managers:
-            return "slider.horizontal.3"
-        case .settings:
-            return "gearshape"
-        }
-    }
-}
-
-enum ManagerAuthority: CaseIterable {
-    case authoritative
-    case standard
-    case guarded
-
-    var key: String {
-        switch self {
-        case .authoritative:
-            return L10n.App.Redesign.Updates.Authority.authoritative
-        case .standard:
-            return L10n.App.Redesign.Updates.Authority.standard
-        case .guarded:
-            return L10n.App.Redesign.Updates.Authority.guarded
-        }
-    }
-}
-
-enum OperationalHealth {
-    case healthy
-    case attention
-    case error
-    case running
-    case notInstalled
-
-    var icon: String {
-        switch self {
-        case .healthy:
-            return "checkmark.circle.fill"
-        case .attention:
-            return "exclamationmark.triangle.fill"
-        case .error:
-            return "xmark.octagon.fill"
-        case .running:
-            return "arrow.triangle.2.circlepath"
-        case .notInstalled:
-            return "minus.circle.fill"
-        }
-    }
-
-    var color: Color {
-        switch self {
-        case .healthy:
-            return .green
-        case .attention:
-            return .orange
-        case .error:
-            return .red
-        case .running:
-            return .blue
-        case .notInstalled:
-            return .gray
-        }
-    }
-
-    var key: String {
-        switch self {
-        case .healthy:
-            return L10n.App.Redesign.Health.healthy
-        case .attention:
-            return L10n.App.Redesign.Health.attention
-        case .error:
-            return L10n.App.Redesign.Health.error
-        case .running:
-            return L10n.App.Redesign.Health.running
-        case .notInstalled:
-            return L10n.App.Redesign.Health.notInstalled
-        }
-    }
-}
-
-final class ControlCenterContext: ObservableObject {
-    @Published var selectedSection: ControlCenterSection? = .overview
-    @Published var selectedManagerId: String?
-    @Published var selectedPackageId: String?
-    @Published var searchQuery: String = ""
-    @Published var managerFilterId: String?
-    @Published var showUpgradeSheet: Bool = false
-    @Published var popoverOverlayRequest: PopoverOverlayRoute?
-    @Published var popoverOverlayDismissToken: Int = 0
-    @Published var popoverSearchFocusToken: Int = 0
-    @Published var controlCenterSearchFocusToken: Int = 0
-    @Published var isPopoverOverlayVisible: Bool = false
-}
-
-enum PopoverOverlayRoute: String, Identifiable {
-    case search
-    case quickSettings
-    case about
-    case confirmQuit
-
-    var id: String { rawValue }
-}
-
 struct RedesignPopoverView: View {
     @ObservedObject private var core = HelmCore.shared
+    @ObservedObject private var walkthrough = WalkthroughManager.shared
     @EnvironmentObject private var context: ControlCenterContext
-    @ObservedObject private var localization = LocalizationManager.shared
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @FocusState private var isOverlaySearchFocused: Bool
@@ -160,10 +22,6 @@ struct RedesignPopoverView: View {
                 }
                 return leftOutdated > rightOutdated
             }
-    }
-
-    private var hasAttentionBanner: Bool {
-        !core.isConnected || core.failedTaskCount > 0 || core.outdatedPackages.count > 0
     }
 
     private var searchResults: [PackageItem] {
@@ -200,6 +58,11 @@ struct RedesignPopoverView: View {
                 OnboardingContainerView {
                     core.completeOnboarding()
                     core.triggerRefresh()
+                    if !walkthrough.hasCompletedPopoverWalkthrough {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                            walkthrough.startPopoverWalkthrough()
+                        }
+                    }
                 }
             } else {
                 ZStack {
@@ -259,47 +122,64 @@ struct RedesignPopoverView: View {
             RedesignUpgradeSheetView()
                 .environmentObject(context)
         }
+        .overlayPreferenceValue(SpotlightAnchorKey.self) { anchors in
+            if walkthrough.isPopoverWalkthroughActive {
+                SpotlightOverlay(manager: walkthrough, anchors: anchors)
+            }
+        }
     }
 
     private var popoverBaseContent: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
-                if hasAttentionBanner {
-                    attentionBanner
+                if !core.isConnected || core.failedTaskCount > 0 || !core.outdatedPackages.isEmpty {
+                    PopoverAttentionBanner()
+                        .spotlightAnchor("attentionBanner")
                 }
 
-                popoverSearchField
+                PopoverSearchField(
+                    popoverSearchQuery: $popoverSearchQuery,
+                    onSyncSearchQuery: syncSearchQuery,
+                    onActivateSearch: {
+                        activeOverlay = .search
+                        isOverlaySearchFocused = true
+                    }
+                )
+                .spotlightAnchor("searchField")
 
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(L10n.App.Dashboard.title.localized)
                             .font(.headline.weight(.semibold))
-                        Text(L10n.App.Redesign.Popover.systemHealth.localized)
+                        Text(L10n.App.Popover.systemHealth.localized)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
                     HealthBadgeView(status: core.aggregateHealth)
                 }
+                .spotlightAnchor("healthBadge")
                 .padding(.top, 4)
 
                 HStack(spacing: 8) {
                     MetricChipView(
-                        label: L10n.App.Redesign.Popover.pendingUpdates.localized,
+                        label: L10n.App.Popover.pendingUpdates.localized,
                         value: core.outdatedPackages.count
                     )
                     MetricChipView(
-                        label: L10n.App.Redesign.Popover.failures.localized,
+                        label: L10n.App.Popover.failures.localized,
                         value: core.failedTaskCount
                     )
                     MetricChipView(
-                        label: L10n.App.Redesign.Popover.runningTasks.localized,
+                        label: L10n.App.Popover.runningTasks.localized,
                         value: core.runningTaskCount
                     )
                 }
 
                 managerSnapshotCard
+                    .spotlightAnchor("managerSnapshot")
                 tasksCard
+                    .spotlightAnchor("activeTasks")
             }
             .padding(16)
 
@@ -308,6 +188,7 @@ struct RedesignPopoverView: View {
             popoverFooter
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
+                .spotlightAnchor("footerActions")
         }
         .frame(width: 400)
         .background(
@@ -327,109 +208,13 @@ struct RedesignPopoverView: View {
         )
     }
 
-    private var attentionBanner: some View {
-        HStack(spacing: 10) {
-            Image(systemName: bannerSymbol)
-                .foregroundStyle(bannerTint)
-                .font(.system(size: 13, weight: .semibold))
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(bannerTitle)
-                    .font(.caption.weight(.semibold))
-                Text(bannerMessage)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer(minLength: 10)
-
-            if core.outdatedPackages.count > 0 {
-                Button(L10n.App.Settings.Action.upgradeAll.localized) {
-                    context.showUpgradeSheet = true
-                }
-                .buttonStyle(UpdateAllPillButtonStyle())
-                .helmPointer()
-            } else {
-                Button(L10n.Common.refresh.localized) {
-                    core.triggerRefresh()
-                }
-                .buttonStyle(.plain)
-                .font(.caption.weight(.semibold))
-                .helmPointer()
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(bannerTint.opacity(0.13))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(bannerTint.opacity(0.18), lineWidth: 0.8)
-                )
-        )
-    }
-
-    private var popoverSearchField: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-            TextField(
-                "app.redesign.popover.search_placeholder".localized,
-                text: Binding(
-                    get: { popoverSearchQuery },
-                    set: { newValue in
-                        popoverSearchQuery = newValue
-                        syncSearchQuery(newValue)
-                    }
-                )
-            )
-            .textFieldStyle(.plain)
-            .font(.subheadline)
-
-            if core.isSearching {
-                ProgressView()
-                    .controlSize(.small)
-            }
-
-            if !popoverSearchQuery.isEmpty {
-                Button {
-                    popoverSearchQuery = ""
-                    syncSearchQuery("")
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .helmPointer()
-                .accessibilityLabel(L10n.Common.clear.localized)
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.primary.opacity(0.06))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
-                )
-        )
-        .onTapGesture {
-            activeOverlay = .search
-            isOverlaySearchFocused = true
-        }
-        .helmPointer()
-        .accessibilityLabel(L10n.App.Redesign.Popover.searchPlaceholder.localized)
-    }
-
     private var managerSnapshotCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(L10n.App.Redesign.Popover.managerSnapshot.localized)
+                Text(L10n.App.Popover.managerSnapshot.localized)
                     .font(.subheadline.weight(.semibold))
                 Spacer()
-                Button(L10n.App.Redesign.Action.openControlCenter.localized) {
+                Button(L10n.App.Action.openControlCenter.localized) {
                     context.selectedSection = .managers
                     onOpenControlCenter()
                 }
@@ -447,6 +232,8 @@ struct RedesignPopoverView: View {
                 ForEach(managerRows.prefix(4)) { manager in
                     Button {
                         context.selectedManagerId = manager.id
+                        context.selectedPackageId = nil
+                        context.selectedTaskId = nil
                         context.selectedSection = .managers
                         onOpenControlCenter()
                     } label: {
@@ -477,7 +264,7 @@ struct RedesignPopoverView: View {
     private var tasksCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(L10n.App.Redesign.Popover.activeTasks.localized)
+                Text(L10n.App.Popover.activeTasks.localized)
                     .font(.subheadline.weight(.semibold))
                 Spacer()
                 Button {
@@ -490,7 +277,7 @@ struct RedesignPopoverView: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
                 .helmPointer()
-                .accessibilityLabel(L10n.App.Redesign.Action.openControlCenter.localized)
+                .accessibilityLabel(L10n.App.Action.openControlCenter.localized)
             }
 
             if popoverTasks.isEmpty {
@@ -509,7 +296,7 @@ struct RedesignPopoverView: View {
 
     private var popoverFooter: some View {
         HStack(spacing: 10) {
-            Button(L10n.App.Redesign.Popover.version.localized(with: ["version": helmVersion])) {
+            Button(L10n.App.Popover.version.localized(with: ["version": helmVersion])) {
                 activeOverlay = .about
             }
             .buttonStyle(.plain)
@@ -534,297 +321,43 @@ struct RedesignPopoverView: View {
         switch route {
         case .search:
             PopoverOverlayCard(
-                title: L10n.App.Redesign.Overlay.Search.title.localized,
+                title: L10n.App.Overlay.Search.title.localized,
                 onClose: closeOverlay
             ) {
-                searchOverlayContent
+                PopoverSearchOverlayContent(
+                    popoverSearchQuery: $popoverSearchQuery,
+                    isOverlaySearchFocused: $isOverlaySearchFocused,
+                    searchResults: searchResults,
+                    onSyncSearchQuery: syncSearchQuery,
+                    onOpenControlCenter: onOpenControlCenter,
+                    onClose: closeOverlay
+                )
             }
         case .quickSettings:
             PopoverOverlayCard(
-                title: L10n.App.Redesign.Overlay.Settings.title.localized,
+                title: L10n.App.Overlay.Settings.title.localized,
                 onClose: closeOverlay
             ) {
-                settingsOverlayContent
+                PopoverSettingsOverlayContent(
+                    onOpenControlCenter: onOpenControlCenter,
+                    onClose: closeOverlay
+                )
             }
         case .about:
             PopoverOverlayCard(
-                title: L10n.App.Redesign.Overlay.About.title.localized,
+                title: L10n.App.Overlay.About.title.localized,
                 onClose: closeOverlay
             ) {
-                aboutOverlayContent
+                PopoverAboutOverlayContent(onClose: closeOverlay)
             }
         case .confirmQuit:
             PopoverOverlayCard(
-                title: L10n.App.Redesign.Overlay.Quit.title.localized,
+                title: L10n.App.Overlay.Quit.title.localized,
                 onClose: closeOverlay
             ) {
-                quitOverlayContent
+                PopoverQuitOverlayContent(onClose: closeOverlay)
             }
         }
-    }
-
-    private var searchOverlayContent: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField(
-                    L10n.App.Redesign.Popover.searchPlaceholder.localized,
-                    text: Binding(
-                        get: { popoverSearchQuery },
-                        set: { newValue in
-                            popoverSearchQuery = newValue
-                            syncSearchQuery(newValue)
-                        }
-                    )
-                )
-                .textFieldStyle(.plain)
-                .font(.subheadline)
-                .focused($isOverlaySearchFocused)
-
-                if core.isSearching {
-                    ProgressView()
-                        .controlSize(.small)
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.primary.opacity(0.06))
-            )
-
-            if searchResults.isEmpty && !popoverSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text(L10n.App.Redesign.Overlay.Search.empty.localized)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 8)
-            } else {
-                ScrollView {
-                    VStack(spacing: 6) {
-                        ForEach(searchResults) { result in
-                            Button {
-                                context.selectedPackageId = result.id
-                                context.selectedManagerId = result.managerId
-                                context.selectedSection = .packages
-                                onOpenControlCenter()
-                                closeOverlay()
-                            } label: {
-                                HStack(spacing: 8) {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(result.name)
-                                            .font(.subheadline.weight(.medium))
-                                            .lineLimit(1)
-                                        Text(result.manager)
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                    if let latest = result.latestVersion {
-                                        Text(latest)
-                                            .font(.caption.monospacedDigit())
-                                            .foregroundStyle(Color.orange)
-                                    } else {
-                                        Text(result.version)
-                                            .font(.caption.monospacedDigit())
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 8)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .fill(Color.primary.opacity(0.05))
-                                )
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .helmPointer()
-                            .accessibilityElement(children: .combine)
-                        }
-                    }
-                }
-                .frame(maxHeight: 310)
-            }
-
-            HStack(spacing: 8) {
-                Button(L10n.Common.cancel.localized) {
-                    popoverSearchQuery = ""
-                    syncSearchQuery("")
-                    closeOverlay()
-                }
-                .buttonStyle(HelmSecondaryButtonStyle())
-                .helmPointer()
-
-                Spacer()
-
-                Button(L10n.App.Redesign.Overlay.Search.openPackages.localized) {
-                    context.selectedSection = .packages
-                    onOpenControlCenter()
-                    closeOverlay()
-                }
-                .buttonStyle(HelmPrimaryButtonStyle())
-                .disabled(popoverSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .helmPointer(enabled: !popoverSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-        }
-    }
-
-    private var settingsOverlayContent: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text(L10n.App.Settings.Label.language.localized)
-                Spacer()
-                Picker("", selection: $localization.currentLocale) {
-                    Text(L10n.App.Settings.Label.systemDefaultWithEnglish.localized).tag("en")
-                    Text(L10n.App.Settings.Label.spanish.localized).tag("es")
-                    Text(L10n.App.Settings.Label.german.localized).tag("de")
-                    Text(L10n.App.Settings.Label.french.localized).tag("fr")
-                    Text(L10n.App.Settings.Label.portugueseBrazilian.localized).tag("pt-BR")
-                    Text(L10n.App.Settings.Label.japanese.localized).tag("ja")
-                }
-                .labelsHidden()
-                .frame(width: 180)
-            }
-
-            Toggle(
-                L10n.App.Settings.Label.safeMode.localized,
-                isOn: Binding(
-                    get: { core.safeModeEnabled },
-                    set: { core.setSafeMode($0) }
-                )
-            )
-            .toggleStyle(.switch)
-
-            Toggle(
-                L10n.App.Settings.Label.autoCleanKegs.localized,
-                isOn: Binding(
-                    get: { core.homebrewKegAutoCleanupEnabled },
-                    set: { core.setHomebrewKegAutoCleanup($0) }
-                )
-            )
-            .toggleStyle(.switch)
-
-            HStack(spacing: 8) {
-                Button(L10n.App.Settings.Action.refreshNow.localized) {
-                    core.triggerRefresh()
-                    closeOverlay()
-                }
-                .buttonStyle(HelmSecondaryButtonStyle())
-                .disabled(core.isRefreshing)
-                .helmPointer(enabled: !core.isRefreshing)
-
-                Spacer()
-
-                Button(L10n.App.Redesign.Overlay.Settings.openAdvanced.localized) {
-                    context.selectedSection = .settings
-                    onOpenControlCenter()
-                    closeOverlay()
-                }
-                .buttonStyle(HelmPrimaryButtonStyle())
-                .helmPointer()
-            }
-        }
-    }
-
-    private var aboutOverlayContent: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                Image("MenuBarIcon")
-                    .resizable()
-                    .renderingMode(.template)
-                    .foregroundStyle(.primary)
-                    .scaledToFit()
-                    .frame(width: 22, height: 22)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(L10n.App.Redesign.Overlay.About.name.localized)
-                        .font(.headline)
-                    Text(L10n.App.Redesign.Overlay.About.subtitle.localized)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
-
-            Text(L10n.App.Redesign.Overlay.About.version.localized(with: ["version": helmVersion]))
-                .font(.caption)
-
-            Text(L10n.App.Redesign.Overlay.About.summary.localized(with: [
-                "managers": core.visibleManagers.count,
-                "updates": core.outdatedPackages.count
-            ]))
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
-            HStack {
-                Spacer()
-                Button(L10n.Common.ok.localized) {
-                    closeOverlay()
-                }
-                .buttonStyle(HelmPrimaryButtonStyle())
-                .helmPointer()
-            }
-        }
-    }
-
-    private var quitOverlayContent: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(L10n.App.Redesign.Overlay.Quit.message.localized(with: ["tasks": core.runningTaskCount]))
-                .font(.callout)
-                .foregroundStyle(.secondary)
-
-            HStack {
-                Button(L10n.Common.cancel.localized) {
-                    closeOverlay()
-                }
-                .buttonStyle(HelmSecondaryButtonStyle())
-                .helmPointer()
-                Spacer()
-                Button(L10n.App.Settings.Action.quit.localized, role: .destructive) {
-                    NSApplication.shared.terminate(nil)
-                }
-                .buttonStyle(.borderedProminent)
-                .helmPointer()
-            }
-        }
-    }
-
-    private var bannerSymbol: String {
-        if !core.isConnected {
-            return "bolt.horizontal.circle.fill"
-        }
-        if core.failedTaskCount > 0 {
-            return "exclamationmark.octagon.fill"
-        }
-        return "arrow.up.circle.fill"
-    }
-
-    private var bannerTint: Color {
-        if !core.isConnected || core.failedTaskCount > 0 {
-            return .red
-        }
-        return .orange
-    }
-
-    private var bannerTitle: String {
-        if !core.isConnected {
-            return L10n.App.Redesign.Popover.Banner.disconnectedTitle.localized
-        }
-        if core.failedTaskCount > 0 {
-            return L10n.App.Redesign.Popover.Banner.failedTitle.localized(with: ["count": core.failedTaskCount])
-        }
-        return L10n.App.Redesign.Popover.Banner.updatesTitle.localized(with: ["count": core.outdatedPackages.count])
-    }
-
-    private var bannerMessage: String {
-        if !core.isConnected {
-            return L10n.App.Redesign.Popover.Banner.disconnectedMessage.localized
-        }
-        if core.failedTaskCount > 0 {
-            return L10n.App.Redesign.Popover.Banner.failedMessage.localized
-        }
-        return L10n.App.Redesign.Popover.Banner.updatesMessage.localized
     }
 
     private var cardBackground: some View {
@@ -867,1053 +400,5 @@ struct RedesignPopoverView: View {
         .buttonStyle(.plain)
         .helmPointer()
         .accessibilityLabel(accessibilityText ?? symbol)
-    }
-}
-
-private struct PopoverOverlayCard<Content: View>: View {
-    @Environment(\.colorScheme) private var colorScheme
-    let title: String
-    let onClose: () -> Void
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(title)
-                    .font(.headline)
-                Spacer()
-                Button(action: onClose) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .keyboardShortcut(.escape, modifiers: [])
-                .helmPointer()
-                .accessibilityLabel(L10n.Common.close.localized)
-            }
-
-            content
-        }
-        .padding(16)
-        .frame(width: 360)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(
-                    colorScheme == .dark
-                        ? AnyShapeStyle(.ultraThinMaterial)
-                        : AnyShapeStyle(Color.white.opacity(0.97))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
-                )
-                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.2 : 0.1), radius: 12, x: 0, y: 8)
-        )
-    }
-}
-
-private struct UpdateAllPillButtonStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.caption.weight(.bold))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .foregroundStyle(Color.white)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.orange, Color.red.opacity(0.85)],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-            )
-            .scaleEffect(accessibilityReduceMotion ? 1 : (configuration.isPressed ? 0.97 : 1))
-            .animation(
-                accessibilityReduceMotion ? nil : .easeOut(duration: 0.1),
-                value: configuration.isPressed
-            )
-    }
-}
-
-struct HelmPrimaryButtonStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
-    var cornerRadius: CGFloat = 10
-    var horizontalPadding: CGFloat = 12
-    var verticalPadding: CGFloat = 7
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(Color.white)
-            .padding(.horizontal, horizontalPadding)
-            .padding(.vertical, verticalPadding)
-            .background(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.orange, Color.red.opacity(0.86)],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-            )
-            .scaleEffect(accessibilityReduceMotion ? 1 : (configuration.isPressed ? 0.98 : 1))
-            .animation(
-                accessibilityReduceMotion ? nil : .easeOut(duration: 0.12),
-                value: configuration.isPressed
-            )
-    }
-}
-
-struct HelmSecondaryButtonStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
-    var cornerRadius: CGFloat = 10
-    var horizontalPadding: CGFloat = 12
-    var verticalPadding: CGFloat = 7
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(Color.primary)
-            .padding(.horizontal, horizontalPadding)
-            .padding(.vertical, verticalPadding)
-            .background(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(Color.primary.opacity(configuration.isPressed ? 0.14 : 0.09))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.8)
-                    )
-            )
-            .scaleEffect(accessibilityReduceMotion ? 1 : (configuration.isPressed ? 0.985 : 1))
-            .animation(
-                accessibilityReduceMotion ? nil : .easeOut(duration: 0.12),
-                value: configuration.isPressed
-            )
-    }
-}
-
-struct HelmIconButtonStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(Color.primary)
-            .frame(width: 28, height: 28)
-            .background(
-                Circle()
-                    .fill(Color.primary.opacity(configuration.isPressed ? 0.14 : 0.09))
-                    .overlay(
-                        Circle()
-                            .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.8)
-                    )
-            )
-            .scaleEffect(accessibilityReduceMotion ? 1 : (configuration.isPressed ? 0.97 : 1))
-            .animation(
-                accessibilityReduceMotion ? nil : .easeOut(duration: 0.1),
-                value: configuration.isPressed
-            )
-    }
-}
-
-struct ControlCenterWindowView: View {
-    @EnvironmentObject private var context: ControlCenterContext
-    @ObservedObject private var core = HelmCore.shared
-    @Environment(\.colorScheme) private var colorScheme
-    private let sidebarWidth: CGFloat = 232
-
-    var body: some View {
-        VStack(spacing: 0) {
-            ControlCenterTopBar(sidebarWidth: sidebarWidth)
-            Divider()
-
-            HStack(spacing: 0) {
-                ControlCenterSidebarView(sidebarWidth: sidebarWidth)
-                Divider()
-                HSplitView {
-                    ControlCenterSectionHostView()
-                        .frame(minWidth: 620, maxWidth: .infinity, maxHeight: .infinity)
-
-                    ControlCenterInspectorView()
-                        .frame(minWidth: 260, idealWidth: 280, maxWidth: 320)
-                }
-            }
-        }
-        .frame(minWidth: 1120, minHeight: 740)
-        .background(
-            LinearGradient(
-                colors: colorScheme == .dark
-                    ? [
-                        Color(nsColor: .windowBackgroundColor),
-                        Color(nsColor: .underPageBackgroundColor)
-                    ]
-                    : [
-                        Color.white.opacity(0.98),
-                        Color(nsColor: .windowBackgroundColor).opacity(0.88)
-                    ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
-        .sheet(isPresented: $context.showUpgradeSheet) {
-            RedesignUpgradeSheetView()
-                .environmentObject(context)
-        }
-        .onAppear {
-            if core.hasCompletedOnboarding {
-                core.triggerRefresh()
-            }
-        }
-        .ignoresSafeArea(.all, edges: .top)
-    }
-}
-
-private struct ControlCenterTopBar: View {
-    @EnvironmentObject private var context: ControlCenterContext
-    @ObservedObject private var core = HelmCore.shared
-    @Environment(\.colorScheme) private var colorScheme
-    @FocusState private var isSearchFocused: Bool
-    let sidebarWidth: CGFloat
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Text(L10n.App.Redesign.Window.controlCenter.localized)
-                .font(.headline.weight(.semibold))
-                .padding(.leading, 72)
-
-            Spacer(minLength: 20)
-
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField(
-                    L10n.App.Redesign.ControlCenter.searchPlaceholder.localized,
-                    text: Binding(
-                        get: { context.searchQuery },
-                        set: { newValue in
-                            context.searchQuery = newValue
-                            core.searchText = newValue
-                            if !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                context.selectedSection = .packages
-                            }
-                        }
-                    )
-                )
-                .textFieldStyle(.plain)
-                .font(.subheadline)
-                .focused($isSearchFocused)
-
-                if core.isSearching {
-                    ProgressView()
-                        .controlSize(.small)
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .frame(width: 336)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.primary.opacity(0.06))
-            )
-
-            Button {
-                core.triggerRefresh()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-            }
-            .buttonStyle(HelmIconButtonStyle())
-            .disabled(core.isRefreshing)
-            .helmPointer(enabled: !core.isRefreshing)
-            .accessibilityLabel(L10n.App.Settings.Action.refreshNow.localized)
-
-            Button(L10n.App.Redesign.ControlCenter.upgradeAll.localized) {
-                context.showUpgradeSheet = true
-                context.selectedSection = .updates
-            }
-            .buttonStyle(HelmPrimaryButtonStyle())
-            .disabled(core.outdatedPackages.isEmpty)
-            .helmPointer(enabled: !core.outdatedPackages.isEmpty)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 4)
-        .frame(height: 40)
-        .background(
-            HStack(spacing: 0) {
-                ControlCenterSidebarSurface(colorScheme: colorScheme)
-                    .frame(width: sidebarWidth)
-                Rectangle().fill(.ultraThinMaterial)
-            }
-        )
-        .onChange(of: context.controlCenterSearchFocusToken) { _ in
-            isSearchFocused = true
-        }
-    }
-}
-
-private struct ControlCenterSidebarView: View {
-    @EnvironmentObject private var context: ControlCenterContext
-    @Environment(\.colorScheme) private var colorScheme
-    let sidebarWidth: CGFloat
-
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 4) {
-                ForEach(ControlCenterSection.allCases) { section in
-                    ControlCenterSidebarRow(
-                        section: section,
-                        isSelected: (context.selectedSection ?? .overview) == section
-                    ) {
-                        context.selectedSection = section
-                    }
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.top, 10)
-            .padding(.bottom, 12)
-        }
-        .frame(width: sidebarWidth)
-        .frame(maxHeight: .infinity, alignment: .top)
-        .background(
-            ControlCenterSidebarSurface(colorScheme: colorScheme)
-        )
-    }
-}
-
-private struct ControlCenterSidebarSurface: View {
-    let colorScheme: ColorScheme
-
-    var body: some View {
-        ZStack {
-            Rectangle().fill(.regularMaterial)
-            Rectangle()
-                .fill(
-                    LinearGradient(
-                        colors: colorScheme == .dark
-                            ? [
-                                Color.white.opacity(0.08),
-                                Color.black.opacity(0.28)
-                            ]
-                            : [
-                                Color.black.opacity(0.12),
-                                Color.black.opacity(0.05)
-                            ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-        }
-    }
-}
-
-private struct ControlCenterSidebarRow: View {
-    @ObservedObject private var localization = LocalizationManager.shared
-    let section: ControlCenterSection
-    let isSelected: Bool
-    let onSelect: () -> Void
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: onSelect) {
-            HStack(spacing: 8) {
-                Label(section.title, systemImage: section.icon)
-                Spacer()
-            }
-            .font(.subheadline.weight(.medium))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(
-            ControlCenterSidebarButtonStyle(
-                isSelected: isSelected,
-                isHovered: isHovered
-            )
-        )
-        .onHover { isHovered = $0 }
-        .helmPointer()
-        .accessibilityLabel(section.title)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-}
-
-private struct ControlCenterSidebarButtonStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
-    let isSelected: Bool
-    let isHovered: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        let backgroundOpacity: CGFloat = {
-            if isSelected {
-                return configuration.isPressed ? 0.3 : 0.24
-            }
-            if configuration.isPressed {
-                return 0.16
-            }
-            if isHovered {
-                return 0.1
-            }
-            return 0.001
-        }()
-
-        return configuration.label
-            .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(
-                        isSelected
-                            ? Color.accentColor.opacity(backgroundOpacity)
-                            : Color.primary.opacity(backgroundOpacity)
-                    )
-            )
-            .scaleEffect(
-                accessibilityReduceMotion
-                    ? 1
-                    : (configuration.isPressed ? 0.985 : 1)
-            )
-            .animation(
-                accessibilityReduceMotion
-                    ? nil
-                    : .easeOut(duration: 0.12),
-                value: configuration.isPressed
-            )
-    }
-}
-
-private struct ControlCenterSectionHostView: View {
-    @EnvironmentObject private var context: ControlCenterContext
-
-    var body: some View {
-        switch context.selectedSection ?? .overview {
-        case .overview:
-            RedesignOverviewSectionView()
-        case .updates:
-            RedesignUpdatesSectionView()
-        case .packages:
-            PackagesSectionView()
-        case .tasks:
-            TasksSectionView()
-        case .managers:
-            ManagersSectionView()
-        case .settings:
-            SettingsSectionView()
-        }
-    }
-}
-
-private struct RedesignOverviewSectionView: View {
-    @ObservedObject private var core = HelmCore.shared
-    @EnvironmentObject private var context: ControlCenterContext
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack {
-                    Text(ControlCenterSection.overview.title)
-                        .font(.title2.weight(.semibold))
-                    Spacer()
-                    HealthBadgeView(status: core.aggregateHealth)
-                }
-
-                HStack(spacing: 14) {
-                    MetricCardView(
-                        title: L10n.App.Redesign.Popover.pendingUpdates.localized,
-                        value: core.outdatedPackages.count
-                    )
-                    MetricCardView(
-                        title: L10n.App.Redesign.Popover.failures.localized,
-                        value: core.failedTaskCount
-                    )
-                    MetricCardView(
-                        title: L10n.App.Redesign.Popover.runningTasks.localized,
-                        value: core.runningTaskCount
-                    )
-                }
-
-                Text(L10n.App.Redesign.Overview.managerHealth.localized)
-                    .font(.headline)
-
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], spacing: 12) {
-                    ForEach(core.visibleManagers) { manager in
-                        ManagerHealthCardView(
-                            title: localizedManagerDisplayName(manager.id),
-                            authority: authority(for: manager.id),
-                            status: core.health(forManagerId: manager.id),
-                            outdatedCount: core.outdatedCount(forManagerId: manager.id)
-                        )
-                        .onTapGesture {
-                            context.selectedManagerId = manager.id
-                        }
-                        .helmPointer()
-                    }
-                }
-
-                Text(L10n.App.Redesign.Overview.recentTasks.localized)
-                    .font(.headline)
-
-                if core.activeTasks.isEmpty {
-                    Text(L10n.App.Tasks.noRecentTasks.localized)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                } else {
-                    VStack(spacing: 0) {
-                        ForEach(Array(core.activeTasks.prefix(10))) { task in
-                            TaskRowView(task: task, onCancel: task.isRunning ? { core.cancelTask(task) } : nil)
-                            Divider()
-                        }
-                    }
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-            }
-            .padding(20)
-        }
-    }
-}
-
-private struct RedesignUpdatesSectionView: View {
-    @ObservedObject private var core = HelmCore.shared
-    @EnvironmentObject private var context: ControlCenterContext
-    @State private var includeOsUpdates = false
-    @State private var showDryRun = false
-    @State private var dryRunMessage = ""
-
-    private var previewBreakdown: [(manager: String, count: Int)] {
-        core.upgradeAllPreviewBreakdown(includePinned: false, allowOsUpdates: includeOsUpdates)
-    }
-
-    private var totalCount: Int {
-        previewBreakdown.reduce(0) { $0 + $1.count }
-    }
-
-    private var stageRows: [(authority: ManagerAuthority, managerCount: Int, packageCount: Int)] {
-        ManagerAuthority.allCases.map { authorityLevel in
-            let managersInAuthority = Set(
-                previewBreakdown
-                    .map(\.manager)
-                    .filter { authority(forDisplayName: $0) == authorityLevel }
-            )
-            let count = previewBreakdown
-                .filter { authority(forDisplayName: $0.manager) == authorityLevel }
-                .reduce(0) { $0 + $1.count }
-
-            return (authority: authorityLevel, managerCount: managersInAuthority.count, packageCount: count)
-        }
-    }
-
-    private var requiresPrivileges: Bool {
-        previewBreakdown.contains { entry in
-            entry.manager == localizedManagerDisplayName("homebrew_formula")
-                || entry.manager == localizedManagerDisplayName("softwareupdate")
-        }
-    }
-
-    private var mayRequireReboot: Bool {
-        core.outdatedPackages.contains { $0.restartRequired || $0.managerId == "softwareupdate" }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text(ControlCenterSection.updates.title)
-                    .font(.title2.weight(.semibold))
-                Spacer()
-                Button(L10n.App.Redesign.Action.refreshPlan.localized) {
-                    core.triggerRefresh()
-                }
-                .buttonStyle(HelmSecondaryButtonStyle())
-                .disabled(core.isRefreshing)
-            }
-
-            Text(L10n.App.Redesign.Updates.executionPlan.localized)
-                .font(.headline)
-
-            if !core.safeModeEnabled {
-                Toggle(L10n.App.Redesign.Updates.includeOs.localized, isOn: $includeOsUpdates)
-                    .toggleStyle(.switch)
-            }
-
-            VStack(spacing: 8) {
-                ForEach(stageRows, id: \.authority) { row in
-                    HStack {
-                        Text(row.authority.key.localized)
-                            .font(.body.weight(.medium))
-                        Spacer()
-                        Text("\(row.managerCount)")
-                            .font(.body.monospacedDigit())
-                        Text(L10n.App.Redesign.Updates.managers.localized)
-                            .foregroundStyle(.secondary)
-                        Text("\(row.packageCount)")
-                            .font(.body.monospacedDigit())
-                        Text(L10n.App.Redesign.Updates.packages.localized)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 4)
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(L10n.App.Redesign.Updates.riskFlags.localized)
-                    .font(.headline)
-                riskRow(flag: L10n.App.Redesign.Updates.Risk.privileged.localized, active: requiresPrivileges)
-                riskRow(flag: L10n.App.Redesign.Updates.Risk.reboot.localized, active: mayRequireReboot)
-            }
-
-            HStack {
-                Button(L10n.App.Redesign.Action.dryRun.localized) {
-                    let lines = previewBreakdown.prefix(8).map { "\($0.manager): \($0.count)" }
-                    dryRunMessage = L10n.App.Redesign.DryRun.message.localized(with: [
-                        "count": totalCount,
-                        "summary": lines.joined(separator: "\n")
-                    ])
-                    showDryRun = true
-                }
-                .buttonStyle(HelmSecondaryButtonStyle())
-
-                Button(L10n.App.Redesign.Action.runPlan.localized) {
-                    core.upgradeAll(includePinned: false, allowOsUpdates: includeOsUpdates)
-                }
-                .buttonStyle(HelmPrimaryButtonStyle())
-                .disabled(totalCount == 0)
-
-                Spacer()
-            }
-
-            Spacer()
-        }
-        .padding(20)
-        .alert(L10n.App.Redesign.DryRun.title.localized, isPresented: $showDryRun) {
-            Button(L10n.Common.ok.localized, role: .cancel) {}
-        } message: {
-            Text(dryRunMessage)
-        }
-    }
-
-    private func riskRow(flag: String, active: Bool) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: active ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(active ? Color.orange : Color.secondary)
-            Text(flag)
-                .font(.subheadline)
-                .foregroundStyle(active ? Color.primary : Color.secondary)
-        }
-    }
-}
-
-private struct ControlCenterInspectorView: View {
-    @ObservedObject private var core = HelmCore.shared
-    @EnvironmentObject private var context: ControlCenterContext
-
-    private var selectedManager: ManagerInfo? {
-        guard let managerId = context.selectedManagerId else { return nil }
-        return ManagerInfo.all.first { $0.id == managerId }
-    }
-
-    private var selectedPackage: PackageItem? {
-        guard let packageId = context.selectedPackageId else { return nil }
-        return core.allKnownPackages.first { $0.id == packageId }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(L10n.App.Redesign.Inspector.title.localized)
-                .font(.headline)
-
-            if let package = selectedPackage {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(package.name)
-                        .font(.title3.weight(.semibold))
-                    Text(L10n.App.Redesign.Inspector.manager.localized)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(package.manager)
-                        .font(.callout)
-                    Text(L10n.App.Redesign.Inspector.installed.localized)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(package.version)
-                        .font(.caption.monospaced())
-                    if let latest = package.latestVersion {
-                        Text(L10n.App.Redesign.Inspector.latest.localized)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(latest)
-                            .font(.caption.monospaced())
-                    }
-                    if let query = package.summary, !query.isEmpty {
-                        Text(L10n.App.Redesign.Inspector.sourceQuery.localized)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(query)
-                            .font(.caption)
-                    }
-                }
-            } else if let manager = selectedManager {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(localizedManagerDisplayName(manager.id))
-                        .font(.title3.weight(.semibold))
-                    Text(authority(for: manager.id).key.localized)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                    Text(L10n.App.Redesign.Inspector.capabilities.localized)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    ForEach(capabilities(for: manager), id: \.self) { capabilityKey in
-                        Text(capabilityKey.localized)
-                            .font(.caption)
-                    }
-                }
-            } else {
-                Text(L10n.App.Redesign.Inspector.empty.localized)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-        }
-        .padding(14)
-    }
-}
-
-struct HealthBadgeView: View {
-    let status: OperationalHealth
-
-    var body: some View {
-        Label(status.key.localized, systemImage: status.icon)
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .foregroundStyle(status.color)
-            .background(status.color.opacity(0.15), in: Capsule())
-            .accessibilityLabel(status.key.localized)
-    }
-}
-
-private struct MetricChipView: View {
-    let label: String
-    let value: Int
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            Text("\(value)")
-                .font(.callout.monospacedDigit().weight(.semibold))
-        }
-        .padding(8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(label)
-        .accessibilityValue("\(value)")
-    }
-}
-
-private struct MetricCardView: View {
-    let title: String
-    let value: Int
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text("\(value)")
-                .font(.title3.monospacedDigit().weight(.semibold))
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(title)
-        .accessibilityValue("\(value)")
-    }
-}
-
-private struct ManagerHealthCardView: View {
-    let title: String
-    let authority: ManagerAuthority
-    let status: OperationalHealth
-    let outdatedCount: Int
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(title)
-                    .font(.headline)
-                Spacer()
-                HealthBadgeView(status: status)
-            }
-
-            HStack(spacing: 6) {
-                Text(authority.key.localized)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("|")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("\(outdatedCount)")
-                    .font(.caption.monospacedDigit())
-                Text(L10n.App.Packages.Filter.upgradable.localized)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title), \(authority.key.localized)")
-        .accessibilityValue("\(status.key.localized), \(outdatedCount) \(L10n.App.Packages.Filter.upgradable.localized)")
-    }
-}
-
-struct RedesignUpgradeSheetView: View {
-    @ObservedObject private var core = HelmCore.shared
-    @EnvironmentObject private var context: ControlCenterContext
-    @Environment(\.dismiss) private var dismiss
-    @State private var includeOsUpdates = false
-
-    private var noOsCount: Int {
-        core.upgradeAllPreviewCount(includePinned: false, allowOsUpdates: false)
-    }
-
-    private var withOsCount: Int {
-        core.upgradeAllPreviewCount(includePinned: false, allowOsUpdates: true)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(L10n.App.Redesign.Updates.executionPlan.localized)
-                .font(.title3.weight(.semibold))
-
-            if !core.safeModeEnabled {
-                Toggle(L10n.App.Redesign.Updates.includeOs.localized, isOn: $includeOsUpdates)
-                    .toggleStyle(.switch)
-            }
-
-            HStack {
-                Text(L10n.App.Redesign.Updates.Authority.standard.localized)
-                Spacer()
-                Text("\(includeOsUpdates ? withOsCount : noOsCount)")
-                    .font(.callout.monospacedDigit())
-            }
-
-            Divider()
-
-            HStack {
-                Button(L10n.Common.cancel.localized) {
-                    context.showUpgradeSheet = false
-                    dismiss()
-                }
-                .buttonStyle(HelmSecondaryButtonStyle())
-                Spacer()
-                Button(L10n.App.Redesign.Action.dryRun.localized) {}
-                    .buttonStyle(HelmSecondaryButtonStyle())
-                    .disabled(true)
-                Button(L10n.App.Redesign.Action.runPlan.localized) {
-                    core.upgradeAll(includePinned: false, allowOsUpdates: includeOsUpdates)
-                    context.showUpgradeSheet = false
-                    dismiss()
-                }
-                .buttonStyle(HelmPrimaryButtonStyle())
-                .disabled((includeOsUpdates ? withOsCount : noOsCount) == 0)
-            }
-        }
-        .padding(20)
-        .frame(minWidth: 460)
-    }
-}
-
-func localizedManagerDisplayName(_ managerId: String) -> String {
-    switch managerId.lowercased() {
-    case "homebrew_formula": return L10n.App.Managers.Name.homebrew.localized
-    case "homebrew_cask": return L10n.App.Managers.Name.homebrewCask.localized
-    case "npm", "npm_global": return L10n.App.Managers.Name.npm.localized
-    case "pnpm": return L10n.App.Managers.Name.pnpm.localized
-    case "yarn": return L10n.App.Managers.Name.yarn.localized
-    case "poetry": return L10n.App.Managers.Name.poetry.localized
-    case "rubygems": return L10n.App.Managers.Name.rubygems.localized
-    case "bundler": return L10n.App.Managers.Name.bundler.localized
-    case "pip": return L10n.App.Managers.Name.pip.localized
-    case "pipx": return L10n.App.Managers.Name.pipx.localized
-    case "cargo": return L10n.App.Managers.Name.cargo.localized
-    case "cargo_binstall": return L10n.App.Managers.Name.cargoBinstall.localized
-    case "mise": return L10n.App.Managers.Name.mise.localized
-    case "rustup": return L10n.App.Managers.Name.rustup.localized
-    case "softwareupdate": return L10n.App.Managers.Name.softwareUpdate.localized
-    case "mas": return L10n.App.Managers.Name.appStore.localized
-    default:
-        return managerId.replacingOccurrences(of: "_", with: " ").capitalized
-    }
-}
-
-func authority(for managerId: String) -> ManagerAuthority {
-    switch managerId {
-    case "mise", "rustup":
-        return .authoritative
-    case "homebrew_formula", "softwareupdate", "homebrew_cask":
-        return .guarded
-    default:
-        return .standard
-    }
-}
-
-private func authority(forDisplayName managerName: String) -> ManagerAuthority {
-    if managerName == localizedManagerDisplayName("mise") || managerName == localizedManagerDisplayName("rustup") {
-        return .authoritative
-    }
-    if managerName == localizedManagerDisplayName("homebrew_formula") || managerName == localizedManagerDisplayName("softwareupdate") {
-        return .guarded
-    }
-    return .standard
-}
-
-private func capabilities(for manager: ManagerInfo) -> [String] {
-    var result: [String] = [
-        L10n.App.Redesign.Capability.list,
-        L10n.App.Redesign.Capability.outdated,
-    ]
-
-    if manager.canInstall {
-        result.append(L10n.App.Redesign.Capability.install)
-    }
-
-    if manager.canUninstall {
-        result.append(L10n.App.Redesign.Capability.uninstall)
-    }
-
-    if manager.canUpdate {
-        result.append(L10n.App.Redesign.Capability.upgrade)
-    }
-
-    if ["npm", "pnpm", "yarn", "pip", "cargo", "cargo_binstall", "poetry", "rubygems", "bundler"].contains(manager.id) {
-        result.append(L10n.App.Redesign.Capability.search)
-    }
-
-    if manager.id == "homebrew_formula" {
-        result.append(L10n.App.Redesign.Capability.pin)
-    }
-
-    return result
-}
-
-extension HelmCore {
-    var allKnownPackages: [PackageItem] {
-        let outdatedIds = Set(outdatedPackages.map(\.id))
-        var combined = outdatedPackages
-        combined.append(contentsOf: installedPackages.filter { !outdatedIds.contains($0.id) })
-
-        let existing = Set(combined.map(\.id))
-        combined.append(contentsOf: cachedAvailablePackages.filter { !existing.contains($0.id) })
-
-        return combined
-            .sorted { lhs, rhs in
-                lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
-            }
-    }
-
-    var visibleManagers: [ManagerInfo] {
-        ManagerInfo.implemented.filter { manager in
-            let status = managerStatuses[manager.id]
-            let enabled = status?.enabled ?? true
-            let detected = status?.detected ?? false
-            return enabled && detected
-        }
-    }
-
-    var failedTaskCount: Int {
-        activeTasks.filter { $0.status.lowercased() == "failed" }.count
-    }
-
-    var runningTaskCount: Int {
-        activeTasks.filter(\.isRunning).count
-    }
-
-    var aggregateHealth: OperationalHealth {
-        if failedTaskCount > 0 {
-            return .error
-        }
-        if runningTaskCount > 0 || isRefreshing {
-            return .running
-        }
-        if !outdatedPackages.isEmpty {
-            return .attention
-        }
-        return .healthy
-    }
-
-    func outdatedCount(forManagerId managerId: String) -> Int {
-        outdatedPackages.filter { $0.managerId == managerId }.count
-    }
-
-    func upgradeAllPackages(forManagerId managerId: String) {
-        let packages = outdatedPackages.filter {
-            $0.managerId == managerId && !$0.pinned && canUpgradeIndividually($0)
-        }
-        for package in packages {
-            upgradePackage(package)
-        }
-    }
-
-    func health(forManagerId managerId: String) -> OperationalHealth {
-        if let status = managerStatuses[managerId], status.detected == false {
-            return .notInstalled
-        }
-        if managerStatuses[managerId] == nil && !detectedManagers.contains(managerId) {
-            return .notInstalled
-        }
-
-        let managerName = localizedManagerDisplayName(managerId)
-
-        let hasFailedTask = activeTasks.contains {
-            $0.status.lowercased() == "failed" && $0.description.localizedCaseInsensitiveContains(managerName)
-        }
-
-        if hasFailedTask {
-            return .error
-        }
-        if activeTasks.contains(where: {
-            $0.isRunning && $0.description.localizedCaseInsensitiveContains(managerName)
-        }) {
-            return .running
-        }
-        if outdatedPackages.contains(where: { $0.managerId == managerId }) {
-            return .attention
-        }
-        return .healthy
-    }
-}
-
-private struct HelmPointerModifier: ViewModifier {
-    let enabled: Bool
-
-    func body(content: Content) -> some View {
-        content
-            .onHover { hovering in
-                guard enabled else {
-                    NSCursor.arrow.set()
-                    return
-                }
-                if hovering {
-                    NSCursor.pointingHand.set()
-                } else {
-                    NSCursor.arrow.set()
-                }
-            }
-            .onDisappear {
-                NSCursor.arrow.set()
-            }
-    }
-}
-
-extension View {
-    func helmPointer(enabled: Bool = true) -> some View {
-        modifier(HelmPointerModifier(enabled: enabled))
     }
 }

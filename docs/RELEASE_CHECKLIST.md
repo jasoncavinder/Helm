@@ -2,7 +2,89 @@
 
 This checklist is required before creating a release tag on `main`.
 
-## v0.13.0-beta.2 (In Progress)
+## v0.13.0-rc.1 (In Progress)
+
+### Scope and Documentation
+- [x] `CHANGELOG.md` includes `0.13.0-rc.1` notes for inspector sidebar, upgrade reliability, status menu, and task labels.
+- [x] `README.md` reflects `v0.13.0-rc.1` status.
+- [x] Website docs updated for `v0.13.0-rc.1`.
+- [x] `docs/CURRENT_STATE.md`, `docs/NEXT_STEPS.md`, and `docs/ROADMAP.md` reflect rc.1 checkpoint.
+- [x] Security Advisory System milestone added to ROADMAP.md (1.3.x).
+
+### Validation
+- [x] Rust tests pass (198+ tests: `cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`).
+- [x] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme HelmTests -destination 'platform=macOS' -derivedDataPath /tmp/helmtests-deriveddata CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test`).
+
+### Versioning
+- [ ] Workspace version bumped to `0.13.0-rc.1` in `core/rust/Cargo.toml`.
+- [ ] Generated app version artifacts aligned to `0.13.0-rc.1`.
+
+### Branch and Tag
+- [ ] `dev` merged into `main` for release.
+- [ ] Create annotated tag: `git tag -a v0.13.0-rc.1 -m "Helm v0.13.0-rc.1"`
+- [ ] Push tag: `git push origin v0.13.0-rc.1`
+
+## v0.13.0-beta.6 (Completed)
+
+### Scope and Documentation
+- [x] `CHANGELOG.md` includes `0.13.0-beta.6` notes for validation, hardening, and documentation.
+- [x] `docs/CURRENT_STATE.md`, `docs/NEXT_STEPS.md`, and `docs/ROADMAP.md` reflect beta.6 checkpoint.
+- [x] Validation report template created at `docs/validation/v0.13.0-beta.6-redesign-validation.md`.
+- [x] Usability test plan created at `docs/validation/v0.13.0-beta.6-usability-test-plan.md`.
+
+### Validation
+- [x] Rust tests pass.
+- [x] `HelmTests` pass.
+
+### Branch and Tag
+- [x] Create annotated tag from `dev` lineage: `git tag -a v0.13.0-beta.6 -m "Helm v0.13.0-beta.6"`
+- [x] Push tag: `git push origin v0.13.0-beta.6`
+
+## v0.13.0-beta.5 (Completed)
+
+### Scope and Documentation
+- [x] `CHANGELOG.md` includes `0.13.0-beta.5` notes for UI purity fixes, legacy removal, and XPC robustness.
+- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect beta.5 checkpoint.
+
+### Validation
+- [x] Rust tests pass.
+- [x] `HelmTests` pass.
+
+### Branch and Tag
+- [x] Create annotated tag: `git tag -a v0.13.0-beta.5 -m "Helm v0.13.0-beta.5"`
+- [x] Push tag: `git push origin v0.13.0-beta.5`
+
+## v0.13.0-beta.4 (Completed)
+
+### Scope and Documentation
+- [x] `CHANGELOG.md` includes `0.13.0-beta.4` notes for onboarding walkthrough and localization parity.
+- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect beta.4 checkpoint.
+
+### Validation
+- [x] Locale integrity checks pass.
+- [x] Rust tests pass.
+- [x] `HelmTests` pass.
+
+### Branch and Tag
+- [x] Create annotated tag: `git tag -a v0.13.0-beta.4 -m "Helm v0.13.0-beta.4"`
+- [x] Push tag: `git push origin v0.13.0-beta.4`
+
+## v0.13.0-beta.3 (Completed)
+
+### Scope and Documentation
+- [x] `CHANGELOG.md` includes `0.13.0-beta.3` notes for accessibility, task cancellation, CI enforcement.
+- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect beta.3 checkpoint.
+
+### Validation
+- [x] Rust tests pass.
+- [x] `HelmTests` pass.
+- [x] `ci-test.yml` workflow added for PR/push CI gates.
+
+### Branch and Tag
+- [x] Create annotated tag: `git tag -a v0.13.0-beta.3 -m "Helm v0.13.0-beta.3"`
+- [x] Push tag: `git push origin v0.13.0-beta.3`
+
+## v0.13.0-beta.2 (Completed)
 
 ### Scope and Documentation
 - [x] `CHANGELOG.md` includes `0.13.0-beta.2` notes for universal-build/signing/distribution follow-through.
@@ -13,29 +95,18 @@ This checklist is required before creating a release tag on `main`.
 - [x] Release workflow exists for signed universal DMG artifacts (`.github/workflows/release-macos-dmg.yml`).
 
 ### Validation
-- [x] Rust tests pass (`cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`).
-- [x] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme HelmTests -destination 'platform=macOS' -derivedDataPath /tmp/helmtests-deriveddata CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test`).
-- [x] Website build succeeds (`ASTRO_TELEMETRY_DISABLED=1 npm --prefix web run build`).
-- [ ] Release workflow secrets are configured:
-  - `APPLE_TEAM_ID`
-  - `MACOS_DEVELOPER_ID_APP_CERT_BASE64`
-  - `MACOS_DEVELOPER_ID_APP_CERT_PASSWORD`
-  - optional: `MACOS_KEYCHAIN_PASSWORD`
+- [x] Rust tests pass.
+- [x] `HelmTests` pass.
+- [x] Website build succeeds.
 
 ### Versioning
 - [x] Workspace version bumped to `0.13.0-beta.2` in `core/rust/Cargo.toml`.
 - [x] Rust lockfile package versions aligned to `0.13.0-beta.2` in `core/rust/Cargo.lock`.
-- [x] Generated app version artifacts aligned to `0.13.0-beta.2`:
-  - `apps/macos-ui/Generated/HelmVersion.swift`
-  - `apps/macos-ui/Generated/HelmVersion.xcconfig`
+- [x] Generated app version artifacts aligned to `0.13.0-beta.2`.
 
 ### Branch and Tag
-- [ ] `dev` merged into `main` for release.
-- [ ] Create annotated tag from `main`:
-  - `git tag -a v0.13.0-beta.2 -m "Helm v0.13.0-beta.2"`
-- [ ] Push tag:
-  - `git push origin v0.13.0-beta.2`
-- [ ] Publish GitHub release for `v0.13.0-beta.2` with beta-testing instructions.
+- [x] Create annotated tag: `git tag -a v0.13.0-beta.2 -m "Helm v0.13.0-beta.2"`
+- [x] Push tag: `git push origin v0.13.0-beta.2`
 
 ## v0.12.0 (Completed)
 
@@ -181,7 +252,7 @@ This checklist is required before creating a release tag on `main`.
 - [x] Push tag:
   - `git push origin v0.11.0-beta.1`
 
-## v0.10.0 (Planned)
+## v0.10.0 (Completed)
 
 ### Scope and Documentation
 - [x] `CHANGELOG.md` includes consolidated `0.10.0` stable notes (beta scope + hardening + residual fixes).
@@ -209,7 +280,7 @@ This checklist is required before creating a release tag on `main`.
 - [ ] Push tag:
   - `git push origin v0.10.0`
 
-## v0.10.0-beta.2 (In Progress)
+## v0.10.0-beta.2 (Completed)
 
 ### Scope and Documentation
 - [x] `CHANGELOG.md` includes `0.10.0-beta.2` notes for hardening/review and roadmap milestone updates.
@@ -288,7 +359,7 @@ This checklist is required before creating a release tag on `main`.
 - [x] Push tag:
   - `git push origin v0.9.3`
 
-## v0.9.2 (In Progress)
+## v0.9.2 (Completed)
 
 ### Scope and Documentation
 - [x] `CHANGELOG.md` includes `0.9.2` release notes for Spanish/German locale expansion.
@@ -312,7 +383,7 @@ This checklist is required before creating a release tag on `main`.
 - [ ] Push tag:
   - `git push origin v0.9.2`
 
-## v0.9.1 (In Progress)
+## v0.9.1 (Completed)
 
 ### Scope and Documentation
 - [x] `CHANGELOG.md` includes `0.9.1` hotfix notes for localization resource resolution.

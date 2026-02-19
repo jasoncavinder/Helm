@@ -12,7 +12,7 @@ Developers and power users on macOS who manage software through multiple package
 
 ## What it does today
 
-Helm v0.13.0-beta.2 supports fifteen managers:
+Helm v0.13.0-rc.1 supports fifteen managers:
 
 | Category | Managers |
 |---------|----------|
@@ -24,17 +24,21 @@ Helm v0.13.0-beta.2 supports fifteen managers:
 Key features:
 
 - **Menu bar app** — lightweight floating panel, no Dock icon
+- **Control Center window** — dedicated window with sidebar navigation (Overview, Updates, Packages, Tasks, Managers, Settings)
+- **Inspector sidebar** — contextual detail panel for selected task, package, or manager
 - **Dashboard** — package stats, manager grid, and recent task activity at a glance
 - **Package list** — browse installed, upgradable, and available packages with status filters and manager filter
 - **Progressive search** — instant local filtering with debounced remote search
 - **Pinning and safe mode controls** — pin/unpin support plus guarded OS update policy
 - **Authority-ordered refresh** — Authoritative (mise, rustup) → Standard (mas) → Guarded (Homebrew, softwareupdate)
 - **Restart detection** — surface restart-required updates from macOS softwareupdate
+- **Post-upgrade validation** — verify package state after upgrades complete
 - **Background tasks** — real-time task tracking with per-manager serial execution
+- **Onboarding walkthrough** — guided first-launch experience with spotlight highlights across popover and control center
 - **Localization** — `en`, `es`, `de`, `fr`, `pt-BR`, and `ja` with locale override in Settings
 - **Upgrade transparency** — dedicated upgrade preview surface with dry-run simulation mode
 
-> **Beta Testing Program:** `v0.13.0-beta.2` is available for pre-1.0 testing. Please report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Testing Program:** `v0.13.0-rc.1` is available for pre-1.0 testing. Please report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
 ## How it works
 

@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsSectionView: View {
     @ObservedObject private var core = HelmCore.shared
     @ObservedObject private var localization = LocalizationManager.shared
+    @ObservedObject private var walkthrough = WalkthroughManager.shared
     @EnvironmentObject private var context: ControlCenterContext
     @Environment(\.colorScheme) private var colorScheme
 
@@ -30,70 +31,6 @@ struct SettingsSectionView: View {
         return AnyShapeStyle(Color.white.opacity(0.92))
     }
 
-    private var refreshActionBadges: [SettingsActionBadge] {
-        managerBadges(for: core.visibleManagers.map(\.id))
-    }
-
-    private var upgradeActionBadges: [SettingsActionBadge] {
-        var managerIds = Set(core.outdatedPackages.map(\.managerId))
-        if core.safeModeEnabled {
-            managerIds.insert("softwareupdate")
-        }
-
-        return managerBadges(for: Array(managerIds)).map { badge in
-            guard badge.managerId == "softwareupdate", core.safeModeEnabled else { return badge }
-            return SettingsActionBadge(
-                id: "softwareupdate-blocked",
-                managerId: "softwareupdate",
-                label: localizedManagerDisplayName("softwareupdate"),
-                symbol: "nosign",
-                tint: .red
-            )
-        }
-    }
-
-    private func managerBadges(for managerIds: [String], maxCount: Int = 3) -> [SettingsActionBadge] {
-        let ordered = Array(Set(managerIds)).sorted {
-            localizedManagerDisplayName($0).localizedCaseInsensitiveCompare(localizedManagerDisplayName($1)) == .orderedAscending
-        }
-        var badges = Array(ordered.prefix(maxCount)).map { managerId in
-            SettingsActionBadge(
-                id: managerId,
-                managerId: managerId,
-                label: localizedManagerDisplayName(managerId),
-                symbol: managerSymbol(for: managerId),
-                tint: authority(for: managerId) == .guarded ? .orange : .accentColor
-            )
-        }
-
-        let hiddenCount = ordered.count - maxCount
-        if hiddenCount > 0 {
-            badges.append(
-                SettingsActionBadge(
-                    id: "more-\(hiddenCount)",
-                    managerId: nil,
-                    label: "+\(hiddenCount)",
-                    symbol: nil,
-                    tint: .secondary
-                )
-            )
-        }
-        return badges
-    }
-
-    private func managerSymbol(for managerId: String) -> String {
-        switch managerId {
-        case "softwareupdate":
-            return "apple.logo"
-        case "homebrew_formula", "homebrew_cask":
-            return "cup.and.saucer.fill"
-        case "mise", "rustup":
-            return "wrench.and.screwdriver.fill"
-        default:
-            return "shippingbox.fill"
-        }
-    }
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -106,15 +43,15 @@ struct SettingsSectionView: View {
 
                 HStack(spacing: 8) {
                     SettingsMetricPill(
-                        title: L10n.App.Redesign.Settings.Metric.managers.localized,
+                        title: L10n.App.Settings.Metric.managers.localized,
                         value: core.visibleManagers.count
                     )
                     SettingsMetricPill(
-                        title: L10n.App.Redesign.Settings.Metric.updates.localized,
+                        title: L10n.App.Settings.Metric.updates.localized,
                         value: core.outdatedPackages.count
                     )
                     SettingsMetricPill(
-                        title: L10n.App.Redesign.Settings.Metric.tasks.localized,
+                        title: L10n.App.Settings.Metric.tasks.localized,
                         value: core.runningTaskCount
                     )
                 }
@@ -174,21 +111,13 @@ struct SettingsSectionView: View {
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                         SettingsActionButton(
                             title: L10n.App.Settings.Action.refreshNow.localized,
-                            badges: refreshActionBadges,
-                            isProminent: false
+                            badges: [],
+                            isProminent: false,
+                            useSystemStyle: true
                         ) {
                             core.triggerRefresh()
                         }
                         .disabled(core.isRefreshing)
-
-                        SettingsActionButton(
-                            title: L10n.App.Settings.Action.upgradeAll.localized,
-                            badges: upgradeActionBadges,
-                            isProminent: true
-                        ) {
-                            context.showUpgradeSheet = true
-                        }
-                        .disabled(core.outdatedPackages.isEmpty)
 
                         SettingsActionButton(
                             title: L10n.App.Settings.Action.reset.localized,
@@ -207,6 +136,16 @@ struct SettingsSectionView: View {
                             useSystemStyle: true
                         ) {
                             NSApplication.shared.terminate(nil)
+                        }
+
+                        SettingsActionButton(
+                            title: L10n.App.Settings.Action.replayWalkthrough.localized,
+                            badges: [],
+                            isProminent: false,
+                            useSystemStyle: true
+                        ) {
+                            walkthrough.resetWalkthroughs()
+                            walkthrough.startPopoverWalkthrough()
                         }
                     }
                 }

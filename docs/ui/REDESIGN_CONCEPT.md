@@ -58,7 +58,7 @@ Menu bar popover:
 - Short live task strip.
 
 Control Center window:
-- Sidebar navigation by domain: Overview, Packages, Updates, Tasks, Managers, Settings.
+- Sidebar navigation by domain: Overview, Updates, Packages, Tasks, Managers, Settings.
 - Main pane optimized for one workflow at a time.
 - Right contextual panel for selected item details and actions.
 
@@ -92,3 +92,16 @@ Unlike generic dashboards:
 - No dense chart wall.
 - No "always open" workflow assumption.
 - Focus on short, operational loops.
+
+## Onboarding Walkthrough
+
+After the first-launch onboarding wizard (Welcome, Detection, Configure), a guided walkthrough highlights key UI elements using the SpotlightOverlay system. The walkthrough proceeds in two phases:
+
+- **Popover phase** — 6 steps covering the menu bar icon, health summary, quick actions, and task strip.
+- **Control Center phase** — 7 steps covering sidebar navigation, overview pane, updates list, package browser, inspector sidebar, task monitor, and settings.
+
+Each step uses a spotlight cutout with a popover tooltip. Users can skip or dismiss the walkthrough at any point.
+
+## Known Accessibility Limitations
+
+**Keyboard Tab traversal:** macOS SwiftUI `.focusable()` does not integrate with the AppKit key view loop. As a result, Tab key navigation between focusable elements in the Control Center window may not follow the expected visual order. Workaround: use arrow keys within lists and sections, and `Cmd+1`–`Cmd+6` for sidebar domain switching.

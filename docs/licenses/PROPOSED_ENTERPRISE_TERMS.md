@@ -8,11 +8,11 @@ The current governing license is defined in the root LICENSE file.
 
 ---
 
-# Helm Enterprise Terms (Proposed)
+# Helm Business Terms (Proposed)
 
 ## 1. Overview
 
-Helm Enterprise is intended for:
+Helm Business is intended for:
 
 - organizations
 - managed environments
@@ -76,7 +76,7 @@ Potential enterprise features include:
 
 ## 4. Deployment Models
 
-Helm Enterprise may support:
+Helm Business may support:
 
 - local-only deployments
 - self-hosted control planes
@@ -108,7 +108,7 @@ Enterprise customers may NOT:
 
 ## 7. Compliance
 
-Helm Enterprise may provide tools to assist with:
+Helm Business may provide tools to assist with:
 
 - internal compliance requirements
 - audit readiness
@@ -134,7 +134,7 @@ Enterprise customers may have additional controls.
 
 ## 9. Security
 
-Helm Enterprise may include:
+Helm Business may include:
 
 - signed updates
 - policy verification

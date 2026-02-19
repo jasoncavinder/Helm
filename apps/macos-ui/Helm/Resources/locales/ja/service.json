@@ -21,6 +21,7 @@
   "service.task.label.upgrade.homebrew_cleanup": "Homebrew経由で{package}をアップグレード（古いkegを削除）",
   "service.task.label.upgrade.mise": "mise経由で{package}をアップグレード",
   "service.task.label.upgrade.rustup_toolchain": "rustupツールチェーン{toolchain}をアップグレード",
+  "service.task.label.upgrade.package": "{manager}経由で{package}をアップグレード",
   "service.task.label.upgrade.softwareupdate_all": "macOSソフトウェアアップデートを適用",
   "service.task.status.cancelled": "キャンセル済み",
   "service.task.status.completed": "完了",

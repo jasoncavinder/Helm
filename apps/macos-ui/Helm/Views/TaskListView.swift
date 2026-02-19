@@ -18,7 +18,7 @@ struct TasksSectionView: View {
 
             if core.activeTasks.isEmpty {
                 Spacer()
-                Text(L10n.App.Redesign.TasksSection.empty.localized)
+                Text(L10n.App.TasksSection.empty.localized)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -27,7 +27,9 @@ struct TasksSectionView: View {
                     TaskRowView(task: task, onCancel: task.isRunning ? { core.cancelTask(task) } : nil)
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            if let managerId = inferManagerId(from: task.description) {
+                            context.selectedTaskId = task.id
+                            context.selectedPackageId = nil
+                            if let managerId = task.managerId {
                                 context.selectedManagerId = managerId
                             }
                         }
@@ -37,13 +39,6 @@ struct TasksSectionView: View {
             }
         }
         .padding(20)
-    }
-
-    private func inferManagerId(from description: String) -> String? {
-        let candidates = ManagerInfo.implemented
-        return candidates.first {
-            description.localizedCaseInsensitiveContains(localizedManagerDisplayName($0.id))
-        }?.id
     }
 }
 

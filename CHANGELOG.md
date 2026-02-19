@@ -4,6 +4,123 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.13.0-rc.1] - 2026-02-18
+
+### Added
+- Inspector sidebar task detail view with status badge, task type, manager name, label key, and label args display
+- Post-upgrade validation across all 11 adapter upgrade handlers: after a successful upgrade command, each adapter re-checks `list_outdated` to verify the package was actually updated; returns `ProcessFailure` error if the package remains outdated (prevents silent upgrade failures)
+- Control Center menu item in status menu right-click (opens dashboard overview)
+- Overview task rows wired to inspector via tap handling with pointer affordance
+- Manager inspector enriched with health badge, installed/outdated package counts, and View Packages navigation button
+- Security Advisory System milestone added to ROADMAP.md (1.3.x, Pro edition)
+- 16 new L10n keys for inspector task/package/manager detail views across all 6 locales
+- 4 new Rust unit tests for RubyGems upgrade validation and 1 for bundler upgrade validation
+
+### Fixed
+- Inspector selection clearing: selecting a manager no longer shows a stale package inspector (all selection handlers now clear conflicting selections)
+- RubyGems upgrade tasks showing "completed" when packages were not actually updated (root cause: no post-execution verification — same fix applied across all adapters)
+- Inspector empty state text updated to include "task" alongside "package" and "manager" in all 12 locale files
+
+### Changed
+- Task labels now include package names for upgrade tasks across all managers (e.g., "Upgrading rake" instead of generic task description)
+- Roadmap renumbered: Business Policy (1.3.x → 1.4.x), Enterprise Rollout (1.4.x → 1.5.x) to accommodate Security Advisory System (1.3.x)
+- InspectorManagerDetailView refactored to accept health, packageCount, outdatedCount, and onViewPackages callback parameters
+
+## [0.13.0-beta.6] - 2026-02-18
+
+### Added
+- Structured `#[instrument]` tracing spans on adapter execution entry points (`submit`, `refresh_all_ordered`, `submit_refresh_request`, `submit_refresh_request_response`) for long-running operation visibility in logs
+- Unit tests for Homebrew `split_upgrade_target()` function (plain name, cleanup marker, empty string, marker-only)
+- On-device validation report template for redesigned states across all 6 locales (`docs/validation/v0.13.0-beta.6-redesign-validation.md`)
+- Usability test plan with core, error, accessibility, and locale scenarios plus acceptance criteria (`docs/validation/v0.13.0-beta.6-usability-test-plan.md`)
+- INTERFACES.md Section 10 filled with concrete XPC protocol (26 methods), FFI export (27 functions), and SQLite schema (9 tables) inventories
+
+### Changed
+- Expanded `execute_batch_tolerant()` documentation to clarify deliberate error tolerance scope for idempotent migration replay
+- Added FFI lifecycle module documentation explaining process-global state, no explicit shutdown, and poisoned-lock recovery
+- Updated ROADMAP.md 0.13.x section to reflect cumulative beta.2-6 delivery
+- Updated CURRENT_STATE.md to reflect beta.6 implementation status
+
+## [0.13.0-beta.5] - 2026-02-18
+
+### Added
+- XPC timeout enforcement on all service calls (30s data fetches, 300s mutations) via `withTimeout` helper
+- Exponential backoff on XPC reconnection (2s base, doubling to 60s cap, reset on success)
+- JSON decode error logging enhanced with method name and raw data length context
+- `@Published var lastError` for surfacing decode/timeout failures to the UI
+- Task list sorted by status (running first, then queued, then terminal states)
+
+### Changed
+- Extracted search deduplication/merge logic from `PackageListView` to `HelmCore.filteredPackages(query:managerId:statusFilter:)`
+- Removed task-to-manager inference: `TaskItem` now carries `managerId` directly from `CoreTaskRecord`; `inferManagerId` deleted
+- Consolidated `authority(for:)` as `ManagerInfo` computed property with `find(byId:)` and `find(byDisplayName:)` lookups
+- Moved `capabilities(for:)` to `ManagerInfo.capabilities` computed property with `canSearch`/`canPin` helpers
+- Moved `managerSymbol(for:)` to `ManagerInfo.symbolName` computed property
+- Changed `health(forManagerId:)` to use structured `managerId` field instead of localized description matching
+- Changed Settings Advanced buttons to consistent system style (Refresh Now, Reset, Quit Helm, Replay Walkthrough)
+
+### Removed
+- Legacy redesign scaffold (`apps/macos/`, 18 files) removed entirely
+- Removed Upgrade All button from Settings Advanced card (available elsewhere in UI)
+- Removed manager badge tags from Settings action buttons
+
+### Fixed
+- Removed unused `clickInControlCenter` variable in AppDelegate (Xcode warning)
+- Reverted ineffective `.focusable()` modifiers (macOS SwiftUI limitation documented)
+- Frozen menu bar icon tint to concrete sRGB color to prevent appearance-mode drift
+
+## [0.13.0-beta.4] - 2026-02-18
+
+### Added
+- Guided onboarding walkthrough system with SpotlightOverlay component:
+  - Reusable anchor preference system for tagging UI elements as walkthrough targets
+  - Even-odd fill cutout shape with animated transitions between spotlight targets
+  - Tooltip card with step dots, Next/Done button, Skip link, and VoiceOver support
+  - `accessibilityReduceMotion` respected in all walkthrough animations
+- Popover walkthrough (6 steps): status badge, attention banner, active tasks, manager snapshot, footer actions, search field
+- Control center walkthrough (7 steps): sidebar, overview, packages, tasks, managers, settings, updates — with auto-navigation to matching section on step advance
+- WalkthroughManager singleton with UserDefaults persistence, step progression, skip, and reset
+- "Replay Walkthrough" action button in Settings advanced grid
+- 31 walkthrough L10n keys (controls, popover steps, CC steps) across all 6 locales
+- Walkthrough files registered in Xcode project under Views/Walkthrough group
+
+### Changed
+- Onboarding copy updated across all 6 locales for friendlier tone:
+  - Warmer subtitle, "Let's Go" / "All Set!" CTAs
+  - Encouraging detection feedback ("— great start!", "— looking good!")
+  - More reassuring configure step fallback messages
+
+### Fixed
+- Spanish locale overflow for CC walkthrough step 4 description (shortened to pass length threshold)
+
+## [0.13.0-beta.3] - 2026-02-18
+
+### Added
+- VoiceOver accessibility support across all interactive UI elements:
+  - `accessibilityLabel` on package rows, task rows, manager items, status badges, and menu bar status item
+  - `accessibilityElement(children: .combine)` semantic grouping on composite rows (packages, tasks, managers)
+  - `accessibilityValue` for dynamic content (task status, package counts, manager state)
+  - VoiceOver announcements for refresh start/completion, task cancellation, task failures, and refresh failure
+- Task cancel button wired to XPC `cancelTask` method with optimistic UI state update
+- Per-manager "Upgrade All" button in control-center Managers view
+- CI test enforcement:
+  - `ci-test.yml` GitHub Actions workflow with `cargo test --workspace` and `xcodebuild test`
+  - `xcodebuild test` gate added to `release-macos-dmg.yml` before signing
+  - `check_locale_lengths.sh` added to `i18n-lint.yml` workflow
+- L10n key additions for cancel action and status announcements across 6 locales
+
+### Changed
+- Refactored `HelmCore.swift` (1,133 lines) into HelmCore.swift (314 lines) plus 4 extension files:
+  HelmCore+Actions.swift, HelmCore+Fetching.swift, HelmCore+Settings.swift, HelmCore+Dashboard.swift
+- Refactored `DashboardView.swift` (1,919 lines) into DashboardView.swift plus ControlCenterModels.swift,
+  ControlCenterViews.swift, HelmButtonStyles.swift, and HelmCore+Dashboard.swift
+- Tightened SwiftLint thresholds (type_body_length: 400/600, file_length: 500/750, function_body_length: 80/120)
+
+### Fixed
+- Sidebar labels now update immediately on locale change (added missing @ObservedObject)
+- Dry-run panel no longer displays literal `\n` (fixed JSON escape sequence handling)
+- Spanish locale accent typo: "Actualizacion de software" → "Actualización de software"
+
 ## [0.13.0-beta.2] - 2026-02-18
 
 ### Added

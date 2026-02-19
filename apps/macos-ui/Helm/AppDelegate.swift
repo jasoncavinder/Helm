@@ -66,10 +66,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             let clickInPanel = self.panel.frame.contains(clickPoint)
-            let clickInControlCenter = self.controlCenterWindowController?.window?.frame.contains(clickPoint) ?? false
             let clickInStatusItem = self.statusItemButtonFrame()?.contains(clickPoint) ?? false
 
-            if !clickInPanel && !clickInControlCenter && !clickInStatusItem {
+            if !clickInPanel && !clickInStatusItem {
                 self.closePanel()
             }
         }
@@ -173,13 +172,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let statusDescription: String
         if failedTaskCount > 0 {
-            statusDescription = "app.redesign.status_item.error".localized(with: ["count": failedTaskCount])
+            statusDescription = "app.status_item.error".localized(with: ["count": failedTaskCount])
         } else if outdatedCount > 0 {
-            statusDescription = "app.redesign.status_item.updates".localized(with: ["count": outdatedCount])
+            statusDescription = "app.status_item.updates".localized(with: ["count": outdatedCount])
         } else if running {
-            statusDescription = "app.redesign.status_item.running".localized
+            statusDescription = "app.status_item.running".localized
         } else {
-            statusDescription = "app.redesign.status_item.healthy".localized
+            statusDescription = "app.status_item.healthy".localized
         }
         button.toolTip = statusDescription
         button.setAccessibilityLabel(statusDescription)
@@ -204,26 +203,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let bounds = NSRect(origin: .zero, size: targetSize)
         let iconRect = bounds.insetBy(dx: 1, dy: 1)
         baseImage.draw(in: iconRect, from: .zero, operation: .sourceOver, fraction: 1.0)
-        anchorTint.set()
-        iconRect.fill(using: .sourceAtop)
 
         if let badge {
+            // Manual tint needed when compositing colored badges
+            anchorTint.set()
+            iconRect.fill(using: .sourceAtop)
             drawBadge(badge, in: bounds)
         }
         rendered.unlockFocus()
-        rendered.isTemplate = false
+        rendered.isTemplate = badge == nil
         return rendered
     }
 
     private func menuBaseTint(for button: NSStatusBarButton) -> NSColor {
         var color = NSColor.labelColor
         button.effectiveAppearance.performAsCurrentDrawingAppearance {
-            color = NSColor.labelColor
+            color = NSColor.labelColor.usingColorSpace(.sRGB) ?? NSColor.labelColor
         }
         return color
     }
 
-    private func openControlCenter() {
+    private func statusItemButtonFrame() -> NSRect? {
+        guard let button = statusItem?.button else { return nil }
+        return button.window?.convertToScreen(button.frame)
+    }
+
+    private func openPopoverOverlay(_ route: PopoverOverlayRoute) {
+        showPanel()
+        controlCenterContext.popoverOverlayRequest = nil
+        DispatchQueue.main.async { [weak self] in
+            self?.controlCenterContext.popoverOverlayRequest = route
+        }
+    }
+
+    private func focusPopoverSearch() {
+        openPopoverOverlay(.search)
+        controlCenterContext.popoverSearchFocusToken += 1
+    }
+
+    private func focusControlCenterSearch() {
+        openControlCenter()
+        controlCenterContext.controlCenterSearchFocusToken += 1
+    }
+
+    private func handlePopoverEscape() {
+        if controlCenterContext.isPopoverOverlayVisible {
+            controlCenterContext.popoverOverlayDismissToken += 1
+        } else if panel.isVisible {
+            closePanel()
+        }
+    }
+}
+
+// MARK: - Control Center & Status Menu
+
+private extension AppDelegate {
+    func openControlCenter() {
         if controlCenterWindowController == nil {
             let rootView = ControlCenterWindowView()
                 .environmentObject(controlCenterContext)
@@ -241,7 +276,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.onEscape = { [weak self] in
                 self?.handlePopoverEscape()
             }
-            window.title = "app.redesign.window.control_center".localized
+            window.title = "app.window.control_center".localized
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
             window.isMovableByWindowBackground = false
@@ -269,16 +304,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    private func configureStatusMenu() {
+    func configureStatusMenu() {
         let menu = NSMenu()
 
         let aboutItem = NSMenuItem(
-            title: "app.redesign.overlay.about.title".localized,
+            title: "app.overlay.about.title".localized,
             action: #selector(openAboutFromMenu),
             keyEquivalent: ""
         )
         aboutItem.target = self
         menu.addItem(aboutItem)
+
+        let controlCenterItem = NSMenuItem(
+            title: L10n.App.Action.openControlCenter.localized,
+            action: #selector(openControlCenterFromMenu),
+            keyEquivalent: ""
+        )
+        controlCenterItem.target = self
+        menu.addItem(controlCenterItem)
+
+        menu.addItem(.separator())
 
         let upgradeItem = NSMenuItem(
             title: L10n.App.Settings.Action.upgradeAll.localized,
@@ -292,7 +337,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settingsItem = NSMenuItem(title: L10n.Common.settings.localized, action: nil, keyEquivalent: "")
         let settingsMenu = NSMenu()
         let basicSettingsItem = NSMenuItem(
-            title: "app.redesign.overlay.settings.title".localized,
+            title: "app.overlay.settings.title".localized,
             action: #selector(openQuickSettingsFromMenu),
             keyEquivalent: ""
         )
@@ -300,7 +345,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsMenu.addItem(basicSettingsItem)
 
         let advancedSettingsItem = NSMenuItem(
-            title: "app.redesign.overlay.settings.open_advanced".localized,
+            title: "app.overlay.settings.open_advanced".localized,
             action: #selector(openAdvancedSettingsFromMenu),
             keyEquivalent: ""
         )
@@ -336,12 +381,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateStatusMenuState()
     }
 
-    private func updateStatusMenuState() {
+    func updateStatusMenuState() {
         upgradeAllMenuItem?.isEnabled = !core.outdatedPackages.isEmpty
         refreshMenuItem?.isEnabled = !core.isRefreshing
     }
 
-    private func showStatusMenu() {
+    func showStatusMenu() {
         closePanel()
         updateStatusMenuState()
         if let statusItem, let menu = statusMenu {
@@ -352,204 +397,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func statusItemButtonFrame() -> NSRect? {
-        guard let button = statusItem?.button else { return nil }
-        return button.window?.convertToScreen(button.frame)
-    }
-
-    private func openPopoverOverlay(_ route: PopoverOverlayRoute) {
-        showPanel()
-        controlCenterContext.popoverOverlayRequest = nil
-        DispatchQueue.main.async { [weak self] in
-            self?.controlCenterContext.popoverOverlayRequest = route
-        }
-    }
-
-    private func focusPopoverSearch() {
-        openPopoverOverlay(.search)
-        controlCenterContext.popoverSearchFocusToken += 1
-    }
-
-    private func focusControlCenterSearch() {
-        openControlCenter()
-        controlCenterContext.controlCenterSearchFocusToken += 1
-    }
-
-    private func handlePopoverEscape() {
-        if controlCenterContext.isPopoverOverlayVisible {
-            controlCenterContext.popoverOverlayDismissToken += 1
-        } else if panel.isVisible {
-            closePanel()
-        }
-    }
-
-    @objc private func openAboutFromMenu() {
+    @objc func openAboutFromMenu() {
         openPopoverOverlay(.about)
     }
 
-    @objc private func openQuickSettingsFromMenu() {
-        openPopoverOverlay(.quickSettings)
-    }
-
-    @objc private func openAdvancedSettingsFromMenu() {
-        contextToSettingsSection()
+    @objc func openControlCenterFromMenu() {
+        controlCenterContext.selectedSection = .overview
         openControlCenter()
     }
 
-    @objc private func openUpgradeAllFromMenu() {
-        contextToUpdatesSection()
+    @objc func openQuickSettingsFromMenu() {
+        openPopoverOverlay(.quickSettings)
+    }
+
+    @objc func openAdvancedSettingsFromMenu() {
+        controlCenterContext.selectedSection = .settings
+        openControlCenter()
+    }
+
+    @objc func openUpgradeAllFromMenu() {
+        controlCenterContext.selectedSection = .updates
         openControlCenter()
         controlCenterContext.showUpgradeSheet = true
     }
 
-    @objc private func refreshFromMenu() {
+    @objc func refreshFromMenu() {
         core.triggerRefresh()
     }
 
-    @objc private func quitFromMenu() {
+    @objc func quitFromMenu() {
         NSApplication.shared.terminate(nil)
     }
 
-    @objc private func handleSystemAppearanceChanged() {
+    @objc func handleSystemAppearanceChanged() {
         updateStatusItemAppearance()
     }
-
-    private func contextToSettingsSection() {
-        controlCenterContext.selectedSection = .settings
-    }
-
-    private func contextToUpdatesSection() {
-        controlCenterContext.selectedSection = .updates
-    }
 }
 
-// MARK: - FloatingPanel
-
-final class FloatingPanel: NSPanel {
-    var onCommandF: (() -> Void)?
-    var onEscape: (() -> Void)?
-
-    init(contentRect: NSRect, backing: NSWindow.BackingStoreType, defer flag: Bool) {
-        super.init(contentRect: contentRect, styleMask: [.nonactivatingPanel, .borderless], backing: backing, defer: flag)
-
-        isFloatingPanel = true
-        level = .mainMenu
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        backgroundColor = .clear
-        isOpaque = false
-        hasShadow = true
-        isMovableByWindowBackground = false
-        isReleasedWhenClosed = false
-        hidesOnDeactivate = false
-        // Enable Tab traversal for SwiftUI controls within this borderless panel
-        autorecalculatesKeyViewLoop = true
-    }
-
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
-    override var acceptsFirstResponder: Bool { true }
-
-    override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        guard event.type == .keyDown else { return super.performKeyEquivalent(with: event) }
-
-        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let key = event.charactersIgnoringModifiers?.lowercased()
-
-        if flags.contains(.command), key == "f" {
-            onCommandF?()
-            return true
-        }
-
-        if event.keyCode == 53 {
-            onEscape?()
-            return true
-        }
-
-        return super.performKeyEquivalent(with: event)
-    }
-}
-
-final class ControlCenterWindow: NSWindow {
-    var onCommandF: (() -> Void)?
-    var onEscape: (() -> Void)?
-
-    override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        guard event.type == .keyDown else { return super.performKeyEquivalent(with: event) }
-
-        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let key = event.charactersIgnoringModifiers?.lowercased()
-
-        if flags.contains(.command), key == "w" {
-            performClose(nil)
-            return true
-        }
-
-        if flags.contains(.command), key == "f" {
-            onCommandF?()
-            return true
-        }
-
-        if event.keyCode == 53 {
-            onEscape?()
-            return true
-        }
-
-        return super.performKeyEquivalent(with: event)
-    }
-}
-
-// MARK: - VisualEffect
-
-struct VisualEffect: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.blendingMode = .behindWindow
-        view.state = .active
-        view.material = .popover
-        return view
-    }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
-}
-
-// MARK: - EventMonitor
-
-final class EventMonitor {
-    private var localMonitor: Any?
-    private var globalMonitor: Any?
-    private let mask: NSEvent.EventTypeMask
-    private let handler: (NSEvent?) -> Void
-
-    init(mask: NSEvent.EventTypeMask, handler: @escaping (NSEvent?) -> Void) {
-        self.mask = mask
-        self.handler = handler
-    }
-
-    deinit { stop() }
-
-    func start() {
-        if localMonitor == nil {
-            localMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
-                self?.handler(event)
-                return event
-            }
-        }
-        if globalMonitor == nil {
-            globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: handler)
-        }
-    }
-
-    func stop() {
-        if let localMonitor {
-            NSEvent.removeMonitor(localMonitor)
-            self.localMonitor = nil
-        }
-        if let globalMonitor {
-            NSEvent.removeMonitor(globalMonitor)
-            self.globalMonitor = nil
-        }
-    }
-}
+// MARK: - Status Badge
 
 private enum StatusBadge {
     case count(Int, NSColor)
