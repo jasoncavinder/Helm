@@ -1112,6 +1112,35 @@ mod tests {
     }
 
     #[test]
+    fn split_upgrade_target_plain_name() {
+        let (name, cleanup) = super::split_upgrade_target("sevenzip");
+        assert_eq!(name, "sevenzip");
+        assert!(!cleanup);
+    }
+
+    #[test]
+    fn split_upgrade_target_with_cleanup_marker() {
+        let input = format!("sevenzip{}", super::HOMEBREW_CLEANUP_MARKER);
+        let (name, cleanup) = super::split_upgrade_target(&input);
+        assert_eq!(name, "sevenzip");
+        assert!(cleanup);
+    }
+
+    #[test]
+    fn split_upgrade_target_empty_string() {
+        let (name, cleanup) = super::split_upgrade_target("");
+        assert_eq!(name, "");
+        assert!(!cleanup);
+    }
+
+    #[test]
+    fn split_upgrade_target_marker_only() {
+        let (name, cleanup) = super::split_upgrade_target(super::HOMEBREW_CLEANUP_MARKER);
+        assert_eq!(name, "");
+        assert!(cleanup);
+    }
+
+    #[test]
     fn adapter_upgrade_fails_when_formula_still_outdated_after_upgrade() {
         let source = FixtureSource::with_outdated_output("gdu (1.0.0) < 1.0.1\n");
         let adapter = HomebrewAdapter::new(source);
