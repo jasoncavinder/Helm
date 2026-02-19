@@ -1,3 +1,58 @@
+//! # Helm FFI Layer
+//!
+//! This module exposes the Helm core engine to the macOS XPC service via a C ABI
+//! FFI boundary.
+//!
+//! ## Lifecycle
+//!
+//! - **Initialization**: [`helm_init`] must be called once with a valid SQLite
+//!   database path. It creates a Tokio runtime, initializes the SQLite store with
+//!   migrations, registers all 15 manager adapters, and stores the engine state in
+//!   a process-global `Mutex<Option<HelmState>>`.
+//!
+//! - **No explicit shutdown**: There is no `helm_shutdown()` function. The Tokio
+//!   runtime, SQLite connections, and adapter state live for the entire process
+//!   lifetime. Cleanup occurs when the XPC service process exits.
+//!
+//! - **Thread safety**: All FFI functions acquire the global state mutex before
+//!   accessing the engine. Poisoned-lock recovery is implemented via
+//!   [`lock_or_recover`] to prevent lock-poison panics at the FFI boundary.
+//!
+//! ## FFI Exports (27 functions)
+//!
+//! | Function | Category |
+//! |----------|----------|
+//! | `helm_init` | Lifecycle |
+//! | `helm_list_installed_packages` | Package queries |
+//! | `helm_list_outdated_packages` | Package queries |
+//! | `helm_list_tasks` | Task management |
+//! | `helm_trigger_refresh` | Task management |
+//! | `helm_cancel_task` | Task management |
+//! | `helm_search_local` | Search |
+//! | `helm_trigger_remote_search` | Search |
+//! | `helm_list_manager_status` | Manager control |
+//! | `helm_set_manager_enabled` | Manager control |
+//! | `helm_install_manager` | Manager control |
+//! | `helm_update_manager` | Manager control |
+//! | `helm_uninstall_manager` | Manager control |
+//! | `helm_get_safe_mode` | Settings |
+//! | `helm_set_safe_mode` | Settings |
+//! | `helm_get_homebrew_keg_auto_cleanup` | Settings |
+//! | `helm_set_homebrew_keg_auto_cleanup` | Settings |
+//! | `helm_list_package_keg_policies` | Keg policies |
+//! | `helm_set_package_keg_policy` | Keg policies |
+//! | `helm_upgrade_all` | Upgrade |
+//! | `helm_upgrade_package` | Upgrade |
+//! | `helm_list_pins` | Pinning |
+//! | `helm_pin_package` | Pinning |
+//! | `helm_unpin_package` | Pinning |
+//! | `helm_reset_database` | Database |
+//! | `helm_take_last_error_key` | Error |
+//! | `helm_free_string` | Memory management |
+//!
+//! All data exchange uses JSON-encoded UTF-8 `*mut c_char` strings. The caller
+//! must free returned strings via [`helm_free_string`].
+
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::process::Command;
