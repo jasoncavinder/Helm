@@ -2,7 +2,7 @@
 
 This checklist is required before creating a release tag on `main`.
 
-## v0.14.0 (In Progress)
+## v0.14.0 (Completed)
 
 ### Scope and Documentation
 - [x] 0.14 manager delivery slices completed through `v0.14.0-alpha.5` (container/VM, detection-only, security/firmware, optional managers, Homebrew cask status).
@@ -26,10 +26,10 @@ This checklist is required before creating a release tag on `main`.
 
 ### Branch and Tag
 - [x] Release finalization branch merged to `dev`.
-- [x] PR opened from `dev` to `main` for `v0.14.0` and CI checks running (`#60`).
-- [ ] `dev` merged into `main` for release.
-- [ ] Create annotated tag: `git tag -a v0.14.0 -m "Helm v0.14.0"`
-- [ ] Push tag: `git push origin v0.14.0`
+- [x] PR opened from `dev` to `main` for `v0.14.0` and CI checks completed (`#60`).
+- [x] `dev` merged into `main` for release (via `#60`).
+- [x] Create annotated tag: `git tag -a v0.14.0 -m "Helm v0.14.0"`
+- [x] Push tag: `git push origin v0.14.0`
 
 ## v0.13.0-rc.1 (In Progress)
 
