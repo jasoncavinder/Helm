@@ -8,13 +8,13 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.13.0-rc.2**
+Current version: **0.13.0**
 
 See:
 - CHANGELOG.md
 
 Active milestone:
-- 0.13.x — UI/UX redesign, accessibility, onboarding walkthrough, and hardening (rc in progress)
+- 0.13.x — UI/UX redesign, accessibility, onboarding walkthrough, and hardening (stable)
 
 ---
 

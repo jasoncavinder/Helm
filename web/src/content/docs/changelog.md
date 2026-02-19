@@ -9,6 +9,18 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ---
 
+## 0.13.0 — 2026-02-19
+
+### Added
+- Website: changelog page, visual tour with 10 UI screenshots, FAQ & troubleshooting guide
+- Website: Open Graph and Twitter Card meta tags for social sharing
+- Website: Starlight `lastUpdated` timestamps on all pages
+
+### Changed
+- Promoted `0.13.x` beta and rc slices into the stable `v0.13.0` checkpoint
+
+---
+
 ## 0.13.0-rc.2 — 2026-02-19
 
 ### Added

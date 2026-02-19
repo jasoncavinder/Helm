@@ -23,13 +23,13 @@ Helm follows feature-driven milestones. Dates are intentionally omitted — mile
 | 0.11.x | Extended Language Package Managers — pnpm, yarn, poetry, RubyGems, bundler |
 | 0.12.x | Localization + Upgrade Transparency — locale hardening, overflow validation expansion, dedicated upgrade preview, dry-run |
 
-## In Progress
+## Completed (Recent)
 
 | Version | Milestone |
 |---|---|
-| 0.13.x | UI/UX Analysis & Redesign — full UX audit, interaction model, visual system refresh, accessibility, onboarding walkthrough, inspector sidebar, support & feedback entry points (`v0.13.0-rc.2` checkpoint released) |
+| 0.13.x | UI/UX Analysis & Redesign — full UX audit, interaction model, visual system refresh, accessibility, onboarding walkthrough, inspector sidebar, support & feedback entry points (`v0.13.0` stable released) |
 
-> **Testing Program:** Help validate `v0.13.0-rc.2` and submit issues via [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Testing:** `v0.13.0` is available. Submit feedback via [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
 ## Planned
 

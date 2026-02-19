@@ -12,7 +12,7 @@ Developers and power users on macOS who manage software through multiple package
 
 ## What it does today
 
-Helm v0.13.0-rc.2 supports fifteen managers:
+Helm v0.13.0 supports fifteen managers:
 
 | Category | Managers |
 |---------|----------|

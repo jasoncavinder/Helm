@@ -15,20 +15,16 @@ Helm is in:
 ```
 
 Focus:
-- Accessibility QA and VoiceOver/keyboard support
-- CI test enforcement (Rust + Swift)
-- Onboarding walkthrough (guided spotlight/coach marks tour)
-- Localization parity for redesign, onboarding walkthrough, and control center keys
-- UI layer purity fixes and architecture cleanup
-- Validation and hardening
+- 0.13.x milestone complete — stable release shipped
 
 Current checkpoint:
+- `v0.13.0` stable released (website updates, documentation alignment, version bump)
 - `v0.13.0-rc.2` released (support & feedback entry points, diagnostics copy, GitHub Sponsors integration)
 - `v0.13.0-rc.1` released (inspector sidebar, upgrade reliability, status menu, documentation)
 - Full codebase audit completed 2026-02-17 (Rust core, SwiftUI UI, XPC, localization, CI/CD)
 
 Next release targets:
-- `v0.13.0` stable — Execute validation sweep, complete usability test plan, close 0.13.x milestone
+- `v0.14.x` — Platform, Detection & Optional Managers
 
 ---
 

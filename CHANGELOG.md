@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.13.0] - 2026-02-19
+
+### Added
+- Website: changelog page, visual tour with 10 UI screenshots, FAQ & troubleshooting guide
+- Website: Open Graph and Twitter Card meta tags for social sharing
+- Website: Starlight `lastUpdated` timestamps on all pages
+
+### Changed
+- Promoted `0.13.x` beta and rc slices into the stable `v0.13.0` checkpoint
+- Aligned version metadata across Cargo.toml, HelmVersion, docs, README, and website to `0.13.0`
+
 ## [0.13.0-rc.2] - 2026-02-19
 
 ### Added
