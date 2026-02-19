@@ -3,6 +3,7 @@ import AppKit
 
 struct RedesignPopoverView: View {
     @ObservedObject private var core = HelmCore.shared
+    @ObservedObject private var walkthrough = WalkthroughManager.shared
     @EnvironmentObject private var context: ControlCenterContext
     @ObservedObject private var localization = LocalizationManager.shared
     @Environment(\.colorScheme) private var colorScheme
@@ -62,6 +63,11 @@ struct RedesignPopoverView: View {
                 OnboardingContainerView {
                     core.completeOnboarding()
                     core.triggerRefresh()
+                    if !walkthrough.hasCompletedPopoverWalkthrough {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                            walkthrough.startPopoverWalkthrough()
+                        }
+                    }
                 }
             } else {
                 ZStack {
@@ -121,6 +127,11 @@ struct RedesignPopoverView: View {
             RedesignUpgradeSheetView()
                 .environmentObject(context)
         }
+        .overlayPreferenceValue(SpotlightAnchorKey.self) { anchors in
+            if walkthrough.isPopoverWalkthroughActive {
+                SpotlightOverlay(manager: walkthrough, anchors: anchors)
+            }
+        }
     }
 
     private var popoverBaseContent: some View {
@@ -128,9 +139,11 @@ struct RedesignPopoverView: View {
             VStack(alignment: .leading, spacing: 12) {
                 if hasAttentionBanner {
                     attentionBanner
+                        .spotlightAnchor("attentionBanner")
                 }
 
                 popoverSearchField
+                    .spotlightAnchor("searchField")
 
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
@@ -143,6 +156,7 @@ struct RedesignPopoverView: View {
                     Spacer()
                     HealthBadgeView(status: core.aggregateHealth)
                 }
+                .spotlightAnchor("healthBadge")
                 .padding(.top, 4)
 
                 HStack(spacing: 8) {
@@ -161,7 +175,9 @@ struct RedesignPopoverView: View {
                 }
 
                 managerSnapshotCard
+                    .spotlightAnchor("managerSnapshot")
                 tasksCard
+                    .spotlightAnchor("activeTasks")
             }
             .padding(16)
 
@@ -170,6 +186,7 @@ struct RedesignPopoverView: View {
             popoverFooter
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
+                .spotlightAnchor("footerActions")
         }
         .frame(width: 400)
         .background(
