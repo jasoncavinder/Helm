@@ -33,7 +33,6 @@ struct PackageRowView: View {
         return parts.joined(separator: ", ")
     }
 
-    // swiftlint:disable:next cyclomatic_complexity
     var body: some View {
         HStack(spacing: 8) {
             if let onUpgrade, package.status == .upgradable {

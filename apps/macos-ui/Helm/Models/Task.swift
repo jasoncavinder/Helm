@@ -15,7 +15,6 @@ struct TaskItem: Identifiable {
     }
 
     /// Sort order: running first, then queued, then terminal states.
-    // swiftlint:disable:next cyclomatic_complexity
     var statusSortOrder: Int {
         switch status.lowercased() {
         case "running":   return 0

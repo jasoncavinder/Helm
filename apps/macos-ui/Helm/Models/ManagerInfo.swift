@@ -45,7 +45,6 @@ struct ManagerInfo: Identifiable {
         }
     }
 
-    // swiftlint:disable:next cyclomatic_complexity
     var capabilities: [String] {
         var result: [String] = [
             L10n.App.Capability.list,
