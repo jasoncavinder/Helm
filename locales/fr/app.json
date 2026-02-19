@@ -214,5 +214,40 @@
   "app.redesign.status_item.healthy": "Helm en bonne santé",
   "app.redesign.settings.metric.managers": "Gestionnaires actifs",
   "app.redesign.settings.metric.updates": "Mises à jour en attente",
-  "app.redesign.settings.metric.tasks": "Tâches en cours"
+  "app.redesign.settings.metric.tasks": "Tâches en cours",
+
+  "app.walkthrough.control.next": "Suivant",
+  "app.walkthrough.control.skip": "Passer",
+  "app.walkthrough.control.done": "Terminé",
+  "app.walkthrough.control.step_indicator": "Étape {current} sur {total}",
+
+  "app.walkthrough.popover.step1.title": "Santé du système",
+  "app.walkthrough.popover.step1.description": "Voici l'icône de statut de Helm. Elle affiche la santé de votre système d'un coup d'œil.",
+  "app.walkthrough.popover.step2.title": "Bannière de mises à jour",
+  "app.walkthrough.popover.step2.description": "Les mises à jour disponibles apparaissent ici. Cliquez pour tout mettre à jour en une fois.",
+  "app.walkthrough.popover.step3.title": "Tâches actives",
+  "app.walkthrough.popover.step3.description": "Les opérations en cours apparaissent ici pour que vous sachiez toujours ce que Helm fait.",
+  "app.walkthrough.popover.step4.title": "Aperçu des gestionnaires",
+  "app.walkthrough.popover.step4.description": "Un aperçu rapide de vos gestionnaires de paquets détectés et de leur état.",
+  "app.walkthrough.popover.step5.title": "Actions du pied de page",
+  "app.walkthrough.popover.step5.description": "Recherchez des paquets, ouvrez les réglages ou accédez au Control Center depuis ici.",
+  "app.walkthrough.popover.step6.title": "Recherche rapide",
+  "app.walkthrough.popover.step6.description": "Recherchez dans tous vos gestionnaires de paquets instantanément.",
+
+  "app.walkthrough.control_center.step1.title": "Barre latérale",
+  "app.walkthrough.control_center.step1.description": "Naviguez entre les sections pour gérer l'ensemble de votre environnement de développement.",
+  "app.walkthrough.control_center.step2.title": "Vue d'ensemble",
+  "app.walkthrough.control_center.step2.description": "Votre tableau de bord de santé système. Voyez tout d'un coup d'œil.",
+  "app.walkthrough.control_center.step3.title": "Paquets",
+  "app.walkthrough.control_center.step3.description": "Parcourez, recherchez, installez et gérez des paquets de tous les gestionnaires.",
+  "app.walkthrough.control_center.step4.title": "Tâches",
+  "app.walkthrough.control_center.step4.description": "Chaque opération de Helm est suivie ici. Annulez les tâches en cours à tout moment.",
+  "app.walkthrough.control_center.step5.title": "Gestionnaires",
+  "app.walkthrough.control_center.step5.description": "Activez, désactivez et surveillez vos gestionnaires de paquets.",
+  "app.walkthrough.control_center.step6.title": "Réglages",
+  "app.walkthrough.control_center.step6.description": "Configurez le mode sûr, la langue et les politiques de mise à jour automatique.",
+  "app.walkthrough.control_center.step7.title": "Aperçu des mises à niveau",
+  "app.walkthrough.control_center.step7.description": "Prévisualisez exactement ce qui se passera avant d'exécuter les mises à niveau.",
+
+  "app.settings.action.replay_walkthrough": "Rejouer la visite guidée"
 }

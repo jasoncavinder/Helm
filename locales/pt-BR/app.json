@@ -214,5 +214,40 @@
   "app.redesign.status_item.healthy": "Helm saudável",
   "app.redesign.settings.metric.managers": "Gerenciadores ativos",
   "app.redesign.settings.metric.updates": "Atualizações pendentes",
-  "app.redesign.settings.metric.tasks": "Tarefas em execução"
+  "app.redesign.settings.metric.tasks": "Tarefas em execução",
+
+  "app.walkthrough.control.next": "Próximo",
+  "app.walkthrough.control.skip": "Pular",
+  "app.walkthrough.control.done": "Concluído",
+  "app.walkthrough.control.step_indicator": "Passo {current} de {total}",
+
+  "app.walkthrough.popover.step1.title": "Saúde do sistema",
+  "app.walkthrough.popover.step1.description": "Este é o ícone de status do Helm. Ele mostra a saúde do seu sistema rapidamente.",
+  "app.walkthrough.popover.step2.title": "Banner de atualizações",
+  "app.walkthrough.popover.step2.description": "Quando atualizações estão disponíveis, elas aparecem aqui. Toque para atualizar tudo de uma vez.",
+  "app.walkthrough.popover.step3.title": "Tarefas ativas",
+  "app.walkthrough.popover.step3.description": "Operações em execução aparecem aqui para que você sempre saiba o que o Helm está fazendo.",
+  "app.walkthrough.popover.step4.title": "Visão dos gerenciadores",
+  "app.walkthrough.popover.step4.description": "Um resumo rápido dos gerenciadores de pacotes detectados e seu status.",
+  "app.walkthrough.popover.step5.title": "Ações do rodapé",
+  "app.walkthrough.popover.step5.description": "Pesquise pacotes, abra configurações ou acesse o painel de controle completo daqui.",
+  "app.walkthrough.popover.step6.title": "Pesquisa rápida",
+  "app.walkthrough.popover.step6.description": "Pesquise em todos os seus gerenciadores de pacotes instantaneamente.",
+
+  "app.walkthrough.control_center.step1.title": "Navegação lateral",
+  "app.walkthrough.control_center.step1.description": "Navegue entre seções para gerenciar todo o seu ambiente de desenvolvimento.",
+  "app.walkthrough.control_center.step2.title": "Visão geral",
+  "app.walkthrough.control_center.step2.description": "Seu painel de saúde do sistema. Veja tudo rapidamente.",
+  "app.walkthrough.control_center.step3.title": "Pacotes",
+  "app.walkthrough.control_center.step3.description": "Navegue, pesquise, instale e gerencie pacotes de todos os gerenciadores.",
+  "app.walkthrough.control_center.step4.title": "Tarefas",
+  "app.walkthrough.control_center.step4.description": "Todas as operações do Helm são registradas aqui. Cancele tarefas em execução a qualquer momento.",
+  "app.walkthrough.control_center.step5.title": "Gerenciadores",
+  "app.walkthrough.control_center.step5.description": "Ative, desative e monitore seus gerenciadores de pacotes.",
+  "app.walkthrough.control_center.step6.title": "Configurações",
+  "app.walkthrough.control_center.step6.description": "Configure o modo seguro, o idioma e as políticas de atualização automática.",
+  "app.walkthrough.control_center.step7.title": "Prévia de atualização",
+  "app.walkthrough.control_center.step7.description": "Visualize exatamente o que acontecerá antes de executar atualizações.",
+
+  "app.settings.action.replay_walkthrough": "Repetir tour guiado"
 }

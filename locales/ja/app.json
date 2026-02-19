@@ -214,5 +214,40 @@
   "app.redesign.status_item.healthy": "Helm は正常",
   "app.redesign.settings.metric.managers": "アクティブなマネージャー",
   "app.redesign.settings.metric.updates": "保留中のアップデート",
-  "app.redesign.settings.metric.tasks": "実行中のタスク"
+  "app.redesign.settings.metric.tasks": "実行中のタスク",
+
+  "app.walkthrough.control.next": "次へ",
+  "app.walkthrough.control.skip": "スキップ",
+  "app.walkthrough.control.done": "完了",
+  "app.walkthrough.control.step_indicator": "ステップ {current}/{total}",
+
+  "app.walkthrough.popover.step1.title": "システム状態",
+  "app.walkthrough.popover.step1.description": "これはHelmのステータスアイコンです。システムの状態を一目で確認できます。",
+  "app.walkthrough.popover.step2.title": "アップデートバナー",
+  "app.walkthrough.popover.step2.description": "アップデートが利用可能な場合、ここに表示されます。タップしてすべてを一括更新できます。",
+  "app.walkthrough.popover.step3.title": "アクティブなタスク",
+  "app.walkthrough.popover.step3.description": "実行中の操作がここに表示されるので、Helmが何をしているかいつでも確認できます。",
+  "app.walkthrough.popover.step4.title": "マネージャー概要",
+  "app.walkthrough.popover.step4.description": "検出されたパッケージマネージャーとその状態の概要です。",
+  "app.walkthrough.popover.step5.title": "フッターアクション",
+  "app.walkthrough.popover.step5.description": "ここからパッケージを検索、設定を開く、またはコントロールセンターにアクセスできます。",
+  "app.walkthrough.popover.step6.title": "クイック検索",
+  "app.walkthrough.popover.step6.description": "すべてのパッケージマネージャーを横断して即座に検索できます。",
+
+  "app.walkthrough.control_center.step1.title": "サイドバーナビゲーション",
+  "app.walkthrough.control_center.step1.description": "セクション間を移動して、開発環境全体を管理できます。",
+  "app.walkthrough.control_center.step2.title": "概要",
+  "app.walkthrough.control_center.step2.description": "システム状態のダッシュボードです。すべてを一目で確認できます。",
+  "app.walkthrough.control_center.step3.title": "パッケージ",
+  "app.walkthrough.control_center.step3.description": "すべてのマネージャーのパッケージを閲覧、検索、インストール、管理できます。",
+  "app.walkthrough.control_center.step4.title": "タスク",
+  "app.walkthrough.control_center.step4.description": "Helmが実行するすべての操作がここで追跡されます。実行中のタスクはいつでもキャンセルできます。",
+  "app.walkthrough.control_center.step5.title": "マネージャー",
+  "app.walkthrough.control_center.step5.description": "パッケージマネージャーの有効化、無効化、監視ができます。",
+  "app.walkthrough.control_center.step6.title": "設定",
+  "app.walkthrough.control_center.step6.description": "セーフモード、言語、自動更新ポリシーを設定できます。",
+  "app.walkthrough.control_center.step7.title": "アップグレードプレビュー",
+  "app.walkthrough.control_center.step7.description": "アップグレードを実行する前に、何が起こるかを正確にプレビューできます。",
+
+  "app.settings.action.replay_walkthrough": "ウォークスルーを再生"
 }

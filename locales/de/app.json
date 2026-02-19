@@ -214,5 +214,40 @@
   "app.redesign.status_item.healthy": "Helm fehlerfrei",
   "app.redesign.settings.metric.managers": "Aktive Manager",
   "app.redesign.settings.metric.updates": "Ausstehende Updates",
-  "app.redesign.settings.metric.tasks": "Laufende Aufgaben"
+  "app.redesign.settings.metric.tasks": "Laufende Aufgaben",
+
+  "app.walkthrough.control.next": "Weiter",
+  "app.walkthrough.control.skip": "Überspringen",
+  "app.walkthrough.control.done": "Fertig",
+  "app.walkthrough.control.step_indicator": "Schritt {current} von {total}",
+
+  "app.walkthrough.popover.step1.title": "Systemzustand",
+  "app.walkthrough.popover.step1.description": "Dies ist dein Helm-Statusicon. Es zeigt den Systemzustand auf einen Blick.",
+  "app.walkthrough.popover.step2.title": "Update-Banner",
+  "app.walkthrough.popover.step2.description": "Wenn Updates verfügbar sind, erscheinen sie hier. Tippe, um alles auf einmal zu aktualisieren.",
+  "app.walkthrough.popover.step3.title": "Aktive Aufgaben",
+  "app.walkthrough.popover.step3.description": "Laufende Operationen erscheinen hier, damit du immer weißt, was Helm gerade tut.",
+  "app.walkthrough.popover.step4.title": "Manager-Übersicht",
+  "app.walkthrough.popover.step4.description": "Ein schneller Überblick über deine erkannten Paketmanager und deren Status.",
+  "app.walkthrough.popover.step5.title": "Fußzeilenaktionen",
+  "app.walkthrough.popover.step5.description": "Suche Pakete, öffne Einstellungen oder greife von hier auf das Control Center zu.",
+  "app.walkthrough.popover.step6.title": "Schnellsuche",
+  "app.walkthrough.popover.step6.description": "Durchsuche alle deine Paketmanager sofort.",
+
+  "app.walkthrough.control_center.step1.title": "Seitenleiste",
+  "app.walkthrough.control_center.step1.description": "Navigiere zwischen Bereichen, um deine gesamte Entwicklungsumgebung zu verwalten.",
+  "app.walkthrough.control_center.step2.title": "Übersicht",
+  "app.walkthrough.control_center.step2.description": "Dein Dashboard für den Systemzustand. Sieh alles auf einen Blick.",
+  "app.walkthrough.control_center.step3.title": "Pakete",
+  "app.walkthrough.control_center.step3.description": "Durchsuche, suche, installiere und verwalte Pakete aller Manager.",
+  "app.walkthrough.control_center.step4.title": "Aufgaben",
+  "app.walkthrough.control_center.step4.description": "Jede Operation, die Helm ausführt, wird hier erfasst. Laufende Aufgaben jederzeit abbrechen.",
+  "app.walkthrough.control_center.step5.title": "Manager",
+  "app.walkthrough.control_center.step5.description": "Aktiviere, deaktiviere und überwache deine Paketmanager.",
+  "app.walkthrough.control_center.step6.title": "Einstellungen",
+  "app.walkthrough.control_center.step6.description": "Konfiguriere den sicheren Modus, die Sprache und automatische Update-Richtlinien.",
+  "app.walkthrough.control_center.step7.title": "Upgrade-Vorschau",
+  "app.walkthrough.control_center.step7.description": "Sieh genau, was passieren wird, bevor du Upgrades ausführst.",
+
+  "app.settings.action.replay_walkthrough": "Rundgang wiederholen"
 }
