@@ -361,7 +361,6 @@ private struct RedesignOverviewSectionView: View {
                             status: core.health(forManagerId: manager.id),
                             outdatedCount: core.outdatedCount(forManagerId: manager.id)
                         )
-                        .focusable()
                         .onTapGesture {
                             context.selectedManagerId = manager.id
                         }

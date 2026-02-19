@@ -120,17 +120,16 @@ Delivered in beta.3:
 Remaining (optional further refinement):
 - Extract service coordination into a dedicated `ServiceCoordinator` class if HelmCore extensions grow beyond current thresholds
 
-### Keyboard Traversal (Partially Completed)
+### Keyboard Traversal (Not Resolved — macOS SwiftUI Limitation)
 
-Delivered:
+SwiftUI's `.focusable()` modifier does not integrate with AppKit's key view loop (`nextKeyView` / Tab chain). Tab focus stays trapped in `TextField`. Enabling keyboard traversal requires either:
+- NSViewRepresentable bridging to manually wire the key view loop
+- A future SwiftUI API that bridges focus scopes to AppKit
 
-- ✅ `.focusable()` modifiers added to task rows, package rows, manager health cards, and PackageRowView component
-
-Carry-forward to beta.6:
-- Validate full Tab traversal through popover (banner → task list → managers → footer actions)
-- Validate full Tab traversal through control center sidebar and section content
+Carry-forward to beta.6 or post-0.13.x:
+- Investigate NSViewRepresentable approach for Tab traversal
 - Validate Escape key behavior consistent across all overlay states
-- Validate Enter/Space activation for all focusable elements
+- Validate Enter/Space activation for focusable elements
 
 ### Legacy UI Cleanup (Completed)
 

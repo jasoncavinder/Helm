@@ -95,7 +95,7 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 - Rust core: stable (190+ unit/integration tests, zero shell injection vectors, structured process invocation throughout)
 - XPC service: stable (code-signing validation, graceful reconnection with exponential backoff, timeout enforcement on all calls)
 - FFI boundary: functional (poisoned-lock recovery, JSON interchange, thread-safe static state)
-- UI: feature-complete for current scope; VoiceOver accessibility labels, semantic grouping, and state-change announcements implemented; HelmCore decomposed into 5 files; UI layer purity cleanup completed (business logic extracted from views to HelmCore/ManagerInfo); `.focusable()` modifiers applied to interactive elements
+- UI: feature-complete for current scope; VoiceOver accessibility labels, semantic grouping, and state-change announcements implemented; HelmCore decomposed into 5 files; UI layer purity cleanup completed (business logic extracted from views to HelmCore/ManagerInfo); keyboard Tab traversal still pending (macOS SwiftUI limitation)
 
 ---
 
@@ -128,8 +128,7 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
 - `accessibilityValue` for dynamic content (task status, package counts, manager state)
 - `accessibilityElement(children: .combine)` semantic grouping on composite rows
 - VoiceOver announcements for refresh start/completion, task cancellation, task failures, and refresh failure
-- `.focusable()` modifiers added to task rows, package rows, and manager cards for keyboard traversal
-- Remaining gap: full keyboard traversal validation (Tab order, Enter/Space activation) not yet systematically tested
+- Remaining gap: keyboard Tab traversal does not work — macOS SwiftUI `.focusable()` does not integrate with the AppKit key view loop; requires NSViewRepresentable bridging or a future SwiftUI API
 
 ### CI/CD (Resolved)
 
@@ -195,7 +194,7 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
   - Implemented: pnpm (global), yarn (global), RubyGems, Poetry (self/plugins), Bundler
   - Pending: none
 - Redesign integration is functional with layered popover UX + control-center search; accessibility labels and semantic grouping implemented; onboarding walkthrough delivered; UI layer purity cleanup completed
-- Keyboard-only traversal: `.focusable()` modifiers applied; full Tab order and Enter/Space activation validation still pending
+- Keyboard-only traversal: Tab navigation does not work in macOS SwiftUI (`.focusable()` does not participate in AppKit key view loop); requires NSViewRepresentable bridging approach
 - All walkthrough and redesign localization keys have been rolled out to all 6 locales
 - XPC call timeout enforcement added (30s data fetches, 300s mutations) with exponential backoff reconnection
 - Overflow validation now has both heuristic and on-device executable coverage for Settings, onboarding, navigation, package filters, and manager labels/states

@@ -205,7 +205,6 @@ struct PackageRowView: View {
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 8)
-        .focusable()
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
     }
