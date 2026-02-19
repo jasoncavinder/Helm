@@ -31,7 +31,8 @@ extension HelmCore {
                     }
                 }
             } catch {
-                logger.error("Failed to decode packages: \(error)")
+                logger.error("fetchPackages: decode failed (\(data.count) bytes): \(error)")
+                DispatchQueue.main.async { self?.lastError = L10n.Common.error.localized }
             }
         }
     }
@@ -63,7 +64,8 @@ extension HelmCore {
                     }
                 }
             } catch {
-                logger.error("Failed to decode outdated packages: \(error)")
+                logger.error("fetchOutdatedPackages: decode failed (\(data.count) bytes): \(error)")
+                DispatchQueue.main.async { self?.lastError = L10n.Common.error.localized }
             }
         }
     }
@@ -186,7 +188,8 @@ extension HelmCore {
                     }
                 }
             } catch {
-                logger.error("Failed to decode tasks: \(error)")
+                logger.error("fetchTasks: decode failed (\(data.count) bytes): \(error)")
+                DispatchQueue.main.async { self?.lastError = L10n.Common.error.localized }
             }
         }
     }
@@ -224,8 +227,11 @@ extension HelmCore {
                     }
                 }
             } catch {
-                logger.error("Failed to decode search results: \(error)")
-                DispatchQueue.main.async { self?.searchResults = [] }
+                logger.error("fetchSearchResults: decode failed (\(data.count) bytes): \(error)")
+                DispatchQueue.main.async {
+                    self?.searchResults = []
+                    self?.lastError = L10n.Common.error.localized
+                }
             }
         }
     }
@@ -257,7 +263,7 @@ extension HelmCore {
                     }
                 }
             } catch {
-                logger.error("Failed to decode cached available packages: \(error)")
+                logger.error("refreshCachedAvailablePackages: decode failed (\(data.count) bytes): \(error)")
             }
         }
     }
@@ -284,7 +290,8 @@ extension HelmCore {
                     self?.pruneOnboardingDetectionForDisabledManagers()
                 }
             } catch {
-                logger.error("Failed to decode manager statuses: \(error)")
+                logger.error("fetchManagerStatus: decode failed (\(data.count) bytes): \(error)")
+                DispatchQueue.main.async { self?.lastError = L10n.Common.error.localized }
             }
         }
     }
