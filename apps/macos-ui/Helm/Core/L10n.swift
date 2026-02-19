@@ -195,6 +195,71 @@ struct L10n {
             }
         }
         
+        struct Walkthrough {
+            struct Control {
+                static let next = "app.walkthrough.control.next"
+                static let skip = "app.walkthrough.control.skip"
+                static let done = "app.walkthrough.control.done"
+                static let stepIndicator = "app.walkthrough.control.step_indicator"
+            }
+            struct Popover {
+                struct Step1 {
+                    static let title = "app.walkthrough.popover.step1.title"
+                    static let description = "app.walkthrough.popover.step1.description"
+                }
+                struct Step2 {
+                    static let title = "app.walkthrough.popover.step2.title"
+                    static let description = "app.walkthrough.popover.step2.description"
+                }
+                struct Step3 {
+                    static let title = "app.walkthrough.popover.step3.title"
+                    static let description = "app.walkthrough.popover.step3.description"
+                }
+                struct Step4 {
+                    static let title = "app.walkthrough.popover.step4.title"
+                    static let description = "app.walkthrough.popover.step4.description"
+                }
+                struct Step5 {
+                    static let title = "app.walkthrough.popover.step5.title"
+                    static let description = "app.walkthrough.popover.step5.description"
+                }
+                struct Step6 {
+                    static let title = "app.walkthrough.popover.step6.title"
+                    static let description = "app.walkthrough.popover.step6.description"
+                }
+            }
+            struct ControlCenter {
+                struct Step1 {
+                    static let title = "app.walkthrough.control_center.step1.title"
+                    static let description = "app.walkthrough.control_center.step1.description"
+                }
+                struct Step2 {
+                    static let title = "app.walkthrough.control_center.step2.title"
+                    static let description = "app.walkthrough.control_center.step2.description"
+                }
+                struct Step3 {
+                    static let title = "app.walkthrough.control_center.step3.title"
+                    static let description = "app.walkthrough.control_center.step3.description"
+                }
+                struct Step4 {
+                    static let title = "app.walkthrough.control_center.step4.title"
+                    static let description = "app.walkthrough.control_center.step4.description"
+                }
+                struct Step5 {
+                    static let title = "app.walkthrough.control_center.step5.title"
+                    static let description = "app.walkthrough.control_center.step5.description"
+                }
+                struct Step6 {
+                    static let title = "app.walkthrough.control_center.step6.title"
+                    static let description = "app.walkthrough.control_center.step6.description"
+                }
+                struct Step7 {
+                    static let title = "app.walkthrough.control_center.step7.title"
+                    static let description = "app.walkthrough.control_center.step7.description"
+                }
+            }
+        }
+
         struct Settings {
             struct Tab {
                 static let title = "app.settings.tab.title"
@@ -230,6 +295,7 @@ struct L10n {
                 static let upgradeAll = "app.settings.action.upgrade_all"
                 static let reset = "app.settings.action.reset"
                 static let quit = "app.settings.action.quit"
+                static let replayWalkthrough = "app.settings.action.replay_walkthrough"
             }
             struct Alert {
                 struct Reset {

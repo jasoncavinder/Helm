@@ -214,5 +214,40 @@
   "app.redesign.status_item.healthy": "Helm healthy",
   "app.redesign.settings.metric.managers": "Active Managers",
   "app.redesign.settings.metric.updates": "Pending Updates",
-  "app.redesign.settings.metric.tasks": "Running Tasks"
+  "app.redesign.settings.metric.tasks": "Running Tasks",
+
+  "app.walkthrough.control.next": "Next",
+  "app.walkthrough.control.skip": "Skip",
+  "app.walkthrough.control.done": "Done",
+  "app.walkthrough.control.step_indicator": "Step {current} of {total}",
+
+  "app.walkthrough.popover.step1.title": "System Health",
+  "app.walkthrough.popover.step1.description": "This is your Helm status icon. It shows your system health at a glance.",
+  "app.walkthrough.popover.step2.title": "Updates Banner",
+  "app.walkthrough.popover.step2.description": "When updates are available, they appear here. Tap to upgrade all at once.",
+  "app.walkthrough.popover.step3.title": "Active Tasks",
+  "app.walkthrough.popover.step3.description": "Running operations appear here so you always know what Helm is doing.",
+  "app.walkthrough.popover.step4.title": "Manager Snapshot",
+  "app.walkthrough.popover.step4.description": "A quick snapshot of your detected package managers and their status.",
+  "app.walkthrough.popover.step5.title": "Footer Actions",
+  "app.walkthrough.popover.step5.description": "Search packages, open settings, or access the full control center from here.",
+  "app.walkthrough.popover.step6.title": "Quick Search",
+  "app.walkthrough.popover.step6.description": "Search across all your package managers instantly.",
+
+  "app.walkthrough.control_center.step1.title": "Sidebar Navigation",
+  "app.walkthrough.control_center.step1.description": "Navigate between sections to manage your entire development environment.",
+  "app.walkthrough.control_center.step2.title": "Overview",
+  "app.walkthrough.control_center.step2.description": "Your system health dashboard. See everything at a glance.",
+  "app.walkthrough.control_center.step3.title": "Packages",
+  "app.walkthrough.control_center.step3.description": "Browse, search, install, and manage packages across all managers.",
+  "app.walkthrough.control_center.step4.title": "Tasks",
+  "app.walkthrough.control_center.step4.description": "Every operation Helm runs is tracked here. Cancel running tasks anytime.",
+  "app.walkthrough.control_center.step5.title": "Managers",
+  "app.walkthrough.control_center.step5.description": "Enable, disable, and monitor your package managers.",
+  "app.walkthrough.control_center.step6.title": "Settings",
+  "app.walkthrough.control_center.step6.description": "Configure safe mode, language, and automatic update policies.",
+  "app.walkthrough.control_center.step7.title": "Upgrade Preview",
+  "app.walkthrough.control_center.step7.description": "Preview exactly what will happen before running upgrades.",
+
+  "app.settings.action.replay_walkthrough": "Replay Walkthrough"
 }
