@@ -3,6 +3,7 @@ import AppKit
 
 struct HelmPrimaryButtonStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @Environment(\.isEnabled) private var isEnabled
     var cornerRadius: CGFloat = 10
     var horizontalPadding: CGFloat = 12
     var verticalPadding: CGFloat = 7
@@ -23,6 +24,7 @@ struct HelmPrimaryButtonStyle: ButtonStyle {
                         )
                     )
             )
+            .opacity(isEnabled ? 1 : 0.4)
             .scaleEffect(accessibilityReduceMotion ? 1 : (configuration.isPressed ? 0.98 : 1))
             .animation(
                 accessibilityReduceMotion ? nil : .easeOut(duration: 0.12),

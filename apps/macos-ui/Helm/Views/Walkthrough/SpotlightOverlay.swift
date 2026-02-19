@@ -50,15 +50,12 @@ struct SpotlightCutoutShape: Shape {
     }
 
     func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.addRect(rect)
         let paddedCutout = cutoutRect.insetBy(dx: -6, dy: -4)
-        path.addRoundedRect(
-            in: paddedCutout,
+        return Path(
+            roundedRect: paddedCutout,
             cornerSize: CGSize(width: cornerRadius, height: cornerRadius),
             style: .continuous
         )
-        return path
     }
 }
 
@@ -156,8 +153,16 @@ struct SpotlightOverlay: View {
             GeometryReader { proxy in
                 let targetRect = resolveTargetRect(step: step, proxy: proxy)
                 ZStack {
-                    SpotlightCutoutShape(cutoutRect: targetRect)
-                        .fill(Color.black.opacity(0.5), style: FillStyle(eoFill: true))
+                    Color.black.opacity(0.5)
+                        .mask(
+                            ZStack {
+                                Color.white
+                                SpotlightCutoutShape(cutoutRect: targetRect)
+                                    .fill(Color.white)
+                                    .blendMode(.destinationOut)
+                            }
+                            .compositingGroup()
+                        )
                         .allowsHitTesting(true)
                         .onTapGesture {
                             manager.advanceStep()

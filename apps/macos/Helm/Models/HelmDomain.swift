@@ -41,7 +41,7 @@ enum HelmSection: String, CaseIterable, Identifiable {
     var symbolName: String {
         switch self {
         case .overview:
-            return "gauge.with.dots.needle.50percent"
+            return "speedometer"
         case .updates:
             return "square.and.arrow.down.on.square"
         case .packages:
