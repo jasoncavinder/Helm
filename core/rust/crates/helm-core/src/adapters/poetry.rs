@@ -150,6 +150,9 @@ impl<S: PoetrySource> ManagerAdapter for PoetryAdapter<S> {
                     Some(package.name.as_str())
                 };
                 let _ = self.source.upgrade_plugins(target_name)?;
+                if let Some(name) = target_name {
+                    ensure_poetry_plugin_no_longer_outdated(&self.source, name)?;
+                }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
                     action: ManagerAction::Upgrade,
@@ -343,6 +346,29 @@ fn parse_poetry_plugins_installed(output: &str) -> AdapterResult<Vec<InstalledPa
 
     packages.sort_by(|a, b| a.package.name.cmp(&b.package.name));
     Ok(packages)
+}
+
+fn ensure_poetry_plugin_no_longer_outdated<S: PoetrySource>(
+    source: &S,
+    plugin_name: &str,
+) -> AdapterResult<()> {
+    let raw = source.list_outdated_plugins()?;
+    let outdated = parse_poetry_plugins_outdated(&raw)?;
+    if outdated
+        .iter()
+        .any(|item| item.package.name == plugin_name)
+    {
+        return Err(CoreError {
+            manager: Some(ManagerId::Poetry),
+            task: Some(TaskType::Upgrade),
+            action: Some(ManagerAction::Upgrade),
+            kind: CoreErrorKind::ProcessFailure,
+            message: format!(
+                "poetry plugin upgrade reported success but '{plugin_name}' remains outdated"
+            ),
+        });
+    }
+    Ok(())
 }
 
 fn parse_poetry_plugins_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {

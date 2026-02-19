@@ -103,7 +103,10 @@ extension HelmCore {
                                     "manager": managerName
                                 ]),
                             status: task.status.capitalized,
-                            managerId: task.manager
+                            managerId: task.manager,
+                            taskType: task.taskType,
+                            labelKey: task.labelKey,
+                            labelArgs: task.labelArgs
                         )
                     }
                     .sorted { $0.statusSortOrder < $1.statusSortOrder }

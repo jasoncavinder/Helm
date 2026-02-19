@@ -152,6 +152,9 @@ impl<S: RubyGemsSource> ManagerAdapter for RubyGemsAdapter<S> {
                     Some(package.name.as_str())
                 };
                 let _ = self.source.upgrade(target_name)?;
+                if let Some(name) = target_name {
+                    ensure_gem_no_longer_outdated(&self.source, name)?;
+                }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
                     action: ManagerAction::Upgrade,
@@ -278,6 +281,29 @@ fn rubygems_request(
         request = request.task_id(task_id);
     }
     request
+}
+
+fn ensure_gem_no_longer_outdated<S: RubyGemsSource>(
+    source: &S,
+    gem_name: &str,
+) -> AdapterResult<()> {
+    let raw = source.list_outdated()?;
+    let outdated = parse_rubygems_outdated(&raw)?;
+    if outdated
+        .iter()
+        .any(|item| item.package.name == gem_name)
+    {
+        return Err(CoreError {
+            manager: Some(ManagerId::RubyGems),
+            task: Some(TaskType::Upgrade),
+            action: Some(ManagerAction::Upgrade),
+            kind: CoreErrorKind::ProcessFailure,
+            message: format!(
+                "gem update reported success but '{gem_name}' remains outdated"
+            ),
+        });
+    }
+    Ok(())
 }
 
 fn parse_rubygems_version(output: &str) -> Option<String> {
@@ -711,5 +737,67 @@ mod tests {
         let error = parse_rubygems_list_installed("{not text").expect_err("expected parse failure");
         assert_eq!(error.manager, Some(ManagerId::RubyGems));
         assert_eq!(error.kind, CoreErrorKind::ParseFailure);
+    }
+
+    #[test]
+    fn upgrade_single_gem_succeeds_when_no_longer_outdated() {
+        let mut source = StubRubyGemsSource::success();
+        source.list_outdated_result = Ok(String::new());
+        let adapter = RubyGemsAdapter::new(source);
+
+        let response = adapter
+            .execute(AdapterRequest::Upgrade(crate::adapters::UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::RubyGems,
+                    name: "rake".to_string(),
+                }),
+            }))
+            .expect("upgrade should succeed when gem is no longer outdated");
+
+        match response {
+            AdapterResponse::Mutation(mutation) => {
+                assert_eq!(mutation.action, ManagerAction::Upgrade);
+                assert_eq!(mutation.package.name, "rake");
+            }
+            other => panic!("unexpected response: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn upgrade_single_gem_fails_when_still_outdated() {
+        let source = StubRubyGemsSource::success();
+        let adapter = RubyGemsAdapter::new(source);
+
+        let error = adapter
+            .execute(AdapterRequest::Upgrade(crate::adapters::UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::RubyGems,
+                    name: "rake".to_string(),
+                }),
+            }))
+            .expect_err("upgrade should fail when gem remains outdated");
+
+        assert_eq!(error.kind, CoreErrorKind::ProcessFailure);
+        assert!(error.message.contains("remains outdated"));
+    }
+
+    #[test]
+    fn upgrade_all_gems_skips_post_validation() {
+        let source = StubRubyGemsSource::success();
+        let adapter = RubyGemsAdapter::new(source);
+
+        let response = adapter
+            .execute(AdapterRequest::Upgrade(crate::adapters::UpgradeRequest {
+                package: None,
+            }))
+            .expect("upgrade all should succeed without post-validation");
+
+        match response {
+            AdapterResponse::Mutation(mutation) => {
+                assert_eq!(mutation.action, ManagerAction::Upgrade);
+                assert_eq!(mutation.package.name, "__all__");
+            }
+            other => panic!("unexpected response: {other:?}"),
+        }
     }
 }

@@ -154,6 +154,9 @@ impl<S: PipSource> ManagerAdapter for PipAdapter<S> {
                     Some(package.name.as_str())
                 };
                 let _ = self.source.upgrade(target_name)?;
+                if let Some(name) = target_name {
+                    ensure_pip_no_longer_outdated(&self.source, name)?;
+                }
 
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
@@ -375,6 +378,29 @@ fn parse_pip_list(output: &str) -> AdapterResult<Vec<InstalledPackage>> {
 
     packages.sort_by(|a, b| a.package.name.cmp(&b.package.name));
     Ok(packages)
+}
+
+fn ensure_pip_no_longer_outdated<S: PipSource>(
+    source: &S,
+    package_name: &str,
+) -> AdapterResult<()> {
+    let raw = source.list_outdated()?;
+    let outdated = parse_pip_outdated(&raw)?;
+    if outdated
+        .iter()
+        .any(|item| item.package.name == package_name)
+    {
+        return Err(CoreError {
+            manager: Some(ManagerId::Pip),
+            task: Some(TaskType::Upgrade),
+            action: Some(ManagerAction::Upgrade),
+            kind: CoreErrorKind::ProcessFailure,
+            message: format!(
+                "pip install --upgrade reported success but '{package_name}' remains outdated"
+            ),
+        });
+    }
+    Ok(())
 }
 
 fn parse_pip_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {

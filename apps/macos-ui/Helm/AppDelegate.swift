@@ -280,6 +280,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         aboutItem.target = self
         menu.addItem(aboutItem)
 
+        let controlCenterItem = NSMenuItem(
+            title: L10n.App.Action.openControlCenter.localized,
+            action: #selector(openControlCenterFromMenu),
+            keyEquivalent: ""
+        )
+        controlCenterItem.target = self
+        menu.addItem(controlCenterItem)
+
+        menu.addItem(.separator())
+
         let upgradeItem = NSMenuItem(
             title: L10n.App.Settings.Action.upgradeAll.localized,
             action: #selector(openUpgradeAllFromMenu),
@@ -385,6 +395,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openAboutFromMenu() {
         openPopoverOverlay(.about)
+    }
+
+    @objc private func openControlCenterFromMenu() {
+        controlCenterContext.selectedSection = .overview
+        openControlCenter()
     }
 
     @objc private func openQuickSettingsFromMenu() {

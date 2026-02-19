@@ -156,6 +156,9 @@ impl<S: YarnSource> ManagerAdapter for YarnAdapter<S> {
                     Some(package.name.as_str())
                 };
                 let _ = self.source.upgrade_global(target_name)?;
+                if let Some(name) = target_name {
+                    ensure_yarn_no_longer_outdated(&self.source, name)?;
+                }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
                     action: ManagerAction::Upgrade,
@@ -369,6 +372,29 @@ fn parse_yarn_list_installed(output: &str) -> AdapterResult<Vec<InstalledPackage
             pinned: false,
         })
         .collect())
+}
+
+fn ensure_yarn_no_longer_outdated<S: YarnSource>(
+    source: &S,
+    package_name: &str,
+) -> AdapterResult<()> {
+    let raw = source.list_outdated_global()?;
+    let outdated = parse_yarn_outdated(&raw)?;
+    if outdated
+        .iter()
+        .any(|item| item.package.name == package_name)
+    {
+        return Err(CoreError {
+            manager: Some(ManagerId::Yarn),
+            task: Some(TaskType::Upgrade),
+            action: Some(ManagerAction::Upgrade),
+            kind: CoreErrorKind::ProcessFailure,
+            message: format!(
+                "yarn upgrade reported success but '{package_name}' remains outdated"
+            ),
+        });
+    }
+    Ok(())
 }
 
 fn parse_yarn_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {

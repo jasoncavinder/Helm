@@ -39,10 +39,13 @@ struct ManagersSectionView: View {
                                     operationStatus: core.managerOperations[manager.id],
                                     onSelect: {
                                         context.selectedManagerId = manager.id
+                                        context.selectedPackageId = nil
+                                        context.selectedTaskId = nil
                                     },
                                     onViewPackages: {
                                         context.selectedManagerId = manager.id
                                         context.managerFilterId = manager.id
+                                        context.selectedTaskId = nil
                                         context.selectedSection = .packages
                                     }
                                 )

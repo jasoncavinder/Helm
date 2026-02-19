@@ -153,6 +153,9 @@ impl<S: CargoSource> ManagerAdapter for CargoAdapter<S> {
                     Some(package.name.as_str())
                 };
                 let _ = self.source.upgrade(target_name)?;
+                if let Some(name) = target_name {
+                    ensure_cargo_no_longer_outdated(&self.source, name)?;
+                }
 
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
@@ -432,6 +435,29 @@ pub(crate) fn parse_cargo_search(
     }
 
     Ok(results)
+}
+
+fn ensure_cargo_no_longer_outdated<S: CargoSource>(
+    source: &S,
+    package_name: &str,
+) -> AdapterResult<()> {
+    let raw = source.list_outdated()?;
+    let outdated = parse_cargo_outdated(&raw)?;
+    if outdated
+        .iter()
+        .any(|item| item.package.name == package_name)
+    {
+        return Err(CoreError {
+            manager: Some(ManagerId::Cargo),
+            task: Some(TaskType::Upgrade),
+            action: Some(ManagerAction::Upgrade),
+            kind: CoreErrorKind::ProcessFailure,
+            message: format!(
+                "cargo install reported success but '{package_name}' remains outdated"
+            ),
+        });
+    }
+    Ok(())
 }
 
 pub(crate) fn parse_cargo_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
