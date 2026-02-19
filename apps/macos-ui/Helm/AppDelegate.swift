@@ -219,7 +219,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func menuBaseTint(for button: NSStatusBarButton) -> NSColor {
         var color = NSColor.labelColor
         button.effectiveAppearance.performAsCurrentDrawingAppearance {
-            color = NSColor.labelColor
+            color = NSColor.labelColor.usingColorSpace(.sRGB) ?? NSColor.labelColor
         }
         return color
     }
