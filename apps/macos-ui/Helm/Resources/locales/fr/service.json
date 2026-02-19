@@ -21,6 +21,7 @@
   "service.task.label.upgrade.homebrew_cleanup": "Mettre à jour {package} via Homebrew (nettoyage des anciens kegs)",
   "service.task.label.upgrade.mise": "Mettre à jour {package} via mise",
   "service.task.label.upgrade.rustup_toolchain": "Mettre à jour la toolchain rustup {toolchain}",
+  "service.task.label.upgrade.package": "Mettre à jour {package} via {manager}",
   "service.task.label.upgrade.softwareupdate_all": "Mettre à jour les mises à jour logicielles de macOS",
   "service.task.status.cancelled": "Annulée",
   "service.task.status.completed": "Terminée",

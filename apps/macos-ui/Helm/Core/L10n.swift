@@ -474,6 +474,7 @@ struct L10n {
                 static let upgradeHomebrew = "service.task.label.upgrade.homebrew"
                 static let upgradeHomebrewCleanup = "service.task.label.upgrade.homebrew_cleanup"
                 static let upgradeMise = "service.task.label.upgrade.mise"
+                static let upgradePackage = "service.task.label.upgrade.package"
                 static let upgradeRustupToolchain = "service.task.label.upgrade.rustup_toolchain"
                 static let upgradeSoftwareUpdateAll = "service.task.label.upgrade.softwareupdate_all"
                 static let pinHomebrew = "service.task.label.pin.homebrew"

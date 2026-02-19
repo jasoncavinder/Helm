@@ -17,6 +17,7 @@
   "service.task.label.upgrade.homebrew_cleanup": "Actualizar {package} con Homebrew (limpiar kegs antiguos)",
   "service.task.label.upgrade.mise": "Actualizar {package} con mise",
   "service.task.label.upgrade.rustup_toolchain": "Actualizar toolchain de rustup {toolchain}",
+  "service.task.label.upgrade.package": "Actualizar {package} con {manager}",
   "service.task.label.upgrade.softwareupdate_all": "Actualizar software de macOS",
   "service.task.label.pin.homebrew": "Fijar {package} con Homebrew",
   "service.task.label.unpin.homebrew": "Desfijar {package} con Homebrew",
