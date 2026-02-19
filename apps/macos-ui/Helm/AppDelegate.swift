@@ -354,6 +354,30 @@ private extension AppDelegate {
         settingsItem.submenu = settingsMenu
         menu.addItem(settingsItem)
 
+        let supportItem = NSMenuItem(
+            title: L10n.App.Settings.SupportFeedback.supportHelm.localized,
+            action: nil,
+            keyEquivalent: ""
+        )
+        let supportMenu = NSMenu()
+        let gitHubSponsorsItem = NSMenuItem(
+            title: L10n.App.Settings.SupportFeedback.gitHubSponsors.localized,
+            action: #selector(openGitHubSponsorsFromMenu),
+            keyEquivalent: ""
+        )
+        gitHubSponsorsItem.target = self
+        supportMenu.addItem(gitHubSponsorsItem)
+
+        let patreonItem = NSMenuItem(
+            title: L10n.App.Settings.SupportFeedback.patreon.localized,
+            action: #selector(openPatreonFromMenu),
+            keyEquivalent: ""
+        )
+        patreonItem.target = self
+        supportMenu.addItem(patreonItem)
+        supportItem.submenu = supportMenu
+        menu.addItem(supportItem)
+
         menu.addItem(.separator())
 
         let refreshItem = NSMenuItem(
@@ -427,6 +451,14 @@ private extension AppDelegate {
 
     @objc func quitFromMenu() {
         NSApplication.shared.terminate(nil)
+    }
+
+    @objc func openGitHubSponsorsFromMenu() {
+        HelmSupport.openURL(HelmSupport.gitHubSponsorsURL)
+    }
+
+    @objc func openPatreonFromMenu() {
+        HelmSupport.openURL(HelmSupport.patreonURL)
     }
 
     @objc func handleSystemAppearanceChanged() {

@@ -276,5 +276,17 @@
   "app.walkthrough.control_center.step7.title": "Prévia de atualização",
   "app.walkthrough.control_center.step7.description": "Visualize exatamente o que acontecerá antes de executar atualizações.",
 
-  "app.settings.action.replay_walkthrough": "Repetir tour guiado"
+  "app.settings.action.replay_walkthrough": "Repetir tour guiado",
+
+  "app.settings.section.support_feedback": "Suporte e feedback",
+  "app.settings.support_feedback.support_helm": "Apoiar Helm",
+  "app.settings.support_feedback.report_bug": "Reportar um bug",
+  "app.settings.support_feedback.request_feature": "Solicitar recurso",
+  "app.settings.support_feedback.send_feedback": "Enviar feedback",
+  "app.settings.support_feedback.copy_diagnostics": "Copiar diagnósticos",
+  "app.settings.support_feedback.include_diagnostics": "Incluir diagnósticos",
+  "app.settings.support_feedback.copied_confirmation": "Copiado!",
+  "app.settings.support_feedback.diagnostics_copied_hint": "Diagnósticos copiados para a área de transferência",
+  "app.settings.support_feedback.github_sponsors": "GitHub Sponsors",
+  "app.settings.support_feedback.patreon": "Patreon"
 }
