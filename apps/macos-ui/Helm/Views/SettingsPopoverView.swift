@@ -57,7 +57,7 @@ struct SettingsSectionView: View {
                 id: managerId,
                 managerId: managerId,
                 label: localizedManagerDisplayName(managerId),
-                symbol: managerSymbol(for: managerId),
+                symbol: ManagerInfo.find(byId: managerId)?.symbolName ?? "shippingbox.fill",
                 tint: (ManagerInfo.find(byId: managerId)?.authority ?? .standard) == .guarded ? .orange : .accentColor
             )
         }
@@ -75,19 +75,6 @@ struct SettingsSectionView: View {
             )
         }
         return badges
-    }
-
-    private func managerSymbol(for managerId: String) -> String {
-        switch managerId {
-        case "softwareupdate":
-            return "apple.logo"
-        case "homebrew_formula", "homebrew_cask":
-            return "cup.and.saucer.fill"
-        case "mise", "rustup":
-            return "wrench.and.screwdriver.fill"
-        default:
-            return "shippingbox.fill"
-        }
     }
 
     var body: some View {

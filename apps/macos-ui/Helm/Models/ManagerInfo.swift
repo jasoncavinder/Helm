@@ -76,6 +76,19 @@ struct ManagerInfo: Identifiable {
         id == "homebrew_formula"
     }
 
+    var symbolName: String {
+        switch id {
+        case "softwareupdate":
+            return "apple.logo"
+        case "homebrew_formula", "homebrew_cask":
+            return "cup.and.saucer.fill"
+        case "mise", "rustup":
+            return "wrench.and.screwdriver.fill"
+        default:
+            return "shippingbox.fill"
+        }
+    }
+
     static let all: [ManagerInfo] = [
         ManagerInfo(id: "homebrew_formula", displayName: "Homebrew (formulae)", shortName: "brew", category: "System/OS", isImplemented: true, installMethod: .updateOnly),
         ManagerInfo(id: "homebrew_cask", displayName: "Homebrew (casks)", shortName: "cask", category: "App Store", isImplemented: false, installMethod: .notManageable),
