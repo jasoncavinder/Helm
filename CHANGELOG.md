@@ -4,6 +4,32 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.13.0] - 2026-02-19
+
+### Added
+- Website: changelog page, visual tour with 10 UI screenshots, FAQ & troubleshooting guide
+- Website: Open Graph and Twitter Card meta tags for social sharing
+- Website: Starlight `lastUpdated` timestamps on all pages
+
+### Changed
+- Promoted `0.13.x` beta and rc slices into the stable `v0.13.0` checkpoint
+- Aligned version metadata across Cargo.toml, HelmVersion, docs, README, and website to `0.13.0`
+
+## [0.13.0-rc.2] - 2026-02-19
+
+### Added
+- "Support & Feedback" card in control-center Settings with 5 action buttons: Support Helm (GitHub Sponsors), Report a Bug, Request a Feature, Send Feedback (mailto), Copy Diagnostics
+- "Include Diagnostics" toggle (default OFF) that copies diagnostics to clipboard before opening GitHub issue templates
+- Transient "Copied!" confirmation with animated opacity transition and 2-second auto-dismiss
+- "Support Helm" submenu in right-click status menu with GitHub Sponsors and Patreon items
+- `.github/FUNDING.yml` for GitHub Sponsors and Patreon integration
+- `HelmSupport.reportBug()` and `HelmSupport.requestFeature()` methods with template-specific GitHub URLs
+- 11 new L10n keys (`app.settings.support_feedback.*`) across all 6 locales (en, es, de, fr, pt-BR, ja)
+
+### Changed
+- Decomposed AppDelegate: extracted `StatusBadge` enum and `drawBadge()` into `AppDelegate+StatusBadge.swift`; extracted inline support submenu into `buildSupportMenuItem()` helper to satisfy SwiftLint file/function length thresholds
+- README.md updated with GitHub Sponsors link, Patreon link, and issue template links
+
 ## [0.13.0-rc.1] - 2026-02-18
 
 ### Added
