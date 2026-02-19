@@ -17,42 +17,11 @@ struct PackagesSectionView: View {
     }
 
     private var displayedPackages: [PackageItem] {
-        let query = context.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let managerFilter = selectedManagerId ?? context.managerFilterId
-
-        var base = allPackages
-
-        if !query.isEmpty {
-            let localMatches = base.filter {
-                $0.name.lowercased().contains(query)
-                    || $0.manager.lowercased().contains(query)
-            }
-
-            let localIds = Set(localMatches.map(\.id))
-            let remoteMatches = core.searchResults.filter { !localIds.contains($0.id) }
-            base = (localMatches + remoteMatches)
-                .sorted { lhs, rhs in
-                    lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
-                }
-        }
-
-        if let managerFilter {
-            base = base.filter { $0.managerId == managerFilter }
-        }
-
-        if let statusFilter = selectedStatusFilter {
-            base = base.filter { package in
-                if package.status == statusFilter {
-                    return true
-                }
-                if statusFilter == .installed && package.status == .upgradable {
-                    return true
-                }
-                return false
-            }
-        }
-
-        return base
+        core.filteredPackages(
+            query: context.searchQuery,
+            managerId: selectedManagerId ?? context.managerFilterId,
+            statusFilter: selectedStatusFilter
+        )
     }
 
     private func kegPolicyMenuSelection(for package: PackageItem) -> KegPolicyMenuSelection? {

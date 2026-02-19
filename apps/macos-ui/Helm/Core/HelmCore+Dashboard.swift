@@ -55,6 +55,49 @@ extension HelmCore {
         return Array(managerIds)
     }
 
+    /// Returns a filtered and deduplicated package list.
+    /// Merges local matches with remote search results (deduped by ID),
+    /// then applies optional manager and status filters.
+    func filteredPackages(
+        query: String,
+        managerId: String?,
+        statusFilter: PackageStatus?
+    ) -> [PackageItem] {
+        var base = allKnownPackages
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
+        if !trimmed.isEmpty {
+            let localMatches = base.filter {
+                $0.name.lowercased().contains(trimmed)
+                    || $0.manager.lowercased().contains(trimmed)
+            }
+            let localIds = Set(localMatches.map(\.id))
+            let remoteMatches = searchResults.filter { !localIds.contains($0.id) }
+            base = (localMatches + remoteMatches)
+                .sorted { lhs, rhs in
+                    lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                }
+        }
+
+        if let managerId {
+            base = base.filter { $0.managerId == managerId }
+        }
+
+        if let statusFilter {
+            base = base.filter { package in
+                if package.status == statusFilter {
+                    return true
+                }
+                if statusFilter == .installed && package.status == .upgradable {
+                    return true
+                }
+                return false
+            }
+        }
+
+        return base
+    }
+
     func outdatedCount(forManagerId managerId: String) -> Int {
         outdatedPackages.filter { $0.managerId == managerId }.count
     }
