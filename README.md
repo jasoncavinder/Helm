@@ -49,8 +49,11 @@ Helm is an independent project.
 
 If you find it useful, consider supporting development:
 
-- GitHub Sponsors (coming soon)
+- [GitHub Sponsors](https://github.com/sponsors/jasoncavinder)
+- [Patreon](https://patreon.com/jasoncavinder)
 - Early access and lifetime licenses (planned)
+
+You can also help by [reporting bugs](https://github.com/jasoncavinder/Helm/issues/new?template=bug_report.yml) or [requesting features](https://github.com/jasoncavinder/Helm/issues/new?template=feature_request.yml). In-app feedback entry points are available in Settings under "Support & Feedback".
 
 Your support helps fund continued development.
 

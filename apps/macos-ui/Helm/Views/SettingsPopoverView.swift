@@ -10,6 +10,8 @@ struct SettingsSectionView: View {
     @State private var checkFrequency = 60
     @State private var showResetConfirmation = false
     @State private var isResetting = false
+    @State private var includeDiagnostics = false
+    @State private var showCopiedConfirmation = false
 
     private var selectedFrequencyLabel: String {
         switch checkFrequency {
@@ -29,6 +31,17 @@ struct SettingsSectionView: View {
             return AnyShapeStyle(.thinMaterial)
         }
         return AnyShapeStyle(Color.white.opacity(0.92))
+    }
+
+    private func showCopiedBriefly() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showCopiedConfirmation = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                showCopiedConfirmation = false
+            }
+        }
     }
 
     var body: some View {
@@ -147,6 +160,79 @@ struct SettingsSectionView: View {
                             walkthrough.resetWalkthroughs()
                             walkthrough.startPopoverWalkthrough()
                         }
+                    }
+                }
+
+                SettingsCard(title: L10n.App.Settings.SupportFeedback.section.localized, icon: "heart.fill", fill: cardFill) {
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                        SettingsActionButton(
+                            title: L10n.App.Settings.SupportFeedback.supportHelm.localized,
+                            badges: [],
+                            isProminent: false,
+                            useSystemStyle: true
+                        ) {
+                            HelmSupport.openURL(HelmSupport.gitHubSponsorsURL)
+                        }
+
+                        SettingsActionButton(
+                            title: L10n.App.Settings.SupportFeedback.sendFeedback.localized,
+                            badges: [],
+                            isProminent: false,
+                            useSystemStyle: true
+                        ) {
+                            HelmSupport.emailFeedback()
+                        }
+
+                        SettingsActionButton(
+                            title: L10n.App.Settings.SupportFeedback.reportBug.localized,
+                            badges: [],
+                            isProminent: false,
+                            useSystemStyle: true
+                        ) {
+                            HelmSupport.reportBug(includeDiagnostics: includeDiagnostics)
+                            if includeDiagnostics {
+                                showCopiedBriefly()
+                            }
+                        }
+
+                        SettingsActionButton(
+                            title: L10n.App.Settings.SupportFeedback.requestFeature.localized,
+                            badges: [],
+                            isProminent: false,
+                            useSystemStyle: true
+                        ) {
+                            HelmSupport.requestFeature(includeDiagnostics: includeDiagnostics)
+                            if includeDiagnostics {
+                                showCopiedBriefly()
+                            }
+                        }
+
+                        SettingsActionButton(
+                            title: L10n.App.Settings.SupportFeedback.copyDiagnostics.localized,
+                            badges: [],
+                            isProminent: false,
+                            useSystemStyle: true
+                        ) {
+                            HelmSupport.copyDiagnosticsToClipboard()
+                            showCopiedBriefly()
+                        }
+                    }
+
+                    Divider()
+
+                    Toggle(L10n.App.Settings.SupportFeedback.includeDiagnostics.localized, isOn: $includeDiagnostics)
+                        .toggleStyle(.switch)
+                        .font(.subheadline)
+
+                    if showCopiedConfirmation {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                            Text(L10n.App.Settings.SupportFeedback.copiedConfirmation.localized)
+                                .foregroundStyle(.secondary)
+                        }
+                        .font(.caption)
+                        .transition(.opacity.combined(with: .scale))
                     }
                 }
             }

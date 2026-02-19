@@ -1,5 +1,7 @@
+import AppKit
 import Foundation
 import os.log
+import Darwin
 
 private let logger = Logger(subsystem: "com.jasoncavinder.Helm", category: "core.settings")
 
@@ -253,6 +255,165 @@ extension HelmCore {
             return false
         case .useGlobal:
             return homebrewKegAutoCleanupEnabled
+        }
+    }
+}
+
+// MARK: - Support & Diagnostics
+
+struct HelmSupport {
+    static let supportEmail = "jason.cavinder+helm@gmail.com"
+    static let gitHubSponsorsURL = URL(string: "https://github.com/sponsors/jasoncavinder")!
+    static let gitHubNewIssueURL = URL(string: "https://github.com/jasoncavinder/Helm/issues/new")!
+    static let gitHubBugReportURL = URL(string: "https://github.com/jasoncavinder/Helm/issues/new?template=bug_report.yml")!
+    static let gitHubFeatureRequestURL = URL(string: "https://github.com/jasoncavinder/Helm/issues/new?template=feature_request.yml")!
+    static let patreonURL = URL(string: "https://patreon.com/jasoncavinder")!
+    
+    struct FeedbackBody {
+        let type: String
+        let description: String
+        let reproduction: String
+        let managers: String
+        let diagnostics: String
+        
+        func toString() -> String {
+            return """
+            Feedback Type: \(type)
+            
+            Description:
+            \(description)
+            
+            Steps to Reproduce (if applicable):
+            \(reproduction)
+            
+            Managers Involved:
+            \(managers)
+            
+            Diagnostics:
+            \(diagnostics)
+            """
+        }
+    }
+
+    static func generateDiagnostics() -> String {
+        var info = ""
+        info += "Helm Version: \(helmVersion)\n"
+        info += "macOS Version: \(ProcessInfo.processInfo.operatingSystemVersionString)\n"
+        
+        var sysInfo = utsname()
+        uname(&sysInfo)
+        let machine = withUnsafeBytes(of: &sysInfo.machine) { buf in
+             guard let baseAddress = buf.baseAddress else { return "" }
+             return String(cString: baseAddress.assumingMemoryBound(to: CChar.self))
+        }
+        info += "Architecture: \(machine)\n"
+        info += "Locale: \(Locale.current.identifier)\n"
+        
+        info += "\nManagers:\n"
+        let core = HelmCore.shared
+        for (id, status) in core.managerStatuses {
+            let state = status.enabled ? "Enabled" : "Disabled"
+            let installed = status.detected ? "Installed" : "Not Detected"
+            let version = status.version ?? "Unknown"
+            info += "- \(id): \(state), \(installed) (v\(version))\n"
+        }
+        
+        info += "\nRecent Tasks:\n"
+        if core.activeTasks.isEmpty {
+            info += "(No active tasks)\n"
+        } else {
+            for task in core.activeTasks {
+                info += "- [\(task.id)] \(task.description) (\(task.status))"
+                if let mid = task.managerId {
+                    info += " [\(mid)]"
+                }
+                info += "\n"
+            }
+        }
+        
+        return info
+    }
+
+    static func copyDiagnosticsToClipboard() {
+        let diagnostics = generateDiagnostics()
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(diagnostics, forType: .string)
+    }
+    
+    static func openURL(_ url: URL) {
+        NSWorkspace.shared.open(url)
+    }
+
+    static func emailFeedback() {
+        let subject = "Helm Feedback (v\(helmVersion))"
+        let body = FeedbackBody(
+            type: "Bug / Feature / UX / Other",
+            description: "(What happened / what you expected)",
+            reproduction: "(Steps to reproduce)",
+            managers: "(If applicable)",
+            diagnostics: "(Paste diagnostics here if relevant)"
+        ).toString()
+        
+        var components = URLComponents()
+        components.scheme = "mailto"
+        components.path = supportEmail
+        components.queryItems = [
+            URLQueryItem(name: "subject", value: subject),
+            URLQueryItem(name: "body", value: body)
+        ]
+        
+        if let url = components.url {
+            NSWorkspace.shared.open(url)
+        }
+    }
+    
+    static func openGitHubIssue(title: String? = nil, body: String? = nil, includeDiagnostics: Bool = false) {
+        var components = URLComponents(url: gitHubNewIssueURL, resolvingAgainstBaseURL: true)
+        var queryItems = components?.queryItems ?? []
+        if let title = title {
+            queryItems.append(URLQueryItem(name: "title", value: title))
+        }
+        
+        var finalBody = body ?? ""
+        if includeDiagnostics {
+            finalBody += "\n\n```\n\(generateDiagnostics())\n```"
+        }
+        
+        if !finalBody.isEmpty {
+            queryItems.append(URLQueryItem(name: "body", value: finalBody))
+        }
+        
+        components?.queryItems = queryItems
+        
+        if let url = components?.url {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    static func reportBug(includeDiagnostics: Bool = false) {
+        if includeDiagnostics {
+            copyDiagnosticsToClipboard()
+        }
+        var components = URLComponents(url: gitHubBugReportURL, resolvingAgainstBaseURL: true)
+        var queryItems = components?.queryItems ?? []
+        queryItems.append(URLQueryItem(name: "title", value: "[Bug]: "))
+        components?.queryItems = queryItems
+        if let url = components?.url {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    static func requestFeature(includeDiagnostics: Bool = false) {
+        if includeDiagnostics {
+            copyDiagnosticsToClipboard()
+        }
+        var components = URLComponents(url: gitHubFeatureRequestURL, resolvingAgainstBaseURL: true)
+        var queryItems = components?.queryItems ?? []
+        queryItems.append(URLQueryItem(name: "title", value: "[Feature]: "))
+        components?.queryItems = queryItems
+        if let url = components?.url {
+            NSWorkspace.shared.open(url)
         }
     }
 }

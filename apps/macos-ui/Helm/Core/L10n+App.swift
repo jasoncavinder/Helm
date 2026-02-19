@@ -230,6 +230,19 @@ extension L10n {
                     static let dryRunResultMessage = "app.settings.alert.upgrade_all.dry_run_result_message"
                 }
             }
+            struct SupportFeedback {
+                static let section = "app.settings.section.support_feedback"
+                static let supportHelm = "app.settings.support_feedback.support_helm"
+                static let reportBug = "app.settings.support_feedback.report_bug"
+                static let requestFeature = "app.settings.support_feedback.request_feature"
+                static let sendFeedback = "app.settings.support_feedback.send_feedback"
+                static let copyDiagnostics = "app.settings.support_feedback.copy_diagnostics"
+                static let includeDiagnostics = "app.settings.support_feedback.include_diagnostics"
+                static let copiedConfirmation = "app.settings.support_feedback.copied_confirmation"
+                static let diagnosticsCopiedHint = "app.settings.support_feedback.diagnostics_copied_hint"
+            static let gitHubSponsors = "app.settings.support_feedback.github_sponsors"
+            static let patreon = "app.settings.support_feedback.patreon"
+            }
         }
 
         struct Tasks {
