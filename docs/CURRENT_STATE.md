@@ -8,13 +8,13 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.13.0-beta.6**
+Current version: **0.13.0-rc.1**
 
 See:
 - CHANGELOG.md
 
 Active milestone:
-- 0.13.x — UI/UX redesign, accessibility, onboarding walkthrough, and hardening (beta in progress)
+- 0.13.x — UI/UX redesign, accessibility, onboarding walkthrough, and hardening (rc in progress)
 
 ---
 
@@ -92,10 +92,10 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 
 ## Architecture Status
 
-- Rust core: stable (194+ unit/integration tests, zero shell injection vectors, structured process invocation throughout, `#[instrument]` tracing spans on adapter execution paths)
+- Rust core: stable (198+ unit/integration tests, zero shell injection vectors, structured process invocation throughout, `#[instrument]` tracing spans on adapter execution paths, post-upgrade validation on all 11 adapter upgrade handlers)
 - XPC service: stable (code-signing validation, graceful reconnection with exponential backoff, timeout enforcement on all calls)
 - FFI boundary: functional (poisoned-lock recovery, JSON interchange, thread-safe static state, lifecycle documented in module-level docs)
-- UI: feature-complete for current scope; VoiceOver accessibility labels, semantic grouping, and state-change announcements implemented; HelmCore decomposed into 5 files; UI layer purity cleanup completed (business logic extracted from views to HelmCore/ManagerInfo); keyboard Tab traversal still pending (macOS SwiftUI limitation)
+- UI: feature-complete for current scope; VoiceOver accessibility labels, semantic grouping, and state-change announcements implemented; HelmCore decomposed into 5 files; UI layer purity cleanup completed (business logic extracted from views to HelmCore/ManagerInfo); inspector sidebar with task/package/manager detail views; keyboard Tab traversal still pending (macOS SwiftUI limitation)
 
 ---
 
@@ -155,11 +155,34 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
 
 ### Documentation Alignment
 
-- INTERFACES.md Section 10 filled with concrete inventories: 26 XPC methods, 27 FFI exports, 9 SQLite tables, task log status, confirmation token model
+- INTERFACES.md Section 10 filled with concrete inventories: 25 XPC methods, 27 FFI exports, 9 SQLite tables, task log status, confirmation token model
 - On-device validation report template created with test matrices for all 6 locales
 - Usability test plan created with core, error, accessibility, and locale scenarios plus acceptance criteria
 - ROADMAP.md updated with cumulative beta.2-6 delivered scope
 - CHANGELOG.md updated with beta.5 and beta.6 entries
+
+---
+
+## v0.13.0-rc.1 Status
+
+### Inspector Sidebar
+- Task detail view with status badge, task type, manager, label key/args
+- Package detail view with version, status, pinned/restart-required indicators
+- Manager detail view with health badge, installed/outdated counts, View Packages navigation
+- Selection clearing fixes: selecting any entity properly clears conflicting selections
+- Overview task rows wired to inspector via tap handling
+
+### Upgrade Reliability
+- Post-upgrade validation added to all 11 adapter upgrade handlers (Homebrew, RubyGems, npm, pnpm, yarn, pip, pipx, cargo, cargo-binstall, bundler, poetry)
+- After upgrade command succeeds, each adapter re-checks `list_outdated` to verify the package was actually updated
+- Silent upgrade failures now surface as `ProcessFailure` errors instead of being silently marked completed
+
+### Status Menu
+- "Control Center" item added to right-click status menu (opens dashboard overview)
+
+### Documentation
+- Security Advisory System incorporated into ROADMAP.md as milestone 1.3.x
+- CHANGELOG.md, CURRENT_STATE.md, NEXT_STEPS.md updated
 
 ---
 

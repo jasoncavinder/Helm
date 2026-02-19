@@ -232,7 +232,7 @@ Exit Criteria:
 
 ---
 
-## 0.9.x — Internationalization Foundation (beta)
+## 0.9.x — Internationalization Foundation (beta) - Completed
 
 Goal:
 
@@ -266,13 +266,14 @@ Goal:
 - pip adapter (`python3 -m pip`, global packages only)
 - Cargo adapter (global installs via `cargo install`)
 - cargo-binstall adapter
-- Homebrew Casks adapter (extends existing Homebrew adapter for GUI applications)
 - All adapters declare capabilities: install, uninstall, list, outdated, search
 - Global packages only; project-local dependencies excluded unless explicitly enabled
 
+Note: Homebrew Casks adapter was originally planned for this milestone but deferred to 0.14.x.
+
 Exit Criteria:
 
-- Detection works for all six managers
+- Detection works for all five managers
 - list_installed and list_outdated produce correct results
 - Search returns results for managers that support it
 - Fixture-based parser tests for each adapter's output format
@@ -346,7 +347,7 @@ Delivered:
 
 ---
 
-## 0.13.x — UI/UX Analysis & Redesign (beta)
+## 0.13.x — UI/UX Analysis & Redesign (beta/rc)
 
 Goal:
 
@@ -415,6 +416,16 @@ Delivered (`v0.13.0-beta.6` checkpoint):
 - FFI lifecycle and migration error documentation
 - INTERFACES.md Section 10 filled with concrete inventories
 - On-device validation report template and usability test plan
+
+Delivered (`v0.13.0-rc.1` checkpoint):
+- Inspector sidebar: task detail view with status badge, task type, manager, label key/args
+- Inspector selection clearing fixes across overview, managers, dashboard, and popover views
+- Inspector manager detail enriched with health badge, package/outdated counts, and View Packages navigation
+- Overview task rows wired to inspector via tap handling
+- Post-upgrade validation on all 11 adapter upgrade handlers (Homebrew, RubyGems, npm, pnpm, yarn, pip, pipx, cargo, cargo-binstall, bundler, poetry) — prevents silent upgrade failures
+- Control Center menu item added to status menu right-click
+- Task label support for descriptive upgrade task names (e.g., "Upgrading rake")
+- Security Advisory System milestone added to roadmap (1.3.x)
 
 ---
 
@@ -585,7 +596,31 @@ Exit Criteria:
 
 ---
 
-## 1.3.x — Business Policy and Drift Management
+## 1.3.x — Security Advisory System (Pro)
+
+Goal:
+
+- CVE vulnerability awareness for installed packages
+- Local-first advisory evaluation (advisory only, no enforcement)
+- Data sources: OSV.dev, NVD, manager-specific feeds
+- Matching engine: package name + version range → severity + recommendations
+- SQLite-backed advisory cache with periodic refresh
+- UI: vulnerability status, severity badges, and recommended actions per package
+- Offline-capable with cached advisory data
+- Non-blocking: advisory checks never delay operations
+
+Exit Criteria:
+
+- Advisory data ingested and cached locally from at least one source (OSV.dev)
+- Matching engine correctly identifies affected packages by name and version range
+- Affected packages surfaced in UI with severity and recommended action
+- Advisory refresh works offline using cached data
+- Advisory evaluation does not block or delay any manager operations
+- Pro edition entitlement gate verified (feature unavailable in Free edition)
+
+---
+
+## 1.4.x — Business Policy and Drift Management
 
 Goal:
 
@@ -605,7 +640,7 @@ Exit Criteria:
 
 ---
 
-## 1.4.x — Enterprise Rollout, Approvals, and Audit
+## 1.5.x — Enterprise Rollout, Approvals, and Audit
 
 Goal:
 
