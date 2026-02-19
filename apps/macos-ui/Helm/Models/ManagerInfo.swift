@@ -45,6 +45,37 @@ struct ManagerInfo: Identifiable {
         }
     }
 
+    var capabilities: [String] {
+        var result: [String] = [
+            L10n.App.Capability.list,
+            L10n.App.Capability.outdated,
+        ]
+        if canInstall {
+            result.append(L10n.App.Capability.install)
+        }
+        if canUninstall {
+            result.append(L10n.App.Capability.uninstall)
+        }
+        if canUpdate {
+            result.append(L10n.App.Capability.upgrade)
+        }
+        if canSearch {
+            result.append(L10n.App.Capability.search)
+        }
+        if canPin {
+            result.append(L10n.App.Capability.pin)
+        }
+        return result
+    }
+
+    var canSearch: Bool {
+        ["npm", "pnpm", "yarn", "pip", "cargo", "cargo_binstall", "poetry", "rubygems", "bundler"].contains(id)
+    }
+
+    var canPin: Bool {
+        id == "homebrew_formula"
+    }
+
     static let all: [ManagerInfo] = [
         ManagerInfo(id: "homebrew_formula", displayName: "Homebrew (formulae)", shortName: "brew", category: "System/OS", isImplemented: true, installMethod: .updateOnly),
         ManagerInfo(id: "homebrew_cask", displayName: "Homebrew (casks)", shortName: "cask", category: "App Store", isImplemented: false, installMethod: .notManageable),
