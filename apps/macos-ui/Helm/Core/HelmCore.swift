@@ -91,6 +91,7 @@ final class HelmCore: ObservableObject {
     @Published var homebrewKegAutoCleanupEnabled: Bool = false
     @Published var packageKegPolicyOverrides: [String: HomebrewKegPolicyOverride] = [:]
     @Published var safeModeEnabled: Bool = false
+    @Published var lastError: String?
     @Published var selectedManagerFilter: String? = nil
     @Published var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
 
@@ -176,6 +177,47 @@ final class HelmCore: ObservableObject {
 
     func service() -> HelmServiceProtocol? {
         return connection?.remoteObjectProxy as? HelmServiceProtocol
+    }
+
+    /// Wraps an asynchronous XPC operation with a timeout.
+    /// If the operation does not complete within `seconds`, the completion
+    /// handler is called with `fallback` and the actual result is discarded.
+    func withTimeout<T>(
+        _ seconds: TimeInterval,
+        operation: @escaping (@escaping (T?) -> Void) -> Void,
+        fallback: T? = nil,
+        completion: @escaping (T?) -> Void
+    ) {
+        let completed = DispatchSemaphore(value: 1)
+        var hasCompleted = false
+
+        let deadline = DispatchWorkItem { [weak self] in
+            completed.wait()
+            if !hasCompleted {
+                hasCompleted = true
+                completed.signal()
+                logger.warning("XPC call timed out after \(seconds)s")
+                DispatchQueue.main.async {
+                    self?.lastError = L10n.Common.error.localized
+                    completion(fallback)
+                }
+            } else {
+                completed.signal()
+            }
+        }
+        DispatchQueue.global().asyncAfter(deadline: .now() + seconds, execute: deadline)
+
+        operation { result in
+            completed.wait()
+            if !hasCompleted {
+                hasCompleted = true
+                completed.signal()
+                deadline.cancel()
+                completion(result)
+            } else {
+                completed.signal()
+            }
+        }
     }
 
     func consumeLastServiceErrorKey(_ completion: @escaping (String?) -> Void) {

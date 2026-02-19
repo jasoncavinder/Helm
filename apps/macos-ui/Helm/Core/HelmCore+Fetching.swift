@@ -7,7 +7,10 @@ private let logger = Logger(subsystem: "com.jasoncavinder.Helm", category: "core
 extension HelmCore {
 
     func fetchPackages() {
-        service()?.listInstalledPackages { [weak self] jsonString in
+        guard let svc = service() else { return }
+        withTimeout(30, operation: { completion in
+            svc.listInstalledPackages { completion($0) }
+        }) { [weak self] jsonString in
             guard let jsonString = jsonString, let data = jsonString.data(using: String.Encoding.utf8) else { return }
 
             do {
@@ -34,7 +37,10 @@ extension HelmCore {
     }
 
     func fetchOutdatedPackages() {
-        service()?.listOutdatedPackages { [weak self] jsonString in
+        guard let svc = service() else { return }
+        withTimeout(30, operation: { completion in
+            svc.listOutdatedPackages { completion($0) }
+        }) { [weak self] jsonString in
             guard let jsonString = jsonString, let data = jsonString.data(using: String.Encoding.utf8) else { return }
 
             do {
@@ -64,7 +70,10 @@ extension HelmCore {
 
     // swiftlint:disable:next function_body_length
     func fetchTasks() {
-        service()?.listTasks { [weak self] jsonString in
+        guard let svc = service() else { return }
+        withTimeout(30, operation: { completion in
+            svc.listTasks { completion($0) }
+        }) { [weak self] jsonString in
             guard let jsonString = jsonString, let data = jsonString.data(using: String.Encoding.utf8) else { return }
 
             do {
@@ -256,7 +265,10 @@ extension HelmCore {
     // MARK: - Manager Status
 
     func fetchManagerStatus() {
-        service()?.listManagerStatus { [weak self] jsonString in
+        guard let svc = service() else { return }
+        withTimeout(30, operation: { completion in
+            svc.listManagerStatus { completion($0) }
+        }) { [weak self] jsonString in
             guard let jsonString = jsonString, let data = jsonString.data(using: .utf8) else { return }
 
             do {
