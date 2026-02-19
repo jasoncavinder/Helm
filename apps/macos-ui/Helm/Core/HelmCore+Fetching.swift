@@ -102,7 +102,7 @@ extension HelmCore {
                     if currentFailed > previousFailed {
                         let newFailures = currentFailed - previousFailed
                         self?.postAccessibilityAnnouncement(
-                            "app.redesign.status_item.error".localized(with: ["count": newFailures])
+                            "app.status_item.error".localized(with: ["count": newFailures])
                         )
                     }
                     self?.previousFailedTaskCount = currentFailed

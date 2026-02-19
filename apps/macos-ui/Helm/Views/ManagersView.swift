@@ -52,7 +52,7 @@ struct ManagersSectionView: View {
                 }
 
                 if ManagerInfo.implemented.isEmpty {
-                    Text(L10n.App.Redesign.ManagersSection.empty.localized)
+                    Text(L10n.App.ManagersSection.empty.localized)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 20)

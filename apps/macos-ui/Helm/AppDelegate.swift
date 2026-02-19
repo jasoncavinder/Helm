@@ -173,13 +173,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let statusDescription: String
         if failedTaskCount > 0 {
-            statusDescription = "app.redesign.status_item.error".localized(with: ["count": failedTaskCount])
+            statusDescription = "app.status_item.error".localized(with: ["count": failedTaskCount])
         } else if outdatedCount > 0 {
-            statusDescription = "app.redesign.status_item.updates".localized(with: ["count": outdatedCount])
+            statusDescription = "app.status_item.updates".localized(with: ["count": outdatedCount])
         } else if running {
-            statusDescription = "app.redesign.status_item.running".localized
+            statusDescription = "app.status_item.running".localized
         } else {
-            statusDescription = "app.redesign.status_item.healthy".localized
+            statusDescription = "app.status_item.healthy".localized
         }
         button.toolTip = statusDescription
         button.setAccessibilityLabel(statusDescription)
@@ -241,7 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.onEscape = { [weak self] in
                 self?.handlePopoverEscape()
             }
-            window.title = "app.redesign.window.control_center".localized
+            window.title = "app.window.control_center".localized
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
             window.isMovableByWindowBackground = false
@@ -273,7 +273,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
 
         let aboutItem = NSMenuItem(
-            title: "app.redesign.overlay.about.title".localized,
+            title: "app.overlay.about.title".localized,
             action: #selector(openAboutFromMenu),
             keyEquivalent: ""
         )
@@ -292,7 +292,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settingsItem = NSMenuItem(title: L10n.Common.settings.localized, action: nil, keyEquivalent: "")
         let settingsMenu = NSMenu()
         let basicSettingsItem = NSMenuItem(
-            title: "app.redesign.overlay.settings.title".localized,
+            title: "app.overlay.settings.title".localized,
             action: #selector(openQuickSettingsFromMenu),
             keyEquivalent: ""
         )
@@ -300,7 +300,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsMenu.addItem(basicSettingsItem)
 
         let advancedSettingsItem = NSMenuItem(
-            title: "app.redesign.overlay.settings.open_advanced".localized,
+            title: "app.overlay.settings.open_advanced".localized,
             action: #selector(openAdvancedSettingsFromMenu),
             keyEquivalent: ""
         )
