@@ -69,7 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let clickInControlCenter = self.controlCenterWindowController?.window?.frame.contains(clickPoint) ?? false
             let clickInStatusItem = self.statusItemButtonFrame()?.contains(clickPoint) ?? false
 
-            if !clickInPanel && !clickInControlCenter && !clickInStatusItem {
+            if !clickInPanel && !clickInStatusItem {
                 self.closePanel()
             }
         }
