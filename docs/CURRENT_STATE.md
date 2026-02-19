@@ -8,7 +8,7 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.13.0-beta.4**
+Current version: **0.13.0-beta.5**
 
 See:
 - CHANGELOG.md
@@ -93,9 +93,9 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 ## Architecture Status
 
 - Rust core: stable (190+ unit/integration tests, zero shell injection vectors, structured process invocation throughout)
-- XPC service: stable (code-signing validation, graceful reconnection)
+- XPC service: stable (code-signing validation, graceful reconnection with exponential backoff, timeout enforcement on all calls)
 - FFI boundary: functional (poisoned-lock recovery, JSON interchange, thread-safe static state)
-- UI: feature-complete for current scope; VoiceOver accessibility labels, semantic grouping, and state-change announcements implemented; HelmCore decomposed into 5 files (314-line main + 4 extensions); pending keyboard traversal validation and architecture cleanup
+- UI: feature-complete for current scope; VoiceOver accessibility labels, semantic grouping, and state-change announcements implemented; HelmCore decomposed into 5 files; UI layer purity cleanup completed (business logic extracted from views to HelmCore/ManagerInfo); keyboard Tab traversal still pending (macOS SwiftUI limitation)
 
 ---
 
@@ -116,7 +116,7 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
 - All user-facing text uses L10n localization keys — no hardcoded English strings detected
 - XPC service boundary has proper code-signing validation, async patterns, and reconnection logic
 - State management is sound (single ObservableObject, @Published properties, weak-self captures)
-- Minor UI layer purity violations remain: search merge logic, safe-mode badge filtering, and task-to-manager inference in views
+- UI layer purity violations resolved in beta.5: search merge, safe-mode badge filtering, task-to-manager inference, authority/capability/symbol lookups all extracted from views
 - HelmCore.swift decomposed from 1,133 lines into HelmCore.swift (314 lines) + 4 extension files (Actions, Fetching, Settings, Dashboard)
 - DashboardView.swift decomposed from 1,919 lines into DashboardView.swift + ControlCenterModels, ControlCenterViews, HelmButtonStyles
 - Task cancel button now wired and functional via XPC cancelTask method
@@ -128,7 +128,7 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
 - `accessibilityValue` for dynamic content (task status, package counts, manager state)
 - `accessibilityElement(children: .combine)` semantic grouping on composite rows
 - VoiceOver announcements for refresh start/completion, task cancellation, task failures, and refresh failure
-- Remaining gap: keyboard-only traversal validation not yet systematically tested
+- Remaining gap: keyboard Tab traversal does not work — macOS SwiftUI `.focusable()` does not integrate with the AppKit key view loop; requires NSViewRepresentable bridging or a future SwiftUI API
 
 ### CI/CD (Resolved)
 
@@ -153,12 +153,7 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
   - `VISUAL_SYSTEM.md`
   - `SWIFTUI_ARCHITECTURE.md`
   - `MOCKUPS.md`
-- A standalone SwiftUI redesign scaffold now exists at `apps/macos/Helm/`:
-  - menu bar app entry + popover
-  - control-center window with section placeholders
-  - shared state store and deterministic mock data
-  - localized string resources for scaffold surfaces
-- The redesign baseline is now integrated into the production macOS target at `apps/macos-ui/Helm/`:
+- The redesign baseline is integrated into the production macOS target at `apps/macos-ui/Helm/` (legacy scaffold at `apps/macos/` removed in beta.5):
   - redesigned menu bar popover shell
   - top-of-popover updates attention banner with custom-styled upgrade-all action
   - layered overlay panels (search, quick settings, about, quit confirmation) with dimmed-underlay transitions
@@ -198,11 +193,10 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
 - Priority 2 extended language-manager expansion is complete at this checkpoint:
   - Implemented: pnpm (global), yarn (global), RubyGems, Poetry (self/plugins), Bundler
   - Pending: none
-- Redesign integration is functional with layered popover UX + control-center search; accessibility labels and semantic grouping implemented; onboarding walkthrough delivered; still needs keyboard traversal validation and UI layer purity cleanup
-- Keyboard-only traversal validation still pending (Tab order, Escape behavior, focusable modifiers not systematically applied)
-- Minor business logic in view layer (search merge, safe-mode badge filtering, task-to-manager inference) needs extraction to HelmCore
+- Redesign integration is functional with layered popover UX + control-center search; accessibility labels and semantic grouping implemented; onboarding walkthrough delivered; UI layer purity cleanup completed
+- Keyboard-only traversal: Tab navigation does not work in macOS SwiftUI (`.focusable()` does not participate in AppKit key view loop); requires NSViewRepresentable bridging approach
 - All walkthrough and redesign localization keys have been rolled out to all 6 locales
-- No XPC call timeout enforcement (hung service could stall UI)
+- XPC call timeout enforcement added (30s data fetches, 300s mutations) with exponential backoff reconnection
 - Overflow validation now has both heuristic and on-device executable coverage for Settings, onboarding, navigation, package filters, and manager labels/states
 - Upgrade-all transparency now provides summary counts + top manager breakdown in confirmation flow
 - Upgrade-preview filtering/sorting logic now has dedicated macOS UI unit coverage (`HelmTests/UpgradePreviewPlannerTests`)
@@ -234,4 +228,4 @@ Helm is a **functional control plane for 15 managers** with:
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-Remaining work is **keyboard traversal validation, architecture cleanup, and hardening toward 0.13.x stable**.
+Architecture cleanup completed in beta.5. Remaining work is **validation, hardening, and documentation toward 0.13.x stable**.

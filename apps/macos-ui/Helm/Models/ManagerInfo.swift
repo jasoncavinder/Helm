@@ -34,6 +34,61 @@ struct ManagerInfo: Identifiable {
             || installMethod == .updateOnly
     }
 
+    var authority: ManagerAuthority {
+        switch id {
+        case "mise", "rustup":
+            return .authoritative
+        case "homebrew_formula", "softwareupdate", "homebrew_cask":
+            return .guarded
+        default:
+            return .standard
+        }
+    }
+
+    var capabilities: [String] {
+        var result: [String] = [
+            L10n.App.Capability.list,
+            L10n.App.Capability.outdated,
+        ]
+        if canInstall {
+            result.append(L10n.App.Capability.install)
+        }
+        if canUninstall {
+            result.append(L10n.App.Capability.uninstall)
+        }
+        if canUpdate {
+            result.append(L10n.App.Capability.upgrade)
+        }
+        if canSearch {
+            result.append(L10n.App.Capability.search)
+        }
+        if canPin {
+            result.append(L10n.App.Capability.pin)
+        }
+        return result
+    }
+
+    var canSearch: Bool {
+        ["npm", "pnpm", "yarn", "pip", "cargo", "cargo_binstall", "poetry", "rubygems", "bundler"].contains(id)
+    }
+
+    var canPin: Bool {
+        id == "homebrew_formula"
+    }
+
+    var symbolName: String {
+        switch id {
+        case "softwareupdate":
+            return "apple.logo"
+        case "homebrew_formula", "homebrew_cask":
+            return "cup.and.saucer.fill"
+        case "mise", "rustup":
+            return "wrench.and.screwdriver.fill"
+        default:
+            return "shippingbox.fill"
+        }
+    }
+
     static let all: [ManagerInfo] = [
         ManagerInfo(id: "homebrew_formula", displayName: "Homebrew (formulae)", shortName: "brew", category: "System/OS", isImplemented: true, installMethod: .updateOnly),
         ManagerInfo(id: "homebrew_cask", displayName: "Homebrew (casks)", shortName: "cask", category: "App Store", isImplemented: false, installMethod: .notManageable),
@@ -52,6 +107,14 @@ struct ManagerInfo: Identifiable {
         ManagerInfo(id: "softwareupdate", displayName: "Software Update", shortName: "swupd", category: "System/OS", isImplemented: true, installMethod: .systemBinary),
         ManagerInfo(id: "mas", displayName: "Mac App Store", shortName: "mas", category: "App Store", isImplemented: true, installMethod: .automatable),
     ]
+
+    static func find(byId managerId: String) -> ManagerInfo? {
+        all.first { $0.id == managerId }
+    }
+
+    static func find(byDisplayName displayName: String) -> ManagerInfo? {
+        all.first { localizedManagerDisplayName($0.id) == displayName }
+    }
 
     static var implemented: [ManagerInfo] {
         all.filter { $0.isImplemented }

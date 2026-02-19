@@ -7,7 +7,10 @@ private let logger = Logger(subsystem: "com.jasoncavinder.Helm", category: "core
 extension HelmCore {
 
     func fetchPackages() {
-        service()?.listInstalledPackages { [weak self] jsonString in
+        guard let svc = service() else { return }
+        withTimeout(30, operation: { completion in
+            svc.listInstalledPackages { completion($0) }
+        }) { [weak self] jsonString in
             guard let jsonString = jsonString, let data = jsonString.data(using: String.Encoding.utf8) else { return }
 
             do {
@@ -28,13 +31,17 @@ extension HelmCore {
                     }
                 }
             } catch {
-                logger.error("Failed to decode packages: \(error)")
+                logger.error("fetchPackages: decode failed (\(data.count) bytes): \(error)")
+                DispatchQueue.main.async { self?.lastError = L10n.Common.error.localized }
             }
         }
     }
 
     func fetchOutdatedPackages() {
-        service()?.listOutdatedPackages { [weak self] jsonString in
+        guard let svc = service() else { return }
+        withTimeout(30, operation: { completion in
+            svc.listOutdatedPackages { completion($0) }
+        }) { [weak self] jsonString in
             guard let jsonString = jsonString, let data = jsonString.data(using: String.Encoding.utf8) else { return }
 
             do {
@@ -57,14 +64,18 @@ extension HelmCore {
                     }
                 }
             } catch {
-                logger.error("Failed to decode outdated packages: \(error)")
+                logger.error("fetchOutdatedPackages: decode failed (\(data.count) bytes): \(error)")
+                DispatchQueue.main.async { self?.lastError = L10n.Common.error.localized }
             }
         }
     }
 
     // swiftlint:disable:next function_body_length
     func fetchTasks() {
-        service()?.listTasks { [weak self] jsonString in
+        guard let svc = service() else { return }
+        withTimeout(30, operation: { completion in
+            svc.listTasks { completion($0) }
+        }) { [weak self] jsonString in
             guard let jsonString = jsonString, let data = jsonString.data(using: String.Encoding.utf8) else { return }
 
             do {
@@ -91,9 +102,11 @@ extension HelmCore {
                                     "task_type": self?.localizedTaskType(task.taskType) ?? task.taskType.capitalized,
                                     "manager": managerName
                                 ]),
-                            status: task.status.capitalized
+                            status: task.status.capitalized,
+                            managerId: task.manager
                         )
                     }
+                    .sorted { $0.statusSortOrder < $1.statusSortOrder }
                     self?.syncManagerOperations(from: coreTasks)
                     self?.syncUpgradeActions(from: coreTasks)
 
@@ -176,7 +189,8 @@ extension HelmCore {
                     }
                 }
             } catch {
-                logger.error("Failed to decode tasks: \(error)")
+                logger.error("fetchTasks: decode failed (\(data.count) bytes): \(error)")
+                DispatchQueue.main.async { self?.lastError = L10n.Common.error.localized }
             }
         }
     }
@@ -214,8 +228,11 @@ extension HelmCore {
                     }
                 }
             } catch {
-                logger.error("Failed to decode search results: \(error)")
-                DispatchQueue.main.async { self?.searchResults = [] }
+                logger.error("fetchSearchResults: decode failed (\(data.count) bytes): \(error)")
+                DispatchQueue.main.async {
+                    self?.searchResults = []
+                    self?.lastError = L10n.Common.error.localized
+                }
             }
         }
     }
@@ -247,7 +264,7 @@ extension HelmCore {
                     }
                 }
             } catch {
-                logger.error("Failed to decode cached available packages: \(error)")
+                logger.error("refreshCachedAvailablePackages: decode failed (\(data.count) bytes): \(error)")
             }
         }
     }
@@ -255,7 +272,10 @@ extension HelmCore {
     // MARK: - Manager Status
 
     func fetchManagerStatus() {
-        service()?.listManagerStatus { [weak self] jsonString in
+        guard let svc = service() else { return }
+        withTimeout(30, operation: { completion in
+            svc.listManagerStatus { completion($0) }
+        }) { [weak self] jsonString in
             guard let jsonString = jsonString, let data = jsonString.data(using: .utf8) else { return }
 
             do {
@@ -271,7 +291,8 @@ extension HelmCore {
                     self?.pruneOnboardingDetectionForDisabledManagers()
                 }
             } catch {
-                logger.error("Failed to decode manager statuses: \(error)")
+                logger.error("fetchManagerStatus: decode failed (\(data.count) bytes): \(error)")
+                DispatchQueue.main.async { self?.lastError = L10n.Common.error.localized }
             }
         }
     }

@@ -4,10 +4,23 @@ struct TaskItem: Identifiable {
     let id: String
     let description: String
     let status: String
+    let managerId: String?
 
     var isRunning: Bool {
         let s = status.lowercased()
         return s == "running" || s == "queued"
+    }
+
+    /// Sort order: running first, then queued, then terminal states.
+    var statusSortOrder: Int {
+        switch status.lowercased() {
+        case "running":   return 0
+        case "queued":    return 1
+        case "failed":    return 2
+        case "cancelled": return 3
+        case "completed": return 4
+        default:          return 5
+        }
     }
 
     var statusIcon: String {

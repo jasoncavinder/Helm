@@ -23,11 +23,10 @@ Focus:
 - Validation and hardening
 
 Current checkpoint:
-- `v0.13.0-beta.4` released (walkthrough system, localization parity, onboarding tone refresh)
+- `v0.13.0-beta.5` released (architecture cleanup, UI purity, XPC robustness, legacy removal)
 - Full codebase audit completed 2026-02-17 (Rust core, SwiftUI UI, XPC, localization, CI/CD)
 
 Next release targets:
-- `v0.13.0-beta.5` — Architecture cleanup + UI purity
 - `v0.13.0-beta.6` — Validation + hardening + documentation
 
 ---
@@ -98,22 +97,19 @@ Delivered:
 
 ---
 
-## v0.13.0-beta.5 — Architecture Cleanup + UI Purity
+## v0.13.0-beta.5 — Architecture Cleanup + UI Purity (Completed)
 
-### UI Layer Purity Fixes
+### UI Layer Purity Fixes (Completed)
 
-Implement:
+Delivered:
 
-- Move search deduplication/merge logic from `PackageListView.swift` to a computed property on HelmCore:
-  - `displayedPackages` should combine local matches + remote results with dedup in HelmCore, not the view
-- Move safe-mode upgrade action badge filtering from `SettingsPopoverView.swift` to HelmCore:
-  - `upgradeActionBadges` should be a computed property on HelmCore
-- Move task-to-manager inference from `TaskListView.swift` (`inferManagerId`) to structured task data:
-  - Tasks returned from XPC/FFI should include `manager_id` as a field, not parsed from description strings
-  - Update `CoreTaskRecord` to include `manager_id` and propagate through XPC protocol
-- Consolidate authority/capability lookup functions from `DashboardView.swift` into `ManagerInfo` struct:
-  - Remove standalone `authority(for:)` and `capabilities(for:)` functions
-  - Query from `ManagerInfo.all` or expose as computed properties on `ManagerInfo`
+- ✅ Search deduplication/merge logic moved from `PackageListView` to `HelmCore.filteredPackages(query:managerId:statusFilter:)`
+- ✅ Safe-mode upgrade action badge filtering moved from `SettingsPopoverView` to `HelmCore.upgradeActionManagerIds`
+- ✅ Task-to-manager inference removed: `TaskItem` now carries `managerId` directly from `CoreTaskRecord`; `inferManagerId` deleted
+- ✅ `authority(for:)` consolidated: computed property on `ManagerInfo`, standalone function delegates to it
+- ✅ `capabilities(for:)` moved to `ManagerInfo.capabilities` computed property with `canSearch`/`canPin` helpers
+- ✅ `managerSymbol(for:)` moved to `ManagerInfo.symbolName` computed property
+- ✅ `health(forManagerId:)` now uses structured `managerId` field instead of localized description matching
 
 ### HelmCore Decomposition (Delivered Early in beta.3)
 
@@ -124,35 +120,32 @@ Delivered in beta.3:
 Remaining (optional further refinement):
 - Extract service coordination into a dedicated `ServiceCoordinator` class if HelmCore extensions grow beyond current thresholds
 
-### Keyboard Traversal Validation (Carry-Forward from beta.3)
+### Keyboard Traversal (Not Resolved — macOS SwiftUI Limitation)
 
-Implement:
+SwiftUI's `.focusable()` modifier does not integrate with AppKit's key view loop (`nextKeyView` / Tab chain). Tab focus stays trapped in `TextField`. Enabling keyboard traversal requires either:
+- NSViewRepresentable bridging to manually wire the key view loop
+- A future SwiftUI API that bridges focus scopes to AppKit
 
-- Add `.focusable()` modifiers to all interactive elements systematically
-- Validate full Tab traversal through popover (banner → task list → managers → footer actions)
-- Validate full Tab traversal through control center sidebar and section content
+Carry-forward to beta.6 or post-0.13.x:
+- Investigate NSViewRepresentable approach for Tab traversal
 - Validate Escape key behavior consistent across all overlay states
-- Validate Enter/Space activation for all focusable elements
+- Validate Enter/Space activation for focusable elements
 
-### Legacy UI Cleanup
+### Legacy UI Cleanup (Completed)
 
-Implement:
+Delivered:
 
-- Identify and remove or archive legacy UI component paths no longer used by the redesigned shell
-- Remove dead code paths for pre-redesign views (if any remain)
-- Verify no orphaned localization keys after cleanup
+- ✅ Legacy redesign scaffold (`apps/macos/`, 18 files) removed entirely
+- ✅ No orphaned localization keys (legacy scaffold had its own self-contained resources)
 
-### XPC Robustness
+### XPC Robustness (Completed)
 
-Implement:
+Delivered:
 
-- Add timeout enforcement on individual XPC service calls:
-  - Wrap XPC calls with a reasonable timeout (e.g., 30s for data fetches, 5min for mutations)
-  - Surface timeout errors in UI rather than silently hanging
-- Add error feedback for JSON decode failures:
-  - Log decode errors with context (which method, what was received)
-  - Surface a user-visible error state when decode fails (e.g., "Failed to load packages")
-- Add exponential backoff to XPC reconnection (currently flat 2s delay)
+- ✅ Timeout enforcement on all XPC service calls (30s data fetches, 300s mutations) via `withTimeout` helper
+- ✅ JSON decode error logging enhanced with method name and raw data length context
+- ✅ `@Published var lastError` for surfacing decode/timeout failures
+- ✅ Exponential backoff on XPC reconnection (2s base, doubling to 60s cap, reset on success)
 
 ---
 
@@ -312,7 +305,7 @@ The 0.13.x milestone is structured across two remaining beta releases:
 
 - **beta.3**: Accessibility (VoiceOver, keyboard, semantic grouping), task cancellation UI, CI test enforcement — **completed**
 - **beta.4**: Localization parity (redesign + walkthrough keys across 6 locales), onboarding walkthrough with spotlight/coach marks — **completed**
-- **beta.5**: Architecture cleanup (UI purity fixes, legacy removal, XPC robustness, keyboard traversal)
-- **beta.6**: Validation sweep (on-device locale validation, usability test plan, Rust hardening, documentation alignment)
+- **beta.5**: Architecture cleanup (UI purity fixes, legacy removal, XPC robustness, keyboard traversal) — **completed**
+- **beta.6**: Validation sweep (on-device locale validation, usability test plan, Rust hardening, documentation alignment, remaining keyboard traversal validation)
 
 The goal is **closing 0.13.x as a stable, accessible, well-tested redesign checkpoint** before moving to platform expansion (0.14.x).

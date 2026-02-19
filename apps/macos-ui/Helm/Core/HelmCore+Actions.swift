@@ -15,7 +15,8 @@ extension HelmCore {
                         self?.activeTasks[idx] = TaskItem(
                             id: task.id,
                             description: task.description,
-                            status: "Cancelled"
+                            status: "Cancelled",
+                            managerId: task.managerId
                         )
                     }
                     self?.postAccessibilityAnnouncement(
@@ -50,9 +51,11 @@ extension HelmCore {
             return
         }
 
-        service.upgradePackage(managerId: package.managerId, packageName: package.name) { [weak self] taskId in
+        withTimeout(300, operation: { completion in
+            service.upgradePackage(managerId: package.managerId, packageName: package.name) { completion($0) }
+        }, fallback: Int64(-1)) { [weak self] taskId in
             DispatchQueue.main.async {
-                guard let self = self else { return }
+                guard let self = self, let taskId = taskId else { return }
                 if taskId < 0 {
                     self.upgradeActionTaskByPackage.removeValue(forKey: package.id)
                     self.upgradeActionPackageIds.remove(package.id)
@@ -134,9 +137,12 @@ extension HelmCore {
         DispatchQueue.main.async {
             self.managerOperations[managerId] = L10n.App.Managers.Operation.startingInstall.localized
         }
-        service()?.installManager(managerId: managerId) { [weak self] taskId in
+        guard let svc = service() else { return }
+        withTimeout(300, operation: { completion in
+            svc.installManager(managerId: managerId) { completion($0) }
+        }, fallback: Int64(-1)) { [weak self] taskId in
             DispatchQueue.main.async {
-                guard let self = self else { return }
+                guard let self = self, let taskId = taskId else { return }
                 if taskId < 0 {
                     logger.error("installManager(\(managerId)) failed")
                     self.consumeLastServiceErrorKey { serviceErrorKey in
@@ -159,9 +165,12 @@ extension HelmCore {
         DispatchQueue.main.async {
             self.managerOperations[managerId] = L10n.App.Managers.Operation.startingUpdate.localized
         }
-        service()?.updateManager(managerId: managerId) { [weak self] taskId in
+        guard let svc = service() else { return }
+        withTimeout(300, operation: { completion in
+            svc.updateManager(managerId: managerId) { completion($0) }
+        }, fallback: Int64(-1)) { [weak self] taskId in
             DispatchQueue.main.async {
-                guard let self = self else { return }
+                guard let self = self, let taskId = taskId else { return }
                 if taskId < 0 {
                     logger.error("updateManager(\(managerId)) failed")
                     self.consumeLastServiceErrorKey { serviceErrorKey in
@@ -184,9 +193,12 @@ extension HelmCore {
         DispatchQueue.main.async {
             self.managerOperations[managerId] = L10n.App.Managers.Operation.startingUninstall.localized
         }
-        service()?.uninstallManager(managerId: managerId) { [weak self] taskId in
+        guard let svc = service() else { return }
+        withTimeout(300, operation: { completion in
+            svc.uninstallManager(managerId: managerId) { completion($0) }
+        }, fallback: Int64(-1)) { [weak self] taskId in
             DispatchQueue.main.async {
-                guard let self = self else { return }
+                guard let self = self, let taskId = taskId else { return }
                 if taskId < 0 {
                     logger.error("uninstallManager(\(managerId)) failed")
                     self.consumeLastServiceErrorKey { serviceErrorKey in
@@ -221,7 +233,8 @@ extension HelmCore {
                 TaskItem(
                     id: idString,
                     description: description,
-                    status: "Queued"
+                    status: "Queued",
+                    managerId: managerId
                 ),
                 at: 0
             )

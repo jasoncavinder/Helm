@@ -7,7 +7,7 @@ struct ManagersSectionView: View {
     private var groupedManagers: [(authority: ManagerAuthority, managers: [ManagerInfo])] {
         ManagerAuthority.allCases.map { authorityLevel in
             let managers = ManagerInfo.implemented
-                .filter { authority(for: $0.id) == authorityLevel }
+                .filter { $0.authority == authorityLevel }
                 .sorted { localizedManagerDisplayName($0.id).localizedCaseInsensitiveCompare(localizedManagerDisplayName($1.id)) == .orderedAscending }
             return (authority: authorityLevel, managers: managers)
         }
