@@ -4,6 +4,7 @@ enum OnboardingStep: Int, CaseIterable {
     case welcome = 0
     case detection = 1
     case configure = 2
+    case settings = 3
 }
 
 struct OnboardingContainerView: View {
@@ -36,7 +37,11 @@ struct OnboardingContainerView: View {
                         currentStep = .configure
                     }
                 case .configure:
-                    OnboardingConfigureView(onFinish: onComplete)
+                    OnboardingConfigureView {
+                        currentStep = .settings
+                    }
+                case .settings:
+                    OnboardingSettingsView(onFinish: onComplete)
                 }
             }
             .frame(maxHeight: .infinity)

@@ -89,7 +89,7 @@ struct OnboardingConfigureView: View {
             Spacer()
 
             Button(action: onFinish) {
-                Text(L10n.App.Onboarding.Configure.finishSetup.localized)
+                Text(L10n.App.Onboarding.Detection.continue.localized)
                     .font(.headline)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
