@@ -1,0 +1,3 @@
+The following ports are currently installed:
+  git @2.48.1_0 (active)
+  ripgrep @14.1.0_0 (active)

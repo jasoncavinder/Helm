@@ -14,6 +14,8 @@ struct ManagerInfo: Identifiable {
     let shortName: String
     let category: String
     let isImplemented: Bool
+    let isOptional: Bool
+    let isDetectionOnly: Bool
     let installMethod: ManagerInstallMethod
 
     var firstLetter: String {
@@ -36,9 +38,10 @@ struct ManagerInfo: Identifiable {
 
     var authority: ManagerAuthority {
         switch id {
-        case "mise", "rustup":
+        case "mise", "asdf", "rustup":
             return .authoritative
-        case "homebrew_formula", "softwareupdate", "homebrew_cask":
+        case "homebrew_formula", "softwareupdate", "macports", "nix_darwin",
+            "xcode_command_line_tools", "rosetta2", "firmware_updates":
             return .guarded
         default:
             return .standard
@@ -82,30 +85,63 @@ struct ManagerInfo: Identifiable {
             return "apple.logo"
         case "homebrew_formula", "homebrew_cask":
             return "cup.and.saucer.fill"
-        case "mise", "rustup":
+        case "mise", "asdf", "rustup":
             return "wrench.and.screwdriver.fill"
+        case "docker_desktop", "podman", "colima":
+            return "shippingbox.circle.fill"
+        case "parallels_desktop":
+            return "desktopcomputer"
+        case "xcode_command_line_tools":
+            return "hammer.fill"
+        case "rosetta2":
+            return "translate"
+        case "firmware_updates":
+            return "memorychip.fill"
         default:
             return "shippingbox.fill"
         }
     }
 
     static let all: [ManagerInfo] = [
-        ManagerInfo(id: "homebrew_formula", displayName: "Homebrew (formulae)", shortName: "brew", category: "System/OS", isImplemented: true, installMethod: .updateOnly),
-        ManagerInfo(id: "homebrew_cask", displayName: "Homebrew (casks)", shortName: "cask", category: "App Store", isImplemented: false, installMethod: .notManageable),
-        ManagerInfo(id: "npm", displayName: "npm (global)", shortName: "npm", category: "Language", isImplemented: true, installMethod: .notManageable),
-        ManagerInfo(id: "pnpm", displayName: "pnpm (global)", shortName: "pnpm", category: "Language", isImplemented: true, installMethod: .notManageable),
-        ManagerInfo(id: "yarn", displayName: "yarn (global)", shortName: "yarn", category: "Language", isImplemented: true, installMethod: .notManageable),
-        ManagerInfo(id: "poetry", displayName: "Poetry", shortName: "poetry", category: "Language", isImplemented: true, installMethod: .notManageable),
-        ManagerInfo(id: "rubygems", displayName: "RubyGems", shortName: "gem", category: "Language", isImplemented: true, installMethod: .notManageable),
-        ManagerInfo(id: "bundler", displayName: "Bundler", shortName: "bundle", category: "Language", isImplemented: true, installMethod: .notManageable),
-        ManagerInfo(id: "pip", displayName: "pip", shortName: "pip", category: "Language", isImplemented: true, installMethod: .notManageable),
-        ManagerInfo(id: "pipx", displayName: "pipx", shortName: "pipx", category: "Language", isImplemented: true, installMethod: .notManageable),
-        ManagerInfo(id: "cargo", displayName: "Cargo", shortName: "cargo", category: "Language", isImplemented: true, installMethod: .notManageable),
-        ManagerInfo(id: "cargo_binstall", displayName: "cargo-binstall", shortName: "binstall", category: "Language", isImplemented: true, installMethod: .notManageable),
-        ManagerInfo(id: "mise", displayName: "mise", shortName: "mise", category: "Toolchain", isImplemented: true, installMethod: .automatable),
-        ManagerInfo(id: "rustup", displayName: "rustup", shortName: "rustup", category: "Toolchain", isImplemented: true, installMethod: .updateAndUninstall),
-        ManagerInfo(id: "softwareupdate", displayName: "Software Update", shortName: "swupd", category: "System/OS", isImplemented: true, installMethod: .systemBinary),
-        ManagerInfo(id: "mas", displayName: "Mac App Store", shortName: "mas", category: "App Store", isImplemented: true, installMethod: .automatable),
+        // Toolchain / Runtime
+        ManagerInfo(id: "mise", displayName: "mise", shortName: "mise", category: "Toolchain", isImplemented: true, isOptional: false, isDetectionOnly: false, installMethod: .automatable),
+        ManagerInfo(id: "asdf", displayName: "asdf", shortName: "asdf", category: "Toolchain", isImplemented: true, isOptional: true, isDetectionOnly: false, installMethod: .notManageable),
+        ManagerInfo(id: "rustup", displayName: "rustup", shortName: "rustup", category: "Toolchain", isImplemented: true, isOptional: false, isDetectionOnly: false, installMethod: .updateAndUninstall),
+
+        // System / OS
+        ManagerInfo(id: "homebrew_formula", displayName: "Homebrew (formulae)", shortName: "brew", category: "System/OS", isImplemented: true, isOptional: false, isDetectionOnly: false, installMethod: .updateOnly),
+        ManagerInfo(id: "softwareupdate", displayName: "Software Update", shortName: "swupd", category: "System/OS", isImplemented: true, isOptional: false, isDetectionOnly: false, installMethod: .systemBinary),
+        ManagerInfo(id: "macports", displayName: "MacPorts", shortName: "port", category: "System/OS", isImplemented: true, isOptional: true, isDetectionOnly: false, installMethod: .notManageable),
+        ManagerInfo(id: "nix_darwin", displayName: "nix-darwin", shortName: "nix", category: "System/OS", isImplemented: true, isOptional: true, isDetectionOnly: false, installMethod: .notManageable),
+
+        // Language
+        ManagerInfo(id: "npm", displayName: "npm (global)", shortName: "npm", category: "Language", isImplemented: true, isOptional: false, isDetectionOnly: false, installMethod: .notManageable),
+        ManagerInfo(id: "pnpm", displayName: "pnpm (global)", shortName: "pnpm", category: "Language", isImplemented: true, isOptional: false, isDetectionOnly: false, installMethod: .notManageable),
+        ManagerInfo(id: "yarn", displayName: "yarn (global)", shortName: "yarn", category: "Language", isImplemented: true, isOptional: false, isDetectionOnly: false, installMethod: .notManageable),
+        ManagerInfo(id: "poetry", displayName: "Poetry", shortName: "poetry", category: "Language", isImplemented: true, isOptional: false, isDetectionOnly: false, installMethod: .notManageable),
+        ManagerInfo(id: "rubygems", displayName: "RubyGems", shortName: "gem", category: "Language", isImplemented: true, isOptional: false, isDetectionOnly: false, installMethod: .notManageable),
+        ManagerInfo(id: "bundler", displayName: "Bundler", shortName: "bundle", category: "Language", isImplemented: true, isOptional: false, isDetectionOnly: false, installMethod: .notManageable),
+        ManagerInfo(id: "pip", displayName: "pip", shortName: "pip", category: "Language", isImplemented: true, isOptional: false, isDetectionOnly: false, installMethod: .notManageable),
+        ManagerInfo(id: "pipx", displayName: "pipx", shortName: "pipx", category: "Language", isImplemented: true, isOptional: false, isDetectionOnly: false, installMethod: .notManageable),
+        ManagerInfo(id: "cargo", displayName: "Cargo", shortName: "cargo", category: "Language", isImplemented: true, isOptional: false, isDetectionOnly: false, installMethod: .notManageable),
+        ManagerInfo(id: "cargo_binstall", displayName: "cargo-binstall", shortName: "binstall", category: "Language", isImplemented: true, isOptional: false, isDetectionOnly: false, installMethod: .notManageable),
+
+        // App / GUI
+        ManagerInfo(id: "mas", displayName: "Mac App Store", shortName: "mas", category: "App Store", isImplemented: true, isOptional: false, isDetectionOnly: false, installMethod: .automatable),
+        ManagerInfo(id: "sparkle", displayName: "Sparkle Updaters", shortName: "sparkle", category: "App Store", isImplemented: true, isOptional: false, isDetectionOnly: true, installMethod: .notManageable),
+        ManagerInfo(id: "setapp", displayName: "Setapp", shortName: "setapp", category: "App Store", isImplemented: true, isOptional: false, isDetectionOnly: true, installMethod: .notManageable),
+        ManagerInfo(id: "homebrew_cask", displayName: "Homebrew (casks)", shortName: "cask", category: "App Store", isImplemented: true, isOptional: false, isDetectionOnly: false, installMethod: .notManageable),
+
+        // Container / VM
+        ManagerInfo(id: "docker_desktop", displayName: "Docker Desktop", shortName: "docker", category: "Container/VM", isImplemented: true, isOptional: false, isDetectionOnly: false, installMethod: .notManageable),
+        ManagerInfo(id: "podman", displayName: "podman", shortName: "podman", category: "Container/VM", isImplemented: true, isOptional: false, isDetectionOnly: false, installMethod: .notManageable),
+        ManagerInfo(id: "colima", displayName: "colima", shortName: "colima", category: "Container/VM", isImplemented: true, isOptional: false, isDetectionOnly: false, installMethod: .notManageable),
+        ManagerInfo(id: "parallels_desktop", displayName: "Parallels Desktop", shortName: "parallels", category: "Container/VM", isImplemented: true, isOptional: false, isDetectionOnly: true, installMethod: .notManageable),
+
+        // Security / Firmware
+        ManagerInfo(id: "xcode_command_line_tools", displayName: "Xcode Command Line Tools", shortName: "xcode", category: "Security/Firmware", isImplemented: true, isOptional: false, isDetectionOnly: false, installMethod: .notManageable),
+        ManagerInfo(id: "rosetta2", displayName: "Rosetta 2", shortName: "rosetta", category: "Security/Firmware", isImplemented: true, isOptional: false, isDetectionOnly: false, installMethod: .notManageable),
+        ManagerInfo(id: "firmware_updates", displayName: "Firmware Updates", shortName: "firmware", category: "Security/Firmware", isImplemented: true, isOptional: false, isDetectionOnly: false, installMethod: .systemBinary),
     ]
 
     static func find(byId managerId: String) -> ManagerInfo? {
@@ -120,9 +156,9 @@ struct ManagerInfo: Identifiable {
         all.filter { $0.isImplemented }
     }
 
-    // Category ordering matching core registry: ToolRuntime → SystemOs → Language → GuiApp
+    // Category ordering matching core registry.
     private static let categoryOrder: [String] = [
-        "Toolchain", "System/OS", "Language", "App Store"
+        "Toolchain", "System/OS", "Language", "App Store", "Container/VM", "Security/Firmware"
     ]
 
     static var groupedByCategory: [(category: String, managers: [ManagerInfo])] {

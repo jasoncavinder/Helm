@@ -437,7 +437,7 @@ Delivered (`v0.13.0-rc.2` checkpoint):
 
 ---
 
-## 0.14.x — Platform, Detection & Optional Managers (beta)
+## 0.14.x — Platform, Detection & Optional Managers (rc)
 
 Goal:
 
@@ -470,6 +470,16 @@ Exit Criteria:
 - Optional managers clearly marked and disabled by default
 - Fixture-based parser tests for each adapter
 
+Delivered (`v0.14.0-rc.1` checkpoint):
+- Manager metadata scaffolding with optional/detection-only status export in FFI and Swift fallback metadata
+- Container/VM adapters: Docker Desktop, podman, colima
+- Detection-only adapters: Sparkle, Setapp, Parallels Desktop
+- Security/Firmware adapters: Xcode Command Line Tools, Rosetta 2, Firmware Updates
+- Optional adapters: asdf, MacPorts, nix-darwin
+- Homebrew cask status adapter (`homebrew_cask`)
+- Manager capability sweep artifact: `docs/validation/v0.14.0-alpha.5-manager-capability-sweep.md`
+- README/website + workspace/app version alignment to `0.14.0-rc.1`
+
 ---
 
 ## 0.15.x — Upgrade Preview & Execution Transparency (beta)
@@ -492,16 +502,20 @@ Exit Criteria:
 
 Goal:
 
-- Sparkle integration (or equivalent)
+- Sparkle integration for the direct Developer ID consumer channel
 - Signed update verification
 - Delta updates
 - Self-update testing across versions
+- Explicit channel boundaries for update systems:
+  - Sparkle only in direct Developer ID consumer build
+  - no Sparkle in MAS, Setapp, or Helm Business fleet builds
 
 Exit Criteria:
 
 - Helm can update itself safely
 - Downgrade handling defined
 - Update interruption recovery tested
+- Direct channel Sparkle behavior is isolated from non-Sparkle channels
 
 ---
 
@@ -591,14 +605,15 @@ Exit Criteria:
 
 Goal:
 
-- Formalize debug and release build variants
-- Implement runtime entitlement model for Free / Pro / Business editions
+- Formalize channel-aware build configurations for planned artifacts (MAS, Developer ID, Setapp, Fleet)
+- Implement runtime entitlement model for Helm consumer (Free/Pro) and Helm Business (fleet)
 - Add entitlement verification and safe degradation behavior
-- Define managed bootstrap configuration contract for MDM deployments
+- Define managed bootstrap configuration contract for fleet MDM deployments
+- Keep update authority decoupled from licensing authority by channel
 
 Exit Criteria:
 
-- Single signed release artifact supports edition gating
+- Distribution build matrix and channel authority mapping are documented and approved
 - Invalid/expired entitlements degrade predictably without unsafe behavior
 - Managed bootstrap configuration is documented and testable
 
@@ -662,3 +677,67 @@ Exit Criteria:
 - Ring promotion and rollback flow verified end-to-end
 - Policy changes and enforcement actions produce attributable audit events
 - Enterprise controls preserve Helm safety and orchestration guarantees
+
+---
+
+## 1.6.x — Mac App Store Distribution Channel
+
+Goal:
+
+- Deliver consumer distribution through Mac App Store channel requirements
+- Align consumer licensing behavior with App Store commerce/receipt authority
+- Preserve core architecture and runtime gating model without Sparkle coupling
+
+Exit Criteria:
+
+- MAS channel lifecycle is documented and operationally separable from direct and fleet channels
+- Channel update authority is App Store-managed
+- No Sparkle dependency in MAS channel
+
+---
+
+## 1.7.x — Setapp Distribution Channel
+
+Goal:
+
+- Deliver consumer distribution through Setapp channel requirements
+- Align licensing behavior with Setapp subscription authority
+- Preserve architecture invariants and channel-isolated update behavior
+
+Exit Criteria:
+
+- Setapp channel lifecycle is documented and operationally separable from direct, MAS, and fleet channels
+- Channel update authority is Setapp-managed
+- No Sparkle dependency in Setapp channel
+
+---
+
+## 1.8.x — Helm Business Fleet Product
+
+Goal:
+
+- Deliver Helm Business as a separate fleet-focused binary and lifecycle
+- Keep one shared core codebase while separating consumer and fleet release operations
+- Integrate business policy/compliance capabilities without collapsing architecture boundaries
+
+Exit Criteria:
+
+- Fleet product boundaries are explicit and documented
+- Fleet release lifecycle is independent from consumer release cadence
+- Business operational model aligns with enterprise policy and compliance requirements
+
+---
+
+## 1.9.x — PKG + MDM Deployment and Offline Licensing
+
+Goal:
+
+- Deliver PKG-based enterprise deployment flow for Helm Business
+- Deliver MDM-ready managed bootstrap and admin-controlled update workflows
+- Deliver offline organizational license-file handling for fleet environments
+
+Exit Criteria:
+
+- PKG + MDM deployment lifecycle is documented and validated as the fleet distribution path
+- Offline license file model is documented with fail-safe behavior
+- Fleet update flow remains admin-controlled and decoupled from consumer update channels

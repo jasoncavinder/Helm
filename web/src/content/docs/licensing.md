@@ -23,13 +23,28 @@ See the [LICENSE](https://github.com/jasoncavinder/Helm/blob/main/LICENSE) file 
 
 We intend to transition to a sustainable commercial model at or after version 1.0. The goal is to support ongoing development while maintaining transparency.
 
-### Planned Editions
+### Planned Product Model
 
-We are designing Helm to support multiple editions:
+We are designing Helm as two products:
 
-- **Free Edition**: Core functionality for individual users.
-- **Pro Edition**: Advanced features for power users.
-- **Business Edition**: Policy enforcement, compliance, and management features for organizations.
+- **Helm (Consumer)**: Free + Pro feature-gated editions.
+- **Helm Business (Fleet)**: Separate binary for policy, compliance, and managed enterprise workflows.
+
+### Planned Distribution and Licensing Architecture (Future State)
+
+| Artifact | Product | Channel | Licensing Authority | Update Authority |
+|---|---|---|---|---|
+| Helm (MAS build) | Helm (Consumer) | Mac App Store | App Store commerce/receipt model | Mac App Store |
+| Helm (Developer ID build) | Helm (Consumer) | Direct DMG, Homebrew, MacPorts | Helm consumer entitlement model | Sparkle (direct channel) |
+| Helm (Setapp build) | Helm (Consumer) | Setapp | Setapp subscription/license model | Setapp |
+| Helm Business (Fleet build) | Helm Business | Enterprise PKG deployment | Offline org license files | Admin-controlled PKG/MDM rollout |
+
+Channel rules:
+
+- Sparkle is planned only for the direct Developer ID consumer build.
+- Sparkle is not planned for MAS, Setapp, or Helm Business fleet builds.
+- Update transport and licensing authority remain decoupled by channel.
+- This architecture is planned and staged; it is not fully implemented yet.
 
 ### Why not Open Source?
 

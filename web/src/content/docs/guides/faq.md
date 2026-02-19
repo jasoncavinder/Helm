@@ -11,18 +11,20 @@ Helm is a native macOS menu bar app that provides a unified control plane for pa
 
 ### What package managers does Helm support?
 
-Helm supports fifteen managers across four categories:
+Helm currently supports twenty-eight managers across six categories:
 
 | Category | Managers |
 |---------|----------|
-| **Toolchain / Runtime** | mise, rustup |
-| **System / OS / App Store** | Homebrew, softwareupdate, mas |
-| **Core Language** | npm (global), pipx, pip (global), Cargo, cargo-binstall |
-| **Extended Language** | pnpm (global), yarn (global), Poetry (self/plugins), RubyGems, Bundler |
+| **Toolchain / Runtime** | mise, asdf (optional), rustup |
+| **System / OS** | Homebrew (formulae), softwareupdate, MacPorts (optional), nix-darwin (optional) |
+| **Language** | npm (global), pnpm (global), yarn (global), Poetry (self/plugins), RubyGems, Bundler, pip (global), pipx, Cargo, cargo-binstall |
+| **App / GUI** | mas, Homebrew casks, Sparkle updaters (detection-only), Setapp (detection-only) |
+| **Container / VM** | Docker Desktop, podman, colima, Parallels Desktop (detection-only) |
+| **Security / Firmware** | Xcode Command Line Tools, Rosetta 2, Firmware Updates |
 
 ### Is Helm free?
 
-Helm is currently in pre-1.0 beta with all features available. After version 1.0, a tiered licensing model (Free, Pro, Business) is planned. See the [licensing page](/licensing/) for details.
+Helm is currently in pre-1.0 beta with all features available. Post-1.0 planning includes Helm (Consumer: Free + Pro) and Helm Business (Fleet) as a separate product lifecycle. See the [licensing page](/licensing/) for details.
 
 ### What macOS versions are supported?
 
@@ -48,15 +50,15 @@ Helm auto-detects managers on your system during refresh. If a manager doesn't a
 
 Helm refreshes managers in a **3-phase authority model**:
 
-1. **Authoritative** (mise, rustup) — toolchain managers that define the runtime; refreshed first
-2. **Standard** (npm, pnpm, yarn, pip, pipx, cargo, cargo-binstall, RubyGems, Poetry, Bundler, mas) — language and app store managers
-3. **Guarded** (Homebrew, softwareupdate) — system-level managers; refreshed last
+1. **Authoritative** (mise, asdf, rustup) — toolchain managers that define the runtime; refreshed first
+2. **Standard** (language, app/GUI, and container managers) — includes npm/pnpm/yarn/pip/pipx/cargo/cargo-binstall/RubyGems/Poetry/Bundler, plus mas/homebrew_cask/docker/podman/colima and detection-only app/container signals
+3. **Guarded** (Homebrew/system managers) — Homebrew, softwareupdate, MacPorts, nix-darwin, Xcode CLT, Rosetta 2, Firmware Updates; refreshed last
 
 Within each phase, managers refresh in parallel. A failure in one manager does not block others.
 
 ### What is Safe Mode?
 
-Safe Mode prevents guarded managers (Homebrew and softwareupdate) from executing upgrades during "Upgrade All" operations. When enabled, OS-level updates require explicit confirmation. You can toggle Safe Mode in Settings.
+Safe Mode prevents guarded managers from executing upgrades during "Upgrade All" operations. When enabled, OS-level updates require explicit confirmation. You can toggle Safe Mode in Settings.
 
 ### How does search work?
 

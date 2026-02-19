@@ -1,0 +1,14 @@
+Software Update Tool
+
+Finding available software
+Software Update found the following software:
+
+Display Name: Firmware Update
+Display Version: 2069.0.0.0.1
+Version: 2069.0.0.0.1
+Install Date: 2026-01-13 12:35:00 +0000
+
+Display Name: Safari
+Display Version: 17.4
+Version: 17.4
+Install Date: 2026-01-10 12:35:00 +0000

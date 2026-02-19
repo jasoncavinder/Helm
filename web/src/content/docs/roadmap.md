@@ -28,16 +28,16 @@ Helm follows feature-driven milestones. Dates are intentionally omitted — mile
 | Version | Milestone |
 |---|---|
 | 0.13.x | UI/UX Analysis & Redesign — full UX audit, interaction model, visual system refresh, accessibility, onboarding walkthrough, inspector sidebar, support & feedback entry points (`v0.13.0` stable released) |
+| 0.14.x | Platform, Detection & Optional Managers — Docker, Xcode, Rosetta, Sparkle, Setapp, Homebrew casks, optional managers (`v0.14.0-rc.1` release candidate) |
 
-> **Testing:** `v0.13.0` is available. Submit feedback via [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Testing:** `v0.14.0-rc.1` is available. Submit feedback via [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
 ## Planned
 
 | Version | Milestone |
 |---|---|
-| 0.14.x | Platform, Detection & Optional Managers — Docker, Xcode, Rosetta, Sparkle |
 | 0.15.x | Advanced Upgrade Transparency — richer execution-plan visibility, failure isolation, and operator controls |
-| 0.16.x | Self-Update & Installer Hardening — Sparkle integration, signed verification |
+| 0.16.x | Self-Update & Installer Hardening — Sparkle integration for direct Developer ID channel, signed verification |
 | 0.17.x | Diagnostics & Logging — log viewer, structured error export, health panel |
 | 0.18.x | Stability & Pre-1.0 Hardening — stress tests, crash recovery, memory audit |
 | 1.0.0 | Stable Control Plane Release — production-safe execution, full feature set |
@@ -47,10 +47,14 @@ Helm follows feature-driven milestones. Dates are intentionally omitted — mile
 | Version | Milestone |
 |---|---|
 | 1.1.x | Globalization Expansion — additional locales (zh-Hans, ko, it, nl), website localization |
-| 1.2.x | Editions and Entitlement Foundations — Free/Pro/Business edition gating |
+| 1.2.x | Editions and Entitlement Foundations — channel-aware build matrix and entitlement boundaries for consumer and fleet products |
 | 1.3.x | Security Advisory System (Pro) — CVE awareness, local-first advisory evaluation |
 | 1.4.x | Business Policy and Drift Management — scoped policy, baseline enforcement, compliance reporting |
 | 1.5.x | Enterprise Rollout, Approvals, and Audit — ring-based rollout, approval workflows, audit export |
+| 1.6.x | Mac App Store Distribution Channel — consumer MAS lifecycle and App Store authority alignment |
+| 1.7.x | Setapp Distribution Channel — consumer Setapp lifecycle and channel authority alignment |
+| 1.8.x | Helm Business Fleet Product — separate business binary and lifecycle from consumer releases |
+| 1.9.x | PKG + MDM Deployment and Offline Licensing — fleet deployment workflow and offline org licensing model |
 
 ## Details
 

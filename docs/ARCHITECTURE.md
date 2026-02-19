@@ -135,12 +135,14 @@ This layer is:
 
 Each package manager is implemented as an adapter.
 
-Helm currently implements 15 adapters:
+Helm currently implements 28 adapters:
 
-- **Toolchain / Runtime:** mise, rustup
-- **System / OS / App Store:** Homebrew, softwareupdate, mas
-- **Core Language:** npm (global), pip (global), pipx, cargo, cargo-binstall
-- **Extended Language:** pnpm (global), yarn (global), RubyGems, Poetry (self/plugins), Bundler
+- **Toolchain / Runtime:** mise, asdf (optional), rustup
+- **System / OS:** Homebrew (formulae), softwareupdate, MacPorts (optional), nix-darwin (optional)
+- **Language:** npm, pnpm, yarn, pip, pipx, cargo, cargo-binstall, RubyGems, Poetry, Bundler
+- **App / GUI:** mas, Homebrew casks, Sparkle (detection-only), Setapp (detection-only)
+- **Container / VM:** Docker Desktop, podman, colima, Parallels Desktop (detection-only)
+- **Security / Firmware:** Xcode Command Line Tools, Rosetta 2, Firmware Updates
 
 Adapters declare capabilities:
 
@@ -184,13 +186,16 @@ This avoids false assumptions about manager behavior.
 Managers are grouped by authority level:
 
 1. **Authoritative**
-   - mise, rustup
+   - mise, asdf, rustup
 
 2. **Standard**
    - npm, pnpm, yarn, pip, pipx, cargo, cargo-binstall, RubyGems, Poetry, Bundler, mas
+   - homebrew_cask, docker_desktop, podman, colima
+   - sparkle (detection-only), setapp (detection-only), parallels_desktop (detection-only)
 
 3. **Guarded**
-   - Homebrew, softwareupdate
+   - Homebrew, softwareupdate, macports, nix_darwin
+   - xcode_command_line_tools, rosetta2, firmware_updates
 
 Execution order is enforced:
 
@@ -425,6 +430,42 @@ These must not violate:
 - Local-first execution
 - Safety guarantees
 - Deterministic behavior
+
+### 10.1 Planned Distribution and Licensing Architecture (Future State)
+
+This is architectural direction only. It is not implemented yet.
+
+#### Build Matrix
+
+| Artifact | Product | Channel | Licensing Authority | Update Authority | Sparkle |
+|---|---|---|---|---|---|
+| Helm (MAS build) | Helm (Consumer) | Mac App Store | App Store commerce/receipt model | Mac App Store | No |
+| Helm (Developer ID build) | Helm (Consumer) | Direct DMG, Homebrew, MacPorts | Helm consumer entitlement model | Sparkle (direct channel only) | Yes |
+| Helm (Setapp build) | Helm (Consumer) | Setapp | Setapp subscription/license model | Setapp | No |
+| Helm Business (Fleet build) | Helm Business | Enterprise PKG deployment | Offline organizational license files | Admin-controlled PKG/MDM rollout | No |
+
+Channel-to-licensing-to-update mapping must remain explicit:
+
+- Update system and licensing system are decoupled.
+- Homebrew and MacPorts distribute the same Developer ID consumer binary.
+- Helm Business release lifecycle is separate from consumer channel lifecycle.
+- Sparkle is excluded from MAS, Setapp, and Helm Business fleet builds.
+
+#### Build Configuration and CI/CD Implications (High-Level)
+
+- Shared core codebase remains single-source.
+- Build configurations must differentiate MAS, Developer ID, Setapp, and Fleet packaging paths.
+- CI/CD must keep shared test gates common, then run channel-specific packaging/signing/notarization/publishing steps.
+- Business PKG release flow is managed separately from consumer DMG/App Store/Setapp release flow.
+
+### 10.2 Implementation Phasing Strategy
+
+1. Document and freeze channel boundaries, licensing authority, and update authority.
+2. Add channel-aware build configurations without changing core architecture boundaries.
+3. Deliver Sparkle only for the direct Developer ID consumer channel.
+4. Deliver MAS and Setapp channels as separate distribution tracks with channel-owned update/licensing behavior.
+5. Deliver Helm Business as a separate fleet binary with PKG + MDM deployment workflows.
+6. Add offline organizational license-file handling for Helm Business and keep admin-controlled update workflows independent.
 
 ---
 

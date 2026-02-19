@@ -155,7 +155,10 @@ Use non-commercial source-available license.
 ## Decision 012 — Edition-Based Future
 
 **Decision:**
-Plan Free / Pro / Business editions.
+Plan a multi-product entitlement future:
+
+- Helm (Consumer): Free + Pro
+- Helm Business (Fleet): separate product lifecycle
 
 **Rationale:**
 
@@ -252,6 +255,38 @@ Defer Homebrew Casks adapter to 0.14.x. Originally planned for 0.10.x but droppe
 - Homebrew formula adapter covers the primary use case
 - Cask handling requires different upgrade and detection semantics
 - 0.14.x (Platform, Detection & Optional Managers) is the appropriate milestone
+
+---
+
+## Decision 020 — Multi-Channel Distribution and Product Split
+
+**Decision:**
+Adopt a multi-channel distribution strategy with two products:
+
+- Helm (Consumer): Free + Pro feature-gated editions
+- Helm Business (Fleet): separate binary and lifecycle
+
+Planned artifacts:
+
+1. Helm (Mac App Store)
+2. Helm (Developer ID: direct DMG, Homebrew, MacPorts)
+3. Helm (Setapp)
+4. Helm Business (Fleet PKG)
+
+Channel rules:
+
+- Update transport is decoupled from licensing.
+- Sparkle is only used in the direct Developer ID consumer build.
+- Sparkle is not used for MAS, Setapp, or Business fleet builds.
+- Homebrew and MacPorts distribution reuse the same Developer ID consumer binary.
+- Business lifecycle and release cadence are separate from consumer lifecycle.
+
+**Rationale:**
+
+- Keeps one shared core codebase while supporting channel-specific distribution requirements.
+- Preserves clean separation between licensing authority and update authority.
+- Aligns enterprise deployment needs (PKG/MDM/offline license files) without coupling to consumer channels.
+- Reduces long-term operational risk by making channel behavior explicit in planning before implementation.
 
 ---
 

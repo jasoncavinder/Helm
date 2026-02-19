@@ -1,0 +1,5 @@
+package-id: com.apple.pkg.CLTools_Executables
+version: 16.3.0.0.1.1742423573
+volume: /
+location: /
+install-time: 1744146400

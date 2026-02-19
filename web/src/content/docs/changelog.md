@@ -9,6 +9,29 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ---
 
+## 0.14.0-rc.1 — 2026-02-19
+
+### Added
+- Completed 0.14 manager rollout across alpha.1 through alpha.5:
+  - Container/VM managers: Docker Desktop, podman, colima
+  - Detection-only managers: Sparkle, Setapp, Parallels Desktop
+  - Security/Firmware managers: Xcode Command Line Tools, Rosetta 2, Firmware Updates
+  - Optional managers: asdf, MacPorts, nix-darwin
+  - Homebrew cask status manager (`homebrew_cask`)
+- Added 0.14 manager capability sweep artifact at `docs/validation/v0.14.0-alpha.5-manager-capability-sweep.md`
+- Added future-state distribution/licensing planning docs:
+  - multi-channel build matrix (MAS, Developer ID, Setapp, Fleet)
+  - channel licensing/update authority mapping
+  - staged roadmap phases for Sparkle, MAS, Setapp, Fleet, PKG/MDM, and offline licensing
+
+### Changed
+- FFI manager status now reports full 0.14 implementation baseline (`isImplemented=true` for all registry managers)
+- Optional managers remain default-disabled until explicitly enabled (`asdf`, `macports`, `nix_darwin`)
+- Swift fallback manager metadata aligned to 0.14 implementation coverage
+- Clarified consumer vs fleet lifecycle separation in architecture/enterprise planning docs (documentation-only)
+
+---
+
 ## 0.13.0 — 2026-02-19
 
 ### Added

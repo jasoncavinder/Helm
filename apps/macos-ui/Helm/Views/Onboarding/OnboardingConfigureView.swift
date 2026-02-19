@@ -5,9 +5,10 @@ struct OnboardingConfigureView: View {
     let onFinish: () -> Void
 
     private var detectedManagers: [ManagerInfo] {
-        ManagerInfo.implemented.filter { manager in
+        ManagerInfo.all.filter { manager in
             let status = core.managerStatuses[manager.id]
-            return status?.detected ?? false
+            let isImplemented = status?.isImplemented ?? manager.isImplemented
+            return isImplemented && (status?.detected ?? false)
         }
     }
 

@@ -1,0 +1,8 @@
+Software Update Tool
+
+Finding available software
+Software Update found the following new or updated software:
+* Label: Command Line Tools for Xcode-16.3
+	Title: Command Line Tools for Xcode, Version: 16.3, Size: 76000KiB, Recommended: YES,
+* Label: Safari17.4Arm64Auto-17.4
+	Title: Safari, Version: 17.4, Size: 200000KiB, Recommended: YES,
