@@ -61,6 +61,7 @@
 		F20000000000000000000003 /* ControlCenterSectionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000003 /* ControlCenterSectionViews.swift */; };
 		G20000000000000000000001 /* L10n+App.swift in Sources */ = {isa = PBXBuildFile; fileRef = G10000000000000000000001 /* L10n+App.swift */; };
 		G20000000000000000000002 /* AppDelegate+Windows.swift in Sources */ = {isa = PBXBuildFile; fileRef = G10000000000000000000002 /* AppDelegate+Windows.swift */; };
+		G20000000000000000000003 /* AppDelegate+StatusBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = G10000000000000000000003 /* AppDelegate+StatusBadge.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -150,6 +151,7 @@
 		F10000000000000000000003 /* ControlCenterSectionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlCenterSectionViews.swift; sourceTree = "<group>"; };
 		G10000000000000000000001 /* L10n+App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "L10n+App.swift"; sourceTree = "<group>"; };
 		G10000000000000000000002 /* AppDelegate+Windows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppDelegate+Windows.swift"; sourceTree = "<group>"; };
+		G10000000000000000000003 /* AppDelegate+StatusBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppDelegate+StatusBadge.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -329,6 +331,7 @@
 				A10000020000000000000001 /* HelmApp.swift */,
 				A10000020000000000000002 /* AppDelegate.swift */,
 				G10000000000000000000002 /* AppDelegate+Windows.swift */,
+				G10000000000000000000003 /* AppDelegate+StatusBadge.swift */,
 				A30000000000000000000001 /* HelmVersion.swift */,
 				A10000020000000000000003 /* Assets.xcassets */,
 				A10000020000000000000004 /* Helm.entitlements */,
@@ -599,6 +602,7 @@
 				F20000000000000000000003 /* ControlCenterSectionViews.swift in Sources */,
 				G20000000000000000000001 /* L10n+App.swift in Sources */,
 				G20000000000000000000002 /* AppDelegate+Windows.swift in Sources */,
+				G20000000000000000000003 /* AppDelegate+StatusBadge.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

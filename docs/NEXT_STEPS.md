@@ -23,6 +23,7 @@ Focus:
 - Validation and hardening
 
 Current checkpoint:
+- `v0.13.0-rc.2` released (support & feedback entry points, diagnostics copy, GitHub Sponsors integration)
 - `v0.13.0-rc.1` released (inspector sidebar, upgrade reliability, status menu, documentation)
 - Full codebase audit completed 2026-02-17 (Rust core, SwiftUI UI, XPC, localization, CI/CD)
 
@@ -230,6 +231,35 @@ Delivered:
 
 ---
 
+## v0.13.0-rc.2 — Support & Feedback Entry Points (Completed)
+
+### Support & Feedback Card (Completed)
+
+Delivered:
+
+- New "Support & Feedback" SettingsCard in control-center Settings surface
+- 5 action buttons: Support Helm, Send Feedback, Report a Bug, Request a Feature, Copy Diagnostics
+- "Include Diagnostics" toggle (default OFF): copies diagnostics to clipboard before opening GitHub issue template
+- Transient "Copied!" confirmation with animated opacity transition
+- `HelmSupport` updated with template-specific URLs (`reportBug`, `requestFeature` methods)
+
+### Localization (Completed)
+
+Delivered:
+
+- 9 new L10n keys (`app.settings.support_feedback.*`) added to all 6 locales (en, es, de, fr, pt-BR, ja)
+- Canonical and mirror locale files synchronized
+
+### GitHub & Documentation (Completed)
+
+Delivered:
+
+- `.github/FUNDING.yml` created for GitHub Sponsors button
+- README.md updated with working sponsor link and issue template links
+- CURRENT_STATE.md, NEXT_STEPS.md updated for rc.2
+
+---
+
 ## Completed Priorities (Pre-0.13.x)
 
 ### Priority 1 — Core Language Managers (Completed)
@@ -336,6 +366,7 @@ The 0.13.x milestone beta and rc releases are complete:
 - **beta.5**: Architecture cleanup (UI purity fixes, legacy removal, XPC robustness, keyboard traversal) — **completed**
 - **beta.6**: Validation + hardening + documentation (tracing spans, unit tests, FFI docs, INTERFACES.md, validation report, usability test plan) — **completed**
 - **rc.1**: Inspector sidebar, upgrade reliability (post-upgrade validation on all 11 adapters), status menu, documentation — **completed**
+- **rc.2**: Support & feedback entry points (GitHub Sponsors, bug report, feature request, email feedback, copy diagnostics), FUNDING.yml — **completed**
 
 Remaining for 0.13.0 stable: execute the validation sweep and usability test plan, resolve any findings, and cut the stable release.
 

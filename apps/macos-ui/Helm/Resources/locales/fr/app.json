@@ -276,5 +276,17 @@
   "app.walkthrough.control_center.step7.title": "Aperçu des mises à niveau",
   "app.walkthrough.control_center.step7.description": "Prévisualisez exactement ce qui se passera avant d'exécuter les mises à niveau.",
 
-  "app.settings.action.replay_walkthrough": "Rejouer la visite guidée"
+  "app.settings.action.replay_walkthrough": "Rejouer la visite guidée",
+
+  "app.settings.section.support_feedback": "Support et retours",
+  "app.settings.support_feedback.support_helm": "Soutenir Helm",
+  "app.settings.support_feedback.report_bug": "Signaler un bug",
+  "app.settings.support_feedback.request_feature": "Suggérer une fonction",
+  "app.settings.support_feedback.send_feedback": "Envoyer un retour",
+  "app.settings.support_feedback.copy_diagnostics": "Copier les diagnostics",
+  "app.settings.support_feedback.include_diagnostics": "Inclure les diagnostics",
+  "app.settings.support_feedback.copied_confirmation": "Copié !",
+  "app.settings.support_feedback.diagnostics_copied_hint": "Diagnostics copiés dans le presse-papiers",
+  "app.settings.support_feedback.github_sponsors": "GitHub Sponsors",
+  "app.settings.support_feedback.patreon": "Patreon"
 }

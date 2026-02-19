@@ -276,5 +276,17 @@
   "app.walkthrough.control_center.step7.title": "Upgrade-Vorschau",
   "app.walkthrough.control_center.step7.description": "Sieh genau, was passieren wird, bevor du Upgrades ausführst.",
 
-  "app.settings.action.replay_walkthrough": "Rundgang wiederholen"
+  "app.settings.action.replay_walkthrough": "Rundgang wiederholen",
+
+  "app.settings.section.support_feedback": "Support & Feedback",
+  "app.settings.support_feedback.support_helm": "Helm unterstützen",
+  "app.settings.support_feedback.report_bug": "Fehler melden",
+  "app.settings.support_feedback.request_feature": "Funktion vorschlagen",
+  "app.settings.support_feedback.send_feedback": "Feedback senden",
+  "app.settings.support_feedback.copy_diagnostics": "Diagnose kopieren",
+  "app.settings.support_feedback.include_diagnostics": "Diagnose einschließen",
+  "app.settings.support_feedback.copied_confirmation": "Kopiert!",
+  "app.settings.support_feedback.diagnostics_copied_hint": "Diagnose in die Zwischenablage kopiert",
+  "app.settings.support_feedback.github_sponsors": "GitHub Sponsors",
+  "app.settings.support_feedback.patreon": "Patreon"
 }
