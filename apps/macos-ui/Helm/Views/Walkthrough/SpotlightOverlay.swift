@@ -167,7 +167,7 @@ struct SpotlightOverlay: View {
                     tooltipPositioned(step: step, targetRect: targetRect, proxy: proxy)
                 }
                 .animation(
-                    reduceMotion ? .easeOut(duration: 0.14) : .spring(duration: 0.3, bounce: 0.15),
+                    reduceMotion ? .easeOut(duration: 0.14) : .spring(response: 0.3, dampingFraction: 0.85),
                     value: manager.currentStepIndex
                 )
             }
