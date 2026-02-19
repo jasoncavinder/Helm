@@ -108,6 +108,7 @@ final class HelmCore: ObservableObject {
     var onboardingDetectionStartedAt: Date?
     var previousFailedTaskCount: Int = 0
     var previousRefreshState: Bool = false
+    private var reconnectAttempt: Int = 0
 
     private init() {
         setupConnection()
@@ -138,6 +139,7 @@ final class HelmCore: ObservableObject {
         logger.info("XPC connection established")
         isConnected = true
         isInitialized = true
+        reconnectAttempt = 0
 
         if timer == nil {
             startPolling()
@@ -148,7 +150,10 @@ final class HelmCore: ObservableObject {
     }
 
     func scheduleReconnection() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+        let delay = min(2.0 * pow(2.0, Double(reconnectAttempt)), 60.0)
+        reconnectAttempt += 1
+        logger.info("Scheduling reconnection in \(delay)s (attempt \(self.reconnectAttempt))")
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             logger.info("Attempting to reconnect...")
             self?.setupConnection()
         }
