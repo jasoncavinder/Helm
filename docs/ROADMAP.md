@@ -427,6 +427,14 @@ Delivered (`v0.13.0-rc.1` checkpoint):
 - Task label support for descriptive upgrade task names (e.g., "Upgrading rake")
 - Security Advisory System milestone added to roadmap (1.3.x)
 
+Delivered (`v0.13.0-rc.2` checkpoint):
+- Support & Feedback card in Settings with 5 actions (Support Helm, Report a Bug, Request a Feature, Send Feedback, Copy Diagnostics)
+- Include Diagnostics toggle with clipboard copy before opening GitHub issue templates
+- Support Helm submenu in status menu right-click (GitHub Sponsors, Patreon)
+- GitHub Sponsors and Patreon funding integration (.github/FUNDING.yml)
+- 11 new L10n keys across all 6 locales
+- AppDelegate decomposed to satisfy SwiftLint thresholds
+
 ---
 
 ## 0.14.x — Platform, Detection & Optional Managers (beta)

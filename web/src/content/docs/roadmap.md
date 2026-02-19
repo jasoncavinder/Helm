@@ -27,9 +27,9 @@ Helm follows feature-driven milestones. Dates are intentionally omitted — mile
 
 | Version | Milestone |
 |---|---|
-| 0.13.x | UI/UX Analysis & Redesign — full UX audit, interaction model, visual system refresh, accessibility, onboarding walkthrough, inspector sidebar (`v0.13.0-rc.1` checkpoint released) |
+| 0.13.x | UI/UX Analysis & Redesign — full UX audit, interaction model, visual system refresh, accessibility, onboarding walkthrough, inspector sidebar, support & feedback entry points (`v0.13.0-rc.2` checkpoint released) |
 
-> **Testing Program:** Help validate `v0.13.0-rc.1` and submit issues via [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Testing Program:** Help validate `v0.13.0-rc.2` and submit issues via [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
 ## Planned
 

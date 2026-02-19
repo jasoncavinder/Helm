@@ -8,7 +8,7 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.13.0-rc.1**
+Current version: **0.13.0-rc.2**
 
 See:
 - CHANGELOG.md
