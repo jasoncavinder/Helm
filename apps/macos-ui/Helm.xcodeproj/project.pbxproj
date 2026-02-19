@@ -52,6 +52,8 @@
 		D20000000000000000000005 /* HelmCore+Fetching.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000005 /* HelmCore+Fetching.swift */; };
 		D20000000000000000000006 /* HelmCore+Actions.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000006 /* HelmCore+Actions.swift */; };
 		D20000000000000000000007 /* HelmCore+Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000007 /* HelmCore+Settings.swift */; };
+		D20000000000000000000008 /* WalkthroughState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000008 /* WalkthroughState.swift */; };
+		D20000000000000000000009 /* SpotlightOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000009 /* SpotlightOverlay.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -132,6 +134,8 @@
 		D10000000000000000000005 /* HelmCore+Fetching.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HelmCore+Fetching.swift"; sourceTree = "<group>"; };
 		D10000000000000000000006 /* HelmCore+Actions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HelmCore+Actions.swift"; sourceTree = "<group>"; };
 		D10000000000000000000007 /* HelmCore+Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HelmCore+Settings.swift"; sourceTree = "<group>"; };
+		D10000000000000000000008 /* WalkthroughState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughState.swift; sourceTree = "<group>"; };
+		D10000000000000000000009 /* SpotlightOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotlightOverlay.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -225,6 +229,7 @@
 			children = (
 				B30000000000000000000001 /* Components */,
 				B30000000000000000000002 /* Onboarding */,
+				B30000000000000000000003 /* Walkthrough */,
 				D10000000000000000000001 /* ControlCenterModels.swift */,
 				D10000000000000000000003 /* ControlCenterViews.swift */,
 				B10000000000000000000008 /* DashboardView.swift */,
@@ -344,6 +349,15 @@
 				B10000000000000000000012 /* OnboardingWelcomeView.swift */,
 			);
 			path = Onboarding;
+			sourceTree = "<group>";
+		};
+		B30000000000000000000003 /* Walkthrough */ = {
+			isa = PBXGroup;
+			children = (
+				D10000000000000000000009 /* SpotlightOverlay.swift */,
+				D10000000000000000000008 /* WalkthroughState.swift */,
+			);
+			path = Walkthrough;
 			sourceTree = "<group>";
 		};
 		C10000000000000000000006 /* HelmTests */ = {
@@ -555,6 +569,8 @@
 				D20000000000000000000005 /* HelmCore+Fetching.swift in Sources */,
 				D20000000000000000000006 /* HelmCore+Actions.swift in Sources */,
 				D20000000000000000000007 /* HelmCore+Settings.swift in Sources */,
+				D20000000000000000000008 /* WalkthroughState.swift in Sources */,
+				D20000000000000000000009 /* SpotlightOverlay.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

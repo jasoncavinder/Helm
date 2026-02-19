@@ -241,7 +241,7 @@
   "app.walkthrough.control_center.step3.title": "Paquetes",
   "app.walkthrough.control_center.step3.description": "Explora, busca, instala y gestiona paquetes de todos los gestores.",
   "app.walkthrough.control_center.step4.title": "Tareas",
-  "app.walkthrough.control_center.step4.description": "Todas las operaciones de Helm se registran aquí. Cancela tareas en ejecución en cualquier momento.",
+  "app.walkthrough.control_center.step4.description": "Cada operación de Helm se registra aquí. Cancela tareas en cualquier momento.",
   "app.walkthrough.control_center.step5.title": "Gestores",
   "app.walkthrough.control_center.step5.description": "Habilita, deshabilita y monitorea tus gestores de paquetes.",
   "app.walkthrough.control_center.step6.title": "Ajustes",
