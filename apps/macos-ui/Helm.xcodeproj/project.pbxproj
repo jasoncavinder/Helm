@@ -56,6 +56,9 @@
 		D20000000000000000000008 /* WalkthroughState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000008 /* WalkthroughState.swift */; };
 		D20000000000000000000009 /* SpotlightOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000009 /* SpotlightOverlay.swift */; };
 		E20000000000000000000001 /* InspectorViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000000000000000000001 /* InspectorViews.swift */; };
+		F20000000000000000000001 /* PopoverHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000001 /* PopoverHelpers.swift */; };
+		F20000000000000000000002 /* PopoverOverlayViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000002 /* PopoverOverlayViews.swift */; };
+		F20000000000000000000003 /* ControlCenterSectionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000003 /* ControlCenterSectionViews.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -140,6 +143,9 @@
 		D10000000000000000000008 /* WalkthroughState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughState.swift; sourceTree = "<group>"; };
 		D10000000000000000000009 /* SpotlightOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotlightOverlay.swift; sourceTree = "<group>"; };
 		E10000000000000000000001 /* InspectorViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorViews.swift; sourceTree = "<group>"; };
+		F10000000000000000000001 /* PopoverHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverHelpers.swift; sourceTree = "<group>"; };
+		F10000000000000000000002 /* PopoverOverlayViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverOverlayViews.swift; sourceTree = "<group>"; };
+		F10000000000000000000003 /* ControlCenterSectionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlCenterSectionViews.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -236,8 +242,11 @@
 				B30000000000000000000003 /* Walkthrough */,
 				D10000000000000000000001 /* ControlCenterModels.swift */,
 				D10000000000000000000003 /* ControlCenterViews.swift */,
+				F10000000000000000000003 /* ControlCenterSectionViews.swift */,
 				B10000000000000000000008 /* DashboardView.swift */,
 				E10000000000000000000001 /* InspectorViews.swift */,
+				F10000000000000000000001 /* PopoverHelpers.swift */,
+				F10000000000000000000002 /* PopoverOverlayViews.swift */,
 				B10000000000000000000010 /* ManagersView.swift */,
 				B10000000000000000000007 /* NavigationBarView.swift */,
 				8CFB6D4E2F3D1D1D002372B8 /* PackageListView.swift */,
@@ -579,6 +588,9 @@
 				D20000000000000000000008 /* WalkthroughState.swift in Sources */,
 				D20000000000000000000009 /* SpotlightOverlay.swift in Sources */,
 				E20000000000000000000001 /* InspectorViews.swift in Sources */,
+				F20000000000000000000001 /* PopoverHelpers.swift in Sources */,
+				F20000000000000000000002 /* PopoverOverlayViews.swift in Sources */,
+				F20000000000000000000003 /* ControlCenterSectionViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
