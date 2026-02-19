@@ -12,14 +12,16 @@ Developers and power users on macOS who manage software through multiple package
 
 ## What it does today
 
-Helm v0.13.0 supports fifteen managers:
+Helm v0.14.0-rc.1 supports twenty-eight managers:
 
 | Category | Managers |
 |---------|----------|
-| **Toolchain / Runtime** | mise, rustup |
-| **System / OS / App Store** | Homebrew, softwareupdate, mas |
-| **Core Language Package Managers** | npm (global), pipx, pip (global), Cargo, cargo-binstall |
-| **Extended Language Package Managers** | pnpm (global), yarn (global), poetry (self/plugins), RubyGems, bundler |
+| **Toolchain / Runtime** | mise, asdf (optional), rustup |
+| **System / OS** | Homebrew (formulae), softwareupdate, MacPorts (optional), nix-darwin (optional) |
+| **Language Package Managers** | npm (global), pnpm (global), yarn (global), poetry (self/plugins), RubyGems, bundler, pip (global), pipx, Cargo, cargo-binstall |
+| **App / GUI Managers** | mas, Homebrew casks, Sparkle updaters (detection-only), Setapp (detection-only) |
+| **Container / VM Managers** | Docker Desktop, podman, colima, Parallels Desktop (detection-only) |
+| **Security / Firmware Managers** | Xcode Command Line Tools, Rosetta 2, Firmware Updates |
 
 Key features:
 
@@ -30,7 +32,7 @@ Key features:
 - **Package list** — browse installed, upgradable, and available packages with status filters and manager filter
 - **Progressive search** — instant local filtering with debounced remote search
 - **Pinning and safe mode controls** — pin/unpin support plus guarded OS update policy
-- **Authority-ordered refresh** — Authoritative (mise, rustup) → Standard (mas) → Guarded (Homebrew, softwareupdate)
+- **Authority-ordered refresh** — Authoritative (mise, asdf, rustup) → Standard managers → Guarded (Homebrew, softwareupdate, MacPorts, nix-darwin, Xcode CLT, Rosetta 2, Firmware Updates)
 - **Restart detection** — surface restart-required updates from macOS softwareupdate
 - **Post-upgrade validation** — verify package state after upgrades complete
 - **Background tasks** — real-time task tracking with per-manager serial execution
@@ -38,7 +40,7 @@ Key features:
 - **Localization** — `en`, `es`, `de`, `fr`, `pt-BR`, and `ja` with locale override in Settings
 - **Upgrade transparency** — dedicated upgrade preview surface with dry-run simulation mode
 
-> **Testing Program:** `v0.13.0-rc.1` is available for pre-1.0 testing. Please report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Testing Program:** `v0.14.0-rc.1` is available for pre-1.0 testing. Please report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
 ## How it works
 

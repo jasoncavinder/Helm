@@ -16,16 +16,40 @@ Helm is a native macOS menu bar utility that provides a centralized control cent
 
 ---
 
-## **Product Variations (1.0 and Beyond)**
+## **Product and Distribution Model (Planned Future State)**
 
-Helm ships as two build artifacts with runtime-gated editions:
+Helm is planned as two products:
 
-- **Debug build** (development and internal validation only)
-- **Release build** (production signed artifact)
-- **Pro edition** (pay-gated runtime entitlement within release build)
-- **Business edition** (subscription-gated runtime entitlement within release build)
+1. **Helm (Consumer)**
+   - Free
+   - Pro (feature-gated)
+2. **Helm Business (Fleet Product)**
+   - Separate binary
+   - Fleet deployment model
+   - Offline license files
+   - Admin-controlled updates
+   - MDM-ready
 
-Business edition extends Helm with centrally managed policy and compliance controls so package and toolchain environments can be kept consistent across enterprise scopes.
+Planned production artifacts (post-1.0 direction):
+
+| Artifact | Product | Distribution Channel | Licensing Authority | Update Authority |
+|---|---|---|---|---|
+| Helm (MAS build) | Helm (Consumer) | Mac App Store | App Store commerce/receipt model | Mac App Store |
+| Helm (Developer ID build) | Helm (Consumer) | Direct DMG, Homebrew, MacPorts | Helm consumer license/entitlement model | Sparkle (direct channel) |
+| Helm (Setapp build) | Helm (Consumer) | Setapp | Setapp subscription/license model | Setapp |
+| Helm Business (Fleet build) | Helm Business | Enterprise PKG deployment | Offline org license files | Admin-controlled PKG/MDM rollout |
+
+Architecture principles for this model:
+
+- One shared core codebase across channels/products.
+- Feature gating is runtime entitlement-driven.
+- Update transport is decoupled from licensing checks.
+- Sparkle is only for the direct Developer ID consumer build.
+- Sparkle is excluded from MAS, Setapp, and Helm Business fleet builds.
+- Homebrew and MacPorts distribution reuse the same Developer ID consumer binary.
+- Business product lifecycle is separate from consumer release lifecycle.
+
+This is planned architecture only; implementation is staged in future milestones.
 
 ---
 
@@ -289,7 +313,13 @@ Requirements:
 - No shell-based update mechanisms
 - Manual approval required (auto-update optional)
 
-Self-update must not depend on Homebrew.
+Channel-specific update policy (planned):
+- Direct Developer ID consumer build: Sparkle-based updates.
+- Mac App Store build: App Store-managed updates.
+- Setapp build: Setapp-managed updates.
+- Helm Business fleet build: admin-controlled updates through PKG/MDM workflows.
+
+Self-update behavior must not depend on Homebrew and must remain decoupled from licensing authority.
 
 ---
 
@@ -308,7 +338,7 @@ Control planes must be transparent.
 
 ### 12) Enterprise Managed Mode (Post-1.0 Expansion)
 
-Business edition adds centrally managed operation without collapsing Helm's core architecture:
+Helm Business (fleet product) adds centrally managed operation without collapsing Helm's core architecture:
 
 - MDM deploys Helm and provides bootstrap managed configuration.
 - Helm consumes scoped policies from a central control plane.
@@ -328,7 +358,7 @@ This scope is planned for 1.x and is not a 1.0 release gate.
 - Export/import configuration
 - API for 3rd-party integrations
 - Interactive upgrade previews
-- Enterprise central policy and rollout management (Business edition)
+- Enterprise central policy and rollout management (Helm Business fleet product)
 
 ---
 
