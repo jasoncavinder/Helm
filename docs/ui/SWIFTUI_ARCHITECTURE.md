@@ -2,7 +2,7 @@
 
 This document describes the current SwiftUI architecture of the Helm macOS app.
 
-It reflects the actual implementation as of v0.14.0-rc.1.
+It reflects the actual implementation as of v0.14.0.
 
 ---
 

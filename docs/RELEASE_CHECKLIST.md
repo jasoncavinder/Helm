@@ -2,16 +2,16 @@
 
 This checklist is required before creating a release tag on `main`.
 
-## v0.14.0-rc.1 (In Progress)
+## v0.14.0 (In Progress)
 
 ### Scope and Documentation
 - [x] 0.14 manager delivery slices completed through `v0.14.0-alpha.5` (container/VM, detection-only, security/firmware, optional managers, Homebrew cask status).
 - [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect alpha.1–alpha.5 delivery and post-alpha.5 readiness items.
 - [x] 0.14 manager capability sweep artifact committed:
   - `docs/validation/v0.14.0-alpha.5-manager-capability-sweep.md`
-- [x] `CHANGELOG.md` includes `0.14.0-rc.1` release notes.
-- [x] README/website release status updated for `0.14.0-rc.1`.
-- [x] Distribution/licensing architecture planning docs aligned for `0.14.0-rc.1`:
+- [x] `CHANGELOG.md` includes `0.14.0` release notes.
+- [x] README/website release status updated for `0.14.0`.
+- [x] Distribution/licensing architecture planning docs aligned for `0.14.0`:
   - build matrix and channel authority mapping documented
   - consumer vs fleet lifecycle separation documented
   - roadmap phases added for Sparkle, MAS, Setapp, Fleet, PKG/MDM, offline licensing
@@ -21,13 +21,15 @@ This checklist is required before creating a release tag on `main`.
 - [x] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' -derivedDataPath /tmp/helmtests-deriveddata CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -only-testing:HelmTests test`).
 
 ### Versioning
-- [x] Workspace version bumped to `0.14.0-rc.1` in `core/rust/Cargo.toml`.
-- [x] Generated app version artifacts aligned to `0.14.0-rc.1`.
+- [x] Workspace version bumped to `0.14.0` in `core/rust/Cargo.toml`.
+- [x] Generated app version artifacts aligned to `0.14.0`.
 
 ### Branch and Tag
+- [x] Release finalization branch merged to `dev`.
+- [x] PR opened from `dev` to `main` for `v0.14.0` and CI checks running (`#60`).
 - [ ] `dev` merged into `main` for release.
-- [ ] Create annotated tag: `git tag -a v0.14.0-rc.1 -m "Helm v0.14.0-rc.1"`
-- [ ] Push tag: `git push origin v0.14.0-rc.1`
+- [ ] Create annotated tag: `git tag -a v0.14.0 -m "Helm v0.14.0"`
+- [ ] Push tag: `git push origin v0.14.0`
 
 ## v0.13.0-rc.1 (In Progress)
 

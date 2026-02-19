@@ -437,7 +437,7 @@ Delivered (`v0.13.0-rc.2` checkpoint):
 
 ---
 
-## 0.14.x — Platform, Detection & Optional Managers (rc)
+## 0.14.x — Platform, Detection & Optional Managers (stable)
 
 Goal:
 
@@ -470,7 +470,7 @@ Exit Criteria:
 - Optional managers clearly marked and disabled by default
 - Fixture-based parser tests for each adapter
 
-Delivered (`v0.14.0-rc.1` checkpoint):
+Delivered (`v0.14.0` checkpoint):
 - Manager metadata scaffolding with optional/detection-only status export in FFI and Swift fallback metadata
 - Container/VM adapters: Docker Desktop, podman, colima
 - Detection-only adapters: Sparkle, Setapp, Parallels Desktop
@@ -478,7 +478,7 @@ Delivered (`v0.14.0-rc.1` checkpoint):
 - Optional adapters: asdf, MacPorts, nix-darwin
 - Homebrew cask status adapter (`homebrew_cask`)
 - Manager capability sweep artifact: `docs/validation/v0.14.0-alpha.5-manager-capability-sweep.md`
-- README/website + workspace/app version alignment to `0.14.0-rc.1`
+- README/website + workspace/app version alignment to `0.14.0`
 
 ---
 

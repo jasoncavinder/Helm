@@ -11,13 +11,14 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-0.14.x
+0.15.x
 ```
 
 Focus:
-- 0.14.x platform, detection, and optional manager rollout
+- 0.15.x upgrade preview and execution transparency
 
 Current checkpoint:
+- `v0.14.0` stable release alignment completed (manager rollout + docs/version alignment)
 - `v0.13.0` stable released (website updates, documentation alignment, version bump)
 - `v0.13.0-rc.2` released (support & feedback entry points, diagnostics copy, GitHub Sponsors integration)
 - `v0.13.0-rc.1` released (inspector sidebar, upgrade reliability, status menu, documentation)
@@ -27,11 +28,11 @@ Current checkpoint:
 - `v0.14.0-alpha.3` completed (security/firmware adapters)
 - `v0.14.0-alpha.4` completed (optional managers: asdf/macports/nix-darwin)
 - `v0.14.0-alpha.5` completed (homebrew_cask status adapter)
-- `v0.14.0-rc.1` release-readiness alignment completed (README/website status + version artifact bump)
-- `v0.14.0-rc.1` distribution/licensing architecture planning docs aligned (future-state, no implementation changes)
+- `v0.14.0` release-readiness alignment completed (README/website status + version artifact bump)
+- `v0.14.0` distribution/licensing architecture planning docs aligned (future-state, no implementation changes)
 
 Next release targets:
-- `v0.14.x` — Platform, Detection & Optional Managers
+- `v0.15.x` — Upgrade Preview & Execution Transparency
 
 ---
 
@@ -429,13 +430,13 @@ Delivered:
 
 ---
 
-## v0.14.0-rc.1 — Release Readiness Alignment (Completed)
+## v0.14.0 — Stable Release Cut (In Progress)
 
 ### Delivered
 
-- ✅ README release status updated for `0.14.0-rc.1`
-- ✅ Website docs release status updated for `0.14.0-rc.1` (`index`, `overview`, `roadmap`, `changelog`)
-- ✅ Workspace version bumped to `0.14.0-rc.1` in `core/rust/Cargo.toml`
+- ✅ README release status updated for `0.14.0`
+- ✅ Website docs release status updated for `0.14.0` (`index`, `overview`, `roadmap`, `changelog`)
+- ✅ Workspace version bumped to `0.14.0` in `core/rust/Cargo.toml`
 - ✅ Rust lockfile workspace package versions aligned (`helm-core`, `helm-ffi`)
 - ✅ Generated app version artifacts aligned:
   - `apps/macos-ui/Generated/HelmVersion.swift`
@@ -446,11 +447,14 @@ Delivered:
   - consumer vs fleet lifecycle separation
   - roadmap phases for Sparkle, MAS, Setapp, Fleet, PKG/MDM, and offline licensing
 
-### Next Up (Post-rc.1 Alignment)
+### Next Up (Release Execution)
 
-- Branch and tag execution:
+- Branch/PR execution:
+  - ✅ merge release finalization branch into `dev`
+  - ✅ open PR from `dev` to `main` and run CI checks (`#60`)
+- Release finalization:
   - merge `dev` into `main`
-  - create/push annotated tag `v0.14.0-rc.1`
+  - create/push annotated tag `v0.14.0`
 
 ---
 
@@ -561,6 +565,6 @@ Implement:
   - optional managers (`asdf`, `macports`, `nix_darwin`)
   - Homebrew cask status manager (`homebrew_cask`)
 - Manager capability sweep artifact is now in place for 0.14 release prep (`docs/validation/v0.14.0-alpha.5-manager-capability-sweep.md`).
-- 0.14 release-readiness alignment for `v0.14.0-rc.1` is complete (README/website + version artifacts).
+- 0.14 stable release alignment for `v0.14.0` is complete (README/website + version artifacts).
 - Distribution/licensing future-state planning documentation is aligned for 0.14 release notes and roadmap planning (no implementation yet).
-- Next slice is branch/tag release execution for `v0.14.0-rc.1`, then 0.15.x handoff.
+- Remaining slice is CI completion on PR `#60`, final merge/tag execution for `v0.14.0`, then 0.15.x delivery.

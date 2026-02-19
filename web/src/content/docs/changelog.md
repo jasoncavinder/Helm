@@ -9,6 +9,14 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ---
 
+## 0.14.0 — 2026-02-19
+
+### Changed
+- Promoted `0.14.x` alpha and rc delivery slices into the stable `v0.14.0` checkpoint
+- Aligned release status metadata across README, docs, website, and generated version artifacts
+
+---
+
 ## 0.14.0-rc.1 — 2026-02-19
 
 ### Added
