@@ -365,10 +365,10 @@ struct RedesignPopoverView: View {
 
     private var cardBackground: some View {
         RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(colorScheme == .dark ? AnyShapeStyle(.ultraThinMaterial) : AnyShapeStyle(Color.white.opacity(0.9)))
+            .fill(HelmTheme.surfacePanel)
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
+                    .strokeBorder(HelmTheme.borderSubtle.opacity(0.95), lineWidth: 0.8)
             )
     }
 
@@ -397,7 +397,11 @@ struct RedesignPopoverView: View {
                 .frame(width: 24, height: 24)
                 .background(
                     Circle()
-                        .fill(Color.primary.opacity(0.08))
+                        .fill(HelmTheme.surfaceElevated)
+                        .overlay(
+                            Circle()
+                                .strokeBorder(HelmTheme.borderSubtle.opacity(0.85), lineWidth: 0.8)
+                        )
                 )
         }
         .buttonStyle(.plain)

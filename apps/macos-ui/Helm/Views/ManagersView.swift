@@ -133,7 +133,7 @@ private struct ManagerSectionRow: View {
                             .foregroundStyle(.secondary)
                         Text(L10n.App.Managers.Tooltip.outdated.localized(with: ["count": outdatedCount]))
                             .font(.caption)
-                            .foregroundStyle(outdatedCount == 0 ? Color.secondary : Color.orange)
+                            .foregroundStyle(outdatedCount == 0 ? HelmTheme.textSecondary : HelmTheme.stateAttention)
                     }
                 }
 
@@ -204,7 +204,7 @@ private struct ManagerSectionRow: View {
             .font(.caption)
         }
         .padding(12)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .helmCardSurface(cornerRadius: 12)
         .padding(.horizontal, 20)
         .contentShape(Rectangle())
         .onTapGesture {

@@ -23,7 +23,6 @@ struct ControlCenterWindowView: View {
     var body: some View {
         VStack(spacing: 0) {
             ControlCenterTopBar(sidebarWidth: sidebarWidth)
-            Divider()
 
             HStack(spacing: 0) {
                 ControlCenterSidebarView(sidebarWidth: sidebarWidth)
@@ -43,12 +42,12 @@ struct ControlCenterWindowView: View {
             LinearGradient(
                 colors: colorScheme == .dark
                     ? [
-                        Color(nsColor: .windowBackgroundColor),
-                        Color(nsColor: .underPageBackgroundColor)
+                        HelmTheme.surfaceBase,
+                        HelmTheme.surfaceElevated.opacity(0.96)
                     ]
                     : [
-                        Color.white.opacity(0.98),
-                        Color(nsColor: .windowBackgroundColor).opacity(0.88)
+                        HelmTheme.surfaceBase,
+                        HelmTheme.surfacePanel
                     ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -140,7 +139,11 @@ private struct ControlCenterTopBar: View {
             .frame(width: 336)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.primary.opacity(0.06))
+                    .fill(HelmTheme.surfacePanel)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(HelmTheme.borderSubtle.opacity(0.95), lineWidth: 0.8)
+                    )
             )
 
             Button {
@@ -166,11 +169,25 @@ private struct ControlCenterTopBar: View {
         .frame(height: 40)
         .background(
             HStack(spacing: 0) {
-                ControlCenterSidebarSurface(colorScheme: colorScheme)
+                ControlCenterTopBarSidebarSurface(colorScheme: colorScheme)
                     .frame(width: sidebarWidth)
-                Rectangle().fill(.ultraThinMaterial)
+                Divider()
+                Rectangle()
+                    .fill(HelmTheme.surfaceBase)
             }
         )
+        .overlay(alignment: .bottom) {
+            HStack(spacing: 0) {
+                Rectangle()
+                    .fill(Color.clear)
+                    .frame(width: sidebarWidth, height: 1)
+                Rectangle()
+                    .fill(HelmTheme.statusRail)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 1)
+            }
+            .frame(height: 1)
+        }
         .onChange(of: context.controlCenterSearchFocusToken) { _ in
             isSearchFocused = true
         }
@@ -211,24 +228,63 @@ private struct ControlCenterSidebarSurface: View {
 
     var body: some View {
         ZStack {
-            Rectangle().fill(.regularMaterial)
+            Rectangle().fill(HelmTheme.surfacePanel)
             Rectangle()
                 .fill(
                     LinearGradient(
-                        colors: colorScheme == .dark
-                            ? [
-                                Color.white.opacity(0.08),
-                                Color.black.opacity(0.28)
-                            ]
-                            : [
-                                Color.black.opacity(0.12),
-                                Color.black.opacity(0.05)
-                            ],
+                        colors: [
+                            ControlCenterSidebarGradientPalette.topColor(for: colorScheme),
+                            ControlCenterSidebarGradientPalette.bottomColor(for: colorScheme)
+                        ],
                         startPoint: .top,
                         endPoint: .bottom
                     )
                 )
         }
+    }
+}
+
+private struct ControlCenterTopBarSidebarSurface: View {
+    let colorScheme: ColorScheme
+
+    var body: some View {
+        ZStack {
+            Rectangle().fill(HelmTheme.surfacePanel)
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            ControlCenterSidebarGradientPalette.topCapTopColor(for: colorScheme),
+                            ControlCenterSidebarGradientPalette.topColor(for: colorScheme)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+        }
+    }
+}
+
+private enum ControlCenterSidebarGradientPalette {
+    static func topColor(for colorScheme: ColorScheme) -> Color {
+        if colorScheme == .dark {
+            return HelmTheme.blue900.opacity(0.22)
+        }
+        return HelmTheme.blue700.opacity(0.08)
+    }
+
+    static func bottomColor(for colorScheme: ColorScheme) -> Color {
+        if colorScheme == .dark {
+            return HelmTheme.surfaceBase.opacity(0.15)
+        }
+        return HelmTheme.surfacePanel.opacity(0.96)
+    }
+
+    static func topCapTopColor(for colorScheme: ColorScheme) -> Color {
+        if colorScheme == .dark {
+            return HelmTheme.blue900.opacity(0.32)
+        }
+        return HelmTheme.blue700.opacity(0.14)
     }
 }
 
@@ -272,25 +328,34 @@ private struct ControlCenterSidebarButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         let backgroundOpacity: CGFloat = {
             if isSelected {
-                return configuration.isPressed ? 0.3 : 0.24
+                return configuration.isPressed ? 0.24 : 0.16
             }
             if configuration.isPressed {
-                return 0.16
+                return 0.1
             }
             if isHovered {
-                return 0.1
+                return 0.06
             }
             return 0.001
         }()
 
         return configuration.label
-            .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+            .foregroundStyle(isSelected ? HelmTheme.blue500 : HelmTheme.textPrimary)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(
                         isSelected
-                            ? Color.accentColor.opacity(backgroundOpacity)
-                            : Color.primary.opacity(backgroundOpacity)
+                            ? HelmTheme.blue500.opacity(backgroundOpacity)
+                            : HelmTheme.textPrimary.opacity(backgroundOpacity)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(
+                                isSelected
+                                    ? HelmTheme.actionSecondaryBorder.opacity(0.45)
+                                    : Color.clear,
+                                lineWidth: 0.8
+                            )
                     )
             )
             .scaleEffect(

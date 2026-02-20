@@ -72,7 +72,7 @@ struct RedesignOverviewSectionView: View {
                             Divider()
                         }
                     }
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .helmCardSurface(cornerRadius: 12)
                 }
             }
             .padding(20)
@@ -269,7 +269,7 @@ struct RedesignUpdatesSectionView: View {
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .helmCardSurface(cornerRadius: 10, highlighted: true)
                 }
 
                 if visiblePlanSteps.isEmpty {
@@ -312,7 +312,7 @@ struct RedesignUpdatesSectionView: View {
                                 .padding(.horizontal, 10)
                                 .background(
                                     context.selectedUpgradePlanStepId == step.id
-                                        ? Color.accentColor.opacity(0.15)
+                                        ? HelmTheme.selectionFill
                                         : Color.clear
                                 )
                             }
@@ -323,7 +323,7 @@ struct RedesignUpdatesSectionView: View {
                             Divider()
                         }
                     }
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .helmCardSurface(cornerRadius: 12)
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
@@ -361,7 +361,7 @@ struct RedesignUpdatesSectionView: View {
                                 }
                             }
                             .padding(10)
-                            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .helmCardSurface(cornerRadius: 10, highlighted: true)
                         }
 
                         Button(L10n.App.Packages.Action.update.localized) {
@@ -416,10 +416,10 @@ struct RedesignUpdatesSectionView: View {
     private func riskRow(flag: String, active: Bool) -> some View {
         HStack(spacing: 8) {
             Image(systemName: active ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(active ? Color.orange : Color.secondary)
+                .foregroundStyle(active ? HelmTheme.stateAttention : HelmTheme.textSecondary)
             Text(flag)
                 .font(.subheadline)
-                .foregroundStyle(active ? Color.primary : Color.secondary)
+                .foregroundStyle(active ? HelmTheme.textPrimary : HelmTheme.textSecondary)
         }
     }
 }
@@ -495,7 +495,7 @@ struct MetricCardView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .helmCardSurface(cornerRadius: 12)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
         .accessibilityValue("\(value)")
@@ -533,7 +533,7 @@ struct ManagerHealthCardView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .helmCardSurface(cornerRadius: 12)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title), \(authority.key.localized)")
         .accessibilityValue("\(status.key.localized), \(outdatedCount) \(L10n.App.Packages.Filter.upgradable.localized)")
