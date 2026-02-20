@@ -4,8 +4,6 @@ struct SettingsSectionView: View {
     @ObservedObject private var core = HelmCore.shared
     @ObservedObject private var localization = LocalizationManager.shared
     @ObservedObject private var walkthrough = WalkthroughManager.shared
-    @EnvironmentObject private var context: ControlCenterContext
-    @Environment(\.colorScheme) private var colorScheme
 
     @State private var checkFrequency = 60
     @State private var showResetConfirmation = false
@@ -27,10 +25,7 @@ struct SettingsSectionView: View {
     }
 
     private var cardFill: AnyShapeStyle {
-        if colorScheme == .dark {
-            return AnyShapeStyle(.thinMaterial)
-        }
-        return AnyShapeStyle(Color.white.opacity(0.92))
+        AnyShapeStyle(HelmTheme.surfacePanel)
     }
 
     private func showCopiedBriefly() {
@@ -167,9 +162,16 @@ struct SettingsSectionView: View {
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                         SettingsActionButton(
                             title: L10n.App.Settings.SupportFeedback.supportHelm.localized,
-                            badges: [],
-                            isProminent: false,
-                            useSystemStyle: true
+                            badges: [
+                                SettingsActionBadge(
+                                    id: "support_helm_pro",
+                                    managerId: nil,
+                                    label: L10n.App.Settings.SupportFeedback.gitHubSponsors.localized,
+                                    symbol: "star.fill",
+                                    tint: HelmTheme.proAccent
+                                )
+                            ],
+                            isProminent: true
                         ) {
                             HelmSupport.openURL(HelmSupport.gitHubSponsorsURL)
                         }
@@ -272,7 +274,7 @@ private struct SettingsCard<Content: View>: View {
                 .fill(fill)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
+                        .strokeBorder(HelmTheme.borderSubtle.opacity(0.95), lineWidth: 0.8)
                 )
         )
     }
@@ -286,15 +288,20 @@ private struct SettingsMetricPill: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(HelmTheme.textSecondary)
             Text("\(value)")
                 .font(.callout.monospacedDigit().weight(.semibold))
+                .foregroundStyle(HelmTheme.textPrimary)
         }
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.primary.opacity(0.06))
+                .fill(HelmTheme.surfaceElevated)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(HelmTheme.borderSubtle.opacity(0.9), lineWidth: 0.8)
+                )
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
@@ -336,7 +343,7 @@ private struct SettingsActionButton: View {
             Button(action: action) {
                 labelContent
             }
-            .buttonStyle(HelmPrimaryButtonStyle())
+            .buttonStyle(HelmProButtonStyle())
             .controlSize(.regular)
             .helmPointer(enabled: isEnabled)
         } else {

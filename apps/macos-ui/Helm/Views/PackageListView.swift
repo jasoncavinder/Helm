@@ -85,8 +85,19 @@ struct PackagesSectionView: View {
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
-                    .background((selectedManagerId ?? context.managerFilterId) == nil ? Color.gray.opacity(0.12) : Color.accentColor.opacity(0.18))
-                    .cornerRadius(7)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill((selectedManagerId ?? context.managerFilterId) == nil ? HelmTheme.surfaceElevated : HelmTheme.selectionFill)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .strokeBorder(
+                                        (selectedManagerId ?? context.managerFilterId) == nil
+                                            ? HelmTheme.borderSubtle.opacity(0.85)
+                                            : HelmTheme.selectionStroke,
+                                        lineWidth: 0.8
+                                    )
+                            )
+                    )
                 }
                 .menuStyle(.borderlessButton)
                 .helmPointer()

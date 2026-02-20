@@ -11,9 +11,9 @@ struct ManagerItemView: View {
     let onRefresh: () -> Void
 
     private var indicatorColor: Color {
-        if hasFailedTasks { return .red }
-        if hasOutdatedPackages || !versionAvailable { return .yellow }
-        return .green
+        if hasFailedTasks { return HelmTheme.stateError }
+        if hasOutdatedPackages || !versionAvailable { return HelmTheme.stateAttention }
+        return HelmTheme.stateHealthy
     }
 
     private var statusTooltip: String {
@@ -39,13 +39,13 @@ struct ManagerItemView: View {
         VStack(spacing: 4) {
             ZStack(alignment: .topTrailing) {
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.accentColor.opacity(0.15))
+                    .fill(HelmTheme.selectionFill)
                     .frame(width: 44, height: 44)
                     .overlay(
                         Text(manager.firstLetter)
                             .font(.title2)
                             .fontWeight(.bold)
-                            .foregroundColor(.accentColor)
+                            .foregroundColor(HelmTheme.actionPrimaryDefault)
                     )
 
                 Circle()
@@ -56,13 +56,13 @@ struct ManagerItemView: View {
 
             Text(manager.shortName)
                 .font(.caption2)
-                .foregroundColor(.primary)
+                .foregroundColor(HelmTheme.textPrimary)
                 .lineLimit(1)
 
             if packageCount > 0 {
                 Text("\(packageCount)")
                     .font(.caption2)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(HelmTheme.textSecondary)
             }
         }
         .frame(width: 60)
