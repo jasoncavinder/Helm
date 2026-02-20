@@ -2,12 +2,12 @@
 
 This checklist is required before creating a release tag on `main`.
 
-## v0.14.1 (In Progress)
+## v0.14.1 (Completed)
 
 ### Scope and Documentation
 - [x] `CHANGELOG.md` includes `0.14.1` patch notes.
-- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect merged `v0.14.1` patch-track work on `dev`.
-- [ ] README/website release status updated for `0.14.1` (when release is finalized).
+- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect released `v0.14.1` state on `main`.
+- [x] README/website release status updated for `0.14.1`.
 
 ### Validation
 - [x] Rust tests pass (`cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`).
@@ -20,10 +20,10 @@ This checklist is required before creating a release tag on `main`.
 - [x] Generated app version artifacts aligned to `0.14.1`.
 
 ### Branch and Tag
-- [ ] Open PR from `dev` to `main` for `v0.14.1` and complete CI checks.
-- [ ] Merge `dev` into `main` for release.
-- [ ] Create annotated tag: `git tag -a v0.14.1 -m "Helm v0.14.1"`
-- [ ] Push tag: `git push origin v0.14.1`
+- [x] Open PR from `dev` to `main` for `v0.14.1` and complete CI checks (`#65`).
+- [x] Merge `dev` into `main` for release.
+- [x] Create annotated tag: `git tag -a v0.14.1 -m "Helm v0.14.1"`
+- [x] Push tag: `git push origin v0.14.1`
 
 ## v0.14.0 (Completed)
 

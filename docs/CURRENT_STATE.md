@@ -14,8 +14,8 @@ See:
 - CHANGELOG.md
 
 Active milestone:
-- 0.15.x — Upgrade Preview & Execution Transparency (planning)
-- 0.14.1 — Patch-track fixes merged on `dev`; release validation and `dev` -> `main` PR pending
+- 0.15.x — Upgrade Preview & Execution Transparency (kickoff)
+- 0.14.1 — Released on `main` (PR `#65`, tag `v0.14.1`)
 
 ---
 
@@ -102,9 +102,9 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 
 ---
 
-## v0.14.1 Patch-Track Status (In Progress)
+## v0.14.1 Patch-Track Status (Released)
 
-Completed on `dev` (UI/UX slice):
+Released in `v0.14.1` (UI/UX slice):
 
 - Onboarding "Finding Your Tools" and "Pick Your Managers" rows now render manager name + version metadata on one line
 - Package list now visually highlights the inspector-selected package row
@@ -113,7 +113,7 @@ Completed on `dev` (UI/UX slice):
 - Inspector package panel now shows description text (when available) and context actions (Update, Pin/Unpin, View Manager)
 - Homebrew manager display names now consistently use `Homebrew (formulae)` and `Homebrew (casks)` across canonical/mirrored locale resources
 
-Completed on `dev` (cache/persistence slice):
+Released in `v0.14.1` (cache/persistence slice):
 
 - Search-cache persistence now deduplicates records by `(manager, package)` so repeated queries do not accumulate duplicate available-package rows
 - Search-cache metadata persistence preserves existing non-empty version/summary when newer remote responses omit those fields
@@ -121,7 +121,7 @@ Completed on `dev` (cache/persistence slice):
 - Package aggregation (`allKnownPackages`) now enriches installed/outdated package rows with cached summaries when available
 - Package filtering now includes summary text and merges remote-search summary/latest metadata into local rows for fresher inspector/detail context
 
-Completed on `dev` (follow-up stabilization slice):
+Released in `v0.14.1` (follow-up stabilization slice):
 
 - Onboarding manager rows now keep manager name + version on a single line in both detection and configure steps
 - Task list now deduplicates in-flight rows by `(manager, task_type)` while keeping bounded terminal history
@@ -134,14 +134,14 @@ Completed on `dev` (follow-up stabilization slice):
   - FFI unit tests for in-flight deduplication and bounded terminal history behavior
   - SQLite store test validating prune policy keeps cancelled/running rows
 
-Completed on `dev` (adapter behavior slice):
+Released in `v0.14.1` (adapter behavior slice):
 
 - RubyGems packages are now eligible for per-package update actions in the UI (`canUpgradeIndividually`)
 - Manager install preflight now validates Homebrew availability before attempting Homebrew-backed manager installs (`mise`, `mas`)
 - When Homebrew is unavailable, install now returns a specific localized service error key (`service.error.homebrew_required`) instead of generic process failure
 - Added localized `service.error.homebrew_required` messaging across all supported locales in canonical and mirrored locale trees
 
-Completed on `dev` (search + inspector action slice):
+Released in `v0.14.1` (search + inspector action slice):
 
 - Remote package search now fans out across all enabled, detected, search-capable managers (instead of a single Homebrew-only path)
 - Search task labels now include manager + query context (`Searching {manager} for {query}`) and manager-only warmup labels for empty-query cache refresh tasks
@@ -159,6 +159,16 @@ Validation:
 
 - `cargo test -p helm-core -p helm-ffi` passing
 - `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm test -destination 'platform=macOS'` passing
+
+---
+
+## v0.15.x Kickoff Status
+
+Prepared and ready to implement:
+
+- release branch hygiene complete (`v0.14.1` merged/tagged/released)
+- `dev` is current and clean for feature branching
+- scope defined by roadmap: upgrade plan visibility, execution transparency, partial-failure clarity, operator controls
 
 ---
 
@@ -549,4 +559,4 @@ Helm is a **functional control plane for 28 implemented managers** with:
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-0.13.x and 0.14.x stable checkpoints are complete, with `v0.14.0` now merged to `main` and tagged. Next delivery focus is 0.15.x.
+0.13.x and 0.14.x stable checkpoints are complete, with latest stable patch `v0.14.1` merged to `main`, tagged, and released. Next delivery focus is 0.15.x.

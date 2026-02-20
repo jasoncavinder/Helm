@@ -28,9 +28,9 @@ Helm follows feature-driven milestones. Dates are intentionally omitted — mile
 | Version | Milestone |
 |---|---|
 | 0.13.x | UI/UX Analysis & Redesign — full UX audit, interaction model, visual system refresh, accessibility, onboarding walkthrough, inspector sidebar, support & feedback entry points (`v0.13.0` stable released) |
-| 0.14.x | Platform, Detection & Optional Managers — Docker, Xcode, Rosetta, Sparkle, Setapp, Homebrew casks, optional managers (`v0.14.0` stable release) |
+| 0.14.x | Platform, Detection & Optional Managers — Docker, Xcode, Rosetta, Sparkle, Setapp, Homebrew casks, optional managers (`v0.14.x` stable, latest patch `v0.14.1`) |
 
-> **Testing:** `v0.14.0` is available. Submit feedback via [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Testing:** `v0.14.1` is available. Submit feedback via [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
 ## Planned
 

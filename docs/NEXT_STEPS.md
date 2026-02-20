@@ -19,7 +19,7 @@ Focus:
 
 Current checkpoint:
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
-- `v0.14.1` patch-track merged on `dev` (release validation and `dev` -> `main` PR pending)
+- `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)
 - `v0.13.0` stable released (website updates, documentation alignment, version bump)
 - `v0.13.0-rc.2` released (support & feedback entry points, diagnostics copy, GitHub Sponsors integration)
 - `v0.13.0-rc.1` released (inspector sidebar, upgrade reliability, status menu, documentation)
@@ -33,12 +33,45 @@ Current checkpoint:
 - `v0.14.0` distribution/licensing architecture planning docs aligned (future-state, no implementation changes)
 
 Next release targets:
-- `v0.14.1` — Stability + UX + adapter behavior fixes (patch release after review)
 - `v0.15.x` — Upgrade Preview & Execution Transparency
 
 ---
 
-## v0.14.1 Patch Track (In Progress)
+## v0.15.x Kickoff Plan (Ready)
+
+### Alpha.1 — Plan Model + Inspector Foundations
+
+Deliver:
+
+- add explicit execution-plan model with ordered step metadata surfaced through FFI/service/UI
+- map each planned step to manager/action/package context and stable identifiers for later task correlation
+- render initial ordered plan details in inspector with localized reason/status fields
+
+### Alpha.2 — Execution Transparency + Partial Failure Summary
+
+Deliver:
+
+- link runtime task updates to plan-step identifiers for in-flight and completed state projection
+- show partial-failure summaries with grouped causes and affected managers/packages
+- add retry affordances scoped to failed plan steps (without rerunning successful steps)
+
+### Alpha.3 — Operator Controls for Large Plans
+
+Deliver:
+
+- add plan-scoped controls for cancel remaining, retry failed only, and manager/package scoping
+- enforce authority ordering in plan rendering and execution controls
+- add regression tests for cancellation, failure isolation, and plan/task state coherence
+
+### Exit Gate
+
+- users can inspect full ordered execution plans with meaningful context
+- partial failures are clearly attributable and actionable
+- transparency state remains synchronized between task system and plan UI
+
+---
+
+## v0.14.1 Patch Track (Completed)
 
 ### UI/UX Slice (Completed on `dev`)
 
@@ -99,10 +132,10 @@ Delivered:
 - Package inspector now exposes context-appropriate package actions (Install/Uninstall/Update/Pin/Unpin/View Manager)
 - Package install/uninstall actions are now wired through new FFI + service methods for supported managers
 
-Remaining before release cut:
+Release closure:
 
-- Final validation pass on `dev` after merged fix slices
-- Open PR `dev` -> `main` for CI and release gating
+- merged `dev` -> `main` via PR `#65`
+- created/pushed annotated tag `v0.14.1`
 
 ---
 
@@ -637,4 +670,4 @@ Implement:
 - Manager capability sweep artifact is now in place for 0.14 release prep (`docs/validation/v0.14.0-alpha.5-manager-capability-sweep.md`).
 - 0.14 stable release alignment for `v0.14.0` is complete (README/website + version artifacts).
 - Distribution/licensing future-state planning documentation is aligned for 0.14 release notes and roadmap planning (no implementation yet).
-- 0.14 release execution is complete on `main` with tag `v0.14.0`; next delivery slice is 0.15.x.
+- 0.14.x release execution is complete on `main` with latest stable patch tag `v0.14.1`; next delivery slice is 0.15.x.
