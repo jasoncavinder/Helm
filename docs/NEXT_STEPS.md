@@ -77,6 +77,7 @@ Delivered:
 - Hardened Sparkle feed policy so Developer ID + Sparkle now requires `https://` at both build-render and runtime configuration gates.
 - Added explicit downgrade hardening: `SUAllowsDowngrades` defaults to disabled, release artifacts are verified as non-downgradeable, and runtime Sparkle gating rejects downgrade-enabled metadata.
 - Added install-location hardening for self-update: runtime Sparkle gating now rejects mounted-DMG (`/Volumes/...`) and App Translocation execution paths.
+- Added localized operator feedback for blocked update checks in About/menu surfaces so policy-based unavailability is explicit instead of silently hidden.
 
 Next in alpha.1:
 

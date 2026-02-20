@@ -305,5 +305,10 @@
   "app.inspector.view_diagnostics": "診断を表示",
   "app.inspector.task_diagnostics": "診断",
   "app.inspector.task_diagnostics_unavailable": "診断を利用できません。",
-  "app.inspector.task_output.diagnostics": "diagnostics"
+  "app.inspector.task_output.diagnostics": "diagnostics",
+  "app.overlay.about.update_unavailable.channel_managed": "アップデートはこの配布チャネルで管理されています。",
+  "app.overlay.about.update_unavailable.install_location": "アプリ内アップデートを有効にするには、Helm を「アプリケーション」に移動してください。",
+  "app.overlay.about.update_unavailable.build_config": "このビルド構成ではアプリ内アップデートを利用できません。",
+  "app.overlay.about.update_unavailable.sparkle_missing": "このビルドでは Sparkle アップデータのコンポーネントを利用できません。",
+  "app.overlay.about.update_unavailable.runtime_unavailable": "アップデート確認は一時的に利用できません。"
 }

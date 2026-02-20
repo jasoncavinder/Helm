@@ -305,5 +305,10 @@
   "app.inspector.view_diagnostics": "Ver diagnósticos",
   "app.inspector.task_diagnostics": "Diagnósticos",
   "app.inspector.task_diagnostics_unavailable": "Os diagnósticos não estão disponíveis.",
-  "app.inspector.task_output.diagnostics": "diagnósticos"
+  "app.inspector.task_output.diagnostics": "diagnósticos",
+  "app.overlay.about.update_unavailable.channel_managed": "As atualizações são gerenciadas por este canal de distribuição.",
+  "app.overlay.about.update_unavailable.install_location": "Mova o Helm para Aplicativos para habilitar atualizações no app.",
+  "app.overlay.about.update_unavailable.build_config": "As atualizações no app não estão disponíveis para esta configuração de build.",
+  "app.overlay.about.update_unavailable.sparkle_missing": "Os componentes de atualização Sparkle não estão disponíveis neste build.",
+  "app.overlay.about.update_unavailable.runtime_unavailable": "A verificação de atualizações está temporariamente indisponível."
 }

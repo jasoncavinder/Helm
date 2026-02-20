@@ -15,6 +15,15 @@ enum HelmDistributionChannel: String {
     }
 }
 
+enum AppUpdateEligibilityFailure: String {
+    case channelNotSupported = "channel_not_supported"
+    case sparkleDisabled = "sparkle_disabled"
+    case downgradesEnabled = "downgrades_enabled"
+    case missingSparkleConfig = "missing_sparkle_config"
+    case insecureSparkleFeed = "insecure_sparkle_feed"
+    case ineligibleInstallLocation = "ineligible_install_location"
+}
+
 struct AppUpdateConfiguration {
     let channel: HelmDistributionChannel
     let sparkleEnabled: Bool
@@ -52,12 +61,29 @@ struct AppUpdateConfiguration {
     }
 
     var canUseSparkle: Bool {
-        channel == .developerID &&
-            sparkleEnabled &&
-            !sparkleAllowsDowngrades &&
-            hasSparkleConfig &&
-            hasSecureSparkleFeedURL &&
-            hasEligibleInstallLocation
+        eligibilityFailureReason == nil
+    }
+
+    var eligibilityFailureReason: AppUpdateEligibilityFailure? {
+        guard channel == .developerID else {
+            return .channelNotSupported
+        }
+        guard sparkleEnabled else {
+            return .sparkleDisabled
+        }
+        guard !sparkleAllowsDowngrades else {
+            return .downgradesEnabled
+        }
+        guard hasSparkleConfig else {
+            return .missingSparkleConfig
+        }
+        guard hasSecureSparkleFeedURL else {
+            return .insecureSparkleFeed
+        }
+        guard hasEligibleInstallLocation else {
+            return .ineligibleInstallLocation
+        }
+        return nil
     }
 
     static func from(bundle: Bundle = .main) -> AppUpdateConfiguration {

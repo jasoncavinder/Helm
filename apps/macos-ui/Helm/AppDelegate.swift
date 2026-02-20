@@ -429,6 +429,7 @@ private extension AppDelegate {
 
     func updateStatusMenuState() {
         checkForUpdatesMenuItem?.isEnabled = appUpdate.canCheckForUpdates && !appUpdate.isCheckingForUpdates
+        checkForUpdatesMenuItem?.toolTip = appUpdate.unavailableReasonLocalizationKey?.localized
         upgradeAllMenuItem?.isEnabled = !core.outdatedPackages.isEmpty
         refreshMenuItem?.isEnabled = !core.isRefreshing
     }

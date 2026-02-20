@@ -229,6 +229,11 @@ struct PopoverAboutOverlayContent: View {
                     .buttonStyle(HelmSecondaryButtonStyle())
                     .disabled(appUpdate.isCheckingForUpdates)
                     .helmPointer(enabled: !appUpdate.isCheckingForUpdates)
+                } else if let unavailableKey = appUpdate.unavailableReasonLocalizationKey {
+                    Text(unavailableKey.localized)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer()

@@ -305,5 +305,10 @@
   "app.inspector.view_diagnostics": "View Diagnostics",
   "app.inspector.task_diagnostics": "Diagnostics",
   "app.inspector.task_diagnostics_unavailable": "Diagnostics are not available.",
-  "app.inspector.task_output.diagnostics": "diagnostics"
+  "app.inspector.task_output.diagnostics": "diagnostics",
+  "app.overlay.about.update_unavailable.channel_managed": "Updates are managed by this distribution channel.",
+  "app.overlay.about.update_unavailable.install_location": "Move Helm to Applications to enable in-app updates.",
+  "app.overlay.about.update_unavailable.build_config": "In-app updates are unavailable for this build configuration.",
+  "app.overlay.about.update_unavailable.sparkle_missing": "Sparkle updater components are unavailable in this build.",
+  "app.overlay.about.update_unavailable.runtime_unavailable": "Update checks are temporarily unavailable."
 }

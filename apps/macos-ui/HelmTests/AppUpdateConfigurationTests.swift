@@ -11,6 +11,7 @@ final class AppUpdateConfigurationTests: XCTestCase {
             bundlePath: "/Applications/Helm.app"
         )
         XCTAssertTrue(fullyConfigured.canUseSparkle)
+        XCTAssertNil(fullyConfigured.eligibilityFailureReason)
 
         let missingFeed = AppUpdateConfiguration(
             channel: .developerID,
@@ -21,6 +22,7 @@ final class AppUpdateConfigurationTests: XCTestCase {
             bundlePath: "/Applications/Helm.app"
         )
         XCTAssertFalse(missingFeed.canUseSparkle)
+        XCTAssertEqual(missingFeed.eligibilityFailureReason, .missingSparkleConfig)
 
         let appStoreChannel = AppUpdateConfiguration(
             channel: .appStore,
@@ -31,6 +33,7 @@ final class AppUpdateConfigurationTests: XCTestCase {
             bundlePath: "/Applications/Helm.app"
         )
         XCTAssertFalse(appStoreChannel.canUseSparkle)
+        XCTAssertEqual(appStoreChannel.eligibilityFailureReason, .channelNotSupported)
 
         let insecureFeed = AppUpdateConfiguration(
             channel: .developerID,
@@ -41,6 +44,7 @@ final class AppUpdateConfigurationTests: XCTestCase {
             bundlePath: "/Applications/Helm.app"
         )
         XCTAssertFalse(insecureFeed.canUseSparkle)
+        XCTAssertEqual(insecureFeed.eligibilityFailureReason, .insecureSparkleFeed)
 
         let malformedFeed = AppUpdateConfiguration(
             channel: .developerID,
@@ -51,6 +55,7 @@ final class AppUpdateConfigurationTests: XCTestCase {
             bundlePath: "/Applications/Helm.app"
         )
         XCTAssertFalse(malformedFeed.canUseSparkle)
+        XCTAssertEqual(malformedFeed.eligibilityFailureReason, .insecureSparkleFeed)
 
         let allowsDowngrades = AppUpdateConfiguration(
             channel: .developerID,
@@ -61,6 +66,7 @@ final class AppUpdateConfigurationTests: XCTestCase {
             bundlePath: "/Applications/Helm.app"
         )
         XCTAssertFalse(allowsDowngrades.canUseSparkle)
+        XCTAssertEqual(allowsDowngrades.eligibilityFailureReason, .downgradesEnabled)
 
         let mountedFromDMG = AppUpdateConfiguration(
             channel: .developerID,
@@ -71,6 +77,7 @@ final class AppUpdateConfigurationTests: XCTestCase {
             bundlePath: "/Volumes/Helm/Helm.app"
         )
         XCTAssertFalse(mountedFromDMG.canUseSparkle)
+        XCTAssertEqual(mountedFromDMG.eligibilityFailureReason, .ineligibleInstallLocation)
 
         let translocated = AppUpdateConfiguration(
             channel: .developerID,
@@ -81,6 +88,7 @@ final class AppUpdateConfigurationTests: XCTestCase {
             bundlePath: "/private/var/folders/tmp/AppTranslocation/ABC123/Helm.app"
         )
         XCTAssertFalse(translocated.canUseSparkle)
+        XCTAssertEqual(translocated.eligibilityFailureReason, .ineligibleInstallLocation)
     }
 
     func testFromBundleParsesChannelAndSparkleSettings() throws {
@@ -101,6 +109,7 @@ final class AppUpdateConfigurationTests: XCTestCase {
         XCTAssertEqual(config.sparklePublicEdKey, "test-key")
         XCTAssertEqual(config.bundlePath, bundle.bundleURL.path)
         XCTAssertFalse(config.canUseSparkle)
+        XCTAssertEqual(config.eligibilityFailureReason, .channelNotSupported)
     }
 
     func testFromBundleDefaultsToDeveloperIdWhenChannelMissing() throws {
@@ -114,6 +123,7 @@ final class AppUpdateConfigurationTests: XCTestCase {
         XCTAssertNil(config.sparkleFeedURL)
         XCTAssertNil(config.sparklePublicEdKey)
         XCTAssertEqual(config.bundlePath, bundle.bundleURL.path)
+        XCTAssertEqual(config.eligibilityFailureReason, .sparkleDisabled)
     }
 
     func testFromBundleTreatsBlankSparkleFeedAndKeyAsMissing() throws {
@@ -132,6 +142,7 @@ final class AppUpdateConfigurationTests: XCTestCase {
         XCTAssertNil(config.sparklePublicEdKey)
         XCTAssertFalse(config.hasSparkleConfig)
         XCTAssertFalse(config.canUseSparkle)
+        XCTAssertEqual(config.eligibilityFailureReason, .downgradesEnabled)
     }
 
     private func makeBundle(info: [String: Any]) throws -> Bundle {

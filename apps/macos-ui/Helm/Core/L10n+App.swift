@@ -415,6 +415,16 @@ extension L10n {
     }
 }
 
+extension L10n.App.Overlay.About {
+    struct UpdateUnavailable {
+        static let channelManaged = "app.overlay.about.update_unavailable.channel_managed"
+        static let installLocation = "app.overlay.about.update_unavailable.install_location"
+        static let buildConfig = "app.overlay.about.update_unavailable.build_config"
+        static let sparkleMissing = "app.overlay.about.update_unavailable.sparkle_missing"
+        static let runtimeUnavailable = "app.overlay.about.update_unavailable.runtime_unavailable"
+    }
+}
+
 extension L10n.App {
     struct Walkthrough {
         struct Control {

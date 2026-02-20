@@ -305,5 +305,10 @@
   "app.inspector.view_diagnostics": "Diagnose anzeigen",
   "app.inspector.task_diagnostics": "Diagnose",
   "app.inspector.task_diagnostics_unavailable": "Diagnose ist nicht verfügbar.",
-  "app.inspector.task_output.diagnostics": "diagnose"
+  "app.inspector.task_output.diagnostics": "diagnose",
+  "app.overlay.about.update_unavailable.channel_managed": "Updates werden von diesem Distributionskanal verwaltet.",
+  "app.overlay.about.update_unavailable.install_location": "Verschiebe Helm nach „Programme“, um In-App-Updates zu aktivieren.",
+  "app.overlay.about.update_unavailable.build_config": "In-App-Updates sind für diese Build-Konfiguration nicht verfügbar.",
+  "app.overlay.about.update_unavailable.sparkle_missing": "Sparkle-Updater-Komponenten sind in diesem Build nicht verfügbar.",
+  "app.overlay.about.update_unavailable.runtime_unavailable": "Update-Prüfungen sind vorübergehend nicht verfügbar."
 }

@@ -305,5 +305,10 @@
   "app.inspector.view_diagnostics": "Voir les diagnostics",
   "app.inspector.task_diagnostics": "Diagnostics",
   "app.inspector.task_diagnostics_unavailable": "Les diagnostics ne sont pas disponibles.",
-  "app.inspector.task_output.diagnostics": "diagnostics"
+  "app.inspector.task_output.diagnostics": "diagnostics",
+  "app.overlay.about.update_unavailable.channel_managed": "Les mises à jour sont gérées par ce canal de distribution.",
+  "app.overlay.about.update_unavailable.install_location": "Déplacez Helm dans Applications pour activer les mises à jour intégrées.",
+  "app.overlay.about.update_unavailable.build_config": "Les mises à jour intégrées ne sont pas disponibles pour cette configuration de build.",
+  "app.overlay.about.update_unavailable.sparkle_missing": "Les composants de mise à jour Sparkle ne sont pas disponibles dans ce build.",
+  "app.overlay.about.update_unavailable.runtime_unavailable": "La vérification des mises à jour est temporairement indisponible."
 }
