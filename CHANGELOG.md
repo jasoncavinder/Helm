@@ -135,6 +135,23 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Sparkle release automation now publishes appcast feed updates to `web/public/updates/appcast.xml` with a PR fallback path when direct pushes to `main` are blocked.
 - Helm app Info.plist now includes explicit updater metadata placeholders so packaged-release verification can assert channel/Sparkle keys in artifacts.
 
+## [0.15.0] - 2026-02-20
+
+### Added
+- Upgrade plan preview model surfaced end-to-end (FFI → XPC → SwiftUI), with stable step IDs and ordered manager/action context.
+- Scoped execution controls for Updates (manager/package filters, failed-step retry, cancel remaining).
+- Task-output diagnostics surfaced in Inspector via on-demand stdout/stderr retrieval.
+
+### Changed
+- Scoped upgrade execution now runs phase-by-phase by authority order (authoritative → standard → guarded) with stricter stale-callback and timeout handling.
+- Updates/Inspector UX refinements:
+  - scrollable updates content for long plans/failure sets
+  - full-row plan selection hit targets with stable display ordering
+  - in-progress feedback for active scoped runs
+  - failure banner now routes to review-first flow
+  - consolidated diagnostics modal tabs and command visibility in task inspector
+- Removed redundant `Dry Run` control in Updates in favor of always-visible inline plan context.
+
 ## [0.14.1] - 2026-02-20
 
 ### Fixed
