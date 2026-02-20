@@ -109,27 +109,38 @@ if [[ -z "$SPARKLE_BIN_DIR" ]]; then
   if [[ -d "$PWD/build/DerivedData/SourcePackages/artifacts/sparkle/bin" ]]; then
     SPARKLE_BIN_DIR="$PWD/build/DerivedData/SourcePackages/artifacts/sparkle/bin"
   else
-    SPARKLE_BIN_DIR="$(
-      find "$HOME/Library/Developer/Xcode/DerivedData" \
+    DISCOVERED_SIGN_UPDATE="$(
+      find "$PWD/build/DerivedData" "$HOME/Library/Developer/Xcode/DerivedData" \
         -type f \
-        -path '*/SourcePackages/artifacts/sparkle/bin/sign_update' \
-        -print -quit 2>/dev/null | sed 's#/sign_update##'
+        -path '*/SourcePackages/artifacts/*/bin/sign_update' \
+        -print -quit 2>/dev/null
     )"
+    if [[ -n "$DISCOVERED_SIGN_UPDATE" ]]; then
+      SPARKLE_BIN_DIR="$(dirname "$DISCOVERED_SIGN_UPDATE")"
+    fi
   fi
 fi
 
 SPARKLE_SIGN_UPDATE_BIN="${SPARKLE_BIN_DIR:+$SPARKLE_BIN_DIR/sign_update}"
 
-if [[ ! -x "${SPARKLE_SIGN_UPDATE_BIN:-}" && -z "$SPARKLE_PACKAGE_PATH" ]]; then
-  if [[ -d "$PWD/build/DerivedData/SourcePackages/checkouts/Sparkle" ]]; then
-    SPARKLE_PACKAGE_PATH="$PWD/build/DerivedData/SourcePackages/checkouts/Sparkle"
-  else
-    SPARKLE_PACKAGE_PATH="$(
-      find "$HOME/Library/Developer/Xcode/DerivedData" \
-        -type d \
-        -path '*/SourcePackages/checkouts/Sparkle' \
-        -print -quit 2>/dev/null
-    )"
+if [[ ! -x "${SPARKLE_SIGN_UPDATE_BIN:-}" ]]; then
+  SPARKLE_RELEASE_VERSION="${SPARKLE_RELEASE_VERSION:-2.8.1}"
+  SPARKLE_ARTIFACT_URL="https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_RELEASE_VERSION}/Sparkle-for-Swift-Package-Manager.zip"
+  TMP_SPARKLE_DIR="$(mktemp -d)"
+  trap 'rm -rf "$TMP_SPARKLE_DIR"' EXIT
+
+  echo "info: sign_update binary not found in DerivedData; downloading Sparkle artifact ${SPARKLE_RELEASE_VERSION}" >&2
+  curl -fsSL "$SPARKLE_ARTIFACT_URL" -o "$TMP_SPARKLE_DIR/sparkle.zip"
+  unzip -q "$TMP_SPARKLE_DIR/sparkle.zip" -d "$TMP_SPARKLE_DIR"
+
+  DOWNLOADED_SIGN_UPDATE="$(
+    find "$TMP_SPARKLE_DIR" \
+      -type f \
+      -path '*/bin/sign_update' \
+      -print -quit 2>/dev/null
+  )"
+  if [[ -x "$DOWNLOADED_SIGN_UPDATE" ]]; then
+    SPARKLE_SIGN_UPDATE_BIN="$DOWNLOADED_SIGN_UPDATE"
   fi
 fi
 
@@ -147,22 +158,16 @@ if [[ -z "$RELEASE_NOTES_URL" ]]; then
   RELEASE_NOTES_URL="$APPCAST_URL"
 fi
 
-if [[ -x "${SPARKLE_SIGN_UPDATE_BIN:-}" ]]; then
-  SIGNATURE_RAW="$(
-    printf '%s\n' "$HELM_SPARKLE_PRIVATE_ED_KEY" |
-      "$SPARKLE_SIGN_UPDATE_BIN" --ed-key-file - -p "$DMG_PATH"
-  )"
-elif [[ -n "$SPARKLE_PACKAGE_PATH" && -f "$SPARKLE_PACKAGE_PATH/Package.swift" ]]; then
-  echo "info: sign_update binary not found; using swift run fallback from $SPARKLE_PACKAGE_PATH" >&2
-  SIGNATURE_RAW="$(
-    printf '%s\n' "$HELM_SPARKLE_PRIVATE_ED_KEY" |
-      swift run --package-path "$SPARKLE_PACKAGE_PATH" sign_update --ed-key-file - -p "$DMG_PATH"
-  )"
-else
-  echo "error: Sparkle sign_update binary not found and no usable Sparkle checkout path discovered." >&2
-  echo "error: looked for binary at '${SPARKLE_SIGN_UPDATE_BIN:-<unset>}' and checkout at '${SPARKLE_PACKAGE_PATH:-<unset>}'" >&2
+if [[ ! -x "${SPARKLE_SIGN_UPDATE_BIN:-}" ]]; then
+  echo "error: Sparkle sign_update binary not found after discovery/download attempts." >&2
+  echo "error: last looked path: '${SPARKLE_SIGN_UPDATE_BIN:-<unset>}'" >&2
   exit 1
 fi
+
+SIGNATURE_RAW="$(
+  printf '%s\n' "$HELM_SPARKLE_PRIVATE_ED_KEY" |
+    "$SPARKLE_SIGN_UPDATE_BIN" --ed-key-file - -p "$DMG_PATH"
+)"
 SIGNATURE="$(printf '%s\n' "$SIGNATURE_RAW" | tail -n1 | tr -d '\r\n')"
 
 if [[ ! "$SIGNATURE" =~ ^[A-Za-z0-9+/=]+$ ]]; then
