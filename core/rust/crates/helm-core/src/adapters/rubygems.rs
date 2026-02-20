@@ -289,18 +289,13 @@ fn ensure_gem_no_longer_outdated<S: RubyGemsSource>(
 ) -> AdapterResult<()> {
     let raw = source.list_outdated()?;
     let outdated = parse_rubygems_outdated(&raw)?;
-    if outdated
-        .iter()
-        .any(|item| item.package.name == gem_name)
-    {
+    if outdated.iter().any(|item| item.package.name == gem_name) {
         return Err(CoreError {
             manager: Some(ManagerId::RubyGems),
             task: Some(TaskType::Upgrade),
             action: Some(ManagerAction::Upgrade),
             kind: CoreErrorKind::ProcessFailure,
-            message: format!(
-                "gem update reported success but '{gem_name}' remains outdated"
-            ),
+            message: format!("gem update reported success but '{gem_name}' remains outdated"),
         });
     }
     Ok(())

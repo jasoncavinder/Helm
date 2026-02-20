@@ -354,10 +354,7 @@ fn ensure_poetry_plugin_no_longer_outdated<S: PoetrySource>(
 ) -> AdapterResult<()> {
     let raw = source.list_outdated_plugins()?;
     let outdated = parse_poetry_plugins_outdated(&raw)?;
-    if outdated
-        .iter()
-        .any(|item| item.package.name == plugin_name)
-    {
+    if outdated.iter().any(|item| item.package.name == plugin_name) {
         return Err(CoreError {
             manager: Some(ManagerId::Poetry),
             task: Some(TaskType::Upgrade),

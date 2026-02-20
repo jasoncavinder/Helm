@@ -68,13 +68,16 @@ impl RecordingTaskStore {
 impl TaskStore for RecordingTaskStore {
     fn create_task(&self, task: &TaskRecord) -> PersistenceResult<()> {
         {
-            let mut remaining = self.remaining_create_failures.lock().map_err(|_| CoreError {
-                manager: None,
-                task: None,
-                action: None,
-                kind: CoreErrorKind::Internal,
-                message: "recording store mutex poisoned".to_string(),
-            })?;
+            let mut remaining = self
+                .remaining_create_failures
+                .lock()
+                .map_err(|_| CoreError {
+                    manager: None,
+                    task: None,
+                    action: None,
+                    kind: CoreErrorKind::Internal,
+                    message: "recording store mutex poisoned".to_string(),
+                })?;
             if *remaining > 0 {
                 *remaining -= 1;
                 return Err(CoreError {

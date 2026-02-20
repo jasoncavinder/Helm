@@ -78,7 +78,10 @@ extension HelmCore {
 
     func retryUpgradePlanSteps(stepIds: [String]) {
         guard !stepIds.isEmpty else { return }
-        let stepsById = Dictionary(uniqueKeysWithValues: upgradePlanSteps.map { ($0.id, $0) })
+        var stepsById: [String: CoreUpgradePlanStep] = [:]
+        for step in upgradePlanSteps where stepsById[step.id] == nil {
+            stepsById[step.id] = step
+        }
 
         for stepId in stepIds {
             guard let step = stepsById[stepId] else { continue }

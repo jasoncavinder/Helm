@@ -416,32 +416,16 @@ extension HelmCore {
     }
 
     private func upgradePlanStepId(for task: CoreTaskRecord) -> String? {
-        if let explicit = task.labelArgs?["plan_step_id"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !explicit.isEmpty {
-            return explicit
-        }
-
-        if task.manager == "softwareupdate" {
-            return "softwareupdate:__confirm_os_updates__"
-        }
-
-        if task.manager == "rustup",
-           let toolchain = task.labelArgs?["toolchain"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !toolchain.isEmpty {
-            return "rustup:\(toolchain)"
-        }
-
-        guard let package = task.labelArgs?["package"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !package.isEmpty else {
-            return nil
-        }
-        return "\(task.manager):\(package)"
+        UpgradePreviewPlanner.planStepId(managerId: task.manager, labelArgs: task.labelArgs)
     }
 
     private func buildUpgradePlanFailureGroups(
         from projection: [String: UpgradePlanTaskProjection]
     ) -> [UpgradePlanFailureGroup] {
-        let stepsById = Dictionary(uniqueKeysWithValues: upgradePlanSteps.map { ($0.id, $0) })
+        var stepsById: [String: CoreUpgradePlanStep] = [:]
+        for step in upgradePlanSteps where stepsById[step.id] == nil {
+            stepsById[step.id] = step
+        }
         var grouped: [String: (managerId: String, stepIds: Set<String>, packageNames: Set<String>)] = [:]
 
         for (stepId, state) in projection where state.status.lowercased() == "failed" {
