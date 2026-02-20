@@ -125,11 +125,36 @@ private struct InspectorTaskDetailView: View {
                     }
                 }
             }
+
+            if task.status.lowercased() == "failed" {
+                InspectorField(label: L10n.App.Inspector.taskFailureFeedback.localized) {
+                    Text(failureHintText())
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
     }
 
     private func localizedTaskType(_ rawType: String) -> String {
         HelmCore.shared.localizedTaskType(rawType)
+    }
+
+    private func failureHintText() -> String {
+        if task.labelKey == "service.task.label.install.homebrew_formula",
+           let package = task.labelArgs?["package"] {
+            return L10n.App.Inspector.taskFailureHintHomebrewInstall.localized(with: [
+                "package": package
+            ])
+        }
+
+        if let managerId = task.managerId {
+            return L10n.App.Inspector.taskFailureHintGeneric.localized(with: [
+                "manager": localizedManagerDisplayName(managerId)
+            ])
+        }
+
+        return L10n.Service.Error.processFailure.localized
     }
 }
 
@@ -140,7 +165,7 @@ private struct InspectorPackageDetailView: View {
     @EnvironmentObject private var context: ControlCenterContext
     let package: PackageItem
 
-    private var packageDescription: String? {
+    private var packageDescriptionText: String? {
         guard let summary = package.summary?.trimmingCharacters(in: .whitespacesAndNewlines),
               !summary.isEmpty else {
             return nil
@@ -206,14 +231,44 @@ private struct InspectorPackageDetailView: View {
                 .accessibilityLabel(L10n.App.Inspector.restartRequired.localized)
             }
 
-            if let packageDescription {
-                InspectorField(label: L10n.App.Inspector.description.localized) {
-                    Text(packageDescription)
+            InspectorField(label: L10n.App.Inspector.description.localized) {
+                if let packageDescriptionText {
+                    Text(packageDescriptionText)
                         .font(.caption)
+                } else if core.packageDescriptionLoadingIds.contains(package.id) {
+                    Text(L10n.App.Inspector.descriptionLoading.localized)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if core.packageDescriptionUnavailableIds.contains(package.id) {
+                    Text(L10n.App.Inspector.descriptionUnavailable.localized)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text(L10n.App.Inspector.descriptionLoading.localized)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
             HStack(spacing: 8) {
+                if core.canInstallPackage(package) {
+                    Button(L10n.App.Packages.Action.install.localized) {
+                        core.installPackage(package)
+                    }
+                    .buttonStyle(HelmSecondaryButtonStyle())
+                    .disabled(core.installActionPackageIds.contains(package.id))
+                    .helmPointer(enabled: !core.installActionPackageIds.contains(package.id))
+                }
+
+                if core.canUninstallPackage(package) {
+                    Button(L10n.App.Packages.Action.uninstall.localized) {
+                        core.uninstallPackage(package)
+                    }
+                    .buttonStyle(HelmSecondaryButtonStyle())
+                    .disabled(core.uninstallActionPackageIds.contains(package.id))
+                    .helmPointer(enabled: !core.uninstallActionPackageIds.contains(package.id))
+                }
+
                 if core.canUpgradeIndividually(package) {
                     Button(L10n.Common.update.localized) {
                         core.upgradePackage(package)
@@ -223,7 +278,7 @@ private struct InspectorPackageDetailView: View {
                     .helmPointer(enabled: !core.upgradeActionPackageIds.contains(package.id))
                 }
 
-                if package.status != .available {
+                if core.canPinPackage(package) {
                     Button(package.pinned ? L10n.App.Packages.Action.unpin.localized : L10n.App.Packages.Action.pin.localized) {
                         if package.pinned {
                             core.unpinPackage(package)
@@ -254,6 +309,15 @@ private struct InspectorPackageDetailView: View {
                     .accessibilityLabel(L10n.App.Inspector.packageId.localized)
                     .accessibilityValue(package.id)
             }
+        }
+        .onAppear {
+            core.ensurePackageDescription(for: package)
+        }
+        .onChange(of: package.id) { _ in
+            core.ensurePackageDescription(for: package)
+        }
+        .onChange(of: package.summary) { _ in
+            core.ensurePackageDescription(for: package)
         }
     }
 }

@@ -72,6 +72,16 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(taskId)
     }
 
+    func triggerRemoteSearchForManager(managerId: String, query: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = managerId.withCString { manager in
+            query.withCString { searchQuery in
+                helm_trigger_remote_search_for_manager(manager, searchQuery)
+            }
+        }
+        logger.info("helm_trigger_remote_search_for_manager(\(managerId)) result: \(taskId)")
+        reply(taskId)
+    }
+
     func cancelTask(taskId: Int64, withReply reply: @escaping (Bool) -> Void) {
         let result = helm_cancel_task(taskId)
         logger.info("helm_cancel_task(\(taskId)) result: \(result)")
@@ -143,6 +153,26 @@ class HelmService: NSObject, HelmServiceProtocol {
             }
         }
         logger.info("helm_upgrade_package(\(managerId), \(packageName)) result: \(taskId)")
+        reply(taskId)
+    }
+
+    func installPackage(managerId: String, packageName: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = managerId.withCString { manager in
+            packageName.withCString { package in
+                helm_install_package(manager, package)
+            }
+        }
+        logger.info("helm_install_package(\(managerId), \(packageName)) result: \(taskId)")
+        reply(taskId)
+    }
+
+    func uninstallPackage(managerId: String, packageName: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = managerId.withCString { manager in
+            packageName.withCString { package in
+                helm_uninstall_package(manager, package)
+            }
+        }
+        logger.info("helm_uninstall_package(\(managerId), \(packageName)) result: \(taskId)")
         reply(taskId)
     }
 

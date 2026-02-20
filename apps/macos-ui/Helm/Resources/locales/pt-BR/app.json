@@ -244,12 +244,10 @@
   "app.settings.metric.managers": "Gerenciadores ativos",
   "app.settings.metric.updates": "Atualizações pendentes",
   "app.settings.metric.tasks": "Tarefas em execução",
-
   "app.walkthrough.control.next": "Próximo",
   "app.walkthrough.control.skip": "Pular",
   "app.walkthrough.control.done": "Concluído",
   "app.walkthrough.control.step_indicator": "Passo {current} de {total}",
-
   "app.walkthrough.popover.step1.title": "Saúde do sistema",
   "app.walkthrough.popover.step1.description": "Este é o ícone de status do Helm. Ele mostra a saúde do seu sistema rapidamente.",
   "app.walkthrough.popover.step2.title": "Banner de atualizações",
@@ -262,7 +260,6 @@
   "app.walkthrough.popover.step5.description": "Veja a versão, abra configurações ou encerre o Helm daqui.",
   "app.walkthrough.popover.step6.title": "Pesquisa rápida",
   "app.walkthrough.popover.step6.description": "Pesquise em todos os seus gerenciadores de pacotes instantaneamente.",
-
   "app.walkthrough.control_center.step1.title": "Navegação lateral",
   "app.walkthrough.control_center.step1.description": "Navegue entre seções para gerenciar todo o seu ambiente de desenvolvimento.",
   "app.walkthrough.control_center.step2.title": "Visão geral",
@@ -277,9 +274,7 @@
   "app.walkthrough.control_center.step6.description": "Configure o modo seguro, o idioma e as políticas de atualização automática.",
   "app.walkthrough.control_center.step7.title": "Prévia de atualização",
   "app.walkthrough.control_center.step7.description": "Visualize exatamente o que acontecerá antes de executar atualizações.",
-
   "app.settings.action.replay_walkthrough": "Repetir tour guiado",
-
   "app.settings.section.support_feedback": "Suporte e feedback",
   "app.settings.support_feedback.support_helm": "Apoiar Helm",
   "app.settings.support_feedback.report_bug": "Reportar um bug",
@@ -290,5 +285,10 @@
   "app.settings.support_feedback.copied_confirmation": "Copiado!",
   "app.settings.support_feedback.diagnostics_copied_hint": "Diagnósticos copiados para a área de transferência",
   "app.settings.support_feedback.github_sponsors": "GitHub Sponsors",
-  "app.settings.support_feedback.patreon": "Patreon"
+  "app.settings.support_feedback.patreon": "Patreon",
+  "app.inspector.description_loading": "Carregando descrição...",
+  "app.inspector.description_unavailable": "Descrição indisponível.",
+  "app.inspector.task_failure_feedback": "Detalhes da falha",
+  "app.inspector.task_failure_hint.homebrew_install": "O Helm não conseguiu instalar {package} via Homebrew. Verifique se o Homebrew está funcionando (`brew doctor`) e tente novamente para capturar a saída completa.",
+  "app.inspector.task_failure_hint.generic": "A tarefa falhou em {manager}. Revise a configuração e tente novamente."
 }

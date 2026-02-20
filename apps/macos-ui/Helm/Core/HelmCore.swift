@@ -89,6 +89,10 @@ final class HelmCore: ObservableObject {
     @Published var managerOperations: [String: String] = [:]
     @Published var pinActionPackageIds: Set<String> = []
     @Published var upgradeActionPackageIds: Set<String> = []
+    @Published var installActionPackageIds: Set<String> = []
+    @Published var uninstallActionPackageIds: Set<String> = []
+    @Published var packageDescriptionLoadingIds: Set<String> = []
+    @Published var packageDescriptionUnavailableIds: Set<String> = []
     @Published var onboardingDetectionInProgress: Bool = false
     @Published var homebrewKegAutoCleanupEnabled: Bool = false
     @Published var packageKegPolicyOverrides: [String: HomebrewKegPolicyOverride] = [:]
@@ -101,10 +105,14 @@ final class HelmCore: ObservableObject {
     var connection: NSXPCConnection?
     var lastRefreshTrigger: Date?
     var searchDebounceTimer: Timer?
-    var activeRemoteSearchTaskId: Int64?
+    var activeRemoteSearchTaskIds: Set<Int64> = []
     var managerActionTaskDescriptions: [UInt64: String] = [:]
     var managerActionTaskByManager: [String: UInt64] = [:]
     var upgradeActionTaskByPackage: [String: UInt64] = [:]
+    var installActionTaskByPackage: [String: UInt64] = [:]
+    var uninstallActionTaskByPackage: [String: UInt64] = [:]
+    var descriptionLookupTaskIdsByPackage: [String: Set<UInt64>] = [:]
+    var descriptionLookupLastAttemptByPackage: [String: Date] = [:]
     var lastObservedTaskId: UInt64 = 0
     var onboardingDetectionAnchorTaskId: UInt64 = 0
     var onboardingDetectionPendingManagers: Set<String> = []
@@ -248,6 +256,10 @@ final class HelmCore: ObservableObject {
                     self.completeOnboardingDetectionProgress()
                     self.postAccessibilityAnnouncement(L10n.Common.error.localized)
                 }
+            } else {
+                DispatchQueue.main.async {
+                    self.triggerAvailablePackagesWarmupSearch()
+                }
             }
         }
     }
@@ -324,7 +336,16 @@ final class HelmCore: ObservableObject {
                     self?.onboardingDetectionInProgress = false
                     self?.pinActionPackageIds = []
                     self?.upgradeActionPackageIds = []
+                    self?.installActionPackageIds = []
+                    self?.uninstallActionPackageIds = []
+                    self?.packageDescriptionLoadingIds = []
+                    self?.packageDescriptionUnavailableIds = []
                     self?.upgradeActionTaskByPackage = [:]
+                    self?.installActionTaskByPackage = [:]
+                    self?.uninstallActionTaskByPackage = [:]
+                    self?.descriptionLookupTaskIdsByPackage = [:]
+                    self?.descriptionLookupLastAttemptByPackage = [:]
+                    self?.activeRemoteSearchTaskIds = []
                     self?.lastObservedTaskId = 0
                     self?.onboardingDetectionAnchorTaskId = 0
                     self?.onboardingDetectionPendingManagers = []

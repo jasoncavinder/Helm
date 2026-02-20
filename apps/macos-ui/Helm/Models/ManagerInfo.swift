@@ -72,7 +72,24 @@ struct ManagerInfo: Identifiable {
     }
 
     var canSearch: Bool {
-        ["npm", "pnpm", "yarn", "pip", "cargo", "cargo_binstall", "poetry", "rubygems", "bundler"].contains(id)
+        [
+            "homebrew_formula",
+            "mise",
+            "asdf",
+            "rustup",
+            "macports",
+            "nix_darwin",
+            "npm",
+            "pnpm",
+            "yarn",
+            "pip",
+            "pipx",
+            "poetry",
+            "rubygems",
+            "bundler",
+            "cargo",
+            "cargo_binstall"
+        ].contains(id)
     }
 
     var canPin: Bool {

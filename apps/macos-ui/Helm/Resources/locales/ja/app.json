@@ -244,12 +244,10 @@
   "app.settings.metric.managers": "アクティブなマネージャー",
   "app.settings.metric.updates": "保留中のアップデート",
   "app.settings.metric.tasks": "実行中のタスク",
-
   "app.walkthrough.control.next": "次へ",
   "app.walkthrough.control.skip": "スキップ",
   "app.walkthrough.control.done": "完了",
   "app.walkthrough.control.step_indicator": "ステップ {current}/{total}",
-
   "app.walkthrough.popover.step1.title": "システム状態",
   "app.walkthrough.popover.step1.description": "これはHelmのステータスアイコンです。システムの状態を一目で確認できます。",
   "app.walkthrough.popover.step2.title": "アップデートバナー",
@@ -262,7 +260,6 @@
   "app.walkthrough.popover.step5.description": "バージョン情報の確認、設定を開く、またはHelmを終了できます。",
   "app.walkthrough.popover.step6.title": "クイック検索",
   "app.walkthrough.popover.step6.description": "すべてのパッケージマネージャーを横断して即座に検索できます。",
-
   "app.walkthrough.control_center.step1.title": "サイドバーナビゲーション",
   "app.walkthrough.control_center.step1.description": "セクション間を移動して、開発環境全体を管理できます。",
   "app.walkthrough.control_center.step2.title": "概要",
@@ -277,9 +274,7 @@
   "app.walkthrough.control_center.step6.description": "セーフモード、言語、自動更新ポリシーを設定できます。",
   "app.walkthrough.control_center.step7.title": "アップグレードプレビュー",
   "app.walkthrough.control_center.step7.description": "アップグレードを実行する前に、何が起こるかを正確にプレビューできます。",
-
   "app.settings.action.replay_walkthrough": "ウォークスルーを再生",
-
   "app.settings.section.support_feedback": "サポートとフィードバック",
   "app.settings.support_feedback.support_helm": "Helmを支援",
   "app.settings.support_feedback.report_bug": "バグを報告",
@@ -290,5 +285,10 @@
   "app.settings.support_feedback.copied_confirmation": "コピーしました",
   "app.settings.support_feedback.diagnostics_copied_hint": "診断情報をクリップボードにコピーしました",
   "app.settings.support_feedback.github_sponsors": "GitHub Sponsors",
-  "app.settings.support_feedback.patreon": "Patreon"
+  "app.settings.support_feedback.patreon": "Patreon",
+  "app.inspector.description_loading": "説明を読み込み中...",
+  "app.inspector.description_unavailable": "説明を利用できません。",
+  "app.inspector.task_failure_feedback": "失敗の詳細",
+  "app.inspector.task_failure_hint.homebrew_install": "Helm は Homebrew 経由で {package} をインストールできませんでした。Homebrew が正常に動作しているか（`brew doctor`）を確認し、再試行して詳細な出力を確認してください。",
+  "app.inspector.task_failure_hint.generic": "{manager} の実行中にタスクが失敗しました。マネージャー設定を確認して再試行してください。"
 }

@@ -112,6 +112,9 @@ extension HelmCore {
                     .sorted { $0.statusSortOrder < $1.statusSortOrder }
                     self?.syncManagerOperations(from: coreTasks)
                     self?.syncUpgradeActions(from: coreTasks)
+                    self?.syncInstallActions(from: coreTasks)
+                    self?.syncUninstallActions(from: coreTasks)
+                    self?.syncPackageDescriptionLookups(from: coreTasks)
 
                     // Announce new task failures to VoiceOver
                     let currentFailed = self?.activeTasks.filter({ $0.status.lowercased() == "failed" }).count ?? 0
@@ -179,17 +182,33 @@ extension HelmCore {
                     }
                     self?.previousRefreshState = nowRefreshing
 
-                    // Detect remote search completion
-                    if let searchTaskId = self?.activeRemoteSearchTaskId {
-                        let matchingTask = coreTasks.first { $0.id == UInt64(searchTaskId) }
-                        if let task = matchingTask {
+                    let inFlightSearchTaskIds = Set(
+                        coreTasks.compactMap { task -> Int64? in
+                            let taskType = task.taskType.lowercased()
                             let status = task.status.lowercased()
-                            if status == "completed" || status == "failed" || status == "cancelled" {
-                                self?.activeRemoteSearchTaskId = nil
-                                self?.isSearching = false
+                            guard taskType == "search",
+                                  status == "queued" || status == "running" else {
+                                return nil
                             }
+                            return Int64(task.id)
                         }
-                    }
+                    )
+                    let inFlightInteractiveSearchTaskIds = Set(
+                        coreTasks.compactMap { task -> Int64? in
+                            let taskType = task.taskType.lowercased()
+                            let status = task.status.lowercased()
+                            guard taskType == "search",
+                                  status == "queued" || status == "running" else {
+                                return nil
+                            }
+                            let query = task.labelArgs?["query"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard let query, !query.isEmpty else { return nil }
+                            return Int64(task.id)
+                        }
+                    )
+                    self?.activeRemoteSearchTaskIds = inFlightSearchTaskIds
+                    let hasQuery = !(self?.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+                    self?.isSearching = hasQuery && !inFlightInteractiveSearchTaskIds.isEmpty
                 }
             } catch {
                 logger.error("fetchTasks: decode failed (\(data.count) bytes): \(error)")
@@ -218,6 +237,16 @@ extension HelmCore {
                 let results = try decoder.decode([CoreSearchResult].self, from: data)
 
                 DispatchQueue.main.async {
+                    let resolvedSummaryIds = Set(
+                        results.compactMap { result -> String? in
+                            guard let summary = result.summary?.trimmingCharacters(in: .whitespacesAndNewlines),
+                                  !summary.isEmpty else {
+                                return nil
+                            }
+                            return "\(result.sourceManager):\(result.name)"
+                        }
+                    )
+
                     self?.searchResults = results.map { result in
                         PackageItem(
                             id: "\(result.sourceManager):\(result.name)",
@@ -229,6 +258,8 @@ extension HelmCore {
                             status: .available
                         )
                     }
+                    self?.packageDescriptionUnavailableIds.subtract(resolvedSummaryIds)
+                    self?.packageDescriptionLoadingIds.subtract(resolvedSummaryIds)
                 }
             } catch {
                 logger.error("fetchSearchResults: decode failed (\(data.count) bytes): \(error)")
@@ -284,6 +315,17 @@ extension HelmCore {
                     self.cachedAvailablePackages = dedupedById.values.sorted { lhs, rhs in
                         lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
                     }
+                    let resolvedSummaryIds = Set(
+                        self.cachedAvailablePackages.compactMap { package -> String? in
+                            guard let summary = package.summary?.trimmingCharacters(in: .whitespacesAndNewlines),
+                                  !summary.isEmpty else {
+                                return nil
+                            }
+                            return package.id
+                        }
+                    )
+                    self.packageDescriptionUnavailableIds.subtract(resolvedSummaryIds)
+                    self.packageDescriptionLoadingIds.subtract(resolvedSummaryIds)
                 }
             } catch {
                 logger.error("refreshCachedAvailablePackages: decode failed (\(data.count) bytes): \(error)")
@@ -363,6 +405,103 @@ extension HelmCore {
         if shouldRefreshSnapshots {
             fetchPackages()
             fetchOutdatedPackages()
+        }
+    }
+
+    func syncInstallActions(from coreTasks: [CoreTaskRecord]) {
+        let statusById = Dictionary(uniqueKeysWithValues: coreTasks.map { ($0.id, $0.status.lowercased()) })
+        let inFlightStates = Set(["queued", "running"])
+        var shouldRefreshSnapshots = false
+
+        for packageId in Array(installActionTaskByPackage.keys) {
+            guard let taskId = installActionTaskByPackage[packageId] else { continue }
+            guard let status = statusById[taskId] else {
+                installActionTaskByPackage.removeValue(forKey: packageId)
+                installActionPackageIds.remove(packageId)
+                continue
+            }
+            if inFlightStates.contains(status) {
+                continue
+            }
+
+            installActionTaskByPackage.removeValue(forKey: packageId)
+            installActionPackageIds.remove(packageId)
+            if status == "completed" {
+                shouldRefreshSnapshots = true
+            }
+        }
+
+        if shouldRefreshSnapshots {
+            fetchPackages()
+            fetchOutdatedPackages()
+            refreshCachedAvailablePackages()
+        }
+    }
+
+    func syncUninstallActions(from coreTasks: [CoreTaskRecord]) {
+        let statusById = Dictionary(uniqueKeysWithValues: coreTasks.map { ($0.id, $0.status.lowercased()) })
+        let inFlightStates = Set(["queued", "running"])
+        var shouldRefreshSnapshots = false
+
+        for packageId in Array(uninstallActionTaskByPackage.keys) {
+            guard let taskId = uninstallActionTaskByPackage[packageId] else { continue }
+            guard let status = statusById[taskId] else {
+                uninstallActionTaskByPackage.removeValue(forKey: packageId)
+                uninstallActionPackageIds.remove(packageId)
+                continue
+            }
+            if inFlightStates.contains(status) {
+                continue
+            }
+
+            uninstallActionTaskByPackage.removeValue(forKey: packageId)
+            uninstallActionPackageIds.remove(packageId)
+            if status == "completed" {
+                shouldRefreshSnapshots = true
+            }
+        }
+
+        if shouldRefreshSnapshots {
+            fetchPackages()
+            fetchOutdatedPackages()
+            refreshCachedAvailablePackages()
+        }
+    }
+
+    func syncPackageDescriptionLookups(from coreTasks: [CoreTaskRecord]) {
+        let statusById = Dictionary(uniqueKeysWithValues: coreTasks.map { ($0.id, $0.status.lowercased()) })
+        let inFlightStates = Set(["queued", "running"])
+
+        for packageId in Array(descriptionLookupTaskIdsByPackage.keys) {
+            guard let taskIds = descriptionLookupTaskIdsByPackage[packageId], !taskIds.isEmpty else {
+                descriptionLookupTaskIdsByPackage.removeValue(forKey: packageId)
+                packageDescriptionLoadingIds.remove(packageId)
+                continue
+            }
+
+            let inFlightTaskIds = taskIds.filter { taskId in
+                guard let status = statusById[taskId] else { return false }
+                return inFlightStates.contains(status)
+            }
+
+            if !inFlightTaskIds.isEmpty {
+                descriptionLookupTaskIdsByPackage[packageId] = inFlightTaskIds
+                continue
+            }
+
+            descriptionLookupTaskIdsByPackage.removeValue(forKey: packageId)
+            packageDescriptionLoadingIds.remove(packageId)
+
+            let summary = allKnownPackages
+                .first(where: { $0.id == packageId })?
+                .summary?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if summary?.isEmpty == false {
+                packageDescriptionUnavailableIds.remove(packageId)
+            } else {
+                packageDescriptionUnavailableIds.insert(packageId)
+            }
         }
     }
 
