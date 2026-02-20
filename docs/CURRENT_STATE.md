@@ -8,7 +8,7 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.16.0-rc.3** (pre-release rehearsal in progress on `feat/v0.16.0-kickoff`; latest stable release on `main` is `v0.15.0`)
+Current version: **0.16.0-rc.4** (pre-release rehearsal in progress on `feat/v0.16.0-kickoff`; latest stable release on `main` is `v0.15.0`)
 
 See:
 - CHANGELOG.md
@@ -209,8 +209,9 @@ Implemented on `feat/v0.16.0-kickoff`:
 - Release workflow now attempts to publish generated appcast content directly to `web/public/updates/appcast.xml` on `main`, and falls back to auto-opening a PR when direct pushes are blocked.
 - Release workflow now enforces Sparkle appcast policy checks (full-installer-only DMG feed, no delta payloads) via `apps/macos-ui/scripts/verify_sparkle_appcast_policy.sh`.
 - Release workflow now pre-renders channel overrides and passes explicit Sparkle/channel build settings to `xcodebuild`, ensuring release artifacts always embed the intended updater metadata on the same build invocation.
+- Release workflow now re-signs Sparkle nested binaries/framework with the active Developer ID identity (timestamped) before packaging/notarization, preventing Sparkle helper signature/timestamp notarization failures.
 - Added installer/update interruption and recovery validation runbook:
-  - `docs/validation/v0.16.0-rc.3-installer-recovery.md`
+  - `docs/validation/v0.16.0-rc.4-installer-recovery.md`
 - Build metadata generation now derives monotonic numeric bundle build numbers from semantic versions (`apps/macos-ui/scripts/build_rust.sh`) to keep Sparkle update ordering stable.
 
 Validation:

@@ -66,6 +66,15 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Release-prep metadata now targets `0.15.0` across workspace versioning and status documentation (README/website/release checklist).
 - Generated `apps/macos-ui/Generated/HelmVersion.xcconfig` is now ignored and no longer tracked.
 
+## [0.16.0-rc.4] - 2026-02-20
+
+### Changed
+- Release DMG workflow now re-signs Sparkle nested code (`Autoupdate`, `Updater.app`, `Downloader.xpc`, `Installer.xpc`, and `Sparkle.framework`) using the active Developer ID identity with secure timestamps before notarization.
+- Release DMG workflow now verifies Sparkle helper signatures include Developer ID authority and timestamps prior to artifact verification/notarization.
+- Installer/update interruption runbook version advanced to:
+  - `docs/validation/v0.16.0-rc.4-installer-recovery.md`
+- Workspace package versioning bumped to `0.16.0-rc.4` (`core/rust/Cargo.toml`, `core/rust/Cargo.lock` for local crates).
+
 ## [0.16.0-rc.3] - 2026-02-20
 
 ### Changed

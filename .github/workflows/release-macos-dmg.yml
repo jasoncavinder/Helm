@@ -127,6 +127,28 @@ jobs:
             OTHER_CODE_SIGN_FLAGS="--timestamp" \
             build
 
+      - name: Re-sign Sparkle nested binaries for notarization
+        run: |
+          set -euo pipefail
+
+          APP_PATH="$PWD/build/DerivedData/Build/Products/Release/Helm.app"
+          SPARKLE_VERSION_DIR="$APP_PATH/Contents/Frameworks/Sparkle.framework/Versions/B"
+          SIGN_IDENTITY="Developer ID Application"
+
+          test -d "$APP_PATH"
+          test -d "$SPARKLE_VERSION_DIR"
+
+          codesign --force --timestamp --sign "$SIGN_IDENTITY" "$SPARKLE_VERSION_DIR/Autoupdate"
+          codesign --force --deep --timestamp --options runtime --sign "$SIGN_IDENTITY" "$SPARKLE_VERSION_DIR/Updater.app"
+          codesign --force --deep --timestamp --options runtime --sign "$SIGN_IDENTITY" "$SPARKLE_VERSION_DIR/XPCServices/Downloader.xpc"
+          codesign --force --deep --timestamp --options runtime --sign "$SIGN_IDENTITY" "$SPARKLE_VERSION_DIR/XPCServices/Installer.xpc"
+          codesign --force --deep --timestamp --options runtime --sign "$SIGN_IDENTITY" "$APP_PATH/Contents/Frameworks/Sparkle.framework"
+          codesign --force --deep --timestamp --options runtime --sign "$SIGN_IDENTITY" --preserve-metadata=entitlements,requirements,flags "$APP_PATH"
+
+          echo "=== Sparkle signing check ==="
+          codesign -dv --verbose=4 "$SPARKLE_VERSION_DIR/Autoupdate" 2>&1 | grep -E "Authority=Developer ID Application|Timestamp="
+          codesign -dv --verbose=4 "$SPARKLE_VERSION_DIR/Updater.app/Contents/MacOS/Updater" 2>&1 | grep -E "Authority=Developer ID Application|Timestamp="
+
       - name: Verify signature, architecture, and notarization prerequisites
         run: |
           set -euo pipefail
