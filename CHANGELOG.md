@@ -20,6 +20,8 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Cancel Remaining now also cancels scoped upgrade tasks that are still projected in-flight even when they have not yet appeared in task snapshots.
 - Xcode build settings now resolve through a checked-in base version xcconfig that optionally includes generated version metadata, preventing missing-file failures on clean checkouts.
 - Updates section content now scrolls to prevent clipping when execution-plan and failure lists exceed available viewport height.
+- Updates plan rows now use display-order numbering and full-row hit targets for inspector selection.
+- Updates section now shows an in-progress indicator while scoped plan execution is active.
 - Generated `apps/macos-ui/Generated/HelmVersion.xcconfig` is now ignored and no longer tracked.
 
 ## [0.14.1] - 2026-02-20

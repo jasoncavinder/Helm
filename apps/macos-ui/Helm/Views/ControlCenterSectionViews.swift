@@ -123,6 +123,16 @@ struct RedesignUpdatesSectionView: View {
         Array(scopedPlanSteps.prefix(80))
     }
 
+    private var scopedInFlightStepCount: Int {
+        scopedPlanSteps.filter { step in
+            let hasProjectedTask = core.upgradePlanTaskProjectionByStepId[step.id] != nil
+            return UpgradePreviewPlanner.isInFlightStatus(
+                status: projectedStatus(step),
+                hasProjectedTask: hasProjectedTask
+            )
+        }.count
+    }
+
     private var stageRows: [(authority: ManagerAuthority, managerCount: Int, packageCount: Int)] {
         let stepsByAuthority = Dictionary(grouping: scopedPlanSteps) { step in
             authority(for: step.managerId)
@@ -261,13 +271,29 @@ struct RedesignUpdatesSectionView: View {
                     }
                 }
 
+                if core.scopedUpgradePlanRunInProgress {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text(L10n.App.Managers.Operation.upgrading.localized)
+                            .font(.callout.weight(.medium))
+                        Spacer()
+                        Text("\(scopedInFlightStepCount)")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+
                 if visiblePlanSteps.isEmpty {
                     Text(L10n.App.Tasks.noRecentTasks.localized)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 } else {
                     VStack(spacing: 0) {
-                        ForEach(visiblePlanSteps) { step in
+                        ForEach(Array(visiblePlanSteps.enumerated()), id: \.element.id) { index, step in
                             Button {
                                 context.selectedUpgradePlanStepId = step.id
                                 context.selectedTaskId = nil
@@ -275,7 +301,7 @@ struct RedesignUpdatesSectionView: View {
                                 context.selectedManagerId = nil
                             } label: {
                                 HStack(spacing: 8) {
-                                    Text("\(step.orderIndex + 1).")
+                                    Text("\(index + 1).")
                                         .font(.caption.monospacedDigit())
                                         .foregroundStyle(.secondary)
                                     VStack(alignment: .leading, spacing: 2) {
@@ -296,6 +322,7 @@ struct RedesignUpdatesSectionView: View {
                                                 : Color.secondary
                                         )
                                 }
+                                .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.vertical, 8)
                                 .padding(.horizontal, 10)
                                 .background(
@@ -305,6 +332,7 @@ struct RedesignUpdatesSectionView: View {
                                 )
                             }
                             .buttonStyle(.plain)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
                             .helmPointer()
                             Divider()
