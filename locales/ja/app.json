@@ -184,6 +184,8 @@
   "app.inspector.task_type": "タスクタイプ",
   "app.inspector.task_status": "ステータス",
   "app.inspector.task_manager": "マネージャー",
+  "app.inspector.task_command": "コマンド",
+  "app.inspector.task_command_unavailable": "利用できません",
   "app.inspector.task_label_key": "ラベルキー",
   "app.inspector.task_label_args": "ラベル引数",
   "app.inspector.package_id": "パッケージID",

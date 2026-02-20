@@ -2,12 +2,12 @@
 
 This checklist is required before creating a release tag on `main`.
 
-## v0.15.0-alpha.1 (In Progress)
+## v0.15.0 (In Progress)
 
 ### Scope and Documentation
-- [x] `CHANGELOG.md` `[Unreleased]` notes track alpha delivery and scoped-run sequencing hardening.
-- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect `v0.15.0` alpha.1–alpha.4 progress.
-- [x] Pre-release checklist scaffolded for `v0.15.0-alpha.1`.
+- [x] `CHANGELOG.md` `[Unreleased]` notes track final `v0.15.0` delivery and stabilization changes.
+- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect completed `v0.15.0` alpha.1–alpha.4 scope plus final prep changes.
+- [x] README/website status text aligned to `v0.15.0` pre-release testing.
 
 ### Validation
 - [x] Rust tests pass (`cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`).
@@ -15,14 +15,17 @@ This checklist is required before creating a release tag on `main`.
 - [x] Locale checks pass (`apps/macos-ui/scripts/check_locale_integrity.sh` and `apps/macos-ui/scripts/check_locale_lengths.sh`).
 
 ### Versioning
-- [ ] Workspace version bumped to `0.15.0-alpha.1` in `core/rust/Cargo.toml`.
-- [ ] Rust lockfile package versions aligned to `0.15.0-alpha.1` in `core/rust/Cargo.lock`.
-- [ ] Generated app version artifacts aligned to `0.15.0-alpha.1`.
+- [x] Workspace version bumped to `0.15.0` in `core/rust/Cargo.toml`.
+- [x] Rust lockfile package versions aligned to `0.15.0` in `core/rust/Cargo.lock`.
+- [ ] Generated app version artifacts aligned to `0.15.0` by build flow (build-generated, not tracked in git).
 
 ### Branch and Tag
-- [ ] Merge alpha branch into `dev`.
-- [ ] Create pre-release tag from `dev` lineage: `git tag -a v0.15.0-alpha.1 -m "Helm v0.15.0-alpha.1"`.
-- [ ] Push tag: `git push origin v0.15.0-alpha.1`.
+- [ ] Open PR with final prep deltas into `dev` (for verified commit provenance).
+- [ ] Merge prep PR into `dev`.
+- [ ] Open PR from `dev` to `main` for `v0.15.0` and complete CI checks.
+- [ ] Merge `dev` into `main` for release.
+- [ ] Create annotated tag from `main`: `git tag -a v0.15.0 -m "Helm v0.15.0"`.
+- [ ] Push tag: `git push origin v0.15.0`.
 
 ## v0.14.1 (Completed)
 

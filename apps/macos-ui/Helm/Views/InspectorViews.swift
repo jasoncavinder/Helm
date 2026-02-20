@@ -122,6 +122,13 @@ private struct InspectorTaskDetailView: View {
                 }
             }
 
+            InspectorField(label: L10n.App.Inspector.taskCommand.localized) {
+                Text(taskCommandText())
+                    .font(.caption.monospaced())
+                    .foregroundStyle(diagnosticCommandHint() == nil ? .secondary : .primary)
+                    .textSelection(.enabled)
+            }
+
             if let labelKey = task.labelKey {
                 InspectorField(label: L10n.App.Inspector.taskLabelKey.localized) {
                     Text(labelKey)
@@ -157,12 +164,6 @@ private struct InspectorTaskDetailView: View {
                         Text(failureHintText())
                             .font(.caption)
                             .foregroundStyle(.secondary)
-
-                        if let commandHint = diagnosticCommandHint() {
-                            Text(commandHint)
-                                .font(.caption.monospaced())
-                                .textSelection(.enabled)
-                        }
 
                         if hasNumericTaskId {
                             Button(L10n.App.Inspector.viewDiagnostics.localized) {
@@ -215,6 +216,10 @@ private struct InspectorTaskDetailView: View {
 
     private func diagnosticCommandHint() -> String? {
         core.diagnosticCommandHint(for: task)
+    }
+
+    private func taskCommandText() -> String {
+        diagnosticCommandHint() ?? L10n.App.Inspector.taskCommandUnavailable.localized
     }
 
     private var hasNumericTaskId: Bool {

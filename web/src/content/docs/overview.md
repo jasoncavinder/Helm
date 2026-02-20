@@ -12,7 +12,7 @@ Developers and power users on macOS who manage software through multiple package
 
 ## What it does today
 
-Helm v0.14.1 supports twenty-eight managers:
+Helm v0.15.0 supports twenty-eight managers:
 
 | Category | Managers |
 |---------|----------|
@@ -38,9 +38,9 @@ Key features:
 - **Background tasks** — real-time task tracking with per-manager serial execution
 - **Onboarding walkthrough** — guided first-launch experience with spotlight highlights across popover and control center
 - **Localization** — `en`, `es`, `de`, `fr`, `pt-BR`, and `ja` with locale override in Settings
-- **Upgrade transparency** — dedicated upgrade preview surface with dry-run simulation mode
+- **Upgrade transparency** — dedicated upgrade preview surface with scoped execution and failure-attribution visibility
 
-> **Testing Program:** `v0.14.1` is available for pre-1.0 testing. Please report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Testing Program:** `v0.15.0` is available for pre-1.0 testing. Please report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
 ## How it works
 

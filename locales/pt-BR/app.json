@@ -184,6 +184,8 @@
   "app.inspector.task_type": "Tipo de tarefa",
   "app.inspector.task_status": "Status",
   "app.inspector.task_manager": "Gerenciador",
+  "app.inspector.task_command": "Comando",
+  "app.inspector.task_command_unavailable": "Indisponível",
   "app.inspector.task_label_key": "Chave do rótulo",
   "app.inspector.task_label_args": "Argumentos do rótulo",
   "app.inspector.package_id": "ID do pacote",

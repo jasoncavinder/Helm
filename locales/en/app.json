@@ -184,6 +184,8 @@
   "app.inspector.task_type": "Task Type",
   "app.inspector.task_status": "Status",
   "app.inspector.task_manager": "Manager",
+  "app.inspector.task_command": "Command",
+  "app.inspector.task_command_unavailable": "Not available",
   "app.inspector.task_label_key": "Label Key",
   "app.inspector.task_label_args": "Label Arguments",
   "app.inspector.package_id": "Package ID",

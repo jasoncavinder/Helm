@@ -184,6 +184,8 @@
   "app.inspector.task_type": "Type de tâche",
   "app.inspector.task_status": "Statut",
   "app.inspector.task_manager": "Gestionnaire",
+  "app.inspector.task_command": "Commande",
+  "app.inspector.task_command_unavailable": "Indisponible",
   "app.inspector.task_label_key": "Clé de libellé",
   "app.inspector.task_label_args": "Arguments du libellé",
   "app.inspector.package_id": "ID du paquet",

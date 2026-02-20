@@ -333,6 +333,8 @@ extension L10n {
             static let taskType = "app.inspector.task_type"
             static let taskStatus = "app.inspector.task_status"
             static let taskManager = "app.inspector.task_manager"
+            static let taskCommand = "app.inspector.task_command"
+            static let taskCommandUnavailable = "app.inspector.task_command_unavailable"
             static let taskLabelKey = "app.inspector.task_label_key"
             static let taskLabelArgs = "app.inspector.task_label_args"
             static let taskFailureFeedback = "app.inspector.task_failure_feedback"

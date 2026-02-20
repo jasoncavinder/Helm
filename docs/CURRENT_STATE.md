@@ -8,13 +8,13 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.14.1**
+Current version: **0.15.0** (release prep on `dev`; latest stable release on `main` is `v0.14.1`)
 
 See:
 - CHANGELOG.md
 
 Active milestone:
-- 0.15.x — Upgrade Preview & Execution Transparency (kickoff)
+- 0.15.0 — Upgrade Preview & Execution Transparency (release finalization)
 - 0.14.1 — Released on `main` (PR `#65`, tag `v0.14.1`)
 
 ---
@@ -237,7 +237,7 @@ Validation:
 
 ---
 
-## v0.15.0-alpha.4 Status (In Progress)
+## v0.15.0-alpha.4 Status (Completed)
 
 ### Final 0.15.0 Cut Readiness
 
@@ -262,8 +262,11 @@ Implemented on `feat/v0.15.x-alpha.1-kickoff` (current progress):
 - Updates section content now renders in a scrollable container so large execution-plan lists no longer clip top/bottom content in the control center
 - Updates plan rows now use display-order numbering, full-row inspector selection hit targets, and an in-progress scoped-run indicator
 - Failed task inspector content now includes manager/task-aware suggested repro command hints and a single `View Diagnostics` action
+- Task inspector now surfaces a dedicated `Command` field with the resolved repro command (or unavailable fallback)
 - Diagnostics modal now includes three tabs: `diagnostics`, `stderr`, and `stdout`
+- Support diagnostics manager rows now render in a stable order (authoritative → standard → guarded, then alphabetical)
 - Popover failure banner now shows a `Review` action (instead of `Upgrade All`) while failures exist, opening Control Center Tasks and selecting the first failed task
+- Removed redundant Updates `Dry Run` action now that plan/risk context is continuously visible inline
 - Added task-output capture plumbing across Rust execution and FFI/XPC:
   - adapter executions now propagate runtime task ID context into process-spawn requests
   - process stdout/stderr is captured per task ID and exposed through `helm_get_task_output`
@@ -273,6 +276,8 @@ Validation:
 
 - `cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`
 - `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
+- `apps/macos-ui/scripts/check_locale_integrity.sh`
+- `apps/macos-ui/scripts/check_locale_lengths.sh`
 
 ---
 

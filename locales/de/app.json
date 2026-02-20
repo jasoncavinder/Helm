@@ -184,6 +184,8 @@
   "app.inspector.task_type": "Aufgabentyp",
   "app.inspector.task_status": "Status",
   "app.inspector.task_manager": "Manager",
+  "app.inspector.task_command": "Befehl",
+  "app.inspector.task_command_unavailable": "Nicht verfügbar",
   "app.inspector.task_label_key": "Label-Schlüssel",
   "app.inspector.task_label_args": "Label-Argumente",
   "app.inspector.package_id": "Paket-ID",
