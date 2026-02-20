@@ -24,6 +24,8 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Updates inspector plan-step details with projected runtime status and linked runtime task IDs.
 - Scoped Updates controls for manager/package filtering and failed-step retry targeting.
 - Failed-task inspector now provides a dedicated task-output sheet with `stderr`/`stdout` tabs backed by on-demand FFI/XPC task-output retrieval.
+- Sparkle appcast generation script added (`apps/macos-ui/scripts/generate_sparkle_appcast.sh`) for signing a finalized DMG and emitting `appcast.xml`.
+- Website Sparkle feed path scaffolded at `web/public/updates/appcast.xml`.
 
 ### Changed
 - Added default app update-channel metadata to `Info.plist`:
@@ -37,11 +39,14 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Build/runtime Sparkle enablement gates now require an `https://` Sparkle feed URL for Developer ID channel update checks.
 - Sparkle downgrade policy is now explicitly disabled via build metadata (`SUAllowsDowngrades=NO`) and enforced in both runtime updater gating and release artifact verification.
 - Runtime Sparkle gating now requires an eligible install location (not DMG-mounted under `/Volumes/...` and not App Translocation) before enabling in-app update checks.
+- Runtime Sparkle gating now also disables in-app updates for package-manager-managed install paths (Homebrew/MacPorts prefixes), with a dedicated localized reason.
 - About overlay and status-menu update controls now show localized reasons when update checks are unavailable due to channel/config/install-location policy.
 - Channel config rendering/policy enforcement now runs through a shared script (`apps/macos-ui/scripts/render_channel_xcconfig.sh`) reused by build generation and test validation flows.
 - CI now runs a channel-policy matrix check (`apps/macos-ui/scripts/check_channel_policy.sh`) before Xcode build/test.
 - Release DMG verification now enforces packaged updater invariants (`HelmDistributionChannel`, `HelmSparkleEnabled`, `SUFeedURL`, `SUPublicEDKey`) and validates Sparkle framework bundling/linkage.
 - Release DMG workflow now validates final packaged DMG contents (app bundle presence, `/Applications` symlink, background asset, updater invariants, and codesign integrity) via `apps/macos-ui/scripts/verify_release_dmg.sh`.
+- Release DMG workflow now generates a signed Sparkle `appcast.xml` from the finalized stapled DMG and uploads it to release assets.
+- Build metadata generation now derives a monotonic numeric `CURRENT_PROJECT_VERSION` from semantic versions to keep Sparkle version ordering stable across prerelease/stable builds.
 - Runtime upgrade task labels now include `plan_step_id` metadata so task rows can be projected onto execution-plan rows.
 - Partial-failure summaries now group failed plan steps by manager and affected package set.
 - Scoped plan execution now runs phase-by-phase by authority rank (authoritative → standard → guarded) instead of submitting all manager steps concurrently.

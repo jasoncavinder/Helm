@@ -151,6 +151,7 @@ Implemented on `feat/v0.16.0-kickoff`:
 - Runtime app-update configuration now requires a secure Sparkle feed URL (`https://`) before enabling Sparkle checks.
 - Runtime app-update configuration now also blocks Sparkle checks when downgrades are enabled in metadata.
 - Runtime app-update configuration now also requires an eligible install location (not mounted from `/Volumes/...` and not App Translocation paths) before enabling Sparkle checks.
+- Runtime app-update configuration now also blocks Sparkle checks for package-manager-managed install paths (Homebrew/MacPorts prefixes), so direct-channel self-update remains DMG-oriented.
 - About overlay and status-menu update controls now surface localized unavailability reasons when manual update checks are blocked by channel/config/install-location policy.
 
 Validation:
@@ -177,10 +178,15 @@ Implemented on `feat/v0.16.0-kickoff`:
   - updater metadata invariants (`HelmDistributionChannel`, `HelmSparkleEnabled`, `SUAllowsDowngrades`, `SUFeedURL`, `SUPublicEDKey`)
   - Sparkle framework presence/linkage and app-bundle codesign verification from the packaged DMG
 - Wired packaged-DMG verification into release workflow (`.github/workflows/release-macos-dmg.yml`) before notarization submission.
+- Added Sparkle appcast generator script (`apps/macos-ui/scripts/generate_sparkle_appcast.sh`) that signs finalized DMGs using Sparkle `sign_update` and emits `appcast.xml` with enclosure/version metadata.
+- Release DMG workflow now generates and uploads `appcast.xml` from the final stapled DMG artifact.
+- Added web feed path scaffold at `web/public/updates/appcast.xml` for direct-channel Sparkle feed hosting.
+- Build metadata generation now derives monotonic numeric bundle build numbers from semantic versions (`apps/macos-ui/scripts/build_rust.sh`) to keep Sparkle update ordering stable.
 
 Validation:
 
 - `bash -n apps/macos-ui/scripts/verify_release_dmg.sh` passing
+- `bash -n apps/macos-ui/scripts/generate_sparkle_appcast.sh` passing
 
 ---
 

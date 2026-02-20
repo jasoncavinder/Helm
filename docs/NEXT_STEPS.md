@@ -18,7 +18,7 @@ Focus:
 - 0.16.x self-update and installer hardening
 
 Current checkpoint:
-- `v0.16.0-alpha.1` kickoff in progress on `feat/v0.16.0-kickoff` (channel-aware updater scaffolding + channel build-profile wiring + release feed/signature injection + Sparkle package linkage + config regression tests + channel-policy validation + shared renderer/CI matrix + release artifact invariant verification)
+- `v0.16.0-alpha.2` installer hardening in progress on `feat/v0.16.0-kickoff` (channel-aware updater scaffolding + package-manager-aware Sparkle gating + DMG invariant verification + appcast generation scaffolding)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
 - `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)
@@ -77,6 +77,7 @@ Delivered:
 - Hardened Sparkle feed policy so Developer ID + Sparkle now requires `https://` at both build-render and runtime configuration gates.
 - Added explicit downgrade hardening: `SUAllowsDowngrades` defaults to disabled, release artifacts are verified as non-downgradeable, and runtime Sparkle gating rejects downgrade-enabled metadata.
 - Added install-location hardening for self-update: runtime Sparkle gating now rejects mounted-DMG (`/Volumes/...`) and App Translocation execution paths.
+- Added package-manager install hardening for self-update: runtime Sparkle gating now rejects package-manager-managed install paths (Homebrew/MacPorts prefixes).
 - Added localized operator feedback for blocked update checks in About/menu surfaces so policy-based unavailability is explicit instead of silently hidden.
 
 Validation:
@@ -96,9 +97,14 @@ Delivered:
   - updater metadata invariants (`HelmDistributionChannel`, `HelmSparkleEnabled`, `SUAllowsDowngrades`, `SUFeedURL`, `SUPublicEDKey`)
   - Sparkle framework linkage and app codesign verification from packaged artifact
 - Wired packaged-DMG verification into release workflow before notarization (`.github/workflows/release-macos-dmg.yml`).
+- Added Sparkle appcast generation script (`apps/macos-ui/scripts/generate_sparkle_appcast.sh`) for finalized/stapled DMGs.
+- Release workflow now generates and uploads `appcast.xml` from the final DMG artifact.
+- Added website feed scaffold at `web/public/updates/appcast.xml` for direct-channel Sparkle hosting.
+- Build metadata generation now derives monotonic numeric bundle build numbers from semantic versions to keep Sparkle update ordering stable.
 
 Next in alpha.2:
 
+- Add release automation for publishing generated appcast feed content to website hosting without manual copy steps.
 - Add installer/update interruption and recovery validation scenarios to release docs/checklists.
 - Define delta-update policy checks and artifact validation approach for direct-channel releases.
 

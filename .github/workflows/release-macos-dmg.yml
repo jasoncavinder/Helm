@@ -27,13 +27,14 @@ jobs:
       KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
       HELM_SPARKLE_FEED_URL: ${{ secrets.HELM_SPARKLE_FEED_URL }}
       HELM_SPARKLE_PUBLIC_ED_KEY: ${{ secrets.HELM_SPARKLE_PUBLIC_ED_KEY }}
+      HELM_SPARKLE_PRIVATE_ED_KEY: ${{ secrets.HELM_SPARKLE_PRIVATE_ED_KEY }}
       TAG_NAME: ${{ github.event.release.tag_name || github.event.inputs.tag }}
 
     steps:
       - name: Validate required secrets
         run: |
           set -euo pipefail
-          required=(APP_TEAM_ID SIGNING_CERT_BASE64 SIGNING_CERT_PASSWORD HELM_SPARKLE_FEED_URL HELM_SPARKLE_PUBLIC_ED_KEY)
+          required=(APP_TEAM_ID SIGNING_CERT_BASE64 SIGNING_CERT_PASSWORD HELM_SPARKLE_FEED_URL HELM_SPARKLE_PUBLIC_ED_KEY HELM_SPARKLE_PRIVATE_ED_KEY)
           for key in "${required[@]}"; do
             if [ -z "${!key}" ]; then
               echo "::error::Missing required secret: $key"
@@ -347,11 +348,32 @@ jobs:
           xcrun stapler staple "$DMG_PATH"
           xcrun stapler staple "$PWD/build/release-assets/Helm.dmg"
 
+      - name: Generate Sparkle appcast from final DMG
+        run: |
+          set -euo pipefail
+          APP_PATH="$PWD/build/DerivedData/Build/Products/Release/Helm.app"
+          DMG_PATH="$PWD/build/release-assets/Helm-${TAG_NAME}-macos-universal.dmg"
+          APPCAST_PATH="$PWD/build/release-assets/appcast.xml"
+          DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/Helm-${TAG_NAME}-macos-universal.dmg"
+          RELEASE_NOTES_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG_NAME}"
+          SPARKLE_PACKAGE_PATH="$PWD/build/DerivedData/SourcePackages/checkouts/Sparkle"
+
+          apps/macos-ui/scripts/generate_sparkle_appcast.sh \
+            --app-path "$APP_PATH" \
+            --dmg-path "$DMG_PATH" \
+            --output-path "$APPCAST_PATH" \
+            --download-url "$DOWNLOAD_URL" \
+            --appcast-url "$HELM_SPARKLE_FEED_URL" \
+            --release-notes-url "$RELEASE_NOTES_URL" \
+            --sparkle-package-path "$SPARKLE_PACKAGE_PATH"
+
       - name: Upload build artifacts to workflow run
         uses: actions/upload-artifact@v4
         with:
           name: helm-macos-dmg-${{ env.TAG_NAME }}
-          path: build/release-assets/*.dmg
+          path: |
+            build/release-assets/*.dmg
+            build/release-assets/appcast.xml
 
       - name: Upload DMGs to GitHub release
         if: ${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
@@ -362,4 +384,5 @@ jobs:
           gh release upload "$TAG_NAME" \
             "build/release-assets/Helm-${TAG_NAME}-macos-universal.dmg#Helm-${TAG_NAME}-macos-universal.dmg" \
             "build/release-assets/Helm.dmg#Helm.dmg" \
+            "build/release-assets/appcast.xml#appcast.xml" \
             --clobber
