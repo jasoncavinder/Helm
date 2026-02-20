@@ -8,13 +8,14 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.14.0**
+Current version: **0.14.1**
 
 See:
 - CHANGELOG.md
 
 Active milestone:
 - 0.15.x — Upgrade Preview & Execution Transparency (planning)
+- 0.14.1 — Patch-track fixes merged on `dev`; release validation and `dev` -> `main` PR pending
 
 ---
 
@@ -98,6 +99,66 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 - XPC service: stable (code-signing validation, graceful reconnection with exponential backoff, timeout enforcement on all calls)
 - FFI boundary: functional (poisoned-lock recovery, JSON interchange, thread-safe static state, lifecycle documented in module-level docs)
 - UI: feature-complete for current scope; VoiceOver accessibility labels, semantic grouping, and state-change announcements implemented; HelmCore decomposed into 5 files; UI layer purity cleanup completed (business logic extracted from views to HelmCore/ManagerInfo); inspector sidebar with task/package/manager detail views; keyboard Tab traversal still pending (macOS SwiftUI limitation)
+
+---
+
+## v0.14.1 Patch-Track Status (In Progress)
+
+Completed on `dev` (UI/UX slice):
+
+- Onboarding "Finding Your Tools" and "Pick Your Managers" rows now render manager name + version metadata on one line
+- Package list now visually highlights the inspector-selected package row
+- Control-center package search now uses only the top-right global search field; redundant in-section search chip removed
+- Top-right search field now includes an inline clear (`x`) control when query text is present
+- Inspector package panel now shows description text (when available) and context actions (Update, Pin/Unpin, View Manager)
+- Homebrew manager display names now consistently use `Homebrew (formulae)` and `Homebrew (casks)` across canonical/mirrored locale resources
+
+Completed on `dev` (cache/persistence slice):
+
+- Search-cache persistence now deduplicates records by `(manager, package)` so repeated queries do not accumulate duplicate available-package rows
+- Search-cache metadata persistence preserves existing non-empty version/summary when newer remote responses omit those fields
+- Control-center available package cache refresh now deduplicates entries and keeps non-empty summaries during merges
+- Package aggregation (`allKnownPackages`) now enriches installed/outdated package rows with cached summaries when available
+- Package filtering now includes summary text and merges remote-search summary/latest metadata into local rows for fresher inspector/detail context
+
+Completed on `dev` (follow-up stabilization slice):
+
+- Onboarding manager rows now keep manager name + version on a single line in both detection and configure steps
+- Task list now deduplicates in-flight rows by `(manager, task_type)` while keeping bounded terminal history
+- Task list fetches a wider recent-task window so long-running queued/running entries are less likely to drop out under queue churn
+- Task pruning now expires only completed/failed tasks (cancelled tasks are retained)
+- Duplicate submission guards now reuse existing queued/running task IDs for identical manager install/update/uninstall and package upgrade actions
+- Refresh trigger now skips launching a new sweep while refresh/detection tasks are already in flight
+- RubyGems is now included in per-package upgrade eligibility for control-center package actions
+- Added regression coverage:
+  - FFI unit tests for in-flight deduplication and bounded terminal history behavior
+  - SQLite store test validating prune policy keeps cancelled/running rows
+
+Completed on `dev` (adapter behavior slice):
+
+- RubyGems packages are now eligible for per-package update actions in the UI (`canUpgradeIndividually`)
+- Manager install preflight now validates Homebrew availability before attempting Homebrew-backed manager installs (`mise`, `mas`)
+- When Homebrew is unavailable, install now returns a specific localized service error key (`service.error.homebrew_required`) instead of generic process failure
+- Added localized `service.error.homebrew_required` messaging across all supported locales in canonical and mirrored locale trees
+
+Completed on `dev` (search + inspector action slice):
+
+- Remote package search now fans out across all enabled, detected, search-capable managers (instead of a single Homebrew-only path)
+- Search task labels now include manager + query context (`Searching {manager} for {query}`) and manager-only warmup labels for empty-query cache refresh tasks
+- `Refresh Now` now queues per-manager background search warmup tasks to repopulate the available package cache for supported managers
+- Added manager-scoped remote-search FFI/service method used by SwiftUI search orchestration and per-package description refresh
+- Package inspector description behavior now supports:
+  - immediate rendering of cached descriptions
+  - background refresh attempts for newer description data
+  - loading and unavailable fallback states when descriptions are missing or unsupported
+- Task inspector now shows localized troubleshooting feedback for failed tasks (including Homebrew install-specific guidance)
+- Package inspector now surfaces context-appropriate actions (Install/Uninstall/Update/Pin/Unpin + View Manager) based on package status and manager capabilities
+- Added package-level install/uninstall FFI + XPC surface methods and wired SwiftUI actions for supported managers
+
+Validation:
+
+- `cargo test -p helm-core -p helm-ffi` passing
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm test -destination 'platform=macOS'` passing
 
 ---
 

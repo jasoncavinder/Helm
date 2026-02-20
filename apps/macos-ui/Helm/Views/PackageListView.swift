@@ -51,35 +51,6 @@ struct PackagesSectionView: View {
                 }
             }
 
-            if !context.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(context.searchQuery)
-                        .font(.caption)
-                        .lineLimit(1)
-                    Spacer()
-                    Button {
-                        context.searchQuery = ""
-                        core.searchText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .helmPointer()
-                    .accessibilityLabel(L10n.Common.clear.localized)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color.primary.opacity(0.05))
-                )
-            }
-
             HStack(spacing: 6) {
                 ForEach(PackageStatus.allCases, id: \.self) { status in
                     FilterButton(
@@ -132,6 +103,7 @@ struct PackagesSectionView: View {
                 List(displayedPackages) { package in
                     PackageRowView(
                         package: package,
+                        isSelected: context.selectedPackageId == package.id,
                         isPinActionInFlight: core.pinActionPackageIds.contains(package.id),
                         isUpgradeActionInFlight: core.upgradeActionPackageIds.contains(package.id),
                         kegPolicySelection: kegPolicyMenuSelection(for: package),
@@ -166,6 +138,7 @@ struct PackagesSectionView: View {
                         context.selectedManagerId = package.managerId
                         context.selectedTaskId = nil
                     }
+                    .listRowBackground(Color.clear)
                     .helmPointer()
                 }
                 .listStyle(.inset)

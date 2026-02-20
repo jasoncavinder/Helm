@@ -19,6 +19,7 @@ Focus:
 
 Current checkpoint:
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
+- `v0.14.1` patch-track merged on `dev` (release validation and `dev` -> `main` PR pending)
 - `v0.13.0` stable released (website updates, documentation alignment, version bump)
 - `v0.13.0-rc.2` released (support & feedback entry points, diagnostics copy, GitHub Sponsors integration)
 - `v0.13.0-rc.1` released (inspector sidebar, upgrade reliability, status menu, documentation)
@@ -32,7 +33,76 @@ Current checkpoint:
 - `v0.14.0` distribution/licensing architecture planning docs aligned (future-state, no implementation changes)
 
 Next release targets:
+- `v0.14.1` — Stability + UX + adapter behavior fixes (patch release after review)
 - `v0.15.x` — Upgrade Preview & Execution Transparency
+
+---
+
+## v0.14.1 Patch Track (In Progress)
+
+### UI/UX Slice (Completed on `dev`)
+
+Delivered:
+
+- Onboarding manager rows compressed to single-line name/version metadata
+- Homebrew naming clarified to "Homebrew (formulae)" and "Homebrew (casks)"
+- Package list row highlight for inspector-selected package
+- Removed redundant package-section search chip; retained top-right global search field
+- Added inline clear control to top-right search field
+- Inspector package panel now includes description (when present) and context actions (Update, Pin/Unpin, View Manager)
+
+### Follow-Up Stabilization Slice (Completed on `dev`)
+
+Delivered:
+
+- Onboarding manager rows now keep manager name + detected version on a single line in both:
+  - "Finding Your Tools"
+  - "Pick Your Managers"
+- Task list visibility now deduplicates in-flight task rows by `(manager, task_type)` and keeps bounded terminal history
+- Task list visibility now fetches a wider recent-task window to avoid hiding long-running in-flight entries under queue churn
+- Task pruning timeout policy now removes only `completed` and `failed` records (no timeout pruning of `cancelled`)
+- Duplicate task submission guard added for manager install/update/uninstall and package upgrade actions when an identical labeled task is already queued/running
+- Refresh trigger now skips creating a new refresh sweep while refresh/detection tasks are already in flight
+- RubyGems now participates in per-package upgrade eligibility in the SwiftUI workflow
+- Added regression tests for task list dedup/terminal-history visibility and prune-policy status filtering
+
+### Cache/Persistence Slice (Completed on `dev`)
+
+Delivered:
+
+- Search cache persistence now keeps one row per `(manager, package)` instead of accumulating duplicates by query/version tuple
+- Search cache upserts preserve previously known non-empty version/summary metadata when newer search responses omit those fields
+- Added regression coverage for search-cache deduplication and summary preservation semantics
+- Control-center available-cache refresh now deduplicates by package ID and preserves non-empty summaries across cache rows
+- Package aggregation now enriches installed/outdated package records with cached summaries when available
+- Package filtering now matches query text against package summaries and merges remote-search summary/latest metadata into local package rows
+
+### Adapter Behavior Slice (Completed on `dev`)
+
+Delivered:
+
+- Enabled RubyGems for per-package update action eligibility in the SwiftUI control center workflow
+- Added Homebrew dependency preflight for Homebrew-backed manager installs (`mise`, `mas`)
+- Added explicit localized service error for missing Homebrew dependency:
+  - `service.error.homebrew_required`
+  - propagated across all supported locales and mirrored locale resources
+
+### Search + Inspector Actions Slice (Completed on `dev`)
+
+Delivered:
+
+- Remote search now queues manager-scoped search tasks across all enabled/detected search-capable managers
+- Search task labels now include manager + query context for clearer in-flight task rows
+- `Refresh Now` now warms available package cache entries via manager-scoped background search tasks
+- Package inspector description behavior now includes cached immediate display, background refresh, loading placeholder, and unavailable fallback states
+- Task inspector now displays localized failure feedback for failed tasks, including Homebrew install troubleshooting hints
+- Package inspector now exposes context-appropriate package actions (Install/Uninstall/Update/Pin/Unpin/View Manager)
+- Package install/uninstall actions are now wired through new FFI + service methods for supported managers
+
+Remaining before release cut:
+
+- Final validation pass on `dev` after merged fix slices
+- Open PR `dev` -> `main` for CI and release gating
 
 ---
 

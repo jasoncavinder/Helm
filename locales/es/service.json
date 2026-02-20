@@ -1,5 +1,6 @@
 {
   "service.error.not_installed": "No instalado: {manager}",
+  "service.error.homebrew_required": "Homebrew es necesario para esta acción.",
   "service.error.unsupported_capability": "El gestor {manager} no admite esta acción.",
   "service.error.invalid_input": "Se proporcionó una entrada no válida.",
   "service.error.parse_failure": "No se pudo analizar la salida.",
@@ -27,5 +28,9 @@
   "service.task.label.update.homebrew_formula_cleanup": "Actualizar {package} con Homebrew (limpiar kegs antiguos)",
   "service.task.label.update.rustup_self": "Autoactualizar rustup",
   "service.task.label.uninstall.homebrew_formula": "Desinstalar {package} con Homebrew",
-  "service.task.label.uninstall.rustup_self": "Desinstalar rustup"
+  "service.task.label.uninstall.rustup_self": "Desinstalar rustup",
+  "service.task.label.search.package": "Buscando '{query}' en {manager}",
+  "service.task.label.search.manager": "Actualizando paquetes disponibles de {manager}",
+  "service.task.label.install.package": "Instalar {package} con {manager}",
+  "service.task.label.uninstall.package": "Desinstalar {package} con {manager}"
 }

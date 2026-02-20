@@ -121,8 +121,8 @@
   "app.tasks.fallback.description": "{task_type} {manager}",
   "app.tasks.help.cancel_unavailable": "Abbrechen noch nicht implementiert",
   "app.tasks.action.cancel": "Aufgabe Abbrechen",
-  "app.managers.name.homebrew": "Homebrew",
-  "app.managers.name.homebrew_cask": "Homebrew Cask",
+  "app.managers.name.homebrew": "Homebrew (formulae)",
+  "app.managers.name.homebrew_cask": "Homebrew (casks)",
   "app.managers.name.npm": "npm",
   "app.managers.name.pnpm": "pnpm",
   "app.managers.name.yarn": "yarn",
@@ -177,6 +177,7 @@
   "app.inspector.manager": "Manager",
   "app.inspector.installed": "Installierte Version",
   "app.inspector.latest": "Neueste Version",
+  "app.inspector.description": "Description",
   "app.inspector.source_query": "Quellkontext",
   "app.inspector.capabilities": "Funktionen",
   "app.inspector.task_id": "Aufgaben-ID",
@@ -197,6 +198,7 @@
   "app.inspector.disabled": "Deaktiviert",
   "app.inspector.category": "Kategorie",
   "app.inspector.install_method": "Installationsmethode",
+  "app.inspector.view_manager": "View Manager",
   "app.inspector.install_method.automatable": "Voll automatisierbar",
   "app.inspector.install_method.update_and_uninstall": "Aktualisieren & Deinstallieren",
   "app.inspector.install_method.update_only": "Nur aktualisieren",
@@ -242,12 +244,10 @@
   "app.settings.metric.managers": "Aktive Manager",
   "app.settings.metric.updates": "Ausstehende Updates",
   "app.settings.metric.tasks": "Laufende Aufgaben",
-
   "app.walkthrough.control.next": "Weiter",
   "app.walkthrough.control.skip": "Überspringen",
   "app.walkthrough.control.done": "Fertig",
   "app.walkthrough.control.step_indicator": "Schritt {current} von {total}",
-
   "app.walkthrough.popover.step1.title": "Systemzustand",
   "app.walkthrough.popover.step1.description": "Dies ist dein Helm-Statusicon. Es zeigt den Systemzustand auf einen Blick.",
   "app.walkthrough.popover.step2.title": "Update-Banner",
@@ -260,7 +260,6 @@
   "app.walkthrough.popover.step5.description": "Versionsinformationen, Einstellungen öffnen oder Helm von hier beenden.",
   "app.walkthrough.popover.step6.title": "Schnellsuche",
   "app.walkthrough.popover.step6.description": "Durchsuche alle deine Paketmanager sofort.",
-
   "app.walkthrough.control_center.step1.title": "Seitenleiste",
   "app.walkthrough.control_center.step1.description": "Navigiere zwischen Bereichen, um deine gesamte Entwicklungsumgebung zu verwalten.",
   "app.walkthrough.control_center.step2.title": "Übersicht",
@@ -275,9 +274,7 @@
   "app.walkthrough.control_center.step6.description": "Konfiguriere den sicheren Modus, die Sprache und automatische Update-Richtlinien.",
   "app.walkthrough.control_center.step7.title": "Upgrade-Vorschau",
   "app.walkthrough.control_center.step7.description": "Sieh genau, was passieren wird, bevor du Upgrades ausführst.",
-
   "app.settings.action.replay_walkthrough": "Rundgang wiederholen",
-
   "app.settings.section.support_feedback": "Support & Feedback",
   "app.settings.support_feedback.support_helm": "Helm unterstützen",
   "app.settings.support_feedback.report_bug": "Fehler melden",
@@ -288,5 +285,10 @@
   "app.settings.support_feedback.copied_confirmation": "Kopiert!",
   "app.settings.support_feedback.diagnostics_copied_hint": "Diagnose in die Zwischenablage kopiert",
   "app.settings.support_feedback.github_sponsors": "GitHub Sponsors",
-  "app.settings.support_feedback.patreon": "Patreon"
+  "app.settings.support_feedback.patreon": "Patreon",
+  "app.inspector.description_loading": "Beschreibung wird geladen...",
+  "app.inspector.description_unavailable": "Beschreibung nicht verfügbar.",
+  "app.inspector.task_failure_feedback": "Fehlerdetails",
+  "app.inspector.task_failure_hint.homebrew_install": "Helm konnte {package} nicht über Homebrew installieren. Prüfe Homebrew (`brew doctor`) und versuche es erneut, um die Ausgabe zu sehen.",
+  "app.inspector.task_failure_hint.generic": "Aufgabe bei {manager} fehlgeschlagen. Konfiguration prüfen und erneut versuchen."
 }

@@ -123,6 +123,13 @@ impl AdapterRuntime {
         self.adapters.contains_key(&manager)
     }
 
+    pub fn supports_capability(&self, manager: ManagerId, capability: Capability) -> bool {
+        self.adapters
+            .get(&manager)
+            .map(|adapter| adapter.descriptor().supports(capability))
+            .unwrap_or(false)
+    }
+
     pub fn adapter_list(&self) -> Vec<Arc<dyn ManagerAdapter>> {
         self.adapters.values().cloned().collect()
     }

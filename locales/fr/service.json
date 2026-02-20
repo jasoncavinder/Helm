@@ -3,6 +3,7 @@
   "service.error.internal": "Erreur interne du service.",
   "service.error.invalid_input": "Entrée invalide.",
   "service.error.not_installed": "Non installé : {manager}",
+  "service.error.homebrew_required": "Homebrew est requis pour cette action.",
   "service.error.parse_failure": "Échec de l'analyse de la sortie.",
   "service.error.process_failure": "Échec d'exécution du sous-processus.",
   "service.error.storage_failure": "Erreur de stockage de la base de données.",
@@ -27,5 +28,9 @@
   "service.task.status.completed": "Terminée",
   "service.task.status.failed": "Échec",
   "service.task.status.pending": "En attente",
-  "service.task.status.running": "En cours"
+  "service.task.status.running": "En cours",
+  "service.task.label.search.package": "Recherche de '{query}' sur {manager}",
+  "service.task.label.search.manager": "Actualisation des paquets disponibles depuis {manager}",
+  "service.task.label.install.package": "Installer {package} via {manager}",
+  "service.task.label.uninstall.package": "Désinstaller {package} via {manager}"
 }

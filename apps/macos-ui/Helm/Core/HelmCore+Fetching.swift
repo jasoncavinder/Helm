@@ -112,6 +112,9 @@ extension HelmCore {
                     .sorted { $0.statusSortOrder < $1.statusSortOrder }
                     self?.syncManagerOperations(from: coreTasks)
                     self?.syncUpgradeActions(from: coreTasks)
+                    self?.syncInstallActions(from: coreTasks)
+                    self?.syncUninstallActions(from: coreTasks)
+                    self?.syncPackageDescriptionLookups(from: coreTasks)
 
                     // Announce new task failures to VoiceOver
                     let currentFailed = self?.activeTasks.filter({ $0.status.lowercased() == "failed" }).count ?? 0
@@ -179,17 +182,33 @@ extension HelmCore {
                     }
                     self?.previousRefreshState = nowRefreshing
 
-                    // Detect remote search completion
-                    if let searchTaskId = self?.activeRemoteSearchTaskId {
-                        let matchingTask = coreTasks.first { $0.id == UInt64(searchTaskId) }
-                        if let task = matchingTask {
+                    let inFlightSearchTaskIds = Set(
+                        coreTasks.compactMap { task -> Int64? in
+                            let taskType = task.taskType.lowercased()
                             let status = task.status.lowercased()
-                            if status == "completed" || status == "failed" || status == "cancelled" {
-                                self?.activeRemoteSearchTaskId = nil
-                                self?.isSearching = false
+                            guard taskType == "search",
+                                  status == "queued" || status == "running" else {
+                                return nil
                             }
+                            return Int64(task.id)
                         }
-                    }
+                    )
+                    let inFlightInteractiveSearchTaskIds = Set(
+                        coreTasks.compactMap { task -> Int64? in
+                            let taskType = task.taskType.lowercased()
+                            let status = task.status.lowercased()
+                            guard taskType == "search",
+                                  status == "queued" || status == "running" else {
+                                return nil
+                            }
+                            let query = task.labelArgs?["query"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard let query, !query.isEmpty else { return nil }
+                            return Int64(task.id)
+                        }
+                    )
+                    self?.activeRemoteSearchTaskIds = inFlightSearchTaskIds
+                    let hasQuery = !(self?.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+                    self?.isSearching = hasQuery && !inFlightInteractiveSearchTaskIds.isEmpty
                 }
             } catch {
                 logger.error("fetchTasks: decode failed (\(data.count) bytes): \(error)")
@@ -218,6 +237,16 @@ extension HelmCore {
                 let results = try decoder.decode([CoreSearchResult].self, from: data)
 
                 DispatchQueue.main.async {
+                    let resolvedSummaryIds = Set(
+                        results.compactMap { result -> String? in
+                            guard let summary = result.summary?.trimmingCharacters(in: .whitespacesAndNewlines),
+                                  !summary.isEmpty else {
+                                return nil
+                            }
+                            return "\(result.sourceManager):\(result.name)"
+                        }
+                    )
+
                     self?.searchResults = results.map { result in
                         PackageItem(
                             id: "\(result.sourceManager):\(result.name)",
@@ -229,6 +258,8 @@ extension HelmCore {
                             status: .available
                         )
                     }
+                    self?.packageDescriptionUnavailableIds.subtract(resolvedSummaryIds)
+                    self?.packageDescriptionLoadingIds.subtract(resolvedSummaryIds)
                 }
             } catch {
                 logger.error("fetchSearchResults: decode failed (\(data.count) bytes): \(error)")
@@ -251,11 +282,14 @@ extension HelmCore {
 
                 DispatchQueue.main.async {
                     guard let self = self else { return }
-                    let installedIds = Set(self.installedPackages.map { $0.id })
-                    self.cachedAvailablePackages = results.compactMap { result in
+                    let excludedIds = Set(self.installedPackages.map(\.id))
+                        .union(self.outdatedPackages.map(\.id))
+                    var dedupedById: [String: PackageItem] = [:]
+
+                    for result in results {
                         let id = "\(result.sourceManager):\(result.name)"
-                        guard !installedIds.contains(id) else { return nil }
-                        return PackageItem(
+                        guard !excludedIds.contains(id) else { continue }
+                        let candidate = PackageItem(
                             id: id,
                             name: result.name,
                             version: result.version ?? "",
@@ -264,7 +298,34 @@ extension HelmCore {
                             summary: result.summary,
                             status: .available
                         )
+
+                        if var existing = dedupedById[id] {
+                            let existingSummary = existing.summary?.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if existingSummary?.isEmpty != false,
+                               let candidateSummary = candidate.summary?.trimmingCharacters(in: .whitespacesAndNewlines),
+                               !candidateSummary.isEmpty {
+                                existing.summary = candidateSummary
+                            }
+                            dedupedById[id] = existing
+                        } else {
+                            dedupedById[id] = candidate
+                        }
                     }
+
+                    self.cachedAvailablePackages = dedupedById.values.sorted { lhs, rhs in
+                        lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                    }
+                    let resolvedSummaryIds = Set(
+                        self.cachedAvailablePackages.compactMap { package -> String? in
+                            guard let summary = package.summary?.trimmingCharacters(in: .whitespacesAndNewlines),
+                                  !summary.isEmpty else {
+                                return nil
+                            }
+                            return package.id
+                        }
+                    )
+                    self.packageDescriptionUnavailableIds.subtract(resolvedSummaryIds)
+                    self.packageDescriptionLoadingIds.subtract(resolvedSummaryIds)
                 }
             } catch {
                 logger.error("refreshCachedAvailablePackages: decode failed (\(data.count) bytes): \(error)")
@@ -300,78 +361,4 @@ extension HelmCore {
         }
     }
 
-    func syncManagerOperations(from coreTasks: [CoreTaskRecord]) {
-        let statusById = Dictionary(uniqueKeysWithValues: coreTasks.map { ($0.id, $0.status.lowercased()) })
-        let inFlightStates = Set(["queued", "running"])
-
-        for managerId in Array(managerActionTaskByManager.keys) {
-            guard let taskId = managerActionTaskByManager[managerId] else { continue }
-            guard let status = statusById[taskId] else {
-                managerOperations.removeValue(forKey: managerId)
-                managerActionTaskByManager.removeValue(forKey: managerId)
-                continue
-            }
-            if !inFlightStates.contains(status) {
-                managerOperations.removeValue(forKey: managerId)
-                managerActionTaskByManager.removeValue(forKey: managerId)
-            }
-        }
-    }
-
-    func syncUpgradeActions(from coreTasks: [CoreTaskRecord]) {
-        let statusById = Dictionary(uniqueKeysWithValues: coreTasks.map { ($0.id, $0.status.lowercased()) })
-        let inFlightStates = Set(["queued", "running"])
-        var shouldRefreshSnapshots = false
-
-        for packageId in Array(upgradeActionTaskByPackage.keys) {
-            guard let taskId = upgradeActionTaskByPackage[packageId] else { continue }
-            guard let status = statusById[taskId] else {
-                upgradeActionTaskByPackage.removeValue(forKey: packageId)
-                upgradeActionPackageIds.remove(packageId)
-                continue
-            }
-            if inFlightStates.contains(status) {
-                continue
-            }
-
-            upgradeActionTaskByPackage.removeValue(forKey: packageId)
-            upgradeActionPackageIds.remove(packageId)
-            if status == "completed" {
-                shouldRefreshSnapshots = true
-            }
-        }
-
-        if shouldRefreshSnapshots {
-            fetchPackages()
-            fetchOutdatedPackages()
-        }
-    }
-
-    func updateOnboardingDetectionProgress(from coreTasks: [CoreTaskRecord]) {
-        guard onboardingDetectionInProgress else { return }
-
-        let terminalStatuses = Set(["completed", "failed", "cancelled"])
-        for task in coreTasks
-        where task.id > onboardingDetectionAnchorTaskId
-            && task.taskType.lowercased() == "detection"
-            && terminalStatuses.contains(task.status.lowercased())
-        {
-            onboardingDetectionPendingManagers.remove(task.manager)
-        }
-
-        pruneOnboardingDetectionForDisabledManagers()
-
-        if onboardingDetectionPendingManagers.isEmpty {
-            completeOnboardingDetectionProgress()
-            return
-        }
-
-        if let startedAt = onboardingDetectionStartedAt,
-           Date().timeIntervalSince(startedAt) > 90
-        {
-            let pending = onboardingDetectionPendingManagers.joined(separator: ",")
-            logger.warning("Onboarding detection timed out waiting for managers: \(pending)")
-            completeOnboardingDetectionProgress()
-        }
-    }
 }

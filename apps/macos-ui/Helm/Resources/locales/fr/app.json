@@ -121,8 +121,8 @@
   "app.tasks.help.cancel_unavailable": "Annulation pas encore disponible",
   "app.tasks.action.cancel": "Annuler la Tâche",
   "app.tasks.no_recent_tasks": "Aucune tâche récente",
-  "app.managers.name.homebrew": "Homebrew",
-  "app.managers.name.homebrew_cask": "Homebrew Cask",
+  "app.managers.name.homebrew": "Homebrew (formulae)",
+  "app.managers.name.homebrew_cask": "Homebrew (casks)",
   "app.managers.name.npm": "npm",
   "app.managers.name.pnpm": "pnpm",
   "app.managers.name.yarn": "yarn",
@@ -177,6 +177,7 @@
   "app.inspector.manager": "Gestionnaire",
   "app.inspector.installed": "Version installée",
   "app.inspector.latest": "Dernière version",
+  "app.inspector.description": "Description",
   "app.inspector.source_query": "Contexte source",
   "app.inspector.capabilities": "Fonctionnalités",
   "app.inspector.task_id": "ID de tâche",
@@ -197,6 +198,7 @@
   "app.inspector.disabled": "Désactivé",
   "app.inspector.category": "Catégorie",
   "app.inspector.install_method": "Méthode d'installation",
+  "app.inspector.view_manager": "View Manager",
   "app.inspector.install_method.automatable": "Entièrement automatisable",
   "app.inspector.install_method.update_and_uninstall": "Mise à jour et désinstallation",
   "app.inspector.install_method.update_only": "Mise à jour uniquement",
@@ -242,12 +244,10 @@
   "app.settings.metric.managers": "Gestionnaires actifs",
   "app.settings.metric.updates": "Mises à jour en attente",
   "app.settings.metric.tasks": "Tâches en cours",
-
   "app.walkthrough.control.next": "Suivant",
   "app.walkthrough.control.skip": "Passer",
   "app.walkthrough.control.done": "Terminé",
   "app.walkthrough.control.step_indicator": "Étape {current} sur {total}",
-
   "app.walkthrough.popover.step1.title": "Santé du système",
   "app.walkthrough.popover.step1.description": "Voici l'icône de statut de Helm. Elle affiche la santé de votre système d'un coup d'œil.",
   "app.walkthrough.popover.step2.title": "Bannière de mises à jour",
@@ -260,7 +260,6 @@
   "app.walkthrough.popover.step5.description": "Consultez la version, ouvrez les réglages ou quittez Helm depuis ici.",
   "app.walkthrough.popover.step6.title": "Recherche rapide",
   "app.walkthrough.popover.step6.description": "Recherchez dans tous vos gestionnaires de paquets instantanément.",
-
   "app.walkthrough.control_center.step1.title": "Barre latérale",
   "app.walkthrough.control_center.step1.description": "Naviguez entre les sections pour gérer l'ensemble de votre environnement de développement.",
   "app.walkthrough.control_center.step2.title": "Vue d'ensemble",
@@ -275,9 +274,7 @@
   "app.walkthrough.control_center.step6.description": "Configurez le mode sûr, la langue et les politiques de mise à jour automatique.",
   "app.walkthrough.control_center.step7.title": "Aperçu des mises à niveau",
   "app.walkthrough.control_center.step7.description": "Prévisualisez exactement ce qui se passera avant d'exécuter les mises à niveau.",
-
   "app.settings.action.replay_walkthrough": "Rejouer la visite guidée",
-
   "app.settings.section.support_feedback": "Support et retours",
   "app.settings.support_feedback.support_helm": "Soutenir Helm",
   "app.settings.support_feedback.report_bug": "Signaler un bug",
@@ -288,5 +285,10 @@
   "app.settings.support_feedback.copied_confirmation": "Copié !",
   "app.settings.support_feedback.diagnostics_copied_hint": "Diagnostics copiés dans le presse-papiers",
   "app.settings.support_feedback.github_sponsors": "GitHub Sponsors",
-  "app.settings.support_feedback.patreon": "Patreon"
+  "app.settings.support_feedback.patreon": "Patreon",
+  "app.inspector.description_loading": "Chargement de la description...",
+  "app.inspector.description_unavailable": "Description indisponible.",
+  "app.inspector.task_failure_feedback": "Détails de l’échec",
+  "app.inspector.task_failure_hint.homebrew_install": "Helm n’a pas pu installer {package} via Homebrew. Vérifiez que Homebrew fonctionne (`brew doctor`) puis réessayez pour obtenir la sortie complète.",
+  "app.inspector.task_failure_hint.generic": "Échec de la tâche sur {manager}. Vérifiez la configuration puis réessayez."
 }
