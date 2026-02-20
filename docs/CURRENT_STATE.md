@@ -232,6 +232,8 @@ Validation:
 
 - `cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`
 - `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
+- `apps/macos-ui/scripts/check_locale_integrity.sh`
+- `apps/macos-ui/scripts/check_locale_lengths.sh`
 
 ---
 

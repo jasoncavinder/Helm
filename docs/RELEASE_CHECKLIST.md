@@ -12,7 +12,7 @@ This checklist is required before creating a release tag on `main`.
 ### Validation
 - [x] Rust tests pass (`cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`).
 - [x] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`).
-- [ ] Locale checks pass (`apps/macos-ui/scripts/check_locale_integrity.sh` and `apps/macos-ui/scripts/check_locale_lengths.sh`).
+- [x] Locale checks pass (`apps/macos-ui/scripts/check_locale_integrity.sh` and `apps/macos-ui/scripts/check_locale_lengths.sh`).
 
 ### Versioning
 - [ ] Workspace version bumped to `0.15.0-alpha.1` in `core/rust/Cargo.toml`.
