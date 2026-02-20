@@ -4,6 +4,8 @@ import os.log
 private let logger = Logger(subsystem: "com.jasoncavinder.Helm", category: "core.actions")
 
 extension HelmCore {
+    private static let scopedUpgradePlanPhaseTimeoutSeconds: TimeInterval = 300
+
     func cancelTask(_ task: TaskItem) {
         guard task.isRunning, let taskId = Int64(task.id) else { return }
         service()?.cancelTask(taskId: taskId) { [weak self] success in
@@ -118,7 +120,7 @@ extension HelmCore {
         }
         let orderedPhaseRanks = phasesByRank.keys.sorted()
         guard !orderedPhaseRanks.isEmpty else {
-            scopedUpgradePlanRunInProgress = false
+            finishScopedUpgradePlanRun(runToken: runToken, invalidateToken: true)
             return
         }
 
@@ -157,12 +159,11 @@ extension HelmCore {
         runToken: UUID
     ) {
         guard runToken == scopedUpgradePlanRunToken else {
-            scopedUpgradePlanRunInProgress = false
             return
         }
 
         guard phaseIndex < phaseRanks.count else {
-            scopedUpgradePlanRunInProgress = false
+            finishScopedUpgradePlanRun(runToken: runToken, invalidateToken: true)
             return
         }
 
@@ -201,6 +202,7 @@ extension HelmCore {
     private func waitForScopedUpgradePlanPhaseCompletion(
         stepIds: Set<String>,
         runToken: UUID,
+        startedAt: Date = Date(),
         completion: @escaping () -> Void
     ) {
         guard !stepIds.isEmpty else {
@@ -211,7 +213,13 @@ extension HelmCore {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
             guard let self = self else { return }
             guard runToken == self.scopedUpgradePlanRunToken else {
-                self.scopedUpgradePlanRunInProgress = false
+                return
+            }
+            if Date().timeIntervalSince(startedAt) > Self.scopedUpgradePlanPhaseTimeoutSeconds {
+                logger.warning(
+                    "Scoped upgrade phase timed out after \(Self.scopedUpgradePlanPhaseTimeoutSeconds)s; cancelling scoped run token"
+                )
+                self.finishScopedUpgradePlanRun(runToken: runToken, invalidateToken: true)
                 return
             }
 
@@ -229,12 +237,21 @@ extension HelmCore {
                 self.waitForScopedUpgradePlanPhaseCompletion(
                     stepIds: stepIds,
                     runToken: runToken,
+                    startedAt: startedAt,
                     completion: completion
                 )
             } else {
                 completion()
             }
         }
+    }
+
+    private func finishScopedUpgradePlanRun(runToken: UUID, invalidateToken: Bool) {
+        guard runToken == scopedUpgradePlanRunToken else { return }
+        if invalidateToken {
+            scopedUpgradePlanRunToken = UUID()
+        }
+        scopedUpgradePlanRunInProgress = false
     }
 
     private func retryUpgradePlanStep(_ step: CoreUpgradePlanStep, completion: ((Bool) -> Void)? = nil) {

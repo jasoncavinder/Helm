@@ -89,6 +89,8 @@ Progress so far:
 - scoped run execution now advances authority phase-by-phase instead of submitting all manager steps concurrently
 - cancel remaining now terminates active scoped run sequencing before cancelling matching in-flight tasks
 - phase sequencing now waits for submission callbacks and protects newly queued projections until task snapshots catch up
+- stale callbacks from superseded scoped-run tokens no longer clear active run-in-progress state
+- scoped phase waiting now uses a bounded timeout and invalidates stalled run tokens
 - planner regression tests expanded for scoped-run gating and ID fallback coverage
 - Rust adapter/runtime files normalized with formatting-only cleanup (no behavior changes)
 

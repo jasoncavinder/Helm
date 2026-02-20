@@ -16,6 +16,7 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Partial-failure summaries now group failed plan steps by manager and affected package set.
 - Scoped plan execution now runs phase-by-phase by authority rank (authoritative → standard → guarded) instead of submitting all manager steps concurrently.
 - Cancel Remaining now aborts active scoped-run sequencing before cancelling matching in-flight tasks.
+- Scoped run sequencing now ignores stale callbacks from superseded run tokens and bounds phase waiting with timeout-based token invalidation.
 - Generated `apps/macos-ui/Generated/HelmVersion.xcconfig` is now ignored and no longer tracked.
 
 ## [0.14.1] - 2026-02-20

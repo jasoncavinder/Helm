@@ -246,6 +246,8 @@ Implemented on `feat/v0.15.x-alpha.1-kickoff` (current progress):
 - Scoped run execution now progresses by authority phase (authoritative → standard → guarded) instead of submitting all managers at once
 - Cancel Remaining now aborts any in-progress scoped run sequencer before cancelling matching in-flight tasks
 - Authority-phase sequencing now waits for submission callbacks before phase polling and preserves newly queued projections until task IDs are observed in snapshots
+- Scoped run completion state now ignores stale callbacks from superseded run tokens so newer runs remain accurately marked in progress
+- Scoped authority-phase waiting now enforces a bounded timeout and invalidates the active run token when a phase stalls
 - Expanded planner regression coverage for:
   - scoped-run eligibility gating (queued/running/completed + safe mode)
   - in-flight status handling for queued-without-projection plan rows
