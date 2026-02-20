@@ -56,6 +56,7 @@ struct PopoverSearchOverlayContent: View {
                                 context.selectedPackageId = result.id
                                 context.selectedManagerId = result.managerId
                                 context.selectedTaskId = nil
+                                context.selectedUpgradePlanStepId = nil
                                 context.selectedSection = .packages
                                 onOpenControlCenter()
                                 onClose()

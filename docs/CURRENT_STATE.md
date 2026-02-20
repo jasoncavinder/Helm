@@ -14,8 +14,8 @@ See:
 - CHANGELOG.md
 
 Active milestone:
-- 0.15.x — Upgrade Preview & Execution Transparency (planning)
-- 0.14.1 — Patch-track fixes merged on `dev`; release validation and `dev` -> `main` PR pending
+- 0.15.x — Upgrade Preview & Execution Transparency (kickoff)
+- 0.14.1 — Released on `main` (PR `#65`, tag `v0.14.1`)
 
 ---
 
@@ -102,9 +102,9 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 
 ---
 
-## v0.14.1 Patch-Track Status (In Progress)
+## v0.14.1 Patch-Track Status (Released)
 
-Completed on `dev` (UI/UX slice):
+Released in `v0.14.1` (UI/UX slice):
 
 - Onboarding "Finding Your Tools" and "Pick Your Managers" rows now render manager name + version metadata on one line
 - Package list now visually highlights the inspector-selected package row
@@ -113,7 +113,7 @@ Completed on `dev` (UI/UX slice):
 - Inspector package panel now shows description text (when available) and context actions (Update, Pin/Unpin, View Manager)
 - Homebrew manager display names now consistently use `Homebrew (formulae)` and `Homebrew (casks)` across canonical/mirrored locale resources
 
-Completed on `dev` (cache/persistence slice):
+Released in `v0.14.1` (cache/persistence slice):
 
 - Search-cache persistence now deduplicates records by `(manager, package)` so repeated queries do not accumulate duplicate available-package rows
 - Search-cache metadata persistence preserves existing non-empty version/summary when newer remote responses omit those fields
@@ -121,7 +121,7 @@ Completed on `dev` (cache/persistence slice):
 - Package aggregation (`allKnownPackages`) now enriches installed/outdated package rows with cached summaries when available
 - Package filtering now includes summary text and merges remote-search summary/latest metadata into local rows for fresher inspector/detail context
 
-Completed on `dev` (follow-up stabilization slice):
+Released in `v0.14.1` (follow-up stabilization slice):
 
 - Onboarding manager rows now keep manager name + version on a single line in both detection and configure steps
 - Task list now deduplicates in-flight rows by `(manager, task_type)` while keeping bounded terminal history
@@ -134,14 +134,14 @@ Completed on `dev` (follow-up stabilization slice):
   - FFI unit tests for in-flight deduplication and bounded terminal history behavior
   - SQLite store test validating prune policy keeps cancelled/running rows
 
-Completed on `dev` (adapter behavior slice):
+Released in `v0.14.1` (adapter behavior slice):
 
 - RubyGems packages are now eligible for per-package update actions in the UI (`canUpgradeIndividually`)
 - Manager install preflight now validates Homebrew availability before attempting Homebrew-backed manager installs (`mise`, `mas`)
 - When Homebrew is unavailable, install now returns a specific localized service error key (`service.error.homebrew_required`) instead of generic process failure
 - Added localized `service.error.homebrew_required` messaging across all supported locales in canonical and mirrored locale trees
 
-Completed on `dev` (search + inspector action slice):
+Released in `v0.14.1` (search + inspector action slice):
 
 - Remote package search now fans out across all enabled, detected, search-capable managers (instead of a single Homebrew-only path)
 - Search task labels now include manager + query context (`Searching {manager} for {query}`) and manager-only warmup labels for empty-query cache refresh tasks
@@ -159,6 +159,110 @@ Validation:
 
 - `cargo test -p helm-core -p helm-ffi` passing
 - `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm test -destination 'platform=macOS'` passing
+
+---
+
+## v0.15.0-alpha.1 Status
+
+### Plan Model + Inspector Foundations
+
+Implemented on `feat/v0.15.x-alpha.1-kickoff`:
+
+- Added ordered upgrade-plan preview export at the FFI boundary (`helm_preview_upgrade_plan`) with per-step metadata:
+  - stable step ID (`manager:package`)
+  - order index
+  - manager/action/authority context
+  - localized reason label key + args
+  - initial status (`queued`)
+- Added XPC surface method `previewUpgradePlan(includePinned:allowOsUpdates:)` and wired service forwarding to the new FFI export
+- Added Swift `CoreUpgradePlanStep` state in `HelmCore` and plan-refresh helpers for decoding/sorting/localized status + reason rendering
+- Updates section now renders the ordered execution plan directly from FFI-backed plan steps and supports plan-step selection
+- Inspector now resolves selected plan steps into task-shaped detail rows so reason/status context is visible without executing upgrades
+- Plan refresh now re-runs after outdated snapshot refresh (when plan state is active), and also on updates-section appear/toggle changes
+
+Validation:
+
+- `cargo test -p helm-ffi --manifest-path core/rust/Cargo.toml`
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
+
+---
+
+## v0.15.0-alpha.2 Status
+
+### Execution Transparency + Partial Failure Summary
+
+Implemented on `feat/v0.15.x-alpha.1-kickoff`:
+
+- Upgrade task labels now carry explicit `plan_step_id` metadata so runtime task records can be correlated directly to execution-plan steps
+- Added plan-step runtime projection in `HelmCore`:
+  - queued/running/completed/failed task statuses now project onto existing plan rows
+  - projection remains scoped to current visible plan-step IDs
+- Added grouped partial-failure summaries in Updates:
+  - failures grouped by manager/cause bucket with affected package lists
+  - failures are derived from projected plan-step runtime state
+- Added retry affordances for failed plan steps:
+  - retry per failure group
+  - retry all failed steps only
+  - retries call targeted package upgrade requests (including `softwareupdate` sentinel support) rather than re-running successful steps
+- Inspector plan-step details now reflect projected runtime status and linked runtime task IDs when available
+
+Validation:
+
+- `cargo test -p helm-ffi --manifest-path core/rust/Cargo.toml`
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
+
+---
+
+## v0.15.0-alpha.3 Status
+
+### Operator Controls for Large Plans
+
+Implemented on `feat/v0.15.x-alpha.1-kickoff`:
+
+- Added Updates plan-scope controls for manager and package filtering
+- Added scoped execution controls:
+  - run scoped plan steps
+  - cancel remaining scoped queued/running plan tasks
+  - retry only failed scoped plan steps
+- Enforced stable authority-first plan ordering in shared planner helpers used by execution/scope filtering
+- Added planner regression coverage for authority ordering and manager/package scoping
+- Fixed scoped-run behavior so initial preview `queued` steps execute (while still skipping already-projected queued/running/completed tasks)
+
+Validation:
+
+- `cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
+- `apps/macos-ui/scripts/check_locale_integrity.sh`
+- `apps/macos-ui/scripts/check_locale_lengths.sh`
+
+---
+
+## v0.15.0-alpha.4 Status (In Progress)
+
+### Final 0.15.0 Cut Readiness
+
+Implemented on `feat/v0.15.x-alpha.1-kickoff` (current progress):
+
+- Consolidated plan-step ID resolution across dashboard and action paths via shared planner helper logic
+- Hardened projection/retry/failure-group mapping paths to tolerate duplicate step IDs without dictionary trap risk
+- Scoped run execution now progresses by authority phase (authoritative → standard → guarded) instead of submitting all managers at once
+- Cancel Remaining now aborts any in-progress scoped run sequencer before cancelling matching in-flight tasks
+- Cancel Remaining now also cancels scoped projected in-flight upgrade tasks that have not surfaced in the latest task snapshot yet
+- Authority-phase sequencing now waits for submission callbacks before phase polling and preserves newly queued projections until task IDs are observed in snapshots
+- Scoped run completion state now ignores stale callbacks from superseded run tokens so newer runs remain accurately marked in progress
+- Scoped authority-phase waiting now enforces a bounded timeout and invalidates the active run token when a phase stalls
+- Expanded planner regression coverage for:
+  - scoped-run eligibility gating (queued/running/completed + safe mode)
+  - in-flight status handling for queued-without-projection plan rows
+  - explicit and fallback plan-step ID resolution paths
+  - projected task-ID extraction for scoped cancellation (status + overflow guardrails)
+- Applied Rust formatting-only cleanup updates across adapter/runtime test files (no behavior change)
+- Added initial `v0.15.0-alpha.1` pre-release checklist scaffolding in `docs/RELEASE_CHECKLIST.md`
+
+Validation:
+
+- `cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
 
 ---
 
@@ -549,4 +653,4 @@ Helm is a **functional control plane for 28 implemented managers** with:
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-0.13.x and 0.14.x stable checkpoints are complete, with `v0.14.0` now merged to `main` and tagged. Next delivery focus is 0.15.x.
+0.13.x and 0.14.x stable checkpoints are complete, with latest stable patch `v0.14.1` merged to `main`, tagged, and released. Next delivery focus is 0.15.x.

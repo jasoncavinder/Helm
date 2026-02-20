@@ -6,6 +6,7 @@ import Darwin
 private let logger = Logger(subsystem: "com.jasoncavinder.Helm", category: "core.settings")
 
 extension HelmCore {
+    static let allManagersScopeId = UpgradePreviewPlanner.allManagersScopeId
 
     // MARK: - Safe Mode
 
@@ -123,10 +124,66 @@ extension HelmCore {
     // MARK: - Upgrade All
 
     func upgradeAll(includePinned: Bool = false, allowOsUpdates: Bool = false) {
+        DispatchQueue.main.async {
+            self.upgradePlanIncludePinned = includePinned
+            self.upgradePlanAllowOsUpdates = allowOsUpdates
+            for step in self.upgradePlanSteps {
+                self.upgradePlanTaskProjectionByStepId.removeValue(forKey: step.id)
+            }
+            self.rebuildUpgradePlanFailureGroups()
+        }
         service()?.upgradeAll(includePinned: includePinned, allowOsUpdates: allowOsUpdates) { success in
             if !success {
                 logger.error("upgradeAll(includePinned: \(includePinned), allowOsUpdates: \(allowOsUpdates)) failed")
             }
+        }
+    }
+
+    func refreshUpgradePlan(includePinned: Bool = false, allowOsUpdates: Bool = false) {
+        service()?.previewUpgradePlan(includePinned: includePinned, allowOsUpdates: allowOsUpdates) { [weak self] jsonString in
+            guard let self = self else { return }
+            guard let jsonString, let data = jsonString.data(using: .utf8) else { return }
+
+            do {
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                let steps = try decoder.decode([CoreUpgradePlanStep].self, from: data)
+                DispatchQueue.main.async {
+                    self.upgradePlanIncludePinned = includePinned
+                    self.upgradePlanAllowOsUpdates = allowOsUpdates
+                    self.upgradePlanSteps = steps.sorted { lhs, rhs in
+                        lhs.orderIndex < rhs.orderIndex
+                    }
+                    self.syncUpgradePlanProjection(from: self.latestCoreTasksSnapshot)
+                }
+            } catch {
+                logger.error("refreshUpgradePlan: decode failed (\(data.count) bytes): \(error)")
+            }
+        }
+    }
+
+    func projectedUpgradePlanStatus(for step: CoreUpgradePlanStep) -> String {
+        upgradePlanTaskProjectionByStepId[step.id]?.status ?? step.status
+    }
+
+    func projectedUpgradePlanTaskId(for step: CoreUpgradePlanStep) -> UInt64? {
+        upgradePlanTaskProjectionByStepId[step.id]?.taskId
+    }
+
+    func localizedUpgradePlanStatus(_ rawStatus: String) -> String {
+        switch rawStatus.lowercased() {
+        case "queued":
+            return L10n.Service.Task.Status.pending.localized
+        case "running":
+            return L10n.Service.Task.Status.running.localized
+        case "completed":
+            return L10n.Service.Task.Status.completed.localized
+        case "failed":
+            return L10n.Service.Task.Status.failed.localized
+        case "cancelled":
+            return L10n.Service.Task.Status.cancelled.localized
+        default:
+            return rawStatus.capitalized
         }
     }
 
@@ -161,6 +218,67 @@ extension HelmCore {
     }
 
     // MARK: - Localization Helpers
+
+    func localizedUpgradePlanReason(for step: CoreUpgradePlanStep) -> String {
+        let args = step.reasonLabelArgs.reduce(into: [String: Any]()) { partialResult, entry in
+            partialResult[entry.key] = entry.value
+        }
+        return step.reasonLabelKey.localized(with: args)
+    }
+
+    func localizedUpgradePlanFailureCause(for group: UpgradePlanFailureGroup) -> String {
+        L10n.App.Inspector.taskFailureHintGeneric.localized(with: [
+            "manager": localizedManagerDisplayName(group.managerId)
+        ])
+    }
+
+    static func authorityRank(for authority: String) -> Int {
+        UpgradePreviewPlanner.authorityRank(for: authority)
+    }
+
+    static func sortedUpgradePlanStepsForExecution(_ steps: [CoreUpgradePlanStep]) -> [CoreUpgradePlanStep] {
+        let plannerSteps = steps.map {
+            UpgradePreviewPlanner.PlanStep(
+                id: $0.id,
+                orderIndex: $0.orderIndex,
+                managerId: $0.managerId,
+                authority: $0.authority,
+                packageName: $0.packageName,
+                reasonLabelKey: $0.reasonLabelKey
+            )
+        }
+        var stepById: [String: CoreUpgradePlanStep] = [:]
+        for step in steps where stepById[step.id] == nil {
+            stepById[step.id] = step
+        }
+        return UpgradePreviewPlanner.sortedForExecution(plannerSteps).compactMap { stepById[$0.id] }
+    }
+
+    static func scopedUpgradePlanSteps(
+        from steps: [CoreUpgradePlanStep],
+        managerScopeId: String,
+        packageFilter: String
+    ) -> [CoreUpgradePlanStep] {
+        let plannerSteps = steps.map {
+            UpgradePreviewPlanner.PlanStep(
+                id: $0.id,
+                orderIndex: $0.orderIndex,
+                managerId: $0.managerId,
+                authority: $0.authority,
+                packageName: $0.packageName,
+                reasonLabelKey: $0.reasonLabelKey
+            )
+        }
+        var stepById: [String: CoreUpgradePlanStep] = [:]
+        for step in steps where stepById[step.id] == nil {
+            stepById[step.id] = step
+        }
+        return UpgradePreviewPlanner.scopedForExecution(
+            from: plannerSteps,
+            managerScopeId: managerScopeId,
+            packageFilter: packageFilter
+        ).compactMap { stepById[$0.id] }
+    }
 
     func localizedTaskLabel(from task: CoreTaskRecord) -> String? {
         if let labelKey = task.labelKey {

@@ -103,6 +103,14 @@ bool helm_set_package_keg_policy(const char *manager_id,
                                  int32_t policy_mode);
 
 /**
+ * Build an ordered upgrade execution plan from cached outdated snapshot as JSON.
+ *
+ * - `include_pinned`: if false, pinned packages are excluded.
+ * - `allow_os_updates`: explicit confirmation gate for `softwareupdate` steps.
+ */
+char *helm_preview_upgrade_plan(bool include_pinned, bool allow_os_updates);
+
+/**
  * Queue upgrade tasks for supported managers using cached outdated snapshot.
  *
  * - `include_pinned`: if false, pinned packages are excluded.
@@ -127,6 +135,7 @@ bool helm_upgrade_all(bool include_pinned, bool allow_os_updates);
  * - "rubygems"
  * - "bundler"
  * - "rustup"
+ * - "softwareupdate" (requires package_name "__confirm_os_updates__")
  *
  * # Safety
  *

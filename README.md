@@ -9,7 +9,7 @@
   <br>
   A native macOS menu bar app for unified package manager control.
   <br>
-  <strong>Pre-1.0 &middot; v0.14.0</strong>
+  <strong>Pre-1.0 &middot; v0.14.1</strong>
 </p>
 
 <p align="center">
@@ -23,9 +23,9 @@
 
 Helm manages software across multiple package managers (Homebrew, npm, pip, Cargo, etc.) and runtime tools (mise, rustup) from a single menu bar interface. It is designed as infrastructure software: deterministic, safety-first, and explicit about authority, orchestration, and error handling.
 
-> **Status:** Active pre-1.0 development at `v0.14.0`. Twenty-eight managers are implemented with authority-ordered refresh, progressive search, pin/safe-mode policy controls, optional/detection-only manager handling, and localization coverage for `en`, `es`, `de`, `fr`, `pt-BR`, and `ja`.
+> **Status:** Active pre-1.0 development at `v0.14.1`. Twenty-eight managers are implemented with authority-ordered refresh, progressive search, pin/safe-mode policy controls, optional/detection-only manager handling, and localization coverage for `en`, `es`, `de`, `fr`, `pt-BR`, and `ja`.
 >
-> **Testing:** Please test `v0.14.0` and report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Testing:** Please test `v0.14.1` and report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
 ## Editions (Beta)
 
@@ -124,7 +124,7 @@ Or open `apps/macos-ui/Helm.xcodeproj` in Xcode and run the **Helm** scheme. The
 | 0.11.x | Extended Language Package Managers — pnpm, yarn, poetry, RubyGems, bundler | Completed |
 | 0.12.x | Localization + Upgrade Transparency — locale hardening, visual validation expansion, upgrade preview, dry-run | Completed (`v0.12.0`) |
 | 0.13.x | UI/UX Analysis & Redesign — full UX audit, interaction model, information architecture refresh | Completed (`v0.13.0`) |
-| 0.14.x | Platform, Detection & Optional Managers — Docker, Xcode, Rosetta, Sparkle | Completed (`v0.14.0` stable) |
+| 0.14.x | Platform, Detection & Optional Managers — Docker, Xcode, Rosetta, Sparkle | Completed (`v0.14.x` stable, latest patch `v0.14.1`) |
 | 0.15.x | Upgrade Preview & Execution Transparency — bulk preview, dry-run, failure isolation | Planned |
 | 0.16.x | Self-Update & Installer Hardening — Sparkle integration, signed verification | Planned |
 | 0.17.x | Diagnostics & Logging — log viewer, structured error export, health panel | Planned |

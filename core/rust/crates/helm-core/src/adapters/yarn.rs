@@ -389,9 +389,7 @@ fn ensure_yarn_no_longer_outdated<S: YarnSource>(
             task: Some(TaskType::Upgrade),
             action: Some(ManagerAction::Upgrade),
             kind: CoreErrorKind::ProcessFailure,
-            message: format!(
-                "yarn upgrade reported success but '{package_name}' remains outdated"
-            ),
+            message: format!("yarn upgrade reported success but '{package_name}' remains outdated"),
         });
     }
     Ok(())

@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [Unreleased]
+
+### Added
+- Upgrade-plan preview model surfaced end-to-end (FFI → XPC → SwiftUI) with stable step IDs, order indices, manager/action/authority context, and localized reason metadata.
+- Updates inspector plan-step details with projected runtime status and linked runtime task IDs.
+- Scoped Updates controls for manager/package filtering and failed-step retry targeting.
+
+### Changed
+- Runtime upgrade task labels now include `plan_step_id` metadata so task rows can be projected onto execution-plan rows.
+- Partial-failure summaries now group failed plan steps by manager and affected package set.
+- Scoped plan execution now runs phase-by-phase by authority rank (authoritative → standard → guarded) instead of submitting all manager steps concurrently.
+- Cancel Remaining now aborts active scoped-run sequencing before cancelling matching in-flight tasks.
+- Scoped run sequencing now ignores stale callbacks from superseded run tokens and bounds phase waiting with timeout-based token invalidation.
+- Cancel Remaining now also cancels scoped upgrade tasks that are still projected in-flight even when they have not yet appeared in task snapshots.
+- Generated `apps/macos-ui/Generated/HelmVersion.xcconfig` is now ignored and no longer tracked.
+
 ## [0.14.1] - 2026-02-20
 
 ### Fixed

@@ -234,6 +234,7 @@ struct RedesignPopoverView: View {
                         context.selectedManagerId = manager.id
                         context.selectedPackageId = nil
                         context.selectedTaskId = nil
+                        context.selectedUpgradePlanStepId = nil
                         context.selectedSection = .managers
                         onOpenControlCenter()
                     } label: {

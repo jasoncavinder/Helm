@@ -29,6 +29,7 @@ struct TasksSectionView: View {
                         .onTapGesture {
                             context.selectedTaskId = task.id
                             context.selectedPackageId = nil
+                            context.selectedUpgradePlanStepId = nil
                             if let managerId = task.managerId {
                                 context.selectedManagerId = managerId
                             }

@@ -14,6 +14,25 @@ struct ControlCenterInspectorView: View {
         return core.allKnownPackages.first { $0.id == packageId }
     }
 
+    private var selectedUpgradePlanTask: TaskItem? {
+        guard let stepId = context.selectedUpgradePlanStepId,
+              let step = core.upgradePlanSteps.first(where: { $0.id == stepId }) else { return nil }
+        let projectedStatus = core.projectedUpgradePlanStatus(for: step)
+        let projectedTaskId = core.projectedUpgradePlanTaskId(for: step)
+        let taskId = projectedTaskId.map(String.init) ?? step.id
+        var labelArgs = step.reasonLabelArgs
+        labelArgs["plan_step_id"] = step.id
+        return TaskItem(
+            id: taskId,
+            description: core.localizedUpgradePlanReason(for: step),
+            status: projectedStatus,
+            managerId: step.managerId,
+            taskType: step.action,
+            labelKey: step.reasonLabelKey,
+            labelArgs: labelArgs
+        )
+    }
+
     private var selectedManager: ManagerInfo? {
         guard let managerId = context.selectedManagerId else { return nil }
         return ManagerInfo.all.first { $0.id == managerId }
@@ -25,7 +44,7 @@ struct ControlCenterInspectorView: View {
                 Text(L10n.App.Inspector.title.localized)
                     .font(.headline)
 
-                if let task = selectedTask {
+                if let task = selectedTask ?? selectedUpgradePlanTask {
                     InspectorTaskDetailView(task: task)
                 } else if let package = selectedPackage {
                     InspectorPackageDetailView(package: package)
@@ -38,6 +57,7 @@ struct ControlCenterInspectorView: View {
                         outdatedCount: core.outdatedCount(forManagerId: manager.id),
                         onViewPackages: {
                             context.managerFilterId = manager.id
+                            context.selectedUpgradePlanStepId = nil
                             context.selectedSection = .packages
                         }
                     )
@@ -295,6 +315,7 @@ private struct InspectorPackageDetailView: View {
                     context.selectedManagerId = package.managerId
                     context.selectedPackageId = nil
                     context.selectedTaskId = nil
+                    context.selectedUpgradePlanStepId = nil
                     context.selectedSection = .managers
                 }
                 .buttonStyle(HelmSecondaryButtonStyle())
