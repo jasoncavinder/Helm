@@ -18,7 +18,7 @@ Focus:
 - 0.16.x self-update and installer hardening
 
 Current checkpoint:
-- `v0.16.0-alpha.2` installer hardening in progress on `feat/v0.16.0-kickoff` (channel-aware updater scaffolding + package-manager-aware Sparkle gating + DMG invariant verification + appcast generation scaffolding)
+- `v0.16.0-rc.1` pre-release rehearsal in progress on `feat/v0.16.0-kickoff` (channel-aware updater scaffolding + package-manager-aware Sparkle gating + DMG invariant verification + appcast generation/publish + policy validation)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
 - `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)
@@ -103,12 +103,10 @@ Delivered:
 - Added website feed scaffold at `web/public/updates/appcast.xml` for direct-channel Sparkle hosting.
 - Appcast generation now uses Sparkle's packaged `sign_update` binary from SPM artifacts instead of invoking `swift run` against Sparkle sources.
 - Release workflow now publishes generated `appcast.xml` into `web/public/updates/appcast.xml` on `main` (with automatic PR fallback when direct push is blocked by branch protections).
+- Release workflow now enforces Sparkle appcast policy checks (`apps/macos-ui/scripts/verify_sparkle_appcast_policy.sh`) to keep `0.16.x` on full-installer-only updates (no deltas).
+- Added interruption/recovery validation runbook for release operators:
+  - `docs/validation/v0.16.0-rc.1-installer-recovery.md`
 - Build metadata generation now derives monotonic numeric bundle build numbers from semantic versions to keep Sparkle update ordering stable.
-
-Next in alpha.2:
-
-- Add installer/update interruption and recovery validation scenarios to release docs/checklists.
-- Define delta-update policy checks and artifact validation approach for direct-channel releases.
 
 ---
 

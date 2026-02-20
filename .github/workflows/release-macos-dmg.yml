@@ -368,6 +368,11 @@ jobs:
             --release-notes-url "$RELEASE_NOTES_URL" \
             --sparkle-bin-dir "$SPARKLE_BIN_DIR"
 
+      - name: Enforce Sparkle appcast policy (full installer only)
+        run: |
+          set -euo pipefail
+          apps/macos-ui/scripts/verify_sparkle_appcast_policy.sh "$PWD/build/release-assets/appcast.xml"
+
       - name: Upload build artifacts to workflow run
         uses: actions/upload-artifact@v4
         with:

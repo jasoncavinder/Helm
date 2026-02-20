@@ -66,6 +66,22 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Release-prep metadata now targets `0.15.0` across workspace versioning and status documentation (README/website/release checklist).
 - Generated `apps/macos-ui/Generated/HelmVersion.xcconfig` is now ignored and no longer tracked.
 
+## [0.16.0-rc.1] - 2026-02-20
+
+### Added
+- Sparkle appcast policy validator script (`apps/macos-ui/scripts/verify_sparkle_appcast_policy.sh`) that enforces direct-channel RC policy:
+  - no delta update payloads
+  - exactly one full-installer `<enclosure>` payload
+  - required Sparkle signature/version metadata
+  - HTTPS download URL targeting DMG payloads
+- Release workflow now runs appcast policy validation immediately after appcast generation.
+- Installer/update interruption and recovery validation runbook added:
+  - `docs/validation/v0.16.0-rc.1-installer-recovery.md`
+
+### Changed
+- Workspace package versioning bumped to `0.16.0-rc.1` (`core/rust/Cargo.toml`, `core/rust/Cargo.lock` for local crates).
+- Sparkle release automation now publishes appcast feed updates to `web/public/updates/appcast.xml` with a PR fallback path when direct pushes to `main` are blocked.
+
 ## [0.14.1] - 2026-02-20
 
 ### Fixed

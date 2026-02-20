@@ -13,6 +13,13 @@ This checklist is required before creating a release tag on `main`.
 - [ ] Runtime self-update is blocked for package-manager-managed installs (Homebrew Cask receipt detection + Homebrew/MacPorts path heuristics) and enabled for eligible direct-channel DMG installs.
 - [ ] Generated `CURRENT_PROJECT_VERSION` is monotonic for Sparkle version ordering (semver-derived numeric build number).
 - [ ] Sparkle package reference remains pinned to `2.8.1` in `apps/macos-ui/Helm.xcodeproj/project.pbxproj` for macOS 11+/12 compatibility.
+- [ ] Appcast policy validation passes in release workflow (`apps/macos-ui/scripts/verify_sparkle_appcast_policy.sh`), ensuring full-installer-only feed output (no deltas).
+- [ ] Delta update policy (`full installer only` for `0.16.x`) is documented in `docs/DECISIONS.md` and reflected in release automation.
+
+### Installer/Updater Recovery Validation
+- [ ] Execute interruption/recovery validation runbook: `docs/validation/v0.16.0-rc.1-installer-recovery.md`.
+- [ ] Confirm workflow rerun behavior for same tag remains idempotent (artifact clobber + deterministic appcast publish target).
+- [ ] Confirm protected-branch recovery path by validating fallback appcast PR flow if direct `main` push is rejected.
 
 ### Sparkle Key Bootstrap (One-Time)
 1. Locate Sparkle key tooling from Xcode DerivedData artifacts:
