@@ -1,51 +1,138 @@
 ---
 title: Helm
-description: Take the helm. Unified package management for macOS.
+description: Take the helm. Operational clarity for macOS toolchains.
 template: splash
 hero:
-  tagline: "<strong>Take the helm.</strong> One control plane for all your package managers on macOS."
+  title: "Take the helm."
+  tagline: "Helm centralizes your toolchain and restores operational clarity across package managers."
   image:
-    file: ../../assets/helm-icon.png
+    file: ../../assets/tour/control-center-overview.png
+    alt: "Helm Control Center showing manager and package status."
   actions:
-    - text: Download DMG
+    - text: Download Helm
       link: https://github.com/jasoncavinder/Helm/releases/latest/download/Helm.dmg
       icon: download
       variant: primary
-    - text: Get Started
-      link: /product-overview/
-      icon: right-arrow
-      variant: secondary
     - text: View on GitHub
       link: https://github.com/jasoncavinder/Helm
       icon: external
-    - text: Roadmap
-      link: /product-roadmap/
-      icon: document
+      variant: secondary
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import { LinkButton } from '@astrojs/starlight/components';
+import menuBarPopover from '../../assets/tour/menu-bar-popover-dark.png';
 
-## Why Helm?
+<div class="landing-shell">
+  <section id="problem" class="landing-section">
+    <div class="section-head">
+      <p class="landing-kicker"><span class="section-index">01</span> Problem</p>
+      <h2>Modern development environments are fragmented.</h2>
+    </div>
+    <div class="landing-problem-grid">
+      <div class="landing-problem-copy">
+        <p>Homebrew. npm. pip. cargo. RubyGems.</p>
+        <p>Each manages its own universe.</p>
+        <p>Your system state becomes opaque.</p>
+        <p>Updates break silently.</p>
+        <p>You lose visibility.</p>
+      </div>
+      <div class="fragmentation-map">
+        <p class="fragmentation-map-title">Typical fragmented manager surface</p>
+        <div class="manager-chip-grid">
+          <div class="manager-chip">Homebrew</div>
+          <div class="manager-chip">npm</div>
+          <div class="manager-chip">pip</div>
+          <div class="manager-chip">cargo</div>
+          <div class="manager-chip">RubyGems</div>
+          <div class="manager-chip">rustup</div>
+        </div>
+      </div>
+    </div>
+  </section>
 
-<CardGrid stagger>
-	<Card title="Unified Control Plane" icon="laptop">
-		Manage Homebrew, mise, rustup, softwareupdate, mas, and more from one native macOS menu bar app. No more switching between terminals.
-	</Card>
-	<Card title="Safety First" icon="approve-check-circle">
-		Structured process execution, authority-ordered refresh, and no shell injection risks. Your system stays predictable.
-	</Card>
-	<Card title="Smart Orchestration" icon="rocket">
-		Toolchain managers refresh before package managers. Parallel execution across managers, serial within each. Failures are isolated.
-	</Card>
-	<Card title="Native & Fast" icon="apple">
-		Built with Rust and SwiftUI. Instant search, low memory usage, and real-time task tracking from your menu bar.
-	</Card>
-</CardGrid>
+  <section id="solution" class="landing-section">
+    <div class="section-head">
+      <p class="landing-kicker"><span class="section-index">02</span> Solution</p>
+      <h2>Helm restores control.</h2>
+    </div>
+    <ul class="feature-list">
+      <li class="feature-item">
+        <h3>Unified visibility across managers</h3>
+        <p>One control plane for package and toolchain state.</p>
+      </li>
+      <li class="feature-item">
+        <h3>Centralized upgrade strategy</h3>
+        <p>Operator-friendly execution order with clear manager context.</p>
+      </li>
+      <li class="feature-item">
+        <h3>Deterministic system state</h3>
+        <p>Deterministic actions and traceable outcomes.</p>
+      </li>
+      <li class="feature-item">
+        <h3>Clear update history</h3>
+        <p>Auditable task records and explicit status.</p>
+      </li>
+      <li class="feature-item pro">
+        <h3>CVE awareness <span class="pro-inline-badge">Pro</span></h3>
+        <p>Security context for risk-aware upgrade decisions.</p>
+      </li>
+    </ul>
+    <p class="landing-close-line">Your system. Clearly understood.</p>
+  </section>
 
-## Current Status
+  <section id="command-bridge" class="landing-section">
+    <div class="section-head">
+      <p class="landing-kicker"><span class="section-index">03</span> Command Bridge</p>
+      <h2>Think of Helm as your command bridge.</h2>
+    </div>
+    <div class="landing-command-grid">
+      <div>
+        <p>One interface. All managers. Total visibility.</p>
+        <p>Helm gives operators a stable, centralized control surface for routine maintenance.</p>
+      </div>
+      <div class="bridge-diagram">
+        <div class="bridge-grid">
+          <div class="bridge-node"><strong>Inputs</strong><br />brew, npm, pip, cargo, rustup</div>
+          <div class="bridge-arrow">-&gt;</div>
+          <div class="bridge-core"><strong>Helm Core</strong><br />Orchestration + task visibility</div>
+          <div class="bridge-arrow">-&gt;</div>
+          <div class="bridge-node"><strong>Output</strong><br />Clear system state</div>
+        </div>
+        <img class="bridge-shot" src={menuBarPopover.src} alt="Helm menu bar popover with update status and tasks." loading="lazy" />
+      </div>
+    </div>
+  </section>
 
-Helm is in active pre-1.0 development at **v0.15.0**. Twenty-eight managers are implemented with authority-ordered refresh, progressive search, pin/safe-mode policy controls, optional/detection-only manager handling, broad localization coverage, and a redesigned menu bar/control-center shell with inspector sidebar. See the [roadmap](/product-roadmap/) for what's next.
+  <section id="helm-pro" class="landing-section">
+    <div class="section-head">
+      <p class="landing-kicker"><span class="section-index">04</span> Helm Pro</p>
+      <h2>Helm Pro adds advanced system intelligence.</h2>
+    </div>
+    <div class="pro-panel">
+      <ul class="pro-list">
+        <li>CVE detection</li>
+        <li>Priority upgrade recommendations</li>
+        <li>Audit-ready update history</li>
+        <li>Proactive risk insights</li>
+      </ul>
+      <p>Professional-grade control for serious builders.</p>
+    </div>
+  </section>
 
-> **Testing Program:** `v0.15.0` is available for pre-1.0 testing. Please file feedback and bug reports via [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
-
-Helm is currently source-available under a non-commercial license. See the [licensing page](/licensing/) for details.
+  <section class="landing-section footer-cta">
+    <div class="section-head">
+      <p class="landing-kicker"><span class="section-index">05</span> Get Helm</p>
+    </div>
+    <h2>Take the helm.</h2>
+    <p>Download Helm for macOS.</p>
+    <div class="footer-cta-actions">
+      <LinkButton href="https://github.com/jasoncavinder/Helm/releases/latest/download/Helm.dmg" icon="download" variant="primary">Download Helm</LinkButton>
+      <LinkButton href="https://github.com/jasoncavinder/Helm" icon="external" variant="secondary">View on GitHub</LinkButton>
+      <LinkButton href="/product-overview/" icon="right-arrow" variant="minimal">Product overview</LinkButton>
+      <LinkButton href="/product-roadmap/" icon="document" variant="minimal">Roadmap</LinkButton>
+    </div>
+    <p class="release-note">
+      Helm is currently source-available under a non-commercial license. See the <a href="/licensing/">licensing page</a> for details.
+    </p>
+  </section>
+</div>

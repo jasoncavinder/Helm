@@ -38,6 +38,30 @@ Next release targets:
 
 ---
 
+## Website Workstream (2026-02-20)
+
+Completed:
+
+- Added website redesign planning docs aligned to the Helm brand system:
+  - `docs/website/WEBSITE_REDESIGN_PLAN.md`
+  - `docs/website/DESIGN_TOKENS.md`
+- Implemented a custom Helm visual theme for the Astro/Starlight site:
+  - `web/src/styles/helm-theme.css`
+  - wired through `web/astro.config.mjs`
+- Rebuilt landing page structure and copy hierarchy in `web/src/content/docs/index.mdx` to match:
+  - Hero
+  - Problem
+  - Solution
+  - Command Bridge
+  - Helm Pro
+  - Footer CTA
+
+Immediate follow-up:
+
+- Perform manual visual QA in both light and dark theme across mobile/tablet/desktop breakpoints before release publishing.
+
+---
+
 ## v0.15.x Kickoff Plan (Completed)
 
 ### Alpha.1 — Plan Model + Inspector Foundations (Completed on `feat/v0.15.x-alpha.1-kickoff`)

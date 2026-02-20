@@ -102,6 +102,22 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 
 ---
 
+## Website Status
+
+- Astro + Starlight website now uses a Helm-brand custom theme layer via `web/src/styles/helm-theme.css`
+- Landing page (`web/src/content/docs/index.mdx`) has been redesigned to match brand/copy structure:
+  - Hero
+  - Problem
+  - Solution
+  - Command Bridge
+  - Helm Pro
+  - Footer CTA
+- Website redesign planning artifacts added:
+  - `docs/website/WEBSITE_REDESIGN_PLAN.md`
+  - `docs/website/DESIGN_TOKENS.md`
+
+---
+
 ## v0.14.1 Patch-Track Status (Released)
 
 Released in `v0.14.1` (UI/UX slice):
