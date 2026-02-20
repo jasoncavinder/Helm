@@ -28,10 +28,7 @@ xcuserdata/
 *.dSYM
 
 # Generated Swift/ObjC source files produced by the Rust FFI build step.
-# Exception: HelmVersion.xcconfig is committed so Xcode can read the app
-# version without requiring the Rust build script to have run first.
 apps/macos-ui/Generated/*
-!apps/macos-ui/Generated/HelmVersion.xcconfig
 
 # ─── macOS ────────────────────────────────────────────────────────────────────
 # Finder metadata. No leading slash so this matches at every directory depth.
