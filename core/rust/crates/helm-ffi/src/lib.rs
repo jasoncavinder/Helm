@@ -329,6 +329,42 @@ fn set_task_label(task_id: helm_core::models::TaskId, key: &str, args: &[(&str, 
     );
 }
 
+const TASK_PRUNE_MAX_AGE_SECS: i64 = 300;
+const TASK_RECENT_FETCH_LIMIT: usize = 1000;
+const TASK_TERMINAL_HISTORY_LIMIT: usize = 50;
+
+fn is_inflight_status(status: helm_core::models::TaskStatus) -> bool {
+    matches!(
+        status,
+        helm_core::models::TaskStatus::Queued | helm_core::models::TaskStatus::Running
+    )
+}
+
+fn build_visible_tasks(
+    tasks: Vec<helm_core::models::TaskRecord>,
+) -> Vec<helm_core::models::TaskRecord> {
+    let mut visible = Vec::with_capacity(tasks.len());
+    let mut seen_inflight = std::collections::HashSet::new();
+    let mut terminal_count = 0usize;
+
+    for task in tasks {
+        if is_inflight_status(task.status) {
+            let key = (task.manager, task.task_type);
+            if seen_inflight.insert(key) {
+                visible.push(task);
+            }
+            continue;
+        }
+
+        if terminal_count < TASK_TERMINAL_HISTORY_LIMIT {
+            visible.push(task);
+            terminal_count = terminal_count.saturating_add(1);
+        }
+    }
+
+    visible
+}
+
 fn encode_homebrew_upgrade_target(package_name: &str, cleanup_old_kegs: bool) -> String {
     if cleanup_old_kegs {
         format!("{package_name}@@helm.cleanup")
@@ -806,17 +842,19 @@ pub extern "C" fn helm_list_tasks() -> *mut c_char {
         None => return std::ptr::null_mut(),
     };
 
-    // Auto-prune completed/failed/cancelled tasks older than 5 minutes
-    let _ = state.store.prune_completed_tasks(300);
+    // Auto-prune completed/failed tasks older than 5 minutes.
+    let _ = state.store.prune_completed_tasks(TASK_PRUNE_MAX_AGE_SECS);
 
-    // List recent 50 tasks
-    let tasks = match state.store.list_recent_tasks(50) {
+    // Fetch a wider snapshot so long-running queued/running tasks do not disappear
+    // behind a tight recent-task limit.
+    let tasks = match state.store.list_recent_tasks(TASK_RECENT_FETCH_LIMIT) {
         Ok(tasks) => tasks,
         Err(e) => {
             eprintln!("Failed to list tasks: {}", e);
             return std::ptr::null_mut();
         }
     };
+    let tasks = build_visible_tasks(tasks);
 
     #[derive(serde::Serialize)]
     struct FfiTaskRecord {
@@ -2570,12 +2608,15 @@ pub unsafe extern "C" fn helm_free_string(s: *mut c_char) {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_manager_statuses, collect_upgrade_all_targets, homebrew_probe_candidates,
-        parse_homebrew_config_version,
+        build_manager_statuses, build_visible_tasks, collect_upgrade_all_targets,
+        homebrew_probe_candidates, parse_homebrew_config_version,
     };
-    use helm_core::models::{ManagerId, OutdatedPackage, PackageRef};
+    use helm_core::models::{
+        ManagerId, OutdatedPackage, PackageRef, TaskId, TaskRecord, TaskStatus, TaskType,
+    };
     use std::collections::HashMap;
     use std::path::Path;
+    use std::time::{Duration, UNIX_EPOCH};
 
     #[test]
     fn parses_homebrew_version_from_config_output() {
@@ -2709,6 +2750,79 @@ mod tests {
         }
     }
 
+    #[test]
+    fn build_visible_tasks_deduplicates_inflight_tasks_by_manager_and_type() {
+        let tasks = vec![
+            task(
+                9,
+                ManagerId::HomebrewFormula,
+                TaskType::Refresh,
+                TaskStatus::Queued,
+            ),
+            task(
+                8,
+                ManagerId::HomebrewFormula,
+                TaskType::Refresh,
+                TaskStatus::Running,
+            ),
+            task(
+                7,
+                ManagerId::HomebrewFormula,
+                TaskType::Upgrade,
+                TaskStatus::Running,
+            ),
+            task(
+                6,
+                ManagerId::HomebrewFormula,
+                TaskType::Refresh,
+                TaskStatus::Completed,
+            ),
+        ];
+
+        let visible = build_visible_tasks(tasks);
+        let inflight: Vec<(ManagerId, TaskType, TaskStatus)> = visible
+            .iter()
+            .filter(|task| matches!(task.status, TaskStatus::Queued | TaskStatus::Running))
+            .map(|task| (task.manager, task.task_type, task.status))
+            .collect();
+
+        assert_eq!(inflight.len(), 2);
+        assert_eq!(
+            inflight[0],
+            (
+                ManagerId::HomebrewFormula,
+                TaskType::Refresh,
+                TaskStatus::Queued
+            )
+        );
+        assert_eq!(
+            inflight[1],
+            (
+                ManagerId::HomebrewFormula,
+                TaskType::Upgrade,
+                TaskStatus::Running
+            )
+        );
+    }
+
+    #[test]
+    fn build_visible_tasks_keeps_terminal_history_bounded() {
+        let mut tasks = Vec::new();
+        for id in (1..=60).rev() {
+            tasks.push(task(
+                id,
+                ManagerId::HomebrewFormula,
+                TaskType::Refresh,
+                TaskStatus::Completed,
+            ));
+        }
+
+        let visible = build_visible_tasks(tasks);
+        assert_eq!(visible.len(), 50);
+        assert_eq!(visible[0].id, TaskId(60));
+        assert_eq!(visible.last().map(|task| task.id), Some(TaskId(11)));
+    }
+
     fn status_for(
         statuses: &[super::FfiManagerStatus],
         manager_id: ManagerId,
@@ -2729,6 +2843,16 @@ mod tests {
             candidate_version: "1.1.0".to_string(),
             pinned,
             restart_required: false,
+        }
+    }
+
+    fn task(id: u64, manager: ManagerId, task_type: TaskType, status: TaskStatus) -> TaskRecord {
+        TaskRecord {
+            id: TaskId(id),
+            manager,
+            task_type,
+            status,
+            created_at: UNIX_EPOCH + Duration::from_secs(id),
         }
     }
 }

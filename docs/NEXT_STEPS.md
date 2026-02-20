@@ -19,6 +19,7 @@ Focus:
 
 Current checkpoint:
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
+- `v0.14.1` patch-track started (pre-merge fix slices being implemented off `dev` for review)
 - `v0.13.0` stable released (website updates, documentation alignment, version bump)
 - `v0.13.0-rc.2` released (support & feedback entry points, diagnostics copy, GitHub Sponsors integration)
 - `v0.13.0-rc.1` released (inspector sidebar, upgrade reliability, status menu, documentation)
@@ -32,7 +33,27 @@ Current checkpoint:
 - `v0.14.0` distribution/licensing architecture planning docs aligned (future-state, no implementation changes)
 
 Next release targets:
+- `v0.14.1` — Stability + UX + adapter behavior fixes (patch release after review)
 - `v0.15.x` — Upgrade Preview & Execution Transparency
+
+---
+
+## v0.14.1 Patch Track (In Progress)
+
+### Task Lifecycle Slice (Completed on branch)
+
+Delivered:
+
+- Task list in-flight deduplication by `(manager, task_type)` to prevent duplicate pending/running entries
+- Task list visibility policy updated to preserve long-running/pending tasks during heavy queue churn
+- Task pruning timeout policy narrowed to `Completed` and `Failed` only (no timeout pruning of `Cancelled`)
+- Added test coverage for task visibility/dedup behavior and prune-policy semantics
+
+Remaining slices before merge to `dev`:
+
+- UI/UX fixes (onboarding row density, package selection highlight, search field cleanup, inspector package actions)
+- Adapter behavior fixes (RubyGems update action path; `mas` install dependency handling/failure messaging)
+- Cache/persistence enhancements (available package cache strategy + package description persistence and refresh behavior)
 
 ---
 

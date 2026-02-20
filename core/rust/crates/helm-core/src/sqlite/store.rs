@@ -672,7 +672,7 @@ LIMIT ?1
             let deleted = connection.execute(
                 "
 DELETE FROM task_records
-WHERE status IN ('completed', 'failed', 'cancelled')
+WHERE status IN ('completed', 'failed')
   AND created_at_unix < ?1
 ",
                 params![cutoff],

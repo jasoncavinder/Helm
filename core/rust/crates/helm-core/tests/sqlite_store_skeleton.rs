@@ -595,3 +595,55 @@ fn create_update_and_list_recent_tasks_roundtrip() {
 
     let _ = std::fs::remove_file(path);
 }
+
+#[test]
+fn prune_completed_tasks_keeps_cancelled_and_inflight_records() {
+    let path = test_db_path("tasks-prune-statuses");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let base_time = UNIX_EPOCH + Duration::from_secs(1);
+    let seed = [
+        TaskRecord {
+            id: TaskId(1),
+            manager: ManagerId::HomebrewFormula,
+            task_type: TaskType::Refresh,
+            status: TaskStatus::Completed,
+            created_at: base_time,
+        },
+        TaskRecord {
+            id: TaskId(2),
+            manager: ManagerId::HomebrewFormula,
+            task_type: TaskType::Refresh,
+            status: TaskStatus::Failed,
+            created_at: base_time,
+        },
+        TaskRecord {
+            id: TaskId(3),
+            manager: ManagerId::HomebrewFormula,
+            task_type: TaskType::Refresh,
+            status: TaskStatus::Cancelled,
+            created_at: base_time,
+        },
+        TaskRecord {
+            id: TaskId(4),
+            manager: ManagerId::HomebrewFormula,
+            task_type: TaskType::Refresh,
+            status: TaskStatus::Running,
+            created_at: base_time,
+        },
+    ];
+
+    for task in seed {
+        store.create_task(&task).unwrap();
+    }
+
+    let deleted = store.prune_completed_tasks(300).unwrap();
+    assert_eq!(deleted, 2);
+
+    let remaining = store.list_recent_tasks(10).unwrap();
+    let remaining_ids: Vec<u64> = remaining.iter().map(|task| task.id.0).collect();
+    assert_eq!(remaining_ids, vec![4, 3]);
+
+    let _ = std::fs::remove_file(path);
+}

@@ -101,6 +101,25 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 
 ---
 
+## v0.14.1 Pre-Release Patch Status (In Progress)
+
+### Task Lifecycle Slice (Implemented on feature branch)
+
+- `helm_list_tasks` now:
+  - fetches a wider recent-task window to avoid hiding older queued/running tasks during high task churn
+  - deduplicates in-flight task rows by `(manager, task_type)` so duplicate pending/running entries are not shown
+  - keeps bounded terminal history while prioritizing in-flight visibility
+- SQLite task pruning now deletes only `completed` and `failed` tasks by age timeout; `cancelled` tasks are retained
+- Added regression coverage:
+  - FFI unit tests for in-flight deduplication and bounded terminal history behavior
+  - SQLite store test validating prune policy keeps cancelled/running rows
+
+Validation:
+
+- `cargo test -p helm-core -p helm-ffi` passing
+
+---
+
 ## v0.13.0-beta.3 Audit Status
 
 Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 remediation work.
