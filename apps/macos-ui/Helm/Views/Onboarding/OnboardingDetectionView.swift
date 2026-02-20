@@ -87,6 +87,14 @@ private struct FoundManagerRow: View {
     let manager: ManagerInfo
     let status: ManagerStatus?
 
+    private var versionLabel: String {
+        guard let version = status?.version?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !version.isEmpty else {
+            return L10n.Common.detected.localized
+        }
+        return L10n.Common.version.localized(with: ["version": version])
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "checkmark.circle.fill")
@@ -94,20 +102,18 @@ private struct FoundManagerRow: View {
                 .frame(width: 20, height: 20)
                 .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
                 Text(manager.displayName)
                     .font(.subheadline)
                     .fontWeight(.medium)
-
-                if let version = status?.version, !version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text(L10n.Common.version.localized(with: ["version": version]))
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                } else {
-                    Text(L10n.Common.detected.localized)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
+                    .lineLimit(1)
+                Text("·")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                Text(versionLabel)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
             }
 
             Spacer()

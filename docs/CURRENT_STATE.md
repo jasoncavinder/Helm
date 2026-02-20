@@ -101,6 +101,29 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 
 ---
 
+## v0.14.1 Pre-Release Patch Status (In Progress)
+
+### UI/UX Slice (Implemented on feature branch)
+
+- Onboarding "Finding Your Tools" and "Pick Your Managers" rows now render manager name + version metadata on one line to reduce row height
+- Package list now visually highlights the inspector-selected package row
+- Control Center package search now uses a single top-right search field only; redundant package-section search chip removed
+- Top-right search field now includes an inline clear (`x`) control when query text is present
+- Inspector package panel now shows description text (when available) and context actions:
+  - Update (when individual upgrade is supported)
+  - Pin/Unpin (for non-available packages)
+  - View Manager (navigates to manager context)
+- Homebrew manager display names now consistently use:
+  - `Homebrew (formulae)`
+  - `Homebrew (casks)`
+  across canonical and mirrored locale resources
+
+Validation:
+
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm test -destination 'platform=macOS'` passing for this slice
+
+---
+
 ## v0.13.0-beta.3 Audit Status
 
 Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 remediation work.

@@ -19,6 +19,7 @@ Focus:
 
 Current checkpoint:
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
+- `v0.14.1` patch-track started (pre-merge fix slices being implemented off `dev` for review)
 - `v0.13.0` stable released (website updates, documentation alignment, version bump)
 - `v0.13.0-rc.2` released (support & feedback entry points, diagnostics copy, GitHub Sponsors integration)
 - `v0.13.0-rc.1` released (inspector sidebar, upgrade reliability, status menu, documentation)
@@ -32,7 +33,29 @@ Current checkpoint:
 - `v0.14.0` distribution/licensing architecture planning docs aligned (future-state, no implementation changes)
 
 Next release targets:
+- `v0.14.1` — Stability + UX + adapter behavior fixes (patch release after review)
 - `v0.15.x` — Upgrade Preview & Execution Transparency
+
+---
+
+## v0.14.1 Patch Track (In Progress)
+
+### UI/UX Slice (Completed on branch)
+
+Delivered:
+
+- Onboarding manager rows compressed to single-line name/version metadata
+- Homebrew naming clarified to "Homebrew (formulae)" and "Homebrew (casks)"
+- Package list row highlight for inspector-selected package
+- Removed redundant package-section search chip; retained top-right global search field
+- Added inline clear control to top-right search field
+- Inspector package panel now includes description (when present) and context actions (Update, Pin/Unpin, View Manager)
+
+Remaining slices before merge to `dev`:
+
+- Task lifecycle fixes (duplicate in-flight task rows; prune policy for long-running/pending tasks)
+- Adapter behavior fixes (RubyGems update action path; `mas` install dependency handling/failure messaging)
+- Cache/persistence enhancements (available package cache strategy + package description persistence and refresh behavior)
 
 ---
 

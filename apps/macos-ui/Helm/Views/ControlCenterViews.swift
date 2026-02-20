@@ -117,6 +117,19 @@ private struct ControlCenterTopBar: View {
                 .font(.subheadline)
                 .focused($isSearchFocused)
 
+                if !context.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Button {
+                        context.searchQuery = ""
+                        core.searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .helmPointer()
+                    .accessibilityLabel(L10n.Common.clear.localized)
+                }
+
                 if core.isSearching {
                     ProgressView()
                         .controlSize(.small)

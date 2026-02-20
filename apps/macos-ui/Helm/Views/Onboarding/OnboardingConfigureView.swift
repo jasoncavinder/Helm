@@ -48,15 +48,20 @@ struct OnboardingConfigureView: View {
                                     .fill(enabled ? Color.green : Color.gray)
                                     .frame(width: 8, height: 8)
 
-                                VStack(alignment: .leading, spacing: 1) {
+                                HStack(spacing: 6) {
                                     Text(manager.displayName)
                                         .font(.subheadline)
                                         .fontWeight(.medium)
+                                        .lineLimit(1)
 
                                     if let version = status?.version, !version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                        Text("·")
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
                                         Text(L10n.Common.version.localized(with: ["version": version]))
                                             .font(.caption2)
                                             .foregroundColor(.secondary)
+                                            .lineLimit(1)
                                     }
                                 }
 
