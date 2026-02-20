@@ -13,10 +13,17 @@ struct FilterButton: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
                 .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(isSelected ? Color.accentColor.opacity(0.2) : Color.gray.opacity(0.1))
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(isSelected ? HelmTheme.selectionFill : HelmTheme.surfaceElevated)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .strokeBorder(
+                                    isSelected ? HelmTheme.selectionStroke : HelmTheme.borderSubtle.opacity(0.85),
+                                    lineWidth: 0.8
+                                )
+                        )
                 )
-                .foregroundColor(isSelected ? .accentColor : .secondary)
+                .foregroundColor(isSelected ? HelmTheme.actionPrimaryDefault : HelmTheme.textSecondary)
         }
         .buttonStyle(.plain)
         .helmPointer()

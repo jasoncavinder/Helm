@@ -112,6 +112,30 @@ Next in alpha.2:
 
 ---
 
+## Website Workstream (2026-02-20)
+
+Completed:
+
+- Added website redesign planning docs aligned to the Helm brand system:
+  - `docs/website/WEBSITE_REDESIGN_PLAN.md`
+  - `docs/website/DESIGN_TOKENS.md`
+- Implemented a custom Helm visual theme for the Astro/Starlight site:
+  - `web/src/styles/helm-theme.css`
+  - wired through `web/astro.config.mjs`
+- Rebuilt landing page structure and copy hierarchy in `web/src/content/docs/index.mdx` to match:
+  - Hero
+  - Problem
+  - Solution
+  - Command Bridge
+  - Helm Pro
+  - Footer CTA
+
+Immediate follow-up:
+
+- Perform manual visual QA in both light and dark theme across mobile/tablet/desktop breakpoints before release publishing.
+
+---
+
 ## v0.15.x Kickoff Plan (Completed)
 
 ### Alpha.1 — Plan Model + Inspector Foundations (Completed on `feat/v0.15.x-alpha.1-kickoff`)
@@ -183,6 +207,12 @@ Progress so far:
   - per-task runtime context now flows into process requests
   - process output capture is keyed by task ID and exposed via FFI/XPC (`helm_get_task_output` / `getTaskOutput`)
   - inspector fetches task output on demand for diagnostics without adding payload bloat to task polling
+- completed brand-system visual refinement pass for app-design slice:
+  - tokenized SwiftUI color hierarchy (Helm Blue primary, Rope Gold premium accent) and surface/elevation/radius defaults
+  - standardized button and card styling across Control Center, popover overlays, packages/managers rows, and settings
+  - refined dark-mode deck contrast and selection/focus hierarchy without layout re-architecture
+  - added Pro button style hook and premium CTA treatment for support/upgrade-path surfaces
+  - validation passed: `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
 
 Deliver:
 - open PR with final `v0.15.0` prep deltas into `dev` for verified commit lineage

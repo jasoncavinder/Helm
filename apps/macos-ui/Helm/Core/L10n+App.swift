@@ -240,8 +240,12 @@ extension L10n {
                 static let includeDiagnostics = "app.settings.support_feedback.include_diagnostics"
                 static let copiedConfirmation = "app.settings.support_feedback.copied_confirmation"
                 static let diagnosticsCopiedHint = "app.settings.support_feedback.diagnostics_copied_hint"
-            static let gitHubSponsors = "app.settings.support_feedback.github_sponsors"
-            static let patreon = "app.settings.support_feedback.patreon"
+                static let gitHubSponsors = "app.settings.support_feedback.github_sponsors"
+                static let patreon = "app.settings.support_feedback.patreon"
+                static let buyMeACoffee = "app.settings.support_feedback.buy_me_a_coffee"
+                static let koFi = "app.settings.support_feedback.ko_fi"
+                static let payPal = "app.settings.support_feedback.paypal"
+                static let venmo = "app.settings.support_feedback.venmo"
             }
         }
 

@@ -100,6 +100,28 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 - XPC service: stable (code-signing validation, graceful reconnection with exponential backoff, timeout enforcement on all calls)
 - FFI boundary: functional (poisoned-lock recovery, JSON interchange, thread-safe static state, lifecycle documented in module-level docs)
 - UI: feature-complete for current scope; VoiceOver accessibility labels, semantic grouping, and state-change announcements implemented; HelmCore decomposed into 5 files; UI layer purity cleanup completed (business logic extracted from views to HelmCore/ManagerInfo); inspector sidebar with task/package/manager detail views; keyboard Tab traversal still pending (macOS SwiftUI limitation)
+- UI visual-system refinement pass completed (brand alignment slice):
+  - centralized SwiftUI design tokens for Helm Blue hierarchy, Rope Gold accents, neutral surfaces, semantic states, spacing/radius defaults, and card elevation in `HelmButtonStyles`
+  - primary/secondary/icon button treatments now use deterministic blue hierarchy (legacy orange/red CTA gradients removed)
+  - Control Center, popover overlays, package rows, manager rows, onboarding/walkthrough indicators, and inspector accents now use standardized surface/selection/state token styling
+  - added Pro-style affordance hook (`HelmProButtonStyle`) and applied premium visual treatment to support/upgrade-path CTA surfaces in settings
+  - validated via `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test` (passing)
+
+---
+
+## Website Status
+
+- Astro + Starlight website now uses a Helm-brand custom theme layer via `web/src/styles/helm-theme.css`
+- Landing page (`web/src/content/docs/index.mdx`) has been redesigned to match brand/copy structure:
+  - Hero
+  - Problem
+  - Solution
+  - Command Bridge
+  - Helm Pro
+  - Footer CTA
+- Website redesign planning artifacts added:
+  - `docs/website/WEBSITE_REDESIGN_PLAN.md`
+  - `docs/website/DESIGN_TOKENS.md`
 
 ---
 

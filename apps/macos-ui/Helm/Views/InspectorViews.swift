@@ -540,7 +540,7 @@ private struct InspectorManagerDetailView: View {
                     .foregroundStyle(.secondary)
                 Text(L10n.App.Managers.Tooltip.outdated.localized(with: ["count": outdatedCount]))
                     .font(.caption)
-                    .foregroundStyle(outdatedCount == 0 ? Color.secondary : Color.orange)
+                    .foregroundStyle(outdatedCount == 0 ? HelmTheme.textSecondary : HelmTheme.stateAttention)
             }
 
             InspectorField(label: L10n.App.Inspector.category.localized) {
@@ -556,7 +556,7 @@ private struct InspectorManagerDetailView: View {
                 // Detection status
                 HStack(spacing: 6) {
                     Image(systemName: detected ? "checkmark.circle.fill" : "xmark.circle")
-                        .foregroundStyle(detected ? .green : .red)
+                        .foregroundStyle(detected ? HelmTheme.stateHealthy : HelmTheme.stateError)
                     Text(detected
                         ? L10n.App.Inspector.detected.localized
                         : L10n.App.Inspector.notDetected.localized)
@@ -587,7 +587,7 @@ private struct InspectorManagerDetailView: View {
                 // Enabled/Disabled
                 HStack(spacing: 6) {
                     Image(systemName: enabled ? "checkmark.circle.fill" : "minus.circle.fill")
-                        .foregroundStyle(enabled ? .green : .secondary)
+                        .foregroundStyle(enabled ? HelmTheme.stateHealthy : HelmTheme.textSecondary)
                     Text(enabled
                         ? L10n.App.Inspector.enabled.localized
                         : L10n.App.Inspector.disabled.localized)

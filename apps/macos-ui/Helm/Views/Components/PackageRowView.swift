@@ -76,7 +76,7 @@ struct PackageRowView: View {
                     if package.pinned {
                         Image(systemName: "pin.fill")
                             .font(.caption2)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(HelmTheme.stateAttention)
                             .help(L10n.App.Packages.Label.pinned.localized)
                             .accessibilityHidden(true)
                     }
@@ -87,10 +87,14 @@ struct PackageRowView: View {
                     .padding(.horizontal, 4)
                     .padding(.vertical, 1)
                     .background(
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(Color.gray.opacity(0.15))
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(HelmTheme.surfaceElevated)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .strokeBorder(HelmTheme.borderSubtle.opacity(0.9), lineWidth: 0.8)
+                            )
                     )
-                    .foregroundColor(.secondary)
+                    .foregroundColor(HelmTheme.textSecondary)
             }
 
             Spacer()
@@ -151,7 +155,7 @@ struct PackageRowView: View {
                             Button(action: onUpgrade) {
                                 Image(systemName: "arrow.up.circle")
                                     .font(.caption)
-                                    .foregroundColor(.orange)
+                                    .foregroundColor(HelmTheme.stateAttention)
                             }
                             .buttonStyle(.borderless)
                             .help(L10n.App.Packages.Action.upgradePackage.localized)
@@ -169,7 +173,7 @@ struct PackageRowView: View {
                             Button(action: onTogglePin) {
                                 Image(systemName: package.pinned ? "pin.slash.fill" : "pin")
                                     .font(.caption)
-                                    .foregroundColor(package.pinned ? .orange : .secondary)
+                                    .foregroundColor(package.pinned ? HelmTheme.stateAttention : HelmTheme.textSecondary)
                             }
                             .buttonStyle(.borderless)
                             .help(
@@ -186,11 +190,11 @@ struct PackageRowView: View {
                     HStack(spacing: 4) {
                         Text(latest)
                             .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(.orange)
+                            .foregroundColor(HelmTheme.stateAttention)
                             if package.restartRequired {
                                 Image(systemName: "arrow.triangle.2.circlepath")
                                     .font(.caption2)
-                                    .foregroundColor(.orange)
+                                    .foregroundColor(HelmTheme.stateAttention)
                                     .help(L10n.App.Packages.Label.restartRequired.localized)
                             }
                         }
@@ -208,11 +212,11 @@ struct PackageRowView: View {
         .padding(.horizontal, 8)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isSelected ? Color.accentColor.opacity(0.14) : Color.clear)
+                .fill(isSelected ? HelmTheme.selectionFill : Color.clear)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(isSelected ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 1)
+                .stroke(isSelected ? HelmTheme.selectionStroke : Color.clear, lineWidth: 1)
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
