@@ -29,7 +29,7 @@
   "service.task.status.failed": "失敗",
   "service.task.status.pending": "保留中",
   "service.task.status.running": "実行中",
-  "service.task.label.search.package": "{manager} で {query} を検索中",
+  "service.task.label.search.package": "{manager} で '{query}' を検索中",
   "service.task.label.search.manager": "{manager} の利用可能なパッケージを更新中",
   "service.task.label.install.package": "{manager} 経由で {package} をインストール",
   "service.task.label.uninstall.package": "{manager} 経由で {package} をアンインストール"

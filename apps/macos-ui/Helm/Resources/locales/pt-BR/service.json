@@ -29,7 +29,7 @@
   "service.task.status.failed": "Falhou",
   "service.task.status.pending": "Pendente",
   "service.task.status.running": "Em execução",
-  "service.task.label.search.package": "Buscando {query} em {manager}",
+  "service.task.label.search.package": "Buscando '{query}' em {manager}",
   "service.task.label.search.manager": "Atualizando pacotes disponíveis de {manager}",
   "service.task.label.install.package": "Instalar {package} via {manager}",
   "service.task.label.uninstall.package": "Desinstalar {package} via {manager}"

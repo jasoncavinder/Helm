@@ -29,7 +29,7 @@
   "service.task.label.update.rustup_self": "Self-update rustup",
   "service.task.label.uninstall.homebrew_formula": "Uninstall {package} via Homebrew",
   "service.task.label.uninstall.rustup_self": "Uninstall rustup",
-  "service.task.label.search.package": "Searching {manager} for {query}",
+  "service.task.label.search.package": "Searching {manager} for '{query}'",
   "service.task.label.search.manager": "Refreshing available packages for {manager}",
   "service.task.label.install.package": "Install {package} via {manager}",
   "service.task.label.uninstall.package": "Uninstall {package} via {manager}"
