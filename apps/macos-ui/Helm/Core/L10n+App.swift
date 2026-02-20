@@ -323,6 +323,7 @@ extension L10n {
             static let manager = "app.inspector.manager"
             static let installed = "app.inspector.installed"
             static let latest = "app.inspector.latest"
+            static let description = "app.inspector.description"
             static let sourceQuery = "app.inspector.source_query"
             static let capabilities = "app.inspector.capabilities"
             static let taskId = "app.inspector.task_id"
@@ -343,6 +344,7 @@ extension L10n {
             static let disabled = "app.inspector.disabled"
             static let category = "app.inspector.category"
             static let installMethod = "app.inspector.install_method"
+            static let viewManager = "app.inspector.view_manager"
             struct InstallMethod {
                 static let automatable = "app.inspector.install_method.automatable"
                 static let updateAndUninstall = "app.inspector.install_method.update_and_uninstall"

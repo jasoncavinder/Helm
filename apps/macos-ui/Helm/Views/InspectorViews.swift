@@ -136,7 +136,17 @@ private struct InspectorTaskDetailView: View {
 // MARK: - Package Inspector
 
 private struct InspectorPackageDetailView: View {
+    @ObservedObject private var core = HelmCore.shared
+    @EnvironmentObject private var context: ControlCenterContext
     let package: PackageItem
+
+    private var packageDescription: String? {
+        guard let summary = package.summary?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !summary.isEmpty else {
+            return nil
+        }
+        return summary
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -196,12 +206,46 @@ private struct InspectorPackageDetailView: View {
                 .accessibilityLabel(L10n.App.Inspector.restartRequired.localized)
             }
 
-            if let query = package.summary, !query.isEmpty {
-                InspectorField(label: L10n.App.Inspector.sourceQuery.localized) {
-                    Text(query)
+            if let packageDescription {
+                InspectorField(label: L10n.App.Inspector.description.localized) {
+                    Text(packageDescription)
                         .font(.caption)
                 }
             }
+
+            HStack(spacing: 8) {
+                if core.canUpgradeIndividually(package) {
+                    Button(L10n.Common.update.localized) {
+                        core.upgradePackage(package)
+                    }
+                    .buttonStyle(HelmSecondaryButtonStyle())
+                    .disabled(core.upgradeActionPackageIds.contains(package.id))
+                    .helmPointer(enabled: !core.upgradeActionPackageIds.contains(package.id))
+                }
+
+                if package.status != .available {
+                    Button(package.pinned ? L10n.App.Packages.Action.unpin.localized : L10n.App.Packages.Action.pin.localized) {
+                        if package.pinned {
+                            core.unpinPackage(package)
+                        } else {
+                            core.pinPackage(package)
+                        }
+                    }
+                    .buttonStyle(HelmSecondaryButtonStyle())
+                    .disabled(core.pinActionPackageIds.contains(package.id))
+                    .helmPointer(enabled: !core.pinActionPackageIds.contains(package.id))
+                }
+
+                Button(L10n.App.Inspector.viewManager.localized) {
+                    context.selectedManagerId = package.managerId
+                    context.selectedPackageId = nil
+                    context.selectedTaskId = nil
+                    context.selectedSection = .managers
+                }
+                .buttonStyle(HelmSecondaryButtonStyle())
+                .helmPointer()
+            }
+            .font(.caption)
 
             InspectorField(label: L10n.App.Inspector.packageId.localized) {
                 Text(package.id)

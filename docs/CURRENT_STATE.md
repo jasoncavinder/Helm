@@ -104,6 +104,15 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 
 ## v0.14.1 Patch-Track Status (In Progress)
 
+Completed in UI/UX slice branch:
+
+- Onboarding "Finding Your Tools" and "Pick Your Managers" rows now render manager name + version metadata on one line
+- Package list now visually highlights the inspector-selected package row
+- Control-center package search now uses only the top-right global search field; redundant in-section search chip removed
+- Top-right search field now includes an inline clear (`x`) control when query text is present
+- Inspector package panel now shows description text (when available) and context actions (Update, Pin/Unpin, View Manager)
+- Homebrew manager display names now consistently use `Homebrew (formulae)` and `Homebrew (casks)` across canonical/mirrored locale resources
+
 Completed in cache/persistence slice branch:
 
 - Search-cache persistence now deduplicates records by `(manager, package)` so repeated queries do not accumulate duplicate available-package rows

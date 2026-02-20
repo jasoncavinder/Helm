@@ -40,6 +40,17 @@ Next release targets:
 
 ## v0.14.1 Patch Track (In Progress)
 
+### UI/UX Slice (Completed on branch)
+
+Delivered:
+
+- Onboarding manager rows compressed to single-line name/version metadata
+- Homebrew naming clarified to "Homebrew (formulae)" and "Homebrew (casks)"
+- Package list row highlight for inspector-selected package
+- Removed redundant package-section search chip; retained top-right global search field
+- Added inline clear control to top-right search field
+- Inspector package panel now includes description (when present) and context actions (Update, Pin/Unpin, View Manager)
+
 ### Follow-Up Stabilization Slice (Completed on branch)
 
 Delivered:

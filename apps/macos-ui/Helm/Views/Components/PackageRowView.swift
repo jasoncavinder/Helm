@@ -8,6 +8,7 @@ enum KegPolicyMenuSelection {
 
 struct PackageRowView: View {
     let package: PackageItem
+    var isSelected: Bool = false
     var isPinActionInFlight: Bool = false
     var isUpgradeActionInFlight: Bool = false
     var isInstallActionInFlight: Bool = false
@@ -205,6 +206,14 @@ struct PackageRowView: View {
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isSelected ? Color.accentColor.opacity(0.14) : Color.clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(isSelected ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 1)
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
     }
