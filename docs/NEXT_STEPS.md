@@ -18,7 +18,7 @@ Focus:
 - 0.16.x self-update and installer hardening
 
 Current checkpoint:
-- `v0.16.0-rc.1` pre-release rehearsal in progress on `feat/v0.16.0-kickoff` (channel-aware updater scaffolding + package-manager-aware Sparkle gating + DMG invariant verification + appcast generation/publish + policy validation)
+- `v0.16.0-rc.2` pre-release rehearsal in progress on `feat/v0.16.0-kickoff` (channel-aware updater scaffolding + package-manager-aware Sparkle gating + DMG invariant verification + appcast generation/publish + policy validation)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
 - `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)
@@ -70,6 +70,7 @@ Delivered:
   - `SUAllowsDowngrades`
   - `SUFeedURL`
   - `SUPublicEDKey`
+- Helm app Info.plist now includes explicit placeholders for those updater metadata keys so packaged-artifact verification can read deterministic values.
 - Release DMG workflow now passes direct-channel Sparkle build metadata and validates required Sparkle secrets before signed release builds.
 - Release DMG workflow now verifies packaged channel/Sparkle invariants and Sparkle framework linkage in the signed app bundle.
 - Added regression coverage for app update channel config parsing + Sparkle gating behavior (`AppUpdateConfigurationTests`).
@@ -105,7 +106,7 @@ Delivered:
 - Release workflow now publishes generated `appcast.xml` into `web/public/updates/appcast.xml` on `main` (with automatic PR fallback when direct push is blocked by branch protections).
 - Release workflow now enforces Sparkle appcast policy checks (`apps/macos-ui/scripts/verify_sparkle_appcast_policy.sh`) to keep `0.16.x` on full-installer-only updates (no deltas).
 - Added interruption/recovery validation runbook for release operators:
-  - `docs/validation/v0.16.0-rc.1-installer-recovery.md`
+  - `docs/validation/v0.16.0-rc.2-installer-recovery.md`
 - Build metadata generation now derives monotonic numeric bundle build numbers from semantic versions to keep Sparkle update ordering stable.
 
 ---

@@ -8,7 +8,7 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.16.0-rc.1** (pre-release rehearsal in progress on `feat/v0.16.0-kickoff`; latest stable release on `main` is `v0.15.0`)
+Current version: **0.16.0-rc.2** (pre-release rehearsal in progress on `feat/v0.16.0-kickoff`; latest stable release on `main` is `v0.15.0`)
 
 See:
 - CHANGELOG.md
@@ -155,6 +155,7 @@ Implemented on `feat/v0.16.0-kickoff`:
 - Added shared channel renderer script (`apps/macos-ui/scripts/render_channel_xcconfig.sh`) so all generated channel config paths use one policy-enforced code path.
 - Added channel-policy matrix check script (`apps/macos-ui/scripts/check_channel_policy.sh`) and wired it into CI (`.github/workflows/ci-test.yml`) before Xcode build/test.
 - Helm target Info.plist keys are now build-setting injected (channel + Sparkle feed/signature metadata) rather than hardcoded plist values.
+- Helm app Info.plist now carries explicit placeholders for updater metadata keys (`HelmDistributionChannel`, `HelmSparkleEnabled`, `SUFeedURL`, `SUAllowsDowngrades`, `SUPublicEDKey`) so release-assertion checks can validate packaged artifacts deterministically.
 - Helm target now injects `SUAllowsDowngrades` from build settings and defaults this to disabled (`NO`) across channel profiles/base config.
 - Release DMG workflow now injects direct-channel Sparkle metadata at build time and validates required release secrets/packaged plist channel keys.
 - Release DMG workflow now also verifies packaged updater invariants in the built artifact:
@@ -208,7 +209,7 @@ Implemented on `feat/v0.16.0-kickoff`:
 - Release workflow now attempts to publish generated appcast content directly to `web/public/updates/appcast.xml` on `main`, and falls back to auto-opening a PR when direct pushes are blocked.
 - Release workflow now enforces Sparkle appcast policy checks (full-installer-only DMG feed, no delta payloads) via `apps/macos-ui/scripts/verify_sparkle_appcast_policy.sh`.
 - Added installer/update interruption and recovery validation runbook:
-  - `docs/validation/v0.16.0-rc.1-installer-recovery.md`
+  - `docs/validation/v0.16.0-rc.2-installer-recovery.md`
 - Build metadata generation now derives monotonic numeric bundle build numbers from semantic versions (`apps/macos-ui/scripts/build_rust.sh`) to keep Sparkle update ordering stable.
 
 Validation:
