@@ -93,12 +93,12 @@ Progress so far:
 - scoped phase waiting now uses a bounded timeout and invalidates stalled run tokens
 - planner regression tests expanded for scoped-run gating and ID fallback coverage
 - Rust adapter/runtime files normalized with formatting-only cleanup (no behavior changes)
+- release notes/checklist prep for first `v0.15.0` pre-release cut is now scaffolded in `CHANGELOG.md` and `docs/RELEASE_CHECKLIST.md`
 
 Deliver:
 
 - complete code+document sweep for remaining upgrade-plan/task synchronization edge cases
 - add/expand targeted regressions for scoped run/cancel/retry state coherence where test harness supports it
-- prepare release notes + checklist updates for the first `v0.15.0` pre-release cut
 
 ### Exit Gate
 

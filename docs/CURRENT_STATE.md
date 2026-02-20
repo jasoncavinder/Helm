@@ -253,6 +253,7 @@ Implemented on `feat/v0.15.x-alpha.1-kickoff` (current progress):
   - in-flight status handling for queued-without-projection plan rows
   - explicit and fallback plan-step ID resolution paths
 - Applied Rust formatting-only cleanup updates across adapter/runtime test files (no behavior change)
+- Added initial `v0.15.0-alpha.1` pre-release checklist scaffolding in `docs/RELEASE_CHECKLIST.md`
 
 Validation:
 
