@@ -25,8 +25,20 @@ struct AppUpdateConfiguration {
         sparkleFeedURL != nil && sparklePublicEdKey != nil
     }
 
+    var hasSecureSparkleFeedURL: Bool {
+        guard
+            let sparkleFeedURL,
+            let url = URL(string: sparkleFeedURL),
+            url.scheme?.lowercased() == "https",
+            url.host != nil
+        else {
+            return false
+        }
+        return true
+    }
+
     var canUseSparkle: Bool {
-        channel == .developerID && sparkleEnabled && hasSparkleConfig
+        channel == .developerID && sparkleEnabled && hasSparkleConfig && hasSecureSparkleFeedURL
     }
 
     static func from(bundle: Bundle = .main) -> AppUpdateConfiguration {

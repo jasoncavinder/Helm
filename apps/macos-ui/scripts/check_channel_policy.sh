@@ -66,6 +66,13 @@ assert_fails "developer_id sparkle requires feed/key" \
     HELM_CHANNEL_PROFILE=developer_id \
     HELM_CHANNEL_OVERRIDE_SPARKLE_ENABLED=YES
 
+assert_fails "developer_id sparkle feed must use https" \
+    run_render "$TMP_DIR/invalid_developer_http_feed.xcconfig" \
+    HELM_CHANNEL_PROFILE=developer_id \
+    HELM_CHANNEL_OVERRIDE_SPARKLE_ENABLED=YES \
+    HELM_CHANNEL_OVERRIDE_SPARKLE_FEED_URL=http://updates.example.com/appcast.xml \
+    HELM_CHANNEL_OVERRIDE_SPARKLE_PUBLIC_ED_KEY=example-public-ed-key
+
 DEV_SPARKLE_OUT="$TMP_DIR/developer_sparkle.xcconfig"
 assert_succeeds "developer_id sparkle override should render when fully configured" \
     run_render "$DEV_SPARKLE_OUT" \

@@ -1,7 +1,7 @@
 import XCTest
 
 final class AppUpdateConfigurationTests: XCTestCase {
-    func testCanUseSparkleRequiresDeveloperIdAndFeedKey() {
+    func testCanUseSparkleRequiresDeveloperIdSecureFeedAndKey() {
         let fullyConfigured = AppUpdateConfiguration(
             channel: .developerID,
             sparkleEnabled: true,
@@ -25,6 +25,22 @@ final class AppUpdateConfigurationTests: XCTestCase {
             sparklePublicEdKey: "abc123"
         )
         XCTAssertFalse(appStoreChannel.canUseSparkle)
+
+        let insecureFeed = AppUpdateConfiguration(
+            channel: .developerID,
+            sparkleEnabled: true,
+            sparkleFeedURL: "http://updates.example.com/appcast.xml",
+            sparklePublicEdKey: "abc123"
+        )
+        XCTAssertFalse(insecureFeed.canUseSparkle)
+
+        let malformedFeed = AppUpdateConfiguration(
+            channel: .developerID,
+            sparkleEnabled: true,
+            sparkleFeedURL: "not a url",
+            sparklePublicEdKey: "abc123"
+        )
+        XCTAssertFalse(malformedFeed.canUseSparkle)
     }
 
     func testFromBundleParsesChannelAndSparkleSettings() throws {

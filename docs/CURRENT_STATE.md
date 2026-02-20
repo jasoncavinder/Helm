@@ -143,6 +143,8 @@ Implemented on `feat/v0.16.0-kickoff`:
 - Build script now enforces channel/Sparkle policy at generation time and fails fast on invalid combinations:
   - non-Developer-ID channels cannot enable Sparkle or set Sparkle feed/signature metadata
   - Developer ID channel with Sparkle enabled must provide both `HELM_SPARKLE_FEED_URL` and `HELM_SPARKLE_PUBLIC_ED_KEY`
+  - Developer ID channel with Sparkle enabled must use an `https://` Sparkle feed URL
+- Runtime app-update configuration now requires a secure Sparkle feed URL (`https://`) before enabling Sparkle checks.
 
 Validation:
 

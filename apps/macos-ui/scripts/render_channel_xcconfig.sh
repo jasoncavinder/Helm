@@ -87,6 +87,14 @@ if [ "$CHANNEL_DISTRIBUTION" = "developer_id" ] && [ "$CHANNEL_SPARKLE_ENABLED" 
         echo "Invalid channel config: Developer ID channel with Sparkle enabled requires HELM_SPARKLE_FEED_URL and HELM_SPARKLE_PUBLIC_ED_KEY." >&2
         exit 1
     fi
+    case "$CHANNEL_SPARKLE_FEED_URL" in
+        https://*)
+            ;;
+        *)
+            echo "Invalid channel config: HELM_SPARKLE_FEED_URL must use https:// when Sparkle is enabled." >&2
+            exit 1
+            ;;
+    esac
 fi
 
 cat > "$OUTPUT_PATH" <<XCCONFIG

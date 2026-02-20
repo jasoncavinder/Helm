@@ -73,6 +73,7 @@ Delivered:
 - Added regression coverage for app update channel config parsing + Sparkle gating behavior (`AppUpdateConfigurationTests`).
 - Added fail-fast build-script policy checks for invalid channel/Sparkle combinations.
 - Added CI channel-policy matrix validation (`apps/macos-ui/scripts/check_channel_policy.sh`) ahead of Xcode build/test.
+- Hardened Sparkle feed policy so Developer ID + Sparkle now requires `https://` at both build-render and runtime configuration gates.
 
 Next in alpha.1:
 
