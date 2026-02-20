@@ -77,7 +77,7 @@ Delivered:
 - Hardened Sparkle feed policy so Developer ID + Sparkle now requires `https://` at both build-render and runtime configuration gates.
 - Added explicit downgrade hardening: `SUAllowsDowngrades` defaults to disabled, release artifacts are verified as non-downgradeable, and runtime Sparkle gating rejects downgrade-enabled metadata.
 - Added install-location hardening for self-update: runtime Sparkle gating now rejects mounted-DMG (`/Volumes/...`) and App Translocation execution paths.
-- Added package-manager install hardening for self-update: runtime Sparkle gating now rejects package-manager-managed install paths (Homebrew/MacPorts prefixes).
+- Added package-manager install hardening for self-update: runtime Sparkle gating now rejects package-manager-managed installs via Homebrew Cask receipt detection plus Homebrew/MacPorts path heuristics.
 - Added localized operator feedback for blocked update checks in About/menu surfaces so policy-based unavailability is explicit instead of silently hidden.
 
 Validation:

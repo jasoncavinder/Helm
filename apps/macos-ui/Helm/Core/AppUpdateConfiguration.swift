@@ -26,6 +26,11 @@ enum AppUpdateEligibilityFailure: String {
 }
 
 struct AppUpdateConfiguration {
+    private static let defaultPackageManagerReceiptRoots = [
+        "/opt/homebrew/Caskroom",
+        "/usr/local/Caskroom"
+    ]
+
     private static let packageManagerManagedPathPrefixes = [
         "/opt/homebrew/Caskroom/",
         "/usr/local/Caskroom/",
@@ -41,6 +46,25 @@ struct AppUpdateConfiguration {
     let sparkleFeedURL: String?
     let sparklePublicEdKey: String?
     let bundlePath: String
+    let packageManagerReceiptRoots: [String]
+
+    init(
+        channel: HelmDistributionChannel,
+        sparkleEnabled: Bool,
+        sparkleAllowsDowngrades: Bool,
+        sparkleFeedURL: String?,
+        sparklePublicEdKey: String?,
+        bundlePath: String,
+        packageManagerReceiptRoots: [String] = []
+    ) {
+        self.channel = channel
+        self.sparkleEnabled = sparkleEnabled
+        self.sparkleAllowsDowngrades = sparkleAllowsDowngrades
+        self.sparkleFeedURL = sparkleFeedURL
+        self.sparklePublicEdKey = sparklePublicEdKey
+        self.bundlePath = bundlePath
+        self.packageManagerReceiptRoots = packageManagerReceiptRoots
+    }
 
     private var resolvedBundlePath: String {
         URL(fileURLWithPath: bundlePath).resolvingSymlinksInPath().path
@@ -70,9 +94,52 @@ struct AppUpdateConfiguration {
     }
 
     var appearsPackageManagerManaged: Bool {
-        installPathCandidates.contains { candidatePath in
+        let pathMatches = installPathCandidates.contains { candidatePath in
             Self.packageManagerManagedPathPrefixes.contains { candidatePath.hasPrefix($0) }
         }
+        return pathMatches || hasPackageManagerReceiptForCurrentApp
+    }
+
+    private var hasPackageManagerReceiptForCurrentApp: Bool {
+        let appName = URL(fileURLWithPath: bundlePath).lastPathComponent
+        guard !appName.isEmpty else {
+            return false
+        }
+        let fileManager = FileManager.default
+
+        for root in packageManagerReceiptRoots {
+            var rootIsDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: root, isDirectory: &rootIsDirectory), rootIsDirectory.boolValue else {
+                continue
+            }
+
+            guard let tokenDirs = try? fileManager.contentsOfDirectory(atPath: root) else {
+                continue
+            }
+
+            for tokenDir in tokenDirs {
+                let tokenPath = (root as NSString).appendingPathComponent(tokenDir)
+                var tokenIsDirectory: ObjCBool = false
+                guard fileManager.fileExists(atPath: tokenPath, isDirectory: &tokenIsDirectory), tokenIsDirectory.boolValue else {
+                    continue
+                }
+
+                guard let versionDirs = try? fileManager.contentsOfDirectory(atPath: tokenPath) else {
+                    continue
+                }
+
+                for versionDir in versionDirs {
+                    let appPath = ((tokenPath as NSString).appendingPathComponent(versionDir) as NSString)
+                        .appendingPathComponent(appName)
+                    var appIsDirectory: ObjCBool = false
+                    if fileManager.fileExists(atPath: appPath, isDirectory: &appIsDirectory), appIsDirectory.boolValue {
+                        return true
+                    }
+                }
+            }
+        }
+
+        return false
     }
 
     var hasSecureSparkleFeedURL: Bool {
@@ -147,7 +214,8 @@ struct AppUpdateConfiguration {
             sparkleAllowsDowngrades: sparkleAllowsDowngrades,
             sparkleFeedURL: sparkleFeedURL?.isEmpty == true ? nil : sparkleFeedURL,
             sparklePublicEdKey: sparklePublicEdKey?.isEmpty == true ? nil : sparklePublicEdKey,
-            bundlePath: bundle.bundleURL.path
+            bundlePath: bundle.bundleURL.path,
+            packageManagerReceiptRoots: Self.defaultPackageManagerReceiptRoots
         )
     }
 }

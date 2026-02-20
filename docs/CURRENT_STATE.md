@@ -151,7 +151,7 @@ Implemented on `feat/v0.16.0-kickoff`:
 - Runtime app-update configuration now requires a secure Sparkle feed URL (`https://`) before enabling Sparkle checks.
 - Runtime app-update configuration now also blocks Sparkle checks when downgrades are enabled in metadata.
 - Runtime app-update configuration now also requires an eligible install location (not mounted from `/Volumes/...` and not App Translocation paths) before enabling Sparkle checks.
-- Runtime app-update configuration now also blocks Sparkle checks for package-manager-managed install paths (Homebrew/MacPorts prefixes), so direct-channel self-update remains DMG-oriented.
+- Runtime app-update configuration now also blocks Sparkle checks for package-manager-managed installs (Homebrew Cask receipt detection plus Homebrew/MacPorts path heuristics), so direct-channel self-update remains DMG-oriented.
 - About overlay and status-menu update controls now surface localized unavailability reasons when manual update checks are blocked by channel/config/install-location policy.
 
 Validation:

@@ -104,6 +104,30 @@ final class AppUpdateConfigurationTests: XCTestCase {
         XCTAssertEqual(homebrewManaged.eligibilityFailureReason, .packageManagerManagedInstall)
     }
 
+    func testCanUseSparkleRejectsHomebrewCaskReceiptForApplicationsInstall() throws {
+        let receiptRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("helm-caskroom-\(UUID().uuidString)")
+        let stagedAppPath = receiptRoot
+            .appendingPathComponent("helm")
+            .appendingPathComponent("0.16.0")
+            .appendingPathComponent("Helm.app")
+        try FileManager.default.createDirectory(at: stagedAppPath, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: receiptRoot) }
+
+        let config = AppUpdateConfiguration(
+            channel: .developerID,
+            sparkleEnabled: true,
+            sparkleAllowsDowngrades: false,
+            sparkleFeedURL: "https://updates.example.com/appcast.xml",
+            sparklePublicEdKey: "abc123",
+            bundlePath: "/Applications/Helm.app",
+            packageManagerReceiptRoots: [receiptRoot.path]
+        )
+
+        XCTAssertFalse(config.canUseSparkle)
+        XCTAssertEqual(config.eligibilityFailureReason, .packageManagerManagedInstall)
+    }
+
     func testFromBundleParsesChannelAndSparkleSettings() throws {
         let bundle = try makeBundle(info: [
             "HelmDistributionChannel": "fleet",

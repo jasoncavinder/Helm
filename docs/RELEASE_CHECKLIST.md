@@ -8,7 +8,7 @@ This checklist is required before creating a release tag on `main`.
 - [ ] `HELM_SPARKLE_FEED_URL`, `HELM_SPARKLE_PUBLIC_ED_KEY`, and `HELM_SPARKLE_PRIVATE_ED_KEY` secrets are present for release workflow.
 - [ ] Sparkle feed endpoint is published at `web/public/updates/appcast.xml` (or `HELM_SPARKLE_FEED_URL` points to the hosted equivalent).
 - [ ] Release workflow generates and uploads `appcast.xml` alongside DMG artifacts.
-- [ ] Runtime self-update is blocked for package-manager-managed installs (Homebrew/MacPorts prefixes) and enabled for eligible direct-channel DMG installs.
+- [ ] Runtime self-update is blocked for package-manager-managed installs (Homebrew Cask receipt detection + Homebrew/MacPorts path heuristics) and enabled for eligible direct-channel DMG installs.
 - [ ] Generated `CURRENT_PROJECT_VERSION` is monotonic for Sparkle version ordering (semver-derived numeric build number).
 
 ## v0.15.0 (In Progress)

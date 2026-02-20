@@ -39,7 +39,7 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Build/runtime Sparkle enablement gates now require an `https://` Sparkle feed URL for Developer ID channel update checks.
 - Sparkle downgrade policy is now explicitly disabled via build metadata (`SUAllowsDowngrades=NO`) and enforced in both runtime updater gating and release artifact verification.
 - Runtime Sparkle gating now requires an eligible install location (not DMG-mounted under `/Volumes/...` and not App Translocation) before enabling in-app update checks.
-- Runtime Sparkle gating now also disables in-app updates for package-manager-managed install paths (Homebrew/MacPorts prefixes), with a dedicated localized reason.
+- Runtime Sparkle gating now also disables in-app updates for package-manager-managed installs (Homebrew Cask receipts and Homebrew/MacPorts path heuristics), with a dedicated localized reason.
 - About overlay and status-menu update controls now show localized reasons when update checks are unavailable due to channel/config/install-location policy.
 - Channel config rendering/policy enforcement now runs through a shared script (`apps/macos-ui/scripts/render_channel_xcconfig.sh`) reused by build generation and test validation flows.
 - CI now runs a channel-policy matrix check (`apps/macos-ui/scripts/check_channel_policy.sh`) before Xcode build/test.
