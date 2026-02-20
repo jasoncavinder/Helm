@@ -386,6 +386,7 @@ extension L10n {
                 static let subtitle = "app.overlay.about.subtitle"
                 static let version = "app.overlay.about.version"
                 static let summary = "app.overlay.about.summary"
+                static let checkForUpdates = "app.overlay.about.check_updates"
             }
             struct Quit {
                 static let title = "app.overlay.quit.title"

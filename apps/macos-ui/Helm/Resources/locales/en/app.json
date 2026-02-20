@@ -234,6 +234,7 @@
   "app.overlay.about.subtitle": "Unified package control for macOS",
   "app.overlay.about.version": "Version {version}",
   "app.overlay.about.summary": "{managers} managers active, {updates} updates pending",
+  "app.overlay.about.check_updates": "Check for Updates",
   "app.overlay.quit.title": "Quit Helm",
   "app.overlay.quit.message": "Quit now? {tasks} running tasks may be interrupted.",
   "app.control_center.subtitle": "Operational visibility and package controls",

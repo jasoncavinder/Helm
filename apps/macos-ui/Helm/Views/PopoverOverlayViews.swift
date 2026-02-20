@@ -189,6 +189,7 @@ struct PopoverSettingsOverlayContent: View {
 
 struct PopoverAboutOverlayContent: View {
     @ObservedObject private var core = HelmCore.shared
+    @ObservedObject private var appUpdate = AppUpdateCoordinator.shared
     let onClose: () -> Void
 
     var body: some View {
@@ -221,6 +222,15 @@ struct PopoverAboutOverlayContent: View {
             .foregroundStyle(.secondary)
 
             HStack {
+                if appUpdate.canCheckForUpdates {
+                    Button(L10n.App.Overlay.About.checkForUpdates.localized) {
+                        appUpdate.checkForUpdates()
+                    }
+                    .buttonStyle(HelmSecondaryButtonStyle())
+                    .disabled(appUpdate.isCheckingForUpdates)
+                    .helmPointer(enabled: !appUpdate.isCheckingForUpdates)
+                }
+
                 Spacer()
                 Button(L10n.Common.ok.localized) {
                     onClose()

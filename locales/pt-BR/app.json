@@ -234,6 +234,7 @@
   "app.overlay.about.subtitle": "Controle unificado de pacotes para macOS",
   "app.overlay.about.version": "Versão {version}",
   "app.overlay.about.summary": "{managers} gerenciadores ativos, {updates} atualizações pendentes",
+  "app.overlay.about.check_updates": "Verificar atualizações",
   "app.overlay.quit.title": "Sair do Helm",
   "app.overlay.quit.message": "Sair agora? {tasks} tarefas em execução podem ser interrompidas.",
   "app.control_center.subtitle": "Visibilidade operacional e controle de pacotes",

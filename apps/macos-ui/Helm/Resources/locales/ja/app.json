@@ -234,6 +234,7 @@
   "app.overlay.about.subtitle": "macOSのための統合パッケージ管理",
   "app.overlay.about.version": "バージョン {version}",
   "app.overlay.about.summary": "{managers} 個のマネージャーが稼働中、{updates} 件のアップデートが保留中",
+  "app.overlay.about.check_updates": "アップデートを確認",
   "app.overlay.quit.title": "Helmを終了",
   "app.overlay.quit.message": "今すぐ終了しますか？{tasks} 件の実行中タスクが中断される可能性があります。",
   "app.control_center.subtitle": "運用の可視化とパッケージ管理",

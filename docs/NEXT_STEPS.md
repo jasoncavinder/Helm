@@ -11,14 +11,15 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-0.15.x
+0.16.x
 ```
 
 Focus:
-- 0.15.x upgrade preview and execution transparency
+- 0.16.x self-update and installer hardening
 
 Current checkpoint:
-- `v0.15.0` release prep in progress on `dev` (final stabilization/validation complete; pending PR flow)
+- `v0.16.0-alpha.1` kickoff in progress on `feat/v0.16.0-kickoff` (channel-aware updater scaffolding landed; Sparkle packaging integration pending)
+- `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
 - `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)
 - `v0.13.0` stable released (website updates, documentation alignment, version bump)
@@ -34,7 +35,40 @@ Current checkpoint:
 - `v0.14.0` distribution/licensing architecture planning docs aligned (future-state, no implementation changes)
 
 Next release targets:
-- `v0.15.x` — Upgrade Preview & Execution Transparency
+- `v0.16.x` — Self-Update & Installer Hardening
+
+---
+
+## v0.16.x Kickoff Plan (In Progress)
+
+### Alpha.1 — Channel-Aware Updater Scaffolding (In Progress on `feat/v0.16.0-kickoff`)
+
+Delivered:
+
+- Added runtime channel configuration model for app-update behavior:
+  - `HelmDistributionChannel` (`developer_id`, `app_store`, `setapp`, `fleet`)
+  - `HelmSparkleEnabled` gating to prevent accidental Sparkle activation in non-direct channels
+- Added `AppUpdateCoordinator` with strict channel isolation and manual update-check entry point plumbing
+- Added optional Sparkle bridge (`#if canImport(Sparkle)`) while preserving non-Sparkle build compatibility
+- Added user entry points:
+  - status menu `Check for Updates`
+  - popover About overlay `Check for Updates`
+- Added localized `app.overlay.about.check_updates` in both locale trees (`locales/` + app resource mirror)
+- Added default app metadata keys in `Info.plist`:
+  - `HelmDistributionChannel=developer_id`
+  - `HelmSparkleEnabled=false`
+
+Next in alpha.1:
+
+- Wire Sparkle package dependency and feed/signature metadata for direct-channel release builds
+- Add channel-specific build configs (Developer ID / MAS / Setapp / Fleet) with explicit Sparkle enablement matrix
+- Add regression tests for config parsing and channel gating behavior
+
+Validation:
+
+- `cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
+- `swiftlint lint --no-cache apps/macos-ui/Helm/Core/HelmCore.swift apps/macos-ui/Helm/AppDelegate.swift apps/macos-ui/Helm/Views/PopoverOverlayViews.swift apps/macos-ui/Helm/Core/L10n+App.swift`
 
 ---
 

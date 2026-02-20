@@ -8,14 +8,14 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.15.0** (release prep on `dev`; latest stable release on `main` is `v0.14.1`)
+Current version: **0.16.0-alpha.1** (kickoff in progress on `dev`; latest stable release on `main` is `v0.15.0`)
 
 See:
 - CHANGELOG.md
 
 Active milestone:
-- 0.15.0 — Upgrade Preview & Execution Transparency (release finalization)
-- 0.14.1 — Released on `main` (PR `#65`, tag `v0.14.1`)
+- 0.16.0 — Self-Update & Installer Hardening (alpha kickoff)
+- 0.15.0 — Released on `main` (tag `v0.15.0`)
 
 ---
 
@@ -35,6 +35,7 @@ Active milestone:
 - 0.12.x — Localization hardening + upgrade transparency (stable checkpoint)
 - 0.13.x — UI/UX analysis & redesign (stable checkpoint)
 - 0.14.x — Platform, detection & optional managers (stable checkpoint)
+- 0.15.x — Upgrade preview & execution transparency (stable checkpoint)
 
 ---
 
@@ -99,6 +100,36 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 - XPC service: stable (code-signing validation, graceful reconnection with exponential backoff, timeout enforcement on all calls)
 - FFI boundary: functional (poisoned-lock recovery, JSON interchange, thread-safe static state, lifecycle documented in module-level docs)
 - UI: feature-complete for current scope; VoiceOver accessibility labels, semantic grouping, and state-change announcements implemented; HelmCore decomposed into 5 files; UI layer purity cleanup completed (business logic extracted from views to HelmCore/ManagerInfo); inspector sidebar with task/package/manager detail views; keyboard Tab traversal still pending (macOS SwiftUI limitation)
+
+---
+
+## v0.16.0-alpha.1 Status
+
+### Channel-Aware Self-Update Kickoff
+
+Implemented on `feat/v0.16.0-kickoff`:
+
+- Added app-update channel configuration plumbing in macOS UI runtime:
+  - `HelmDistributionChannel` (`developer_id`, `app_store`, `setapp`, `fleet`)
+  - `HelmUpdateAuthority` mapping derived from channel
+  - `HelmSparkleEnabled` gate for direct-channel updater enablement
+- Added `AppUpdateCoordinator` with strict channel isolation:
+  - only Developer ID channel with Sparkle explicitly enabled can present in-app update checks
+  - non-direct channels remain no-op at runtime (MAS/Setapp/Fleet isolation)
+- Added optional Sparkle bridge implementation guarded with `#if canImport(Sparkle)` so non-Sparkle builds remain compile-safe
+- Added user entry points for manual update checks:
+  - status-menu `Check for Updates`
+  - popover About overlay `Check for Updates`
+- Added localized `app.overlay.about.check_updates` key across canonical and mirrored locale trees
+- Added default Info.plist update-channel metadata keys for local/direct builds:
+  - `HelmDistributionChannel=developer_id`
+  - `HelmSparkleEnabled=false`
+
+Validation:
+
+- `cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml` passing
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test` passing
+- `swiftlint lint --no-cache apps/macos-ui/Helm/Core/HelmCore.swift apps/macos-ui/Helm/AppDelegate.swift apps/macos-ui/Helm/Views/PopoverOverlayViews.swift apps/macos-ui/Helm/Core/L10n+App.swift` passing (local toolchain warns about one unsupported legacy rule key)
 
 ---
 

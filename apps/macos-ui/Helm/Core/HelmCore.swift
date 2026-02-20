@@ -1,8 +1,161 @@
 import AppKit
 import Foundation
 import os.log
+#if canImport(Sparkle)
+import Sparkle
+#endif
 
 private let logger = Logger(subsystem: "com.jasoncavinder.Helm", category: "core")
+private let updateLogger = Logger(subsystem: "com.jasoncavinder.Helm", category: "app_update")
+
+enum HelmDistributionChannel: String {
+    case developerID = "developer_id"
+    case appStore = "app_store"
+    case setapp = "setapp"
+    case fleet = "fleet"
+    case unknown = "unknown"
+
+    static func from(bundle: Bundle = .main) -> HelmDistributionChannel {
+        guard let rawValue = bundle.object(forInfoDictionaryKey: "HelmDistributionChannel") as? String else {
+            return .developerID
+        }
+        return HelmDistributionChannel(rawValue: rawValue) ?? .unknown
+    }
+}
+
+enum HelmUpdateAuthority: String {
+    case sparkle = "sparkle"
+    case appStore = "app_store"
+    case setapp = "setapp"
+    case adminControlled = "admin_controlled"
+    case unavailable = "unavailable"
+}
+
+struct AppUpdateConfiguration {
+    let channel: HelmDistributionChannel
+    let sparkleEnabled: Bool
+
+    static func from(bundle: Bundle = .main) -> AppUpdateConfiguration {
+        let channel = HelmDistributionChannel.from(bundle: bundle)
+        let sparkleEnabled: Bool
+        if let boolValue = bundle.object(forInfoDictionaryKey: "HelmSparkleEnabled") as? Bool {
+            sparkleEnabled = boolValue
+        } else if let stringValue = bundle.object(forInfoDictionaryKey: "HelmSparkleEnabled") as? String {
+            sparkleEnabled = ["1", "true", "yes"].contains(stringValue.lowercased())
+        } else {
+            sparkleEnabled = false
+        }
+
+        return AppUpdateConfiguration(channel: channel, sparkleEnabled: sparkleEnabled)
+    }
+}
+
+private protocol AppUpdateDriver {
+    var canCheckForUpdates: Bool { get }
+    func checkForUpdates()
+}
+
+private struct NoopAppUpdateDriver: AppUpdateDriver {
+    let canCheckForUpdates = false
+
+    func checkForUpdates() {}
+}
+
+#if canImport(Sparkle)
+private final class SparkleAppUpdateDriver: NSObject, AppUpdateDriver {
+    private let updaterController: SPUStandardUpdaterController
+
+    override init() {
+        updaterController = SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: nil,
+            userDriver: nil
+        )
+        super.init()
+    }
+
+    var canCheckForUpdates: Bool {
+        updaterController.updater.canCheckForUpdates
+    }
+
+    func checkForUpdates() {
+        updaterController.checkForUpdates(nil)
+    }
+}
+#endif
+
+final class AppUpdateCoordinator: ObservableObject {
+    static let shared = AppUpdateCoordinator()
+
+    @Published private(set) var configuration: AppUpdateConfiguration
+    @Published private(set) var updateAuthority: HelmUpdateAuthority
+    @Published private(set) var canCheckForUpdates: Bool
+    @Published private(set) var isCheckingForUpdates = false
+    @Published private(set) var lastCheckDate: Date?
+
+    var distributionChannel: HelmDistributionChannel {
+        configuration.channel
+    }
+
+    private let driver: AppUpdateDriver
+
+    private init() {
+        let configuration = AppUpdateConfiguration.from()
+        self.configuration = configuration
+        self.updateAuthority = AppUpdateCoordinator.resolveAuthority(for: configuration.channel)
+        let driver = AppUpdateCoordinator.makeDriver(for: configuration)
+        self.driver = driver
+        self.canCheckForUpdates = driver.canCheckForUpdates
+
+        updateLogger.info(
+            "Configured app updater. channel=\(configuration.channel.rawValue, privacy: .public), authority=\(self.updateAuthority.rawValue, privacy: .public), sparkle_enabled=\(configuration.sparkleEnabled, privacy: .public), can_check=\(self.canCheckForUpdates, privacy: .public)"
+        )
+    }
+
+    func checkForUpdates() {
+        guard canCheckForUpdates else {
+            return
+        }
+        guard !isCheckingForUpdates else {
+            return
+        }
+
+        isCheckingForUpdates = true
+        defer { isCheckingForUpdates = false }
+        driver.checkForUpdates()
+        lastCheckDate = Date()
+    }
+
+    private static func resolveAuthority(for channel: HelmDistributionChannel) -> HelmUpdateAuthority {
+        switch channel {
+        case .developerID:
+            return .sparkle
+        case .appStore:
+            return .appStore
+        case .setapp:
+            return .setapp
+        case .fleet:
+            return .adminControlled
+        case .unknown:
+            return .unavailable
+        }
+    }
+
+    private static func makeDriver(for configuration: AppUpdateConfiguration) -> AppUpdateDriver {
+        guard configuration.channel == .developerID, configuration.sparkleEnabled else {
+            return NoopAppUpdateDriver()
+        }
+
+        #if canImport(Sparkle)
+        return SparkleAppUpdateDriver()
+        #else
+        updateLogger.warning(
+            "Sparkle build flag enabled for Developer ID channel, but Sparkle framework is unavailable."
+        )
+        return NoopAppUpdateDriver()
+        #endif
+    }
+}
 
 struct CorePackageRef: Codable {
     let manager: String
@@ -143,7 +296,7 @@ final class HelmCore: ObservableObject {
     @Published var packageKegPolicyOverrides: [String: HomebrewKegPolicyOverride] = [:]
     @Published var safeModeEnabled: Bool = false
     @Published var lastError: String?
-    @Published var selectedManagerFilter: String? = nil
+    @Published var selectedManagerFilter: String?
     @Published var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
 
     var timer: Timer?

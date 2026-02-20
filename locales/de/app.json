@@ -234,6 +234,7 @@
   "app.overlay.about.subtitle": "Einheitliche Paketverwaltung für macOS",
   "app.overlay.about.version": "Version {version}",
   "app.overlay.about.summary": "{managers} Manager aktiv, {updates} Updates ausstehend",
+  "app.overlay.about.check_updates": "Nach Updates suchen",
   "app.overlay.quit.title": "Helm beenden",
   "app.overlay.quit.message": "Jetzt beenden? {tasks} laufende Aufgaben könnten unterbrochen werden.",
   "app.control_center.subtitle": "Betriebsübersicht und Paketsteuerung",

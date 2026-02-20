@@ -234,6 +234,7 @@
   "app.overlay.about.subtitle": "Contrôle unifié des paquets pour macOS",
   "app.overlay.about.version": "Version {version}",
   "app.overlay.about.summary": "{managers} gestionnaires actifs, {updates} mises à jour en attente",
+  "app.overlay.about.check_updates": "Rechercher des mises à jour",
   "app.overlay.quit.title": "Quitter Helm",
   "app.overlay.quit.message": "Quitter maintenant ? {tasks} tâches en cours pourraient être interrompues.",
   "app.control_center.subtitle": "Visibilité opérationnelle et contrôle des paquets",
