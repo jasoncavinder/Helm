@@ -310,5 +310,6 @@
   "app.overlay.about.update_unavailable.install_location": "アプリ内アップデートを有効にするには、Helm を「アプリケーション」に移動してください。",
   "app.overlay.about.update_unavailable.build_config": "このビルド構成ではアプリ内アップデートを利用できません。",
   "app.overlay.about.update_unavailable.sparkle_missing": "このビルドでは Sparkle アップデータのコンポーネントを利用できません。",
-  "app.overlay.about.update_unavailable.runtime_unavailable": "アップデート確認は一時的に利用できません。"
+  "app.overlay.about.update_unavailable.runtime_unavailable": "アップデート確認は一時的に利用できません。",
+  "app.overlay.about.update_unavailable.package_manager_managed": "このインストールはパッケージマネージャーによって管理されています。Helm の更新はそのマネージャーを使用してください。"
 }

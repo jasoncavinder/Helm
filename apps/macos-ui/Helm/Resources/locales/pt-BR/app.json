@@ -310,5 +310,6 @@
   "app.overlay.about.update_unavailable.install_location": "Mova o Helm para Aplicativos para habilitar atualizações no app.",
   "app.overlay.about.update_unavailable.build_config": "As atualizações no app não estão disponíveis para esta configuração de build.",
   "app.overlay.about.update_unavailable.sparkle_missing": "Os componentes de atualização Sparkle não estão disponíveis neste build.",
-  "app.overlay.about.update_unavailable.runtime_unavailable": "A verificação de atualizações está temporariamente indisponível."
+  "app.overlay.about.update_unavailable.runtime_unavailable": "A verificação de atualizações está temporariamente indisponível.",
+  "app.overlay.about.update_unavailable.package_manager_managed": "Esta instalação é gerenciada por um gerenciador de pacotes. Use esse gerenciador para atualizar o Helm."
 }

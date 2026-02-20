@@ -67,7 +67,9 @@ final class AppUpdateConfigurationTests: XCTestCase {
         )
         XCTAssertFalse(allowsDowngrades.canUseSparkle)
         XCTAssertEqual(allowsDowngrades.eligibilityFailureReason, .downgradesEnabled)
+    }
 
+    func testCanUseSparkleRejectsIneligibleInstallSources() {
         let mountedFromDMG = AppUpdateConfiguration(
             channel: .developerID,
             sparkleEnabled: true,
@@ -89,6 +91,17 @@ final class AppUpdateConfigurationTests: XCTestCase {
         )
         XCTAssertFalse(translocated.canUseSparkle)
         XCTAssertEqual(translocated.eligibilityFailureReason, .ineligibleInstallLocation)
+
+        let homebrewManaged = AppUpdateConfiguration(
+            channel: .developerID,
+            sparkleEnabled: true,
+            sparkleAllowsDowngrades: false,
+            sparkleFeedURL: "https://updates.example.com/appcast.xml",
+            sparklePublicEdKey: "abc123",
+            bundlePath: "/opt/homebrew/Caskroom/helm/0.16.0/Helm.app"
+        )
+        XCTAssertFalse(homebrewManaged.canUseSparkle)
+        XCTAssertEqual(homebrewManaged.eligibilityFailureReason, .packageManagerManagedInstall)
     }
 
     func testFromBundleParsesChannelAndSparkleSettings() throws {

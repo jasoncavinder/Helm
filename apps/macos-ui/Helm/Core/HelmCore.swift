@@ -23,6 +23,7 @@ enum AppUpdateUnavailableReason: String {
     case missingSparkleConfig = "missing_sparkle_config"
     case insecureSparkleFeed = "insecure_sparkle_feed"
     case ineligibleInstallLocation = "ineligible_install_location"
+    case packageManagerManagedInstall = "package_manager_managed_install"
     case sparkleFrameworkUnavailable = "sparkle_framework_unavailable"
     case sparkleRuntimeUnavailable = "sparkle_runtime_unavailable"
 
@@ -32,6 +33,8 @@ enum AppUpdateUnavailableReason: String {
             return L10n.App.Overlay.About.UpdateUnavailable.channelManaged
         case .ineligibleInstallLocation:
             return L10n.App.Overlay.About.UpdateUnavailable.installLocation
+        case .packageManagerManagedInstall:
+            return L10n.App.Overlay.About.UpdateUnavailable.packageManagerManaged
         case .sparkleFrameworkUnavailable:
             return L10n.App.Overlay.About.UpdateUnavailable.sparkleMissing
         case .sparkleRuntimeUnavailable:
@@ -107,7 +110,7 @@ final class AppUpdateCoordinator: ObservableObject {
         }
 
         updateLogger.info(
-            "Configured app updater. channel=\(configuration.channel.rawValue, privacy: .public), authority=\(self.updateAuthority.rawValue, privacy: .public), sparkle_enabled=\(configuration.sparkleEnabled, privacy: .public), sparkle_allows_downgrades=\(configuration.sparkleAllowsDowngrades, privacy: .public), mounted_dmg=\(configuration.appearsMountedFromDiskImage, privacy: .public), translocated=\(configuration.appearsTranslocated, privacy: .public), feed_configured=\(configuration.sparkleFeedURL != nil, privacy: .public), key_configured=\(configuration.sparklePublicEdKey != nil, privacy: .public), can_check=\(self.canCheckForUpdates, privacy: .public), unavailable_reason=\(self.unavailableReason?.rawValue ?? "none", privacy: .public)"
+            "Configured app updater. channel=\(configuration.channel.rawValue, privacy: .public), authority=\(self.updateAuthority.rawValue, privacy: .public), sparkle_enabled=\(configuration.sparkleEnabled, privacy: .public), sparkle_allows_downgrades=\(configuration.sparkleAllowsDowngrades, privacy: .public), mounted_dmg=\(configuration.appearsMountedFromDiskImage, privacy: .public), translocated=\(configuration.appearsTranslocated, privacy: .public), package_manager_managed=\(configuration.appearsPackageManagerManaged, privacy: .public), feed_configured=\(configuration.sparkleFeedURL != nil, privacy: .public), key_configured=\(configuration.sparklePublicEdKey != nil, privacy: .public), can_check=\(self.canCheckForUpdates, privacy: .public), unavailable_reason=\(self.unavailableReason?.rawValue ?? "none", privacy: .public)"
         )
     }
 
@@ -187,6 +190,8 @@ final class AppUpdateCoordinator: ObservableObject {
             return .insecureSparkleFeed
         case .ineligibleInstallLocation:
             return .ineligibleInstallLocation
+        case .packageManagerManagedInstall:
+            return .packageManagerManagedInstall
         }
     }
 }

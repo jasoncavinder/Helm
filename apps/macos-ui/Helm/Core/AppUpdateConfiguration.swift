@@ -22,15 +22,36 @@ enum AppUpdateEligibilityFailure: String {
     case missingSparkleConfig = "missing_sparkle_config"
     case insecureSparkleFeed = "insecure_sparkle_feed"
     case ineligibleInstallLocation = "ineligible_install_location"
+    case packageManagerManagedInstall = "package_manager_managed_install"
 }
 
 struct AppUpdateConfiguration {
+    private static let packageManagerManagedPathPrefixes = [
+        "/opt/homebrew/Caskroom/",
+        "/usr/local/Caskroom/",
+        "/opt/homebrew/Cellar/",
+        "/usr/local/Cellar/",
+        "/opt/local/",
+        "/Applications/MacPorts/"
+    ]
+
     let channel: HelmDistributionChannel
     let sparkleEnabled: Bool
     let sparkleAllowsDowngrades: Bool
     let sparkleFeedURL: String?
     let sparklePublicEdKey: String?
     let bundlePath: String
+
+    private var resolvedBundlePath: String {
+        URL(fileURLWithPath: bundlePath).resolvingSymlinksInPath().path
+    }
+
+    private var installPathCandidates: [String] {
+        if resolvedBundlePath == bundlePath {
+            return [bundlePath]
+        }
+        return [bundlePath, resolvedBundlePath]
+    }
 
     var hasSparkleConfig: Bool {
         sparkleFeedURL != nil && sparklePublicEdKey != nil
@@ -46,6 +67,12 @@ struct AppUpdateConfiguration {
 
     var hasEligibleInstallLocation: Bool {
         !appearsMountedFromDiskImage && !appearsTranslocated
+    }
+
+    var appearsPackageManagerManaged: Bool {
+        installPathCandidates.contains { candidatePath in
+            Self.packageManagerManagedPathPrefixes.contains { candidatePath.hasPrefix($0) }
+        }
     }
 
     var hasSecureSparkleFeedURL: Bool {
@@ -82,6 +109,9 @@ struct AppUpdateConfiguration {
         }
         guard hasEligibleInstallLocation else {
             return .ineligibleInstallLocation
+        }
+        guard !appearsPackageManagerManaged else {
+            return .packageManagerManagedInstall
         }
         return nil
     }

@@ -310,5 +310,6 @@
   "app.overlay.about.update_unavailable.install_location": "Move Helm to Applications to enable in-app updates.",
   "app.overlay.about.update_unavailable.build_config": "In-app updates are unavailable for this build configuration.",
   "app.overlay.about.update_unavailable.sparkle_missing": "Sparkle updater components are unavailable in this build.",
-  "app.overlay.about.update_unavailable.runtime_unavailable": "Update checks are temporarily unavailable."
+  "app.overlay.about.update_unavailable.runtime_unavailable": "Update checks are temporarily unavailable.",
+  "app.overlay.about.update_unavailable.package_manager_managed": "This installation is managed by a package manager. Use that manager to update Helm."
 }
