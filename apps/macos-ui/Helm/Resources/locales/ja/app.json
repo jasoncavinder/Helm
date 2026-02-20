@@ -184,6 +184,8 @@
   "app.inspector.task_type": "タスクタイプ",
   "app.inspector.task_status": "ステータス",
   "app.inspector.task_manager": "マネージャー",
+  "app.inspector.task_command": "コマンド",
+  "app.inspector.task_command_unavailable": "利用できません",
   "app.inspector.task_label_key": "ラベルキー",
   "app.inspector.task_label_args": "ラベル引数",
   "app.inspector.package_id": "パッケージID",
@@ -290,5 +292,17 @@
   "app.inspector.description_unavailable": "説明を利用できません。",
   "app.inspector.task_failure_feedback": "失敗の詳細",
   "app.inspector.task_failure_hint.homebrew_install": "Helm は Homebrew 経由で {package} をインストールできませんでした。Homebrew が正常に動作しているか（`brew doctor`）を確認し、再試行して詳細な出力を確認してください。",
-  "app.inspector.task_failure_hint.generic": "{manager} の実行中にタスクが失敗しました。マネージャー設定を確認して再試行してください。"
+  "app.inspector.task_failure_hint.generic": "{manager} の実行中にタスクが失敗しました。マネージャー設定を確認して再試行してください。",
+  "app.inspector.view_task_output": "出力を表示",
+  "app.inspector.task_output": "タスク出力",
+  "app.inspector.task_output_loading": "タスク出力を読み込み中...",
+  "app.inspector.task_output_load_failed": "タスク出力を読み込めませんでした。",
+  "app.inspector.task_output_unavailable": "タスク出力を利用できません。",
+  "app.inspector.task_output.stdout": "stdout",
+  "app.inspector.task_output.stderr": "stderr",
+  "app.popover.banner.review": "確認",
+  "app.inspector.view_diagnostics": "診断を表示",
+  "app.inspector.task_diagnostics": "診断",
+  "app.inspector.task_diagnostics_unavailable": "診断を利用できません。",
+  "app.inspector.task_output.diagnostics": "diagnostics"
 }

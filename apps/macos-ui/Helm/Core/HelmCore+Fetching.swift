@@ -62,6 +62,12 @@ extension HelmCore {
                             restartRequired: pkg.restartRequired
                         )
                     }
+                    if let self = self, !self.upgradePlanSteps.isEmpty {
+                        self.refreshUpgradePlan(
+                            includePinned: self.upgradePlanIncludePinned,
+                            allowOsUpdates: self.upgradePlanAllowOsUpdates
+                        )
+                    }
                 }
             } catch {
                 logger.error("fetchOutdatedPackages: decode failed (\(data.count) bytes): \(error)")
@@ -84,6 +90,7 @@ extension HelmCore {
                 let coreTasks = try decoder.decode([CoreTaskRecord].self, from: data)
 
                 DispatchQueue.main.async {
+                    self?.latestCoreTasksSnapshot = coreTasks
                     if let maxTaskId = coreTasks.map(\.id).max() {
                         self?.lastObservedTaskId = max(self?.lastObservedTaskId ?? 0, maxTaskId)
                     }
@@ -114,6 +121,7 @@ extension HelmCore {
                     self?.syncUpgradeActions(from: coreTasks)
                     self?.syncInstallActions(from: coreTasks)
                     self?.syncUninstallActions(from: coreTasks)
+                    self?.syncUpgradePlanProjection(from: coreTasks)
                     self?.syncPackageDescriptionLookups(from: coreTasks)
 
                     // Announce new task failures to VoiceOver
@@ -357,6 +365,33 @@ extension HelmCore {
             } catch {
                 logger.error("fetchManagerStatus: decode failed (\(data.count) bytes): \(error)")
                 DispatchQueue.main.async { self?.lastError = L10n.Common.error.localized }
+            }
+        }
+    }
+
+    func fetchTaskOutput(taskId: String, completion: @escaping (CoreTaskOutputRecord?) -> Void) {
+        guard let numericTaskId = Int64(taskId), let svc = service() else {
+            completion(nil)
+            return
+        }
+
+        withTimeout(30, operation: { callback in
+            svc.getTaskOutput(taskId: numericTaskId) { callback($0) }
+        }) { jsonString in
+            guard let jsonString = jsonString,
+                  let data = jsonString.data(using: .utf8) else {
+                completion(nil)
+                return
+            }
+
+            do {
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                let output = try decoder.decode(CoreTaskOutputRecord.self, from: data)
+                completion(output)
+            } catch {
+                logger.error("fetchTaskOutput: decode failed (\(data.count) bytes): \(error)")
+                completion(nil)
             }
         }
     }

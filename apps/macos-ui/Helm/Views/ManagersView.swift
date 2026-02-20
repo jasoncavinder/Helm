@@ -47,11 +47,13 @@ struct ManagersSectionView: View {
                                         context.selectedManagerId = manager.id
                                         context.selectedPackageId = nil
                                         context.selectedTaskId = nil
+                                        context.selectedUpgradePlanStepId = nil
                                     },
                                     onViewPackages: {
                                         context.selectedManagerId = manager.id
                                         context.managerFilterId = manager.id
                                         context.selectedTaskId = nil
+                                        context.selectedUpgradePlanStepId = nil
                                         context.selectedSection = .packages
                                     }
                                 )

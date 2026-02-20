@@ -133,7 +133,9 @@ struct RedesignPopoverView: View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
                 if !core.isConnected || core.failedTaskCount > 0 || !core.outdatedPackages.isEmpty {
-                    PopoverAttentionBanner()
+                    PopoverAttentionBanner(onOpenControlCenter: {
+                        onOpenControlCenter()
+                    })
                         .spotlightAnchor("attentionBanner")
                 }
 
@@ -234,6 +236,7 @@ struct RedesignPopoverView: View {
                         context.selectedManagerId = manager.id
                         context.selectedPackageId = nil
                         context.selectedTaskId = nil
+                        context.selectedUpgradePlanStepId = nil
                         context.selectedSection = .managers
                         onOpenControlCenter()
                     } label: {

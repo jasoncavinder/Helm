@@ -28,15 +28,15 @@ Helm follows feature-driven milestones. Dates are intentionally omitted — mile
 | Version | Milestone |
 |---|---|
 | 0.13.x | UI/UX Analysis & Redesign — full UX audit, interaction model, visual system refresh, accessibility, onboarding walkthrough, inspector sidebar, support & feedback entry points (`v0.13.0` stable released) |
-| 0.14.x | Platform, Detection & Optional Managers — Docker, Xcode, Rosetta, Sparkle, Setapp, Homebrew casks, optional managers (`v0.14.0` stable release) |
+| 0.14.x | Platform, Detection & Optional Managers — Docker, Xcode, Rosetta, Sparkle, Setapp, Homebrew casks, optional managers (`v0.14.x` stable, latest patch `v0.14.1`) |
+| 0.15.x | Advanced Upgrade Transparency — richer execution-plan visibility, failure isolation, and operator controls (`v0.15.0` release prep on `dev`) |
 
-> **Testing:** `v0.14.0` is available. Submit feedback via [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Testing:** `v0.15.0` is available. Submit feedback via [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
 ## Planned
 
 | Version | Milestone |
 |---|---|
-| 0.15.x | Advanced Upgrade Transparency — richer execution-plan visibility, failure isolation, and operator controls |
 | 0.16.x | Self-Update & Installer Hardening — Sparkle integration for direct Developer ID channel, signed verification |
 | 0.17.x | Diagnostics & Logging — log viewer, structured error export, health panel |
 | 0.18.x | Stability & Pre-1.0 Hardening — stress tests, crash recovery, memory audit |

@@ -1,0 +1,5 @@
+// Checked-in fallback so Xcode can resolve build settings before generated
+// version metadata exists. Generated values override these defaults.
+MARKETING_VERSION = 0.0.0
+CURRENT_PROJECT_VERSION = 0
+#include? "../Generated/HelmVersion.xcconfig"

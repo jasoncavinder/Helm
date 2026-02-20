@@ -350,9 +350,7 @@ fn ensure_pnpm_no_longer_outdated<S: PnpmSource>(
             task: Some(TaskType::Upgrade),
             action: Some(ManagerAction::Upgrade),
             kind: CoreErrorKind::ProcessFailure,
-            message: format!(
-                "pnpm update reported success but '{package_name}' remains outdated"
-            ),
+            message: format!("pnpm update reported success but '{package_name}' remains outdated"),
         });
     }
     Ok(())

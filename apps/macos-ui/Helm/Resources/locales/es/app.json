@@ -184,6 +184,8 @@
   "app.inspector.task_type": "Tipo de tarea",
   "app.inspector.task_status": "Estado",
   "app.inspector.task_manager": "Gestor",
+  "app.inspector.task_command": "Comando",
+  "app.inspector.task_command_unavailable": "No disponible",
   "app.inspector.task_label_key": "Clave de etiqueta",
   "app.inspector.task_label_args": "Argumentos de etiqueta",
   "app.inspector.package_id": "ID de paquete",
@@ -290,5 +292,17 @@
   "app.inspector.description_unavailable": "Descripción no disponible.",
   "app.inspector.task_failure_feedback": "Detalles del fallo",
   "app.inspector.task_failure_hint.homebrew_install": "Helm no pudo instalar {package} con Homebrew. Verifica que Homebrew funcione (`brew doctor`) y vuelve a intentarlo para capturar la salida completa.",
-  "app.inspector.task_failure_hint.generic": "La tarea falló en {manager}. Revisa la configuración y vuelve a intentarlo."
+  "app.inspector.task_failure_hint.generic": "La tarea falló en {manager}. Revisa la configuración y vuelve a intentarlo.",
+  "app.inspector.view_task_output": "Ver salida",
+  "app.inspector.task_output": "Salida de la tarea",
+  "app.inspector.task_output_loading": "Cargando salida de la tarea...",
+  "app.inspector.task_output_load_failed": "No se pudo cargar la salida de la tarea.",
+  "app.inspector.task_output_unavailable": "Salida de la tarea no disponible.",
+  "app.inspector.task_output.stdout": "stdout",
+  "app.inspector.task_output.stderr": "stderr",
+  "app.popover.banner.review": "Revisar",
+  "app.inspector.view_diagnostics": "Ver diagnósticos",
+  "app.inspector.task_diagnostics": "Diagnósticos",
+  "app.inspector.task_diagnostics_unavailable": "Los diagnósticos no están disponibles.",
+  "app.inspector.task_output.diagnostics": "diagnósticos"
 }

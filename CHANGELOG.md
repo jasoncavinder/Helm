@@ -4,6 +4,34 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [Unreleased]
+
+### Added
+- Upgrade-plan preview model surfaced end-to-end (FFI → XPC → SwiftUI) with stable step IDs, order indices, manager/action/authority context, and localized reason metadata.
+- Updates inspector plan-step details with projected runtime status and linked runtime task IDs.
+- Scoped Updates controls for manager/package filtering and failed-step retry targeting.
+- Failed-task inspector now provides a dedicated task-output sheet with `stderr`/`stdout` tabs backed by on-demand FFI/XPC task-output retrieval.
+
+### Changed
+- Runtime upgrade task labels now include `plan_step_id` metadata so task rows can be projected onto execution-plan rows.
+- Partial-failure summaries now group failed plan steps by manager and affected package set.
+- Scoped plan execution now runs phase-by-phase by authority rank (authoritative → standard → guarded) instead of submitting all manager steps concurrently.
+- Cancel Remaining now aborts active scoped-run sequencing before cancelling matching in-flight tasks.
+- Scoped run sequencing now ignores stale callbacks from superseded run tokens and bounds phase waiting with timeout-based token invalidation.
+- Cancel Remaining now also cancels scoped upgrade tasks that are still projected in-flight even when they have not yet appeared in task snapshots.
+- Xcode build settings now resolve through a checked-in base version xcconfig that optionally includes generated version metadata, preventing missing-file failures on clean checkouts.
+- Updates section content now scrolls to prevent clipping when execution-plan and failure lists exceed available viewport height.
+- Updates plan rows now use display-order numbering and full-row hit targets for inspector selection.
+- Updates section now shows an in-progress indicator while scoped plan execution is active.
+- Task inspector now shows a `Command` field with the resolved repro command when available.
+- Popover failure banner now replaces contradictory `Upgrade All` with `Review` when failures exist, routing directly to Control Center Tasks and selecting the first failed task.
+- Failed-task inspector now uses a single `View Diagnostics` action that opens a 3-tab diagnostics view (`diagnostics`, `stderr`, `stdout`).
+- Support diagnostics manager listing is now stable (authority order, then alphabetical) to prevent row reordering churn.
+- Process-executed adapter tasks now carry task ID context through execution so stdout/stderr can be captured and mapped back to task IDs for diagnostics.
+- Removed the redundant `Dry Run` button from Updates now that equivalent plan visibility is always present inline.
+- Release-prep metadata now targets `0.15.0` across workspace versioning and status documentation (README/website/release checklist).
+- Generated `apps/macos-ui/Generated/HelmVersion.xcconfig` is now ignored and no longer tracked.
+
 ## [0.14.1] - 2026-02-20
 
 ### Fixed

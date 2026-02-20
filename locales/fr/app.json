@@ -184,6 +184,8 @@
   "app.inspector.task_type": "Type de tâche",
   "app.inspector.task_status": "Statut",
   "app.inspector.task_manager": "Gestionnaire",
+  "app.inspector.task_command": "Commande",
+  "app.inspector.task_command_unavailable": "Indisponible",
   "app.inspector.task_label_key": "Clé de libellé",
   "app.inspector.task_label_args": "Arguments du libellé",
   "app.inspector.package_id": "ID du paquet",
@@ -290,5 +292,17 @@
   "app.inspector.description_unavailable": "Description indisponible.",
   "app.inspector.task_failure_feedback": "Détails de l’échec",
   "app.inspector.task_failure_hint.homebrew_install": "Helm n’a pas pu installer {package} via Homebrew. Vérifiez que Homebrew fonctionne (`brew doctor`) puis réessayez pour obtenir la sortie complète.",
-  "app.inspector.task_failure_hint.generic": "Échec de la tâche sur {manager}. Vérifiez la configuration puis réessayez."
+  "app.inspector.task_failure_hint.generic": "Échec de la tâche sur {manager}. Vérifiez la configuration puis réessayez.",
+  "app.inspector.view_task_output": "Voir la sortie",
+  "app.inspector.task_output": "Sortie de la tâche",
+  "app.inspector.task_output_loading": "Chargement de la sortie de la tâche...",
+  "app.inspector.task_output_load_failed": "Impossible de charger la sortie de la tâche.",
+  "app.inspector.task_output_unavailable": "Sortie de la tâche indisponible.",
+  "app.inspector.task_output.stdout": "stdout",
+  "app.inspector.task_output.stderr": "stderr",
+  "app.popover.banner.review": "Vérifier",
+  "app.inspector.view_diagnostics": "Voir les diagnostics",
+  "app.inspector.task_diagnostics": "Diagnostics",
+  "app.inspector.task_diagnostics_unavailable": "Les diagnostics ne sont pas disponibles.",
+  "app.inspector.task_output.diagnostics": "diagnostics"
 }

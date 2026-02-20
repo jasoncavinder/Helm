@@ -184,6 +184,8 @@
   "app.inspector.task_type": "Aufgabentyp",
   "app.inspector.task_status": "Status",
   "app.inspector.task_manager": "Manager",
+  "app.inspector.task_command": "Befehl",
+  "app.inspector.task_command_unavailable": "Nicht verfügbar",
   "app.inspector.task_label_key": "Label-Schlüssel",
   "app.inspector.task_label_args": "Label-Argumente",
   "app.inspector.package_id": "Paket-ID",
@@ -290,5 +292,17 @@
   "app.inspector.description_unavailable": "Beschreibung nicht verfügbar.",
   "app.inspector.task_failure_feedback": "Fehlerdetails",
   "app.inspector.task_failure_hint.homebrew_install": "Helm konnte {package} nicht über Homebrew installieren. Prüfe Homebrew (`brew doctor`) und versuche es erneut, um die Ausgabe zu sehen.",
-  "app.inspector.task_failure_hint.generic": "Aufgabe bei {manager} fehlgeschlagen. Konfiguration prüfen und erneut versuchen."
+  "app.inspector.task_failure_hint.generic": "Aufgabe bei {manager} fehlgeschlagen. Konfiguration prüfen und erneut versuchen.",
+  "app.inspector.view_task_output": "Ausgabe anzeigen",
+  "app.inspector.task_output": "Task-Ausgabe",
+  "app.inspector.task_output_loading": "Task-Ausgabe wird geladen...",
+  "app.inspector.task_output_load_failed": "Task-Ausgabe konnte nicht geladen werden.",
+  "app.inspector.task_output_unavailable": "Task-Ausgabe nicht verfügbar.",
+  "app.inspector.task_output.stdout": "stdout",
+  "app.inspector.task_output.stderr": "stderr",
+  "app.popover.banner.review": "Prüfen",
+  "app.inspector.view_diagnostics": "Diagnose anzeigen",
+  "app.inspector.task_diagnostics": "Diagnose",
+  "app.inspector.task_diagnostics_unavailable": "Diagnose ist nicht verfügbar.",
+  "app.inspector.task_output.diagnostics": "diagnose"
 }

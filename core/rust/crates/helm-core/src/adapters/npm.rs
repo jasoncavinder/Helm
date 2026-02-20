@@ -343,9 +343,7 @@ fn ensure_npm_no_longer_outdated<S: NpmSource>(
             task: Some(TaskType::Upgrade),
             action: Some(ManagerAction::Upgrade),
             kind: CoreErrorKind::ProcessFailure,
-            message: format!(
-                "npm update reported success but '{package_name}' remains outdated"
-            ),
+            message: format!("npm update reported success but '{package_name}' remains outdated"),
         });
     }
     Ok(())

@@ -14,6 +14,25 @@ struct ControlCenterInspectorView: View {
         return core.allKnownPackages.first { $0.id == packageId }
     }
 
+    private var selectedUpgradePlanTask: TaskItem? {
+        guard let stepId = context.selectedUpgradePlanStepId,
+              let step = core.upgradePlanSteps.first(where: { $0.id == stepId }) else { return nil }
+        let projectedStatus = core.projectedUpgradePlanStatus(for: step)
+        let projectedTaskId = core.projectedUpgradePlanTaskId(for: step)
+        let taskId = projectedTaskId.map(String.init) ?? step.id
+        var labelArgs = step.reasonLabelArgs
+        labelArgs["plan_step_id"] = step.id
+        return TaskItem(
+            id: taskId,
+            description: core.localizedUpgradePlanReason(for: step),
+            status: projectedStatus,
+            managerId: step.managerId,
+            taskType: step.action,
+            labelKey: step.reasonLabelKey,
+            labelArgs: labelArgs
+        )
+    }
+
     private var selectedManager: ManagerInfo? {
         guard let managerId = context.selectedManagerId else { return nil }
         return ManagerInfo.all.first { $0.id == managerId }
@@ -25,7 +44,7 @@ struct ControlCenterInspectorView: View {
                 Text(L10n.App.Inspector.title.localized)
                     .font(.headline)
 
-                if let task = selectedTask {
+                if let task = selectedTask ?? selectedUpgradePlanTask {
                     InspectorTaskDetailView(task: task)
                 } else if let package = selectedPackage {
                     InspectorPackageDetailView(package: package)
@@ -38,6 +57,7 @@ struct ControlCenterInspectorView: View {
                         outdatedCount: core.outdatedCount(forManagerId: manager.id),
                         onViewPackages: {
                             context.managerFilterId = manager.id
+                            context.selectedUpgradePlanStepId = nil
                             context.selectedSection = .packages
                         }
                     )
@@ -57,6 +77,11 @@ struct ControlCenterInspectorView: View {
 // MARK: - Task Inspector
 
 private struct InspectorTaskDetailView: View {
+    @ObservedObject private var core = HelmCore.shared
+    @State private var showDiagnosticsSheet = false
+    @State private var isLoadingTaskOutput = false
+    @State private var taskOutputLoadFailed = false
+    @State private var taskOutputRecord: CoreTaskOutputRecord?
     let task: TaskItem
 
     var body: some View {
@@ -97,6 +122,13 @@ private struct InspectorTaskDetailView: View {
                 }
             }
 
+            InspectorField(label: L10n.App.Inspector.taskCommand.localized) {
+                Text(taskCommandText())
+                    .font(.caption.monospaced())
+                    .foregroundStyle(diagnosticCommandHint() == nil ? .secondary : .primary)
+                    .textSelection(.enabled)
+            }
+
             if let labelKey = task.labelKey {
                 InspectorField(label: L10n.App.Inspector.taskLabelKey.localized) {
                     Text(labelKey)
@@ -128,11 +160,36 @@ private struct InspectorTaskDetailView: View {
 
             if task.status.lowercased() == "failed" {
                 InspectorField(label: L10n.App.Inspector.taskFailureFeedback.localized) {
-                    Text(failureHintText())
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(failureHintText())
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        if hasNumericTaskId {
+                            Button(L10n.App.Inspector.viewDiagnostics.localized) {
+                                showDiagnosticsSheet = true
+                                loadTaskOutput(force: true)
+                            }
+                            .buttonStyle(HelmSecondaryButtonStyle())
+                            .font(.caption)
+                            .helmPointer()
+                        }
+                    }
                 }
             }
+        }
+        .popover(isPresented: $showDiagnosticsSheet, arrowEdge: .leading) {
+            TaskDiagnosticsSheetView(
+                taskDescription: task.description,
+                diagnosticsText: HelmSupport.generateTaskDiagnostics(
+                    task: task,
+                    suggestedCommand: diagnosticCommandHint()
+                ),
+                output: taskOutputRecord,
+                isLoading: isLoadingTaskOutput,
+                loadFailed: taskOutputLoadFailed
+            )
+            .frame(minWidth: 700, minHeight: 420)
         }
     }
 
@@ -155,6 +212,128 @@ private struct InspectorTaskDetailView: View {
         }
 
         return L10n.Service.Error.processFailure.localized
+    }
+
+    private func diagnosticCommandHint() -> String? {
+        core.diagnosticCommandHint(for: task)
+    }
+
+    private func taskCommandText() -> String {
+        diagnosticCommandHint() ?? L10n.App.Inspector.taskCommandUnavailable.localized
+    }
+
+    private var hasNumericTaskId: Bool {
+        Int64(task.id) != nil
+    }
+
+    private func loadTaskOutput(force: Bool) {
+        guard hasNumericTaskId else { return }
+        if isLoadingTaskOutput {
+            return
+        }
+        if taskOutputRecord != nil && !force {
+            return
+        }
+
+        isLoadingTaskOutput = true
+        taskOutputLoadFailed = false
+        core.fetchTaskOutput(taskId: task.id) { output in
+            DispatchQueue.main.async {
+                self.isLoadingTaskOutput = false
+                if let output {
+                    self.taskOutputRecord = output
+                    self.taskOutputLoadFailed = false
+                } else {
+                    self.taskOutputRecord = nil
+                    self.taskOutputLoadFailed = true
+                }
+            }
+        }
+    }
+}
+
+private struct TaskDiagnosticsSheetView: View {
+    let taskDescription: String
+    let diagnosticsText: String
+    let output: CoreTaskOutputRecord?
+    let isLoading: Bool
+    let loadFailed: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(L10n.App.Inspector.taskDiagnostics.localized)
+                .font(.headline)
+
+            Text(taskDescription)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+
+            TabView {
+                TaskOutputTextView(
+                    text: diagnosticsText,
+                    unavailableText: L10n.App.Inspector.taskDiagnosticsUnavailable.localized
+                )
+                .tabItem { Text(L10n.App.Inspector.taskOutputDiagnostics.localized) }
+
+                TaskOutputTextView(
+                    text: output?.stderr,
+                    unavailableText: streamUnavailableText()
+                )
+                .tabItem { Text(L10n.App.Inspector.taskOutputStderr.localized) }
+
+                TaskOutputTextView(
+                    text: output?.stdout,
+                    unavailableText: streamUnavailableText()
+                )
+                .tabItem { Text(L10n.App.Inspector.taskOutputStdout.localized) }
+            }
+        }
+        .padding(16)
+    }
+
+    private func streamUnavailableText() -> String {
+        if isLoading && output == nil {
+            return L10n.App.Inspector.taskOutputLoading.localized
+        }
+        if loadFailed {
+            return L10n.App.Inspector.taskOutputLoadFailed.localized
+        }
+        return L10n.App.Inspector.taskOutputUnavailable.localized
+    }
+}
+
+private struct TaskOutputTextView: View {
+    let text: String?
+    let unavailableText: String
+
+    private var normalizedText: String? {
+        guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty else {
+            return nil
+        }
+        return text
+    }
+
+    var body: some View {
+        Group {
+            if let normalizedText {
+                ScrollView([.horizontal, .vertical]) {
+                    Text(normalizedText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                        .padding(8)
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(NSColor.textBackgroundColor))
+                )
+            } else {
+                Text(unavailableText)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 }
 
@@ -295,6 +474,7 @@ private struct InspectorPackageDetailView: View {
                     context.selectedManagerId = package.managerId
                     context.selectedPackageId = nil
                     context.selectedTaskId = nil
+                    context.selectedUpgradePlanStepId = nil
                     context.selectedSection = .managers
                 }
                 .buttonStyle(HelmSecondaryButtonStyle())

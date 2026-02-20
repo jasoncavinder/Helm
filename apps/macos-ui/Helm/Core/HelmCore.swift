@@ -33,12 +33,47 @@ struct CoreTaskRecord: Codable {
     let labelArgs: [String: String]?
 }
 
+struct CoreTaskOutputRecord: Codable {
+    let taskId: UInt64
+    let stdout: String?
+    let stderr: String?
+}
+
 struct CoreSearchResult: Codable {
     let manager: String
     let name: String
     let version: String?
     let summary: String?
     let sourceManager: String
+}
+
+struct CoreUpgradePlanStep: Codable, Identifiable, Equatable {
+    let stepId: String
+    let orderIndex: UInt64
+    let managerId: String
+    let authority: String
+    let action: String
+    let packageName: String
+    let reasonLabelKey: String
+    let reasonLabelArgs: [String: String]
+    let status: String
+
+    var id: String { stepId }
+}
+
+struct UpgradePlanTaskProjection {
+    let stepId: String
+    let taskId: UInt64
+    let status: String
+    let managerId: String
+    let labelKey: String?
+}
+
+struct UpgradePlanFailureGroup: Identifiable {
+    let id: String
+    let managerId: String
+    let stepIds: [String]
+    let packageNames: [String]
 }
 
 enum HomebrewKegPolicyOverride: String, Codable {
@@ -88,6 +123,12 @@ final class HelmCore: ObservableObject {
     @Published var activeTasks: [TaskItem] = []
     @Published var searchResults: [PackageItem] = []
     @Published var cachedAvailablePackages: [PackageItem] = []
+    @Published var upgradePlanSteps: [CoreUpgradePlanStep] = []
+    @Published var upgradePlanTaskProjectionByStepId: [String: UpgradePlanTaskProjection] = [:]
+    @Published var upgradePlanFailureGroups: [UpgradePlanFailureGroup] = []
+    @Published var upgradePlanAllowOsUpdates: Bool = false
+    @Published var upgradePlanIncludePinned: Bool = false
+    @Published var scopedUpgradePlanRunInProgress: Bool = false
     @Published var detectedManagers: Set<String> = []
     @Published var managerStatuses: [String: ManagerStatus] = [:]
     @Published var managerOperations: [String: String] = [:]
@@ -121,8 +162,10 @@ final class HelmCore: ObservableObject {
     var onboardingDetectionAnchorTaskId: UInt64 = 0
     var onboardingDetectionPendingManagers: Set<String> = []
     var onboardingDetectionStartedAt: Date?
+    var latestCoreTasksSnapshot: [CoreTaskRecord] = []
     var previousFailedTaskCount: Int = 0
     var previousRefreshState: Bool = false
+    var scopedUpgradePlanRunToken = UUID()
     private var reconnectAttempt: Int = 0
 
     private init() {

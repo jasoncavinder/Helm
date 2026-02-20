@@ -6,6 +6,7 @@ import Darwin
 private let logger = Logger(subsystem: "com.jasoncavinder.Helm", category: "core.settings")
 
 extension HelmCore {
+    static let allManagersScopeId = UpgradePreviewPlanner.allManagersScopeId
 
     // MARK: - Safe Mode
 
@@ -123,10 +124,66 @@ extension HelmCore {
     // MARK: - Upgrade All
 
     func upgradeAll(includePinned: Bool = false, allowOsUpdates: Bool = false) {
+        DispatchQueue.main.async {
+            self.upgradePlanIncludePinned = includePinned
+            self.upgradePlanAllowOsUpdates = allowOsUpdates
+            for step in self.upgradePlanSteps {
+                self.upgradePlanTaskProjectionByStepId.removeValue(forKey: step.id)
+            }
+            self.rebuildUpgradePlanFailureGroups()
+        }
         service()?.upgradeAll(includePinned: includePinned, allowOsUpdates: allowOsUpdates) { success in
             if !success {
                 logger.error("upgradeAll(includePinned: \(includePinned), allowOsUpdates: \(allowOsUpdates)) failed")
             }
+        }
+    }
+
+    func refreshUpgradePlan(includePinned: Bool = false, allowOsUpdates: Bool = false) {
+        service()?.previewUpgradePlan(includePinned: includePinned, allowOsUpdates: allowOsUpdates) { [weak self] jsonString in
+            guard let self = self else { return }
+            guard let jsonString, let data = jsonString.data(using: .utf8) else { return }
+
+            do {
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                let steps = try decoder.decode([CoreUpgradePlanStep].self, from: data)
+                DispatchQueue.main.async {
+                    self.upgradePlanIncludePinned = includePinned
+                    self.upgradePlanAllowOsUpdates = allowOsUpdates
+                    self.upgradePlanSteps = steps.sorted { lhs, rhs in
+                        lhs.orderIndex < rhs.orderIndex
+                    }
+                    self.syncUpgradePlanProjection(from: self.latestCoreTasksSnapshot)
+                }
+            } catch {
+                logger.error("refreshUpgradePlan: decode failed (\(data.count) bytes): \(error)")
+            }
+        }
+    }
+
+    func projectedUpgradePlanStatus(for step: CoreUpgradePlanStep) -> String {
+        upgradePlanTaskProjectionByStepId[step.id]?.status ?? step.status
+    }
+
+    func projectedUpgradePlanTaskId(for step: CoreUpgradePlanStep) -> UInt64? {
+        upgradePlanTaskProjectionByStepId[step.id]?.taskId
+    }
+
+    func localizedUpgradePlanStatus(_ rawStatus: String) -> String {
+        switch rawStatus.lowercased() {
+        case "queued":
+            return L10n.Service.Task.Status.pending.localized
+        case "running":
+            return L10n.Service.Task.Status.running.localized
+        case "completed":
+            return L10n.Service.Task.Status.completed.localized
+        case "failed":
+            return L10n.Service.Task.Status.failed.localized
+        case "cancelled":
+            return L10n.Service.Task.Status.cancelled.localized
+        default:
+            return rawStatus.capitalized
         }
     }
 
@@ -162,6 +219,67 @@ extension HelmCore {
 
     // MARK: - Localization Helpers
 
+    func localizedUpgradePlanReason(for step: CoreUpgradePlanStep) -> String {
+        let args = step.reasonLabelArgs.reduce(into: [String: Any]()) { partialResult, entry in
+            partialResult[entry.key] = entry.value
+        }
+        return step.reasonLabelKey.localized(with: args)
+    }
+
+    func localizedUpgradePlanFailureCause(for group: UpgradePlanFailureGroup) -> String {
+        L10n.App.Inspector.taskFailureHintGeneric.localized(with: [
+            "manager": localizedManagerDisplayName(group.managerId)
+        ])
+    }
+
+    static func authorityRank(for authority: String) -> Int {
+        UpgradePreviewPlanner.authorityRank(for: authority)
+    }
+
+    static func sortedUpgradePlanStepsForExecution(_ steps: [CoreUpgradePlanStep]) -> [CoreUpgradePlanStep] {
+        let plannerSteps = steps.map {
+            UpgradePreviewPlanner.PlanStep(
+                id: $0.id,
+                orderIndex: $0.orderIndex,
+                managerId: $0.managerId,
+                authority: $0.authority,
+                packageName: $0.packageName,
+                reasonLabelKey: $0.reasonLabelKey
+            )
+        }
+        var stepById: [String: CoreUpgradePlanStep] = [:]
+        for step in steps where stepById[step.id] == nil {
+            stepById[step.id] = step
+        }
+        return UpgradePreviewPlanner.sortedForExecution(plannerSteps).compactMap { stepById[$0.id] }
+    }
+
+    static func scopedUpgradePlanSteps(
+        from steps: [CoreUpgradePlanStep],
+        managerScopeId: String,
+        packageFilter: String
+    ) -> [CoreUpgradePlanStep] {
+        let plannerSteps = steps.map {
+            UpgradePreviewPlanner.PlanStep(
+                id: $0.id,
+                orderIndex: $0.orderIndex,
+                managerId: $0.managerId,
+                authority: $0.authority,
+                packageName: $0.packageName,
+                reasonLabelKey: $0.reasonLabelKey
+            )
+        }
+        var stepById: [String: CoreUpgradePlanStep] = [:]
+        for step in steps where stepById[step.id] == nil {
+            stepById[step.id] = step
+        }
+        return UpgradePreviewPlanner.scopedForExecution(
+            from: plannerSteps,
+            managerScopeId: managerScopeId,
+            packageFilter: packageFilter
+        ).compactMap { stepById[$0.id] }
+    }
+
     func localizedTaskLabel(from task: CoreTaskRecord) -> String? {
         if let labelKey = task.labelKey {
             let args = task.labelArgs?.reduce(into: [String: Any]()) { partialResult, entry in
@@ -194,6 +312,203 @@ extension HelmCore {
         default:
             return rawTaskType.capitalized
         }
+    }
+
+    func diagnosticCommandHint(for task: TaskItem) -> String? {
+        guard let managerId = task.managerId?.lowercased(),
+              let taskType = task.taskType?.lowercased() else {
+            return nil
+        }
+
+        let packageArg = normalizedCommandArg(task.labelArgs?["package"])
+        let toolchainArg = normalizedCommandArg(task.labelArgs?["toolchain"])
+
+        switch managerId {
+        case "homebrew_formula":
+            return commandForHomebrewFormula(taskType: taskType, packageArg: packageArg)
+        case "homebrew_cask":
+            return commandForHomebrewCask(taskType: taskType, packageArg: packageArg)
+        case "npm":
+            return packageManagerCommand(
+                taskType: taskType,
+                packageArg: packageArg,
+                installPrefix: "npm install -g",
+                uninstallPrefix: "npm uninstall -g",
+                upgradePrefix: "npm update -g"
+            )
+        case "pnpm":
+            return packageManagerCommand(
+                taskType: taskType,
+                packageArg: packageArg,
+                installPrefix: "pnpm add -g",
+                uninstallPrefix: "pnpm remove -g",
+                upgradePrefix: "pnpm update -g"
+            )
+        case "yarn":
+            return packageManagerCommand(
+                taskType: taskType,
+                packageArg: packageArg,
+                installPrefix: "yarn global add",
+                uninstallPrefix: "yarn global remove",
+                upgradePrefix: "yarn global upgrade"
+            )
+        case "pip":
+            return commandForPip(taskType: taskType, packageArg: packageArg)
+        case "pipx":
+            return packageManagerCommand(
+                taskType: taskType,
+                packageArg: packageArg,
+                installPrefix: "pipx install",
+                uninstallPrefix: "pipx uninstall",
+                upgradePrefix: "pipx upgrade"
+            )
+        case "rubygems":
+            return packageManagerCommand(
+                taskType: taskType,
+                packageArg: packageArg,
+                installPrefix: "gem install",
+                uninstallPrefix: "gem uninstall",
+                upgradePrefix: "gem update"
+            )
+        case "poetry":
+            return commandForPoetry(taskType: taskType, packageArg: packageArg)
+        case "cargo":
+            return commandForCargo(taskType: taskType, packageArg: packageArg)
+        case "cargo_binstall":
+            return commandForCargoBinstall(taskType: taskType, packageArg: packageArg)
+        case "rustup":
+            return commandForRustup(taskType: taskType, toolchainArg: toolchainArg)
+        case "softwareupdate":
+            return taskType == "upgrade" ? "softwareupdate --install --all" : nil
+        case "mise":
+            return commandForMise(taskType: taskType, packageArg: packageArg)
+        default:
+            return nil
+        }
+    }
+
+    private func normalizedCommandArg(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
+    }
+
+    private func packageManagerCommand(
+        taskType: String,
+        packageArg: String?,
+        installPrefix: String,
+        uninstallPrefix: String,
+        upgradePrefix: String
+    ) -> String? {
+        guard let packageArg else { return nil }
+        switch taskType {
+        case "install":
+            return "\(installPrefix) \(packageArg)"
+        case "uninstall":
+            return "\(uninstallPrefix) \(packageArg)"
+        case "upgrade":
+            return "\(upgradePrefix) \(packageArg)"
+        default:
+            return nil
+        }
+    }
+
+    private func commandForHomebrewFormula(taskType: String, packageArg: String?) -> String? {
+        switch taskType {
+        case "install":
+            guard let packageArg else { return nil }
+            return "brew install \(packageArg)"
+        case "uninstall":
+            guard let packageArg else { return nil }
+            return "brew uninstall \(packageArg)"
+        case "upgrade":
+            if let packageArg {
+                return "brew upgrade \(packageArg)"
+            }
+            return "brew upgrade"
+        default:
+            return nil
+        }
+    }
+
+    private func commandForHomebrewCask(taskType: String, packageArg: String?) -> String? {
+        guard taskType == "upgrade" else { return nil }
+        if let packageArg {
+            return "brew upgrade --cask \(packageArg)"
+        }
+        return "brew upgrade --cask"
+    }
+
+    private func commandForPip(taskType: String, packageArg: String?) -> String? {
+        guard let packageArg else { return nil }
+        switch taskType {
+        case "install", "upgrade":
+            return "python3 -m pip install --upgrade \(packageArg)"
+        case "uninstall":
+            return "python3 -m pip uninstall \(packageArg)"
+        default:
+            return nil
+        }
+    }
+
+    private func commandForPoetry(taskType: String, packageArg: String?) -> String? {
+        switch taskType {
+        case "install":
+            guard let packageArg else { return nil }
+            return "poetry self add \(packageArg)"
+        case "uninstall":
+            guard let packageArg else { return nil }
+            return "poetry self remove \(packageArg)"
+        case "upgrade":
+            if let packageArg {
+                return "poetry self update \(packageArg)"
+            }
+            return "poetry self update"
+        default:
+            return nil
+        }
+    }
+
+    private func commandForCargo(taskType: String, packageArg: String?) -> String? {
+        guard let packageArg else { return nil }
+        switch taskType {
+        case "install", "upgrade":
+            return "cargo install \(packageArg)"
+        case "uninstall":
+            return "cargo uninstall \(packageArg)"
+        default:
+            return nil
+        }
+    }
+
+    private func commandForCargoBinstall(taskType: String, packageArg: String?) -> String? {
+        guard let packageArg else { return nil }
+        switch taskType {
+        case "install", "upgrade":
+            return "cargo binstall \(packageArg)"
+        case "uninstall":
+            return "cargo uninstall \(packageArg)"
+        default:
+            return nil
+        }
+    }
+
+    private func commandForRustup(taskType: String, toolchainArg: String?) -> String? {
+        guard taskType == "upgrade" else { return nil }
+        if let toolchainArg {
+            return "rustup update \(toolchainArg)"
+        }
+        return "rustup update"
+    }
+
+    private func commandForMise(taskType: String, packageArg: String?) -> String? {
+        guard taskType == "upgrade" else { return nil }
+        if let packageArg {
+            return "mise upgrade \(packageArg)"
+        }
+        return "mise upgrade"
     }
 
     func upgradeActionDescription(for package: PackageItem) -> String {
@@ -311,7 +626,33 @@ struct HelmSupport {
         
         info += "\nManagers:\n"
         let core = HelmCore.shared
-        for (id, status) in core.managerStatuses {
+        let sortedManagers = core.managerStatuses.map { id, status in
+            let manager = ManagerInfo.find(byId: id)
+            let authorityRank: Int
+            switch manager?.authority {
+            case .authoritative:
+                authorityRank = 0
+            case .standard, .none:
+                authorityRank = 1
+            case .guarded:
+                authorityRank = 2
+            }
+            return (
+                id: id,
+                status: status,
+                authorityRank: authorityRank,
+                sortName: manager?.displayName ?? id
+            )
+        }.sorted { lhs, rhs in
+            if lhs.authorityRank != rhs.authorityRank {
+                return lhs.authorityRank < rhs.authorityRank
+            }
+            return lhs.sortName.localizedCaseInsensitiveCompare(rhs.sortName) == .orderedAscending
+        }
+
+        for entry in sortedManagers {
+            let id = entry.id
+            let status = entry.status
             let state = status.enabled ? "Enabled" : "Disabled"
             let installed = status.detected ? "Installed" : "Not Detected"
             let version = status.version ?? "Unknown"
@@ -336,6 +677,39 @@ struct HelmSupport {
 
     static func copyDiagnosticsToClipboard() {
         let diagnostics = generateDiagnostics()
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(diagnostics, forType: .string)
+    }
+
+    static func generateTaskDiagnostics(task: TaskItem, suggestedCommand: String?) -> String {
+        var info = generateDiagnostics()
+        info += "\nTask Focus:\n"
+        info += "- Task ID: \(task.id)\n"
+        info += "- Status: \(task.status)\n"
+        if let managerId = task.managerId {
+            info += "- Manager: \(managerId)\n"
+        }
+        if let taskType = task.taskType {
+            info += "- Task Type: \(taskType)\n"
+        }
+        if let labelKey = task.labelKey {
+            info += "- Label Key: \(labelKey)\n"
+        }
+        if let labelArgs = task.labelArgs, !labelArgs.isEmpty {
+            info += "- Label Args:\n"
+            for entry in labelArgs.sorted(by: { $0.key < $1.key }) {
+                info += "  - \(entry.key): \(entry.value)\n"
+            }
+        }
+        if let suggestedCommand, !suggestedCommand.isEmpty {
+            info += "- Suggested Repro Command: \(suggestedCommand)\n"
+        }
+        return info
+    }
+
+    static func copyTaskDiagnosticsToClipboard(task: TaskItem, suggestedCommand: String?) {
+        let diagnostics = generateTaskDiagnostics(task: task, suggestedCommand: suggestedCommand)
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(diagnostics, forType: .string)

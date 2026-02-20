@@ -18,8 +18,9 @@ Focus:
 - 0.15.x upgrade preview and execution transparency
 
 Current checkpoint:
+- `v0.15.0` release prep in progress on `dev` (final stabilization/validation complete; pending PR flow)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
-- `v0.14.1` patch-track merged on `dev` (release validation and `dev` -> `main` PR pending)
+- `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)
 - `v0.13.0` stable released (website updates, documentation alignment, version bump)
 - `v0.13.0-rc.2` released (support & feedback entry points, diagnostics copy, GitHub Sponsors integration)
 - `v0.13.0-rc.1` released (inspector sidebar, upgrade reliability, status menu, documentation)
@@ -33,12 +34,95 @@ Current checkpoint:
 - `v0.14.0` distribution/licensing architecture planning docs aligned (future-state, no implementation changes)
 
 Next release targets:
-- `v0.14.1` — Stability + UX + adapter behavior fixes (patch release after review)
 - `v0.15.x` — Upgrade Preview & Execution Transparency
 
 ---
 
-## v0.14.1 Patch Track (In Progress)
+## v0.15.x Kickoff Plan (Completed)
+
+### Alpha.1 — Plan Model + Inspector Foundations (Completed on `feat/v0.15.x-alpha.1-kickoff`)
+
+Delivered:
+
+- Added explicit execution-plan model with ordered step metadata surfaced through FFI/service/UI
+- Mapped each planned step to manager/action/package context and stable identifiers for later task correlation
+- Rendered initial ordered plan details in inspector with localized reason/status fields
+
+Validation:
+
+- `cargo test -p helm-ffi --manifest-path core/rust/Cargo.toml`
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
+
+### Alpha.2 — Execution Transparency + Partial Failure Summary (Completed on `feat/v0.15.x-alpha.1-kickoff`)
+
+Delivered:
+
+- Linked runtime task updates to plan-step identifiers for in-flight and completed state projection
+- Added partial-failure summaries with grouped causes and affected managers/packages
+- Added retry affordances scoped to failed plan steps (without rerunning successful steps)
+
+Validation:
+
+- `cargo test -p helm-ffi --manifest-path core/rust/Cargo.toml`
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
+
+### Alpha.3 — Operator Controls for Large Plans (Completed on `feat/v0.15.x-alpha.1-kickoff`)
+
+Delivered:
+
+- added plan-scoped controls for manager and package filtering in Updates
+- added scoped actions for run, cancel remaining, and retry failed-only plan steps
+- enforced authority-first step ordering via shared planner helpers used by scope/execution logic
+- added planner regression tests for authority ordering and scope filtering
+- fixed scoped-run behavior so baseline preview `queued` steps execute while already-projected queued/running/completed steps remain guarded
+
+Validation:
+
+- `cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
+
+### Alpha.4 — Final 0.15.0 Cut Readiness (Completed on `feat/v0.15.x-alpha.1-kickoff`)
+
+Progress so far:
+
+- shared plan-step ID resolution now drives both dashboard projection and scoped-action task correlation paths
+- duplicate step-ID handling hardened in retry/projection failure-group mapping paths
+- scoped run execution now advances authority phase-by-phase instead of submitting all manager steps concurrently
+- cancel remaining now terminates active scoped run sequencing before cancelling matching in-flight tasks
+- cancel remaining now also cancels scoped projected in-flight tasks that have not yet landed in listTasks snapshots
+- phase sequencing now waits for submission callbacks and protects newly queued projections until task snapshots catch up
+- stale callbacks from superseded scoped-run tokens no longer clear active run-in-progress state
+- scoped phase waiting now uses a bounded timeout and invalidates stalled run tokens
+- planner regression tests expanded for scoped-run gating, ID fallback coverage, and projected cancellation task-ID extraction
+- Rust adapter/runtime files normalized with formatting-only cleanup (no behavior changes)
+- release notes/checklist prep for first `v0.15.0` pre-release cut is now scaffolded in `CHANGELOG.md` and `docs/RELEASE_CHECKLIST.md`
+- Xcode version metadata settings now use a checked-in base xcconfig with optional generated override so clean checkouts build without pre-generated artifacts
+- Updates section now scrolls end-to-end so long plan/failure lists remain fully accessible during manual validation
+- Updates rows now support full-row inspector hit targets, display-order numbering, and scoped-run in-progress feedback
+- Failed-task inspector now provides suggested repro command hints and a single `View Diagnostics` action
+- Task inspector now includes a dedicated `Command` field with resolved repro command text (or unavailable fallback)
+- Diagnostics modal now includes dedicated `diagnostics`, `stderr`, and `stdout` tabs
+- Support diagnostics manager rows now remain stable via authority-first + alphabetical ordering
+- Popover failure banner now uses a `Review` action (instead of `Upgrade All`) when failures exist, routing to Control Center Tasks and selecting the first failed task
+- Removed redundant Updates `Dry Run` button since equivalent plan context is already visible inline
+- Added execution-to-inspector task-output plumbing:
+  - per-task runtime context now flows into process requests
+  - process output capture is keyed by task ID and exposed via FFI/XPC (`helm_get_task_output` / `getTaskOutput`)
+  - inspector fetches task output on demand for diagnostics without adding payload bloat to task polling
+
+Deliver:
+- open PR with final `v0.15.0` prep deltas into `dev` for verified commit lineage
+- after merge to `dev`, open `dev` -> `main` PR and complete CI before tagging
+
+### Exit Gate
+
+- users can inspect full ordered execution plans with meaningful context
+- partial failures are clearly attributable and actionable
+- transparency state remains synchronized between task system and plan UI
+
+---
+
+## v0.14.1 Patch Track (Completed)
 
 ### UI/UX Slice (Completed on `dev`)
 
@@ -99,10 +183,10 @@ Delivered:
 - Package inspector now exposes context-appropriate package actions (Install/Uninstall/Update/Pin/Unpin/View Manager)
 - Package install/uninstall actions are now wired through new FFI + service methods for supported managers
 
-Remaining before release cut:
+Release closure:
 
-- Final validation pass on `dev` after merged fix slices
-- Open PR `dev` -> `main` for CI and release gating
+- merged `dev` -> `main` via PR `#65`
+- created/pushed annotated tag `v0.14.1`
 
 ---
 
@@ -637,4 +721,4 @@ Implement:
 - Manager capability sweep artifact is now in place for 0.14 release prep (`docs/validation/v0.14.0-alpha.5-manager-capability-sweep.md`).
 - 0.14 stable release alignment for `v0.14.0` is complete (README/website + version artifacts).
 - Distribution/licensing future-state planning documentation is aligned for 0.14 release notes and roadmap planning (no implementation yet).
-- 0.14 release execution is complete on `main` with tag `v0.14.0`; next delivery slice is 0.15.x.
+- 0.14.x release execution is complete on `main` with latest stable patch tag `v0.14.1`; next delivery slice is 0.15.x.

@@ -363,9 +363,7 @@ fn ensure_pipx_no_longer_outdated<S: PipxSource>(
             task: Some(TaskType::Upgrade),
             action: Some(ManagerAction::Upgrade),
             kind: CoreErrorKind::ProcessFailure,
-            message: format!(
-                "pipx upgrade reported success but '{package_name}' remains outdated"
-            ),
+            message: format!("pipx upgrade reported success but '{package_name}' remains outdated"),
         });
     }
     Ok(())
