@@ -66,6 +66,7 @@ Delivered:
 - Helm target now injects channel/feed/signature plist keys from build settings:
   - `HelmDistributionChannel`
   - `HelmSparkleEnabled`
+  - `SUAllowsDowngrades`
   - `SUFeedURL`
   - `SUPublicEDKey`
 - Release DMG workflow now passes direct-channel Sparkle build metadata and validates required Sparkle secrets before signed release builds.
@@ -74,6 +75,7 @@ Delivered:
 - Added fail-fast build-script policy checks for invalid channel/Sparkle combinations.
 - Added CI channel-policy matrix validation (`apps/macos-ui/scripts/check_channel_policy.sh`) ahead of Xcode build/test.
 - Hardened Sparkle feed policy so Developer ID + Sparkle now requires `https://` at both build-render and runtime configuration gates.
+- Added explicit downgrade hardening: `SUAllowsDowngrades` defaults to disabled, release artifacts are verified as non-downgradeable, and runtime Sparkle gating rejects downgrade-enabled metadata.
 
 Next in alpha.1:
 

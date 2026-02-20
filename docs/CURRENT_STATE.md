@@ -132,10 +132,12 @@ Implemented on `feat/v0.16.0-kickoff`:
 - Added shared channel renderer script (`apps/macos-ui/scripts/render_channel_xcconfig.sh`) so all generated channel config paths use one policy-enforced code path.
 - Added channel-policy matrix check script (`apps/macos-ui/scripts/check_channel_policy.sh`) and wired it into CI (`.github/workflows/ci-test.yml`) before Xcode build/test.
 - Helm target Info.plist keys are now build-setting injected (channel + Sparkle feed/signature metadata) rather than hardcoded plist values.
+- Helm target now injects `SUAllowsDowngrades` from build settings and defaults this to disabled (`NO`) across channel profiles/base config.
 - Release DMG workflow now injects direct-channel Sparkle metadata at build time and validates required release secrets/packaged plist channel keys.
 - Release DMG workflow now also verifies packaged updater invariants in the built artifact:
   - `HelmDistributionChannel=developer_id`
   - `HelmSparkleEnabled` truthy
+  - `SUAllowsDowngrades` false
   - `SUFeedURL` uses `https://`
   - `SUPublicEDKey` non-empty
   - Sparkle framework is bundled and linked into the Helm binary
@@ -144,7 +146,9 @@ Implemented on `feat/v0.16.0-kickoff`:
   - non-Developer-ID channels cannot enable Sparkle or set Sparkle feed/signature metadata
   - Developer ID channel with Sparkle enabled must provide both `HELM_SPARKLE_FEED_URL` and `HELM_SPARKLE_PUBLIC_ED_KEY`
   - Developer ID channel with Sparkle enabled must use an `https://` Sparkle feed URL
+  - Sparkle downgrades are disallowed (`HELM_SPARKLE_ALLOW_DOWNGRADES` cannot be enabled)
 - Runtime app-update configuration now requires a secure Sparkle feed URL (`https://`) before enabling Sparkle checks.
+- Runtime app-update configuration now also blocks Sparkle checks when downgrades are enabled in metadata.
 
 Validation:
 

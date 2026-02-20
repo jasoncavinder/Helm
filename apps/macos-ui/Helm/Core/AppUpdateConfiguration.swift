@@ -18,6 +18,7 @@ enum HelmDistributionChannel: String {
 struct AppUpdateConfiguration {
     let channel: HelmDistributionChannel
     let sparkleEnabled: Bool
+    let sparkleAllowsDowngrades: Bool
     let sparkleFeedURL: String?
     let sparklePublicEdKey: String?
 
@@ -38,7 +39,11 @@ struct AppUpdateConfiguration {
     }
 
     var canUseSparkle: Bool {
-        channel == .developerID && sparkleEnabled && hasSparkleConfig && hasSecureSparkleFeedURL
+        channel == .developerID &&
+            sparkleEnabled &&
+            !sparkleAllowsDowngrades &&
+            hasSparkleConfig &&
+            hasSecureSparkleFeedURL
     }
 
     static func from(bundle: Bundle = .main) -> AppUpdateConfiguration {
@@ -52,6 +57,15 @@ struct AppUpdateConfiguration {
             sparkleEnabled = false
         }
 
+        let sparkleAllowsDowngrades: Bool
+        if let boolValue = bundle.object(forInfoDictionaryKey: "SUAllowsDowngrades") as? Bool {
+            sparkleAllowsDowngrades = boolValue
+        } else if let stringValue = bundle.object(forInfoDictionaryKey: "SUAllowsDowngrades") as? String {
+            sparkleAllowsDowngrades = ["1", "true", "yes"].contains(stringValue.lowercased())
+        } else {
+            sparkleAllowsDowngrades = false
+        }
+
         let sparkleFeedURL = (bundle.object(forInfoDictionaryKey: "SUFeedURL") as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let sparklePublicEdKey = (bundle.object(forInfoDictionaryKey: "SUPublicEDKey") as? String)?
@@ -60,6 +74,7 @@ struct AppUpdateConfiguration {
         return AppUpdateConfiguration(
             channel: channel,
             sparkleEnabled: sparkleEnabled,
+            sparkleAllowsDowngrades: sparkleAllowsDowngrades,
             sparkleFeedURL: sparkleFeedURL?.isEmpty == true ? nil : sparkleFeedURL,
             sparklePublicEdKey: sparklePublicEdKey?.isEmpty == true ? nil : sparklePublicEdKey
         )
