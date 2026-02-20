@@ -93,6 +93,11 @@ if [[ -z "${HELM_SPARKLE_PRIVATE_ED_KEY:-}" ]]; then
   exit 1
 fi
 
+if [[ -n "$SPARKLE_PACKAGE_PATH" && ! -d "$SPARKLE_PACKAGE_PATH" ]]; then
+  echo "error: provided Sparkle package path does not exist: $SPARKLE_PACKAGE_PATH" >&2
+  exit 1
+fi
+
 if [[ -z "$SPARKLE_BIN_DIR" && -n "$SPARKLE_PACKAGE_PATH" ]]; then
   LEGACY_BIN_DIR="$(cd "$SPARKLE_PACKAGE_PATH/.." >/dev/null 2>&1 && pwd)/artifacts/sparkle/bin"
   if [[ -x "$LEGACY_BIN_DIR/sign_update" ]]; then
@@ -113,10 +118,19 @@ if [[ -z "$SPARKLE_BIN_DIR" ]]; then
   fi
 fi
 
-SPARKLE_SIGN_UPDATE_BIN="$SPARKLE_BIN_DIR/sign_update"
-if [[ ! -x "$SPARKLE_SIGN_UPDATE_BIN" ]]; then
-  echo "error: Sparkle sign_update binary not found at $SPARKLE_SIGN_UPDATE_BIN" >&2
-  exit 1
+SPARKLE_SIGN_UPDATE_BIN="${SPARKLE_BIN_DIR:+$SPARKLE_BIN_DIR/sign_update}"
+
+if [[ ! -x "${SPARKLE_SIGN_UPDATE_BIN:-}" && -z "$SPARKLE_PACKAGE_PATH" ]]; then
+  if [[ -d "$PWD/build/DerivedData/SourcePackages/checkouts/Sparkle" ]]; then
+    SPARKLE_PACKAGE_PATH="$PWD/build/DerivedData/SourcePackages/checkouts/Sparkle"
+  else
+    SPARKLE_PACKAGE_PATH="$(
+      find "$HOME/Library/Developer/Xcode/DerivedData" \
+        -type d \
+        -path '*/SourcePackages/checkouts/Sparkle' \
+        -print -quit 2>/dev/null
+    )"
+  fi
 fi
 
 INFO_PLIST="$APP_PATH/Contents/Info.plist"
@@ -133,10 +147,22 @@ if [[ -z "$RELEASE_NOTES_URL" ]]; then
   RELEASE_NOTES_URL="$APPCAST_URL"
 fi
 
-SIGNATURE_RAW="$(
-  printf '%s\n' "$HELM_SPARKLE_PRIVATE_ED_KEY" |
-    "$SPARKLE_SIGN_UPDATE_BIN" --ed-key-file - -p "$DMG_PATH"
-)"
+if [[ -x "${SPARKLE_SIGN_UPDATE_BIN:-}" ]]; then
+  SIGNATURE_RAW="$(
+    printf '%s\n' "$HELM_SPARKLE_PRIVATE_ED_KEY" |
+      "$SPARKLE_SIGN_UPDATE_BIN" --ed-key-file - -p "$DMG_PATH"
+  )"
+elif [[ -n "$SPARKLE_PACKAGE_PATH" && -f "$SPARKLE_PACKAGE_PATH/Package.swift" ]]; then
+  echo "info: sign_update binary not found; using swift run fallback from $SPARKLE_PACKAGE_PATH" >&2
+  SIGNATURE_RAW="$(
+    printf '%s\n' "$HELM_SPARKLE_PRIVATE_ED_KEY" |
+      swift run --package-path "$SPARKLE_PACKAGE_PATH" sign_update --ed-key-file - -p "$DMG_PATH"
+  )"
+else
+  echo "error: Sparkle sign_update binary not found and no usable Sparkle checkout path discovered." >&2
+  echo "error: looked for binary at '${SPARKLE_SIGN_UPDATE_BIN:-<unset>}' and checkout at '${SPARKLE_PACKAGE_PATH:-<unset>}'" >&2
+  exit 1
+fi
 SIGNATURE="$(printf '%s\n' "$SIGNATURE_RAW" | tail -n1 | tr -d '\r\n')"
 
 if [[ ! "$SIGNATURE" =~ ^[A-Za-z0-9+/=]+$ ]]; then
