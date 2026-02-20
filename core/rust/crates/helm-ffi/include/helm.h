@@ -42,6 +42,15 @@ char *helm_search_local(const char *query);
 int64_t helm_trigger_remote_search(const char *query);
 
 /**
+ * Submit a remote search request for a specific manager. Returns the task ID, or -1 on error.
+ *
+ * # Safety
+ *
+ * `manager_id` and `query` must be valid, non-null pointers to NUL-terminated UTF-8 C strings.
+ */
+int64_t helm_trigger_remote_search_for_manager(const char *manager_id, const char *query);
+
+/**
  * Cancel a running task by ID. Returns true on success.
  */
 bool helm_cancel_task(int64_t task_id);
@@ -125,6 +134,26 @@ bool helm_upgrade_all(bool include_pinned, bool allow_os_updates);
  * strings.
  */
 int64_t helm_upgrade_package(const char *manager_id, const char *package_name);
+
+/**
+ * Queue an install task for a single package. Returns the task ID, or -1 on error.
+ *
+ * # Safety
+ *
+ * `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
+ * strings.
+ */
+int64_t helm_install_package(const char *manager_id, const char *package_name);
+
+/**
+ * Queue an uninstall task for a single package. Returns the task ID, or -1 on error.
+ *
+ * # Safety
+ *
+ * `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
+ * strings.
+ */
+int64_t helm_uninstall_package(const char *manager_id, const char *package_name);
 
 /**
  * List pin records as JSON.

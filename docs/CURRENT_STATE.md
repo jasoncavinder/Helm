@@ -141,6 +141,20 @@ Completed in adapter behavior slice branch:
 - When Homebrew is unavailable, install now returns a specific localized service error key (`service.error.homebrew_required`) instead of generic process failure
 - Added localized `service.error.homebrew_required` messaging across all supported locales in canonical and mirrored locale trees
 
+Completed in search + inspector action slice branch:
+
+- Remote package search now fans out across all enabled, detected, search-capable managers (instead of a single Homebrew-only path)
+- Search task labels now include manager + query context (`Searching {manager} for {query}`) and manager-only warmup labels for empty-query cache refresh tasks
+- `Refresh Now` now queues per-manager background search warmup tasks to repopulate the available package cache for supported managers
+- Added manager-scoped remote-search FFI/service method used by SwiftUI search orchestration and per-package description refresh
+- Package inspector description behavior now supports:
+  - immediate rendering of cached descriptions
+  - background refresh attempts for newer description data
+  - loading and unavailable fallback states when descriptions are missing or unsupported
+- Task inspector now shows localized troubleshooting feedback for failed tasks (including Homebrew install-specific guidance)
+- Package inspector now surfaces context-appropriate actions (Install/Uninstall/Update/Pin/Unpin + View Manager) based on package status and manager capabilities
+- Added package-level install/uninstall FFI + XPC surface methods and wired SwiftUI actions for supported managers
+
 Validation:
 
 - `cargo test -p helm-core -p helm-ffi` passing

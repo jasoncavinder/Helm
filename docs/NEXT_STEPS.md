@@ -87,6 +87,18 @@ Delivered:
   - `service.error.homebrew_required`
   - propagated across all supported locales and mirrored locale resources
 
+### Search + Inspector Actions Slice (Completed on branch)
+
+Delivered:
+
+- Remote search now queues manager-scoped search tasks across all enabled/detected search-capable managers
+- Search task labels now include manager + query context for clearer in-flight task rows
+- `Refresh Now` now warms available package cache entries via manager-scoped background search tasks
+- Package inspector description behavior now includes cached immediate display, background refresh, loading placeholder, and unavailable fallback states
+- Task inspector now displays localized failure feedback for failed tasks, including Homebrew install troubleshooting hints
+- Package inspector now exposes context-appropriate package actions (Install/Uninstall/Update/Pin/Unpin/View Manager)
+- Package install/uninstall actions are now wired through new FFI + service methods for supported managers
+
 Remaining before release cut:
 
 - Final validation pass on `dev` after merged fix slices

@@ -28,5 +28,9 @@
   "service.task.status.completed": "Terminée",
   "service.task.status.failed": "Échec",
   "service.task.status.pending": "En attente",
-  "service.task.status.running": "En cours"
+  "service.task.status.running": "En cours",
+  "service.task.label.search.package": "Recherche de {query} sur {manager}",
+  "service.task.label.search.manager": "Actualisation des paquets disponibles depuis {manager}",
+  "service.task.label.install.package": "Installer {package} via {manager}",
+  "service.task.label.uninstall.package": "Désinstaller {package} via {manager}"
 }

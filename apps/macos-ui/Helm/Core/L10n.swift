@@ -33,6 +33,7 @@ struct L10n {
     struct Service {
         struct Error {
             static let notInstalled = "service.error.not_installed"
+            static let homebrewRequired = "service.error.homebrew_required"
             static let unsupportedCapability = "service.error.unsupported_capability"
             static let invalidInput = "service.error.invalid_input"
             static let parseFailure = "service.error.parse_failure"
@@ -60,12 +61,16 @@ struct L10n {
                 static let pinHomebrew = "service.task.label.pin.homebrew"
                 static let unpinHomebrew = "service.task.label.unpin.homebrew"
                 static let installHomebrewFormula = "service.task.label.install.homebrew_formula"
+                static let installPackage = "service.task.label.install.package"
                 static let updateHomebrewSelf = "service.task.label.update.homebrew_self"
                 static let updateHomebrewFormula = "service.task.label.update.homebrew_formula"
                 static let updateHomebrewFormulaCleanup = "service.task.label.update.homebrew_formula_cleanup"
                 static let updateRustupSelf = "service.task.label.update.rustup_self"
                 static let uninstallHomebrewFormula = "service.task.label.uninstall.homebrew_formula"
+                static let uninstallPackage = "service.task.label.uninstall.package"
                 static let uninstallRustupSelf = "service.task.label.uninstall.rustup_self"
+                static let searchPackage = "service.task.label.search.package"
+                static let searchManager = "service.task.label.search.manager"
             }
         }
     }

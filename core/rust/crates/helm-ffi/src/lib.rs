@@ -122,8 +122,8 @@ use helm_core::adapters::{
 };
 use helm_core::execution::tokio_process::TokioProcessExecutor;
 use helm_core::models::{
-    DetectionInfo, HomebrewKegPolicy, ManagerAuthority, ManagerId, OutdatedPackage, PackageRef,
-    PinKind, PinRecord, SearchQuery, TaskStatus, TaskType,
+    Capability, DetectionInfo, HomebrewKegPolicy, ManagerAuthority, ManagerId, OutdatedPackage,
+    PackageRef, PinKind, PinRecord, SearchQuery, TaskStatus, TaskType,
 };
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
 use helm_core::orchestration::{AdapterTaskTerminalState, CancellationMode};
@@ -192,7 +192,7 @@ fn return_error_i64(error_key: &str) -> i64 {
 
 fn manager_display_name(id: ManagerId) -> &'static str {
     match id {
-        ManagerId::HomebrewFormula => "Homebrew",
+        ManagerId::HomebrewFormula => "Homebrew (formulae)",
         ManagerId::Npm => "npm",
         ManagerId::Pnpm => "pnpm",
         ManagerId::Yarn => "Yarn",
@@ -422,6 +422,122 @@ fn find_matching_inflight_task(
 
         if args_match { Some(task.id) } else { None }
     })
+}
+
+fn search_label_key_for_query(query: &str) -> &'static str {
+    if query.trim().is_empty() {
+        "service.task.label.search.manager"
+    } else {
+        "service.task.label.search.package"
+    }
+}
+
+fn search_label_args(manager: ManagerId, query: &str) -> Vec<(&'static str, String)> {
+    if query.trim().is_empty() {
+        vec![("manager", manager_display_name(manager).to_string())]
+    } else {
+        vec![
+            ("manager", manager_display_name(manager).to_string()),
+            ("query", query.trim().to_string()),
+        ]
+    }
+}
+
+fn can_submit_remote_search(runtime: &AdapterRuntime, manager: ManagerId) -> bool {
+    if !runtime.is_manager_enabled(manager) {
+        return false;
+    }
+    helm_core::registry::manager(manager)
+        .map(|descriptor| descriptor.supports(Capability::Search))
+        .unwrap_or(false)
+}
+
+fn queue_remote_search_task(
+    store: &SqliteStore,
+    runtime: &AdapterRuntime,
+    rt_handle: &tokio::runtime::Handle,
+    manager: ManagerId,
+    query: &str,
+) -> Result<helm_core::models::TaskId, &'static str> {
+    if !can_submit_remote_search(runtime, manager) {
+        return Err("service.error.unsupported_capability");
+    }
+
+    let label_key = search_label_key_for_query(query);
+    let label_args = search_label_args(manager, query);
+
+    if let Some(existing) = find_matching_inflight_task(
+        store,
+        manager,
+        TaskType::Search,
+        Some(label_key),
+        &label_args,
+    ) {
+        return Ok(existing);
+    }
+
+    let request = AdapterRequest::Search(SearchRequest {
+        query: SearchQuery {
+            text: query.trim().to_string(),
+            issued_at: std::time::SystemTime::now(),
+        },
+    });
+
+    match rt_handle.block_on(runtime.submit(manager, request)) {
+        Ok(task_id) => {
+            set_task_label(task_id, label_key, &label_args);
+            Ok(task_id)
+        }
+        Err(error) => {
+            eprintln!(
+                "Failed to queue remote search for manager {} with query '{}': {}",
+                manager.as_str(),
+                query.trim(),
+                error
+            );
+            Err("service.error.process_failure")
+        }
+    }
+}
+
+fn remote_search_target_managers(runtime: &AdapterRuntime, store: &SqliteStore) -> Vec<ManagerId> {
+    let detected_managers: std::collections::HashSet<ManagerId> = store
+        .list_detections()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|(manager, detection)| detection.installed.then_some(manager))
+        .collect();
+
+    ManagerId::ALL
+        .into_iter()
+        .filter(|manager| {
+            can_submit_remote_search(runtime, *manager)
+                && (!detected_managers.is_empty() || runtime.has_manager(*manager))
+                && (detected_managers.is_empty() || detected_managers.contains(manager))
+        })
+        .collect()
+}
+
+fn supports_individual_package_install(manager: ManagerId) -> bool {
+    matches!(
+        manager,
+        ManagerId::HomebrewFormula
+            | ManagerId::Mise
+            | ManagerId::Npm
+            | ManagerId::Pnpm
+            | ManagerId::Yarn
+            | ManagerId::Cargo
+            | ManagerId::CargoBinstall
+            | ManagerId::Pip
+            | ManagerId::Pipx
+            | ManagerId::Poetry
+            | ManagerId::RubyGems
+            | ManagerId::Bundler
+    )
+}
+
+fn supports_individual_package_uninstall(manager: ManagerId) -> bool {
+    supports_individual_package_install(manager)
 }
 
 fn encode_homebrew_upgrade_target(package_name: &str, cleanup_old_kegs: bool) -> String {
@@ -1082,38 +1198,111 @@ pub unsafe extern "C" fn helm_search_local(query: *const c_char) -> *mut c_char 
 /// `query` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn helm_trigger_remote_search(query: *const c_char) -> i64 {
+    clear_last_error_key();
     if query.is_null() {
-        return -1;
+        return return_error_i64("service.error.invalid_input");
     }
 
     let c_str = unsafe { CStr::from_ptr(query) };
     let query_str = match c_str.to_str() {
-        Ok(s) => s,
-        Err(_) => return -1,
+        Ok(s) => s.trim(),
+        Err(_) => return return_error_i64("service.error.invalid_input"),
     };
 
-    let (runtime, rt_handle) = {
+    let (store, runtime, rt_handle) = {
         let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
-            None => return -1,
+            None => return return_error_i64("service.error.internal"),
         };
-        (state.runtime.clone(), state.rt_handle.clone())
+        (
+            state.store.clone(),
+            state.runtime.clone(),
+            state.rt_handle.clone(),
+        )
     };
 
-    let request = AdapterRequest::Search(SearchRequest {
-        query: SearchQuery {
-            text: query_str.to_string(),
-            issued_at: std::time::SystemTime::now(),
-        },
-    });
+    let mut first_task_id: Option<i64> = None;
+    let mut last_error_key: Option<&'static str> = None;
 
-    match rt_handle.block_on(runtime.submit(ManagerId::HomebrewFormula, request)) {
-        Ok(task_id) => task_id.0 as i64,
-        Err(e) => {
-            eprintln!("Failed to submit remote search: {}", e);
-            -1
+    for manager in remote_search_target_managers(runtime.as_ref(), store.as_ref()) {
+        match queue_remote_search_task(
+            store.as_ref(),
+            runtime.as_ref(),
+            &rt_handle,
+            manager,
+            query_str,
+        ) {
+            Ok(task_id) => {
+                if first_task_id.is_none() {
+                    first_task_id = Some(task_id.0 as i64);
+                }
+            }
+            Err(error_key) => {
+                last_error_key = Some(error_key);
+            }
         }
+    }
+
+    match first_task_id {
+        Some(task_id) => task_id,
+        None => return_error_i64(last_error_key.unwrap_or("service.error.unsupported_capability")),
+    }
+}
+
+/// Submit a remote search request for a specific manager. Returns the task ID, or -1 on error.
+///
+/// # Safety
+///
+/// `manager_id` and `query` must be valid, non-null pointers to NUL-terminated UTF-8 C strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_trigger_remote_search_for_manager(
+    manager_id: *const c_char,
+    query: *const c_char,
+) -> i64 {
+    clear_last_error_key();
+    if manager_id.is_null() || query.is_null() {
+        return return_error_i64("service.error.invalid_input");
+    }
+
+    let manager_cstr = unsafe { CStr::from_ptr(manager_id) };
+    let manager = match manager_cstr
+        .to_str()
+        .ok()
+        .and_then(|s| s.parse::<ManagerId>().ok())
+    {
+        Some(manager) => manager,
+        None => return return_error_i64("service.error.invalid_input"),
+    };
+
+    let query_cstr = unsafe { CStr::from_ptr(query) };
+    let query_str = match query_cstr.to_str() {
+        Ok(query_text) => query_text.trim(),
+        Err(_) => return return_error_i64("service.error.invalid_input"),
+    };
+
+    let (store, runtime, rt_handle) = {
+        let guard = lock_or_recover(&STATE, "state");
+        let state = match guard.as_ref() {
+            Some(s) => s,
+            None => return return_error_i64("service.error.internal"),
+        };
+        (
+            state.store.clone(),
+            state.runtime.clone(),
+            state.rt_handle.clone(),
+        )
+    };
+
+    match queue_remote_search_task(
+        store.as_ref(),
+        runtime.as_ref(),
+        &rt_handle,
+        manager,
+        query_str,
+    ) {
+        Ok(task_id) => task_id.0 as i64,
+        Err(error_key) => return_error_i64(error_key),
     }
 }
 
@@ -2082,6 +2271,199 @@ pub unsafe extern "C" fn helm_upgrade_package(
     }
 }
 
+/// Queue an install task for a single package. Returns the task ID, or -1 on error.
+///
+/// # Safety
+///
+/// `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
+/// strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_install_package(
+    manager_id: *const c_char,
+    package_name: *const c_char,
+) -> i64 {
+    clear_last_error_key();
+    if manager_id.is_null() || package_name.is_null() {
+        return return_error_i64("service.error.invalid_input");
+    }
+
+    let manager_cstr = unsafe { CStr::from_ptr(manager_id) };
+    let manager = match manager_cstr
+        .to_str()
+        .ok()
+        .and_then(|s| s.parse::<ManagerId>().ok())
+    {
+        Some(manager) => manager,
+        None => return return_error_i64("service.error.invalid_input"),
+    };
+
+    if !supports_individual_package_install(manager) {
+        return return_error_i64("service.error.unsupported_capability");
+    }
+
+    let package_cstr = unsafe { CStr::from_ptr(package_name) };
+    let package_name = match package_cstr.to_str() {
+        Ok(name) if !name.trim().is_empty() => name.trim().to_string(),
+        _ => return return_error_i64("service.error.invalid_input"),
+    };
+
+    let label_key = if manager == ManagerId::HomebrewFormula {
+        "service.task.label.install.homebrew_formula"
+    } else {
+        "service.task.label.install.package"
+    };
+    let label_args = if manager == ManagerId::HomebrewFormula {
+        vec![("package", package_name.clone())]
+    } else {
+        vec![
+            ("package", package_name.clone()),
+            ("manager", manager_display_name(manager).to_string()),
+        ]
+    };
+
+    let request = AdapterRequest::Install(InstallRequest {
+        package: PackageRef {
+            manager,
+            name: package_name,
+        },
+        version: None,
+    });
+
+    let (store, runtime, rt_handle) = {
+        let guard = lock_or_recover(&STATE, "state");
+        let state = match guard.as_ref() {
+            Some(s) => s,
+            None => return return_error_i64("service.error.internal"),
+        };
+        (
+            state.store.clone(),
+            state.runtime.clone(),
+            state.rt_handle.clone(),
+        )
+    };
+
+    if !runtime.is_manager_enabled(manager) {
+        return return_error_i64("service.error.unsupported_capability");
+    }
+
+    if let Some(existing) = find_matching_inflight_task(
+        store.as_ref(),
+        manager,
+        TaskType::Install,
+        Some(label_key),
+        &label_args,
+    ) {
+        return existing.0 as i64;
+    }
+
+    match rt_handle.block_on(runtime.submit(manager, request)) {
+        Ok(task_id) => {
+            set_task_label(task_id, label_key, &label_args);
+            task_id.0 as i64
+        }
+        Err(error) => {
+            eprintln!("install_package: failed to queue task: {error}");
+            return_error_i64("service.error.process_failure")
+        }
+    }
+}
+
+/// Queue an uninstall task for a single package. Returns the task ID, or -1 on error.
+///
+/// # Safety
+///
+/// `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
+/// strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_uninstall_package(
+    manager_id: *const c_char,
+    package_name: *const c_char,
+) -> i64 {
+    clear_last_error_key();
+    if manager_id.is_null() || package_name.is_null() {
+        return return_error_i64("service.error.invalid_input");
+    }
+
+    let manager_cstr = unsafe { CStr::from_ptr(manager_id) };
+    let manager = match manager_cstr
+        .to_str()
+        .ok()
+        .and_then(|s| s.parse::<ManagerId>().ok())
+    {
+        Some(manager) => manager,
+        None => return return_error_i64("service.error.invalid_input"),
+    };
+
+    if !supports_individual_package_uninstall(manager) {
+        return return_error_i64("service.error.unsupported_capability");
+    }
+
+    let package_cstr = unsafe { CStr::from_ptr(package_name) };
+    let package_name = match package_cstr.to_str() {
+        Ok(name) if !name.trim().is_empty() => name.trim().to_string(),
+        _ => return return_error_i64("service.error.invalid_input"),
+    };
+
+    let label_key = if manager == ManagerId::HomebrewFormula {
+        "service.task.label.uninstall.homebrew_formula"
+    } else {
+        "service.task.label.uninstall.package"
+    };
+    let label_args = if manager == ManagerId::HomebrewFormula {
+        vec![("package", package_name.clone())]
+    } else {
+        vec![
+            ("package", package_name.clone()),
+            ("manager", manager_display_name(manager).to_string()),
+        ]
+    };
+
+    let request = AdapterRequest::Uninstall(UninstallRequest {
+        package: PackageRef {
+            manager,
+            name: package_name,
+        },
+    });
+
+    let (store, runtime, rt_handle) = {
+        let guard = lock_or_recover(&STATE, "state");
+        let state = match guard.as_ref() {
+            Some(s) => s,
+            None => return return_error_i64("service.error.internal"),
+        };
+        (
+            state.store.clone(),
+            state.runtime.clone(),
+            state.rt_handle.clone(),
+        )
+    };
+
+    if !runtime.is_manager_enabled(manager) {
+        return return_error_i64("service.error.unsupported_capability");
+    }
+
+    if let Some(existing) = find_matching_inflight_task(
+        store.as_ref(),
+        manager,
+        TaskType::Uninstall,
+        Some(label_key),
+        &label_args,
+    ) {
+        return existing.0 as i64;
+    }
+
+    match rt_handle.block_on(runtime.submit(manager, request)) {
+        Ok(task_id) => {
+            set_task_label(task_id, label_key, &label_args);
+            task_id.0 as i64
+        }
+        Err(error) => {
+            eprintln!("uninstall_package: failed to queue task: {error}");
+            return_error_i64("service.error.process_failure")
+        }
+    }
+}
+
 /// List pin records as JSON.
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_list_pins() -> *mut c_char {
@@ -2761,7 +3143,8 @@ pub unsafe extern "C" fn helm_free_string(s: *mut c_char) {
 mod tests {
     use super::{
         build_manager_statuses, build_visible_tasks, collect_upgrade_all_targets,
-        homebrew_probe_candidates, parse_homebrew_config_version,
+        homebrew_probe_candidates, parse_homebrew_config_version, search_label_args,
+        search_label_key_for_query, supports_individual_package_install,
     };
     use helm_core::models::{
         ManagerId, OutdatedPackage, PackageRef, TaskId, TaskRecord, TaskStatus, TaskType,
@@ -3005,6 +3388,41 @@ mod tests {
 
         let visible = build_visible_tasks(tasks, &labels);
         assert_eq!(visible.len(), 2);
+    }
+
+    #[test]
+    fn search_label_key_uses_query_variant_when_query_is_present() {
+        assert_eq!(
+            search_label_key_for_query("openssl"),
+            "service.task.label.search.package"
+        );
+        assert_eq!(
+            search_label_key_for_query("   "),
+            "service.task.label.search.manager"
+        );
+    }
+
+    #[test]
+    fn search_label_args_include_query_when_present() {
+        let with_query = search_label_args(ManagerId::Npm, "typescript");
+        assert_eq!(with_query.len(), 2);
+        assert_eq!(with_query[0], ("manager", "npm".to_string()));
+        assert_eq!(with_query[1], ("query", "typescript".to_string()));
+
+        let without_query = search_label_args(ManagerId::Npm, " ");
+        assert_eq!(without_query, vec![("manager", "npm".to_string())]);
+    }
+
+    #[test]
+    fn individual_package_install_support_is_scoped_to_supported_managers() {
+        assert!(supports_individual_package_install(ManagerId::Npm));
+        assert!(supports_individual_package_install(
+            ManagerId::HomebrewFormula
+        ));
+        assert!(!supports_individual_package_install(ManagerId::Mas));
+        assert!(!supports_individual_package_install(
+            ManagerId::SoftwareUpdate
+        ));
     }
 
     fn status_for(

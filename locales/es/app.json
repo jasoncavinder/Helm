@@ -244,12 +244,10 @@
   "app.settings.metric.managers": "Gestores activos",
   "app.settings.metric.updates": "Actualizaciones pendientes",
   "app.settings.metric.tasks": "Tareas en ejecución",
-
   "app.walkthrough.control.next": "Siguiente",
   "app.walkthrough.control.skip": "Omitir",
   "app.walkthrough.control.done": "Listo",
   "app.walkthrough.control.step_indicator": "Paso {current} de {total}",
-
   "app.walkthrough.popover.step1.title": "Salud del sistema",
   "app.walkthrough.popover.step1.description": "Este es el icono de estado de Helm. Muestra la salud de tu sistema de un vistazo.",
   "app.walkthrough.popover.step2.title": "Banner de actualizaciones",
@@ -262,7 +260,6 @@
   "app.walkthrough.popover.step5.description": "Consulta la versión, abre ajustes o cierra Helm desde aquí.",
   "app.walkthrough.popover.step6.title": "Búsqueda rápida",
   "app.walkthrough.popover.step6.description": "Busca en todos tus gestores de paquetes al instante.",
-
   "app.walkthrough.control_center.step1.title": "Navegación lateral",
   "app.walkthrough.control_center.step1.description": "Navega entre secciones para gestionar todo tu entorno de desarrollo.",
   "app.walkthrough.control_center.step2.title": "Vista general",
@@ -277,9 +274,7 @@
   "app.walkthrough.control_center.step6.description": "Configura el modo seguro, el idioma y las políticas de actualización automática.",
   "app.walkthrough.control_center.step7.title": "Vista previa de actualización",
   "app.walkthrough.control_center.step7.description": "Previsualiza exactamente lo que ocurrirá antes de ejecutar actualizaciones.",
-
   "app.settings.action.replay_walkthrough": "Repetir recorrido",
-
   "app.settings.section.support_feedback": "Soporte y comentarios",
   "app.settings.support_feedback.support_helm": "Apoyar Helm",
   "app.settings.support_feedback.report_bug": "Reportar un error",
@@ -290,5 +285,10 @@
   "app.settings.support_feedback.copied_confirmation": "¡Copiado!",
   "app.settings.support_feedback.diagnostics_copied_hint": "Diagnósticos copiados al portapapeles",
   "app.settings.support_feedback.github_sponsors": "GitHub Sponsors",
-  "app.settings.support_feedback.patreon": "Patreon"
+  "app.settings.support_feedback.patreon": "Patreon",
+  "app.inspector.description_loading": "Cargando descripción...",
+  "app.inspector.description_unavailable": "Descripción no disponible.",
+  "app.inspector.task_failure_feedback": "Detalles del fallo",
+  "app.inspector.task_failure_hint.homebrew_install": "Helm no pudo instalar {package} con Homebrew. Verifica que Homebrew funcione (`brew doctor`) y vuelve a intentarlo para capturar la salida completa.",
+  "app.inspector.task_failure_hint.generic": "La tarea falló en {manager}. Revisa la configuración y vuelve a intentarlo."
 }
