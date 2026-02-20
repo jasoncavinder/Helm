@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Helm Updates</title>
+    <link>https://helmapp.dev/updates/appcast.xml</link>
+    <description>Helm direct-channel updates</description>
+    <language>en</language>
+    <item>
+      <title>Helm 0.16.0</title>
+      <pubDate>Fri, 20 Feb 2026 23:03:42 +0000</pubDate>
+      <sparkle:releaseNotesLink>https://github.com/jasoncavinder/Helm/releases/tag/v0.16.0-rc.8</sparkle:releaseNotesLink>
+      <enclosure
+        url="https://github.com/jasoncavinder/Helm/releases/download/v0.16.0-rc.8/Helm-v0.16.0-rc.8-macos-universal.dmg"
+        sparkle:version="16000608"
+        sparkle:shortVersionString="0.16.0"
+        sparkle:edSignature="U8c4l91fV3Z0o8B91F4sbJ99ZYqYaQmH+lhpxJ+ufbwgdB82Eav/q5Zk9UghyDbFsSrqsR1IpYsalAq91L1HCQ=="
+         sparkle:minimumSystemVersion="12.0"
+        length="12177766"
+        type="application/octet-stream"/>
+    </item>
+  </channel>
+</rss>
