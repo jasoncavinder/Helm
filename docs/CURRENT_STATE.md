@@ -213,6 +213,28 @@ Validation:
 
 ---
 
+## v0.15.0-alpha.3 Status
+
+### Operator Controls for Large Plans
+
+Implemented on `feat/v0.15.x-alpha.1-kickoff`:
+
+- Added Updates plan-scope controls for manager and package filtering
+- Added scoped execution controls:
+  - run scoped plan steps
+  - cancel remaining scoped queued/running plan tasks
+  - retry only failed scoped plan steps
+- Enforced stable authority-first plan ordering in shared planner helpers used by execution/scope filtering
+- Added planner regression coverage for authority ordering and manager/package scoping
+- Fixed scoped-run behavior so initial preview `queued` steps execute (while still skipping already-projected queued/running/completed tasks)
+
+Validation:
+
+- `cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
+
+---
+
 ## v0.13.0-beta.3 Audit Status
 
 Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 remediation work.

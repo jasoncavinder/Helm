@@ -41,7 +41,7 @@ struct CoreSearchResult: Codable {
     let sourceManager: String
 }
 
-struct CoreUpgradePlanStep: Codable, Identifiable {
+struct CoreUpgradePlanStep: Codable, Identifiable, Equatable {
     let stepId: String
     let orderIndex: UInt64
     let managerId: String

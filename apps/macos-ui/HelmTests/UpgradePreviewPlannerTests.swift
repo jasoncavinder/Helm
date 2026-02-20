@@ -66,4 +66,60 @@ final class UpgradePreviewPlannerTests: XCTestCase {
             ]
         )
     }
+
+    func testSortedUpgradePlanStepsPrioritizesAuthorityThenOrderIndex() {
+        let steps = [
+            step(id: "standard:one", order: 5, manager: "npm", authority: "standard", package: "one"),
+            step(id: "guarded:two", order: 1, manager: "softwareupdate", authority: "guarded", package: "two"),
+            step(id: "authoritative:three", order: 99, manager: "mise", authority: "authoritative", package: "three"),
+            step(id: "standard:four", order: 1, manager: "pip", authority: "standard", package: "four")
+        ]
+
+        let sorted = UpgradePreviewPlanner.sortedForExecution(steps)
+        XCTAssertEqual(sorted.map(\.id), [
+            "authoritative:three",
+            "standard:four",
+            "standard:one",
+            "guarded:two"
+        ])
+    }
+
+    func testScopedUpgradePlanStepsFiltersByManagerAndPackage() {
+        let steps = [
+            step(id: "npm:typescript", order: 0, manager: "npm", authority: "standard", package: "typescript"),
+            step(id: "npm:eslint", order: 1, manager: "npm", authority: "standard", package: "eslint"),
+            step(id: "pip:requests", order: 2, manager: "pip", authority: "standard", package: "requests")
+        ]
+
+        let managerScoped = UpgradePreviewPlanner.scopedForExecution(
+            from: steps,
+            managerScopeId: "npm",
+            packageFilter: ""
+        )
+        XCTAssertEqual(managerScoped.map(\.id), ["npm:typescript", "npm:eslint"])
+
+        let packageScoped = UpgradePreviewPlanner.scopedForExecution(
+            from: steps,
+            managerScopeId: UpgradePreviewPlanner.allManagersScopeId,
+            packageFilter: "REQ"
+        )
+        XCTAssertEqual(packageScoped.map(\.id), ["pip:requests"])
+    }
+
+    private func step(
+        id: String,
+        order: UInt64,
+        manager: String,
+        authority: String,
+        package: String
+    ) -> UpgradePreviewPlanner.PlanStep {
+        UpgradePreviewPlanner.PlanStep(
+            id: id,
+            orderIndex: order,
+            managerId: manager,
+            authority: authority,
+            packageName: package,
+            reasonLabelKey: "service.task.label.upgrade.package"
+        )
+    }
 }

@@ -65,13 +65,28 @@ Validation:
 - `cargo test -p helm-ffi --manifest-path core/rust/Cargo.toml`
 - `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
 
-### Alpha.3 — Operator Controls for Large Plans (Next)
+### Alpha.3 — Operator Controls for Large Plans (Completed on `feat/v0.15.x-alpha.1-kickoff`)
+
+Delivered:
+
+- added plan-scoped controls for manager and package filtering in Updates
+- added scoped actions for run, cancel remaining, and retry failed-only plan steps
+- enforced authority-first step ordering via shared planner helpers used by scope/execution logic
+- added planner regression tests for authority ordering and scope filtering
+- fixed scoped-run behavior so baseline preview `queued` steps execute while already-projected queued/running/completed steps remain guarded
+
+Validation:
+
+- `cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
+
+### Alpha.4 — Final 0.15.0 Cut Readiness (Next)
 
 Deliver:
 
-- add plan-scoped controls for cancel remaining, retry failed only, and manager/package scoping
-- enforce authority ordering in plan rendering and execution controls
-- add regression tests for cancellation, failure isolation, and plan/task state coherence
+- complete code+document sweep for remaining upgrade-plan/task synchronization edge cases
+- add/expand targeted regressions for scoped run/cancel/retry state coherence where test harness supports it
+- prepare release notes + checklist updates for the first `v0.15.0` pre-release cut
 
 ### Exit Gate
 

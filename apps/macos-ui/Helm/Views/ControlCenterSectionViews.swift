@@ -84,11 +84,13 @@ struct RedesignUpdatesSectionView: View {
     @ObservedObject private var core = HelmCore.shared
     @EnvironmentObject private var context: ControlCenterContext
     @State private var includeOsUpdates = false
+    @State private var managerScopeId = HelmCore.allManagersScopeId
+    @State private var packageScopeQuery = ""
     @State private var showDryRun = false
     @State private var dryRunMessage = ""
 
     private var previewBreakdown: [(manager: String, count: Int)] {
-        Dictionary(grouping: core.upgradePlanSteps, by: \.managerId)
+        Dictionary(grouping: scopedPlanSteps, by: \.managerId)
             .map { key, value in
                 (manager: localizedManagerDisplayName(key), count: value.count)
             }
@@ -101,15 +103,28 @@ struct RedesignUpdatesSectionView: View {
     }
 
     private var totalCount: Int {
-        core.upgradePlanSteps.count
+        scopedPlanSteps.count
+    }
+
+    private var managerScopeOptions: [String] {
+        let managers = Set(core.upgradePlanSteps.map(\.managerId))
+        return [HelmCore.allManagersScopeId] + managers.sorted()
+    }
+
+    private var scopedPlanSteps: [CoreUpgradePlanStep] {
+        HelmCore.scopedUpgradePlanSteps(
+            from: core.upgradePlanSteps,
+            managerScopeId: managerScopeId,
+            packageFilter: packageScopeQuery
+        )
     }
 
     private var visiblePlanSteps: [CoreUpgradePlanStep] {
-        Array(core.upgradePlanSteps.prefix(80))
+        Array(scopedPlanSteps.prefix(80))
     }
 
     private var stageRows: [(authority: ManagerAuthority, managerCount: Int, packageCount: Int)] {
-        let stepsByAuthority = Dictionary(grouping: core.upgradePlanSteps) { step in
+        let stepsByAuthority = Dictionary(grouping: scopedPlanSteps) { step in
             authority(for: step.managerId)
         }
         return ManagerAuthority.allCases.map { authorityLevel in
@@ -124,7 +139,7 @@ struct RedesignUpdatesSectionView: View {
     }
 
     private var requiresPrivileges: Bool {
-        core.upgradePlanSteps.contains { step in
+        scopedPlanSteps.contains { step in
             step.managerId == "homebrew_formula" || step.managerId == "softwareupdate"
         }
     }
@@ -153,7 +168,37 @@ struct RedesignUpdatesSectionView: View {
     }
 
     private var mayRequireReboot: Bool {
-        core.outdatedPackages.contains { $0.restartRequired || $0.managerId == "softwareupdate" }
+        scopedPlanSteps.contains { step in
+            if step.managerId == "softwareupdate" {
+                return true
+            }
+            return core.outdatedPackages.contains { pkg in
+                pkg.managerId == step.managerId && pkg.name == step.packageName && pkg.restartRequired
+            }
+        }
+    }
+
+    private var scopedFailedStepIds: [String] {
+        scopedPlanSteps
+            .filter { projectedStatus($0).lowercased() == "failed" }
+            .map(\.id)
+    }
+
+    private var scopedFailureGroups: [UpgradePlanFailureGroup] {
+        let scopedSet = Set(scopedPlanSteps.map(\.id))
+        return core.upgradePlanFailureGroups.compactMap { group in
+            let scopedIds = group.stepIds.filter { scopedSet.contains($0) }
+            guard !scopedIds.isEmpty else { return nil }
+            let scopedPackages = core.upgradePlanSteps
+                .filter { scopedIds.contains($0.id) }
+                .map(\.packageName)
+            return UpgradePlanFailureGroup(
+                id: group.id,
+                managerId: group.managerId,
+                stepIds: scopedIds,
+                packageNames: scopedPackages
+            )
+        }
     }
 
     var body: some View {
@@ -176,6 +221,24 @@ struct RedesignUpdatesSectionView: View {
             if !core.safeModeEnabled {
                 Toggle(L10n.App.Updates.includeOs.localized, isOn: $includeOsUpdates)
                     .toggleStyle(.switch)
+            }
+
+            HStack(spacing: 10) {
+                Picker(L10n.App.Inspector.manager.localized, selection: $managerScopeId) {
+                    ForEach(managerScopeOptions, id: \.self) { managerId in
+                        if managerId == HelmCore.allManagersScopeId {
+                            Text(L10n.App.Packages.Filter.allManagers.localized)
+                                .tag(managerId)
+                        } else {
+                            Text(localizedManagerDisplayName(managerId))
+                                .tag(managerId)
+                        }
+                    }
+                }
+                .frame(maxWidth: 240)
+
+                TextField(L10n.App.ControlCenter.searchPlaceholder.localized, text: $packageScopeQuery)
+                    .textFieldStyle(.roundedBorder)
             }
 
             VStack(spacing: 8) {
@@ -256,12 +319,12 @@ struct RedesignUpdatesSectionView: View {
                 riskRow(flag: L10n.App.Updates.Risk.reboot.localized, active: mayRequireReboot)
             }
 
-            if !core.upgradePlanFailureGroups.isEmpty {
+            if !scopedFailureGroups.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(L10n.App.Popover.failures.localized)
                         .font(.headline)
 
-                    ForEach(core.upgradePlanFailureGroups) { group in
+                    ForEach(scopedFailureGroups) { group in
                         VStack(alignment: .leading, spacing: 6) {
                             Text(core.localizedUpgradePlanFailureCause(for: group))
                                 .font(.caption)
@@ -288,14 +351,23 @@ struct RedesignUpdatesSectionView: View {
                     }
 
                     Button(L10n.App.Packages.Action.update.localized) {
-                        core.retryFailedUpgradePlanSteps()
+                        core.retryUpgradePlanSteps(stepIds: scopedFailedStepIds)
                     }
                     .buttonStyle(HelmPrimaryButtonStyle())
                     .font(.caption)
+                    .disabled(scopedFailedStepIds.isEmpty)
                 }
             }
 
             HStack {
+                Button(L10n.App.Tasks.Action.cancel.localized) {
+                    core.cancelRemainingUpgradePlanSteps(
+                        managerScopeId: managerScopeId,
+                        packageFilter: packageScopeQuery
+                    )
+                }
+                .buttonStyle(HelmSecondaryButtonStyle())
+
                 Button(L10n.App.Action.dryRun.localized) {
                     let lines = previewBreakdown.prefix(8).map { "\($0.manager): \($0.count)" }
                     dryRunMessage = L10n.App.DryRun.message.localized(with: [
@@ -307,7 +379,10 @@ struct RedesignUpdatesSectionView: View {
                 .buttonStyle(HelmSecondaryButtonStyle())
 
                 Button(L10n.App.Action.runPlan.localized) {
-                    core.upgradeAll(includePinned: false, allowOsUpdates: includeOsUpdates)
+                    core.runUpgradePlanScoped(
+                        managerScopeId: managerScopeId,
+                        packageFilter: packageScopeQuery
+                    )
                 }
                 .buttonStyle(HelmPrimaryButtonStyle())
                 .disabled(totalCount == 0)
@@ -331,6 +406,12 @@ struct RedesignUpdatesSectionView: View {
         }
         .onChange(of: core.safeModeEnabled) { _ in
             core.refreshUpgradePlan(includePinned: false, allowOsUpdates: includeOsUpdates)
+        }
+        .onChange(of: core.upgradePlanSteps) { steps in
+            let managerSet = Set(steps.map(\.managerId))
+            if managerScopeId != HelmCore.allManagersScopeId && !managerSet.contains(managerScopeId) {
+                managerScopeId = HelmCore.allManagersScopeId
+            }
         }
     }
 

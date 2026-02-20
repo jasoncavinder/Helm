@@ -6,10 +6,21 @@ struct UpgradePreviewPlanner {
         let count: Int
     }
 
+    struct PlanStep: Equatable {
+        let id: String
+        let orderIndex: UInt64
+        let managerId: String
+        let authority: String
+        let packageName: String
+        let reasonLabelKey: String
+    }
+
     struct Candidate {
         let managerId: String
         let pinned: Bool
     }
+
+    static let allManagersScopeId = "__all_managers__"
 
     static func count(
         candidates: [Candidate],
@@ -61,6 +72,47 @@ struct UpgradePreviewPlanner {
                 }
                 return lhs.count > rhs.count
             }
+    }
+
+    static func authorityRank(for authority: String) -> Int {
+        switch authority.lowercased() {
+        case "authoritative":
+            return 0
+        case "standard":
+            return 1
+        case "guarded":
+            return 2
+        case "detection_only":
+            return 3
+        default:
+            return 4
+        }
+    }
+
+    static func sortedForExecution(_ steps: [PlanStep]) -> [PlanStep] {
+        steps.sorted { lhs, rhs in
+            let lhsRank = authorityRank(for: lhs.authority)
+            let rhsRank = authorityRank(for: rhs.authority)
+            if lhsRank != rhsRank { return lhsRank < rhsRank }
+            if lhs.orderIndex != rhs.orderIndex { return lhs.orderIndex < rhs.orderIndex }
+            if lhs.managerId != rhs.managerId { return lhs.managerId < rhs.managerId }
+            return lhs.packageName < rhs.packageName
+        }
+    }
+
+    static func scopedForExecution(
+        from steps: [PlanStep],
+        managerScopeId: String,
+        packageFilter: String
+    ) -> [PlanStep] {
+        let trimmedFilter = packageFilter.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return sortedForExecution(steps).filter { step in
+            let managerMatches = managerScopeId == allManagersScopeId || managerScopeId == step.managerId
+            let packageMatches = trimmedFilter.isEmpty
+                || step.packageName.lowercased().contains(trimmedFilter)
+                || step.reasonLabelKey.lowercased().contains(trimmedFilter)
+            return managerMatches && packageMatches
+        }
     }
 
     private static func includeForUpgradePreview(

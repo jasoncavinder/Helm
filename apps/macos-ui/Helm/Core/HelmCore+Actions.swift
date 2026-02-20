@@ -87,6 +87,42 @@ extension HelmCore {
         }
     }
 
+    func runUpgradePlanScoped(managerScopeId: String, packageFilter: String) {
+        let scopedSteps = HelmCore.scopedUpgradePlanSteps(
+            from: upgradePlanSteps,
+            managerScopeId: managerScopeId,
+            packageFilter: packageFilter
+        )
+        for step in scopedSteps {
+            let status = projectedUpgradePlanStatus(for: step).lowercased()
+            let hasProjectedTask = upgradePlanTaskProjectionByStepId[step.id] != nil
+            if status == "running" || status == "completed" || (status == "queued" && hasProjectedTask) {
+                continue
+            }
+            if step.managerId == "softwareupdate" && safeModeEnabled {
+                continue
+            }
+            retryUpgradePlanStep(step)
+        }
+    }
+
+    func cancelRemainingUpgradePlanSteps(managerScopeId: String, packageFilter: String) {
+        let scopedStepIds = Set(
+            HelmCore.scopedUpgradePlanSteps(
+                from: upgradePlanSteps,
+                managerScopeId: managerScopeId,
+                packageFilter: packageFilter
+            )
+            .map(\.id)
+        )
+        guard !scopedStepIds.isEmpty else { return }
+
+        for task in activeTasks where task.isRunning && task.taskType?.lowercased() == "upgrade" {
+            guard let stepId = upgradePlanStepId(from: task), scopedStepIds.contains(stepId) else { continue }
+            cancelTask(task)
+        }
+    }
+
     private func retryUpgradePlanStep(_ step: CoreUpgradePlanStep) {
         guard let service = service() else {
             logger.error("retryUpgradePlanStep(\(step.id)) failed: service unavailable")
@@ -112,6 +148,27 @@ extension HelmCore {
                 self.rebuildUpgradePlanFailureGroups()
             }
         }
+    }
+
+    private func upgradePlanStepId(from task: TaskItem) -> String? {
+        if let explicit = task.labelArgs?["plan_step_id"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !explicit.isEmpty {
+            return explicit
+        }
+        if task.managerId == "softwareupdate" {
+            return "softwareupdate:__confirm_os_updates__"
+        }
+        if task.managerId == "rustup",
+           let toolchain = task.labelArgs?["toolchain"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !toolchain.isEmpty {
+            return "rustup:\(toolchain)"
+        }
+        guard let managerId = task.managerId,
+              let package = task.labelArgs?["package"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !package.isEmpty else {
+            return nil
+        }
+        return "\(managerId):\(package)"
     }
 
     func installPackage(_ package: PackageItem) {

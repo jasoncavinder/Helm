@@ -6,6 +6,7 @@ import Darwin
 private let logger = Logger(subsystem: "com.jasoncavinder.Helm", category: "core.settings")
 
 extension HelmCore {
+    static let allManagersScopeId = UpgradePreviewPlanner.allManagersScopeId
 
     // MARK: - Safe Mode
 
@@ -229,6 +230,48 @@ extension HelmCore {
         L10n.App.Inspector.taskFailureHintGeneric.localized(with: [
             "manager": localizedManagerDisplayName(group.managerId)
         ])
+    }
+
+    static func authorityRank(for authority: String) -> Int {
+        UpgradePreviewPlanner.authorityRank(for: authority)
+    }
+
+    static func sortedUpgradePlanStepsForExecution(_ steps: [CoreUpgradePlanStep]) -> [CoreUpgradePlanStep] {
+        let plannerSteps = steps.map {
+            UpgradePreviewPlanner.PlanStep(
+                id: $0.id,
+                orderIndex: $0.orderIndex,
+                managerId: $0.managerId,
+                authority: $0.authority,
+                packageName: $0.packageName,
+                reasonLabelKey: $0.reasonLabelKey
+            )
+        }
+        let stepById = Dictionary(uniqueKeysWithValues: steps.map { ($0.id, $0) })
+        return UpgradePreviewPlanner.sortedForExecution(plannerSteps).compactMap { stepById[$0.id] }
+    }
+
+    static func scopedUpgradePlanSteps(
+        from steps: [CoreUpgradePlanStep],
+        managerScopeId: String,
+        packageFilter: String
+    ) -> [CoreUpgradePlanStep] {
+        let plannerSteps = steps.map {
+            UpgradePreviewPlanner.PlanStep(
+                id: $0.id,
+                orderIndex: $0.orderIndex,
+                managerId: $0.managerId,
+                authority: $0.authority,
+                packageName: $0.packageName,
+                reasonLabelKey: $0.reasonLabelKey
+            )
+        }
+        let stepById = Dictionary(uniqueKeysWithValues: steps.map { ($0.id, $0) })
+        return UpgradePreviewPlanner.scopedForExecution(
+            from: plannerSteps,
+            managerScopeId: managerScopeId,
+            packageFilter: packageFilter
+        ).compactMap { stepById[$0.id] }
     }
 
     func localizedTaskLabel(from task: CoreTaskRecord) -> String? {
