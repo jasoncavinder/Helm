@@ -62,6 +62,12 @@ extension HelmCore {
                             restartRequired: pkg.restartRequired
                         )
                     }
+                    if let self = self, !self.upgradePlanSteps.isEmpty {
+                        self.refreshUpgradePlan(
+                            includePinned: self.upgradePlanIncludePinned,
+                            allowOsUpdates: self.upgradePlanAllowOsUpdates
+                        )
+                    }
                 }
             } catch {
                 logger.error("fetchOutdatedPackages: decode failed (\(data.count) bytes): \(error)")

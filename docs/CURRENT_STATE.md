@@ -162,13 +162,28 @@ Validation:
 
 ---
 
-## v0.15.x Kickoff Status
+## v0.15.0-alpha.1 Status
 
-Prepared and ready to implement:
+### Plan Model + Inspector Foundations
 
-- release branch hygiene complete (`v0.14.1` merged/tagged/released)
-- `dev` is current and clean for feature branching
-- scope defined by roadmap: upgrade plan visibility, execution transparency, partial-failure clarity, operator controls
+Implemented on `feat/v0.15.x-alpha.1-kickoff`:
+
+- Added ordered upgrade-plan preview export at the FFI boundary (`helm_preview_upgrade_plan`) with per-step metadata:
+  - stable step ID (`manager:package`)
+  - order index
+  - manager/action/authority context
+  - localized reason label key + args
+  - initial status (`queued`)
+- Added XPC surface method `previewUpgradePlan(includePinned:allowOsUpdates:)` and wired service forwarding to the new FFI export
+- Added Swift `CoreUpgradePlanStep` state in `HelmCore` and plan-refresh helpers for decoding/sorting/localized status + reason rendering
+- Updates section now renders the ordered execution plan directly from FFI-backed plan steps and supports plan-step selection
+- Inspector now resolves selected plan steps into task-shaped detail rows so reason/status context is visible without executing upgrades
+- Plan refresh now re-runs after outdated snapshot refresh (when plan state is active), and also on updates-section appear/toggle changes
+
+Validation:
+
+- `cargo test -p helm-ffi --manifest-path core/rust/Cargo.toml`
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
 
 ---
 

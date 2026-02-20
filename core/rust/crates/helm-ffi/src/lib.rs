@@ -18,7 +18,7 @@
 //!   accessing the engine. Poisoned-lock recovery is implemented via
 //!   [`lock_or_recover`] to prevent lock-poison panics at the FFI boundary.
 //!
-//! ## FFI Exports (27 functions)
+//! ## FFI Exports (28 functions)
 //!
 //! | Function | Category |
 //! |----------|----------|
@@ -41,6 +41,7 @@
 //! | `helm_set_homebrew_keg_auto_cleanup` | Settings |
 //! | `helm_list_package_keg_policies` | Keg policies |
 //! | `helm_set_package_keg_policy` | Keg policies |
+//! | `helm_preview_upgrade_plan` | Upgrade |
 //! | `helm_upgrade_all` | Upgrade |
 //! | `helm_upgrade_package` | Upgrade |
 //! | `helm_list_pins` | Pinning |
@@ -723,6 +724,96 @@ struct UpgradeAllTargets {
     bundler: Vec<String>,
     rustup: Vec<String>,
     softwareupdate_outdated: bool,
+}
+
+#[derive(serde::Serialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct FfiUpgradePlanStep {
+    step_id: String,
+    order_index: u64,
+    manager_id: String,
+    authority: String,
+    action: String,
+    package_name: String,
+    reason_label_key: String,
+    reason_label_args: std::collections::HashMap<String, String>,
+    status: String,
+}
+
+fn manager_authority_key(id: ManagerId) -> &'static str {
+    match helm_core::registry::manager(id).map(|descriptor| descriptor.authority) {
+        Some(ManagerAuthority::Authoritative) => "authoritative",
+        Some(ManagerAuthority::Standard) => "standard",
+        Some(ManagerAuthority::Guarded) => "guarded",
+        Some(ManagerAuthority::DetectionOnly) => "detection_only",
+        None => "standard",
+    }
+}
+
+fn upgrade_reason_label_for(
+    manager: ManagerId,
+    package_name: &str,
+    cleanup_old_kegs: bool,
+) -> (&'static str, Vec<(&'static str, String)>) {
+    match manager {
+        ManagerId::HomebrewFormula => {
+            if cleanup_old_kegs {
+                (
+                    "service.task.label.upgrade.homebrew_cleanup",
+                    vec![("package", package_name.to_string())],
+                )
+            } else {
+                (
+                    "service.task.label.upgrade.homebrew",
+                    vec![("package", package_name.to_string())],
+                )
+            }
+        }
+        ManagerId::Mise => (
+            "service.task.label.upgrade.mise",
+            vec![("package", package_name.to_string())],
+        ),
+        ManagerId::Rustup => (
+            "service.task.label.upgrade.rustup_toolchain",
+            vec![("toolchain", package_name.to_string())],
+        ),
+        ManagerId::SoftwareUpdate => ("service.task.label.upgrade.softwareupdate_all", vec![]),
+        _ => (
+            "service.task.label.upgrade.package",
+            vec![
+                ("package", package_name.to_string()),
+                ("manager", manager_display_name(manager).to_string()),
+            ],
+        ),
+    }
+}
+
+fn push_upgrade_plan_step(
+    steps: &mut Vec<FfiUpgradePlanStep>,
+    manager: ManagerId,
+    package_name: String,
+    cleanup_old_kegs: bool,
+    next_order_index: &mut u64,
+) {
+    let (reason_label_key, reason_label_args_vec) =
+        upgrade_reason_label_for(manager, &package_name, cleanup_old_kegs);
+    let reason_label_args = reason_label_args_vec
+        .into_iter()
+        .map(|(key, value)| (key.to_string(), value))
+        .collect();
+
+    steps.push(FfiUpgradePlanStep {
+        step_id: format!("{}:{}", manager.as_str(), package_name),
+        order_index: *next_order_index,
+        manager_id: manager.as_str().to_string(),
+        authority: manager_authority_key(manager).to_string(),
+        action: "upgrade".to_string(),
+        package_name,
+        reason_label_key: reason_label_key.to_string(),
+        reason_label_args,
+        status: "queued".to_string(),
+    });
+    *next_order_index += 1;
 }
 
 fn collect_upgrade_all_targets(
@@ -1631,6 +1722,230 @@ pub unsafe extern "C" fn helm_set_package_keg_policy(
     };
 
     state.store.set_package_keg_policy(&package, policy).is_ok()
+}
+
+/// Build an ordered upgrade execution plan from cached outdated snapshot as JSON.
+///
+/// - `include_pinned`: if false, pinned packages are excluded.
+/// - `allow_os_updates`: explicit confirmation gate for `softwareupdate` steps.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_preview_upgrade_plan(
+    include_pinned: bool,
+    allow_os_updates: bool,
+) -> *mut c_char {
+    clear_last_error_key();
+    let guard = lock_or_recover(&STATE, "state");
+    let state = match guard.as_ref() {
+        Some(s) => s,
+        None => return std::ptr::null_mut(),
+    };
+
+    let outdated = match state.store.list_outdated() {
+        Ok(packages) => packages,
+        Err(error) => {
+            eprintln!("preview_upgrade_plan: failed to list outdated packages: {error}");
+            return std::ptr::null_mut();
+        }
+    };
+
+    let pinned_keys: std::collections::HashSet<String> = state
+        .store
+        .list_pins()
+        .map(|pins| {
+            pins.into_iter()
+                .map(|pin| format!("{}:{}", pin.package.manager.as_str(), pin.package.name))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let targets = collect_upgrade_all_targets(&outdated, &pinned_keys, include_pinned);
+    let mut steps: Vec<FfiUpgradePlanStep> = Vec::new();
+    let mut order_index = 0_u64;
+
+    if state.runtime.is_manager_enabled(ManagerId::HomebrewFormula) {
+        for package_name in targets.homebrew {
+            let cleanup_old_kegs = effective_homebrew_keg_policy(&state.store, &package_name)
+                == HomebrewKegPolicy::Cleanup;
+            push_upgrade_plan_step(
+                &mut steps,
+                ManagerId::HomebrewFormula,
+                package_name,
+                cleanup_old_kegs,
+                &mut order_index,
+            );
+        }
+    }
+
+    if state.runtime.is_manager_enabled(ManagerId::Mise) {
+        for package_name in targets.mise {
+            push_upgrade_plan_step(
+                &mut steps,
+                ManagerId::Mise,
+                package_name,
+                false,
+                &mut order_index,
+            );
+        }
+    }
+
+    if state.runtime.is_manager_enabled(ManagerId::Npm) {
+        for package_name in targets.npm {
+            push_upgrade_plan_step(
+                &mut steps,
+                ManagerId::Npm,
+                package_name,
+                false,
+                &mut order_index,
+            );
+        }
+    }
+
+    if state.runtime.is_manager_enabled(ManagerId::Pnpm) {
+        for package_name in targets.pnpm {
+            push_upgrade_plan_step(
+                &mut steps,
+                ManagerId::Pnpm,
+                package_name,
+                false,
+                &mut order_index,
+            );
+        }
+    }
+
+    if state.runtime.is_manager_enabled(ManagerId::Yarn) {
+        for package_name in targets.yarn {
+            push_upgrade_plan_step(
+                &mut steps,
+                ManagerId::Yarn,
+                package_name,
+                false,
+                &mut order_index,
+            );
+        }
+    }
+
+    if state.runtime.is_manager_enabled(ManagerId::Cargo) {
+        for package_name in targets.cargo {
+            push_upgrade_plan_step(
+                &mut steps,
+                ManagerId::Cargo,
+                package_name,
+                false,
+                &mut order_index,
+            );
+        }
+    }
+
+    if state.runtime.is_manager_enabled(ManagerId::CargoBinstall) {
+        for package_name in targets.cargo_binstall {
+            push_upgrade_plan_step(
+                &mut steps,
+                ManagerId::CargoBinstall,
+                package_name,
+                false,
+                &mut order_index,
+            );
+        }
+    }
+
+    if state.runtime.is_manager_enabled(ManagerId::Pip) {
+        for package_name in targets.pip {
+            push_upgrade_plan_step(
+                &mut steps,
+                ManagerId::Pip,
+                package_name,
+                false,
+                &mut order_index,
+            );
+        }
+    }
+
+    if state.runtime.is_manager_enabled(ManagerId::Pipx) {
+        for package_name in targets.pipx {
+            push_upgrade_plan_step(
+                &mut steps,
+                ManagerId::Pipx,
+                package_name,
+                false,
+                &mut order_index,
+            );
+        }
+    }
+
+    if state.runtime.is_manager_enabled(ManagerId::Poetry) {
+        for package_name in targets.poetry {
+            push_upgrade_plan_step(
+                &mut steps,
+                ManagerId::Poetry,
+                package_name,
+                false,
+                &mut order_index,
+            );
+        }
+    }
+
+    if state.runtime.is_manager_enabled(ManagerId::RubyGems) {
+        for package_name in targets.rubygems {
+            push_upgrade_plan_step(
+                &mut steps,
+                ManagerId::RubyGems,
+                package_name,
+                false,
+                &mut order_index,
+            );
+        }
+    }
+
+    if state.runtime.is_manager_enabled(ManagerId::Bundler) {
+        for package_name in targets.bundler {
+            push_upgrade_plan_step(
+                &mut steps,
+                ManagerId::Bundler,
+                package_name,
+                false,
+                &mut order_index,
+            );
+        }
+    }
+
+    if state.runtime.is_manager_enabled(ManagerId::Rustup) {
+        for package_name in targets.rustup {
+            push_upgrade_plan_step(
+                &mut steps,
+                ManagerId::Rustup,
+                package_name,
+                false,
+                &mut order_index,
+            );
+        }
+    }
+
+    if allow_os_updates
+        && targets.softwareupdate_outdated
+        && state.runtime.is_manager_enabled(ManagerId::SoftwareUpdate)
+        && !state.runtime.is_safe_mode()
+    {
+        push_upgrade_plan_step(
+            &mut steps,
+            ManagerId::SoftwareUpdate,
+            "__confirm_os_updates__".to_string(),
+            false,
+            &mut order_index,
+        );
+    }
+
+    let json = match serde_json::to_string(&steps) {
+        Ok(json) => json,
+        Err(error) => {
+            eprintln!("preview_upgrade_plan: failed to encode JSON: {error}");
+            return std::ptr::null_mut();
+        }
+    };
+
+    match CString::new(json) {
+        Ok(c) => c.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
 }
 
 /// Queue upgrade tasks for supported managers using cached outdated snapshot.
@@ -3209,9 +3524,11 @@ pub unsafe extern "C" fn helm_free_string(s: *mut c_char) {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_manager_statuses, build_visible_tasks, collect_upgrade_all_targets,
-        homebrew_probe_candidates, manager_allows_individual_package_install,
-        parse_homebrew_config_version, search_label_args, search_label_key_for_query,
+        FfiUpgradePlanStep, build_manager_statuses, build_visible_tasks,
+        collect_upgrade_all_targets, homebrew_probe_candidates,
+        manager_allows_individual_package_install, manager_authority_key,
+        parse_homebrew_config_version, push_upgrade_plan_step, search_label_args,
+        search_label_key_for_query, upgrade_reason_label_for,
     };
     use helm_core::models::{
         ManagerId, OutdatedPackage, PackageRef, TaskId, TaskRecord, TaskStatus, TaskType,
@@ -3283,6 +3600,48 @@ mod tests {
         assert!(targets.mise.is_empty());
         assert!(targets.rustup.is_empty());
         assert!(!targets.softwareupdate_outdated);
+    }
+
+    #[test]
+    fn upgrade_reason_label_uses_manager_specific_keys() {
+        let (homebrew_key, homebrew_args) =
+            upgrade_reason_label_for(ManagerId::HomebrewFormula, "git", true);
+        assert_eq!(homebrew_key, "service.task.label.upgrade.homebrew_cleanup");
+        assert_eq!(homebrew_args, vec![("package", "git".to_string())]);
+
+        let (rustup_key, rustup_args) =
+            upgrade_reason_label_for(ManagerId::Rustup, "stable", false);
+        assert_eq!(rustup_key, "service.task.label.upgrade.rustup_toolchain");
+        assert_eq!(rustup_args, vec![("toolchain", "stable".to_string())]);
+    }
+
+    #[test]
+    fn push_upgrade_plan_step_assigns_stable_ids_and_order() {
+        let mut steps: Vec<FfiUpgradePlanStep> = Vec::new();
+        let mut order_index = 0_u64;
+
+        push_upgrade_plan_step(
+            &mut steps,
+            ManagerId::Npm,
+            "typescript".to_string(),
+            false,
+            &mut order_index,
+        );
+        push_upgrade_plan_step(
+            &mut steps,
+            ManagerId::SoftwareUpdate,
+            "__confirm_os_updates__".to_string(),
+            false,
+            &mut order_index,
+        );
+
+        assert_eq!(steps.len(), 2);
+        assert_eq!(steps[0].step_id, "npm:typescript");
+        assert_eq!(steps[0].order_index, 0);
+        assert_eq!(steps[0].status, "queued");
+        assert_eq!(steps[0].authority, manager_authority_key(ManagerId::Npm));
+        assert_eq!(steps[1].step_id, "softwareupdate:__confirm_os_updates__");
+        assert_eq!(steps[1].order_index, 1);
     }
 
     #[test]

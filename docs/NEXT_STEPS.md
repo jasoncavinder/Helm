@@ -37,17 +37,22 @@ Next release targets:
 
 ---
 
-## v0.15.x Kickoff Plan (Ready)
+## v0.15.x Kickoff Plan (In Progress)
 
-### Alpha.1 — Plan Model + Inspector Foundations
+### Alpha.1 — Plan Model + Inspector Foundations (Completed on `feat/v0.15.x-alpha.1-kickoff`)
 
-Deliver:
+Delivered:
 
-- add explicit execution-plan model with ordered step metadata surfaced through FFI/service/UI
-- map each planned step to manager/action/package context and stable identifiers for later task correlation
-- render initial ordered plan details in inspector with localized reason/status fields
+- Added explicit execution-plan model with ordered step metadata surfaced through FFI/service/UI
+- Mapped each planned step to manager/action/package context and stable identifiers for later task correlation
+- Rendered initial ordered plan details in inspector with localized reason/status fields
 
-### Alpha.2 — Execution Transparency + Partial Failure Summary
+Validation:
+
+- `cargo test -p helm-ffi --manifest-path core/rust/Cargo.toml`
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
+
+### Alpha.2 — Execution Transparency + Partial Failure Summary (Next)
 
 Deliver:
 

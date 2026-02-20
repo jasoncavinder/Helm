@@ -16,6 +16,7 @@ import Foundation
     func setHomebrewKegAutoCleanup(enabled: Bool, withReply reply: @escaping (Bool) -> Void)
     func listPackageKegPolicies(withReply reply: @escaping (String?) -> Void)
     func setPackageKegPolicy(managerId: String, packageName: String, policyMode: Int32, withReply reply: @escaping (Bool) -> Void)
+    func previewUpgradePlan(includePinned: Bool, allowOsUpdates: Bool, withReply reply: @escaping (String?) -> Void)
     func upgradeAll(includePinned: Bool, allowOsUpdates: Bool, withReply reply: @escaping (Bool) -> Void)
     func upgradePackage(managerId: String, packageName: String, withReply reply: @escaping (Int64) -> Void)
     func installPackage(managerId: String, packageName: String, withReply reply: @escaping (Int64) -> Void)

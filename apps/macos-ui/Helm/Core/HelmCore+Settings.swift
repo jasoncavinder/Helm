@@ -130,6 +130,45 @@ extension HelmCore {
         }
     }
 
+    func refreshUpgradePlan(includePinned: Bool = false, allowOsUpdates: Bool = false) {
+        service()?.previewUpgradePlan(includePinned: includePinned, allowOsUpdates: allowOsUpdates) { [weak self] jsonString in
+            guard let self = self else { return }
+            guard let jsonString, let data = jsonString.data(using: .utf8) else { return }
+
+            do {
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                let steps = try decoder.decode([CoreUpgradePlanStep].self, from: data)
+                DispatchQueue.main.async {
+                    self.upgradePlanIncludePinned = includePinned
+                    self.upgradePlanAllowOsUpdates = allowOsUpdates
+                    self.upgradePlanSteps = steps.sorted { lhs, rhs in
+                        lhs.orderIndex < rhs.orderIndex
+                    }
+                }
+            } catch {
+                logger.error("refreshUpgradePlan: decode failed (\(data.count) bytes): \(error)")
+            }
+        }
+    }
+
+    func localizedUpgradePlanStatus(_ rawStatus: String) -> String {
+        switch rawStatus.lowercased() {
+        case "queued":
+            return L10n.Service.Task.Status.pending.localized
+        case "running":
+            return L10n.Service.Task.Status.running.localized
+        case "completed":
+            return L10n.Service.Task.Status.completed.localized
+        case "failed":
+            return L10n.Service.Task.Status.failed.localized
+        case "cancelled":
+            return L10n.Service.Task.Status.cancelled.localized
+        default:
+            return rawStatus.capitalized
+        }
+    }
+
     func upgradeAllPreviewCount(includePinned: Bool = false, allowOsUpdates: Bool = false) -> Int {
         UpgradePreviewPlanner.count(
             candidates: outdatedPackages.map {
@@ -161,6 +200,13 @@ extension HelmCore {
     }
 
     // MARK: - Localization Helpers
+
+    func localizedUpgradePlanReason(for step: CoreUpgradePlanStep) -> String {
+        let args = step.reasonLabelArgs.reduce(into: [String: Any]()) { partialResult, entry in
+            partialResult[entry.key] = entry.value
+        }
+        return step.reasonLabelKey.localized(with: args)
+    }
 
     func localizedTaskLabel(from task: CoreTaskRecord) -> String? {
         if let labelKey = task.labelKey {

@@ -269,7 +269,7 @@ When a contract changes:
 
 ## 10. Concrete Interface Inventories
 
-### 10.1 XPC Protocol Methods (25 methods)
+### 10.1 XPC Protocol Methods (26 methods)
 
 Source: `apps/macos-ui/Helm/Shared/HelmServiceProtocol.swift`
 
@@ -298,6 +298,7 @@ All methods use asynchronous `withReply` closures. Connection security is enforc
 | `setHomebrewKegAutoCleanup(enabled:)` | Settings | `Bool` |
 | `listPackageKegPolicies` | Keg policies | `String?` (JSON) |
 | `setPackageKegPolicy(managerId:packageName:policyMode:)` | Keg policies | `Bool` |
+| `previewUpgradePlan(includePinned:allowOsUpdates:)` | Upgrade | `String?` (JSON) |
 | `upgradeAll(includePinned:allowOsUpdates:)` | Upgrade | `Bool` |
 | `upgradePackage(managerId:packageName:)` | Upgrade | `Int64` (task ID) |
 | `resetDatabase` | Database | `Bool` |
@@ -305,7 +306,7 @@ All methods use asynchronous `withReply` closures. Connection security is enforc
 
 Client-side timeout enforcement: 30s for data fetch calls, 300s for mutation calls. Exponential backoff reconnection on invalidation/interruption (2s base, doubling to 60s cap).
 
-### 10.2 FFI Exports (27 functions)
+### 10.2 FFI Exports (28 functions)
 
 Source: `core/rust/crates/helm-ffi/src/lib.rs`
 

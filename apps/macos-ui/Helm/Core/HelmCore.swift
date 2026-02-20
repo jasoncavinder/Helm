@@ -41,6 +41,20 @@ struct CoreSearchResult: Codable {
     let sourceManager: String
 }
 
+struct CoreUpgradePlanStep: Codable, Identifiable {
+    let stepId: String
+    let orderIndex: UInt64
+    let managerId: String
+    let authority: String
+    let action: String
+    let packageName: String
+    let reasonLabelKey: String
+    let reasonLabelArgs: [String: String]
+    let status: String
+
+    var id: String { stepId }
+}
+
 enum HomebrewKegPolicyOverride: String, Codable {
     case keep
     case cleanup
@@ -88,6 +102,9 @@ final class HelmCore: ObservableObject {
     @Published var activeTasks: [TaskItem] = []
     @Published var searchResults: [PackageItem] = []
     @Published var cachedAvailablePackages: [PackageItem] = []
+    @Published var upgradePlanSteps: [CoreUpgradePlanStep] = []
+    @Published var upgradePlanAllowOsUpdates: Bool = false
+    @Published var upgradePlanIncludePinned: Bool = false
     @Published var detectedManagers: Set<String> = []
     @Published var managerStatuses: [String: ManagerStatus] = [:]
     @Published var managerOperations: [String: String] = [:]

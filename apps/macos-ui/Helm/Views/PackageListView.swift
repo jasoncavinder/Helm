@@ -137,6 +137,7 @@ struct PackagesSectionView: View {
                         context.selectedPackageId = package.id
                         context.selectedManagerId = package.managerId
                         context.selectedTaskId = nil
+                        context.selectedUpgradePlanStepId = nil
                     }
                     .listRowBackground(Color.clear)
                     .helmPointer()

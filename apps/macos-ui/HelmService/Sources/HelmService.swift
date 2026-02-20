@@ -140,6 +140,16 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(result)
     }
 
+    func previewUpgradePlan(includePinned: Bool, allowOsUpdates: Bool, withReply reply: @escaping (String?) -> Void) {
+        guard let cString = helm_preview_upgrade_plan(includePinned, allowOsUpdates) else {
+            logger.warning("helm_preview_upgrade_plan returned nil")
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(cString) }
+        reply(String(cString: cString))
+    }
+
     func upgradeAll(includePinned: Bool, allowOsUpdates: Bool, withReply reply: @escaping (Bool) -> Void) {
         let result = helm_upgrade_all(includePinned, allowOsUpdates)
         logger.info("helm_upgrade_all(includePinned: \(includePinned), allowOsUpdates: \(allowOsUpdates)) result: \(result)")

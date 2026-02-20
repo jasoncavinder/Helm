@@ -44,6 +44,7 @@ struct RedesignOverviewSectionView: View {
                             context.selectedManagerId = manager.id
                             context.selectedPackageId = nil
                             context.selectedTaskId = nil
+                            context.selectedUpgradePlanStepId = nil
                         }
                         .helmPointer()
                     }
@@ -65,6 +66,7 @@ struct RedesignOverviewSectionView: View {
                                     context.selectedTaskId = task.id
                                     context.selectedPackageId = nil
                                     context.selectedManagerId = task.managerId
+                                    context.selectedUpgradePlanStepId = nil
                                 }
                                 .helmPointer()
                             Divider()
@@ -86,33 +88,52 @@ struct RedesignUpdatesSectionView: View {
     @State private var dryRunMessage = ""
 
     private var previewBreakdown: [(manager: String, count: Int)] {
-        core.upgradeAllPreviewBreakdown(includePinned: false, allowOsUpdates: includeOsUpdates)
+        Dictionary(grouping: core.upgradePlanSteps, by: \.managerId)
+            .map { key, value in
+                (manager: localizedManagerDisplayName(key), count: value.count)
+            }
+            .sorted { lhs, rhs in
+                if lhs.count == rhs.count {
+                    return lhs.manager.localizedCaseInsensitiveCompare(rhs.manager) == .orderedAscending
+                }
+                return lhs.count > rhs.count
+            }
     }
 
     private var totalCount: Int {
-        previewBreakdown.reduce(0) { $0 + $1.count }
+        core.upgradePlanSteps.count
+    }
+
+    private var visiblePlanSteps: [CoreUpgradePlanStep] {
+        Array(core.upgradePlanSteps.prefix(80))
     }
 
     private var stageRows: [(authority: ManagerAuthority, managerCount: Int, packageCount: Int)] {
-        ManagerAuthority.allCases.map { authorityLevel in
-            let managersInAuthority = Set(
-                previewBreakdown
-                    .map(\.manager)
-                    .filter { (ManagerInfo.find(byDisplayName: $0)?.authority ?? .standard) == authorityLevel }
+        let stepsByAuthority = Dictionary(grouping: core.upgradePlanSteps) { step in
+            authority(for: step.managerId)
+        }
+        return ManagerAuthority.allCases.map { authorityLevel in
+            let scopedSteps = stepsByAuthority[authorityLevel] ?? []
+            let managersInAuthority = Set(scopedSteps.map(\.managerId))
+            return (
+                authority: authorityLevel,
+                managerCount: managersInAuthority.count,
+                packageCount: scopedSteps.count
             )
-            let count = previewBreakdown
-                .filter { (ManagerInfo.find(byDisplayName: $0.manager)?.authority ?? .standard) == authorityLevel }
-                .reduce(0) { $0 + $1.count }
-
-            return (authority: authorityLevel, managerCount: managersInAuthority.count, packageCount: count)
         }
     }
 
     private var requiresPrivileges: Bool {
-        previewBreakdown.contains { entry in
-            entry.manager == localizedManagerDisplayName("homebrew_formula")
-                || entry.manager == localizedManagerDisplayName("softwareupdate")
+        core.upgradePlanSteps.contains { step in
+            step.managerId == "homebrew_formula" || step.managerId == "softwareupdate"
         }
+    }
+
+    private func planStepTitle(_ step: CoreUpgradePlanStep) -> String {
+        if step.managerId == "softwareupdate", step.packageName == "__confirm_os_updates__" {
+            return core.localizedUpgradePlanReason(for: step)
+        }
+        return step.packageName
     }
 
     private var mayRequireReboot: Bool {
@@ -127,6 +148,7 @@ struct RedesignUpdatesSectionView: View {
                 Spacer()
                 Button(L10n.App.Action.refreshPlan.localized) {
                     core.triggerRefresh()
+                    core.refreshUpgradePlan(includePinned: false, allowOsUpdates: includeOsUpdates)
                 }
                 .buttonStyle(HelmSecondaryButtonStyle())
                 .disabled(core.isRefreshing)
@@ -157,6 +179,54 @@ struct RedesignUpdatesSectionView: View {
                     }
                     .padding(.vertical, 4)
                 }
+            }
+
+            if visiblePlanSteps.isEmpty {
+                Text(L10n.App.Tasks.noRecentTasks.localized)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(visiblePlanSteps) { step in
+                        Button {
+                            context.selectedUpgradePlanStepId = step.id
+                            context.selectedTaskId = nil
+                            context.selectedPackageId = nil
+                            context.selectedManagerId = nil
+                        } label: {
+                            HStack(spacing: 8) {
+                                Text("\(step.orderIndex + 1).")
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(planStepTitle(step))
+                                        .font(.subheadline.weight(.medium))
+                                        .lineLimit(1)
+                                    Text(localizedManagerDisplayName(step.managerId))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                                Spacer()
+                                Text(core.localizedUpgradePlanStatus(step.status))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 8)
+                            .padding(.horizontal, 10)
+                            .background(
+                                context.selectedUpgradePlanStepId == step.id
+                                    ? Color.accentColor.opacity(0.15)
+                                    : Color.clear
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .contentShape(Rectangle())
+                        .helmPointer()
+                        Divider()
+                    }
+                }
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
 
             VStack(alignment: .leading, spacing: 6) {
@@ -193,6 +263,15 @@ struct RedesignUpdatesSectionView: View {
             Button(L10n.Common.ok.localized, role: .cancel) {}
         } message: {
             Text(dryRunMessage)
+        }
+        .onAppear {
+            core.refreshUpgradePlan(includePinned: false, allowOsUpdates: includeOsUpdates)
+        }
+        .onChange(of: includeOsUpdates) { value in
+            core.refreshUpgradePlan(includePinned: false, allowOsUpdates: value)
+        }
+        .onChange(of: core.safeModeEnabled) { _ in
+            core.refreshUpgradePlan(includePinned: false, allowOsUpdates: includeOsUpdates)
         }
     }
 
