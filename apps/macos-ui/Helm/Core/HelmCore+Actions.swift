@@ -31,37 +31,6 @@ extension HelmCore {
         }
     }
 
-    func canUpgradeIndividually(_ package: PackageItem) -> Bool {
-        return package.status == .upgradable
-            && (managerStatuses[package.managerId]?.supportsPackageUpgrade ?? false)
-            && !package.pinned
-            && isManagerEnabled(package.managerId)
-    }
-
-    func canInstallPackage(_ package: PackageItem) -> Bool {
-        package.status == .available
-            && (managerStatuses[package.managerId]?.supportsPackageInstall ?? false)
-            && isManagerEnabled(package.managerId)
-    }
-
-    func canUninstallPackage(_ package: PackageItem) -> Bool {
-        package.status != .available
-            && (managerStatuses[package.managerId]?.supportsPackageUninstall ?? false)
-            && isManagerEnabled(package.managerId)
-    }
-
-    func canPinPackage(_ package: PackageItem) -> Bool {
-        package.status != .available && package.managerId == "homebrew_formula"
-    }
-
-    func supportsRemoteSearch(managerId: String) -> Bool {
-        managerStatuses[managerId]?.supportsRemoteSearch ?? false
-    }
-
-    func isManagerEnabled(_ managerId: String) -> Bool {
-        managerStatuses[managerId]?.enabled ?? true
-    }
-
     func upgradePackage(_ package: PackageItem) {
         guard canUpgradeIndividually(package), !upgradeActionPackageIds.contains(package.id) else { return }
 
