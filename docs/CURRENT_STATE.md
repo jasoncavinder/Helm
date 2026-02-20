@@ -118,6 +118,7 @@ Implemented on `feat/v0.16.0-kickoff`:
   - non-direct channels remain no-op at runtime (MAS/Setapp/Fleet isolation)
 - Added optional Sparkle bridge implementation guarded with `#if canImport(Sparkle)` so non-Sparkle builds remain compile-safe
 - Wired Sparkle SPM package linkage into the Helm app target for direct-channel runtime update checks
+- Pinned Sparkle SPM dependency to exact `2.8.1` to keep update-framework compatibility aligned with macOS 11+ and current macOS 12 deployment targets.
 - Added user entry points for manual update checks:
   - status-menu `Check for Updates`
   - popover About overlay `Check for Updates`
@@ -181,6 +182,8 @@ Implemented on `feat/v0.16.0-kickoff`:
 - Added Sparkle appcast generator script (`apps/macos-ui/scripts/generate_sparkle_appcast.sh`) that signs finalized DMGs using Sparkle `sign_update` and emits `appcast.xml` with enclosure/version metadata.
 - Release DMG workflow now generates and uploads `appcast.xml` from the final stapled DMG artifact.
 - Added web feed path scaffold at `web/public/updates/appcast.xml` for direct-channel Sparkle feed hosting.
+- Appcast signing now uses Sparkle's packaged `sign_update` binary from Xcode SPM artifacts (with fallback discovery), removing reliance on `swift run` against Sparkle checkouts.
+- Release workflow now attempts to publish generated appcast content directly to `web/public/updates/appcast.xml` on `main`, and falls back to auto-opening a PR when direct pushes are blocked.
 - Build metadata generation now derives monotonic numeric bundle build numbers from semantic versions (`apps/macos-ui/scripts/build_rust.sh`) to keep Sparkle update ordering stable.
 
 Validation:

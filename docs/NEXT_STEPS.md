@@ -51,6 +51,7 @@ Delivered:
 - Added `AppUpdateCoordinator` with strict channel isolation and manual update-check entry point plumbing
 - Added optional Sparkle bridge (`#if canImport(Sparkle)`) while preserving non-Sparkle build compatibility
 - Wired Sparkle SPM package linkage into the Helm app target for direct-channel runtime update checks
+- Pinned Sparkle SPM dependency to exact `2.8.1` to keep compatibility aligned with macOS 11+ / macOS 12 targets.
 - Added user entry points:
   - status menu `Check for Updates`
   - popover About overlay `Check for Updates`
@@ -100,11 +101,12 @@ Delivered:
 - Added Sparkle appcast generation script (`apps/macos-ui/scripts/generate_sparkle_appcast.sh`) for finalized/stapled DMGs.
 - Release workflow now generates and uploads `appcast.xml` from the final DMG artifact.
 - Added website feed scaffold at `web/public/updates/appcast.xml` for direct-channel Sparkle hosting.
+- Appcast generation now uses Sparkle's packaged `sign_update` binary from SPM artifacts instead of invoking `swift run` against Sparkle sources.
+- Release workflow now publishes generated `appcast.xml` into `web/public/updates/appcast.xml` on `main` (with automatic PR fallback when direct push is blocked by branch protections).
 - Build metadata generation now derives monotonic numeric bundle build numbers from semantic versions to keep Sparkle update ordering stable.
 
 Next in alpha.2:
 
-- Add release automation for publishing generated appcast feed content to website hosting without manual copy steps.
 - Add installer/update interruption and recovery validation scenarios to release docs/checklists.
 - Define delta-update policy checks and artifact validation approach for direct-channel releases.
 

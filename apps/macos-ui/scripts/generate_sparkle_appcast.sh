@@ -10,7 +10,8 @@ Usage: generate_sparkle_appcast.sh \
   --download-url <https://.../Helm.dmg> \
   --appcast-url <https://.../appcast.xml> \
   [--release-notes-url <https://...>] \
-  [--sparkle-package-path <Sparkle checkout path>]
+  [--sparkle-bin-dir <Sparkle bin directory>] \
+  [--sparkle-package-path <Sparkle checkout path, legacy fallback>]
 
 Environment:
   HELM_SPARKLE_PRIVATE_ED_KEY   Base64 Sparkle private EdDSA key secret
@@ -24,6 +25,7 @@ DOWNLOAD_URL=""
 APPCAST_URL=""
 RELEASE_NOTES_URL=""
 SPARKLE_PACKAGE_PATH=""
+SPARKLE_BIN_DIR=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -49,6 +51,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --release-notes-url)
       RELEASE_NOTES_URL="$2"
+      shift 2
+      ;;
+    --sparkle-bin-dir)
+      SPARKLE_BIN_DIR="$2"
       shift 2
       ;;
     --sparkle-package-path)
@@ -87,12 +93,29 @@ if [[ -z "${HELM_SPARKLE_PRIVATE_ED_KEY:-}" ]]; then
   exit 1
 fi
 
-if [[ -z "$SPARKLE_PACKAGE_PATH" ]]; then
-  SPARKLE_PACKAGE_PATH="$(find "$HOME/Library/Developer/Xcode/DerivedData" -type f -path '*/SourcePackages/checkouts/Sparkle/Package.swift' -print -quit 2>/dev/null | sed 's#/Package.swift##')"
+if [[ -z "$SPARKLE_BIN_DIR" && -n "$SPARKLE_PACKAGE_PATH" ]]; then
+  LEGACY_BIN_DIR="$(cd "$SPARKLE_PACKAGE_PATH/.." >/dev/null 2>&1 && pwd)/artifacts/sparkle/bin"
+  if [[ -x "$LEGACY_BIN_DIR/sign_update" ]]; then
+    SPARKLE_BIN_DIR="$LEGACY_BIN_DIR"
+  fi
 fi
 
-if [[ ! -f "$SPARKLE_PACKAGE_PATH/Package.swift" ]]; then
-  echo "error: Sparkle package checkout not found at $SPARKLE_PACKAGE_PATH" >&2
+if [[ -z "$SPARKLE_BIN_DIR" ]]; then
+  if [[ -d "$PWD/build/DerivedData/SourcePackages/artifacts/sparkle/bin" ]]; then
+    SPARKLE_BIN_DIR="$PWD/build/DerivedData/SourcePackages/artifacts/sparkle/bin"
+  else
+    SPARKLE_BIN_DIR="$(
+      find "$HOME/Library/Developer/Xcode/DerivedData" \
+        -type f \
+        -path '*/SourcePackages/artifacts/sparkle/bin/sign_update' \
+        -print -quit 2>/dev/null | sed 's#/sign_update##'
+    )"
+  fi
+fi
+
+SPARKLE_SIGN_UPDATE_BIN="$SPARKLE_BIN_DIR/sign_update"
+if [[ ! -x "$SPARKLE_SIGN_UPDATE_BIN" ]]; then
+  echo "error: Sparkle sign_update binary not found at $SPARKLE_SIGN_UPDATE_BIN" >&2
   exit 1
 fi
 
@@ -112,7 +135,7 @@ fi
 
 SIGNATURE_RAW="$(
   printf '%s\n' "$HELM_SPARKLE_PRIVATE_ED_KEY" |
-    swift run --package-path "$SPARKLE_PACKAGE_PATH" sign_update --ed-key-file - -p "$DMG_PATH"
+    "$SPARKLE_SIGN_UPDATE_BIN" --ed-key-file - -p "$DMG_PATH"
 )"
 SIGNATURE="$(printf '%s\n' "$SIGNATURE_RAW" | tail -n1 | tr -d '\r\n')"
 
@@ -124,6 +147,10 @@ fi
 
 LENGTH=$(stat -f%z "$DMG_PATH")
 PUB_DATE=$(LC_ALL=C date -u +"%a, %d %b %Y %H:%M:%S +0000")
+MIN_SYSTEM_VERSION_ATTR=""
+if [[ -n "$MIN_SYSTEM_VERSION" ]]; then
+  MIN_SYSTEM_VERSION_ATTR=" sparkle:minimumSystemVersion=\"$MIN_SYSTEM_VERSION\""
+fi
 
 mkdir -p "$(dirname "$OUTPUT_PATH")"
 
@@ -144,15 +171,10 @@ cat > "$OUTPUT_PATH" <<XML
         sparkle:version="$BUNDLE_VERSION"
         sparkle:shortVersionString="$SHORT_VERSION"
         sparkle:edSignature="$SIGNATURE"
+        $MIN_SYSTEM_VERSION_ATTR
         length="$LENGTH"
         type="application/octet-stream"/>
 XML
-
-if [[ -n "$MIN_SYSTEM_VERSION" ]]; then
-  cat >> "$OUTPUT_PATH" <<XML
-      <sparkle:minimumSystemVersion>$MIN_SYSTEM_VERSION</sparkle:minimumSystemVersion>
-XML
-fi
 
 cat >> "$OUTPUT_PATH" <<'XML'
     </item>

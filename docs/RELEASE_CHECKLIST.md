@@ -6,10 +6,25 @@ This checklist is required before creating a release tag on `main`.
 
 ### Sparkle Feed and Distribution Safety
 - [ ] `HELM_SPARKLE_FEED_URL`, `HELM_SPARKLE_PUBLIC_ED_KEY`, and `HELM_SPARKLE_PRIVATE_ED_KEY` secrets are present for release workflow.
+- [ ] `HELM_SPARKLE_FEED_URL` is set to the canonical feed URL: `https://helmapp.dev/updates/appcast.xml`.
 - [ ] Sparkle feed endpoint is published at `web/public/updates/appcast.xml` (or `HELM_SPARKLE_FEED_URL` points to the hosted equivalent).
 - [ ] Release workflow generates and uploads `appcast.xml` alongside DMG artifacts.
+- [ ] Release workflow publishes generated `appcast.xml` into `web/public/updates/appcast.xml` on `main` (or auto-opens fallback PR if direct push is blocked).
 - [ ] Runtime self-update is blocked for package-manager-managed installs (Homebrew Cask receipt detection + Homebrew/MacPorts path heuristics) and enabled for eligible direct-channel DMG installs.
 - [ ] Generated `CURRENT_PROJECT_VERSION` is monotonic for Sparkle version ordering (semver-derived numeric build number).
+- [ ] Sparkle package reference remains pinned to `2.8.1` in `apps/macos-ui/Helm.xcodeproj/project.pbxproj` for macOS 11+/12 compatibility.
+
+### Sparkle Key Bootstrap (One-Time)
+1. Locate Sparkle key tooling from Xcode DerivedData artifacts:
+   `find "$HOME/Library/Developer/Xcode/DerivedData" -path '*/SourcePackages/artifacts/sparkle/bin/generate_keys' -print -quit`
+2. Generate or reuse keys:
+   `.../generate_keys`
+3. Export private key from Keychain to base64 (single line) and store as `HELM_SPARKLE_PRIVATE_ED_KEY`.
+4. Print public key with `.../generate_keys -p` and store as `HELM_SPARKLE_PUBLIC_ED_KEY`.
+5. Add/update repository secrets:
+   `gh secret set HELM_SPARKLE_PRIVATE_ED_KEY`
+   `gh secret set HELM_SPARKLE_PUBLIC_ED_KEY`
+   `gh secret set HELM_SPARKLE_FEED_URL`
 
 ## v0.15.0 (In Progress)
 
