@@ -385,7 +385,7 @@ struct RedesignUpdatesSectionView: View {
                     )
                 }
                 .buttonStyle(HelmPrimaryButtonStyle())
-                .disabled(totalCount == 0)
+                .disabled(totalCount == 0 || core.scopedUpgradePlanRunInProgress)
 
                 Spacer()
             }

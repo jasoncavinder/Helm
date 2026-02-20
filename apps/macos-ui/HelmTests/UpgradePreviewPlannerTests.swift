@@ -149,6 +149,33 @@ final class UpgradePreviewPlannerTests: XCTestCase {
         )
     }
 
+    func testIsInFlightStatusTreatsQueuedWithoutProjectionAsNotRunning() {
+        XCTAssertTrue(
+            UpgradePreviewPlanner.isInFlightStatus(
+                status: "running",
+                hasProjectedTask: true
+            )
+        )
+        XCTAssertTrue(
+            UpgradePreviewPlanner.isInFlightStatus(
+                status: "queued",
+                hasProjectedTask: true
+            )
+        )
+        XCTAssertFalse(
+            UpgradePreviewPlanner.isInFlightStatus(
+                status: "queued",
+                hasProjectedTask: false
+            )
+        )
+        XCTAssertFalse(
+            UpgradePreviewPlanner.isInFlightStatus(
+                status: "failed",
+                hasProjectedTask: true
+            )
+        )
+    }
+
     func testPlanStepIdPrefersExplicitThenManagerSpecificFallbacks() {
         XCTAssertEqual(
             UpgradePreviewPlanner.planStepId(

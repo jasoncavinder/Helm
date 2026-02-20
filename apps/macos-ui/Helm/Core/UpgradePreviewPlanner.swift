@@ -122,16 +122,27 @@ struct UpgradePreviewPlanner {
         safeModeEnabled: Bool
     ) -> Bool {
         let normalized = status.lowercased()
-        if normalized == "running" || normalized == "completed" {
+        if normalized == "completed" {
             return false
         }
-        if normalized == "queued" && hasProjectedTask {
+        if isInFlightStatus(status: normalized, hasProjectedTask: hasProjectedTask) {
             return false
         }
         if managerId == "softwareupdate" && safeModeEnabled {
             return false
         }
         return true
+    }
+
+    static func isInFlightStatus(status: String, hasProjectedTask: Bool) -> Bool {
+        let normalized = status.lowercased()
+        if normalized == "running" {
+            return true
+        }
+        if normalized == "queued" && hasProjectedTask {
+            return true
+        }
+        return false
     }
 
     static func planStepId(managerId: String?, labelArgs: [String: String]?) -> String? {

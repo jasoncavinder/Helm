@@ -122,6 +122,7 @@ final class HelmCore: ObservableObject {
     @Published var upgradePlanFailureGroups: [UpgradePlanFailureGroup] = []
     @Published var upgradePlanAllowOsUpdates: Bool = false
     @Published var upgradePlanIncludePinned: Bool = false
+    @Published var scopedUpgradePlanRunInProgress: Bool = false
     @Published var detectedManagers: Set<String> = []
     @Published var managerStatuses: [String: ManagerStatus] = [:]
     @Published var managerOperations: [String: String] = [:]
@@ -158,6 +159,7 @@ final class HelmCore: ObservableObject {
     var latestCoreTasksSnapshot: [CoreTaskRecord] = []
     var previousFailedTaskCount: Int = 0
     var previousRefreshState: Bool = false
+    var scopedUpgradePlanRunToken = UUID()
     private var reconnectAttempt: Int = 0
 
     private init() {

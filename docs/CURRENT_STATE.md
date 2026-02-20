@@ -243,8 +243,11 @@ Implemented on `feat/v0.15.x-alpha.1-kickoff` (current progress):
 
 - Consolidated plan-step ID resolution across dashboard and action paths via shared planner helper logic
 - Hardened projection/retry/failure-group mapping paths to tolerate duplicate step IDs without dictionary trap risk
+- Scoped run execution now progresses by authority phase (authoritative → standard → guarded) instead of submitting all managers at once
+- Cancel Remaining now aborts any in-progress scoped run sequencer before cancelling matching in-flight tasks
 - Expanded planner regression coverage for:
   - scoped-run eligibility gating (queued/running/completed + safe mode)
+  - in-flight status handling for queued-without-projection plan rows
   - explicit and fallback plan-step ID resolution paths
 - Applied Rust formatting-only cleanup updates across adapter/runtime test files (no behavior change)
 

@@ -96,22 +96,40 @@ extension HelmCore {
             managerScopeId: managerScopeId,
             packageFilter: packageFilter
         )
-        for step in scopedSteps {
+        let runCandidateSteps = scopedSteps.filter { step in
             let status = projectedUpgradePlanStatus(for: step)
             let hasProjectedTask = upgradePlanTaskProjectionByStepId[step.id] != nil
-            guard UpgradePreviewPlanner.shouldRunScopedStep(
+            return UpgradePreviewPlanner.shouldRunScopedStep(
                 status: status,
                 hasProjectedTask: hasProjectedTask,
                 managerId: step.managerId,
                 safeModeEnabled: safeModeEnabled
-            ) else {
-                continue
-            }
-            retryUpgradePlanStep(step)
+            )
         }
+
+        guard !runCandidateSteps.isEmpty else { return }
+
+        let runToken = UUID()
+        scopedUpgradePlanRunToken = runToken
+        scopedUpgradePlanRunInProgress = true
+
+        let phasesByRank = Dictionary(grouping: runCandidateSteps) { step in
+            HelmCore.authorityRank(for: step.authority)
+        }
+        let orderedPhaseRanks = phasesByRank.keys.sorted()
+
+        runScopedUpgradePlanPhases(
+            phaseRanks: orderedPhaseRanks,
+            phasesByRank: phasesByRank,
+            phaseIndex: 0,
+            runToken: runToken
+        )
     }
 
     func cancelRemainingUpgradePlanSteps(managerScopeId: String, packageFilter: String) {
+        scopedUpgradePlanRunToken = UUID()
+        scopedUpgradePlanRunInProgress = false
+
         let scopedStepIds = Set(
             HelmCore.scopedUpgradePlanSteps(
                 from: upgradePlanSteps,
@@ -125,6 +143,87 @@ extension HelmCore {
         for task in activeTasks where task.isRunning && task.taskType?.lowercased() == "upgrade" {
             guard let stepId = upgradePlanStepId(from: task), scopedStepIds.contains(stepId) else { continue }
             cancelTask(task)
+        }
+    }
+
+    private func runScopedUpgradePlanPhases(
+        phaseRanks: [Int],
+        phasesByRank: [Int: [CoreUpgradePlanStep]],
+        phaseIndex: Int,
+        runToken: UUID
+    ) {
+        guard runToken == scopedUpgradePlanRunToken else {
+            scopedUpgradePlanRunInProgress = false
+            return
+        }
+
+        guard phaseIndex < phaseRanks.count else {
+            scopedUpgradePlanRunInProgress = false
+            return
+        }
+
+        let phaseRank = phaseRanks[phaseIndex]
+        let phaseSteps = phasesByRank[phaseRank] ?? []
+        guard !phaseSteps.isEmpty else {
+            runScopedUpgradePlanPhases(
+                phaseRanks: phaseRanks,
+                phasesByRank: phasesByRank,
+                phaseIndex: phaseIndex + 1,
+                runToken: runToken
+            )
+            return
+        }
+
+        for step in phaseSteps {
+            retryUpgradePlanStep(step)
+        }
+
+        waitForScopedUpgradePlanPhaseCompletion(stepIds: Set(phaseSteps.map(\.id)), runToken: runToken) { [weak self] in
+            self?.runScopedUpgradePlanPhases(
+                phaseRanks: phaseRanks,
+                phasesByRank: phasesByRank,
+                phaseIndex: phaseIndex + 1,
+                runToken: runToken
+            )
+        }
+    }
+
+    private func waitForScopedUpgradePlanPhaseCompletion(
+        stepIds: Set<String>,
+        runToken: UUID,
+        completion: @escaping () -> Void
+    ) {
+        guard !stepIds.isEmpty else {
+            completion()
+            return
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self = self else { return }
+            guard runToken == self.scopedUpgradePlanRunToken else {
+                self.scopedUpgradePlanRunInProgress = false
+                return
+            }
+
+            let inFlight = self.upgradePlanSteps.contains { step in
+                guard stepIds.contains(step.id) else { return false }
+                let status = self.projectedUpgradePlanStatus(for: step)
+                let hasProjectedTask = self.upgradePlanTaskProjectionByStepId[step.id] != nil
+                return UpgradePreviewPlanner.isInFlightStatus(
+                    status: status,
+                    hasProjectedTask: hasProjectedTask
+                )
+            }
+
+            if inFlight {
+                self.waitForScopedUpgradePlanPhaseCompletion(
+                    stepIds: stepIds,
+                    runToken: runToken,
+                    completion: completion
+                )
+            } else {
+                completion()
+            }
         }
     }
 

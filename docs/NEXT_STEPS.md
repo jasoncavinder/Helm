@@ -86,6 +86,8 @@ Progress so far:
 
 - shared plan-step ID resolution now drives both dashboard projection and scoped-action task correlation paths
 - duplicate step-ID handling hardened in retry/projection failure-group mapping paths
+- scoped run execution now advances authority phase-by-phase instead of submitting all manager steps concurrently
+- cancel remaining now terminates active scoped run sequencing before cancelling matching in-flight tasks
 - planner regression tests expanded for scoped-run gating and ID fallback coverage
 - Rust adapter/runtime files normalized with formatting-only cleanup (no behavior changes)
 
