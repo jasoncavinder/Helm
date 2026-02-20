@@ -94,12 +94,14 @@ extension HelmCore {
             packageFilter: packageFilter
         )
         for step in scopedSteps {
-            let status = projectedUpgradePlanStatus(for: step).lowercased()
+            let status = projectedUpgradePlanStatus(for: step)
             let hasProjectedTask = upgradePlanTaskProjectionByStepId[step.id] != nil
-            if status == "running" || status == "completed" || (status == "queued" && hasProjectedTask) {
-                continue
-            }
-            if step.managerId == "softwareupdate" && safeModeEnabled {
+            guard UpgradePreviewPlanner.shouldRunScopedStep(
+                status: status,
+                hasProjectedTask: hasProjectedTask,
+                managerId: step.managerId,
+                safeModeEnabled: safeModeEnabled
+            ) else {
                 continue
             }
             retryUpgradePlanStep(step)
@@ -151,24 +153,7 @@ extension HelmCore {
     }
 
     private func upgradePlanStepId(from task: TaskItem) -> String? {
-        if let explicit = task.labelArgs?["plan_step_id"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !explicit.isEmpty {
-            return explicit
-        }
-        if task.managerId == "softwareupdate" {
-            return "softwareupdate:__confirm_os_updates__"
-        }
-        if task.managerId == "rustup",
-           let toolchain = task.labelArgs?["toolchain"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !toolchain.isEmpty {
-            return "rustup:\(toolchain)"
-        }
-        guard let managerId = task.managerId,
-              let package = task.labelArgs?["package"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !package.isEmpty else {
-            return nil
-        }
-        return "\(managerId):\(package)"
+        UpgradePreviewPlanner.planStepId(managerId: task.managerId, labelArgs: task.labelArgs)
     }
 
     func installPackage(_ package: PackageItem) {

@@ -115,6 +115,46 @@ struct UpgradePreviewPlanner {
         }
     }
 
+    static func shouldRunScopedStep(
+        status: String,
+        hasProjectedTask: Bool,
+        managerId: String,
+        safeModeEnabled: Bool
+    ) -> Bool {
+        let normalized = status.lowercased()
+        if normalized == "running" || normalized == "completed" {
+            return false
+        }
+        if normalized == "queued" && hasProjectedTask {
+            return false
+        }
+        if managerId == "softwareupdate" && safeModeEnabled {
+            return false
+        }
+        return true
+    }
+
+    static func planStepId(managerId: String?, labelArgs: [String: String]?) -> String? {
+        if let explicit = labelArgs?["plan_step_id"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !explicit.isEmpty {
+            return explicit
+        }
+        if managerId == "softwareupdate" {
+            return "softwareupdate:__confirm_os_updates__"
+        }
+        if managerId == "rustup",
+           let toolchain = labelArgs?["toolchain"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !toolchain.isEmpty {
+            return "rustup:\(toolchain)"
+        }
+        guard let managerId,
+              let package = labelArgs?["package"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !package.isEmpty else {
+            return nil
+        }
+        return "\(managerId):\(package)"
+    }
+
     private static func includeForUpgradePreview(
         candidate: Candidate,
         managerEnabled: [String: Bool],

@@ -247,7 +247,10 @@ extension HelmCore {
                 reasonLabelKey: $0.reasonLabelKey
             )
         }
-        let stepById = Dictionary(uniqueKeysWithValues: steps.map { ($0.id, $0) })
+        var stepById: [String: CoreUpgradePlanStep] = [:]
+        for step in steps where stepById[step.id] == nil {
+            stepById[step.id] = step
+        }
         return UpgradePreviewPlanner.sortedForExecution(plannerSteps).compactMap { stepById[$0.id] }
     }
 
@@ -266,7 +269,10 @@ extension HelmCore {
                 reasonLabelKey: $0.reasonLabelKey
             )
         }
-        let stepById = Dictionary(uniqueKeysWithValues: steps.map { ($0.id, $0) })
+        var stepById: [String: CoreUpgradePlanStep] = [:]
+        for step in steps where stepById[step.id] == nil {
+            stepById[step.id] = step
+        }
         return UpgradePreviewPlanner.scopedForExecution(
             from: plannerSteps,
             managerScopeId: managerScopeId,

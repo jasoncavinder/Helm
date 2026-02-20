@@ -106,6 +106,86 @@ final class UpgradePreviewPlannerTests: XCTestCase {
         XCTAssertEqual(packageScoped.map(\.id), ["pip:requests"])
     }
 
+    func testShouldRunScopedStepHonorsRuntimeProjectionAndSafeMode() {
+        XCTAssertTrue(
+            UpgradePreviewPlanner.shouldRunScopedStep(
+                status: "queued",
+                hasProjectedTask: false,
+                managerId: "npm",
+                safeModeEnabled: false
+            )
+        )
+        XCTAssertFalse(
+            UpgradePreviewPlanner.shouldRunScopedStep(
+                status: "queued",
+                hasProjectedTask: true,
+                managerId: "npm",
+                safeModeEnabled: false
+            )
+        )
+        XCTAssertFalse(
+            UpgradePreviewPlanner.shouldRunScopedStep(
+                status: "running",
+                hasProjectedTask: true,
+                managerId: "npm",
+                safeModeEnabled: false
+            )
+        )
+        XCTAssertFalse(
+            UpgradePreviewPlanner.shouldRunScopedStep(
+                status: "completed",
+                hasProjectedTask: true,
+                managerId: "npm",
+                safeModeEnabled: false
+            )
+        )
+        XCTAssertFalse(
+            UpgradePreviewPlanner.shouldRunScopedStep(
+                status: "failed",
+                hasProjectedTask: false,
+                managerId: "softwareupdate",
+                safeModeEnabled: true
+            )
+        )
+    }
+
+    func testPlanStepIdPrefersExplicitThenManagerSpecificFallbacks() {
+        XCTAssertEqual(
+            UpgradePreviewPlanner.planStepId(
+                managerId: "npm",
+                labelArgs: ["plan_step_id": "npm:typescript", "package": "typescript"]
+            ),
+            "npm:typescript"
+        )
+        XCTAssertEqual(
+            UpgradePreviewPlanner.planStepId(
+                managerId: "softwareupdate",
+                labelArgs: [:]
+            ),
+            "softwareupdate:__confirm_os_updates__"
+        )
+        XCTAssertEqual(
+            UpgradePreviewPlanner.planStepId(
+                managerId: "rustup",
+                labelArgs: ["toolchain": "stable"]
+            ),
+            "rustup:stable"
+        )
+        XCTAssertEqual(
+            UpgradePreviewPlanner.planStepId(
+                managerId: "npm",
+                labelArgs: ["package": "eslint"]
+            ),
+            "npm:eslint"
+        )
+        XCTAssertNil(
+            UpgradePreviewPlanner.planStepId(
+                managerId: "npm",
+                labelArgs: [:]
+            )
+        )
+    }
+
     private func step(
         id: String,
         order: UInt64,
