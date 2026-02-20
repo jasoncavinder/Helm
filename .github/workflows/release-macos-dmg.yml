@@ -392,7 +392,6 @@ jobs:
           APPCAST_PATH="$PWD/build/release-assets/appcast.xml"
           DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/Helm-${TAG_NAME}-macos-universal.dmg"
           RELEASE_NOTES_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG_NAME}"
-          SPARKLE_BIN_DIR="$PWD/build/DerivedData/SourcePackages/artifacts/sparkle/bin"
 
           apps/macos-ui/scripts/generate_sparkle_appcast.sh \
             --app-path "$APP_PATH" \
@@ -400,8 +399,7 @@ jobs:
             --output-path "$APPCAST_PATH" \
             --download-url "$DOWNLOAD_URL" \
             --appcast-url "$HELM_SPARKLE_FEED_URL" \
-            --release-notes-url "$RELEASE_NOTES_URL" \
-            --sparkle-bin-dir "$SPARKLE_BIN_DIR"
+            --release-notes-url "$RELEASE_NOTES_URL"
 
       - name: Enforce Sparkle appcast policy (full installer only)
         run: |
