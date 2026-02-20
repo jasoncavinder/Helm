@@ -329,6 +329,11 @@ extension HelmCore {
         for (stepId, state) in projection where latestByStepId[stepId] == nil {
             let status = state.status.lowercased()
             if status == "queued" || status == "running" {
+                // Preserve in-flight projections for tasks that have not been observed yet
+                // in a listTasks snapshot.
+                if state.taskId > lastObservedTaskId {
+                    continue
+                }
                 projection.removeValue(forKey: stepId)
             }
         }

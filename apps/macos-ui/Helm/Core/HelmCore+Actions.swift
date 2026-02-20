@@ -117,6 +117,10 @@ extension HelmCore {
             HelmCore.authorityRank(for: step.authority)
         }
         let orderedPhaseRanks = phasesByRank.keys.sorted()
+        guard !orderedPhaseRanks.isEmpty else {
+            scopedUpgradePlanRunInProgress = false
+            return
+        }
 
         runScopedUpgradePlanPhases(
             phaseRanks: orderedPhaseRanks,
@@ -174,17 +178,23 @@ extension HelmCore {
             return
         }
 
+        let dispatchGroup = DispatchGroup()
         for step in phaseSteps {
-            retryUpgradePlanStep(step)
+            dispatchGroup.enter()
+            retryUpgradePlanStep(step) { _ in
+                dispatchGroup.leave()
+            }
         }
 
-        waitForScopedUpgradePlanPhaseCompletion(stepIds: Set(phaseSteps.map(\.id)), runToken: runToken) { [weak self] in
-            self?.runScopedUpgradePlanPhases(
-                phaseRanks: phaseRanks,
-                phasesByRank: phasesByRank,
-                phaseIndex: phaseIndex + 1,
-                runToken: runToken
-            )
+        dispatchGroup.notify(queue: .main) { [weak self] in
+            self?.waitForScopedUpgradePlanPhaseCompletion(stepIds: Set(phaseSteps.map(\.id)), runToken: runToken) {
+                self?.runScopedUpgradePlanPhases(
+                    phaseRanks: phaseRanks,
+                    phasesByRank: phasesByRank,
+                    phaseIndex: phaseIndex + 1,
+                    runToken: runToken
+                )
+            }
         }
     }
 
@@ -227,9 +237,10 @@ extension HelmCore {
         }
     }
 
-    private func retryUpgradePlanStep(_ step: CoreUpgradePlanStep) {
+    private func retryUpgradePlanStep(_ step: CoreUpgradePlanStep, completion: ((Bool) -> Void)? = nil) {
         guard let service = service() else {
             logger.error("retryUpgradePlanStep(\(step.id)) failed: service unavailable")
+            completion?(false)
             return
         }
 
@@ -237,9 +248,13 @@ extension HelmCore {
             service.upgradePackage(managerId: step.managerId, packageName: step.packageName) { completion($0) }
         }, fallback: Int64(-1)) { [weak self] taskId in
             DispatchQueue.main.async {
-                guard let self = self, let taskId = taskId else { return }
+                guard let self = self, let taskId = taskId else {
+                    completion?(false)
+                    return
+                }
                 guard taskId >= 0 else {
                     logger.error("retryUpgradePlanStep(\(step.id)) failed: upgradePackage returned \(taskId)")
+                    completion?(false)
                     return
                 }
                 self.upgradePlanTaskProjectionByStepId[step.id] = UpgradePlanTaskProjection(
@@ -250,6 +265,7 @@ extension HelmCore {
                     labelKey: step.reasonLabelKey
                 )
                 self.rebuildUpgradePlanFailureGroups()
+                completion?(true)
             }
         }
     }
