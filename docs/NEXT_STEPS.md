@@ -80,7 +80,14 @@ Validation:
 - `cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`
 - `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
 
-### Alpha.4 — Final 0.15.0 Cut Readiness (Next)
+### Alpha.4 — Final 0.15.0 Cut Readiness (In Progress on `feat/v0.15.x-alpha.1-kickoff`)
+
+Progress so far:
+
+- shared plan-step ID resolution now drives both dashboard projection and scoped-action task correlation paths
+- duplicate step-ID handling hardened in retry/projection failure-group mapping paths
+- planner regression tests expanded for scoped-run gating and ID fallback coverage
+- Rust adapter/runtime files normalized with formatting-only cleanup (no behavior changes)
 
 Deliver:
 

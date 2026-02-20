@@ -235,6 +235,26 @@ Validation:
 
 ---
 
+## v0.15.0-alpha.4 Status (In Progress)
+
+### Final 0.15.0 Cut Readiness
+
+Implemented on `feat/v0.15.x-alpha.1-kickoff` (current progress):
+
+- Consolidated plan-step ID resolution across dashboard and action paths via shared planner helper logic
+- Hardened projection/retry/failure-group mapping paths to tolerate duplicate step IDs without dictionary trap risk
+- Expanded planner regression coverage for:
+  - scoped-run eligibility gating (queued/running/completed + safe mode)
+  - explicit and fallback plan-step ID resolution paths
+- Applied Rust formatting-only cleanup updates across adapter/runtime test files (no behavior change)
+
+Validation:
+
+- `cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
+
+---
+
 ## v0.13.0-beta.3 Audit Status
 
 Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 remediation work.
