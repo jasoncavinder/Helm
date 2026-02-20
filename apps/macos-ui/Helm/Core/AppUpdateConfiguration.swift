@@ -21,9 +21,22 @@ struct AppUpdateConfiguration {
     let sparkleAllowsDowngrades: Bool
     let sparkleFeedURL: String?
     let sparklePublicEdKey: String?
+    let bundlePath: String
 
     var hasSparkleConfig: Bool {
         sparkleFeedURL != nil && sparklePublicEdKey != nil
+    }
+
+    var appearsMountedFromDiskImage: Bool {
+        bundlePath.hasPrefix("/Volumes/")
+    }
+
+    var appearsTranslocated: Bool {
+        bundlePath.contains("/AppTranslocation/")
+    }
+
+    var hasEligibleInstallLocation: Bool {
+        !appearsMountedFromDiskImage && !appearsTranslocated
     }
 
     var hasSecureSparkleFeedURL: Bool {
@@ -43,7 +56,8 @@ struct AppUpdateConfiguration {
             sparkleEnabled &&
             !sparkleAllowsDowngrades &&
             hasSparkleConfig &&
-            hasSecureSparkleFeedURL
+            hasSecureSparkleFeedURL &&
+            hasEligibleInstallLocation
     }
 
     static func from(bundle: Bundle = .main) -> AppUpdateConfiguration {
@@ -76,7 +90,8 @@ struct AppUpdateConfiguration {
             sparkleEnabled: sparkleEnabled,
             sparkleAllowsDowngrades: sparkleAllowsDowngrades,
             sparkleFeedURL: sparkleFeedURL?.isEmpty == true ? nil : sparkleFeedURL,
-            sparklePublicEdKey: sparklePublicEdKey?.isEmpty == true ? nil : sparklePublicEdKey
+            sparklePublicEdKey: sparklePublicEdKey?.isEmpty == true ? nil : sparklePublicEdKey,
+            bundlePath: bundle.bundleURL.path
         )
     }
 }

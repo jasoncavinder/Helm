@@ -7,7 +7,8 @@ final class AppUpdateConfigurationTests: XCTestCase {
             sparkleEnabled: true,
             sparkleAllowsDowngrades: false,
             sparkleFeedURL: "https://updates.example.com/appcast.xml",
-            sparklePublicEdKey: "abc123"
+            sparklePublicEdKey: "abc123",
+            bundlePath: "/Applications/Helm.app"
         )
         XCTAssertTrue(fullyConfigured.canUseSparkle)
 
@@ -16,7 +17,8 @@ final class AppUpdateConfigurationTests: XCTestCase {
             sparkleEnabled: true,
             sparkleAllowsDowngrades: false,
             sparkleFeedURL: nil,
-            sparklePublicEdKey: "abc123"
+            sparklePublicEdKey: "abc123",
+            bundlePath: "/Applications/Helm.app"
         )
         XCTAssertFalse(missingFeed.canUseSparkle)
 
@@ -25,7 +27,8 @@ final class AppUpdateConfigurationTests: XCTestCase {
             sparkleEnabled: true,
             sparkleAllowsDowngrades: false,
             sparkleFeedURL: "https://updates.example.com/appcast.xml",
-            sparklePublicEdKey: "abc123"
+            sparklePublicEdKey: "abc123",
+            bundlePath: "/Applications/Helm.app"
         )
         XCTAssertFalse(appStoreChannel.canUseSparkle)
 
@@ -34,7 +37,8 @@ final class AppUpdateConfigurationTests: XCTestCase {
             sparkleEnabled: true,
             sparkleAllowsDowngrades: false,
             sparkleFeedURL: "http://updates.example.com/appcast.xml",
-            sparklePublicEdKey: "abc123"
+            sparklePublicEdKey: "abc123",
+            bundlePath: "/Applications/Helm.app"
         )
         XCTAssertFalse(insecureFeed.canUseSparkle)
 
@@ -43,7 +47,8 @@ final class AppUpdateConfigurationTests: XCTestCase {
             sparkleEnabled: true,
             sparkleAllowsDowngrades: false,
             sparkleFeedURL: "not a url",
-            sparklePublicEdKey: "abc123"
+            sparklePublicEdKey: "abc123",
+            bundlePath: "/Applications/Helm.app"
         )
         XCTAssertFalse(malformedFeed.canUseSparkle)
 
@@ -52,9 +57,30 @@ final class AppUpdateConfigurationTests: XCTestCase {
             sparkleEnabled: true,
             sparkleAllowsDowngrades: true,
             sparkleFeedURL: "https://updates.example.com/appcast.xml",
-            sparklePublicEdKey: "abc123"
+            sparklePublicEdKey: "abc123",
+            bundlePath: "/Applications/Helm.app"
         )
         XCTAssertFalse(allowsDowngrades.canUseSparkle)
+
+        let mountedFromDMG = AppUpdateConfiguration(
+            channel: .developerID,
+            sparkleEnabled: true,
+            sparkleAllowsDowngrades: false,
+            sparkleFeedURL: "https://updates.example.com/appcast.xml",
+            sparklePublicEdKey: "abc123",
+            bundlePath: "/Volumes/Helm/Helm.app"
+        )
+        XCTAssertFalse(mountedFromDMG.canUseSparkle)
+
+        let translocated = AppUpdateConfiguration(
+            channel: .developerID,
+            sparkleEnabled: true,
+            sparkleAllowsDowngrades: false,
+            sparkleFeedURL: "https://updates.example.com/appcast.xml",
+            sparklePublicEdKey: "abc123",
+            bundlePath: "/private/var/folders/tmp/AppTranslocation/ABC123/Helm.app"
+        )
+        XCTAssertFalse(translocated.canUseSparkle)
     }
 
     func testFromBundleParsesChannelAndSparkleSettings() throws {
@@ -73,6 +99,7 @@ final class AppUpdateConfigurationTests: XCTestCase {
         XCTAssertFalse(config.sparkleAllowsDowngrades)
         XCTAssertEqual(config.sparkleFeedURL, "https://updates.example.com/appcast.xml")
         XCTAssertEqual(config.sparklePublicEdKey, "test-key")
+        XCTAssertEqual(config.bundlePath, bundle.bundleURL.path)
         XCTAssertFalse(config.canUseSparkle)
     }
 
@@ -86,6 +113,7 @@ final class AppUpdateConfigurationTests: XCTestCase {
         XCTAssertFalse(config.sparkleAllowsDowngrades)
         XCTAssertNil(config.sparkleFeedURL)
         XCTAssertNil(config.sparklePublicEdKey)
+        XCTAssertEqual(config.bundlePath, bundle.bundleURL.path)
     }
 
     func testFromBundleTreatsBlankSparkleFeedAndKeyAsMissing() throws {

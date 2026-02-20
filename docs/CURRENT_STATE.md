@@ -149,6 +149,7 @@ Implemented on `feat/v0.16.0-kickoff`:
   - Sparkle downgrades are disallowed (`HELM_SPARKLE_ALLOW_DOWNGRADES` cannot be enabled)
 - Runtime app-update configuration now requires a secure Sparkle feed URL (`https://`) before enabling Sparkle checks.
 - Runtime app-update configuration now also blocks Sparkle checks when downgrades are enabled in metadata.
+- Runtime app-update configuration now also requires an eligible install location (not mounted from `/Volumes/...` and not App Translocation paths) before enabling Sparkle checks.
 
 Validation:
 

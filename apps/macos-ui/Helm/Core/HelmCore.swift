@@ -74,7 +74,7 @@ final class AppUpdateCoordinator: ObservableObject {
         self.canCheckForUpdates = driver.canCheckForUpdates
 
         updateLogger.info(
-            "Configured app updater. channel=\(configuration.channel.rawValue, privacy: .public), authority=\(self.updateAuthority.rawValue, privacy: .public), sparkle_enabled=\(configuration.sparkleEnabled, privacy: .public), sparkle_allows_downgrades=\(configuration.sparkleAllowsDowngrades, privacy: .public), feed_configured=\(configuration.sparkleFeedURL != nil, privacy: .public), key_configured=\(configuration.sparklePublicEdKey != nil, privacy: .public), can_check=\(self.canCheckForUpdates, privacy: .public)"
+            "Configured app updater. channel=\(configuration.channel.rawValue, privacy: .public), authority=\(self.updateAuthority.rawValue, privacy: .public), sparkle_enabled=\(configuration.sparkleEnabled, privacy: .public), sparkle_allows_downgrades=\(configuration.sparkleAllowsDowngrades, privacy: .public), mounted_dmg=\(configuration.appearsMountedFromDiskImage, privacy: .public), translocated=\(configuration.appearsTranslocated, privacy: .public), feed_configured=\(configuration.sparkleFeedURL != nil, privacy: .public), key_configured=\(configuration.sparklePublicEdKey != nil, privacy: .public), can_check=\(self.canCheckForUpdates, privacy: .public)"
         )
     }
 
