@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::models::{
     CachedSearchResult, CoreError, CoreErrorKind, DetectionInfo, HomebrewKegPolicy,
@@ -478,13 +478,21 @@ impl SearchCacheStore for SqliteStore {
             ensure_schema_ready(connection)?;
             let transaction = connection.transaction()?;
             {
+                let mut select_statement = transaction.prepare(
+                    "
+SELECT version, summary
+FROM search_cache
+WHERE manager_id = ?1
+  AND package_name = ?2
+ORDER BY cached_at_unix DESC
+LIMIT 1
+",
+                )?;
                 let mut delete_statement = transaction.prepare(
                     "
 DELETE FROM search_cache
 WHERE manager_id = ?1
   AND package_name = ?2
-  AND COALESCE(version, '') = COALESCE(?3, '')
-  AND originating_query = ?4
 ",
                 )?;
                 let mut insert_statement = transaction.prepare(
@@ -496,18 +504,32 @@ INSERT INTO search_cache (
                 )?;
 
                 for result in results {
+                    let existing_entry: Option<(Option<String>, Option<String>)> = select_statement
+                        .query_row(
+                            params![
+                                result.source_manager.as_str(),
+                                result.result.package.name.as_str(),
+                            ],
+                            |row| Ok((row.get(0)?, row.get(1)?)),
+                        )
+                        .optional()?;
+                    let (existing_version, existing_summary) =
+                        existing_entry.unwrap_or((None, None));
+                    let merged_version = normalize_optional_text(result.result.version.clone())
+                        .or_else(|| normalize_optional_text(existing_version));
+                    let merged_summary = normalize_optional_text(result.result.summary.clone())
+                        .or_else(|| normalize_optional_text(existing_summary));
+
                     delete_statement.execute(params![
                         result.source_manager.as_str(),
                         result.result.package.name.as_str(),
-                        result.result.version.as_deref(),
-                        result.originating_query.as_str(),
                     ])?;
 
                     insert_statement.execute(params![
                         result.source_manager.as_str(),
                         result.result.package.name.as_str(),
-                        result.result.version.as_deref(),
-                        result.result.summary.as_deref(),
+                        merged_version.as_deref(),
+                        merged_summary.as_deref(),
                         result.originating_query.as_str(),
                         to_unix_seconds(result.cached_at)?,
                     ])?;
@@ -1154,6 +1176,17 @@ fn bool_to_sqlite(value: bool) -> i64 {
 
 fn sqlite_to_bool(value: i64) -> bool {
     value != 0
+}
+
+fn normalize_optional_text(value: Option<String>) -> Option<String> {
+    value.and_then(|text| {
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
 }
 
 fn to_unix_seconds(value: SystemTime) -> rusqlite::Result<i64> {

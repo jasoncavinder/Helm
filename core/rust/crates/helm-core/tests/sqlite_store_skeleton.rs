@@ -569,6 +569,61 @@ fn upsert_and_query_search_cache_roundtrip() {
 }
 
 #[test]
+fn search_cache_keeps_single_package_entry_and_preserves_summary() {
+    let path = test_db_path("search-preserve-summary");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let now = SystemTime::now();
+    let first = CachedSearchResult {
+        result: PackageCandidate {
+            package: PackageRef {
+                manager: ManagerId::HomebrewFormula,
+                name: "ripgrep".to_string(),
+            },
+            version: Some("14.1.0".to_string()),
+            summary: Some("line-oriented search tool".to_string()),
+        },
+        source_manager: ManagerId::HomebrewFormula,
+        originating_query: "rip".to_string(),
+        cached_at: now,
+    };
+    store.upsert_search_results(&[first]).unwrap();
+
+    let second = CachedSearchResult {
+        result: PackageCandidate {
+            package: PackageRef {
+                manager: ManagerId::HomebrewFormula,
+                name: "ripgrep".to_string(),
+            },
+            version: None,
+            summary: None,
+        },
+        source_manager: ManagerId::HomebrewFormula,
+        originating_query: "rg".to_string(),
+        cached_at: now + Duration::from_secs(5),
+    };
+    store.upsert_search_results(&[second]).unwrap();
+
+    let all = store.query_local("", 10).unwrap();
+    assert_eq!(
+        all.len(),
+        1,
+        "package cache should deduplicate by manager/name"
+    );
+    assert_eq!(all[0].result.package.name, "ripgrep");
+    assert_eq!(all[0].result.version.as_deref(), Some("14.1.0"));
+    assert_eq!(
+        all[0].result.summary.as_deref(),
+        Some("line-oriented search tool"),
+        "summary should be preserved when newer response omits it"
+    );
+    assert_eq!(all[0].originating_query, "rg");
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn create_update_and_list_recent_tasks_roundtrip() {
     let path = test_db_path("tasks-roundtrip");
     let store = SqliteStore::new(&path);

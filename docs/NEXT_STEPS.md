@@ -19,6 +19,7 @@ Focus:
 
 Current checkpoint:
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
+- `v0.14.1` patch-track started (pre-merge fix slices being implemented off `dev` for review)
 - `v0.13.0` stable released (website updates, documentation alignment, version bump)
 - `v0.13.0-rc.2` released (support & feedback entry points, diagnostics copy, GitHub Sponsors integration)
 - `v0.13.0-rc.1` released (inspector sidebar, upgrade reliability, status menu, documentation)
@@ -32,7 +33,29 @@ Current checkpoint:
 - `v0.14.0` distribution/licensing architecture planning docs aligned (future-state, no implementation changes)
 
 Next release targets:
+- `v0.14.1` — Stability + UX + adapter behavior fixes (patch release after review)
 - `v0.15.x` — Upgrade Preview & Execution Transparency
+
+---
+
+## v0.14.1 Patch Track (In Progress)
+
+### Cache/Persistence Slice (Completed on branch)
+
+Delivered:
+
+- Search cache persistence now keeps one row per `(manager, package)` instead of accumulating duplicates by query/version tuple
+- Search cache upserts preserve previously known non-empty version/summary metadata when newer search responses omit those fields
+- Added regression coverage for search-cache deduplication and summary preservation semantics
+- Control-center available-cache refresh now deduplicates by package ID and preserves non-empty summaries across cache rows
+- Package aggregation now enriches installed/outdated package records with cached summaries when available
+- Package filtering now matches query text against package summaries and merges remote-search summary/latest metadata into local package rows
+
+Remaining slices before merge to `dev`:
+
+- UI/UX fixes (onboarding row density, package selection highlight, search field cleanup, inspector package actions)
+- Task lifecycle fixes (duplicate in-flight task rows; prune policy for long-running/pending tasks)
+- Adapter behavior fixes (RubyGems update action path; `mas` install dependency handling/failure messaging)
 
 ---
 

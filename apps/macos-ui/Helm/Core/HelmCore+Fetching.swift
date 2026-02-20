@@ -251,11 +251,14 @@ extension HelmCore {
 
                 DispatchQueue.main.async {
                     guard let self = self else { return }
-                    let installedIds = Set(self.installedPackages.map { $0.id })
-                    self.cachedAvailablePackages = results.compactMap { result in
+                    let excludedIds = Set(self.installedPackages.map(\.id))
+                        .union(self.outdatedPackages.map(\.id))
+                    var dedupedById: [String: PackageItem] = [:]
+
+                    for result in results {
                         let id = "\(result.sourceManager):\(result.name)"
-                        guard !installedIds.contains(id) else { return nil }
-                        return PackageItem(
+                        guard !excludedIds.contains(id) else { continue }
+                        let candidate = PackageItem(
                             id: id,
                             name: result.name,
                             version: result.version ?? "",
@@ -264,6 +267,22 @@ extension HelmCore {
                             summary: result.summary,
                             status: .available
                         )
+
+                        if var existing = dedupedById[id] {
+                            let existingSummary = existing.summary?.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if existingSummary?.isEmpty != false,
+                               let candidateSummary = candidate.summary?.trimmingCharacters(in: .whitespacesAndNewlines),
+                               !candidateSummary.isEmpty {
+                                existing.summary = candidateSummary
+                            }
+                            dedupedById[id] = existing
+                        } else {
+                            dedupedById[id] = candidate
+                        }
+                    }
+
+                    self.cachedAvailablePackages = dedupedById.values.sorted { lhs, rhs in
+                        lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
                     }
                 }
             } catch {

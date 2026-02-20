@@ -3,11 +3,26 @@ import Foundation
 extension HelmCore {
     var allKnownPackages: [PackageItem] {
         let outdatedIds = Set(outdatedPackages.map(\.id))
-        var combined = outdatedPackages
-        combined.append(contentsOf: installedPackages.filter { !outdatedIds.contains($0.id) })
+        let installedOnly = installedPackages.filter { !outdatedIds.contains($0.id) }
+        var combined = outdatedPackages + installedOnly
+
+        let cachedById = cachedAvailablePackages.reduce(into: [String: PackageItem]()) { partial, package in
+            if var existing = partial[package.id] {
+                mergeSummary(into: &existing, from: package.summary)
+                partial[package.id] = existing
+            } else {
+                partial[package.id] = package
+            }
+        }
+
+        for index in combined.indices {
+            if let cached = cachedById[combined[index].id] {
+                mergeSummary(into: &combined[index], from: cached.summary)
+            }
+        }
 
         let existing = Set(combined.map(\.id))
-        combined.append(contentsOf: cachedAvailablePackages.filter { !existing.contains($0.id) })
+        combined.append(contentsOf: cachedById.values.filter { !existing.contains($0.id) })
 
         return combined
             .sorted { lhs, rhs in
@@ -61,13 +76,24 @@ extension HelmCore {
             let localMatches = base.filter {
                 $0.name.lowercased().contains(trimmed)
                     || $0.manager.lowercased().contains(trimmed)
+                    || ($0.summary?.lowercased().contains(trimmed) ?? false)
             }
-            let localIds = Set(localMatches.map(\.id))
-            let remoteMatches = searchResults.filter { !localIds.contains($0.id) }
-            base = (localMatches + remoteMatches)
-                .sorted { lhs, rhs in
-                    lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            var mergedById = Dictionary(uniqueKeysWithValues: localMatches.map { ($0.id, $0) })
+            for remote in searchResults {
+                if var existing = mergedById[remote.id] {
+                    mergeSummary(into: &existing, from: remote.summary)
+                    if existing.latestVersion == nil {
+                        existing.latestVersion = remote.latestVersion
+                    }
+                    mergedById[remote.id] = existing
+                } else {
+                    mergedById[remote.id] = remote
                 }
+            }
+
+            base = mergedById.values.sorted { lhs, rhs in
+                lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
         }
 
         if let managerId {
@@ -126,5 +152,14 @@ extension HelmCore {
             return .attention
         }
         return .healthy
+    }
+
+    private func mergeSummary(into package: inout PackageItem, from candidate: String?) {
+        let existingSummary = package.summary?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard existingSummary?.isEmpty != false else { return }
+        guard let candidate else { return }
+        let trimmedCandidate = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedCandidate.isEmpty else { return }
+        package.summary = trimmedCandidate
     }
 }
