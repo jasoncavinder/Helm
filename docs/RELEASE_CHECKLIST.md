@@ -17,7 +17,7 @@ This checklist is required before creating a release tag on `main`.
 - [ ] Delta update policy (`full installer only` for `0.16.x`) is documented in `docs/DECISIONS.md` and reflected in release automation.
 
 ### Installer/Updater Recovery Validation
-- [ ] Execute interruption/recovery validation runbook: `docs/validation/v0.16.0-rc.2-installer-recovery.md`.
+- [ ] Execute interruption/recovery validation runbook: `docs/validation/v0.16.0-rc.3-installer-recovery.md`.
 - [ ] Confirm workflow rerun behavior for same tag remains idempotent (artifact clobber + deterministic appcast publish target).
 - [ ] Confirm protected-branch recovery path by validating fallback appcast PR flow if direct `main` push is rejected.
 

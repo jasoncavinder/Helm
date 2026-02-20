@@ -98,6 +98,14 @@ jobs:
           HELM_CHANNEL_OVERRIDE_SPARKLE_ENABLED=YES \
           HELM_CHANNEL_OVERRIDE_SPARKLE_FEED_URL="$HELM_SPARKLE_FEED_URL" \
           HELM_CHANNEL_OVERRIDE_SPARKLE_PUBLIC_ED_KEY="$HELM_SPARKLE_PUBLIC_ED_KEY" \
+          apps/macos-ui/scripts/render_channel_xcconfig.sh "$PWD/apps/macos-ui/Generated/HelmChannel.xcconfig"
+          echo "=== Generated HelmChannel.xcconfig (release override) ==="
+          cat "$PWD/apps/macos-ui/Generated/HelmChannel.xcconfig"
+
+          HELM_CHANNEL_PROFILE=developer_id \
+          HELM_CHANNEL_OVERRIDE_SPARKLE_ENABLED=YES \
+          HELM_CHANNEL_OVERRIDE_SPARKLE_FEED_URL="$HELM_SPARKLE_FEED_URL" \
+          HELM_CHANNEL_OVERRIDE_SPARKLE_PUBLIC_ED_KEY="$HELM_SPARKLE_PUBLIC_ED_KEY" \
           xcodebuild \
             -project apps/macos-ui/Helm.xcodeproj \
             -scheme Helm \
@@ -106,6 +114,11 @@ jobs:
             -derivedDataPath "$PWD/build/DerivedData" \
             ARCHS="arm64 x86_64" \
             ONLY_ACTIVE_ARCH=NO \
+            HELM_DISTRIBUTION_CHANNEL=developer_id \
+            HELM_SPARKLE_ENABLED=YES \
+            HELM_SPARKLE_ALLOW_DOWNGRADES=NO \
+            HELM_SPARKLE_FEED_URL="$HELM_SPARKLE_FEED_URL" \
+            HELM_SPARKLE_PUBLIC_ED_KEY="$HELM_SPARKLE_PUBLIC_ED_KEY" \
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM="$APP_TEAM_ID" \
             CODE_SIGN_IDENTITY="Developer ID Application" \
