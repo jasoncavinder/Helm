@@ -187,6 +187,32 @@ Validation:
 
 ---
 
+## v0.15.0-alpha.2 Status
+
+### Execution Transparency + Partial Failure Summary
+
+Implemented on `feat/v0.15.x-alpha.1-kickoff`:
+
+- Upgrade task labels now carry explicit `plan_step_id` metadata so runtime task records can be correlated directly to execution-plan steps
+- Added plan-step runtime projection in `HelmCore`:
+  - queued/running/completed/failed task statuses now project onto existing plan rows
+  - projection remains scoped to current visible plan-step IDs
+- Added grouped partial-failure summaries in Updates:
+  - failures grouped by manager/cause bucket with affected package lists
+  - failures are derived from projected plan-step runtime state
+- Added retry affordances for failed plan steps:
+  - retry per failure group
+  - retry all failed steps only
+  - retries call targeted package upgrade requests (including `softwareupdate` sentinel support) rather than re-running successful steps
+- Inspector plan-step details now reflect projected runtime status and linked runtime task IDs when available
+
+Validation:
+
+- `cargo test -p helm-ffi --manifest-path core/rust/Cargo.toml`
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
+
+---
+
 ## v0.13.0-beta.3 Audit Status
 
 Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 remediation work.

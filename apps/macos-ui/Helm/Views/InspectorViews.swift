@@ -17,14 +17,19 @@ struct ControlCenterInspectorView: View {
     private var selectedUpgradePlanTask: TaskItem? {
         guard let stepId = context.selectedUpgradePlanStepId,
               let step = core.upgradePlanSteps.first(where: { $0.id == stepId }) else { return nil }
+        let projectedStatus = core.projectedUpgradePlanStatus(for: step)
+        let projectedTaskId = core.projectedUpgradePlanTaskId(for: step)
+        let taskId = projectedTaskId.map(String.init) ?? step.id
+        var labelArgs = step.reasonLabelArgs
+        labelArgs["plan_step_id"] = step.id
         return TaskItem(
-            id: step.id,
+            id: taskId,
             description: core.localizedUpgradePlanReason(for: step),
-            status: step.status,
+            status: projectedStatus,
             managerId: step.managerId,
             taskType: step.action,
             labelKey: step.reasonLabelKey,
-            labelArgs: step.reasonLabelArgs
+            labelArgs: labelArgs
         )
     }
 

@@ -69,6 +69,51 @@ extension HelmCore {
         }
     }
 
+    func retryFailedUpgradePlanSteps() {
+        let failedStepIds = upgradePlanSteps
+            .filter { projectedUpgradePlanStatus(for: $0).lowercased() == "failed" }
+            .map(\.id)
+        retryUpgradePlanSteps(stepIds: failedStepIds)
+    }
+
+    func retryUpgradePlanSteps(stepIds: [String]) {
+        guard !stepIds.isEmpty else { return }
+        let stepsById = Dictionary(uniqueKeysWithValues: upgradePlanSteps.map { ($0.id, $0) })
+
+        for stepId in stepIds {
+            guard let step = stepsById[stepId] else { continue }
+            guard projectedUpgradePlanStatus(for: step).lowercased() == "failed" else { continue }
+            retryUpgradePlanStep(step)
+        }
+    }
+
+    private func retryUpgradePlanStep(_ step: CoreUpgradePlanStep) {
+        guard let service = service() else {
+            logger.error("retryUpgradePlanStep(\(step.id)) failed: service unavailable")
+            return
+        }
+
+        withTimeout(300, operation: { completion in
+            service.upgradePackage(managerId: step.managerId, packageName: step.packageName) { completion($0) }
+        }, fallback: Int64(-1)) { [weak self] taskId in
+            DispatchQueue.main.async {
+                guard let self = self, let taskId = taskId else { return }
+                guard taskId >= 0 else {
+                    logger.error("retryUpgradePlanStep(\(step.id)) failed: upgradePackage returned \(taskId)")
+                    return
+                }
+                self.upgradePlanTaskProjectionByStepId[step.id] = UpgradePlanTaskProjection(
+                    stepId: step.id,
+                    taskId: UInt64(taskId),
+                    status: "queued",
+                    managerId: step.managerId,
+                    labelKey: step.reasonLabelKey
+                )
+                self.rebuildUpgradePlanFailureGroups()
+            }
+        }
+    }
+
     func installPackage(_ package: PackageItem) {
         guard canInstallPackage(package), !installActionPackageIds.contains(package.id) else { return }
 

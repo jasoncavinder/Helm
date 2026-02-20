@@ -788,6 +788,21 @@ fn upgrade_reason_label_for(
     }
 }
 
+fn upgrade_plan_step_id(manager: ManagerId, package_name: &str) -> String {
+    format!("{}:{}", manager.as_str(), package_name)
+}
+
+fn upgrade_task_label_for(
+    manager: ManagerId,
+    package_name: &str,
+    cleanup_old_kegs: bool,
+) -> (&'static str, Vec<(&'static str, String)>) {
+    let (label_key, mut label_args) =
+        upgrade_reason_label_for(manager, package_name, cleanup_old_kegs);
+    label_args.push(("plan_step_id", upgrade_plan_step_id(manager, package_name)));
+    (label_key, label_args)
+}
+
 fn push_upgrade_plan_step(
     steps: &mut Vec<FfiUpgradePlanStep>,
     manager: ManagerId,
@@ -803,7 +818,7 @@ fn push_upgrade_plan_step(
         .collect();
 
     steps.push(FfiUpgradePlanStep {
-        step_id: format!("{}:{}", manager.as_str(), package_name),
+        step_id: upgrade_plan_step_id(manager, &package_name),
         order_index: *next_order_index,
         manager_id: manager.as_str().to_string(),
         authority: manager_authority_key(manager).to_string(),
@@ -2001,19 +2016,12 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                 });
                 match runtime.submit(ManagerId::HomebrewFormula, request).await {
                     Ok(task_id) => {
-                        if cleanup_old_kegs {
-                            set_task_label(
-                                task_id,
-                                "service.task.label.upgrade.homebrew_cleanup",
-                                &[("package", package_name.clone())],
-                            );
-                        } else {
-                            set_task_label(
-                                task_id,
-                                "service.task.label.upgrade.homebrew",
-                                &[("package", package_name.clone())],
-                            );
-                        }
+                        let (label_key, label_args) = upgrade_task_label_for(
+                            ManagerId::HomebrewFormula,
+                            &package_name,
+                            cleanup_old_kegs,
+                        );
+                        set_task_label(task_id, label_key, &label_args);
                     }
                     Err(error) => {
                         eprintln!("upgrade_all: failed to queue homebrew upgrade task: {error}");
@@ -2031,11 +2039,11 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                     }),
                 });
                 match runtime.submit(ManagerId::Mise, request).await {
-                    Ok(task_id) => set_task_label(
-                        task_id,
-                        "service.task.label.upgrade.mise",
-                        &[("package", package_name.clone())],
-                    ),
+                    Ok(task_id) => {
+                        let (label_key, label_args) =
+                            upgrade_task_label_for(ManagerId::Mise, &package_name, false);
+                        set_task_label(task_id, label_key, &label_args);
+                    }
                     Err(error) => {
                         eprintln!("upgrade_all: failed to queue mise upgrade task: {error}");
                     }
@@ -2052,14 +2060,11 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                     }),
                 });
                 match runtime.submit(ManagerId::Npm, request).await {
-                    Ok(task_id) => set_task_label(
-                        task_id,
-                        "service.task.label.upgrade.package",
-                        &[
-                            ("package", package_name.clone()),
-                            ("manager", manager_display_name(ManagerId::Npm).to_string()),
-                        ],
-                    ),
+                    Ok(task_id) => {
+                        let (label_key, label_args) =
+                            upgrade_task_label_for(ManagerId::Npm, &package_name, false);
+                        set_task_label(task_id, label_key, &label_args);
+                    }
                     Err(error) => {
                         eprintln!("upgrade_all: failed to queue npm upgrade task: {error}");
                     }
@@ -2076,14 +2081,11 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                     }),
                 });
                 match runtime.submit(ManagerId::Pnpm, request).await {
-                    Ok(task_id) => set_task_label(
-                        task_id,
-                        "service.task.label.upgrade.package",
-                        &[
-                            ("package", package_name.clone()),
-                            ("manager", manager_display_name(ManagerId::Pnpm).to_string()),
-                        ],
-                    ),
+                    Ok(task_id) => {
+                        let (label_key, label_args) =
+                            upgrade_task_label_for(ManagerId::Pnpm, &package_name, false);
+                        set_task_label(task_id, label_key, &label_args);
+                    }
                     Err(error) => {
                         eprintln!("upgrade_all: failed to queue pnpm upgrade task: {error}");
                     }
@@ -2100,14 +2102,11 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                     }),
                 });
                 match runtime.submit(ManagerId::Yarn, request).await {
-                    Ok(task_id) => set_task_label(
-                        task_id,
-                        "service.task.label.upgrade.package",
-                        &[
-                            ("package", package_name.clone()),
-                            ("manager", manager_display_name(ManagerId::Yarn).to_string()),
-                        ],
-                    ),
+                    Ok(task_id) => {
+                        let (label_key, label_args) =
+                            upgrade_task_label_for(ManagerId::Yarn, &package_name, false);
+                        set_task_label(task_id, label_key, &label_args);
+                    }
                     Err(error) => {
                         eprintln!("upgrade_all: failed to queue yarn upgrade task: {error}");
                     }
@@ -2124,17 +2123,11 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                     }),
                 });
                 match runtime.submit(ManagerId::Cargo, request).await {
-                    Ok(task_id) => set_task_label(
-                        task_id,
-                        "service.task.label.upgrade.package",
-                        &[
-                            ("package", package_name.clone()),
-                            (
-                                "manager",
-                                manager_display_name(ManagerId::Cargo).to_string(),
-                            ),
-                        ],
-                    ),
+                    Ok(task_id) => {
+                        let (label_key, label_args) =
+                            upgrade_task_label_for(ManagerId::Cargo, &package_name, false);
+                        set_task_label(task_id, label_key, &label_args);
+                    }
                     Err(error) => {
                         eprintln!("upgrade_all: failed to queue cargo upgrade task: {error}");
                     }
@@ -2151,17 +2144,11 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                     }),
                 });
                 match runtime.submit(ManagerId::CargoBinstall, request).await {
-                    Ok(task_id) => set_task_label(
-                        task_id,
-                        "service.task.label.upgrade.package",
-                        &[
-                            ("package", package_name.clone()),
-                            (
-                                "manager",
-                                manager_display_name(ManagerId::CargoBinstall).to_string(),
-                            ),
-                        ],
-                    ),
+                    Ok(task_id) => {
+                        let (label_key, label_args) =
+                            upgrade_task_label_for(ManagerId::CargoBinstall, &package_name, false);
+                        set_task_label(task_id, label_key, &label_args);
+                    }
                     Err(error) => {
                         eprintln!(
                             "upgrade_all: failed to queue cargo-binstall upgrade task: {error}"
@@ -2180,14 +2167,11 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                     }),
                 });
                 match runtime.submit(ManagerId::Pip, request).await {
-                    Ok(task_id) => set_task_label(
-                        task_id,
-                        "service.task.label.upgrade.package",
-                        &[
-                            ("package", package_name.clone()),
-                            ("manager", manager_display_name(ManagerId::Pip).to_string()),
-                        ],
-                    ),
+                    Ok(task_id) => {
+                        let (label_key, label_args) =
+                            upgrade_task_label_for(ManagerId::Pip, &package_name, false);
+                        set_task_label(task_id, label_key, &label_args);
+                    }
                     Err(error) => {
                         eprintln!("upgrade_all: failed to queue pip upgrade task: {error}");
                     }
@@ -2204,14 +2188,11 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                     }),
                 });
                 match runtime.submit(ManagerId::Pipx, request).await {
-                    Ok(task_id) => set_task_label(
-                        task_id,
-                        "service.task.label.upgrade.package",
-                        &[
-                            ("package", package_name.clone()),
-                            ("manager", manager_display_name(ManagerId::Pipx).to_string()),
-                        ],
-                    ),
+                    Ok(task_id) => {
+                        let (label_key, label_args) =
+                            upgrade_task_label_for(ManagerId::Pipx, &package_name, false);
+                        set_task_label(task_id, label_key, &label_args);
+                    }
                     Err(error) => {
                         eprintln!("upgrade_all: failed to queue pipx upgrade task: {error}");
                     }
@@ -2228,17 +2209,11 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                     }),
                 });
                 match runtime.submit(ManagerId::Poetry, request).await {
-                    Ok(task_id) => set_task_label(
-                        task_id,
-                        "service.task.label.upgrade.package",
-                        &[
-                            ("package", package_name.clone()),
-                            (
-                                "manager",
-                                manager_display_name(ManagerId::Poetry).to_string(),
-                            ),
-                        ],
-                    ),
+                    Ok(task_id) => {
+                        let (label_key, label_args) =
+                            upgrade_task_label_for(ManagerId::Poetry, &package_name, false);
+                        set_task_label(task_id, label_key, &label_args);
+                    }
                     Err(error) => {
                         eprintln!("upgrade_all: failed to queue poetry upgrade task: {error}");
                     }
@@ -2255,17 +2230,11 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                     }),
                 });
                 match runtime.submit(ManagerId::RubyGems, request).await {
-                    Ok(task_id) => set_task_label(
-                        task_id,
-                        "service.task.label.upgrade.package",
-                        &[
-                            ("package", package_name.clone()),
-                            (
-                                "manager",
-                                manager_display_name(ManagerId::RubyGems).to_string(),
-                            ),
-                        ],
-                    ),
+                    Ok(task_id) => {
+                        let (label_key, label_args) =
+                            upgrade_task_label_for(ManagerId::RubyGems, &package_name, false);
+                        set_task_label(task_id, label_key, &label_args);
+                    }
                     Err(error) => {
                         eprintln!("upgrade_all: failed to queue rubygems upgrade task: {error}");
                     }
@@ -2282,17 +2251,11 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                     }),
                 });
                 match runtime.submit(ManagerId::Bundler, request).await {
-                    Ok(task_id) => set_task_label(
-                        task_id,
-                        "service.task.label.upgrade.package",
-                        &[
-                            ("package", package_name.clone()),
-                            (
-                                "manager",
-                                manager_display_name(ManagerId::Bundler).to_string(),
-                            ),
-                        ],
-                    ),
+                    Ok(task_id) => {
+                        let (label_key, label_args) =
+                            upgrade_task_label_for(ManagerId::Bundler, &package_name, false);
+                        set_task_label(task_id, label_key, &label_args);
+                    }
                     Err(error) => {
                         eprintln!("upgrade_all: failed to queue bundler upgrade task: {error}");
                     }
@@ -2309,11 +2272,11 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                     }),
                 });
                 match runtime.submit(ManagerId::Rustup, request).await {
-                    Ok(task_id) => set_task_label(
-                        task_id,
-                        "service.task.label.upgrade.rustup_toolchain",
-                        &[("toolchain", toolchain.clone())],
-                    ),
+                    Ok(task_id) => {
+                        let (label_key, label_args) =
+                            upgrade_task_label_for(ManagerId::Rustup, &toolchain, false);
+                        set_task_label(task_id, label_key, &label_args);
+                    }
                     Err(error) => {
                         eprintln!(
                             "upgrade_all: failed to queue rustup toolchain upgrade task: {error}"
@@ -2337,11 +2300,12 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                     }),
                 });
                 match runtime.submit(ManagerId::SoftwareUpdate, request).await {
-                    Ok(task_id) => set_task_label(
-                        task_id,
-                        "service.task.label.upgrade.softwareupdate_all",
-                        &[],
-                    ),
+                    Ok(task_id) => {
+                        let package_name = "__confirm_os_updates__".to_string();
+                        let (label_key, label_args) =
+                            upgrade_task_label_for(ManagerId::SoftwareUpdate, &package_name, false);
+                        set_task_label(task_id, label_key, &label_args);
+                    }
                     Err(error) => {
                         eprintln!("upgrade_all: failed to queue softwareupdate task: {error}");
                     }
@@ -2369,6 +2333,7 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
 /// - "rubygems"
 /// - "bundler"
 /// - "rustup"
+/// - "softwareupdate" (requires package_name "__confirm_os_updates__")
 ///
 /// # Safety
 ///
@@ -2621,8 +2586,31 @@ pub unsafe extern "C" fn helm_upgrade_package(
                 },
             )
         }
+        ManagerId::SoftwareUpdate => {
+            if package_name != "__confirm_os_updates__" {
+                return return_error_i64("service.error.invalid_input");
+            }
+            (
+                ManagerId::SoftwareUpdate,
+                AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::SoftwareUpdate,
+                        name: "__confirm_os_updates__".to_string(),
+                    }),
+                }),
+                Some("service.task.label.upgrade.softwareupdate_all"),
+                Vec::new(),
+            )
+        }
         _ => return return_error_i64("service.error.unsupported_capability"),
     };
+    let mut label_args = label_args;
+    if label_key.is_some() {
+        label_args.push((
+            "plan_step_id",
+            upgrade_plan_step_id(target_manager, &package_name),
+        ));
+    }
 
     let (store, runtime, rt_handle) = {
         let guard = lock_or_recover(&STATE, "state");
@@ -3528,7 +3516,8 @@ mod tests {
         collect_upgrade_all_targets, homebrew_probe_candidates,
         manager_allows_individual_package_install, manager_authority_key,
         parse_homebrew_config_version, push_upgrade_plan_step, search_label_args,
-        search_label_key_for_query, upgrade_reason_label_for,
+        search_label_key_for_query, upgrade_plan_step_id, upgrade_reason_label_for,
+        upgrade_task_label_for,
     };
     use helm_core::models::{
         ManagerId, OutdatedPackage, PackageRef, TaskId, TaskRecord, TaskStatus, TaskType,
@@ -3613,6 +3602,18 @@ mod tests {
             upgrade_reason_label_for(ManagerId::Rustup, "stable", false);
         assert_eq!(rustup_key, "service.task.label.upgrade.rustup_toolchain");
         assert_eq!(rustup_args, vec![("toolchain", "stable".to_string())]);
+    }
+
+    #[test]
+    fn upgrade_task_label_includes_plan_step_id_arg() {
+        let (label_key, label_args) = upgrade_task_label_for(ManagerId::Npm, "typescript", false);
+        assert_eq!(label_key, "service.task.label.upgrade.package");
+        assert!(label_args.contains(&("package", "typescript".to_string())));
+        assert!(label_args.contains(&("manager", "npm".to_string())));
+        assert!(label_args.contains(&(
+            "plan_step_id",
+            upgrade_plan_step_id(ManagerId::Npm, "typescript"),
+        )));
     }
 
     #[test]

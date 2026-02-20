@@ -90,6 +90,7 @@ extension HelmCore {
                 let coreTasks = try decoder.decode([CoreTaskRecord].self, from: data)
 
                 DispatchQueue.main.async {
+                    self?.latestCoreTasksSnapshot = coreTasks
                     if let maxTaskId = coreTasks.map(\.id).max() {
                         self?.lastObservedTaskId = max(self?.lastObservedTaskId ?? 0, maxTaskId)
                     }
@@ -120,6 +121,7 @@ extension HelmCore {
                     self?.syncUpgradeActions(from: coreTasks)
                     self?.syncInstallActions(from: coreTasks)
                     self?.syncUninstallActions(from: coreTasks)
+                    self?.syncUpgradePlanProjection(from: coreTasks)
                     self?.syncPackageDescriptionLookups(from: coreTasks)
 
                     // Announce new task failures to VoiceOver

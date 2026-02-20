@@ -135,6 +135,7 @@ bool helm_upgrade_all(bool include_pinned, bool allow_os_updates);
  * - "rubygems"
  * - "bundler"
  * - "rustup"
+ * - "softwareupdate" (requires package_name "__confirm_os_updates__")
  *
  * # Safety
  *

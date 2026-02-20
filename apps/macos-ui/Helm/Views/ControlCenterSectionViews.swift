@@ -136,6 +136,22 @@ struct RedesignUpdatesSectionView: View {
         return step.packageName
     }
 
+    private func projectedStatus(_ step: CoreUpgradePlanStep) -> String {
+        core.projectedUpgradePlanStatus(for: step)
+    }
+
+    private func packageSummary(_ packageNames: [String], managerId: String) -> String {
+        packageNames
+            .prefix(4)
+            .map { package in
+                if managerId == "softwareupdate", package == "__confirm_os_updates__" {
+                    return L10n.Service.Task.Label.upgradeSoftwareUpdateAll.localized
+                }
+                return package
+            }
+            .joined(separator: ", ")
+    }
+
     private var mayRequireReboot: Bool {
         core.outdatedPackages.contains { $0.restartRequired || $0.managerId == "softwareupdate" }
     }
@@ -208,9 +224,13 @@ struct RedesignUpdatesSectionView: View {
                                         .lineLimit(1)
                                 }
                                 Spacer()
-                                Text(core.localizedUpgradePlanStatus(step.status))
+                                Text(core.localizedUpgradePlanStatus(projectedStatus(step)))
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(
+                                        projectedStatus(step).lowercased() == "failed"
+                                            ? Color.red
+                                            : Color.secondary
+                                    )
                             }
                             .padding(.vertical, 8)
                             .padding(.horizontal, 10)
@@ -234,6 +254,45 @@ struct RedesignUpdatesSectionView: View {
                     .font(.headline)
                 riskRow(flag: L10n.App.Updates.Risk.privileged.localized, active: requiresPrivileges)
                 riskRow(flag: L10n.App.Updates.Risk.reboot.localized, active: mayRequireReboot)
+            }
+
+            if !core.upgradePlanFailureGroups.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(L10n.App.Popover.failures.localized)
+                        .font(.headline)
+
+                    ForEach(core.upgradePlanFailureGroups) { group in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(core.localizedUpgradePlanFailureCause(for: group))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            Text(packageSummary(group.packageNames, managerId: group.managerId))
+                                .font(.caption.monospaced())
+                                .lineLimit(2)
+
+                            HStack {
+                                Button(L10n.App.Packages.Action.update.localized) {
+                                    core.retryUpgradePlanSteps(stepIds: group.stepIds)
+                                }
+                                .buttonStyle(HelmSecondaryButtonStyle())
+                                .font(.caption)
+                                Spacer()
+                                Text(localizedManagerDisplayName(group.managerId))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(10)
+                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+
+                    Button(L10n.App.Packages.Action.update.localized) {
+                        core.retryFailedUpgradePlanSteps()
+                    }
+                    .buttonStyle(HelmPrimaryButtonStyle())
+                    .font(.caption)
+                }
             }
 
             HStack {

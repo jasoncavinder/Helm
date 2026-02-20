@@ -52,15 +52,20 @@ Validation:
 - `cargo test -p helm-ffi --manifest-path core/rust/Cargo.toml`
 - `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
 
-### Alpha.2 — Execution Transparency + Partial Failure Summary (Next)
+### Alpha.2 — Execution Transparency + Partial Failure Summary (Completed on `feat/v0.15.x-alpha.1-kickoff`)
 
-Deliver:
+Delivered:
 
-- link runtime task updates to plan-step identifiers for in-flight and completed state projection
-- show partial-failure summaries with grouped causes and affected managers/packages
-- add retry affordances scoped to failed plan steps (without rerunning successful steps)
+- Linked runtime task updates to plan-step identifiers for in-flight and completed state projection
+- Added partial-failure summaries with grouped causes and affected managers/packages
+- Added retry affordances scoped to failed plan steps (without rerunning successful steps)
 
-### Alpha.3 — Operator Controls for Large Plans
+Validation:
+
+- `cargo test -p helm-ffi --manifest-path core/rust/Cargo.toml`
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
+
+### Alpha.3 — Operator Controls for Large Plans (Next)
 
 Deliver:
 

@@ -123,6 +123,14 @@ extension HelmCore {
     // MARK: - Upgrade All
 
     func upgradeAll(includePinned: Bool = false, allowOsUpdates: Bool = false) {
+        DispatchQueue.main.async {
+            self.upgradePlanIncludePinned = includePinned
+            self.upgradePlanAllowOsUpdates = allowOsUpdates
+            for step in self.upgradePlanSteps {
+                self.upgradePlanTaskProjectionByStepId.removeValue(forKey: step.id)
+            }
+            self.rebuildUpgradePlanFailureGroups()
+        }
         service()?.upgradeAll(includePinned: includePinned, allowOsUpdates: allowOsUpdates) { success in
             if !success {
                 logger.error("upgradeAll(includePinned: \(includePinned), allowOsUpdates: \(allowOsUpdates)) failed")
@@ -145,11 +153,20 @@ extension HelmCore {
                     self.upgradePlanSteps = steps.sorted { lhs, rhs in
                         lhs.orderIndex < rhs.orderIndex
                     }
+                    self.syncUpgradePlanProjection(from: self.latestCoreTasksSnapshot)
                 }
             } catch {
                 logger.error("refreshUpgradePlan: decode failed (\(data.count) bytes): \(error)")
             }
         }
+    }
+
+    func projectedUpgradePlanStatus(for step: CoreUpgradePlanStep) -> String {
+        upgradePlanTaskProjectionByStepId[step.id]?.status ?? step.status
+    }
+
+    func projectedUpgradePlanTaskId(for step: CoreUpgradePlanStep) -> UInt64? {
+        upgradePlanTaskProjectionByStepId[step.id]?.taskId
     }
 
     func localizedUpgradePlanStatus(_ rawStatus: String) -> String {
@@ -206,6 +223,12 @@ extension HelmCore {
             partialResult[entry.key] = entry.value
         }
         return step.reasonLabelKey.localized(with: args)
+    }
+
+    func localizedUpgradePlanFailureCause(for group: UpgradePlanFailureGroup) -> String {
+        L10n.App.Inspector.taskFailureHintGeneric.localized(with: [
+            "manager": localizedManagerDisplayName(group.managerId)
+        ])
     }
 
     func localizedTaskLabel(from task: CoreTaskRecord) -> String? {

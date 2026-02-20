@@ -295,6 +295,52 @@ extension HelmCore {
         }
     }
 
+    func syncUpgradePlanProjection(from coreTasks: [CoreTaskRecord]) {
+        let stepIds = Set(upgradePlanSteps.map(\.id))
+        guard !stepIds.isEmpty else {
+            if !upgradePlanTaskProjectionByStepId.isEmpty {
+                upgradePlanTaskProjectionByStepId = [:]
+            }
+            if !upgradePlanFailureGroups.isEmpty {
+                upgradePlanFailureGroups = []
+            }
+            return
+        }
+
+        var latestByStepId: [String: CoreTaskRecord] = [:]
+        for task in coreTasks where task.taskType.lowercased() == "upgrade" {
+            guard let stepId = upgradePlanStepId(for: task), stepIds.contains(stepId) else { continue }
+            if latestByStepId[stepId] == nil {
+                latestByStepId[stepId] = task
+            }
+        }
+
+        var projection = upgradePlanTaskProjectionByStepId.filter { stepIds.contains($0.key) }
+        for (stepId, task) in latestByStepId {
+            projection[stepId] = UpgradePlanTaskProjection(
+                stepId: stepId,
+                taskId: task.id,
+                status: task.status.lowercased(),
+                managerId: task.manager,
+                labelKey: task.labelKey
+            )
+        }
+
+        for (stepId, state) in projection where latestByStepId[stepId] == nil {
+            let status = state.status.lowercased()
+            if status == "queued" || status == "running" {
+                projection.removeValue(forKey: stepId)
+            }
+        }
+
+        upgradePlanTaskProjectionByStepId = projection
+        rebuildUpgradePlanFailureGroups()
+    }
+
+    func rebuildUpgradePlanFailureGroups() {
+        upgradePlanFailureGroups = buildUpgradePlanFailureGroups(from: upgradePlanTaskProjectionByStepId)
+    }
+
     func syncPackageDescriptionLookups(from coreTasks: [CoreTaskRecord]) {
         let statusById = Dictionary(uniqueKeysWithValues: coreTasks.map { ($0.id, $0.status.lowercased()) })
         let inFlightStates = Set(["queued", "running"])
@@ -367,5 +413,68 @@ extension HelmCore {
         let trimmedCandidate = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedCandidate.isEmpty else { return }
         package.summary = trimmedCandidate
+    }
+
+    private func upgradePlanStepId(for task: CoreTaskRecord) -> String? {
+        if let explicit = task.labelArgs?["plan_step_id"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !explicit.isEmpty {
+            return explicit
+        }
+
+        if task.manager == "softwareupdate" {
+            return "softwareupdate:__confirm_os_updates__"
+        }
+
+        if task.manager == "rustup",
+           let toolchain = task.labelArgs?["toolchain"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !toolchain.isEmpty {
+            return "rustup:\(toolchain)"
+        }
+
+        guard let package = task.labelArgs?["package"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !package.isEmpty else {
+            return nil
+        }
+        return "\(task.manager):\(package)"
+    }
+
+    private func buildUpgradePlanFailureGroups(
+        from projection: [String: UpgradePlanTaskProjection]
+    ) -> [UpgradePlanFailureGroup] {
+        let stepsById = Dictionary(uniqueKeysWithValues: upgradePlanSteps.map { ($0.id, $0) })
+        var grouped: [String: (managerId: String, stepIds: Set<String>, packageNames: Set<String>)] = [:]
+
+        for (stepId, state) in projection where state.status.lowercased() == "failed" {
+            let managerId = stepsById[stepId]?.managerId ?? state.managerId
+            let packageName = stepsById[stepId]?.packageName ?? stepId
+
+            if var entry = grouped[managerId] {
+                entry.stepIds.insert(stepId)
+                entry.packageNames.insert(packageName)
+                grouped[managerId] = entry
+            } else {
+                grouped[managerId] = (
+                    managerId: managerId,
+                    stepIds: [stepId],
+                    packageNames: [packageName]
+                )
+            }
+        }
+
+        return grouped.values
+            .map { entry in
+                UpgradePlanFailureGroup(
+                    id: entry.managerId,
+                    managerId: entry.managerId,
+                    stepIds: entry.stepIds.sorted(),
+                    packageNames: entry.packageNames.sorted()
+                )
+            }
+            .sorted { lhs, rhs in
+                if lhs.stepIds.count == rhs.stepIds.count {
+                    return lhs.managerId.localizedCaseInsensitiveCompare(rhs.managerId) == .orderedAscending
+                }
+                return lhs.stepIds.count > rhs.stepIds.count
+            }
     }
 }

@@ -55,6 +55,21 @@ struct CoreUpgradePlanStep: Codable, Identifiable {
     var id: String { stepId }
 }
 
+struct UpgradePlanTaskProjection {
+    let stepId: String
+    let taskId: UInt64
+    let status: String
+    let managerId: String
+    let labelKey: String?
+}
+
+struct UpgradePlanFailureGroup: Identifiable {
+    let id: String
+    let managerId: String
+    let stepIds: [String]
+    let packageNames: [String]
+}
+
 enum HomebrewKegPolicyOverride: String, Codable {
     case keep
     case cleanup
@@ -103,6 +118,8 @@ final class HelmCore: ObservableObject {
     @Published var searchResults: [PackageItem] = []
     @Published var cachedAvailablePackages: [PackageItem] = []
     @Published var upgradePlanSteps: [CoreUpgradePlanStep] = []
+    @Published var upgradePlanTaskProjectionByStepId: [String: UpgradePlanTaskProjection] = [:]
+    @Published var upgradePlanFailureGroups: [UpgradePlanFailureGroup] = []
     @Published var upgradePlanAllowOsUpdates: Bool = false
     @Published var upgradePlanIncludePinned: Bool = false
     @Published var detectedManagers: Set<String> = []
@@ -138,6 +155,7 @@ final class HelmCore: ObservableObject {
     var onboardingDetectionAnchorTaskId: UInt64 = 0
     var onboardingDetectionPendingManagers: Set<String> = []
     var onboardingDetectionStartedAt: Date?
+    var latestCoreTasksSnapshot: [CoreTaskRecord] = []
     var previousFailedTaskCount: Int = 0
     var previousRefreshState: Bool = false
     private var reconnectAttempt: Int = 0
