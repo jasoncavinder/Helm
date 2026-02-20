@@ -59,10 +59,12 @@ Delivered:
   - "Finding Your Tools"
   - "Pick Your Managers"
 - Task list visibility now deduplicates in-flight task rows by `(manager, task_type)` and keeps bounded terminal history
+- Task list visibility now fetches a wider recent-task window to avoid hiding long-running in-flight entries under queue churn
 - Task pruning timeout policy now removes only `completed` and `failed` records (no timeout pruning of `cancelled`)
 - Duplicate task submission guard added for manager install/update/uninstall and package upgrade actions when an identical labeled task is already queued/running
 - Refresh trigger now skips creating a new refresh sweep while refresh/detection tasks are already in flight
 - RubyGems now participates in per-package upgrade eligibility in the SwiftUI workflow
+- Added regression tests for task list dedup/terminal-history visibility and prune-policy status filtering
 
 ### Cache/Persistence Slice (Completed on branch)
 

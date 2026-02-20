@@ -125,10 +125,18 @@ Completed in follow-up stabilization slice branch:
 
 - Onboarding manager rows now keep manager name + version on a single line in both detection and configure steps
 - Task list now deduplicates in-flight rows by `(manager, task_type)` while keeping bounded terminal history
+- Task list fetches a wider recent-task window so long-running queued/running entries are less likely to drop out under queue churn
 - Task pruning now expires only completed/failed tasks (cancelled tasks are retained)
 - Duplicate submission guards now reuse existing queued/running task IDs for identical manager install/update/uninstall and package upgrade actions
 - Refresh trigger now skips launching a new sweep while refresh/detection tasks are already in flight
 - RubyGems is now included in per-package upgrade eligibility for control-center package actions
+- Added regression coverage:
+  - FFI unit tests for in-flight deduplication and bounded terminal history behavior
+  - SQLite store test validating prune policy keeps cancelled/running rows
+
+Validation:
+
+- `cargo test -p helm-core -p helm-ffi` passing
 
 ---
 
