@@ -133,6 +133,12 @@ Progress so far:
   - per-task runtime context now flows into process requests
   - process output capture is keyed by task ID and exposed via FFI/XPC (`helm_get_task_output` / `getTaskOutput`)
   - inspector fetches task output on demand for diagnostics without adding payload bloat to task polling
+- completed brand-system visual refinement pass for app-design slice:
+  - tokenized SwiftUI color hierarchy (Helm Blue primary, Rope Gold premium accent) and surface/elevation/radius defaults
+  - standardized button and card styling across Control Center, popover overlays, packages/managers rows, and settings
+  - refined dark-mode deck contrast and selection/focus hierarchy without layout re-architecture
+  - added Pro button style hook and premium CTA treatment for support/upgrade-path surfaces
+  - validation passed: `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
 
 Deliver:
 - open PR with final `v0.15.0` prep deltas into `dev` for verified commit lineage
