@@ -650,3 +650,64 @@ fn create_update_and_list_recent_tasks_roundtrip() {
 
     let _ = std::fs::remove_file(path);
 }
+
+#[test]
+fn prune_completed_tasks_keeps_cancelled_and_running_records() {
+    let path = test_db_path("tasks-prune-filter");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let old_created_at = UNIX_EPOCH + Duration::from_secs(5);
+    let records = [
+        TaskRecord {
+            id: TaskId(1),
+            manager: ManagerId::HomebrewFormula,
+            task_type: TaskType::Refresh,
+            status: TaskStatus::Completed,
+            created_at: old_created_at,
+        },
+        TaskRecord {
+            id: TaskId(2),
+            manager: ManagerId::HomebrewFormula,
+            task_type: TaskType::Refresh,
+            status: TaskStatus::Failed,
+            created_at: old_created_at,
+        },
+        TaskRecord {
+            id: TaskId(3),
+            manager: ManagerId::HomebrewFormula,
+            task_type: TaskType::Refresh,
+            status: TaskStatus::Cancelled,
+            created_at: old_created_at,
+        },
+        TaskRecord {
+            id: TaskId(4),
+            manager: ManagerId::HomebrewFormula,
+            task_type: TaskType::Refresh,
+            status: TaskStatus::Running,
+            created_at: old_created_at,
+        },
+    ];
+
+    for record in &records {
+        store.create_task(record).unwrap();
+    }
+
+    let deleted = store.prune_completed_tasks(1).unwrap();
+    assert_eq!(deleted, 2);
+
+    let remaining = store.list_recent_tasks(10).unwrap();
+    assert_eq!(remaining.len(), 2);
+    assert!(
+        remaining
+            .iter()
+            .any(|task| task.status == TaskStatus::Cancelled)
+    );
+    assert!(
+        remaining
+            .iter()
+            .any(|task| task.status == TaskStatus::Running)
+    );
+
+    let _ = std::fs::remove_file(path);
+}
