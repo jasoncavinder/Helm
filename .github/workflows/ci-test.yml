@@ -49,6 +49,11 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Validate channel policy rendering
+        run: |
+          set -euo pipefail
+          apps/macos-ui/scripts/check_channel_policy.sh
+
       - name: Build and test Xcode project
         run: |
           set -euo pipefail

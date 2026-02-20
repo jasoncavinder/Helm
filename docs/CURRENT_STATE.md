@@ -129,8 +129,16 @@ Implemented on `feat/v0.16.0-kickoff`:
   - `apps/macos-ui/Config/channels/setapp.xcconfig`
   - `apps/macos-ui/Config/channels/fleet.xcconfig`
 - Build script now emits `apps/macos-ui/Generated/HelmChannel.xcconfig` from `HELM_CHANNEL_PROFILE` (+ env overrides), and Xcode consumes it through checked-in base config include.
+- Added shared channel renderer script (`apps/macos-ui/scripts/render_channel_xcconfig.sh`) so all generated channel config paths use one policy-enforced code path.
+- Added channel-policy matrix check script (`apps/macos-ui/scripts/check_channel_policy.sh`) and wired it into CI (`.github/workflows/ci-test.yml`) before Xcode build/test.
 - Helm target Info.plist keys are now build-setting injected (channel + Sparkle feed/signature metadata) rather than hardcoded plist values.
 - Release DMG workflow now injects direct-channel Sparkle metadata at build time and validates required release secrets/packaged plist channel keys.
+- Release DMG workflow now also verifies packaged updater invariants in the built artifact:
+  - `HelmDistributionChannel=developer_id`
+  - `HelmSparkleEnabled` truthy
+  - `SUFeedURL` uses `https://`
+  - `SUPublicEDKey` non-empty
+  - Sparkle framework is bundled and linked into the Helm binary
 - Added regression coverage for channel config parsing + Sparkle gating behavior (`AppUpdateConfigurationTests`) and extracted shared app-update config model into `Helm/Core/AppUpdateConfiguration.swift`.
 - Build script now enforces channel/Sparkle policy at generation time and fails fast on invalid combinations:
   - non-Developer-ID channels cannot enable Sparkle or set Sparkle feed/signature metadata
@@ -144,6 +152,7 @@ Validation:
 - Channel-policy hardening sanity checks:
   - `CONFIGURATION=Debug HELM_CHANNEL_PROFILE=app_store HELM_CHANNEL_OVERRIDE_SPARKLE_ENABLED=YES apps/macos-ui/scripts/build_rust.sh` fails as expected
   - `CONFIGURATION=Debug HELM_CHANNEL_PROFILE=developer_id HELM_CHANNEL_OVERRIDE_SPARKLE_ENABLED=YES apps/macos-ui/scripts/build_rust.sh` fails as expected when feed/key are omitted
+  - `apps/macos-ui/scripts/check_channel_policy.sh` passes
 
 ---
 

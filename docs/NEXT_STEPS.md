@@ -18,7 +18,7 @@ Focus:
 - 0.16.x self-update and installer hardening
 
 Current checkpoint:
-- `v0.16.0-alpha.1` kickoff in progress on `feat/v0.16.0-kickoff` (channel-aware updater scaffolding + channel build-profile wiring + release feed/signature injection + Sparkle package linkage + config regression tests + channel-policy build validation landed)
+- `v0.16.0-alpha.1` kickoff in progress on `feat/v0.16.0-kickoff` (channel-aware updater scaffolding + channel build-profile wiring + release feed/signature injection + Sparkle package linkage + config regression tests + channel-policy validation + shared renderer/CI matrix + release artifact invariant verification)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
 - `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)
@@ -62,14 +62,17 @@ Delivered:
   - profile templates under `apps/macos-ui/Config/channels/`
   - build output `apps/macos-ui/Generated/HelmChannel.xcconfig`
   - base config now includes generated channel config when present
+- Added shared channel xcconfig renderer (`apps/macos-ui/scripts/render_channel_xcconfig.sh`) and refactored build generation to use that single path.
 - Helm target now injects channel/feed/signature plist keys from build settings:
   - `HelmDistributionChannel`
   - `HelmSparkleEnabled`
   - `SUFeedURL`
   - `SUPublicEDKey`
 - Release DMG workflow now passes direct-channel Sparkle build metadata and validates required Sparkle secrets before signed release builds.
+- Release DMG workflow now verifies packaged channel/Sparkle invariants and Sparkle framework linkage in the signed app bundle.
 - Added regression coverage for app update channel config parsing + Sparkle gating behavior (`AppUpdateConfigurationTests`).
 - Added fail-fast build-script policy checks for invalid channel/Sparkle combinations.
+- Added CI channel-policy matrix validation (`apps/macos-ui/scripts/check_channel_policy.sh`) ahead of Xcode build/test.
 
 Next in alpha.1:
 

@@ -34,6 +34,9 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - App update channel/config parsing model was extracted to `Helm/Core/AppUpdateConfiguration.swift` so runtime and tests share the same source of truth.
 - Release DMG workflow now validates Sparkle feed/signature secrets and injects Developer ID channel Sparkle metadata during signed release builds.
 - Build-time channel policy validation now fails fast in `build_rust.sh` when Sparkle metadata/settings violate channel boundaries (non-Developer-ID channels cannot enable Sparkle; Developer ID + Sparkle requires feed URL + public key).
+- Channel config rendering/policy enforcement now runs through a shared script (`apps/macos-ui/scripts/render_channel_xcconfig.sh`) reused by build generation and test validation flows.
+- CI now runs a channel-policy matrix check (`apps/macos-ui/scripts/check_channel_policy.sh`) before Xcode build/test.
+- Release DMG verification now enforces packaged updater invariants (`HelmDistributionChannel`, `HelmSparkleEnabled`, `SUFeedURL`, `SUPublicEDKey`) and validates Sparkle framework bundling/linkage.
 - Runtime upgrade task labels now include `plan_step_id` metadata so task rows can be projected onto execution-plan rows.
 - Partial-failure summaries now group failed plan steps by manager and affected package set.
 - Scoped plan execution now runs phase-by-phase by authority rank (authoritative → standard → guarded) instead of submitting all manager steps concurrently.

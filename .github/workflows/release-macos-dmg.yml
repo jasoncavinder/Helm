@@ -119,14 +119,47 @@ jobs:
           HELM_BIN="$APP_PATH/Contents/MacOS/Helm"
           XPC_BIN="$APP_PATH/Contents/XPCServices/HelmService.xpc/Contents/MacOS/HelmService"
           APP_INFO_PLIST="$APP_PATH/Contents/Info.plist"
+          SPARKLE_FRAMEWORK="$APP_PATH/Contents/Frameworks/Sparkle.framework"
 
           test -d "$APP_PATH"
 
           echo "=== Update channel metadata ==="
-          /usr/libexec/PlistBuddy -c "Print :HelmDistributionChannel" "$APP_INFO_PLIST"
-          /usr/libexec/PlistBuddy -c "Print :HelmSparkleEnabled" "$APP_INFO_PLIST"
-          /usr/libexec/PlistBuddy -c "Print :SUFeedURL" "$APP_INFO_PLIST"
-          /usr/libexec/PlistBuddy -c "Print :SUPublicEDKey" "$APP_INFO_PLIST" >/dev/null
+          CHANNEL=$(/usr/libexec/PlistBuddy -c "Print :HelmDistributionChannel" "$APP_INFO_PLIST")
+          SPARKLE_ENABLED=$(/usr/libexec/PlistBuddy -c "Print :HelmSparkleEnabled" "$APP_INFO_PLIST")
+          SPARKLE_FEED_URL=$(/usr/libexec/PlistBuddy -c "Print :SUFeedURL" "$APP_INFO_PLIST")
+          SPARKLE_PUBLIC_ED_KEY=$(/usr/libexec/PlistBuddy -c "Print :SUPublicEDKey" "$APP_INFO_PLIST")
+
+          echo "channel=$CHANNEL"
+          echo "sparkle_enabled=$SPARKLE_ENABLED"
+          echo "sparkle_feed_url=$SPARKLE_FEED_URL"
+          echo "sparkle_public_ed_key_length=${#SPARKLE_PUBLIC_ED_KEY}"
+
+          if [ "$CHANNEL" != "developer_id" ]; then
+            echo "::error::Unexpected HelmDistributionChannel in release artifact: $CHANNEL"
+            exit 1
+          fi
+
+          SPARKLE_ENABLED_NORMALIZED="$(echo "$SPARKLE_ENABLED" | tr '[:upper:]' '[:lower:]')"
+          if [ "$SPARKLE_ENABLED_NORMALIZED" != "yes" ] && [ "$SPARKLE_ENABLED_NORMALIZED" != "true" ] && [ "$SPARKLE_ENABLED_NORMALIZED" != "1" ]; then
+            echo "::error::HelmSparkleEnabled is not true in release artifact: $SPARKLE_ENABLED"
+            exit 1
+          fi
+
+          if [[ "$SPARKLE_FEED_URL" != https://* ]]; then
+            echo "::error::SUFeedURL must be https:// in release artifact."
+            exit 1
+          fi
+
+          if [ -z "$SPARKLE_PUBLIC_ED_KEY" ]; then
+            echo "::error::SUPublicEDKey is empty in release artifact."
+            exit 1
+          fi
+
+          test -d "$SPARKLE_FRAMEWORK"
+          if ! otool -L "$HELM_BIN" | grep -q "Sparkle.framework"; then
+            echo "::error::Sparkle framework is not linked into Helm binary."
+            exit 1
+          fi
 
           echo "=== Architectures ==="
           lipo -archs "$HELM_BIN"
