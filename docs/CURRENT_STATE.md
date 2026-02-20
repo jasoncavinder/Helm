@@ -259,6 +259,7 @@ Implemented on `feat/v0.15.x-alpha.1-kickoff` (current progress):
 - Applied Rust formatting-only cleanup updates across adapter/runtime test files (no behavior change)
 - Added initial `v0.15.0-alpha.1` pre-release checklist scaffolding in `docs/RELEASE_CHECKLIST.md`
 - Added checked-in `apps/macos-ui/Config/HelmVersion.base.xcconfig` with optional include of generated version metadata to avoid clean-checkout build failures
+- Updates section content now renders in a scrollable container so large execution-plan lists no longer clip top/bottom content in the control center
 
 Validation:
 

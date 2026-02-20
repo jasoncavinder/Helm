@@ -202,197 +202,197 @@ struct RedesignUpdatesSectionView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text(ControlCenterSection.updates.title)
-                    .font(.title2.weight(.semibold))
-                Spacer()
-                Button(L10n.App.Action.refreshPlan.localized) {
-                    core.triggerRefresh()
-                    core.refreshUpgradePlan(includePinned: false, allowOsUpdates: includeOsUpdates)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Text(ControlCenterSection.updates.title)
+                        .font(.title2.weight(.semibold))
+                    Spacer()
+                    Button(L10n.App.Action.refreshPlan.localized) {
+                        core.triggerRefresh()
+                        core.refreshUpgradePlan(includePinned: false, allowOsUpdates: includeOsUpdates)
+                    }
+                    .buttonStyle(HelmSecondaryButtonStyle())
+                    .disabled(core.isRefreshing)
                 }
-                .buttonStyle(HelmSecondaryButtonStyle())
-                .disabled(core.isRefreshing)
-            }
 
-            Text(L10n.App.Updates.executionPlan.localized)
-                .font(.headline)
+                Text(L10n.App.Updates.executionPlan.localized)
+                    .font(.headline)
 
-            if !core.safeModeEnabled {
-                Toggle(L10n.App.Updates.includeOs.localized, isOn: $includeOsUpdates)
-                    .toggleStyle(.switch)
-            }
+                if !core.safeModeEnabled {
+                    Toggle(L10n.App.Updates.includeOs.localized, isOn: $includeOsUpdates)
+                        .toggleStyle(.switch)
+                }
 
-            HStack(spacing: 10) {
-                Picker(L10n.App.Inspector.manager.localized, selection: $managerScopeId) {
-                    ForEach(managerScopeOptions, id: \.self) { managerId in
-                        if managerId == HelmCore.allManagersScopeId {
-                            Text(L10n.App.Packages.Filter.allManagers.localized)
-                                .tag(managerId)
-                        } else {
-                            Text(localizedManagerDisplayName(managerId))
-                                .tag(managerId)
+                HStack(spacing: 10) {
+                    Picker(L10n.App.Inspector.manager.localized, selection: $managerScopeId) {
+                        ForEach(managerScopeOptions, id: \.self) { managerId in
+                            if managerId == HelmCore.allManagersScopeId {
+                                Text(L10n.App.Packages.Filter.allManagers.localized)
+                                    .tag(managerId)
+                            } else {
+                                Text(localizedManagerDisplayName(managerId))
+                                    .tag(managerId)
+                            }
                         }
                     }
+                    .frame(maxWidth: 240)
+
+                    TextField(L10n.App.ControlCenter.searchPlaceholder.localized, text: $packageScopeQuery)
+                        .textFieldStyle(.roundedBorder)
                 }
-                .frame(maxWidth: 240)
 
-                TextField(L10n.App.ControlCenter.searchPlaceholder.localized, text: $packageScopeQuery)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            VStack(spacing: 8) {
-                ForEach(stageRows, id: \.authority) { row in
-                    HStack {
-                        Text(row.authority.key.localized)
-                            .font(.body.weight(.medium))
-                        Spacer()
-                        Text("\(row.managerCount)")
-                            .font(.body.monospacedDigit())
-                        Text(L10n.App.Updates.managers.localized)
-                            .foregroundStyle(.secondary)
-                        Text("\(row.packageCount)")
-                            .font(.body.monospacedDigit())
-                        Text(L10n.App.Updates.packages.localized)
-                            .foregroundStyle(.secondary)
+                VStack(spacing: 8) {
+                    ForEach(stageRows, id: \.authority) { row in
+                        HStack {
+                            Text(row.authority.key.localized)
+                                .font(.body.weight(.medium))
+                            Spacer()
+                            Text("\(row.managerCount)")
+                                .font(.body.monospacedDigit())
+                            Text(L10n.App.Updates.managers.localized)
+                                .foregroundStyle(.secondary)
+                            Text("\(row.packageCount)")
+                                .font(.body.monospacedDigit())
+                            Text(L10n.App.Updates.packages.localized)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 4)
                     }
-                    .padding(.vertical, 4)
                 }
-            }
 
-            if visiblePlanSteps.isEmpty {
-                Text(L10n.App.Tasks.noRecentTasks.localized)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(visiblePlanSteps) { step in
-                        Button {
-                            context.selectedUpgradePlanStepId = step.id
-                            context.selectedTaskId = nil
-                            context.selectedPackageId = nil
-                            context.selectedManagerId = nil
-                        } label: {
-                            HStack(spacing: 8) {
-                                Text("\(step.orderIndex + 1).")
-                                    .font(.caption.monospacedDigit())
+                if visiblePlanSteps.isEmpty {
+                    Text(L10n.App.Tasks.noRecentTasks.localized)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(visiblePlanSteps) { step in
+                            Button {
+                                context.selectedUpgradePlanStepId = step.id
+                                context.selectedTaskId = nil
+                                context.selectedPackageId = nil
+                                context.selectedManagerId = nil
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Text("\(step.orderIndex + 1).")
+                                        .font(.caption.monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(planStepTitle(step))
+                                            .font(.subheadline.weight(.medium))
+                                            .lineLimit(1)
+                                        Text(localizedManagerDisplayName(step.managerId))
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                    Spacer()
+                                    Text(core.localizedUpgradePlanStatus(projectedStatus(step)))
+                                        .font(.caption)
+                                        .foregroundStyle(
+                                            projectedStatus(step).lowercased() == "failed"
+                                                ? Color.red
+                                                : Color.secondary
+                                        )
+                                }
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 10)
+                                .background(
+                                    context.selectedUpgradePlanStepId == step.id
+                                        ? Color.accentColor.opacity(0.15)
+                                        : Color.clear
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .contentShape(Rectangle())
+                            .helmPointer()
+                            Divider()
+                        }
+                    }
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.App.Updates.riskFlags.localized)
+                        .font(.headline)
+                    riskRow(flag: L10n.App.Updates.Risk.privileged.localized, active: requiresPrivileges)
+                    riskRow(flag: L10n.App.Updates.Risk.reboot.localized, active: mayRequireReboot)
+                }
+
+                if !scopedFailureGroups.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(L10n.App.Popover.failures.localized)
+                            .font(.headline)
+
+                        ForEach(scopedFailureGroups) { group in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(core.localizedUpgradePlanFailureCause(for: group))
+                                    .font(.caption)
                                     .foregroundStyle(.secondary)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(planStepTitle(step))
-                                        .font(.subheadline.weight(.medium))
-                                        .lineLimit(1)
-                                    Text(localizedManagerDisplayName(step.managerId))
+
+                                Text(packageSummary(group.packageNames, managerId: group.managerId))
+                                    .font(.caption.monospaced())
+                                    .lineLimit(2)
+
+                                HStack {
+                                    Button(L10n.App.Packages.Action.update.localized) {
+                                        core.retryUpgradePlanSteps(stepIds: group.stepIds)
+                                    }
+                                    .buttonStyle(HelmSecondaryButtonStyle())
+                                    .font(.caption)
+                                    Spacer()
+                                    Text(localizedManagerDisplayName(group.managerId))
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
-                                        .lineLimit(1)
                                 }
-                                Spacer()
-                                Text(core.localizedUpgradePlanStatus(projectedStatus(step)))
-                                    .font(.caption)
-                                    .foregroundStyle(
-                                        projectedStatus(step).lowercased() == "failed"
-                                            ? Color.red
-                                            : Color.secondary
-                                    )
                             }
-                            .padding(.vertical, 8)
-                            .padding(.horizontal, 10)
-                            .background(
-                                context.selectedUpgradePlanStepId == step.id
-                                    ? Color.accentColor.opacity(0.15)
-                                    : Color.clear
-                            )
+                            .padding(10)
+                            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                         }
-                        .buttonStyle(.plain)
-                        .contentShape(Rectangle())
-                        .helmPointer()
-                        Divider()
+
+                        Button(L10n.App.Packages.Action.update.localized) {
+                            core.retryUpgradePlanSteps(stepIds: scopedFailedStepIds)
+                        }
+                        .buttonStyle(HelmPrimaryButtonStyle())
+                        .font(.caption)
+                        .disabled(scopedFailedStepIds.isEmpty)
                     }
                 }
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text(L10n.App.Updates.riskFlags.localized)
-                    .font(.headline)
-                riskRow(flag: L10n.App.Updates.Risk.privileged.localized, active: requiresPrivileges)
-                riskRow(flag: L10n.App.Updates.Risk.reboot.localized, active: mayRequireReboot)
-            }
-
-            if !scopedFailureGroups.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(L10n.App.Popover.failures.localized)
-                        .font(.headline)
-
-                    ForEach(scopedFailureGroups) { group in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(core.localizedUpgradePlanFailureCause(for: group))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-
-                            Text(packageSummary(group.packageNames, managerId: group.managerId))
-                                .font(.caption.monospaced())
-                                .lineLimit(2)
-
-                            HStack {
-                                Button(L10n.App.Packages.Action.update.localized) {
-                                    core.retryUpgradePlanSteps(stepIds: group.stepIds)
-                                }
-                                .buttonStyle(HelmSecondaryButtonStyle())
-                                .font(.caption)
-                                Spacer()
-                                Text(localizedManagerDisplayName(group.managerId))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .padding(10)
-                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                HStack {
+                    Button(L10n.App.Tasks.Action.cancel.localized) {
+                        core.cancelRemainingUpgradePlanSteps(
+                            managerScopeId: managerScopeId,
+                            packageFilter: packageScopeQuery
+                        )
                     }
+                    .buttonStyle(HelmSecondaryButtonStyle())
 
-                    Button(L10n.App.Packages.Action.update.localized) {
-                        core.retryUpgradePlanSteps(stepIds: scopedFailedStepIds)
+                    Button(L10n.App.Action.dryRun.localized) {
+                        let lines = previewBreakdown.prefix(8).map { "\($0.manager): \($0.count)" }
+                        dryRunMessage = L10n.App.DryRun.message.localized(with: [
+                            "count": totalCount,
+                            "summary": lines.joined(separator: "\n")
+                        ])
+                        showDryRun = true
+                    }
+                    .buttonStyle(HelmSecondaryButtonStyle())
+
+                    Button(L10n.App.Action.runPlan.localized) {
+                        core.runUpgradePlanScoped(
+                            managerScopeId: managerScopeId,
+                            packageFilter: packageScopeQuery
+                        )
                     }
                     .buttonStyle(HelmPrimaryButtonStyle())
-                    .font(.caption)
-                    .disabled(scopedFailedStepIds.isEmpty)
+                    .disabled(totalCount == 0 || core.scopedUpgradePlanRunInProgress)
+
+                    Spacer()
                 }
             }
-
-            HStack {
-                Button(L10n.App.Tasks.Action.cancel.localized) {
-                    core.cancelRemainingUpgradePlanSteps(
-                        managerScopeId: managerScopeId,
-                        packageFilter: packageScopeQuery
-                    )
-                }
-                .buttonStyle(HelmSecondaryButtonStyle())
-
-                Button(L10n.App.Action.dryRun.localized) {
-                    let lines = previewBreakdown.prefix(8).map { "\($0.manager): \($0.count)" }
-                    dryRunMessage = L10n.App.DryRun.message.localized(with: [
-                        "count": totalCount,
-                        "summary": lines.joined(separator: "\n")
-                    ])
-                    showDryRun = true
-                }
-                .buttonStyle(HelmSecondaryButtonStyle())
-
-                Button(L10n.App.Action.runPlan.localized) {
-                    core.runUpgradePlanScoped(
-                        managerScopeId: managerScopeId,
-                        packageFilter: packageScopeQuery
-                    )
-                }
-                .buttonStyle(HelmPrimaryButtonStyle())
-                .disabled(totalCount == 0 || core.scopedUpgradePlanRunInProgress)
-
-                Spacer()
-            }
-
-            Spacer()
+            .padding(20)
         }
-        .padding(20)
         .alert(L10n.App.DryRun.title.localized, isPresented: $showDryRun) {
             Button(L10n.Common.ok.localized, role: .cancel) {}
         } message: {

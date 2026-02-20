@@ -96,6 +96,7 @@ Progress so far:
 - Rust adapter/runtime files normalized with formatting-only cleanup (no behavior changes)
 - release notes/checklist prep for first `v0.15.0` pre-release cut is now scaffolded in `CHANGELOG.md` and `docs/RELEASE_CHECKLIST.md`
 - Xcode version metadata settings now use a checked-in base xcconfig with optional generated override so clean checkouts build without pre-generated artifacts
+- Updates section now scrolls end-to-end so long plan/failure lists remain fully accessible during manual validation
 
 Deliver:
 
