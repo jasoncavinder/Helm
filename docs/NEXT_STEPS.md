@@ -18,6 +18,7 @@ Focus:
 - 0.15.x upgrade preview and execution transparency
 
 Current checkpoint:
+- `v0.15.0` release prep in progress on `dev` (final stabilization/validation complete; pending PR flow)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
 - `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)
 - `v0.13.0` stable released (website updates, documentation alignment, version bump)
@@ -37,7 +38,7 @@ Next release targets:
 
 ---
 
-## v0.15.x Kickoff Plan (In Progress)
+## v0.15.x Kickoff Plan (Completed)
 
 ### Alpha.1 — Plan Model + Inspector Foundations (Completed on `feat/v0.15.x-alpha.1-kickoff`)
 
@@ -80,7 +81,7 @@ Validation:
 - `cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`
 - `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
 
-### Alpha.4 — Final 0.15.0 Cut Readiness (In Progress on `feat/v0.15.x-alpha.1-kickoff`)
+### Alpha.4 — Final 0.15.0 Cut Readiness (Completed on `feat/v0.15.x-alpha.1-kickoff`)
 
 Progress so far:
 
@@ -99,17 +100,19 @@ Progress so far:
 - Updates section now scrolls end-to-end so long plan/failure lists remain fully accessible during manual validation
 - Updates rows now support full-row inspector hit targets, display-order numbering, and scoped-run in-progress feedback
 - Failed-task inspector now provides suggested repro command hints and a single `View Diagnostics` action
+- Task inspector now includes a dedicated `Command` field with resolved repro command text (or unavailable fallback)
 - Diagnostics modal now includes dedicated `diagnostics`, `stderr`, and `stdout` tabs
+- Support diagnostics manager rows now remain stable via authority-first + alphabetical ordering
 - Popover failure banner now uses a `Review` action (instead of `Upgrade All`) when failures exist, routing to Control Center Tasks and selecting the first failed task
+- Removed redundant Updates `Dry Run` button since equivalent plan context is already visible inline
 - Added execution-to-inspector task-output plumbing:
   - per-task runtime context now flows into process requests
   - process output capture is keyed by task ID and exposed via FFI/XPC (`helm_get_task_output` / `getTaskOutput`)
   - inspector fetches task output on demand for diagnostics without adding payload bloat to task polling
 
 Deliver:
-
-- merge alpha branch into `dev` for manual end-to-end validation of scoped run/cancel/retry behavior
-- capture manual validation notes and fold follow-up fixes into the `v0.15.0` stabilization pass
+- open PR with final `v0.15.0` prep deltas into `dev` for verified commit lineage
+- after merge to `dev`, open `dev` -> `main` PR and complete CI before tagging
 
 ### Exit Gate
 

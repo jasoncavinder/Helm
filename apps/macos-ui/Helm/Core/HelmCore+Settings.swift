@@ -547,7 +547,33 @@ struct HelmSupport {
         
         info += "\nManagers:\n"
         let core = HelmCore.shared
-        for (id, status) in core.managerStatuses {
+        let sortedManagers = core.managerStatuses.map { id, status in
+            let manager = ManagerInfo.find(byId: id)
+            let authorityRank: Int
+            switch manager?.authority {
+            case .authoritative:
+                authorityRank = 0
+            case .standard, .none:
+                authorityRank = 1
+            case .guarded:
+                authorityRank = 2
+            }
+            return (
+                id: id,
+                status: status,
+                authorityRank: authorityRank,
+                sortName: manager?.displayName ?? id
+            )
+        }.sorted { lhs, rhs in
+            if lhs.authorityRank != rhs.authorityRank {
+                return lhs.authorityRank < rhs.authorityRank
+            }
+            return lhs.sortName.localizedCaseInsensitiveCompare(rhs.sortName) == .orderedAscending
+        }
+
+        for entry in sortedManagers {
+            let id = entry.id
+            let status = entry.status
             let state = status.enabled ? "Enabled" : "Disabled"
             let installed = status.detected ? "Installed" : "Not Detected"
             let version = status.version ?? "Unknown"

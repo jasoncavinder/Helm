@@ -86,21 +86,6 @@ struct RedesignUpdatesSectionView: View {
     @State private var includeOsUpdates = false
     @State private var managerScopeId = HelmCore.allManagersScopeId
     @State private var packageScopeQuery = ""
-    @State private var showDryRun = false
-    @State private var dryRunMessage = ""
-
-    private var previewBreakdown: [(manager: String, count: Int)] {
-        Dictionary(grouping: scopedPlanSteps, by: \.managerId)
-            .map { key, value in
-                (manager: localizedManagerDisplayName(key), count: value.count)
-            }
-            .sorted { lhs, rhs in
-                if lhs.count == rhs.count {
-                    return lhs.manager.localizedCaseInsensitiveCompare(rhs.manager) == .orderedAscending
-                }
-                return lhs.count > rhs.count
-            }
-    }
 
     private var totalCount: Int {
         scopedPlanSteps.count
@@ -397,16 +382,6 @@ struct RedesignUpdatesSectionView: View {
                     }
                     .buttonStyle(HelmSecondaryButtonStyle())
 
-                    Button(L10n.App.Action.dryRun.localized) {
-                        let lines = previewBreakdown.prefix(8).map { "\($0.manager): \($0.count)" }
-                        dryRunMessage = L10n.App.DryRun.message.localized(with: [
-                            "count": totalCount,
-                            "summary": lines.joined(separator: "\n")
-                        ])
-                        showDryRun = true
-                    }
-                    .buttonStyle(HelmSecondaryButtonStyle())
-
                     Button(L10n.App.Action.runPlan.localized) {
                         core.runUpgradePlanScoped(
                             managerScopeId: managerScopeId,
@@ -420,11 +395,6 @@ struct RedesignUpdatesSectionView: View {
                 }
             }
             .padding(20)
-        }
-        .alert(L10n.App.DryRun.title.localized, isPresented: $showDryRun) {
-            Button(L10n.Common.ok.localized, role: .cancel) {}
-        } message: {
-            Text(dryRunMessage)
         }
         .onAppear {
             core.refreshUpgradePlan(includePinned: false, allowOsUpdates: includeOsUpdates)

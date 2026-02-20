@@ -23,10 +23,13 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Updates section content now scrolls to prevent clipping when execution-plan and failure lists exceed available viewport height.
 - Updates plan rows now use display-order numbering and full-row hit targets for inspector selection.
 - Updates section now shows an in-progress indicator while scoped plan execution is active.
-- Failed-task inspector details now include a suggested repro command when available and a task-scoped Copy Diagnostics action.
+- Task inspector now shows a `Command` field with the resolved repro command when available.
 - Popover failure banner now replaces contradictory `Upgrade All` with `Review` when failures exist, routing directly to Control Center Tasks and selecting the first failed task.
 - Failed-task inspector now uses a single `View Diagnostics` action that opens a 3-tab diagnostics view (`diagnostics`, `stderr`, `stdout`).
+- Support diagnostics manager listing is now stable (authority order, then alphabetical) to prevent row reordering churn.
 - Process-executed adapter tasks now carry task ID context through execution so stdout/stderr can be captured and mapped back to task IDs for diagnostics.
+- Removed the redundant `Dry Run` button from Updates now that equivalent plan visibility is always present inline.
+- Release-prep metadata now targets `0.15.0` across workspace versioning and status documentation (README/website/release checklist).
 - Generated `apps/macos-ui/Generated/HelmVersion.xcconfig` is now ignored and no longer tracked.
 
 ## [0.14.1] - 2026-02-20

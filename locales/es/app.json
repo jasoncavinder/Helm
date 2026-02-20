@@ -184,6 +184,8 @@
   "app.inspector.task_type": "Tipo de tarea",
   "app.inspector.task_status": "Estado",
   "app.inspector.task_manager": "Gestor",
+  "app.inspector.task_command": "Comando",
+  "app.inspector.task_command_unavailable": "No disponible",
   "app.inspector.task_label_key": "Clave de etiqueta",
   "app.inspector.task_label_args": "Argumentos de etiqueta",
   "app.inspector.package_id": "ID de paquete",
