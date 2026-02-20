@@ -45,6 +45,7 @@ struct PopoverOverlayCard<Content: View>: View {
 struct PopoverAttentionBanner: View {
     @ObservedObject private var core = HelmCore.shared
     @EnvironmentObject private var context: ControlCenterContext
+    let onOpenControlCenter: () -> Void
 
     private var bannerSymbol: String {
         if !core.isConnected {
@@ -99,7 +100,18 @@ struct PopoverAttentionBanner: View {
 
             Spacer(minLength: 10)
 
-            if !core.outdatedPackages.isEmpty {
+            if core.failedTaskCount > 0 {
+                Button(L10n.App.Popover.Banner.review.localized) {
+                    context.selectedSection = .tasks
+                    context.selectedTaskId = firstFailedTaskId
+                    context.selectedPackageId = nil
+                    context.selectedManagerId = nil
+                    context.selectedUpgradePlanStepId = nil
+                    onOpenControlCenter()
+                }
+                .buttonStyle(UpdateAllPillButtonStyle())
+                .helmPointer()
+            } else if !core.outdatedPackages.isEmpty {
                 Button(L10n.App.Settings.Action.upgradeAll.localized) {
                     context.showUpgradeSheet = true
                 }
@@ -124,6 +136,10 @@ struct PopoverAttentionBanner: View {
                         .strokeBorder(bannerTint.opacity(0.18), lineWidth: 0.8)
                 )
         )
+    }
+
+    private var firstFailedTaskId: String? {
+        core.activeTasks.first(where: { $0.status.lowercased() == "failed" })?.id
     }
 }
 

@@ -285,6 +285,7 @@ extension L10n {
                 static let failedMessage = "app.popover.banner.failed.message"
                 static let updatesTitle = "app.popover.banner.updates.title"
                 static let updatesMessage = "app.popover.banner.updates.message"
+                static let review = "app.popover.banner.review"
             }
         }
         struct Action {
@@ -337,11 +338,13 @@ extension L10n {
             static let taskFailureFeedback = "app.inspector.task_failure_feedback"
             static let taskFailureHintHomebrewInstall = "app.inspector.task_failure_hint.homebrew_install"
             static let taskFailureHintGeneric = "app.inspector.task_failure_hint.generic"
-            static let viewTaskOutput = "app.inspector.view_task_output"
-            static let taskOutput = "app.inspector.task_output"
+            static let viewDiagnostics = "app.inspector.view_diagnostics"
+            static let taskDiagnostics = "app.inspector.task_diagnostics"
+            static let taskDiagnosticsUnavailable = "app.inspector.task_diagnostics_unavailable"
             static let taskOutputLoading = "app.inspector.task_output_loading"
             static let taskOutputLoadFailed = "app.inspector.task_output_load_failed"
             static let taskOutputUnavailable = "app.inspector.task_output_unavailable"
+            static let taskOutputDiagnostics = "app.inspector.task_output.diagnostics"
             static let taskOutputStdout = "app.inspector.task_output.stdout"
             static let taskOutputStderr = "app.inspector.task_output.stderr"
             static let packageId = "app.inspector.package_id"

@@ -297,5 +297,10 @@
   "app.inspector.task_output_load_failed": "Não foi possível carregar a saída da tarefa.",
   "app.inspector.task_output_unavailable": "Saída da tarefa indisponível.",
   "app.inspector.task_output.stdout": "stdout",
-  "app.inspector.task_output.stderr": "stderr"
+  "app.inspector.task_output.stderr": "stderr",
+  "app.popover.banner.review": "Revisar",
+  "app.inspector.view_diagnostics": "Ver diagnósticos",
+  "app.inspector.task_diagnostics": "Diagnósticos",
+  "app.inspector.task_diagnostics_unavailable": "Os diagnósticos não estão disponíveis.",
+  "app.inspector.task_output.diagnostics": "diagnósticos"
 }

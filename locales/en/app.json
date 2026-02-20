@@ -297,5 +297,10 @@
   "app.inspector.task_output_load_failed": "Couldn't load task output.",
   "app.inspector.task_output_unavailable": "Task output not available.",
   "app.inspector.task_output.stdout": "stdout",
-  "app.inspector.task_output.stderr": "stderr"
+  "app.inspector.task_output.stderr": "stderr",
+  "app.popover.banner.review": "Review",
+  "app.inspector.view_diagnostics": "View Diagnostics",
+  "app.inspector.task_diagnostics": "Diagnostics",
+  "app.inspector.task_diagnostics_unavailable": "Diagnostics are not available.",
+  "app.inspector.task_output.diagnostics": "diagnostics"
 }

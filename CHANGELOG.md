@@ -24,6 +24,8 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Updates plan rows now use display-order numbering and full-row hit targets for inspector selection.
 - Updates section now shows an in-progress indicator while scoped plan execution is active.
 - Failed-task inspector details now include a suggested repro command when available and a task-scoped Copy Diagnostics action.
+- Popover failure banner now replaces contradictory `Upgrade All` with `Review` when failures exist, routing directly to Control Center Tasks and selecting the first failed task.
+- Failed-task inspector now uses a single `View Diagnostics` action that opens a 3-tab diagnostics view (`diagnostics`, `stderr`, `stdout`).
 - Process-executed adapter tasks now carry task ID context through execution so stdout/stderr can be captured and mapped back to task IDs for diagnostics.
 - Generated `apps/macos-ui/Generated/HelmVersion.xcconfig` is now ignored and no longer tracked.
 

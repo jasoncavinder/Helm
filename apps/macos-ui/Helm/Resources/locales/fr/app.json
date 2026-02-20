@@ -297,5 +297,10 @@
   "app.inspector.task_output_load_failed": "Impossible de charger la sortie de la tâche.",
   "app.inspector.task_output_unavailable": "Sortie de la tâche indisponible.",
   "app.inspector.task_output.stdout": "stdout",
-  "app.inspector.task_output.stderr": "stderr"
+  "app.inspector.task_output.stderr": "stderr",
+  "app.popover.banner.review": "Vérifier",
+  "app.inspector.view_diagnostics": "Voir les diagnostics",
+  "app.inspector.task_diagnostics": "Diagnostics",
+  "app.inspector.task_diagnostics_unavailable": "Les diagnostics ne sont pas disponibles.",
+  "app.inspector.task_output.diagnostics": "diagnostics"
 }

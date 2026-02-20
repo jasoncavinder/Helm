@@ -78,8 +78,7 @@ struct ControlCenterInspectorView: View {
 
 private struct InspectorTaskDetailView: View {
     @ObservedObject private var core = HelmCore.shared
-    @State private var copiedDiagnosticsConfirmation = false
-    @State private var showTaskOutputSheet = false
+    @State private var showDiagnosticsSheet = false
     @State private var isLoadingTaskOutput = false
     @State private var taskOutputLoadFailed = false
     @State private var taskOutputRecord: CoreTaskOutputRecord?
@@ -165,43 +164,26 @@ private struct InspectorTaskDetailView: View {
                                 .textSelection(.enabled)
                         }
 
-                        Button(L10n.App.Settings.SupportFeedback.copyDiagnostics.localized) {
-                            HelmSupport.copyTaskDiagnosticsToClipboard(
-                                task: task,
-                                suggestedCommand: diagnosticCommandHint()
-                            )
-                            showCopiedDiagnosticsBriefly()
-                        }
-                        .buttonStyle(HelmSecondaryButtonStyle())
-                        .font(.caption)
-                        .helmPointer()
-
                         if hasNumericTaskId {
-                            Button(L10n.App.Inspector.viewTaskOutput.localized) {
-                                showTaskOutputSheet = true
+                            Button(L10n.App.Inspector.viewDiagnostics.localized) {
+                                showDiagnosticsSheet = true
                                 loadTaskOutput(force: true)
                             }
                             .buttonStyle(HelmSecondaryButtonStyle())
                             .font(.caption)
                             .helmPointer()
                         }
-
-                        if copiedDiagnosticsConfirmation {
-                            HStack(spacing: 4) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(.green)
-                                Text(L10n.App.Settings.SupportFeedback.copiedConfirmation.localized)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
                     }
                 }
             }
         }
-        .popover(isPresented: $showTaskOutputSheet, arrowEdge: .leading) {
-            TaskOutputSheetView(
+        .popover(isPresented: $showDiagnosticsSheet, arrowEdge: .leading) {
+            TaskDiagnosticsSheetView(
                 taskDescription: task.description,
+                diagnosticsText: HelmSupport.generateTaskDiagnostics(
+                    task: task,
+                    suggestedCommand: diagnosticCommandHint()
+                ),
                 output: taskOutputRecord,
                 isLoading: isLoadingTaskOutput,
                 loadFailed: taskOutputLoadFailed
@@ -235,13 +217,6 @@ private struct InspectorTaskDetailView: View {
         core.diagnosticCommandHint(for: task)
     }
 
-    private func showCopiedDiagnosticsBriefly() {
-        copiedDiagnosticsConfirmation = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            copiedDiagnosticsConfirmation = false
-        }
-    }
-
     private var hasNumericTaskId: Bool {
         Int64(task.id) != nil
     }
@@ -272,15 +247,16 @@ private struct InspectorTaskDetailView: View {
     }
 }
 
-private struct TaskOutputSheetView: View {
+private struct TaskDiagnosticsSheetView: View {
     let taskDescription: String
+    let diagnosticsText: String
     let output: CoreTaskOutputRecord?
     let isLoading: Bool
     let loadFailed: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(L10n.App.Inspector.taskOutput.localized)
+            Text(L10n.App.Inspector.taskDiagnostics.localized)
                 .font(.headline)
 
             Text(taskDescription)
@@ -288,36 +264,37 @@ private struct TaskOutputSheetView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
 
-            if isLoading && output == nil {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text(L10n.App.Inspector.taskOutputLoading.localized)
-                        .foregroundStyle(.secondary)
-                }
-            } else if loadFailed {
-                Text(L10n.App.Inspector.taskOutputLoadFailed.localized)
-                    .foregroundStyle(.secondary)
-            } else if let output {
-                TabView {
-                    TaskOutputTextView(
-                        text: output.stderr,
-                        unavailableText: L10n.App.Inspector.taskOutputUnavailable.localized
-                    )
-                    .tabItem { Text(L10n.App.Inspector.taskOutputStderr.localized) }
+            TabView {
+                TaskOutputTextView(
+                    text: diagnosticsText,
+                    unavailableText: L10n.App.Inspector.taskDiagnosticsUnavailable.localized
+                )
+                .tabItem { Text(L10n.App.Inspector.taskOutputDiagnostics.localized) }
 
-                    TaskOutputTextView(
-                        text: output.stdout,
-                        unavailableText: L10n.App.Inspector.taskOutputUnavailable.localized
-                    )
-                    .tabItem { Text(L10n.App.Inspector.taskOutputStdout.localized) }
-                }
-            } else {
-                Text(L10n.App.Inspector.taskOutputUnavailable.localized)
-                    .foregroundStyle(.secondary)
+                TaskOutputTextView(
+                    text: output?.stderr,
+                    unavailableText: streamUnavailableText()
+                )
+                .tabItem { Text(L10n.App.Inspector.taskOutputStderr.localized) }
+
+                TaskOutputTextView(
+                    text: output?.stdout,
+                    unavailableText: streamUnavailableText()
+                )
+                .tabItem { Text(L10n.App.Inspector.taskOutputStdout.localized) }
             }
         }
         .padding(16)
+    }
+
+    private func streamUnavailableText() -> String {
+        if isLoading && output == nil {
+            return L10n.App.Inspector.taskOutputLoading.localized
+        }
+        if loadFailed {
+            return L10n.App.Inspector.taskOutputLoadFailed.localized
+        }
+        return L10n.App.Inspector.taskOutputUnavailable.localized
     }
 }
 
