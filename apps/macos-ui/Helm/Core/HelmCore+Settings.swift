@@ -320,116 +320,195 @@ extension HelmCore {
             return nil
         }
 
-        let package = task.labelArgs?["package"]?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let toolchain = task.labelArgs?["toolchain"]?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let packageArg = package.flatMap { $0.isEmpty ? nil : $0 }
+        let packageArg = normalizedCommandArg(task.labelArgs?["package"])
+        let toolchainArg = normalizedCommandArg(task.labelArgs?["toolchain"])
 
-        switch (managerId, taskType) {
-        case ("homebrew_formula", "install"):
+        switch managerId {
+        case "homebrew_formula":
+            return commandForHomebrewFormula(taskType: taskType, packageArg: packageArg)
+        case "homebrew_cask":
+            return commandForHomebrewCask(taskType: taskType, packageArg: packageArg)
+        case "npm":
+            return packageManagerCommand(
+                taskType: taskType,
+                packageArg: packageArg,
+                installPrefix: "npm install -g",
+                uninstallPrefix: "npm uninstall -g",
+                upgradePrefix: "npm update -g"
+            )
+        case "pnpm":
+            return packageManagerCommand(
+                taskType: taskType,
+                packageArg: packageArg,
+                installPrefix: "pnpm add -g",
+                uninstallPrefix: "pnpm remove -g",
+                upgradePrefix: "pnpm update -g"
+            )
+        case "yarn":
+            return packageManagerCommand(
+                taskType: taskType,
+                packageArg: packageArg,
+                installPrefix: "yarn global add",
+                uninstallPrefix: "yarn global remove",
+                upgradePrefix: "yarn global upgrade"
+            )
+        case "pip":
+            return commandForPip(taskType: taskType, packageArg: packageArg)
+        case "pipx":
+            return packageManagerCommand(
+                taskType: taskType,
+                packageArg: packageArg,
+                installPrefix: "pipx install",
+                uninstallPrefix: "pipx uninstall",
+                upgradePrefix: "pipx upgrade"
+            )
+        case "rubygems":
+            return packageManagerCommand(
+                taskType: taskType,
+                packageArg: packageArg,
+                installPrefix: "gem install",
+                uninstallPrefix: "gem uninstall",
+                upgradePrefix: "gem update"
+            )
+        case "poetry":
+            return commandForPoetry(taskType: taskType, packageArg: packageArg)
+        case "cargo":
+            return commandForCargo(taskType: taskType, packageArg: packageArg)
+        case "cargo_binstall":
+            return commandForCargoBinstall(taskType: taskType, packageArg: packageArg)
+        case "rustup":
+            return commandForRustup(taskType: taskType, toolchainArg: toolchainArg)
+        case "softwareupdate":
+            return taskType == "upgrade" ? "softwareupdate --install --all" : nil
+        case "mise":
+            return commandForMise(taskType: taskType, packageArg: packageArg)
+        default:
+            return nil
+        }
+    }
+
+    private func normalizedCommandArg(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
+    }
+
+    private func packageManagerCommand(
+        taskType: String,
+        packageArg: String?,
+        installPrefix: String,
+        uninstallPrefix: String,
+        upgradePrefix: String
+    ) -> String? {
+        guard let packageArg else { return nil }
+        switch taskType {
+        case "install":
+            return "\(installPrefix) \(packageArg)"
+        case "uninstall":
+            return "\(uninstallPrefix) \(packageArg)"
+        case "upgrade":
+            return "\(upgradePrefix) \(packageArg)"
+        default:
+            return nil
+        }
+    }
+
+    private func commandForHomebrewFormula(taskType: String, packageArg: String?) -> String? {
+        switch taskType {
+        case "install":
             guard let packageArg else { return nil }
             return "brew install \(packageArg)"
-        case ("homebrew_formula", "uninstall"):
+        case "uninstall":
             guard let packageArg else { return nil }
             return "brew uninstall \(packageArg)"
-        case ("homebrew_formula", "upgrade"):
+        case "upgrade":
             if let packageArg {
                 return "brew upgrade \(packageArg)"
             }
             return "brew upgrade"
-        case ("homebrew_cask", "upgrade"):
-            if let packageArg {
-                return "brew upgrade --cask \(packageArg)"
-            }
-            return "brew upgrade --cask"
-        case ("npm", "install"):
-            guard let packageArg else { return nil }
-            return "npm install -g \(packageArg)"
-        case ("npm", "uninstall"):
-            guard let packageArg else { return nil }
-            return "npm uninstall -g \(packageArg)"
-        case ("npm", "upgrade"):
-            guard let packageArg else { return nil }
-            return "npm update -g \(packageArg)"
-        case ("pnpm", "install"):
-            guard let packageArg else { return nil }
-            return "pnpm add -g \(packageArg)"
-        case ("pnpm", "uninstall"):
-            guard let packageArg else { return nil }
-            return "pnpm remove -g \(packageArg)"
-        case ("pnpm", "upgrade"):
-            guard let packageArg else { return nil }
-            return "pnpm update -g \(packageArg)"
-        case ("yarn", "install"):
-            guard let packageArg else { return nil }
-            return "yarn global add \(packageArg)"
-        case ("yarn", "uninstall"):
-            guard let packageArg else { return nil }
-            return "yarn global remove \(packageArg)"
-        case ("yarn", "upgrade"):
-            guard let packageArg else { return nil }
-            return "yarn global upgrade \(packageArg)"
-        case ("pip", "install"), ("pip", "upgrade"):
-            guard let packageArg else { return nil }
+        default:
+            return nil
+        }
+    }
+
+    private func commandForHomebrewCask(taskType: String, packageArg: String?) -> String? {
+        guard taskType == "upgrade" else { return nil }
+        if let packageArg {
+            return "brew upgrade --cask \(packageArg)"
+        }
+        return "brew upgrade --cask"
+    }
+
+    private func commandForPip(taskType: String, packageArg: String?) -> String? {
+        guard let packageArg else { return nil }
+        switch taskType {
+        case "install", "upgrade":
             return "python3 -m pip install --upgrade \(packageArg)"
-        case ("pip", "uninstall"):
-            guard let packageArg else { return nil }
+        case "uninstall":
             return "python3 -m pip uninstall \(packageArg)"
-        case ("pipx", "install"):
-            guard let packageArg else { return nil }
-            return "pipx install \(packageArg)"
-        case ("pipx", "uninstall"):
-            guard let packageArg else { return nil }
-            return "pipx uninstall \(packageArg)"
-        case ("pipx", "upgrade"):
-            guard let packageArg else { return nil }
-            return "pipx upgrade \(packageArg)"
-        case ("rubygems", "install"):
-            guard let packageArg else { return nil }
-            return "gem install \(packageArg)"
-        case ("rubygems", "uninstall"):
-            guard let packageArg else { return nil }
-            return "gem uninstall \(packageArg)"
-        case ("rubygems", "upgrade"):
-            guard let packageArg else { return nil }
-            return "gem update \(packageArg)"
-        case ("poetry", "install"):
+        default:
+            return nil
+        }
+    }
+
+    private func commandForPoetry(taskType: String, packageArg: String?) -> String? {
+        switch taskType {
+        case "install":
             guard let packageArg else { return nil }
             return "poetry self add \(packageArg)"
-        case ("poetry", "uninstall"):
+        case "uninstall":
             guard let packageArg else { return nil }
             return "poetry self remove \(packageArg)"
-        case ("poetry", "upgrade"):
+        case "upgrade":
             if let packageArg {
                 return "poetry self update \(packageArg)"
             }
             return "poetry self update"
-        case ("cargo", "install"), ("cargo", "upgrade"):
-            guard let packageArg else { return nil }
-            return "cargo install \(packageArg)"
-        case ("cargo", "uninstall"):
-            guard let packageArg else { return nil }
-            return "cargo uninstall \(packageArg)"
-        case ("cargo_binstall", "install"), ("cargo_binstall", "upgrade"):
-            guard let packageArg else { return nil }
-            return "cargo binstall \(packageArg)"
-        case ("cargo_binstall", "uninstall"):
-            guard let packageArg else { return nil }
-            return "cargo uninstall \(packageArg)"
-        case ("rustup", "upgrade"):
-            if let toolchain, !toolchain.isEmpty {
-                return "rustup update \(toolchain)"
-            }
-            return "rustup update"
-        case ("softwareupdate", "upgrade"):
-            return "softwareupdate --install --all"
-        case ("mise", "upgrade"):
-            if let packageArg {
-                return "mise upgrade \(packageArg)"
-            }
-            return "mise upgrade"
         default:
             return nil
         }
+    }
+
+    private func commandForCargo(taskType: String, packageArg: String?) -> String? {
+        guard let packageArg else { return nil }
+        switch taskType {
+        case "install", "upgrade":
+            return "cargo install \(packageArg)"
+        case "uninstall":
+            return "cargo uninstall \(packageArg)"
+        default:
+            return nil
+        }
+    }
+
+    private func commandForCargoBinstall(taskType: String, packageArg: String?) -> String? {
+        guard let packageArg else { return nil }
+        switch taskType {
+        case "install", "upgrade":
+            return "cargo binstall \(packageArg)"
+        case "uninstall":
+            return "cargo uninstall \(packageArg)"
+        default:
+            return nil
+        }
+    }
+
+    private func commandForRustup(taskType: String, toolchainArg: String?) -> String? {
+        guard taskType == "upgrade" else { return nil }
+        if let toolchainArg {
+            return "rustup update \(toolchainArg)"
+        }
+        return "rustup update"
+    }
+
+    private func commandForMise(taskType: String, packageArg: String?) -> String? {
+        guard taskType == "upgrade" else { return nil }
+        if let packageArg {
+            return "mise upgrade \(packageArg)"
+        }
+        return "mise upgrade"
     }
 
     func upgradeActionDescription(for package: PackageItem) -> String {
