@@ -314,6 +314,124 @@ extension HelmCore {
         }
     }
 
+    func diagnosticCommandHint(for task: TaskItem) -> String? {
+        guard let managerId = task.managerId?.lowercased(),
+              let taskType = task.taskType?.lowercased() else {
+            return nil
+        }
+
+        let package = task.labelArgs?["package"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let toolchain = task.labelArgs?["toolchain"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let packageArg = package.flatMap { $0.isEmpty ? nil : $0 }
+
+        switch (managerId, taskType) {
+        case ("homebrew_formula", "install"):
+            guard let packageArg else { return nil }
+            return "brew install \(packageArg)"
+        case ("homebrew_formula", "uninstall"):
+            guard let packageArg else { return nil }
+            return "brew uninstall \(packageArg)"
+        case ("homebrew_formula", "upgrade"):
+            if let packageArg {
+                return "brew upgrade \(packageArg)"
+            }
+            return "brew upgrade"
+        case ("homebrew_cask", "upgrade"):
+            if let packageArg {
+                return "brew upgrade --cask \(packageArg)"
+            }
+            return "brew upgrade --cask"
+        case ("npm", "install"):
+            guard let packageArg else { return nil }
+            return "npm install -g \(packageArg)"
+        case ("npm", "uninstall"):
+            guard let packageArg else { return nil }
+            return "npm uninstall -g \(packageArg)"
+        case ("npm", "upgrade"):
+            guard let packageArg else { return nil }
+            return "npm update -g \(packageArg)"
+        case ("pnpm", "install"):
+            guard let packageArg else { return nil }
+            return "pnpm add -g \(packageArg)"
+        case ("pnpm", "uninstall"):
+            guard let packageArg else { return nil }
+            return "pnpm remove -g \(packageArg)"
+        case ("pnpm", "upgrade"):
+            guard let packageArg else { return nil }
+            return "pnpm update -g \(packageArg)"
+        case ("yarn", "install"):
+            guard let packageArg else { return nil }
+            return "yarn global add \(packageArg)"
+        case ("yarn", "uninstall"):
+            guard let packageArg else { return nil }
+            return "yarn global remove \(packageArg)"
+        case ("yarn", "upgrade"):
+            guard let packageArg else { return nil }
+            return "yarn global upgrade \(packageArg)"
+        case ("pip", "install"), ("pip", "upgrade"):
+            guard let packageArg else { return nil }
+            return "python3 -m pip install --upgrade \(packageArg)"
+        case ("pip", "uninstall"):
+            guard let packageArg else { return nil }
+            return "python3 -m pip uninstall \(packageArg)"
+        case ("pipx", "install"):
+            guard let packageArg else { return nil }
+            return "pipx install \(packageArg)"
+        case ("pipx", "uninstall"):
+            guard let packageArg else { return nil }
+            return "pipx uninstall \(packageArg)"
+        case ("pipx", "upgrade"):
+            guard let packageArg else { return nil }
+            return "pipx upgrade \(packageArg)"
+        case ("rubygems", "install"):
+            guard let packageArg else { return nil }
+            return "gem install \(packageArg)"
+        case ("rubygems", "uninstall"):
+            guard let packageArg else { return nil }
+            return "gem uninstall \(packageArg)"
+        case ("rubygems", "upgrade"):
+            guard let packageArg else { return nil }
+            return "gem update \(packageArg)"
+        case ("poetry", "install"):
+            guard let packageArg else { return nil }
+            return "poetry self add \(packageArg)"
+        case ("poetry", "uninstall"):
+            guard let packageArg else { return nil }
+            return "poetry self remove \(packageArg)"
+        case ("poetry", "upgrade"):
+            if let packageArg {
+                return "poetry self update \(packageArg)"
+            }
+            return "poetry self update"
+        case ("cargo", "install"), ("cargo", "upgrade"):
+            guard let packageArg else { return nil }
+            return "cargo install \(packageArg)"
+        case ("cargo", "uninstall"):
+            guard let packageArg else { return nil }
+            return "cargo uninstall \(packageArg)"
+        case ("cargo_binstall", "install"), ("cargo_binstall", "upgrade"):
+            guard let packageArg else { return nil }
+            return "cargo binstall \(packageArg)"
+        case ("cargo_binstall", "uninstall"):
+            guard let packageArg else { return nil }
+            return "cargo uninstall \(packageArg)"
+        case ("rustup", "upgrade"):
+            if let toolchain, !toolchain.isEmpty {
+                return "rustup update \(toolchain)"
+            }
+            return "rustup update"
+        case ("softwareupdate", "upgrade"):
+            return "softwareupdate --install --all"
+        case ("mise", "upgrade"):
+            if let packageArg {
+                return "mise upgrade \(packageArg)"
+            }
+            return "mise upgrade"
+        default:
+            return nil
+        }
+    }
+
     func upgradeActionDescription(for package: PackageItem) -> String {
         switch package.managerId {
         case "homebrew_formula":
@@ -454,6 +572,39 @@ struct HelmSupport {
 
     static func copyDiagnosticsToClipboard() {
         let diagnostics = generateDiagnostics()
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(diagnostics, forType: .string)
+    }
+
+    static func generateTaskDiagnostics(task: TaskItem, suggestedCommand: String?) -> String {
+        var info = generateDiagnostics()
+        info += "\nTask Focus:\n"
+        info += "- Task ID: \(task.id)\n"
+        info += "- Status: \(task.status)\n"
+        if let managerId = task.managerId {
+            info += "- Manager: \(managerId)\n"
+        }
+        if let taskType = task.taskType {
+            info += "- Task Type: \(taskType)\n"
+        }
+        if let labelKey = task.labelKey {
+            info += "- Label Key: \(labelKey)\n"
+        }
+        if let labelArgs = task.labelArgs, !labelArgs.isEmpty {
+            info += "- Label Args:\n"
+            for entry in labelArgs.sorted(by: { $0.key < $1.key }) {
+                info += "  - \(entry.key): \(entry.value)\n"
+            }
+        }
+        if let suggestedCommand, !suggestedCommand.isEmpty {
+            info += "- Suggested Repro Command: \(suggestedCommand)\n"
+        }
+        return info
+    }
+
+    static func copyTaskDiagnosticsToClipboard(task: TaskItem, suggestedCommand: String?) {
+        let diagnostics = generateTaskDiagnostics(task: task, suggestedCommand: suggestedCommand)
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(diagnostics, forType: .string)

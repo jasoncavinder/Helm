@@ -77,6 +77,8 @@ struct ControlCenterInspectorView: View {
 // MARK: - Task Inspector
 
 private struct InspectorTaskDetailView: View {
+    @ObservedObject private var core = HelmCore.shared
+    @State private var copiedDiagnosticsConfirmation = false
     let task: TaskItem
 
     var body: some View {
@@ -148,9 +150,38 @@ private struct InspectorTaskDetailView: View {
 
             if task.status.lowercased() == "failed" {
                 InspectorField(label: L10n.App.Inspector.taskFailureFeedback.localized) {
-                    Text(failureHintText())
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(failureHintText())
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        if let commandHint = diagnosticCommandHint() {
+                            Text(commandHint)
+                                .font(.caption.monospaced())
+                                .textSelection(.enabled)
+                        }
+
+                        Button(L10n.App.Settings.SupportFeedback.copyDiagnostics.localized) {
+                            HelmSupport.copyTaskDiagnosticsToClipboard(
+                                task: task,
+                                suggestedCommand: diagnosticCommandHint()
+                            )
+                            showCopiedDiagnosticsBriefly()
+                        }
+                        .buttonStyle(HelmSecondaryButtonStyle())
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .helmPointer()
+
+                        if copiedDiagnosticsConfirmation {
+                            HStack(spacing: 4) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                                Text(L10n.App.Settings.SupportFeedback.copiedConfirmation.localized)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -175,6 +206,17 @@ private struct InspectorTaskDetailView: View {
         }
 
         return L10n.Service.Error.processFailure.localized
+    }
+
+    private func diagnosticCommandHint() -> String? {
+        core.diagnosticCommandHint(for: task)
+    }
+
+    private func showCopiedDiagnosticsBriefly() {
+        copiedDiagnosticsConfirmation = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            copiedDiagnosticsConfirmation = false
+        }
     }
 }
 
