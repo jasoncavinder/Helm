@@ -132,12 +132,18 @@ Implemented on `feat/v0.16.0-kickoff`:
 - Helm target Info.plist keys are now build-setting injected (channel + Sparkle feed/signature metadata) rather than hardcoded plist values.
 - Release DMG workflow now injects direct-channel Sparkle metadata at build time and validates required release secrets/packaged plist channel keys.
 - Added regression coverage for channel config parsing + Sparkle gating behavior (`AppUpdateConfigurationTests`) and extracted shared app-update config model into `Helm/Core/AppUpdateConfiguration.swift`.
+- Build script now enforces channel/Sparkle policy at generation time and fails fast on invalid combinations:
+  - non-Developer-ID channels cannot enable Sparkle or set Sparkle feed/signature metadata
+  - Developer ID channel with Sparkle enabled must provide both `HELM_SPARKLE_FEED_URL` and `HELM_SPARKLE_PUBLIC_ED_KEY`
 
 Validation:
 
 - `cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml` passing
 - `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test` passing
 - `swiftlint lint --no-cache apps/macos-ui/Helm/Core/HelmCore.swift apps/macos-ui/Helm/Core/AppUpdateConfiguration.swift apps/macos-ui/Helm/AppDelegate.swift apps/macos-ui/Helm/Views/PopoverOverlayViews.swift apps/macos-ui/Helm/Core/L10n+App.swift` passing (local toolchain warns about one unsupported legacy rule key)
+- Channel-policy hardening sanity checks:
+  - `CONFIGURATION=Debug HELM_CHANNEL_PROFILE=app_store HELM_CHANNEL_OVERRIDE_SPARKLE_ENABLED=YES apps/macos-ui/scripts/build_rust.sh` fails as expected
+  - `CONFIGURATION=Debug HELM_CHANNEL_PROFILE=developer_id HELM_CHANNEL_OVERRIDE_SPARKLE_ENABLED=YES apps/macos-ui/scripts/build_rust.sh` fails as expected when feed/key are omitted
 
 ---
 

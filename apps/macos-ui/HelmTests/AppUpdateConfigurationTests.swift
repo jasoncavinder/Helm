@@ -55,6 +55,22 @@ final class AppUpdateConfigurationTests: XCTestCase {
         XCTAssertNil(config.sparklePublicEdKey)
     }
 
+    func testFromBundleTreatsBlankSparkleFeedAndKeyAsMissing() throws {
+        let bundle = try makeBundle(info: [
+            "HelmDistributionChannel": "developer_id",
+            "HelmSparkleEnabled": "YES",
+            "SUFeedURL": "   ",
+            "SUPublicEDKey": ""
+        ])
+        defer { removeBundle(bundle) }
+
+        let config = AppUpdateConfiguration.from(bundle: bundle)
+        XCTAssertNil(config.sparkleFeedURL)
+        XCTAssertNil(config.sparklePublicEdKey)
+        XCTAssertFalse(config.hasSparkleConfig)
+        XCTAssertFalse(config.canUseSparkle)
+    }
+
     private func makeBundle(info: [String: Any]) throws -> Bundle {
         let bundleURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("helm-update-config-\(UUID().uuidString)")

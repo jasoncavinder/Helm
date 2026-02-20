@@ -18,7 +18,7 @@ Focus:
 - 0.16.x self-update and installer hardening
 
 Current checkpoint:
-- `v0.16.0-alpha.1` kickoff in progress on `feat/v0.16.0-kickoff` (channel-aware updater scaffolding + channel build-profile wiring + release feed/signature injection + Sparkle package linkage + config regression tests landed)
+- `v0.16.0-alpha.1` kickoff in progress on `feat/v0.16.0-kickoff` (channel-aware updater scaffolding + channel build-profile wiring + release feed/signature injection + Sparkle package linkage + config regression tests + channel-policy build validation landed)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
 - `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)
@@ -69,6 +69,7 @@ Delivered:
   - `SUPublicEDKey`
 - Release DMG workflow now passes direct-channel Sparkle build metadata and validates required Sparkle secrets before signed release builds.
 - Added regression coverage for app update channel config parsing + Sparkle gating behavior (`AppUpdateConfigurationTests`).
+- Added fail-fast build-script policy checks for invalid channel/Sparkle combinations.
 
 Next in alpha.1:
 
