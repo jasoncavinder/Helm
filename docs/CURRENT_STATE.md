@@ -101,6 +101,22 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 
 ---
 
+## v0.14.1 Pre-Release Patch Status (In Progress)
+
+### Adapter Behavior Slice (Implemented on feature branch)
+
+- RubyGems packages are now eligible for per-package update actions in UI (`canUpgradeIndividually`)
+- Manager install preflight now validates Homebrew availability before attempting Homebrew-backed manager installs (`mise`, `mas`)
+- When Homebrew is unavailable, install now returns a specific localized service error key (`service.error.homebrew_required`) instead of generic process failure
+- Added localized `service.error.homebrew_required` messaging across all supported locales in canonical and mirrored locale trees
+
+Validation:
+
+- `cargo test -p helm-ffi` passing
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm test -destination 'platform=macOS'` passing
+
+---
+
 ## v0.13.0-beta.3 Audit Status
 
 Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 remediation work.

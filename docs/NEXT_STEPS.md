@@ -19,6 +19,7 @@ Focus:
 
 Current checkpoint:
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
+- `v0.14.1` patch-track started (pre-merge fix slices being implemented off `dev` for review)
 - `v0.13.0` stable released (website updates, documentation alignment, version bump)
 - `v0.13.0-rc.2` released (support & feedback entry points, diagnostics copy, GitHub Sponsors integration)
 - `v0.13.0-rc.1` released (inspector sidebar, upgrade reliability, status menu, documentation)
@@ -32,7 +33,28 @@ Current checkpoint:
 - `v0.14.0` distribution/licensing architecture planning docs aligned (future-state, no implementation changes)
 
 Next release targets:
+- `v0.14.1` — Stability + UX + adapter behavior fixes (patch release after review)
 - `v0.15.x` — Upgrade Preview & Execution Transparency
+
+---
+
+## v0.14.1 Patch Track (In Progress)
+
+### Adapter Behavior Slice (Completed on branch)
+
+Delivered:
+
+- Enabled RubyGems for per-package update action eligibility in the SwiftUI control center workflow
+- Added Homebrew dependency preflight for Homebrew-backed manager installs (`mise`, `mas`)
+- Added explicit localized service error for missing Homebrew dependency:
+  - `service.error.homebrew_required`
+  - propagated across all supported locales and mirrored locale resources
+
+Remaining slices before merge to `dev`:
+
+- UI/UX fixes (onboarding row density, package selection highlight, search field cleanup, inspector package actions)
+- Task lifecycle fixes (duplicate in-flight task rows; prune policy for long-running/pending tasks)
+- Cache/persistence enhancements (available package cache strategy + package description persistence and refresh behavior)
 
 ---
 

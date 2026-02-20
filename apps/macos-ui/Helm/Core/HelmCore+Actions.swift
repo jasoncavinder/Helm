@@ -33,7 +33,17 @@ extension HelmCore {
     }
 
     func canUpgradeIndividually(_ package: PackageItem) -> Bool {
-        let upgradableManagers: Set<String> = ["homebrew_formula", "mise", "npm", "pip", "pipx", "cargo", "cargo_binstall", "rustup"]
+        let upgradableManagers: Set<String> = [
+            "homebrew_formula",
+            "mise",
+            "npm",
+            "pip",
+            "pipx",
+            "cargo",
+            "cargo_binstall",
+            "rustup",
+            "rubygems"
+        ]
         return package.status == .upgradable
             && upgradableManagers.contains(package.managerId)
             && !package.pinned
