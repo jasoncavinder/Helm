@@ -301,6 +301,12 @@ jobs:
           hdiutil convert "$DMG_TMP" -format UDZO -o "$VERSIONED_DMG"
           cp "$VERSIONED_DMG" "$LATEST_DMG"
 
+      - name: Verify packaged DMG layout and updater invariants
+        run: |
+          set -euo pipefail
+          apps/macos-ui/scripts/verify_release_dmg.sh "$PWD/build/release-assets/Helm-${TAG_NAME}-macos-universal.dmg"
+          apps/macos-ui/scripts/verify_release_dmg.sh "$PWD/build/release-assets/Helm.dmg"
+
       - name: Notarize DMG (App Store Connect API key)
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}

@@ -41,6 +41,7 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Channel config rendering/policy enforcement now runs through a shared script (`apps/macos-ui/scripts/render_channel_xcconfig.sh`) reused by build generation and test validation flows.
 - CI now runs a channel-policy matrix check (`apps/macos-ui/scripts/check_channel_policy.sh`) before Xcode build/test.
 - Release DMG verification now enforces packaged updater invariants (`HelmDistributionChannel`, `HelmSparkleEnabled`, `SUFeedURL`, `SUPublicEDKey`) and validates Sparkle framework bundling/linkage.
+- Release DMG workflow now validates final packaged DMG contents (app bundle presence, `/Applications` symlink, background asset, updater invariants, and codesign integrity) via `apps/macos-ui/scripts/verify_release_dmg.sh`.
 - Runtime upgrade task labels now include `plan_step_id` metadata so task rows can be projected onto execution-plan rows.
 - Partial-failure summaries now group failed plan steps by manager and affected package set.
 - Scoped plan execution now runs phase-by-phase by authority rank (authoritative → standard → guarded) instead of submitting all manager steps concurrently.

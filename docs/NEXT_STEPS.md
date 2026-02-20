@@ -41,7 +41,7 @@ Next release targets:
 
 ## v0.16.x Kickoff Plan (In Progress)
 
-### Alpha.1 — Channel-Aware Updater Scaffolding (In Progress on `feat/v0.16.0-kickoff`)
+### Alpha.1 — Channel-Aware Updater Scaffolding (Completed on `feat/v0.16.0-kickoff`)
 
 Delivered:
 
@@ -79,15 +79,28 @@ Delivered:
 - Added install-location hardening for self-update: runtime Sparkle gating now rejects mounted-DMG (`/Volumes/...`) and App Translocation execution paths.
 - Added localized operator feedback for blocked update checks in About/menu surfaces so policy-based unavailability is explicit instead of silently hidden.
 
-Next in alpha.1:
-
-- Alpha.1 exit criteria are met; next step is defining and starting Alpha.2 scope for installer hardening work.
-
 Validation:
 
 - `cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`
 - `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
 - `swiftlint lint --no-cache apps/macos-ui/Helm/Core/HelmCore.swift apps/macos-ui/Helm/AppDelegate.swift apps/macos-ui/Helm/Views/PopoverOverlayViews.swift apps/macos-ui/Helm/Core/L10n+App.swift`
+
+### Alpha.2 — Installer Packaging Hardening (In Progress on `feat/v0.16.0-kickoff`)
+
+Delivered:
+
+- Added packaged-DMG verification script (`apps/macos-ui/scripts/verify_release_dmg.sh`) to enforce:
+  - app payload presence in mounted DMG
+  - `/Applications` symlink correctness
+  - expected DMG background asset
+  - updater metadata invariants (`HelmDistributionChannel`, `HelmSparkleEnabled`, `SUAllowsDowngrades`, `SUFeedURL`, `SUPublicEDKey`)
+  - Sparkle framework linkage and app codesign verification from packaged artifact
+- Wired packaged-DMG verification into release workflow before notarization (`.github/workflows/release-macos-dmg.yml`).
+
+Next in alpha.2:
+
+- Add installer/update interruption and recovery validation scenarios to release docs/checklists.
+- Define delta-update policy checks and artifact validation approach for direct-channel releases.
 
 ---
 

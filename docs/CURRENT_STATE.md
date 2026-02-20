@@ -8,7 +8,7 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.16.0-alpha.1** (kickoff in progress on `dev`; latest stable release on `main` is `v0.15.0`)
+Current version: **0.16.0-alpha.2** (installer hardening in progress on `dev`; latest stable release on `main` is `v0.15.0`)
 
 See:
 - CHANGELOG.md
@@ -141,6 +141,7 @@ Implemented on `feat/v0.16.0-kickoff`:
   - `SUFeedURL` uses `https://`
   - `SUPublicEDKey` non-empty
   - Sparkle framework is bundled and linked into the Helm binary
+- Release DMG workflow now also validates final packaged DMG contents (app bundle payload, `/Applications` symlink, background asset, updater invariants, and codesign integrity) via `apps/macos-ui/scripts/verify_release_dmg.sh`.
 - Added regression coverage for channel config parsing + Sparkle gating behavior (`AppUpdateConfigurationTests`) and extracted shared app-update config model into `Helm/Core/AppUpdateConfiguration.swift`.
 - Build script now enforces channel/Sparkle policy at generation time and fails fast on invalid combinations:
   - non-Developer-ID channels cannot enable Sparkle or set Sparkle feed/signature metadata
@@ -161,6 +162,25 @@ Validation:
   - `CONFIGURATION=Debug HELM_CHANNEL_PROFILE=app_store HELM_CHANNEL_OVERRIDE_SPARKLE_ENABLED=YES apps/macos-ui/scripts/build_rust.sh` fails as expected
   - `CONFIGURATION=Debug HELM_CHANNEL_PROFILE=developer_id HELM_CHANNEL_OVERRIDE_SPARKLE_ENABLED=YES apps/macos-ui/scripts/build_rust.sh` fails as expected when feed/key are omitted
   - `apps/macos-ui/scripts/check_channel_policy.sh` passes
+
+---
+
+## v0.16.0-alpha.2 Status
+
+### Installer Packaging Hardening
+
+Implemented on `feat/v0.16.0-kickoff`:
+
+- Added packaged-DMG verification script (`apps/macos-ui/scripts/verify_release_dmg.sh`) to validate mounted artifact contents before notarization:
+  - app payload and expected `/Applications` symlink
+  - DMG background asset presence
+  - updater metadata invariants (`HelmDistributionChannel`, `HelmSparkleEnabled`, `SUAllowsDowngrades`, `SUFeedURL`, `SUPublicEDKey`)
+  - Sparkle framework presence/linkage and app-bundle codesign verification from the packaged DMG
+- Wired packaged-DMG verification into release workflow (`.github/workflows/release-macos-dmg.yml`) before notarization submission.
+
+Validation:
+
+- `bash -n apps/macos-ui/scripts/verify_release_dmg.sh` passing
 
 ---
 
