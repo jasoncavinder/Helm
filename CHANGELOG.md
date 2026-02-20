@@ -11,6 +11,8 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
   - `HelmDistributionChannel` + `HelmUpdateAuthority` runtime model
   - `AppUpdateCoordinator` with channel-gated manual update checks
   - optional Sparkle bridge guarded by `#if canImport(Sparkle)`
+- Sparkle Swift Package Manager dependency linked into the Helm app target for direct-channel runtime update checks.
+- Regression tests for app-update config parsing and Sparkle channel gating (`AppUpdateConfigurationTests`).
 - Channel profile build templates for distribution/update authority separation:
   - `apps/macos-ui/Config/channels/developer_id.xcconfig`
   - `apps/macos-ui/Config/channels/app_store.xcconfig`
@@ -29,6 +31,7 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
   - `HelmSparkleEnabled=false`
 - Build script now emits generated channel settings (`apps/macos-ui/Generated/HelmChannel.xcconfig`) from `HELM_CHANNEL_PROFILE` with optional CI overrides.
 - Helm target Info.plist channel/feed/signature keys now come from build settings (`HelmDistributionChannel`, `HelmSparkleEnabled`, `SUFeedURL`, `SUPublicEDKey`) instead of hardcoded plist entries.
+- App update channel/config parsing model was extracted to `Helm/Core/AppUpdateConfiguration.swift` so runtime and tests share the same source of truth.
 - Release DMG workflow now validates Sparkle feed/signature secrets and injects Developer ID channel Sparkle metadata during signed release builds.
 - Runtime upgrade task labels now include `plan_step_id` metadata so task rows can be projected onto execution-plan rows.
 - Partial-failure summaries now group failed plan steps by manager and affected package set.

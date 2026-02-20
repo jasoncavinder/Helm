@@ -18,7 +18,7 @@ Focus:
 - 0.16.x self-update and installer hardening
 
 Current checkpoint:
-- `v0.16.0-alpha.1` kickoff in progress on `feat/v0.16.0-kickoff` (channel-aware updater scaffolding + channel build-profile wiring + release feed/signature injection landed; Sparkle package linkage remains)
+- `v0.16.0-alpha.1` kickoff in progress on `feat/v0.16.0-kickoff` (channel-aware updater scaffolding + channel build-profile wiring + release feed/signature injection + Sparkle package linkage + config regression tests landed)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
 - `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)
@@ -50,6 +50,7 @@ Delivered:
   - `HelmSparkleEnabled` gating to prevent accidental Sparkle activation in non-direct channels
 - Added `AppUpdateCoordinator` with strict channel isolation and manual update-check entry point plumbing
 - Added optional Sparkle bridge (`#if canImport(Sparkle)`) while preserving non-Sparkle build compatibility
+- Wired Sparkle SPM package linkage into the Helm app target for direct-channel runtime update checks
 - Added user entry points:
   - status menu `Check for Updates`
   - popover About overlay `Check for Updates`
@@ -67,11 +68,11 @@ Delivered:
   - `SUFeedURL`
   - `SUPublicEDKey`
 - Release DMG workflow now passes direct-channel Sparkle build metadata and validates required Sparkle secrets before signed release builds.
+- Added regression coverage for app update channel config parsing + Sparkle gating behavior (`AppUpdateConfigurationTests`).
 
 Next in alpha.1:
 
-- Wire Sparkle package dependency for direct-channel runtime update checks in CI/release environments (current runtime bridge remains optional via `#if canImport(Sparkle)`).
-- Add regression tests for config parsing and channel gating behavior
+- Alpha.1 exit criteria are met; next step is defining and starting Alpha.2 scope for installer hardening work.
 
 Validation:
 

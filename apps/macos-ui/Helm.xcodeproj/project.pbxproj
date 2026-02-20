@@ -62,6 +62,10 @@
 		G20000000000000000000001 /* L10n+App.swift in Sources */ = {isa = PBXBuildFile; fileRef = G10000000000000000000001 /* L10n+App.swift */; };
 		G20000000000000000000002 /* AppDelegate+Windows.swift in Sources */ = {isa = PBXBuildFile; fileRef = G10000000000000000000002 /* AppDelegate+Windows.swift */; };
 		G20000000000000000000003 /* AppDelegate+StatusBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = G10000000000000000000003 /* AppDelegate+StatusBadge.swift */; };
+		H000000000000000000000003 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = H000000000000000000000002 /* Sparkle */; };
+		H200000000000000000000001 /* AppUpdateConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = H100000000000000000000001 /* AppUpdateConfigurationTests.swift */; };
+		J200000000000000000000001 /* AppUpdateConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = J100000000000000000000001 /* AppUpdateConfiguration.swift */; };
+		J200000000000000000000002 /* AppUpdateConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = J100000000000000000000001 /* AppUpdateConfiguration.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -152,6 +156,8 @@
 		G10000000000000000000001 /* L10n+App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "L10n+App.swift"; sourceTree = "<group>"; };
 		G10000000000000000000002 /* AppDelegate+Windows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppDelegate+Windows.swift"; sourceTree = "<group>"; };
 		G10000000000000000000003 /* AppDelegate+StatusBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppDelegate+StatusBadge.swift"; sourceTree = "<group>"; };
+		H100000000000000000000001 /* AppUpdateConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateConfigurationTests.swift; sourceTree = "<group>"; };
+		J100000000000000000000001 /* AppUpdateConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateConfiguration.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -167,6 +173,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				H000000000000000000000003 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -227,6 +234,7 @@
 		8CFB6D4A2F3D1D1D002372B8 /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				J100000000000000000000001 /* AppUpdateConfiguration.swift */,
 				8CFB6D4B2F3D1D1D002372B8 /* HelmCore.swift */,
 				D10000000000000000000006 /* HelmCore+Actions.swift */,
 				D10000000000000000000004 /* HelmCore+Dashboard.swift */,
@@ -387,6 +395,7 @@
 		C10000000000000000000006 /* HelmTests */ = {
 			isa = PBXGroup;
 			children = (
+				H100000000000000000000001 /* AppUpdateConfigurationTests.swift */,
 				C1000000000000000000001A /* LocalizationOverflowValidationTests.swift */,
 				C10000000000000000000005 /* UpgradePreviewPlannerTests.swift */,
 			);
@@ -429,6 +438,9 @@
 				8CE1FDCA2F3D2AD8000A3945 /* PBXTargetDependency */,
 			);
 			name = Helm;
+			packageProductDependencies = (
+				H000000000000000000000002 /* Sparkle */,
+			);
 			productName = Helm;
 			productReference = A10000020000000000000006 /* Helm.app */;
 			productType = "com.apple.product-type.application";
@@ -483,6 +495,9 @@
 			productRefGroup = A10000040000000000000003 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
+			packageReferences = (
+				H000000000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			targets = (
 				A10000050000000000000001 /* Helm */,
 				8CE1FDBF2F3D2AD7000A3945 /* HelmService */,
@@ -561,6 +576,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				8CFB6D5A2F3D1D1D002372B8 /* Package.swift in Sources */,
+				J200000000000000000000001 /* AppUpdateConfiguration.swift in Sources */,
 				8CFB6D572F3D1D1D002372B8 /* HelmCore.swift in Sources */,
 				C10000000000000000000001 /* UpgradePreviewPlanner.swift in Sources */,
 				B20000000000000000000015 /* LocalizationManager.swift in Sources */,
@@ -611,6 +627,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				J200000000000000000000002 /* AppUpdateConfiguration.swift in Sources */,
+				H200000000000000000000001 /* AppUpdateConfigurationTests.swift in Sources */,
 				C10000000000000000000019 /* LocalizationOverflowValidationTests.swift in Sources */,
 				C10000000000000000000018 /* UpgradePreviewPlanner.swift in Sources */,
 				C10000000000000000000002 /* UpgradePreviewPlannerTests.swift in Sources */,
@@ -618,6 +636,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		H000000000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.8.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		H000000000000000000000002 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = H000000000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 /* Begin PBXTargetDependency section */
 		8CE1FDCA2F3D2AD8000A3945 /* PBXTargetDependency */ = {

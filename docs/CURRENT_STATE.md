@@ -117,13 +117,12 @@ Implemented on `feat/v0.16.0-kickoff`:
   - only Developer ID channel with Sparkle explicitly enabled can present in-app update checks
   - non-direct channels remain no-op at runtime (MAS/Setapp/Fleet isolation)
 - Added optional Sparkle bridge implementation guarded with `#if canImport(Sparkle)` so non-Sparkle builds remain compile-safe
+- Wired Sparkle SPM package linkage into the Helm app target for direct-channel runtime update checks
 - Added user entry points for manual update checks:
   - status-menu `Check for Updates`
   - popover About overlay `Check for Updates`
 - Added localized `app.overlay.about.check_updates` key across canonical and mirrored locale trees
-- Added default Info.plist update-channel metadata keys for local/direct builds:
-  - `HelmDistributionChannel=developer_id`
-  - `HelmSparkleEnabled=false`
+- Added default channel metadata via build settings (`HelmDistributionChannel=developer_id`, `HelmSparkleEnabled=false`) for local/direct builds.
 - Added channel profile templates for build-time distribution mapping:
   - `apps/macos-ui/Config/channels/developer_id.xcconfig`
   - `apps/macos-ui/Config/channels/app_store.xcconfig`
@@ -132,12 +131,13 @@ Implemented on `feat/v0.16.0-kickoff`:
 - Build script now emits `apps/macos-ui/Generated/HelmChannel.xcconfig` from `HELM_CHANNEL_PROFILE` (+ env overrides), and Xcode consumes it through checked-in base config include.
 - Helm target Info.plist keys are now build-setting injected (channel + Sparkle feed/signature metadata) rather than hardcoded plist values.
 - Release DMG workflow now injects direct-channel Sparkle metadata at build time and validates required release secrets/packaged plist channel keys.
+- Added regression coverage for channel config parsing + Sparkle gating behavior (`AppUpdateConfigurationTests`) and extracted shared app-update config model into `Helm/Core/AppUpdateConfiguration.swift`.
 
 Validation:
 
 - `cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml` passing
 - `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test` passing
-- `swiftlint lint --no-cache apps/macos-ui/Helm/Core/HelmCore.swift apps/macos-ui/Helm/AppDelegate.swift apps/macos-ui/Helm/Views/PopoverOverlayViews.swift apps/macos-ui/Helm/Core/L10n+App.swift` passing (local toolchain warns about one unsupported legacy rule key)
+- `swiftlint lint --no-cache apps/macos-ui/Helm/Core/HelmCore.swift apps/macos-ui/Helm/Core/AppUpdateConfiguration.swift apps/macos-ui/Helm/AppDelegate.swift apps/macos-ui/Helm/Views/PopoverOverlayViews.swift apps/macos-ui/Helm/Core/L10n+App.swift` passing (local toolchain warns about one unsupported legacy rule key)
 
 ---
 
