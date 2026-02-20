@@ -171,6 +171,7 @@ private struct ControlCenterTopBar: View {
             HStack(spacing: 0) {
                 ControlCenterTopBarSidebarSurface(colorScheme: colorScheme)
                     .frame(width: sidebarWidth)
+                Divider()
                 Rectangle()
                     .fill(HelmTheme.surfaceBase)
             }
@@ -179,11 +180,13 @@ private struct ControlCenterTopBar: View {
             HStack(spacing: 0) {
                 Rectangle()
                     .fill(Color.clear)
-                    .frame(width: sidebarWidth)
+                    .frame(width: sidebarWidth, height: 1)
                 Rectangle()
                     .fill(HelmTheme.statusRail)
+                    .frame(maxWidth: .infinity)
                     .frame(height: 1)
             }
+            .frame(height: 1)
         }
         .onChange(of: context.controlCenterSearchFocusToken) { _ in
             isSearchFocused = true
