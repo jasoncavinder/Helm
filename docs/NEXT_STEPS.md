@@ -88,17 +88,18 @@ Progress so far:
 - duplicate step-ID handling hardened in retry/projection failure-group mapping paths
 - scoped run execution now advances authority phase-by-phase instead of submitting all manager steps concurrently
 - cancel remaining now terminates active scoped run sequencing before cancelling matching in-flight tasks
+- cancel remaining now also cancels scoped projected in-flight tasks that have not yet landed in listTasks snapshots
 - phase sequencing now waits for submission callbacks and protects newly queued projections until task snapshots catch up
 - stale callbacks from superseded scoped-run tokens no longer clear active run-in-progress state
 - scoped phase waiting now uses a bounded timeout and invalidates stalled run tokens
-- planner regression tests expanded for scoped-run gating and ID fallback coverage
+- planner regression tests expanded for scoped-run gating, ID fallback coverage, and projected cancellation task-ID extraction
 - Rust adapter/runtime files normalized with formatting-only cleanup (no behavior changes)
 - release notes/checklist prep for first `v0.15.0` pre-release cut is now scaffolded in `CHANGELOG.md` and `docs/RELEASE_CHECKLIST.md`
 
 Deliver:
 
-- complete code+document sweep for remaining upgrade-plan/task synchronization edge cases
-- add/expand targeted regressions for scoped run/cancel/retry state coherence where test harness supports it
+- merge alpha branch into `dev` for manual end-to-end validation of scoped run/cancel/retry behavior
+- capture manual validation notes and fold follow-up fixes into the `v0.15.0` stabilization pass
 
 ### Exit Gate
 

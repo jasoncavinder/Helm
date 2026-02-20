@@ -20,6 +20,11 @@ struct UpgradePreviewPlanner {
         let pinned: Bool
     }
 
+    struct ProjectedTaskState {
+        let taskId: UInt64
+        let status: String
+    }
+
     static let allManagersScopeId = "__all_managers__"
 
     static func count(
@@ -164,6 +169,20 @@ struct UpgradePreviewPlanner {
             return nil
         }
         return "\(managerId):\(package)"
+    }
+
+    static func projectedTaskIdsForCancellation(
+        scopedStepIds: Set<String>,
+        projections: [String: ProjectedTaskState]
+    ) -> Set<Int64> {
+        var taskIds = Set<Int64>()
+        for stepId in scopedStepIds {
+            guard let projection = projections[stepId] else { continue }
+            guard isInFlightStatus(status: projection.status, hasProjectedTask: true) else { continue }
+            guard let taskId = Int64(exactly: projection.taskId) else { continue }
+            taskIds.insert(taskId)
+        }
+        return taskIds
     }
 
     private static func includeForUpgradePreview(

@@ -213,6 +213,24 @@ final class UpgradePreviewPlannerTests: XCTestCase {
         )
     }
 
+    func testProjectedTaskIdsForCancellationIncludesOnlyScopedInFlightTasks() {
+        let overflownTaskId = UInt64(Int64.max) + 1
+        let projections: [String: UpgradePreviewPlanner.ProjectedTaskState] = [
+            "a": .init(taskId: 101, status: "queued"),
+            "b": .init(taskId: 202, status: "running"),
+            "c": .init(taskId: 303, status: "failed"),
+            "d": .init(taskId: 404, status: "running"),
+            "e": .init(taskId: overflownTaskId, status: "running"),
+        ]
+
+        let taskIds = UpgradePreviewPlanner.projectedTaskIdsForCancellation(
+            scopedStepIds: ["a", "b", "c", "e"],
+            projections: projections
+        )
+
+        XCTAssertEqual(taskIds, Set<Int64>([101, 202]))
+    }
+
     private func step(
         id: String,
         order: UInt64,

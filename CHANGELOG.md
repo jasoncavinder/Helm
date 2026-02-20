@@ -17,6 +17,7 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Scoped plan execution now runs phase-by-phase by authority rank (authoritative → standard → guarded) instead of submitting all manager steps concurrently.
 - Cancel Remaining now aborts active scoped-run sequencing before cancelling matching in-flight tasks.
 - Scoped run sequencing now ignores stale callbacks from superseded run tokens and bounds phase waiting with timeout-based token invalidation.
+- Cancel Remaining now also cancels scoped upgrade tasks that are still projected in-flight even when they have not yet appeared in task snapshots.
 - Generated `apps/macos-ui/Generated/HelmVersion.xcconfig` is now ignored and no longer tracked.
 
 ## [0.14.1] - 2026-02-20

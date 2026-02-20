@@ -146,9 +146,35 @@ extension HelmCore {
         )
         guard !scopedStepIds.isEmpty else { return }
 
+        var cancelledTaskIds = Set<Int64>()
         for task in activeTasks where task.isRunning && task.taskType?.lowercased() == "upgrade" {
             guard let stepId = upgradePlanStepId(from: task), scopedStepIds.contains(stepId) else { continue }
+            if let taskId = Int64(task.id) {
+                cancelledTaskIds.insert(taskId)
+            }
             cancelTask(task)
+        }
+
+        let plannerProjectionByStepId = upgradePlanTaskProjectionByStepId.reduce(
+            into: [String: UpgradePreviewPlanner.ProjectedTaskState]()
+        ) { partial, entry in
+            partial[entry.key] = .init(
+                taskId: entry.value.taskId,
+                status: entry.value.status
+            )
+        }
+        let projectedTaskIds = UpgradePreviewPlanner.projectedTaskIdsForCancellation(
+            scopedStepIds: scopedStepIds,
+            projections: plannerProjectionByStepId
+        )
+        let remainingTaskIds = projectedTaskIds.subtracting(cancelledTaskIds)
+
+        for taskId in remainingTaskIds {
+            service()?.cancelTask(taskId: taskId) { success in
+                if !success {
+                    logger.warning("cancelTask(\(taskId)) returned false")
+                }
+            }
         }
     }
 

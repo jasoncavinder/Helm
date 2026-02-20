@@ -247,6 +247,7 @@ Implemented on `feat/v0.15.x-alpha.1-kickoff` (current progress):
 - Hardened projection/retry/failure-group mapping paths to tolerate duplicate step IDs without dictionary trap risk
 - Scoped run execution now progresses by authority phase (authoritative → standard → guarded) instead of submitting all managers at once
 - Cancel Remaining now aborts any in-progress scoped run sequencer before cancelling matching in-flight tasks
+- Cancel Remaining now also cancels scoped projected in-flight upgrade tasks that have not surfaced in the latest task snapshot yet
 - Authority-phase sequencing now waits for submission callbacks before phase polling and preserves newly queued projections until task IDs are observed in snapshots
 - Scoped run completion state now ignores stale callbacks from superseded run tokens so newer runs remain accurately marked in progress
 - Scoped authority-phase waiting now enforces a bounded timeout and invalidates the active run token when a phase stalls
@@ -254,6 +255,7 @@ Implemented on `feat/v0.15.x-alpha.1-kickoff` (current progress):
   - scoped-run eligibility gating (queued/running/completed + safe mode)
   - in-flight status handling for queued-without-projection plan rows
   - explicit and fallback plan-step ID resolution paths
+  - projected task-ID extraction for scoped cancellation (status + overflow guardrails)
 - Applied Rust formatting-only cleanup updates across adapter/runtime test files (no behavior change)
 - Added initial `v0.15.0-alpha.1` pre-release checklist scaffolding in `docs/RELEASE_CHECKLIST.md`
 
