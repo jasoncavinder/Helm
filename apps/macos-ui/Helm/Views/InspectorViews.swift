@@ -199,7 +199,7 @@ private struct InspectorTaskDetailView: View {
                 }
             }
         }
-        .sheet(isPresented: $showTaskOutputSheet) {
+        .popover(isPresented: $showTaskOutputSheet, arrowEdge: .leading) {
             TaskOutputSheetView(
                 taskDescription: task.description,
                 output: taskOutputRecord,
