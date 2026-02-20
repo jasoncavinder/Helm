@@ -15,6 +15,7 @@ See:
 
 Active milestone:
 - 0.15.x — Upgrade Preview & Execution Transparency (planning)
+- 0.14.1 — Patch-track fix slices in review branches off `dev`
 
 ---
 
@@ -98,6 +99,18 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 - XPC service: stable (code-signing validation, graceful reconnection with exponential backoff, timeout enforcement on all calls)
 - FFI boundary: functional (poisoned-lock recovery, JSON interchange, thread-safe static state, lifecycle documented in module-level docs)
 - UI: feature-complete for current scope; VoiceOver accessibility labels, semantic grouping, and state-change announcements implemented; HelmCore decomposed into 5 files; UI layer purity cleanup completed (business logic extracted from views to HelmCore/ManagerInfo); inspector sidebar with task/package/manager detail views; keyboard Tab traversal still pending (macOS SwiftUI limitation)
+
+---
+
+## v0.14.1 Patch-Track Status (In Progress)
+
+Completed in cache/persistence slice branch:
+
+- Search-cache persistence now deduplicates records by `(manager, package)` so repeated queries do not accumulate duplicate available-package rows
+- Search-cache metadata persistence preserves existing non-empty version/summary when newer remote responses omit those fields
+- Control-center available package cache refresh now deduplicates entries and keeps non-empty summaries during merges
+- Package aggregation (`allKnownPackages`) now enriches installed/outdated package rows with cached summaries when available
+- Package filtering now includes summary text and merges remote-search summary/latest metadata into local rows for fresher inspector/detail context
 
 ---
 
