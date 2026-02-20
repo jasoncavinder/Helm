@@ -2,7 +2,7 @@ name: Release macOS DMG
 
 on:
   release:
-    types: [published, prereleased]
+    types: [published]
   workflow_dispatch:
     inputs:
       tag:
@@ -12,6 +12,10 @@ on:
 
 permissions:
   contents: write
+
+concurrency:
+  group: release-dmg-${{ github.event.release.tag_name || github.event.inputs.tag }}
+  cancel-in-progress: true
 
 jobs:
   build-and-upload-dmg:
