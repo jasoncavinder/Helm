@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: release-dmg-${{ github.event.release.tag_name || github.event.inputs.tag }}
@@ -25,13 +26,16 @@ jobs:
       SIGNING_CERT_BASE64: ${{ secrets.MACOS_DEVELOPER_ID_APP_CERT_BASE64 }}
       SIGNING_CERT_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_APP_CERT_PASSWORD }}
       KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+      HELM_SPARKLE_FEED_URL: ${{ secrets.HELM_SPARKLE_FEED_URL }}
+      HELM_SPARKLE_PUBLIC_ED_KEY: ${{ secrets.HELM_SPARKLE_PUBLIC_ED_KEY }}
+      HELM_SPARKLE_PRIVATE_ED_KEY: ${{ secrets.HELM_SPARKLE_PRIVATE_ED_KEY }}
       TAG_NAME: ${{ github.event.release.tag_name || github.event.inputs.tag }}
 
     steps:
       - name: Validate required secrets
         run: |
           set -euo pipefail
-          required=(APP_TEAM_ID SIGNING_CERT_BASE64 SIGNING_CERT_PASSWORD)
+          required=(APP_TEAM_ID SIGNING_CERT_BASE64 SIGNING_CERT_PASSWORD HELM_SPARKLE_FEED_URL HELM_SPARKLE_PUBLIC_ED_KEY HELM_SPARKLE_PRIVATE_ED_KEY)
           for key in "${required[@]}"; do
             if [ -z "${!key}" ]; then
               echo "::error::Missing required secret: $key"
@@ -76,6 +80,7 @@ jobs:
       - name: Run Swift tests before release build
         run: |
           set -euo pipefail
+          HELM_CHANNEL_PROFILE=developer_id \
           xcodebuild \
             -project apps/macos-ui/Helm.xcodeproj \
             -scheme Helm \
@@ -89,6 +94,18 @@ jobs:
       - name: Build signed universal app
         run: |
           set -euo pipefail
+          HELM_CHANNEL_PROFILE=developer_id \
+          HELM_CHANNEL_OVERRIDE_SPARKLE_ENABLED=YES \
+          HELM_CHANNEL_OVERRIDE_SPARKLE_FEED_URL="$HELM_SPARKLE_FEED_URL" \
+          HELM_CHANNEL_OVERRIDE_SPARKLE_PUBLIC_ED_KEY="$HELM_SPARKLE_PUBLIC_ED_KEY" \
+          apps/macos-ui/scripts/render_channel_xcconfig.sh "$PWD/apps/macos-ui/Generated/HelmChannel.xcconfig"
+          echo "=== Generated HelmChannel.xcconfig (release override) ==="
+          cat "$PWD/apps/macos-ui/Generated/HelmChannel.xcconfig"
+
+          HELM_CHANNEL_PROFILE=developer_id \
+          HELM_CHANNEL_OVERRIDE_SPARKLE_ENABLED=YES \
+          HELM_CHANNEL_OVERRIDE_SPARKLE_FEED_URL="$HELM_SPARKLE_FEED_URL" \
+          HELM_CHANNEL_OVERRIDE_SPARKLE_PUBLIC_ED_KEY="$HELM_SPARKLE_PUBLIC_ED_KEY" \
           xcodebuild \
             -project apps/macos-ui/Helm.xcodeproj \
             -scheme Helm \
@@ -97,6 +114,11 @@ jobs:
             -derivedDataPath "$PWD/build/DerivedData" \
             ARCHS="arm64 x86_64" \
             ONLY_ACTIVE_ARCH=NO \
+            HELM_DISTRIBUTION_CHANNEL=developer_id \
+            HELM_SPARKLE_ENABLED=YES \
+            HELM_SPARKLE_ALLOW_DOWNGRADES=NO \
+            HELM_SPARKLE_FEED_URL="$HELM_SPARKLE_FEED_URL" \
+            HELM_SPARKLE_PUBLIC_ED_KEY="$HELM_SPARKLE_PUBLIC_ED_KEY" \
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM="$APP_TEAM_ID" \
             CODE_SIGN_IDENTITY="Developer ID Application" \
@@ -105,14 +127,84 @@ jobs:
             OTHER_CODE_SIGN_FLAGS="--timestamp" \
             build
 
+      - name: Re-sign Sparkle nested binaries for notarization
+        run: |
+          set -euo pipefail
+
+          APP_PATH="$PWD/build/DerivedData/Build/Products/Release/Helm.app"
+          SPARKLE_VERSION_DIR="$APP_PATH/Contents/Frameworks/Sparkle.framework/Versions/B"
+          SIGN_IDENTITY="Developer ID Application"
+
+          test -d "$APP_PATH"
+          test -d "$SPARKLE_VERSION_DIR"
+
+          codesign --force --timestamp --sign "$SIGN_IDENTITY" "$SPARKLE_VERSION_DIR/Autoupdate"
+          codesign --force --deep --timestamp --options runtime --sign "$SIGN_IDENTITY" "$SPARKLE_VERSION_DIR/Updater.app"
+          codesign --force --deep --timestamp --options runtime --sign "$SIGN_IDENTITY" "$SPARKLE_VERSION_DIR/XPCServices/Downloader.xpc"
+          codesign --force --deep --timestamp --options runtime --sign "$SIGN_IDENTITY" "$SPARKLE_VERSION_DIR/XPCServices/Installer.xpc"
+          codesign --force --deep --timestamp --options runtime --sign "$SIGN_IDENTITY" "$APP_PATH/Contents/Frameworks/Sparkle.framework"
+          codesign --force --deep --timestamp --options runtime --sign "$SIGN_IDENTITY" --preserve-metadata=entitlements,requirements,flags "$APP_PATH"
+
+          echo "=== Sparkle signing check ==="
+          codesign -dv --verbose=4 "$SPARKLE_VERSION_DIR/Autoupdate" 2>&1 | grep -E "Authority=Developer ID Application|Timestamp="
+          codesign -dv --verbose=4 "$SPARKLE_VERSION_DIR/Updater.app/Contents/MacOS/Updater" 2>&1 | grep -E "Authority=Developer ID Application|Timestamp="
+
       - name: Verify signature, architecture, and notarization prerequisites
         run: |
           set -euo pipefail
           APP_PATH="$PWD/build/DerivedData/Build/Products/Release/Helm.app"
           HELM_BIN="$APP_PATH/Contents/MacOS/Helm"
           XPC_BIN="$APP_PATH/Contents/XPCServices/HelmService.xpc/Contents/MacOS/HelmService"
+          APP_INFO_PLIST="$APP_PATH/Contents/Info.plist"
+          SPARKLE_FRAMEWORK="$APP_PATH/Contents/Frameworks/Sparkle.framework"
 
           test -d "$APP_PATH"
+
+          echo "=== Update channel metadata ==="
+          CHANNEL=$(/usr/libexec/PlistBuddy -c "Print :HelmDistributionChannel" "$APP_INFO_PLIST")
+          SPARKLE_ENABLED=$(/usr/libexec/PlistBuddy -c "Print :HelmSparkleEnabled" "$APP_INFO_PLIST")
+          SPARKLE_ALLOWS_DOWNGRADES=$(/usr/libexec/PlistBuddy -c "Print :SUAllowsDowngrades" "$APP_INFO_PLIST")
+          SPARKLE_FEED_URL=$(/usr/libexec/PlistBuddy -c "Print :SUFeedURL" "$APP_INFO_PLIST")
+          SPARKLE_PUBLIC_ED_KEY=$(/usr/libexec/PlistBuddy -c "Print :SUPublicEDKey" "$APP_INFO_PLIST")
+
+          echo "channel=$CHANNEL"
+          echo "sparkle_enabled=$SPARKLE_ENABLED"
+          echo "sparkle_allows_downgrades=$SPARKLE_ALLOWS_DOWNGRADES"
+          echo "sparkle_feed_url=$SPARKLE_FEED_URL"
+          echo "sparkle_public_ed_key_length=${#SPARKLE_PUBLIC_ED_KEY}"
+
+          if [ "$CHANNEL" != "developer_id" ]; then
+            echo "::error::Unexpected HelmDistributionChannel in release artifact: $CHANNEL"
+            exit 1
+          fi
+
+          SPARKLE_ENABLED_NORMALIZED="$(echo "$SPARKLE_ENABLED" | tr '[:upper:]' '[:lower:]')"
+          if [ "$SPARKLE_ENABLED_NORMALIZED" != "yes" ] && [ "$SPARKLE_ENABLED_NORMALIZED" != "true" ] && [ "$SPARKLE_ENABLED_NORMALIZED" != "1" ]; then
+            echo "::error::HelmSparkleEnabled is not true in release artifact: $SPARKLE_ENABLED"
+            exit 1
+          fi
+
+          SPARKLE_ALLOWS_DOWNGRADES_NORMALIZED="$(echo "$SPARKLE_ALLOWS_DOWNGRADES" | tr '[:upper:]' '[:lower:]')"
+          if [ "$SPARKLE_ALLOWS_DOWNGRADES_NORMALIZED" != "no" ] && [ "$SPARKLE_ALLOWS_DOWNGRADES_NORMALIZED" != "false" ] && [ "$SPARKLE_ALLOWS_DOWNGRADES_NORMALIZED" != "0" ]; then
+            echo "::error::SUAllowsDowngrades must be false in release artifact: $SPARKLE_ALLOWS_DOWNGRADES"
+            exit 1
+          fi
+
+          if [[ "$SPARKLE_FEED_URL" != https://* ]]; then
+            echo "::error::SUFeedURL must be https:// in release artifact."
+            exit 1
+          fi
+
+          if [ -z "$SPARKLE_PUBLIC_ED_KEY" ]; then
+            echo "::error::SUPublicEDKey is empty in release artifact."
+            exit 1
+          fi
+
+          test -d "$SPARKLE_FRAMEWORK"
+          if ! otool -L "$HELM_BIN" | grep -q "Sparkle.framework"; then
+            echo "::error::Sparkle framework is not linked into Helm binary."
+            exit 1
+          fi
 
           echo "=== Architectures ==="
           lipo -archs "$HELM_BIN"
@@ -246,6 +338,12 @@ jobs:
           hdiutil convert "$DMG_TMP" -format UDZO -o "$VERSIONED_DMG"
           cp "$VERSIONED_DMG" "$LATEST_DMG"
 
+      - name: Verify packaged DMG layout and updater invariants
+        run: |
+          set -euo pipefail
+          apps/macos-ui/scripts/verify_release_dmg.sh "$PWD/build/release-assets/Helm-${TAG_NAME}-macos-universal.dmg"
+          apps/macos-ui/scripts/verify_release_dmg.sh "$PWD/build/release-assets/Helm.dmg"
+
       - name: Notarize DMG (App Store Connect API key)
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -286,11 +384,35 @@ jobs:
           xcrun stapler staple "$DMG_PATH"
           xcrun stapler staple "$PWD/build/release-assets/Helm.dmg"
 
+      - name: Generate Sparkle appcast from final DMG
+        run: |
+          set -euo pipefail
+          APP_PATH="$PWD/build/DerivedData/Build/Products/Release/Helm.app"
+          DMG_PATH="$PWD/build/release-assets/Helm-${TAG_NAME}-macos-universal.dmg"
+          APPCAST_PATH="$PWD/build/release-assets/appcast.xml"
+          DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/Helm-${TAG_NAME}-macos-universal.dmg"
+          RELEASE_NOTES_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG_NAME}"
+
+          apps/macos-ui/scripts/generate_sparkle_appcast.sh \
+            --app-path "$APP_PATH" \
+            --dmg-path "$DMG_PATH" \
+            --output-path "$APPCAST_PATH" \
+            --download-url "$DOWNLOAD_URL" \
+            --appcast-url "$HELM_SPARKLE_FEED_URL" \
+            --release-notes-url "$RELEASE_NOTES_URL"
+
+      - name: Enforce Sparkle appcast policy (full installer only)
+        run: |
+          set -euo pipefail
+          apps/macos-ui/scripts/verify_sparkle_appcast_policy.sh "$PWD/build/release-assets/appcast.xml"
+
       - name: Upload build artifacts to workflow run
         uses: actions/upload-artifact@v4
         with:
           name: helm-macos-dmg-${{ env.TAG_NAME }}
-          path: build/release-assets/*.dmg
+          path: |
+            build/release-assets/*.dmg
+            build/release-assets/appcast.xml
 
       - name: Upload DMGs to GitHub release
         if: ${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
@@ -301,4 +423,62 @@ jobs:
           gh release upload "$TAG_NAME" \
             "build/release-assets/Helm-${TAG_NAME}-macos-universal.dmg#Helm-${TAG_NAME}-macos-universal.dmg" \
             "build/release-assets/Helm.dmg#Helm.dmg" \
+            "build/release-assets/appcast.xml#appcast.xml" \
             --clobber
+
+      - name: Publish appcast to website source
+        if: ${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          APPCAST_PATH="$PWD/build/release-assets/appcast.xml"
+          FEED_PATH="web/public/updates/appcast.xml"
+          PUBLISH_DIR="$RUNNER_TEMP/appcast-publish"
+          PUBLISH_BRANCH="chore/publish-appcast-${TAG_NAME}"
+
+          git clone --depth 1 --branch main "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$PUBLISH_DIR"
+          mkdir -p "$PUBLISH_DIR/$(dirname "$FEED_PATH")"
+          cp "$APPCAST_PATH" "$PUBLISH_DIR/$FEED_PATH"
+
+          cd "$PUBLISH_DIR"
+          if [ -z "$(git status --porcelain -- "$FEED_PATH")" ]; then
+            echo "Appcast is already current on main."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$FEED_PATH"
+          git commit -m "chore(release): publish Sparkle appcast for ${TAG_NAME}"
+
+          if git push origin HEAD:main; then
+            echo "Published appcast directly to main."
+            exit 0
+          fi
+
+          echo "Direct push to main was rejected, creating PR fallback."
+          git checkout -b "$PUBLISH_BRANCH"
+          git push -u origin "$PUBLISH_BRANCH" --force-with-lease
+
+          EXISTING_PR="$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$PUBLISH_BRANCH" --state open --json number --jq '.[0].number' || true)"
+          if [ -n "$EXISTING_PR" ]; then
+            echo "PR already exists for $PUBLISH_BRANCH (#$EXISTING_PR)."
+            exit 0
+          fi
+
+          gh pr create \
+            --repo "$GITHUB_REPOSITORY" \
+            --base main \
+            --head "$PUBLISH_BRANCH" \
+            --title "chore(release): publish Sparkle appcast for ${TAG_NAME}" \
+            --body "$(cat <<EOF
+          This PR was auto-generated by \`release-macos-dmg.yml\`.
+
+          It publishes the latest Sparkle feed for \`${TAG_NAME}\` to:
+          - \`${FEED_PATH}\`
+
+          Merge this PR to update \`https://helmapp.dev/updates/appcast.xml\`.
+          EOF
+          )"

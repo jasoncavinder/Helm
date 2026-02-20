@@ -8,11 +8,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var eventMonitor: EventMonitor?
     private var controlCenterWindowController: NSWindowController?
     private var statusMenu: NSMenu?
+    private var checkForUpdatesMenuItem: NSMenuItem?
     private var upgradeAllMenuItem: NSMenuItem?
     private var refreshMenuItem: NSMenuItem?
     private var cancellables: Set<AnyCancellable> = []
 
     private let core = HelmCore.shared
+    private let appUpdate = AppUpdateCoordinator.shared
     private let controlCenterContext = ControlCenterContext()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -127,6 +129,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.updateStatusItemAppearance()
                 self?.updateStatusMenuState()
                 self?.resizePopoverIfVisible()
+            }
+            .store(in: &cancellables)
+
+        appUpdate.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.updateStatusMenuState()
             }
             .store(in: &cancellables)
     }
@@ -315,6 +324,15 @@ private extension AppDelegate {
         aboutItem.target = self
         menu.addItem(aboutItem)
 
+        let checkForUpdatesItem = NSMenuItem(
+            title: L10n.App.Overlay.About.checkForUpdates.localized,
+            action: #selector(checkForUpdatesFromMenu),
+            keyEquivalent: ""
+        )
+        checkForUpdatesItem.target = self
+        menu.addItem(checkForUpdatesItem)
+        checkForUpdatesMenuItem = checkForUpdatesItem
+
         let controlCenterItem = NSMenuItem(
             title: L10n.App.Action.openControlCenter.localized,
             action: #selector(openControlCenterFromMenu),
@@ -410,6 +428,8 @@ private extension AppDelegate {
     }
 
     func updateStatusMenuState() {
+        checkForUpdatesMenuItem?.isEnabled = appUpdate.canCheckForUpdates && !appUpdate.isCheckingForUpdates
+        checkForUpdatesMenuItem?.toolTip = appUpdate.unavailableReasonLocalizationKey?.localized
         upgradeAllMenuItem?.isEnabled = !core.outdatedPackages.isEmpty
         refreshMenuItem?.isEnabled = !core.isRefreshing
     }
@@ -427,6 +447,10 @@ private extension AppDelegate {
 
     @objc func openAboutFromMenu() {
         openPopoverOverlay(.about)
+    }
+
+    @objc func checkForUpdatesFromMenu() {
+        appUpdate.checkForUpdates()
     }
 
     @objc func openControlCenterFromMenu() {

@@ -2,4 +2,10 @@
 // version metadata exists. Generated values override these defaults.
 MARKETING_VERSION = 0.0.0
 CURRENT_PROJECT_VERSION = 0
+HELM_DISTRIBUTION_CHANNEL = developer_id
+HELM_SPARKLE_ENABLED = NO
+HELM_SPARKLE_FEED_URL =
+HELM_SPARKLE_PUBLIC_ED_KEY =
+HELM_SPARKLE_ALLOW_DOWNGRADES = NO
 #include? "../Generated/HelmVersion.xcconfig"
+#include? "../Generated/HelmChannel.xcconfig"

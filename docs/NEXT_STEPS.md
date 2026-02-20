@@ -11,14 +11,15 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-0.15.x
+0.16.x
 ```
 
 Focus:
-- 0.15.x upgrade preview and execution transparency
+- 0.16.x self-update and installer hardening
 
 Current checkpoint:
-- `v0.15.0` release prep in progress on `dev` (final stabilization/validation complete; pending PR flow)
+- `v0.16.0-rc.8` pre-release rehearsal in progress on `feat/v0.16.0-kickoff` (channel-aware updater scaffolding + package-manager-aware Sparkle gating + DMG invariant verification + appcast generation/publish + policy validation)
+- `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
 - `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)
 - `v0.13.0` stable released (website updates, documentation alignment, version bump)
@@ -34,7 +35,84 @@ Current checkpoint:
 - `v0.14.0` distribution/licensing architecture planning docs aligned (future-state, no implementation changes)
 
 Next release targets:
-- `v0.15.x` — Upgrade Preview & Execution Transparency
+- `v0.16.x` — Self-Update & Installer Hardening
+
+---
+
+## v0.16.x Kickoff Plan (In Progress)
+
+### Alpha.1 — Channel-Aware Updater Scaffolding (Completed on `feat/v0.16.0-kickoff`)
+
+Delivered:
+
+- Added runtime channel configuration model for app-update behavior:
+  - `HelmDistributionChannel` (`developer_id`, `app_store`, `setapp`, `fleet`)
+  - `HelmSparkleEnabled` gating to prevent accidental Sparkle activation in non-direct channels
+- Added `AppUpdateCoordinator` with strict channel isolation and manual update-check entry point plumbing
+- Added optional Sparkle bridge (`#if canImport(Sparkle)`) while preserving non-Sparkle build compatibility
+- Wired Sparkle SPM package linkage into the Helm app target for direct-channel runtime update checks
+- Pinned Sparkle SPM dependency to exact `2.8.1` to keep compatibility aligned with macOS 11+ / macOS 12 targets.
+- Added user entry points:
+  - status menu `Check for Updates`
+  - popover About overlay `Check for Updates`
+- Added localized `app.overlay.about.check_updates` in both locale trees (`locales/` + app resource mirror)
+- Added default app metadata keys in `Info.plist`:
+  - `HelmDistributionChannel=developer_id`
+  - `HelmSparkleEnabled=false`
+- Added channel-profile build configs and generation flow:
+  - profile templates under `apps/macos-ui/Config/channels/`
+  - build output `apps/macos-ui/Generated/HelmChannel.xcconfig`
+  - base config now includes generated channel config when present
+- Added shared channel xcconfig renderer (`apps/macos-ui/scripts/render_channel_xcconfig.sh`) and refactored build generation to use that single path.
+- Helm target now injects channel/feed/signature plist keys from build settings:
+  - `HelmDistributionChannel`
+  - `HelmSparkleEnabled`
+  - `SUAllowsDowngrades`
+  - `SUFeedURL`
+  - `SUPublicEDKey`
+- Helm app Info.plist now includes explicit placeholders for those updater metadata keys so packaged-artifact verification can read deterministic values.
+- Release DMG workflow now passes direct-channel Sparkle build metadata and validates required Sparkle secrets before signed release builds.
+- Release DMG workflow now verifies packaged channel/Sparkle invariants and Sparkle framework linkage in the signed app bundle.
+- Added regression coverage for app update channel config parsing + Sparkle gating behavior (`AppUpdateConfigurationTests`).
+- Added fail-fast build-script policy checks for invalid channel/Sparkle combinations.
+- Added CI channel-policy matrix validation (`apps/macos-ui/scripts/check_channel_policy.sh`) ahead of Xcode build/test.
+- Hardened Sparkle feed policy so Developer ID + Sparkle now requires `https://` at both build-render and runtime configuration gates.
+- Added explicit downgrade hardening: `SUAllowsDowngrades` defaults to disabled, release artifacts are verified as non-downgradeable, and runtime Sparkle gating rejects downgrade-enabled metadata.
+- Added install-location hardening for self-update: runtime Sparkle gating now rejects mounted-DMG (`/Volumes/...`) and App Translocation execution paths.
+- Added package-manager install hardening for self-update: runtime Sparkle gating now rejects package-manager-managed installs via Homebrew Cask receipt detection plus Homebrew/MacPorts path heuristics.
+- Added localized operator feedback for blocked update checks in About/menu surfaces so policy-based unavailability is explicit instead of silently hidden.
+
+Validation:
+
+- `cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
+- `swiftlint lint --no-cache apps/macos-ui/Helm/Core/HelmCore.swift apps/macos-ui/Helm/AppDelegate.swift apps/macos-ui/Helm/Views/PopoverOverlayViews.swift apps/macos-ui/Helm/Core/L10n+App.swift`
+
+### Alpha.2 — Installer Packaging Hardening (In Progress on `feat/v0.16.0-kickoff`)
+
+Delivered:
+
+- Added packaged-DMG verification script (`apps/macos-ui/scripts/verify_release_dmg.sh`) to enforce:
+  - app payload presence in mounted DMG
+  - `/Applications` symlink correctness
+  - expected DMG background asset
+  - updater metadata invariants (`HelmDistributionChannel`, `HelmSparkleEnabled`, `SUAllowsDowngrades`, `SUFeedURL`, `SUPublicEDKey`)
+  - Sparkle framework linkage and app codesign verification from packaged artifact
+- Wired packaged-DMG verification into release workflow before notarization (`.github/workflows/release-macos-dmg.yml`).
+- Added Sparkle appcast generation script (`apps/macos-ui/scripts/generate_sparkle_appcast.sh`) for finalized/stapled DMGs.
+- Release workflow now generates and uploads `appcast.xml` from the final DMG artifact.
+- Added website feed scaffold at `web/public/updates/appcast.xml` for direct-channel Sparkle hosting.
+- Appcast generation now uses Sparkle's packaged `sign_update` binary from SPM artifacts instead of invoking `swift run` against Sparkle sources.
+- Release workflow now publishes generated `appcast.xml` into `web/public/updates/appcast.xml` on `main` (with automatic PR fallback when direct push is blocked by branch protections).
+- Release workflow now enforces Sparkle appcast policy checks (`apps/macos-ui/scripts/verify_sparkle_appcast_policy.sh`) to keep `0.16.x` on full-installer-only updates (no deltas).
+- Release workflow now pre-renders channel overrides and passes explicit Sparkle/channel build settings into `xcodebuild` so release artifact metadata reflects CI secrets in the same build invocation.
+- Release workflow now re-signs Sparkle nested binaries/framework with Developer ID + secure timestamp before notarization.
+- Release workflow now lets appcast generation auto-discover Sparkle `sign_update` from available DerivedData artifact paths instead of forcing a single fixed location.
+- Sparkle appcast generation now falls back to downloading Sparkle's official SPM artifact bundle and using its `sign_update` binary if local discovery paths are empty.
+- Appcast publication now checks `git status --porcelain` for the feed path so newly added files are published instead of being misdetected as unchanged.
+- Added interruption/recovery validation runbook for release operators:
+  - `docs/validation/v0.16.0-rc.8-installer-recovery.md`
+- Build metadata generation now derives monotonic numeric bundle build numbers from semantic versions to keep Sparkle update ordering stable.
 
 ---
 

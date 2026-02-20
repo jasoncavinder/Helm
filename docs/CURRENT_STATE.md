@@ -8,14 +8,14 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.15.0** (release prep on `dev`; latest stable release on `main` is `v0.14.1`)
+Current version: **0.16.0-rc.8** (pre-release rehearsal in progress on `feat/v0.16.0-kickoff`; latest stable release on `main` is `v0.15.0`)
 
 See:
 - CHANGELOG.md
 
 Active milestone:
-- 0.15.0 — Upgrade Preview & Execution Transparency (release finalization)
-- 0.14.1 — Released on `main` (PR `#65`, tag `v0.14.1`)
+- 0.16.0 — Self-Update & Installer Hardening (rc rehearsal)
+- 0.15.0 — Released on `main` (tag `v0.15.0`)
 
 ---
 
@@ -35,6 +35,7 @@ Active milestone:
 - 0.12.x — Localization hardening + upgrade transparency (stable checkpoint)
 - 0.13.x — UI/UX analysis & redesign (stable checkpoint)
 - 0.14.x — Platform, detection & optional managers (stable checkpoint)
+- 0.15.x — Upgrade preview & execution transparency (stable checkpoint)
 
 ---
 
@@ -121,6 +122,105 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 - Website redesign planning artifacts added:
   - `docs/website/WEBSITE_REDESIGN_PLAN.md`
   - `docs/website/DESIGN_TOKENS.md`
+
+---
+
+## v0.16.0-alpha.1 Status
+
+### Channel-Aware Self-Update Kickoff
+
+Implemented on `feat/v0.16.0-kickoff`:
+
+- Added app-update channel configuration plumbing in macOS UI runtime:
+  - `HelmDistributionChannel` (`developer_id`, `app_store`, `setapp`, `fleet`)
+  - `HelmUpdateAuthority` mapping derived from channel
+  - `HelmSparkleEnabled` gate for direct-channel updater enablement
+- Added `AppUpdateCoordinator` with strict channel isolation:
+  - only Developer ID channel with Sparkle explicitly enabled can present in-app update checks
+  - non-direct channels remain no-op at runtime (MAS/Setapp/Fleet isolation)
+- Added optional Sparkle bridge implementation guarded with `#if canImport(Sparkle)` so non-Sparkle builds remain compile-safe
+- Wired Sparkle SPM package linkage into the Helm app target for direct-channel runtime update checks
+- Pinned Sparkle SPM dependency to exact `2.8.1` to keep update-framework compatibility aligned with macOS 11+ and current macOS 12 deployment targets.
+- Added user entry points for manual update checks:
+  - status-menu `Check for Updates`
+  - popover About overlay `Check for Updates`
+- Added localized `app.overlay.about.check_updates` key across canonical and mirrored locale trees
+- Added default channel metadata via build settings (`HelmDistributionChannel=developer_id`, `HelmSparkleEnabled=false`) for local/direct builds.
+- Added channel profile templates for build-time distribution mapping:
+  - `apps/macos-ui/Config/channels/developer_id.xcconfig`
+  - `apps/macos-ui/Config/channels/app_store.xcconfig`
+  - `apps/macos-ui/Config/channels/setapp.xcconfig`
+  - `apps/macos-ui/Config/channels/fleet.xcconfig`
+- Build script now emits `apps/macos-ui/Generated/HelmChannel.xcconfig` from `HELM_CHANNEL_PROFILE` (+ env overrides), and Xcode consumes it through checked-in base config include.
+- Added shared channel renderer script (`apps/macos-ui/scripts/render_channel_xcconfig.sh`) so all generated channel config paths use one policy-enforced code path.
+- Added channel-policy matrix check script (`apps/macos-ui/scripts/check_channel_policy.sh`) and wired it into CI (`.github/workflows/ci-test.yml`) before Xcode build/test.
+- Helm target Info.plist keys are now build-setting injected (channel + Sparkle feed/signature metadata) rather than hardcoded plist values.
+- Helm app Info.plist now carries explicit placeholders for updater metadata keys (`HelmDistributionChannel`, `HelmSparkleEnabled`, `SUFeedURL`, `SUAllowsDowngrades`, `SUPublicEDKey`) so release-assertion checks can validate packaged artifacts deterministically.
+- Helm target now injects `SUAllowsDowngrades` from build settings and defaults this to disabled (`NO`) across channel profiles/base config.
+- Release DMG workflow now injects direct-channel Sparkle metadata at build time and validates required release secrets/packaged plist channel keys.
+- Release DMG workflow now also verifies packaged updater invariants in the built artifact:
+  - `HelmDistributionChannel=developer_id`
+  - `HelmSparkleEnabled` truthy
+  - `SUAllowsDowngrades` false
+  - `SUFeedURL` uses `https://`
+  - `SUPublicEDKey` non-empty
+  - Sparkle framework is bundled and linked into the Helm binary
+- Release DMG workflow now also validates final packaged DMG contents (app bundle payload, `/Applications` symlink, background asset, updater invariants, and codesign integrity) via `apps/macos-ui/scripts/verify_release_dmg.sh`.
+- Added regression coverage for channel config parsing + Sparkle gating behavior (`AppUpdateConfigurationTests`) and extracted shared app-update config model into `Helm/Core/AppUpdateConfiguration.swift`.
+- Build script now enforces channel/Sparkle policy at generation time and fails fast on invalid combinations:
+  - non-Developer-ID channels cannot enable Sparkle or set Sparkle feed/signature metadata
+  - Developer ID channel with Sparkle enabled must provide both `HELM_SPARKLE_FEED_URL` and `HELM_SPARKLE_PUBLIC_ED_KEY`
+  - Developer ID channel with Sparkle enabled must use an `https://` Sparkle feed URL
+  - Sparkle downgrades are disallowed (`HELM_SPARKLE_ALLOW_DOWNGRADES` cannot be enabled)
+- Runtime app-update configuration now requires a secure Sparkle feed URL (`https://`) before enabling Sparkle checks.
+- Runtime app-update configuration now also blocks Sparkle checks when downgrades are enabled in metadata.
+- Runtime app-update configuration now also requires an eligible install location (not mounted from `/Volumes/...` and not App Translocation paths) before enabling Sparkle checks.
+- Runtime app-update configuration now also blocks Sparkle checks for package-manager-managed installs (Homebrew Cask receipt detection plus Homebrew/MacPorts path heuristics), so direct-channel self-update remains DMG-oriented.
+- About overlay and status-menu update controls now surface localized unavailability reasons when manual update checks are blocked by channel/config/install-location policy.
+
+Validation:
+
+- `cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml` passing
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test` passing
+- `swiftlint lint --no-cache apps/macos-ui/Helm/Core/HelmCore.swift apps/macos-ui/Helm/Core/AppUpdateConfiguration.swift apps/macos-ui/Helm/AppDelegate.swift apps/macos-ui/Helm/Views/PopoverOverlayViews.swift apps/macos-ui/Helm/Core/L10n+App.swift` passing (local toolchain warns about one unsupported legacy rule key)
+- Channel-policy hardening sanity checks:
+  - `CONFIGURATION=Debug HELM_CHANNEL_PROFILE=app_store HELM_CHANNEL_OVERRIDE_SPARKLE_ENABLED=YES apps/macos-ui/scripts/build_rust.sh` fails as expected
+  - `CONFIGURATION=Debug HELM_CHANNEL_PROFILE=developer_id HELM_CHANNEL_OVERRIDE_SPARKLE_ENABLED=YES apps/macos-ui/scripts/build_rust.sh` fails as expected when feed/key are omitted
+  - `apps/macos-ui/scripts/check_channel_policy.sh` passes
+
+---
+
+## v0.16.0-alpha.2 Status
+
+### Installer Packaging Hardening
+
+Implemented on `feat/v0.16.0-kickoff`:
+
+- Added packaged-DMG verification script (`apps/macos-ui/scripts/verify_release_dmg.sh`) to validate mounted artifact contents before notarization:
+  - app payload and expected `/Applications` symlink
+  - DMG background asset presence
+  - updater metadata invariants (`HelmDistributionChannel`, `HelmSparkleEnabled`, `SUAllowsDowngrades`, `SUFeedURL`, `SUPublicEDKey`)
+  - Sparkle framework presence/linkage and app-bundle codesign verification from the packaged DMG
+- Wired packaged-DMG verification into release workflow (`.github/workflows/release-macos-dmg.yml`) before notarization submission.
+- Added Sparkle appcast generator script (`apps/macos-ui/scripts/generate_sparkle_appcast.sh`) that signs finalized DMGs using Sparkle `sign_update` and emits `appcast.xml` with enclosure/version metadata.
+- Release DMG workflow now generates and uploads `appcast.xml` from the final stapled DMG artifact.
+- Added web feed path scaffold at `web/public/updates/appcast.xml` for direct-channel Sparkle feed hosting.
+- Appcast signing now uses Sparkle's packaged `sign_update` binary from Xcode SPM artifacts (with fallback discovery), removing reliance on `swift run` against Sparkle checkouts.
+- Release workflow now attempts to publish generated appcast content directly to `web/public/updates/appcast.xml` on `main`, and falls back to auto-opening a PR when direct pushes are blocked.
+- Release workflow now enforces Sparkle appcast policy checks (full-installer-only DMG feed, no delta payloads) via `apps/macos-ui/scripts/verify_sparkle_appcast_policy.sh`.
+- Release workflow now pre-renders channel overrides and passes explicit Sparkle/channel build settings to `xcodebuild`, ensuring release artifacts always embed the intended updater metadata on the same build invocation.
+- Release workflow now re-signs Sparkle nested binaries/framework with the active Developer ID identity (timestamped) before packaging/notarization, preventing Sparkle helper signature/timestamp notarization failures.
+- Release workflow now lets appcast generation auto-discover Sparkle `sign_update` in DerivedData instead of forcing a fixed artifact path, improving runner portability.
+- Sparkle appcast generation now falls back to downloading Sparkle's official SPM artifact ZIP and using its bundled `bin/sign_update` when local artifact discovery fails.
+- Appcast publication step now detects untracked feed changes correctly (using `git status --porcelain`) so first-time `web/public/updates/appcast.xml` publication is not skipped as a false no-op.
+- Added installer/update interruption and recovery validation runbook:
+  - `docs/validation/v0.16.0-rc.8-installer-recovery.md`
+- Build metadata generation now derives monotonic numeric bundle build numbers from semantic versions (`apps/macos-ui/scripts/build_rust.sh`) to keep Sparkle update ordering stable.
+
+Validation:
+
+- `bash -n apps/macos-ui/scripts/verify_release_dmg.sh` passing
+- `bash -n apps/macos-ui/scripts/generate_sparkle_appcast.sh` passing
 
 ---
 
