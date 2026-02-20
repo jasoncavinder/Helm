@@ -23,7 +23,6 @@ struct ControlCenterWindowView: View {
     var body: some View {
         VStack(spacing: 0) {
             ControlCenterTopBar(sidebarWidth: sidebarWidth)
-            Divider()
 
             HStack(spacing: 0) {
                 ControlCenterSidebarView(sidebarWidth: sidebarWidth)
@@ -177,9 +176,14 @@ private struct ControlCenterTopBar: View {
             }
         )
         .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(HelmTheme.statusRail)
-                .frame(height: 1)
+            HStack(spacing: 0) {
+                Rectangle()
+                    .fill(Color.clear)
+                    .frame(width: sidebarWidth)
+                Rectangle()
+                    .fill(HelmTheme.statusRail)
+                    .frame(height: 1)
+            }
         }
         .onChange(of: context.controlCenterSearchFocusToken) { _ in
             isSearchFocused = true
