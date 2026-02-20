@@ -534,6 +534,7 @@
 			outputPaths = (
 				"$(SRCROOT)/Generated/HelmVersion.swift",
 				"$(SRCROOT)/Generated/HelmVersion.xcconfig",
+				"$(SRCROOT)/Generated/HelmChannel.xcconfig",
 				"$(SRCROOT)/Generated/libhelm_ffi.a",
 				"$(SRCROOT)/Generated/helm.h",
 			);
@@ -836,6 +837,10 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMainStoryboardFile = "";
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				INFOPLIST_KEY_HelmDistributionChannel = "$(HELM_DISTRIBUTION_CHANNEL)";
+				INFOPLIST_KEY_HelmSparkleEnabled = "$(HELM_SPARKLE_ENABLED)";
+				INFOPLIST_KEY_SUFeedURL = "$(HELM_SPARKLE_FEED_URL)";
+				INFOPLIST_KEY_SUPublicEDKey = "$(HELM_SPARKLE_PUBLIC_ED_KEY)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -875,6 +880,10 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMainStoryboardFile = "";
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				INFOPLIST_KEY_HelmDistributionChannel = "$(HELM_DISTRIBUTION_CHANNEL)";
+				INFOPLIST_KEY_HelmSparkleEnabled = "$(HELM_SPARKLE_ENABLED)";
+				INFOPLIST_KEY_SUFeedURL = "$(HELM_SPARKLE_FEED_URL)";
+				INFOPLIST_KEY_SUPublicEDKey = "$(HELM_SPARKLE_PUBLIC_ED_KEY)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

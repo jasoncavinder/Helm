@@ -11,7 +11,7 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 cd "$REPO_ROOT/core/rust"
 
 # Determine build profile
-if [ "$CONFIGURATION" = "Release" ]; then
+if [[ "${CONFIGURATION:-Debug}" == Release* ]]; then
     PROFILE="release"
     CARGO_FLAGS="--release"
 else
@@ -30,6 +30,17 @@ map_arch_to_target() {
             ;;
         *)
             return 1
+            ;;
+    esac
+}
+
+normalize_xcconfig_bool() {
+    case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+        1|true|yes|on)
+            echo "YES"
+            ;;
+        *)
+            echo "NO"
             ;;
     esac
 }
@@ -105,6 +116,32 @@ fi
 # ensuring Xcode can find them
 DEST_DIR="$REPO_ROOT/apps/macos-ui/Generated"
 mkdir -p "$DEST_DIR"
+
+CHANNEL_PROFILE="${HELM_CHANNEL_PROFILE:-developer_id}"
+CHANNEL_CONFIG_DIR="$REPO_ROOT/apps/macos-ui/Config/channels"
+CHANNEL_TEMPLATE="$CHANNEL_CONFIG_DIR/${CHANNEL_PROFILE}.xcconfig"
+if [ ! -f "$CHANNEL_TEMPLATE" ]; then
+    echo "Unknown HELM_CHANNEL_PROFILE '$CHANNEL_PROFILE' (expected developer_id, app_store, setapp, or fleet)." >&2
+    exit 1
+fi
+
+cp "$CHANNEL_TEMPLATE" "$DEST_DIR/HelmChannel.xcconfig"
+{
+    echo ""
+    echo "// Overrides from environment (set by CI/release pipeline when needed)."
+    if [ -n "${HELM_CHANNEL_OVERRIDE_DISTRIBUTION:-}" ]; then
+        echo "HELM_DISTRIBUTION_CHANNEL = ${HELM_CHANNEL_OVERRIDE_DISTRIBUTION}"
+    fi
+    if [ -n "${HELM_CHANNEL_OVERRIDE_SPARKLE_ENABLED:-}" ]; then
+        echo "HELM_SPARKLE_ENABLED = $(normalize_xcconfig_bool "$HELM_CHANNEL_OVERRIDE_SPARKLE_ENABLED")"
+    fi
+    if [ -n "${HELM_CHANNEL_OVERRIDE_SPARKLE_FEED_URL:-}" ]; then
+        echo "HELM_SPARKLE_FEED_URL = ${HELM_CHANNEL_OVERRIDE_SPARKLE_FEED_URL}"
+    fi
+    if [ -n "${HELM_CHANNEL_OVERRIDE_SPARKLE_PUBLIC_ED_KEY:-}" ]; then
+        echo "HELM_SPARKLE_PUBLIC_ED_KEY = ${HELM_CHANNEL_OVERRIDE_SPARKLE_PUBLIC_ED_KEY}"
+    fi
+} >> "$DEST_DIR/HelmChannel.xcconfig"
 
 if [ "${#LIB_INPUTS[@]}" -eq 1 ]; then
     cp "${LIB_INPUTS[0]}" "$DEST_DIR/libhelm_ffi.a"

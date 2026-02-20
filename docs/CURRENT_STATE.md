@@ -124,6 +124,14 @@ Implemented on `feat/v0.16.0-kickoff`:
 - Added default Info.plist update-channel metadata keys for local/direct builds:
   - `HelmDistributionChannel=developer_id`
   - `HelmSparkleEnabled=false`
+- Added channel profile templates for build-time distribution mapping:
+  - `apps/macos-ui/Config/channels/developer_id.xcconfig`
+  - `apps/macos-ui/Config/channels/app_store.xcconfig`
+  - `apps/macos-ui/Config/channels/setapp.xcconfig`
+  - `apps/macos-ui/Config/channels/fleet.xcconfig`
+- Build script now emits `apps/macos-ui/Generated/HelmChannel.xcconfig` from `HELM_CHANNEL_PROFILE` (+ env overrides), and Xcode consumes it through checked-in base config include.
+- Helm target Info.plist keys are now build-setting injected (channel + Sparkle feed/signature metadata) rather than hardcoded plist values.
+- Release DMG workflow now injects direct-channel Sparkle metadata at build time and validates required release secrets/packaged plist channel keys.
 
 Validation:
 

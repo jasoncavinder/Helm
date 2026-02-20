@@ -11,6 +11,11 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
   - `HelmDistributionChannel` + `HelmUpdateAuthority` runtime model
   - `AppUpdateCoordinator` with channel-gated manual update checks
   - optional Sparkle bridge guarded by `#if canImport(Sparkle)`
+- Channel profile build templates for distribution/update authority separation:
+  - `apps/macos-ui/Config/channels/developer_id.xcconfig`
+  - `apps/macos-ui/Config/channels/app_store.xcconfig`
+  - `apps/macos-ui/Config/channels/setapp.xcconfig`
+  - `apps/macos-ui/Config/channels/fleet.xcconfig`
 - Manual `Check for Updates` entry points in both the menu-bar status menu and About popover overlay.
 - New localized UI key `app.overlay.about.check_updates` across all supported locales (canonical + mirrored locale trees).
 - Upgrade-plan preview model surfaced end-to-end (FFI → XPC → SwiftUI) with stable step IDs, order indices, manager/action/authority context, and localized reason metadata.
@@ -22,6 +27,9 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Added default app update-channel metadata to `Info.plist`:
   - `HelmDistributionChannel=developer_id`
   - `HelmSparkleEnabled=false`
+- Build script now emits generated channel settings (`apps/macos-ui/Generated/HelmChannel.xcconfig`) from `HELM_CHANNEL_PROFILE` with optional CI overrides.
+- Helm target Info.plist channel/feed/signature keys now come from build settings (`HelmDistributionChannel`, `HelmSparkleEnabled`, `SUFeedURL`, `SUPublicEDKey`) instead of hardcoded plist entries.
+- Release DMG workflow now validates Sparkle feed/signature secrets and injects Developer ID channel Sparkle metadata during signed release builds.
 - Runtime upgrade task labels now include `plan_step_id` metadata so task rows can be projected onto execution-plan rows.
 - Partial-failure summaries now group failed plan steps by manager and affected package set.
 - Scoped plan execution now runs phase-by-phase by authority rank (authoritative → standard → guarded) instead of submitting all manager steps concurrently.

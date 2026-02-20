@@ -34,6 +34,8 @@ enum HelmUpdateAuthority: String {
 struct AppUpdateConfiguration {
     let channel: HelmDistributionChannel
     let sparkleEnabled: Bool
+    let sparkleFeedURL: String?
+    let sparklePublicEdKey: String?
 
     static func from(bundle: Bundle = .main) -> AppUpdateConfiguration {
         let channel = HelmDistributionChannel.from(bundle: bundle)
@@ -46,7 +48,17 @@ struct AppUpdateConfiguration {
             sparkleEnabled = false
         }
 
-        return AppUpdateConfiguration(channel: channel, sparkleEnabled: sparkleEnabled)
+        let sparkleFeedURL = (bundle.object(forInfoDictionaryKey: "SUFeedURL") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let sparklePublicEdKey = (bundle.object(forInfoDictionaryKey: "SUPublicEDKey") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return AppUpdateConfiguration(
+            channel: channel,
+            sparkleEnabled: sparkleEnabled,
+            sparkleFeedURL: sparkleFeedURL?.isEmpty == true ? nil : sparkleFeedURL,
+            sparklePublicEdKey: sparklePublicEdKey?.isEmpty == true ? nil : sparklePublicEdKey
+        )
     }
 }
 
@@ -108,7 +120,7 @@ final class AppUpdateCoordinator: ObservableObject {
         self.canCheckForUpdates = driver.canCheckForUpdates
 
         updateLogger.info(
-            "Configured app updater. channel=\(configuration.channel.rawValue, privacy: .public), authority=\(self.updateAuthority.rawValue, privacy: .public), sparkle_enabled=\(configuration.sparkleEnabled, privacy: .public), can_check=\(self.canCheckForUpdates, privacy: .public)"
+            "Configured app updater. channel=\(configuration.channel.rawValue, privacy: .public), authority=\(self.updateAuthority.rawValue, privacy: .public), sparkle_enabled=\(configuration.sparkleEnabled, privacy: .public), feed_configured=\(configuration.sparkleFeedURL != nil, privacy: .public), key_configured=\(configuration.sparklePublicEdKey != nil, privacy: .public), can_check=\(self.canCheckForUpdates, privacy: .public)"
         )
     }
 
@@ -142,7 +154,12 @@ final class AppUpdateCoordinator: ObservableObject {
     }
 
     private static func makeDriver(for configuration: AppUpdateConfiguration) -> AppUpdateDriver {
-        guard configuration.channel == .developerID, configuration.sparkleEnabled else {
+        guard
+            configuration.channel == .developerID,
+            configuration.sparkleEnabled,
+            configuration.sparkleFeedURL != nil,
+            configuration.sparklePublicEdKey != nil
+        else {
             return NoopAppUpdateDriver()
         }
 

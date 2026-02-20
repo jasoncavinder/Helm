@@ -25,13 +25,15 @@ jobs:
       SIGNING_CERT_BASE64: ${{ secrets.MACOS_DEVELOPER_ID_APP_CERT_BASE64 }}
       SIGNING_CERT_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_APP_CERT_PASSWORD }}
       KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+      HELM_SPARKLE_FEED_URL: ${{ secrets.HELM_SPARKLE_FEED_URL }}
+      HELM_SPARKLE_PUBLIC_ED_KEY: ${{ secrets.HELM_SPARKLE_PUBLIC_ED_KEY }}
       TAG_NAME: ${{ github.event.release.tag_name || github.event.inputs.tag }}
 
     steps:
       - name: Validate required secrets
         run: |
           set -euo pipefail
-          required=(APP_TEAM_ID SIGNING_CERT_BASE64 SIGNING_CERT_PASSWORD)
+          required=(APP_TEAM_ID SIGNING_CERT_BASE64 SIGNING_CERT_PASSWORD HELM_SPARKLE_FEED_URL HELM_SPARKLE_PUBLIC_ED_KEY)
           for key in "${required[@]}"; do
             if [ -z "${!key}" ]; then
               echo "::error::Missing required secret: $key"
@@ -76,6 +78,7 @@ jobs:
       - name: Run Swift tests before release build
         run: |
           set -euo pipefail
+          HELM_CHANNEL_PROFILE=developer_id \
           xcodebuild \
             -project apps/macos-ui/Helm.xcodeproj \
             -scheme Helm \
@@ -89,6 +92,10 @@ jobs:
       - name: Build signed universal app
         run: |
           set -euo pipefail
+          HELM_CHANNEL_PROFILE=developer_id \
+          HELM_CHANNEL_OVERRIDE_SPARKLE_ENABLED=YES \
+          HELM_CHANNEL_OVERRIDE_SPARKLE_FEED_URL="$HELM_SPARKLE_FEED_URL" \
+          HELM_CHANNEL_OVERRIDE_SPARKLE_PUBLIC_ED_KEY="$HELM_SPARKLE_PUBLIC_ED_KEY" \
           xcodebuild \
             -project apps/macos-ui/Helm.xcodeproj \
             -scheme Helm \
@@ -111,8 +118,15 @@ jobs:
           APP_PATH="$PWD/build/DerivedData/Build/Products/Release/Helm.app"
           HELM_BIN="$APP_PATH/Contents/MacOS/Helm"
           XPC_BIN="$APP_PATH/Contents/XPCServices/HelmService.xpc/Contents/MacOS/HelmService"
+          APP_INFO_PLIST="$APP_PATH/Contents/Info.plist"
 
           test -d "$APP_PATH"
+
+          echo "=== Update channel metadata ==="
+          /usr/libexec/PlistBuddy -c "Print :HelmDistributionChannel" "$APP_INFO_PLIST"
+          /usr/libexec/PlistBuddy -c "Print :HelmSparkleEnabled" "$APP_INFO_PLIST"
+          /usr/libexec/PlistBuddy -c "Print :SUFeedURL" "$APP_INFO_PLIST"
+          /usr/libexec/PlistBuddy -c "Print :SUPublicEDKey" "$APP_INFO_PLIST" >/dev/null
 
           echo "=== Architectures ==="
           lipo -archs "$HELM_BIN"

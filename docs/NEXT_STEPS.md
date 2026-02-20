@@ -18,7 +18,7 @@ Focus:
 - 0.16.x self-update and installer hardening
 
 Current checkpoint:
-- `v0.16.0-alpha.1` kickoff in progress on `feat/v0.16.0-kickoff` (channel-aware updater scaffolding landed; Sparkle packaging integration pending)
+- `v0.16.0-alpha.1` kickoff in progress on `feat/v0.16.0-kickoff` (channel-aware updater scaffolding + channel build-profile wiring + release feed/signature injection landed; Sparkle package linkage remains)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
 - `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)
@@ -57,11 +57,20 @@ Delivered:
 - Added default app metadata keys in `Info.plist`:
   - `HelmDistributionChannel=developer_id`
   - `HelmSparkleEnabled=false`
+- Added channel-profile build configs and generation flow:
+  - profile templates under `apps/macos-ui/Config/channels/`
+  - build output `apps/macos-ui/Generated/HelmChannel.xcconfig`
+  - base config now includes generated channel config when present
+- Helm target now injects channel/feed/signature plist keys from build settings:
+  - `HelmDistributionChannel`
+  - `HelmSparkleEnabled`
+  - `SUFeedURL`
+  - `SUPublicEDKey`
+- Release DMG workflow now passes direct-channel Sparkle build metadata and validates required Sparkle secrets before signed release builds.
 
 Next in alpha.1:
 
-- Wire Sparkle package dependency and feed/signature metadata for direct-channel release builds
-- Add channel-specific build configs (Developer ID / MAS / Setapp / Fleet) with explicit Sparkle enablement matrix
+- Wire Sparkle package dependency for direct-channel runtime update checks in CI/release environments (current runtime bridge remains optional via `#if canImport(Sparkle)`).
 - Add regression tests for config parsing and channel gating behavior
 
 Validation:
