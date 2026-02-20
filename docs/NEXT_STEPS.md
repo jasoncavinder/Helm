@@ -99,6 +99,11 @@ Progress so far:
 - Updates section now scrolls end-to-end so long plan/failure lists remain fully accessible during manual validation
 - Updates rows now support full-row inspector hit targets, display-order numbering, and scoped-run in-progress feedback
 - Failed-task inspector now provides suggested repro command hints plus task-scoped diagnostics copy support
+- Failed-task inspector now includes a task-output modal with dedicated `stderr`/`stdout` tabs
+- Added execution-to-inspector task-output plumbing:
+  - per-task runtime context now flows into process requests
+  - process output capture is keyed by task ID and exposed via FFI/XPC (`helm_get_task_output` / `getTaskOutput`)
+  - inspector fetches task output on demand for diagnostics without adding payload bloat to task polling
 
 Deliver:
 

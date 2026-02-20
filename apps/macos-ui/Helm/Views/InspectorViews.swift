@@ -79,6 +79,10 @@ struct ControlCenterInspectorView: View {
 private struct InspectorTaskDetailView: View {
     @ObservedObject private var core = HelmCore.shared
     @State private var copiedDiagnosticsConfirmation = false
+    @State private var showTaskOutputSheet = false
+    @State private var isLoadingTaskOutput = false
+    @State private var taskOutputLoadFailed = false
+    @State private var taskOutputRecord: CoreTaskOutputRecord?
     let task: TaskItem
 
     var body: some View {
@@ -172,6 +176,16 @@ private struct InspectorTaskDetailView: View {
                         .font(.caption)
                         .helmPointer()
 
+                        if hasNumericTaskId {
+                            Button(L10n.App.Inspector.viewTaskOutput.localized) {
+                                showTaskOutputSheet = true
+                                loadTaskOutput(force: true)
+                            }
+                            .buttonStyle(HelmSecondaryButtonStyle())
+                            .font(.caption)
+                            .helmPointer()
+                        }
+
                         if copiedDiagnosticsConfirmation {
                             HStack(spacing: 4) {
                                 Image(systemName: "checkmark.circle.fill")
@@ -184,6 +198,15 @@ private struct InspectorTaskDetailView: View {
                     }
                 }
             }
+        }
+        .sheet(isPresented: $showTaskOutputSheet) {
+            TaskOutputSheetView(
+                taskDescription: task.description,
+                output: taskOutputRecord,
+                isLoading: isLoadingTaskOutput,
+                loadFailed: taskOutputLoadFailed
+            )
+            .frame(minWidth: 700, minHeight: 420)
         }
     }
 
@@ -216,6 +239,118 @@ private struct InspectorTaskDetailView: View {
         copiedDiagnosticsConfirmation = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
             copiedDiagnosticsConfirmation = false
+        }
+    }
+
+    private var hasNumericTaskId: Bool {
+        Int64(task.id) != nil
+    }
+
+    private func loadTaskOutput(force: Bool) {
+        guard hasNumericTaskId else { return }
+        if isLoadingTaskOutput {
+            return
+        }
+        if taskOutputRecord != nil && !force {
+            return
+        }
+
+        isLoadingTaskOutput = true
+        taskOutputLoadFailed = false
+        core.fetchTaskOutput(taskId: task.id) { output in
+            DispatchQueue.main.async {
+                self.isLoadingTaskOutput = false
+                if let output {
+                    self.taskOutputRecord = output
+                    self.taskOutputLoadFailed = false
+                } else {
+                    self.taskOutputRecord = nil
+                    self.taskOutputLoadFailed = true
+                }
+            }
+        }
+    }
+}
+
+private struct TaskOutputSheetView: View {
+    let taskDescription: String
+    let output: CoreTaskOutputRecord?
+    let isLoading: Bool
+    let loadFailed: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(L10n.App.Inspector.taskOutput.localized)
+                .font(.headline)
+
+            Text(taskDescription)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+
+            if isLoading && output == nil {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(L10n.App.Inspector.taskOutputLoading.localized)
+                        .foregroundStyle(.secondary)
+                }
+            } else if loadFailed {
+                Text(L10n.App.Inspector.taskOutputLoadFailed.localized)
+                    .foregroundStyle(.secondary)
+            } else if let output {
+                TabView {
+                    TaskOutputTextView(
+                        text: output.stderr,
+                        unavailableText: L10n.App.Inspector.taskOutputUnavailable.localized
+                    )
+                    .tabItem { Text(L10n.App.Inspector.taskOutputStderr.localized) }
+
+                    TaskOutputTextView(
+                        text: output.stdout,
+                        unavailableText: L10n.App.Inspector.taskOutputUnavailable.localized
+                    )
+                    .tabItem { Text(L10n.App.Inspector.taskOutputStdout.localized) }
+                }
+            } else {
+                Text(L10n.App.Inspector.taskOutputUnavailable.localized)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(16)
+    }
+}
+
+private struct TaskOutputTextView: View {
+    let text: String?
+    let unavailableText: String
+
+    private var normalizedText: String? {
+        guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty else {
+            return nil
+        }
+        return text
+    }
+
+    var body: some View {
+        Group {
+            if let normalizedText {
+                ScrollView([.horizontal, .vertical]) {
+                    Text(normalizedText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                        .padding(8)
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(NSColor.textBackgroundColor))
+                )
+            } else {
+                Text(unavailableText)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }

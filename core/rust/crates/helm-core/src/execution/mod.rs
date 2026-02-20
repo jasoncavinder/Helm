@@ -1,6 +1,8 @@
+pub mod task_output_store;
 #[cfg(unix)]
 pub mod tokio_process;
 
+pub use task_output_store::TaskOutputRecord;
 #[cfg(unix)]
 pub use tokio_process::TokioProcessExecutor;
 
@@ -199,10 +201,17 @@ pub trait ProcessExecutor: Send + Sync {
 
 pub fn spawn_validated(
     executor: &dyn ProcessExecutor,
-    request: ProcessSpawnRequest,
+    mut request: ProcessSpawnRequest,
 ) -> ExecutionResult<Box<dyn RunningProcess>> {
+    if request.task_id.is_none() {
+        request.task_id = crate::task_context::current_task_id();
+    }
     request.validate()?;
     executor.spawn(request)
+}
+
+pub fn task_output(task_id: TaskId) -> Option<TaskOutputRecord> {
+    task_output_store::get(task_id)
 }
 
 fn invalid_input(

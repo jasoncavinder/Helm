@@ -14,6 +14,7 @@ use crate::orchestration::{CancellationMode, OrchestrationResult, TaskSubmission
 
 pub type TaskOperation = Box<
     dyn FnOnce(
+            TaskId,
             TaskCancellationToken,
         ) -> Pin<Box<dyn Future<Output = OrchestrationResult<()>> + Send>>
         + Send,
@@ -137,7 +138,7 @@ impl InMemoryAsyncTaskQueue {
                 return;
             }
 
-            let outcome = operation(token.clone()).await;
+            let outcome = operation(task_id, token.clone()).await;
             match outcome {
                 Ok(()) => {
                     set_terminal(&inner, task_id, TaskStatus::Completed, None).await;

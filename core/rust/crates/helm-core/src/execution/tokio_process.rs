@@ -7,7 +7,7 @@ use crate::execution::{
     ExecutionResult, ProcessExecutor, ProcessExitStatus, ProcessOutput, ProcessSpawnRequest,
     ProcessTerminationMode, ProcessWaitFuture, RunningProcess,
 };
-use crate::models::{CoreError, CoreErrorKind, ManagerAction, ManagerId, TaskType};
+use crate::models::{CoreError, CoreErrorKind, ManagerAction, ManagerId, TaskId, TaskType};
 
 pub struct TokioProcessExecutor;
 
@@ -49,6 +49,7 @@ impl ProcessExecutor for TokioProcessExecutor {
             manager: request.manager,
             task_type: request.task_type,
             action: request.action,
+            task_id: request.task_id,
         }))
     }
 }
@@ -61,6 +62,7 @@ struct TokioRunningProcess {
     manager: ManagerId,
     task_type: TaskType,
     action: ManagerAction,
+    task_id: Option<TaskId>,
 }
 
 impl RunningProcess for TokioRunningProcess {
@@ -104,6 +106,7 @@ impl RunningProcess for TokioRunningProcess {
         let task_type = self.task_type;
         let action = self.action;
         let pid = self.pid;
+        let task_id = self.task_id;
 
         Box::pin(async move {
             let mut child = child.ok_or_else(|| {
@@ -192,6 +195,10 @@ impl RunningProcess for TokioRunningProcess {
                 Some(code) => ProcessExitStatus::ExitCode(code),
                 None => ProcessExitStatus::Terminated,
             };
+
+            if let Some(task_id) = task_id {
+                crate::execution::task_output_store::record(task_id, &stdout, &stderr);
+            }
 
             Ok(ProcessOutput {
                 status,

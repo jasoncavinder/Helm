@@ -18,7 +18,7 @@
 //!   accessing the engine. Poisoned-lock recovery is implemented via
 //!   [`lock_or_recover`] to prevent lock-poison panics at the FFI boundary.
 //!
-//! ## FFI Exports (28 functions)
+//! ## FFI Exports (29 functions)
 //!
 //! | Function | Category |
 //! |----------|----------|
@@ -26,6 +26,7 @@
 //! | `helm_list_installed_packages` | Package queries |
 //! | `helm_list_outdated_packages` | Package queries |
 //! | `helm_list_tasks` | Task management |
+//! | `helm_get_task_output` | Task management |
 //! | `helm_trigger_refresh` | Task management |
 //! | `helm_cancel_task` | Task management |
 //! | `helm_search_local` | Search |
@@ -124,7 +125,7 @@ use helm_core::adapters::{
 use helm_core::execution::tokio_process::TokioProcessExecutor;
 use helm_core::models::{
     Capability, DetectionInfo, HomebrewKegPolicy, ManagerAuthority, ManagerId, OutdatedPackage,
-    PackageRef, PinKind, PinRecord, SearchQuery, TaskStatus, TaskType,
+    PackageRef, PinKind, PinRecord, SearchQuery, TaskId, TaskStatus, TaskType,
 };
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
 use helm_core::orchestration::{AdapterTaskTerminalState, CancellationMode};
@@ -1266,6 +1267,43 @@ pub extern "C" fn helm_list_tasks() -> *mut c_char {
 
     match CString::new(json) {
         Ok(c) => c.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FfiTaskOutputRecord {
+    task_id: TaskId,
+    stdout: Option<String>,
+    stderr: Option<String>,
+}
+
+/// Return captured stdout/stderr for a task ID as JSON.
+///
+/// Returns `null` only on serialization/allocation failure.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_get_task_output(task_id: i64) -> *mut c_char {
+    if task_id < 0 {
+        return std::ptr::null_mut();
+    }
+
+    let task_id = TaskId(task_id as u64);
+    let output = helm_core::execution::task_output(task_id);
+
+    let record = FfiTaskOutputRecord {
+        task_id,
+        stdout: output.as_ref().and_then(|entry| entry.stdout.clone()),
+        stderr: output.as_ref().and_then(|entry| entry.stderr.clone()),
+    };
+
+    let json = match serde_json::to_string(&record) {
+        Ok(value) => value,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    match CString::new(json) {
+        Ok(c_string) => c_string.into_raw(),
         Err(_) => std::ptr::null_mut(),
     }
 }

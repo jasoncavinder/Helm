@@ -10,6 +10,7 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Upgrade-plan preview model surfaced end-to-end (FFI → XPC → SwiftUI) with stable step IDs, order indices, manager/action/authority context, and localized reason metadata.
 - Updates inspector plan-step details with projected runtime status and linked runtime task IDs.
 - Scoped Updates controls for manager/package filtering and failed-step retry targeting.
+- Failed-task inspector now provides a dedicated task-output sheet with `stderr`/`stdout` tabs backed by on-demand FFI/XPC task-output retrieval.
 
 ### Changed
 - Runtime upgrade task labels now include `plan_step_id` metadata so task rows can be projected onto execution-plan rows.
@@ -23,6 +24,7 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Updates plan rows now use display-order numbering and full-row hit targets for inspector selection.
 - Updates section now shows an in-progress indicator while scoped plan execution is active.
 - Failed-task inspector details now include a suggested repro command when available and a task-scoped Copy Diagnostics action.
+- Process-executed adapter tasks now carry task ID context through execution so stdout/stderr can be captured and mapped back to task IDs for diagnostics.
 - Generated `apps/macos-ui/Generated/HelmVersion.xcconfig` is now ignored and no longer tracked.
 
 ## [0.14.1] - 2026-02-20

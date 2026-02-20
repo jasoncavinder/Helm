@@ -21,6 +21,13 @@ char *helm_list_outdated_packages(void);
 
 char *helm_list_tasks(void);
 
+/**
+ * Return captured stdout/stderr for a task ID as JSON.
+ *
+ * Returns `null` only on serialization/allocation failure.
+ */
+char *helm_get_task_output(int64_t task_id);
+
 bool helm_trigger_refresh(void);
 
 /**

@@ -290,5 +290,12 @@
   "app.inspector.description_unavailable": "説明を利用できません。",
   "app.inspector.task_failure_feedback": "失敗の詳細",
   "app.inspector.task_failure_hint.homebrew_install": "Helm は Homebrew 経由で {package} をインストールできませんでした。Homebrew が正常に動作しているか（`brew doctor`）を確認し、再試行して詳細な出力を確認してください。",
-  "app.inspector.task_failure_hint.generic": "{manager} の実行中にタスクが失敗しました。マネージャー設定を確認して再試行してください。"
+  "app.inspector.task_failure_hint.generic": "{manager} の実行中にタスクが失敗しました。マネージャー設定を確認して再試行してください。",
+  "app.inspector.view_task_output": "出力を表示",
+  "app.inspector.task_output": "タスク出力",
+  "app.inspector.task_output_loading": "タスク出力を読み込み中...",
+  "app.inspector.task_output_load_failed": "タスク出力を読み込めませんでした。",
+  "app.inspector.task_output_unavailable": "タスク出力を利用できません。",
+  "app.inspector.task_output.stdout": "stdout",
+  "app.inspector.task_output.stderr": "stderr"
 }

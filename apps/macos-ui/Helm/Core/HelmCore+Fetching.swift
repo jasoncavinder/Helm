@@ -369,4 +369,31 @@ extension HelmCore {
         }
     }
 
+    func fetchTaskOutput(taskId: String, completion: @escaping (CoreTaskOutputRecord?) -> Void) {
+        guard let numericTaskId = Int64(taskId), let svc = service() else {
+            completion(nil)
+            return
+        }
+
+        withTimeout(30, operation: { callback in
+            svc.getTaskOutput(taskId: numericTaskId) { callback($0) }
+        }) { jsonString in
+            guard let jsonString = jsonString,
+                  let data = jsonString.data(using: .utf8) else {
+                completion(nil)
+                return
+            }
+
+            do {
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                let output = try decoder.decode(CoreTaskOutputRecord.self, from: data)
+                completion(output)
+            } catch {
+                logger.error("fetchTaskOutput: decode failed (\(data.count) bytes): \(error)")
+                completion(nil)
+            }
+        }
+    }
+
 }

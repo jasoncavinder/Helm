@@ -290,5 +290,12 @@
   "app.inspector.description_unavailable": "Descrição indisponível.",
   "app.inspector.task_failure_feedback": "Detalhes da falha",
   "app.inspector.task_failure_hint.homebrew_install": "O Helm não conseguiu instalar {package} via Homebrew. Verifique se o Homebrew está funcionando (`brew doctor`) e tente novamente para capturar a saída completa.",
-  "app.inspector.task_failure_hint.generic": "A tarefa falhou em {manager}. Revise a configuração e tente novamente."
+  "app.inspector.task_failure_hint.generic": "A tarefa falhou em {manager}. Revise a configuração e tente novamente.",
+  "app.inspector.view_task_output": "Ver saída",
+  "app.inspector.task_output": "Saída da tarefa",
+  "app.inspector.task_output_loading": "Carregando saída da tarefa...",
+  "app.inspector.task_output_load_failed": "Não foi possível carregar a saída da tarefa.",
+  "app.inspector.task_output_unavailable": "Saída da tarefa indisponível.",
+  "app.inspector.task_output.stdout": "stdout",
+  "app.inspector.task_output.stderr": "stderr"
 }

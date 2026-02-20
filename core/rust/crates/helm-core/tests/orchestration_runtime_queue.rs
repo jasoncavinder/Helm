@@ -23,7 +23,7 @@ where
     F: FnOnce(TaskCancellationToken) -> Fut + Send + 'static,
     Fut: Future<Output = OrchestrationResult<()>> + Send + 'static,
 {
-    Box::new(move |token| {
+    Box::new(move |_task_id, token| {
         Box::pin(f(token)) as Pin<Box<dyn Future<Output = OrchestrationResult<()>> + Send>>
     })
 }

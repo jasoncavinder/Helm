@@ -33,6 +33,12 @@ struct CoreTaskRecord: Codable {
     let labelArgs: [String: String]?
 }
 
+struct CoreTaskOutputRecord: Codable {
+    let taskId: UInt64
+    let stdout: String?
+    let stderr: String?
+}
+
 struct CoreSearchResult: Codable {
     let manager: String
     let name: String

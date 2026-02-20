@@ -50,6 +50,16 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(String(cString: cString))
     }
 
+    func getTaskOutput(taskId: Int64, withReply reply: @escaping (String?) -> Void) {
+        guard let cString = helm_get_task_output(taskId) else {
+            logger.warning("helm_get_task_output(\(taskId)) returned nil")
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(cString) }
+        reply(String(cString: cString))
+    }
+
     func triggerRefresh(withReply reply: @escaping (Bool) -> Void) {
         let result = helm_trigger_refresh()
         logger.info("helm_trigger_refresh result: \(result)")

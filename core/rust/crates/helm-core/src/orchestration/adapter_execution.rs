@@ -63,53 +63,56 @@ impl AdapterExecutionRuntime {
         let outcome_slot = Arc::new(Mutex::new(None));
         let operation_slot = outcome_slot.clone();
 
-        let operation: TaskOperation = Box::new(move |token: TaskCancellationToken| {
-            let adapter = adapter.clone();
-            let request = request.clone();
-            let operation_slot = operation_slot.clone();
+        let operation: TaskOperation =
+            Box::new(move |task_id: TaskId, token: TaskCancellationToken| {
+                let adapter = adapter.clone();
+                let request = request.clone();
+                let operation_slot = operation_slot.clone();
 
-            Box::pin(async move {
-                if token.is_cancelled() {
-                    let cancelled = cancelled_error(manager, task_type, action);
-                    let mut slot = operation_slot.lock().await;
-                    *slot = Some(AdapterTaskTerminalState::Cancelled(Some(cancelled.clone())));
-                    return Err(cancelled);
-                }
-
-                let execute_result = tokio::task::spawn_blocking(move || {
-                    execute_with_capability_check(adapter.as_ref(), request)
-                })
-                .await
-                .map_err(|join_error| CoreError {
-                    manager: Some(manager),
-                    task: Some(task_type),
-                    action: Some(action),
-                    kind: CoreErrorKind::Internal,
-                    message: format!("adapter execution join failure: {join_error}"),
-                })?;
-
-                match execute_result {
-                    Ok(response) => {
+                Box::pin(async move {
+                    if token.is_cancelled() {
+                        let cancelled = cancelled_error(manager, task_type, action);
                         let mut slot = operation_slot.lock().await;
-                        *slot = Some(AdapterTaskTerminalState::Succeeded(response));
-                        Ok(())
+                        *slot = Some(AdapterTaskTerminalState::Cancelled(Some(cancelled.clone())));
+                        return Err(cancelled);
                     }
-                    Err(error) => {
-                        let attributed = attribute_error(error, manager, task_type, action);
-                        let terminal = if attributed.kind == CoreErrorKind::Cancelled
-                            || token.is_cancelled()
-                        {
-                            AdapterTaskTerminalState::Cancelled(Some(attributed.clone()))
-                        } else {
-                            AdapterTaskTerminalState::Failed(attributed.clone())
-                        };
-                        let mut slot = operation_slot.lock().await;
-                        *slot = Some(terminal);
-                        Err(attributed)
+
+                    let execute_result = tokio::task::spawn_blocking(move || {
+                        crate::task_context::with_task_id(task_id, || {
+                            execute_with_capability_check(adapter.as_ref(), request)
+                        })
+                    })
+                    .await
+                    .map_err(|join_error| CoreError {
+                        manager: Some(manager),
+                        task: Some(task_type),
+                        action: Some(action),
+                        kind: CoreErrorKind::Internal,
+                        message: format!("adapter execution join failure: {join_error}"),
+                    })?;
+
+                    match execute_result {
+                        Ok(response) => {
+                            let mut slot = operation_slot.lock().await;
+                            *slot = Some(AdapterTaskTerminalState::Succeeded(response));
+                            Ok(())
+                        }
+                        Err(error) => {
+                            let attributed = attribute_error(error, manager, task_type, action);
+                            let terminal = if attributed.kind == CoreErrorKind::Cancelled
+                                || token.is_cancelled()
+                            {
+                                AdapterTaskTerminalState::Cancelled(Some(attributed.clone()))
+                            } else {
+                                AdapterTaskTerminalState::Failed(attributed.clone())
+                            };
+                            let mut slot = operation_slot.lock().await;
+                            *slot = Some(terminal);
+                            Err(attributed)
+                        }
                     }
-                }
-            }) as Pin<Box<dyn Future<Output = OrchestrationResult<()>> + Send>>
-        });
+                }) as Pin<Box<dyn Future<Output = OrchestrationResult<()>> + Send>>
+            });
 
         let task_id = self
             .queue

@@ -290,5 +290,12 @@
   "app.inspector.description_unavailable": "Beschreibung nicht verfügbar.",
   "app.inspector.task_failure_feedback": "Fehlerdetails",
   "app.inspector.task_failure_hint.homebrew_install": "Helm konnte {package} nicht über Homebrew installieren. Prüfe Homebrew (`brew doctor`) und versuche es erneut, um die Ausgabe zu sehen.",
-  "app.inspector.task_failure_hint.generic": "Aufgabe bei {manager} fehlgeschlagen. Konfiguration prüfen und erneut versuchen."
+  "app.inspector.task_failure_hint.generic": "Aufgabe bei {manager} fehlgeschlagen. Konfiguration prüfen und erneut versuchen.",
+  "app.inspector.view_task_output": "Ausgabe anzeigen",
+  "app.inspector.task_output": "Task-Ausgabe",
+  "app.inspector.task_output_loading": "Task-Ausgabe wird geladen...",
+  "app.inspector.task_output_load_failed": "Task-Ausgabe konnte nicht geladen werden.",
+  "app.inspector.task_output_unavailable": "Task-Ausgabe nicht verfügbar.",
+  "app.inspector.task_output.stdout": "stdout",
+  "app.inspector.task_output.stderr": "stderr"
 }
