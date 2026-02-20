@@ -66,6 +66,14 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Release-prep metadata now targets `0.15.0` across workspace versioning and status documentation (README/website/release checklist).
 - Generated `apps/macos-ui/Generated/HelmVersion.xcconfig` is now ignored and no longer tracked.
 
+## [0.16.0-rc.8] - 2026-02-20
+
+### Changed
+- Appcast publication logic in `release-macos-dmg.yml` now checks `git status --porcelain -- web/public/updates/appcast.xml` instead of `git diff --quiet` so untracked feed files are published on first write.
+- Installer/update interruption runbook version advanced to:
+  - `docs/validation/v0.16.0-rc.8-installer-recovery.md`
+- Workspace package versioning bumped to `0.16.0-rc.8` (`core/rust/Cargo.toml`, `core/rust/Cargo.lock` for local crates).
+
 ## [0.16.0-rc.7] - 2026-02-20
 
 ### Changed

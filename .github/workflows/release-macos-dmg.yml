@@ -443,7 +443,7 @@ jobs:
           cp "$APPCAST_PATH" "$PUBLISH_DIR/$FEED_PATH"
 
           cd "$PUBLISH_DIR"
-          if git diff --quiet -- "$FEED_PATH"; then
+          if [ -z "$(git status --porcelain -- "$FEED_PATH")" ]; then
             echo "Appcast is already current on main."
             exit 0
           fi

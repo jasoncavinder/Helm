@@ -8,7 +8,7 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.16.0-rc.7** (pre-release rehearsal in progress on `feat/v0.16.0-kickoff`; latest stable release on `main` is `v0.15.0`)
+Current version: **0.16.0-rc.8** (pre-release rehearsal in progress on `feat/v0.16.0-kickoff`; latest stable release on `main` is `v0.15.0`)
 
 See:
 - CHANGELOG.md
@@ -212,8 +212,9 @@ Implemented on `feat/v0.16.0-kickoff`:
 - Release workflow now re-signs Sparkle nested binaries/framework with the active Developer ID identity (timestamped) before packaging/notarization, preventing Sparkle helper signature/timestamp notarization failures.
 - Release workflow now lets appcast generation auto-discover Sparkle `sign_update` in DerivedData instead of forcing a fixed artifact path, improving runner portability.
 - Sparkle appcast generation now falls back to downloading Sparkle's official SPM artifact ZIP and using its bundled `bin/sign_update` when local artifact discovery fails.
+- Appcast publication step now detects untracked feed changes correctly (using `git status --porcelain`) so first-time `web/public/updates/appcast.xml` publication is not skipped as a false no-op.
 - Added installer/update interruption and recovery validation runbook:
-  - `docs/validation/v0.16.0-rc.7-installer-recovery.md`
+  - `docs/validation/v0.16.0-rc.8-installer-recovery.md`
 - Build metadata generation now derives monotonic numeric bundle build numbers from semantic versions (`apps/macos-ui/scripts/build_rust.sh`) to keep Sparkle update ordering stable.
 
 Validation:
