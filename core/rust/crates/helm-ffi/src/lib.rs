@@ -665,6 +665,22 @@ fn probe_homebrew_version(executable_path: Option<&std::path::Path>) -> Option<S
     None
 }
 
+fn homebrew_dependency_available(store: &SqliteStore) -> bool {
+    let mut detected_path: Option<std::path::PathBuf> = None;
+    if let Ok(detections) = store.list_detections()
+        && let Some((_, detection)) = detections
+            .iter()
+            .find(|(manager, _)| *manager == ManagerId::HomebrewFormula)
+    {
+        if detection.installed {
+            return true;
+        }
+        detected_path = detection.executable_path.clone();
+    }
+
+    probe_homebrew_version(detected_path.as_deref()).is_some()
+}
+
 /// Initialize the Helm core engine with the given SQLite database path.
 ///
 /// # Safety
@@ -2394,6 +2410,11 @@ pub unsafe extern "C" fn helm_install_manager(manager_id: *const c_char) -> i64 
             state.rt_handle.clone(),
         )
     };
+
+    // `mise` and `mas` manager installation flows run via Homebrew formula install.
+    if !homebrew_dependency_available(&store) {
+        return return_error_i64("service.error.homebrew_required");
+    }
 
     let request = AdapterRequest::Install(InstallRequest {
         package: PackageRef {

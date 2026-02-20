@@ -3,6 +3,7 @@
   "service.error.internal": "Erreur interne du service.",
   "service.error.invalid_input": "Entrée invalide.",
   "service.error.not_installed": "Non installé : {manager}",
+  "service.error.homebrew_required": "Homebrew est requis pour cette action.",
   "service.error.parse_failure": "Échec de l'analyse de la sortie.",
   "service.error.process_failure": "Échec d'exécution du sous-processus.",
   "service.error.storage_failure": "Erreur de stockage de la base de données.",

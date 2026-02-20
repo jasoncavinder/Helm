@@ -77,9 +77,20 @@ Delivered:
 - Package aggregation now enriches installed/outdated package records with cached summaries when available
 - Package filtering now matches query text against package summaries and merges remote-search summary/latest metadata into local package rows
 
-Remaining slices before merge to `dev`:
+### Adapter Behavior Slice (Completed on branch)
 
-- Adapter behavior follow-up (optional): `mas` install dependency handling/failure messaging
+Delivered:
+
+- Enabled RubyGems for per-package update action eligibility in the SwiftUI control center workflow
+- Added Homebrew dependency preflight for Homebrew-backed manager installs (`mise`, `mas`)
+- Added explicit localized service error for missing Homebrew dependency:
+  - `service.error.homebrew_required`
+  - propagated across all supported locales and mirrored locale resources
+
+Remaining before release cut:
+
+- Final validation pass on `dev` after merged fix slices
+- Open PR `dev` -> `main` for CI and release gating
 
 ---
 

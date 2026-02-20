@@ -3,6 +3,7 @@
   "service.error.internal": "サービス内部エラー。",
   "service.error.invalid_input": "無効な入力です。",
   "service.error.not_installed": "未インストール: {manager}",
+  "service.error.homebrew_required": "この操作にはHomebrewが必要です。",
   "service.error.parse_failure": "出力の解析に失敗しました。",
   "service.error.process_failure": "サブプロセスの実行に失敗しました。",
   "service.error.storage_failure": "データベース保存エラー。",

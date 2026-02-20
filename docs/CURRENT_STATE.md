@@ -134,9 +134,17 @@ Completed in follow-up stabilization slice branch:
   - FFI unit tests for in-flight deduplication and bounded terminal history behavior
   - SQLite store test validating prune policy keeps cancelled/running rows
 
+Completed in adapter behavior slice branch:
+
+- RubyGems packages are now eligible for per-package update actions in the UI (`canUpgradeIndividually`)
+- Manager install preflight now validates Homebrew availability before attempting Homebrew-backed manager installs (`mise`, `mas`)
+- When Homebrew is unavailable, install now returns a specific localized service error key (`service.error.homebrew_required`) instead of generic process failure
+- Added localized `service.error.homebrew_required` messaging across all supported locales in canonical and mirrored locale trees
+
 Validation:
 
 - `cargo test -p helm-core -p helm-ffi` passing
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm test -destination 'platform=macOS'` passing
 
 ---
 

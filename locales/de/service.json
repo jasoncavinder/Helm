@@ -1,5 +1,6 @@
 {
   "service.error.not_installed": "Nicht installiert: {manager}",
+  "service.error.homebrew_required": "Homebrew ist für diese Aktion erforderlich.",
   "service.error.unsupported_capability": "Manager {manager} unterstützt diese Aktion nicht.",
   "service.error.invalid_input": "Ungültige Eingabe.",
   "service.error.parse_failure": "Ausgabe konnte nicht verarbeitet werden.",
