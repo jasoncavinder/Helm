@@ -40,6 +40,7 @@ struct PopoverOverlayCard<Content: View>: View {
 struct PopoverAttentionBanner: View {
     @ObservedObject private var core = HelmCore.shared
     @EnvironmentObject private var context: ControlCenterContext
+    @Environment(\.colorScheme) private var colorScheme
     let onOpenControlCenter: () -> Void
 
     private var bannerSymbol: String {
@@ -54,9 +55,27 @@ struct PopoverAttentionBanner: View {
 
     private var bannerTint: Color {
         if !core.isConnected || core.failedTaskCount > 0 {
-            return HelmTheme.stateError
+            return colorScheme == .dark
+                ? Color(red: 1.0, green: 120.0 / 255.0, blue: 120.0 / 255.0)
+                : Color(red: 224.0 / 255.0, green: 58.0 / 255.0, blue: 58.0 / 255.0)
         }
-        return HelmTheme.stateAttention
+        return colorScheme == .dark
+            ? Color(red: 244.0 / 255.0, green: 203.0 / 255.0, blue: 92.0 / 255.0)
+            : Color(red: 204.0 / 255.0, green: 152.0 / 255.0, blue: 36.0 / 255.0)
+    }
+
+    private var bannerBackgroundOpacity: Double {
+        if !core.isConnected || core.failedTaskCount > 0 {
+            return 0.16
+        }
+        return 0.14
+    }
+
+    private var bannerBorderOpacity: Double {
+        if !core.isConnected || core.failedTaskCount > 0 {
+            return 0.38
+        }
+        return 0.32
     }
 
     private var bannerTitle: String {
@@ -125,10 +144,10 @@ struct PopoverAttentionBanner: View {
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(bannerTint.opacity(0.12))
+                .fill(bannerTint.opacity(bannerBackgroundOpacity))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(bannerTint.opacity(0.26), lineWidth: 0.8)
+                        .strokeBorder(bannerTint.opacity(bannerBorderOpacity), lineWidth: 0.8)
                 )
         )
     }

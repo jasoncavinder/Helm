@@ -7,6 +7,7 @@ enum HelmTheme {
     static let blue500 = Color.helmDynamic(light: 0x3C7DD9, dark: 0x6CA6E8)
 
     static let proAccent = Color.helmDynamic(light: 0xC89C3D, dark: 0xC89C3D)
+    static let proAccentTop = Color.helmDynamic(light: 0xD7AF5A, dark: 0xD0A64E)
     static let proAccentDeep = Color.helmDynamic(light: 0xA97E2A, dark: 0xA97E2A)
     static let proOnAccent = Color.helmDynamic(light: 0x1C1F26, dark: 0x1C1F26)
 
@@ -185,15 +186,44 @@ struct HelmTertiaryButtonStyle: ButtonStyle {
 
 struct HelmProButtonStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.isEnabled) private var isEnabled
     var cornerRadius: CGFloat = HelmMetrics.radiusControl
     var horizontalPadding: CGFloat = 12
     var verticalPadding: CGFloat = 8
 
     func makeBody(configuration: Configuration) -> some View {
-        let fillColor: Color = {
-            guard isEnabled else { return HelmTheme.proAccent.opacity(0.45) }
-            return configuration.isPressed ? HelmTheme.proAccentDeep : HelmTheme.proAccent
+        let fillGradient: LinearGradient = {
+            guard isEnabled else {
+                return LinearGradient(
+                    colors: [
+                        HelmTheme.proAccentTop.opacity(0.42),
+                        HelmTheme.proAccentDeep.opacity(0.38)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+
+            if configuration.isPressed {
+                return LinearGradient(
+                    colors: [
+                        HelmTheme.proAccent.opacity(0.96),
+                        HelmTheme.proAccentDeep
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+
+            return LinearGradient(
+                colors: [
+                    HelmTheme.proAccentTop,
+                    HelmTheme.proAccent
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
         }()
 
         return configuration.label
@@ -203,10 +233,44 @@ struct HelmProButtonStyle: ButtonStyle {
             .padding(.vertical, verticalPadding)
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(fillColor)
+                    .fill(fillGradient)
                     .overlay(
                         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .strokeBorder(HelmTheme.proAccentDeep.opacity(0.45), lineWidth: 0.8)
+                            .strokeBorder(
+                                LinearGradient(
+                                    colors: [
+                                        Color.white.opacity(configuration.isPressed ? 0.18 : 0.3),
+                                        Color.white.opacity(0.05)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                ),
+                                lineWidth: 0.8
+                            )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .strokeBorder(HelmTheme.proAccentDeep.opacity(configuration.isPressed ? 0.65 : 0.56), lineWidth: 0.8)
+                    )
+                    .shadow(
+                        color: Color.black.opacity(
+                            colorScheme == .dark
+                                ? (configuration.isPressed ? 0.2 : 0.28)
+                                : (configuration.isPressed ? 0.08 : 0.14)
+                        ),
+                        radius: configuration.isPressed ? 3 : 6,
+                        x: 0,
+                        y: configuration.isPressed ? 1 : 3
+                    )
+                    .shadow(
+                        color: HelmTheme.proAccent.opacity(
+                            colorScheme == .dark
+                                ? (configuration.isPressed ? 0.1 : 0.18)
+                                : (configuration.isPressed ? 0.05 : 0.1)
+                        ),
+                        radius: configuration.isPressed ? 0 : 1.5,
+                        x: 0,
+                        y: 0
                     )
             )
             .scaleEffect(accessibilityReduceMotion ? 1 : (configuration.isPressed ? 0.98 : 1))
