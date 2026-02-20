@@ -42,21 +42,31 @@ struct OnboardingConfigureView: View {
                         ForEach(detectedManagers) { manager in
                             let status = core.managerStatuses[manager.id]
                             let enabled = status?.enabled ?? true
+                            let versionLabel: String? = {
+                                guard let version = status?.version?.trimmingCharacters(in: .whitespacesAndNewlines),
+                                      !version.isEmpty else {
+                                    return nil
+                                }
+                                return L10n.Common.version.localized(with: ["version": version])
+                            }()
 
                             HStack(spacing: 10) {
                                 Circle()
                                     .fill(enabled ? Color.green : Color.gray)
                                     .frame(width: 8, height: 8)
 
-                                VStack(alignment: .leading, spacing: 1) {
+                                HStack(alignment: .firstTextBaseline, spacing: 6) {
                                     Text(manager.displayName)
                                         .font(.subheadline)
                                         .fontWeight(.medium)
-
-                                    if let version = status?.version, !version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                        Text(L10n.Common.version.localized(with: ["version": version]))
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                    if let versionLabel {
+                                        Text(versionLabel)
                                             .font(.caption2)
                                             .foregroundColor(.secondary)
+                                            .lineLimit(1)
+                                            .truncationMode(.tail)
                                     }
                                 }
 

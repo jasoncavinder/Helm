@@ -40,6 +40,19 @@ Next release targets:
 
 ## v0.14.1 Patch Track (In Progress)
 
+### Follow-Up Stabilization Slice (Completed on branch)
+
+Delivered:
+
+- Onboarding manager rows now keep manager name + detected version on a single line in both:
+  - "Finding Your Tools"
+  - "Pick Your Managers"
+- Task list visibility now deduplicates in-flight task rows by `(manager, task_type)` and keeps bounded terminal history
+- Task pruning timeout policy now removes only `completed` and `failed` records (no timeout pruning of `cancelled`)
+- Duplicate task submission guard added for manager install/update/uninstall and package upgrade actions when an identical labeled task is already queued/running
+- Refresh trigger now skips creating a new refresh sweep while refresh/detection tasks are already in flight
+- RubyGems now participates in per-package upgrade eligibility in the SwiftUI workflow
+
 ### Cache/Persistence Slice (Completed on branch)
 
 Delivered:
@@ -53,9 +66,7 @@ Delivered:
 
 Remaining slices before merge to `dev`:
 
-- UI/UX fixes (onboarding row density, package selection highlight, search field cleanup, inspector package actions)
-- Task lifecycle fixes (duplicate in-flight task rows; prune policy for long-running/pending tasks)
-- Adapter behavior fixes (RubyGems update action path; `mas` install dependency handling/failure messaging)
+- Adapter behavior follow-up (optional): `mas` install dependency handling/failure messaging
 
 ---
 

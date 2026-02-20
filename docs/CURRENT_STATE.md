@@ -112,6 +112,15 @@ Completed in cache/persistence slice branch:
 - Package aggregation (`allKnownPackages`) now enriches installed/outdated package rows with cached summaries when available
 - Package filtering now includes summary text and merges remote-search summary/latest metadata into local rows for fresher inspector/detail context
 
+Completed in follow-up stabilization slice branch:
+
+- Onboarding manager rows now keep manager name + version on a single line in both detection and configure steps
+- Task list now deduplicates in-flight rows by `(manager, task_type)` while keeping bounded terminal history
+- Task pruning now expires only completed/failed tasks (cancelled tasks are retained)
+- Duplicate submission guards now reuse existing queued/running task IDs for identical manager install/update/uninstall and package upgrade actions
+- Refresh trigger now skips launching a new sweep while refresh/detection tasks are already in flight
+- RubyGems is now included in per-package upgrade eligibility for control-center package actions
+
 ---
 
 ## v0.13.0-beta.3 Audit Status

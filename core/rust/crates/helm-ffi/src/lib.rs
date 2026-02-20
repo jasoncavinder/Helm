@@ -123,7 +123,7 @@ use helm_core::adapters::{
 use helm_core::execution::tokio_process::TokioProcessExecutor;
 use helm_core::models::{
     DetectionInfo, HomebrewKegPolicy, ManagerAuthority, ManagerId, OutdatedPackage, PackageRef,
-    PinKind, PinRecord, SearchQuery,
+    PinKind, PinRecord, SearchQuery, TaskStatus, TaskType,
 };
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
 use helm_core::orchestration::{AdapterTaskTerminalState, CancellationMode};
@@ -327,6 +327,101 @@ fn set_task_label(task_id: helm_core::models::TaskId, key: &str, args: &[(&str, 
             args: args_map,
         },
     );
+}
+
+const TASK_PRUNE_MAX_AGE_SECS: i64 = 300;
+const TASK_RECENT_FETCH_LIMIT: usize = 1000;
+const TASK_TERMINAL_HISTORY_LIMIT: usize = 50;
+const TASK_INFLIGHT_DEDUP_MAX_AGE_SECS: u64 = 1800;
+
+fn is_inflight_status(status: TaskStatus) -> bool {
+    matches!(status, TaskStatus::Queued | TaskStatus::Running)
+}
+
+fn is_recent_inflight_task(task: &helm_core::models::TaskRecord) -> bool {
+    std::time::SystemTime::now()
+        .duration_since(task.created_at)
+        .map(|elapsed| elapsed.as_secs() <= TASK_INFLIGHT_DEDUP_MAX_AGE_SECS)
+        .unwrap_or(true)
+}
+
+fn build_visible_tasks(
+    tasks: Vec<helm_core::models::TaskRecord>,
+    labels: &std::collections::HashMap<u64, TaskLabel>,
+) -> Vec<helm_core::models::TaskRecord> {
+    let mut visible = Vec::with_capacity(tasks.len());
+    let mut seen_inflight = std::collections::HashSet::new();
+    let mut terminal_count = 0usize;
+
+    for task in tasks {
+        if is_inflight_status(task.status) {
+            let key = labels
+                .get(&task.id.0)
+                .map(|label| {
+                    let mut encoded =
+                        format!("{:?}:{:?}:{}", task.manager, task.task_type, label.key);
+                    for (arg_key, arg_value) in &label.args {
+                        encoded.push('|');
+                        encoded.push_str(arg_key);
+                        encoded.push('=');
+                        encoded.push_str(arg_value);
+                    }
+                    encoded
+                })
+                .unwrap_or_else(|| format!("{:?}:{:?}", task.manager, task.task_type));
+            if seen_inflight.insert(key) {
+                visible.push(task);
+            }
+            continue;
+        }
+
+        if terminal_count < TASK_TERMINAL_HISTORY_LIMIT {
+            visible.push(task);
+            terminal_count = terminal_count.saturating_add(1);
+        }
+    }
+
+    visible
+}
+
+fn find_matching_inflight_task(
+    store: &SqliteStore,
+    manager: ManagerId,
+    task_type: TaskType,
+    label_key: Option<&str>,
+    label_args: &[(&str, String)],
+) -> Option<helm_core::models::TaskId> {
+    let tasks = store.list_recent_tasks(TASK_RECENT_FETCH_LIMIT).ok()?;
+    let labels = lock_or_recover(&TASK_LABELS, "task_labels");
+
+    tasks.into_iter().find_map(|task| {
+        if task.manager != manager
+            || task.task_type != task_type
+            || !is_inflight_status(task.status)
+            || !is_recent_inflight_task(&task)
+        {
+            return None;
+        }
+
+        let Some(expected_label_key) = label_key else {
+            return Some(task.id);
+        };
+
+        let label = labels.get(&task.id.0)?;
+        if label.key != expected_label_key || label.args.len() != label_args.len() {
+            return None;
+        }
+
+        let args_match = label_args.iter().all(|(arg_key, arg_value)| {
+            label
+                .args
+                .get(*arg_key)
+                .map(|v| v == arg_value)
+                .unwrap_or(false)
+        });
+
+        if args_match { Some(task.id) } else { None }
+    })
 }
 
 fn encode_homebrew_upgrade_target(package_name: &str, cleanup_old_kegs: bool) -> String {
@@ -806,18 +901,18 @@ pub extern "C" fn helm_list_tasks() -> *mut c_char {
         None => return std::ptr::null_mut(),
     };
 
-    // Auto-prune completed/failed/cancelled tasks older than 5 minutes
-    let _ = state.store.prune_completed_tasks(300);
+    // Auto-prune completed/failed tasks older than 5 minutes.
+    let _ = state.store.prune_completed_tasks(TASK_PRUNE_MAX_AGE_SECS);
 
-    // List recent 50 tasks
-    let tasks = match state.store.list_recent_tasks(50) {
+    // Fetch a wider snapshot so long-running queued/running tasks do not disappear
+    // behind a tight recent-task limit.
+    let tasks = match state.store.list_recent_tasks(TASK_RECENT_FETCH_LIMIT) {
         Ok(tasks) => tasks,
         Err(e) => {
             eprintln!("Failed to list tasks: {}", e);
             return std::ptr::null_mut();
         }
     };
-
     #[derive(serde::Serialize)]
     struct FfiTaskRecord {
         id: helm_core::models::TaskId,
@@ -829,6 +924,7 @@ pub extern "C" fn helm_list_tasks() -> *mut c_char {
     }
 
     let mut labels = lock_or_recover(&TASK_LABELS, "task_labels");
+    let tasks = build_visible_tasks(tasks, &labels);
     let active_ids: std::collections::HashSet<u64> = tasks.iter().map(|task| task.id.0).collect();
     labels.retain(|task_id, _| active_ids.contains(task_id));
 
@@ -872,6 +968,22 @@ pub extern "C" fn helm_trigger_refresh() -> bool {
     };
 
     let runtime = state.runtime.clone();
+    let store = state.store.clone();
+
+    let has_refresh_or_detection = store
+        .list_recent_tasks(TASK_RECENT_FETCH_LIMIT)
+        .ok()
+        .map(|tasks| {
+            tasks.into_iter().any(|task| {
+                is_inflight_status(task.status)
+                    && is_recent_inflight_task(&task)
+                    && matches!(task.task_type, TaskType::Refresh | TaskType::Detection)
+            })
+        })
+        .unwrap_or(false);
+    if has_refresh_or_detection {
+        return true;
+    }
 
     state._tokio_rt.spawn(async move {
         let results = runtime.refresh_all_ordered().await;
@@ -1917,14 +2029,28 @@ pub unsafe extern "C" fn helm_upgrade_package(
         _ => return return_error_i64("service.error.unsupported_capability"),
     };
 
-    let (runtime, rt_handle) = {
+    let (store, runtime, rt_handle) = {
         let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
             None => return return_error_i64("service.error.internal"),
         };
-        (state.runtime.clone(), state.rt_handle.clone())
+        (
+            state.store.clone(),
+            state.runtime.clone(),
+            state.rt_handle.clone(),
+        )
     };
+
+    if let Some(existing) = find_matching_inflight_task(
+        store.as_ref(),
+        target_manager,
+        TaskType::Upgrade,
+        label_key,
+        &label_args,
+    ) {
+        return existing.0 as i64;
+    }
 
     match rt_handle.block_on(runtime.submit(target_manager, request)) {
         Ok(task_id) => {
@@ -2256,13 +2382,17 @@ pub unsafe extern "C" fn helm_install_manager(manager_id: *const c_char) -> i64 
         _ => return return_error_i64("service.error.unsupported_capability"),
     };
 
-    let (runtime, rt_handle) = {
+    let (store, runtime, rt_handle) = {
         let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
             None => return return_error_i64("service.error.internal"),
         };
-        (state.runtime.clone(), state.rt_handle.clone())
+        (
+            state.store.clone(),
+            state.runtime.clone(),
+            state.rt_handle.clone(),
+        )
     };
 
     let request = AdapterRequest::Install(InstallRequest {
@@ -2273,12 +2403,23 @@ pub unsafe extern "C" fn helm_install_manager(manager_id: *const c_char) -> i64 
         version: None,
     });
 
+    let label_args = [("package", formula_name.to_string())];
+    if let Some(existing) = find_matching_inflight_task(
+        store.as_ref(),
+        ManagerId::HomebrewFormula,
+        TaskType::Install,
+        Some("service.task.label.install.homebrew_formula"),
+        &label_args,
+    ) {
+        return existing.0 as i64;
+    }
+
     match rt_handle.block_on(runtime.submit(ManagerId::HomebrewFormula, request)) {
         Ok(task_id) => {
             set_task_label(
                 task_id,
                 "service.task.label.install.homebrew_formula",
-                &[("package", formula_name.to_string())],
+                &label_args,
             );
             task_id.0 as i64
         }
@@ -2402,14 +2543,28 @@ pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
         _ => return return_error_i64("service.error.unsupported_capability"),
     };
 
-    let (runtime, rt_handle) = {
+    let (store, runtime, rt_handle) = {
         let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
             None => return return_error_i64("service.error.internal"),
         };
-        (state.runtime.clone(), state.rt_handle.clone())
+        (
+            state.store.clone(),
+            state.runtime.clone(),
+            state.rt_handle.clone(),
+        )
     };
+
+    if let Some(existing) = find_matching_inflight_task(
+        store.as_ref(),
+        target_manager,
+        TaskType::Upgrade,
+        Some(label_key),
+        &label_args,
+    ) {
+        return existing.0 as i64;
+    }
 
     match rt_handle.block_on(runtime.submit(target_manager, request)) {
         Ok(task_id) => {
@@ -2443,13 +2598,17 @@ pub unsafe extern "C" fn helm_uninstall_manager(manager_id: *const c_char) -> i6
         Err(_) => return return_error_i64("service.error.invalid_input"),
     };
 
-    let (runtime, rt_handle) = {
+    let (store, runtime, rt_handle) = {
         let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
             None => return return_error_i64("service.error.internal"),
         };
-        (state.runtime.clone(), state.rt_handle.clone())
+        (
+            state.store.clone(),
+            state.runtime.clone(),
+            state.rt_handle.clone(),
+        )
     };
 
     let (target_manager, request) = match id_str {
@@ -2495,6 +2654,16 @@ pub unsafe extern "C" fn helm_uninstall_manager(manager_id: *const c_char) -> i6
         "rustup" => ("service.task.label.uninstall.rustup_self", Vec::new()),
         _ => ("service.task.label.uninstall.homebrew_formula", Vec::new()),
     };
+
+    if let Some(existing) = find_matching_inflight_task(
+        store.as_ref(),
+        target_manager,
+        TaskType::Uninstall,
+        Some(label_key),
+        &label_args,
+    ) {
+        return existing.0 as i64;
+    }
 
     match rt_handle.block_on(runtime.submit(target_manager, request)) {
         Ok(task_id) => {
@@ -2570,10 +2739,12 @@ pub unsafe extern "C" fn helm_free_string(s: *mut c_char) {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_manager_statuses, collect_upgrade_all_targets, homebrew_probe_candidates,
-        parse_homebrew_config_version,
+        build_manager_statuses, build_visible_tasks, collect_upgrade_all_targets,
+        homebrew_probe_candidates, parse_homebrew_config_version,
     };
-    use helm_core::models::{ManagerId, OutdatedPackage, PackageRef};
+    use helm_core::models::{
+        ManagerId, OutdatedPackage, PackageRef, TaskId, TaskRecord, TaskStatus, TaskType,
+    };
     use std::collections::HashMap;
     use std::path::Path;
 
@@ -2707,6 +2878,112 @@ mod tests {
                 "manager {manager_id:?} expected implemented in 0.14 baseline"
             );
         }
+    }
+
+    #[test]
+    fn build_visible_tasks_deduplicates_inflight_rows_by_manager_and_type() {
+        let tasks = vec![
+            TaskRecord {
+                id: TaskId(10),
+                manager: ManagerId::HomebrewFormula,
+                task_type: TaskType::Refresh,
+                status: TaskStatus::Running,
+                created_at: std::time::SystemTime::now(),
+            },
+            TaskRecord {
+                id: TaskId(9),
+                manager: ManagerId::HomebrewFormula,
+                task_type: TaskType::Refresh,
+                status: TaskStatus::Queued,
+                created_at: std::time::SystemTime::now(),
+            },
+            TaskRecord {
+                id: TaskId(8),
+                manager: ManagerId::Npm,
+                task_type: TaskType::Upgrade,
+                status: TaskStatus::Queued,
+                created_at: std::time::SystemTime::now(),
+            },
+            TaskRecord {
+                id: TaskId(7),
+                manager: ManagerId::Npm,
+                task_type: TaskType::Upgrade,
+                status: TaskStatus::Running,
+                created_at: std::time::SystemTime::now(),
+            },
+        ];
+
+        let labels = std::collections::HashMap::new();
+        let visible = build_visible_tasks(tasks, &labels);
+        assert_eq!(visible.len(), 2);
+        assert_eq!(visible[0].id, TaskId(10));
+        assert_eq!(visible[1].id, TaskId(8));
+    }
+
+    #[test]
+    fn build_visible_tasks_keeps_terminal_history_bounded() {
+        let mut tasks = Vec::new();
+        for idx in 0..60 {
+            tasks.push(TaskRecord {
+                id: TaskId(idx),
+                manager: ManagerId::HomebrewFormula,
+                task_type: TaskType::Refresh,
+                status: TaskStatus::Completed,
+                created_at: std::time::SystemTime::now(),
+            });
+        }
+
+        let labels = std::collections::HashMap::new();
+        let visible = build_visible_tasks(tasks, &labels);
+        assert_eq!(visible.len(), 50);
+        assert_eq!(visible[0].id, TaskId(0));
+        assert_eq!(visible[49].id, TaskId(49));
+    }
+
+    #[test]
+    fn build_visible_tasks_keeps_distinct_labeled_inflight_rows() {
+        let tasks = vec![
+            TaskRecord {
+                id: TaskId(100),
+                manager: ManagerId::Npm,
+                task_type: TaskType::Upgrade,
+                status: TaskStatus::Queued,
+                created_at: std::time::SystemTime::now(),
+            },
+            TaskRecord {
+                id: TaskId(99),
+                manager: ManagerId::Npm,
+                task_type: TaskType::Upgrade,
+                status: TaskStatus::Queued,
+                created_at: std::time::SystemTime::now(),
+            },
+        ];
+
+        let labels = std::collections::HashMap::from([
+            (
+                100_u64,
+                super::TaskLabel {
+                    key: "service.task.label.upgrade.package".to_string(),
+                    args: std::collections::BTreeMap::from([
+                        ("manager".to_string(), "npm".to_string()),
+                        ("package".to_string(), "typescript".to_string()),
+                    ]),
+                },
+            ),
+            (
+                99_u64,
+                super::TaskLabel {
+                    key: "service.task.label.upgrade.package".to_string(),
+                    args: std::collections::BTreeMap::from([
+                        ("manager".to_string(), "npm".to_string()),
+                        ("package".to_string(), "eslint".to_string()),
+                    ]),
+                },
+            ),
+        ]);
+
+        let visible = build_visible_tasks(tasks, &labels);
+        assert_eq!(visible.len(), 2);
     }
 
     fn status_for(
