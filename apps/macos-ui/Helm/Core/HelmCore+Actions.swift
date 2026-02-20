@@ -4,48 +4,6 @@ import os.log
 private let logger = Logger(subsystem: "com.jasoncavinder.Helm", category: "core.actions")
 
 extension HelmCore {
-    private var searchCapableManagers: Set<String> {
-        [
-            "homebrew_formula",
-            "mise",
-            "asdf",
-            "rustup",
-            "macports",
-            "nix_darwin",
-            "npm",
-            "pnpm",
-            "yarn",
-            "pip",
-            "pipx",
-            "poetry",
-            "rubygems",
-            "bundler",
-            "cargo",
-            "cargo_binstall"
-        ]
-    }
-
-    private var installablePackageManagers: Set<String> {
-        [
-            "homebrew_formula",
-            "mise",
-            "npm",
-            "pnpm",
-            "yarn",
-            "pip",
-            "pipx",
-            "poetry",
-            "rubygems",
-            "bundler",
-            "cargo",
-            "cargo_binstall"
-        ]
-    }
-
-    private var uninstallablePackageManagers: Set<String> {
-        installablePackageManagers
-    }
-
     func cancelTask(_ task: TaskItem) {
         guard task.isRunning, let taskId = Int64(task.id) else { return }
         service()?.cancelTask(taskId: taskId) { [weak self] success in
@@ -74,31 +32,21 @@ extension HelmCore {
     }
 
     func canUpgradeIndividually(_ package: PackageItem) -> Bool {
-        let upgradableManagers: Set<String> = [
-            "homebrew_formula",
-            "mise",
-            "npm",
-            "pip",
-            "pipx",
-            "cargo",
-            "cargo_binstall",
-            "rustup",
-            "rubygems"
-        ]
         return package.status == .upgradable
-            && upgradableManagers.contains(package.managerId)
+            && (managerStatuses[package.managerId]?.supportsPackageUpgrade ?? false)
             && !package.pinned
+            && isManagerEnabled(package.managerId)
     }
 
     func canInstallPackage(_ package: PackageItem) -> Bool {
         package.status == .available
-            && installablePackageManagers.contains(package.managerId)
+            && (managerStatuses[package.managerId]?.supportsPackageInstall ?? false)
             && isManagerEnabled(package.managerId)
     }
 
     func canUninstallPackage(_ package: PackageItem) -> Bool {
         package.status != .available
-            && uninstallablePackageManagers.contains(package.managerId)
+            && (managerStatuses[package.managerId]?.supportsPackageUninstall ?? false)
             && isManagerEnabled(package.managerId)
     }
 
@@ -107,7 +55,7 @@ extension HelmCore {
     }
 
     func supportsRemoteSearch(managerId: String) -> Bool {
-        searchCapableManagers.contains(managerId)
+        managerStatuses[managerId]?.supportsRemoteSearch ?? false
     }
 
     func isManagerEnabled(_ managerId: String) -> Bool {

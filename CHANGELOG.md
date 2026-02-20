@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
+## [0.14.1] - 2026-02-20
+
+### Fixed
+- Preserved task label metadata for all fetched tasks (including deduplicated in-flight rows) so labels do not regress to generic fallback text.
+- Aligned remote-search and package-action capability gating between SwiftUI and FFI manager status exports.
+- Prevented unsupported remote search/install package actions for managers that do not expose those capabilities in the active runtime.
+
+### Changed
+- Extended manager status payloads with capability support flags used by UI action gating:
+  - `supportsRemoteSearch`
+  - `supportsPackageInstall`
+  - `supportsPackageUninstall`
+  - `supportsPackageUpgrade`
+- Bumped workspace/app version artifacts to `0.14.1`.
+
 ## [0.14.0] - 2026-02-19
 
 ### Changed

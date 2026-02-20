@@ -274,9 +274,14 @@ struct FfiManagerStatus {
     is_implemented: bool,
     is_optional: bool,
     is_detection_only: bool,
+    supports_remote_search: bool,
+    supports_package_install: bool,
+    supports_package_uninstall: bool,
+    supports_package_upgrade: bool,
 }
 
 fn build_manager_statuses(
+    runtime: Option<&AdapterRuntime>,
     detection_map: &std::collections::HashMap<ManagerId, DetectionInfo>,
     pref_map: &std::collections::HashMap<ManagerId, bool>,
 ) -> Vec<FfiManagerStatus> {
@@ -300,6 +305,22 @@ fn build_manager_statuses(
                 )
             });
             let version = detection.and_then(|d| normalize_nonempty(d.version.clone()));
+            let supports_remote_search = runtime
+                .map(|runtime| can_submit_remote_search(runtime, id))
+                .unwrap_or_else(|| {
+                    helm_core::registry::manager(id)
+                        .map(|descriptor| descriptor.supports(Capability::Search))
+                        .unwrap_or(false)
+                });
+            let supports_package_install = runtime
+                .map(|runtime| supports_individual_package_install(runtime, id))
+                .unwrap_or(false);
+            let supports_package_uninstall = runtime
+                .map(|runtime| supports_individual_package_uninstall(runtime, id))
+                .unwrap_or(false);
+            let supports_package_upgrade = runtime
+                .map(|runtime| supports_individual_package_upgrade(runtime, id))
+                .unwrap_or(false);
 
             FfiManagerStatus {
                 manager_id: id.as_str().to_string(),
@@ -310,6 +331,10 @@ fn build_manager_statuses(
                 is_implemented,
                 is_optional,
                 is_detection_only,
+                supports_remote_search,
+                supports_package_install,
+                supports_package_uninstall,
+                supports_package_upgrade,
             }
         })
         .collect()
@@ -444,12 +469,7 @@ fn search_label_args(manager: ManagerId, query: &str) -> Vec<(&'static str, Stri
 }
 
 fn can_submit_remote_search(runtime: &AdapterRuntime, manager: ManagerId) -> bool {
-    if !runtime.is_manager_enabled(manager) {
-        return false;
-    }
-    helm_core::registry::manager(manager)
-        .map(|descriptor| descriptor.supports(Capability::Search))
-        .unwrap_or(false)
+    runtime.is_manager_enabled(manager) && runtime.supports_capability(manager, Capability::Search)
 }
 
 fn queue_remote_search_task(
@@ -518,11 +538,20 @@ fn remote_search_target_managers(runtime: &AdapterRuntime, store: &SqliteStore) 
         .collect()
 }
 
-fn supports_individual_package_install(manager: ManagerId) -> bool {
+fn supports_individual_package_install(runtime: &AdapterRuntime, manager: ManagerId) -> bool {
+    if !runtime.is_manager_enabled(manager)
+        || !runtime.supports_capability(manager, Capability::Install)
+    {
+        return false;
+    }
+
+    manager_allows_individual_package_install(manager)
+}
+
+fn manager_allows_individual_package_install(manager: ManagerId) -> bool {
     matches!(
         manager,
         ManagerId::HomebrewFormula
-            | ManagerId::Mise
             | ManagerId::Npm
             | ManagerId::Pnpm
             | ManagerId::Yarn
@@ -536,8 +565,52 @@ fn supports_individual_package_install(manager: ManagerId) -> bool {
     )
 }
 
-fn supports_individual_package_uninstall(manager: ManagerId) -> bool {
-    supports_individual_package_install(manager)
+fn supports_individual_package_uninstall(runtime: &AdapterRuntime, manager: ManagerId) -> bool {
+    if !runtime.is_manager_enabled(manager)
+        || !runtime.supports_capability(manager, Capability::Uninstall)
+    {
+        return false;
+    }
+
+    manager_allows_individual_package_uninstall(manager)
+}
+
+fn manager_allows_individual_package_uninstall(manager: ManagerId) -> bool {
+    matches!(
+        manager,
+        ManagerId::HomebrewFormula
+            | ManagerId::Npm
+            | ManagerId::Pnpm
+            | ManagerId::Yarn
+            | ManagerId::Cargo
+            | ManagerId::CargoBinstall
+            | ManagerId::Pip
+            | ManagerId::Pipx
+            | ManagerId::Poetry
+            | ManagerId::RubyGems
+            | ManagerId::Bundler
+    )
+}
+
+fn supports_individual_package_upgrade(runtime: &AdapterRuntime, manager: ManagerId) -> bool {
+    if !runtime.is_manager_enabled(manager)
+        || !runtime.supports_capability(manager, Capability::Upgrade)
+    {
+        return false;
+    }
+
+    matches!(
+        manager,
+        ManagerId::HomebrewFormula
+            | ManagerId::Mise
+            | ManagerId::Npm
+            | ManagerId::Pip
+            | ManagerId::Pipx
+            | ManagerId::Cargo
+            | ManagerId::CargoBinstall
+            | ManagerId::Rustup
+            | ManagerId::RubyGems
+    )
 }
 
 fn encode_homebrew_upgrade_target(package_name: &str, cleanup_old_kegs: bool) -> String {
@@ -1038,7 +1111,7 @@ pub extern "C" fn helm_list_tasks() -> *mut c_char {
 
     // Fetch a wider snapshot so long-running queued/running tasks do not disappear
     // behind a tight recent-task limit.
-    let tasks = match state.store.list_recent_tasks(TASK_RECENT_FETCH_LIMIT) {
+    let raw_tasks = match state.store.list_recent_tasks(TASK_RECENT_FETCH_LIMIT) {
         Ok(tasks) => tasks,
         Err(e) => {
             eprintln!("Failed to list tasks: {}", e);
@@ -1056,11 +1129,12 @@ pub extern "C" fn helm_list_tasks() -> *mut c_char {
     }
 
     let mut labels = lock_or_recover(&TASK_LABELS, "task_labels");
-    let tasks = build_visible_tasks(tasks, &labels);
-    let active_ids: std::collections::HashSet<u64> = tasks.iter().map(|task| task.id.0).collect();
-    labels.retain(|task_id, _| active_ids.contains(task_id));
+    let fetched_ids: std::collections::HashSet<u64> =
+        raw_tasks.iter().map(|task| task.id.0).collect();
+    let visible_tasks = build_visible_tasks(raw_tasks, &labels);
+    labels.retain(|task_id, _| fetched_ids.contains(task_id));
 
-    let ffi_tasks: Vec<FfiTaskRecord> = tasks
+    let ffi_tasks: Vec<FfiTaskRecord> = visible_tasks
         .iter()
         .map(|task| FfiTaskRecord {
             id: task.id,
@@ -1350,7 +1424,8 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
     let detection_map: std::collections::HashMap<_, _> = detections.into_iter().collect();
     let pref_map: std::collections::HashMap<_, _> = preferences.into_iter().collect();
 
-    let mut statuses = build_manager_statuses(&detection_map, &pref_map);
+    let mut statuses =
+        build_manager_statuses(Some(state.runtime.as_ref()), &detection_map, &pref_map);
 
     // Homebrew detection/version probing is occasionally flaky during first detection.
     // If status is missing or incomplete, probe directly from brew.
@@ -2297,10 +2372,6 @@ pub unsafe extern "C" fn helm_install_package(
         None => return return_error_i64("service.error.invalid_input"),
     };
 
-    if !supports_individual_package_install(manager) {
-        return return_error_i64("service.error.unsupported_capability");
-    }
-
     let package_cstr = unsafe { CStr::from_ptr(package_name) };
     let package_name = match package_cstr.to_str() {
         Ok(name) if !name.trim().is_empty() => name.trim().to_string(),
@@ -2342,7 +2413,7 @@ pub unsafe extern "C" fn helm_install_package(
         )
     };
 
-    if !runtime.is_manager_enabled(manager) {
+    if !supports_individual_package_install(runtime.as_ref(), manager) {
         return return_error_i64("service.error.unsupported_capability");
     }
 
@@ -2394,10 +2465,6 @@ pub unsafe extern "C" fn helm_uninstall_package(
         None => return return_error_i64("service.error.invalid_input"),
     };
 
-    if !supports_individual_package_uninstall(manager) {
-        return return_error_i64("service.error.unsupported_capability");
-    }
-
     let package_cstr = unsafe { CStr::from_ptr(package_name) };
     let package_name = match package_cstr.to_str() {
         Ok(name) if !name.trim().is_empty() => name.trim().to_string(),
@@ -2438,7 +2505,7 @@ pub unsafe extern "C" fn helm_uninstall_package(
         )
     };
 
-    if !runtime.is_manager_enabled(manager) {
+    if !supports_individual_package_uninstall(runtime.as_ref(), manager) {
         return return_error_i64("service.error.unsupported_capability");
     }
 
@@ -3143,8 +3210,8 @@ pub unsafe extern "C" fn helm_free_string(s: *mut c_char) {
 mod tests {
     use super::{
         build_manager_statuses, build_visible_tasks, collect_upgrade_all_targets,
-        homebrew_probe_candidates, parse_homebrew_config_version, search_label_args,
-        search_label_key_for_query, supports_individual_package_install,
+        homebrew_probe_candidates, manager_allows_individual_package_install,
+        parse_homebrew_config_version, search_label_args, search_label_key_for_query,
     };
     use helm_core::models::{
         ManagerId, OutdatedPackage, PackageRef, TaskId, TaskRecord, TaskStatus, TaskType,
@@ -3220,7 +3287,7 @@ mod tests {
 
     #[test]
     fn manager_status_defaults_disable_optional_managers() {
-        let statuses = build_manager_statuses(&HashMap::new(), &HashMap::new());
+        let statuses = build_manager_statuses(None, &HashMap::new(), &HashMap::new());
 
         assert!(!status_for(&statuses, ManagerId::Asdf).enabled);
         assert!(!status_for(&statuses, ManagerId::MacPorts).enabled);
@@ -3235,7 +3302,7 @@ mod tests {
             (ManagerId::MacPorts, true),
             (ManagerId::Mise, false),
         ]);
-        let statuses = build_manager_statuses(&HashMap::new(), &pref_map);
+        let statuses = build_manager_statuses(None, &HashMap::new(), &pref_map);
 
         assert!(status_for(&statuses, ManagerId::Asdf).enabled);
         assert!(status_for(&statuses, ManagerId::MacPorts).enabled);
@@ -3244,7 +3311,7 @@ mod tests {
 
     #[test]
     fn manager_status_exports_detection_only_flags() {
-        let statuses = build_manager_statuses(&HashMap::new(), &HashMap::new());
+        let statuses = build_manager_statuses(None, &HashMap::new(), &HashMap::new());
 
         assert!(status_for(&statuses, ManagerId::Sparkle).is_detection_only);
         assert!(status_for(&statuses, ManagerId::Setapp).is_detection_only);
@@ -3255,7 +3322,7 @@ mod tests {
 
     #[test]
     fn manager_status_marks_alpha2_through_alpha5_slices_as_implemented() {
-        let statuses = build_manager_statuses(&HashMap::new(), &HashMap::new());
+        let statuses = build_manager_statuses(None, &HashMap::new(), &HashMap::new());
 
         assert!(status_for(&statuses, ManagerId::HomebrewCask).is_implemented);
         assert!(status_for(&statuses, ManagerId::Asdf).is_implemented);
@@ -3274,7 +3341,7 @@ mod tests {
 
     #[test]
     fn manager_status_marks_all_0_14_registry_managers_as_implemented() {
-        let statuses = build_manager_statuses(&HashMap::new(), &HashMap::new());
+        let statuses = build_manager_statuses(None, &HashMap::new(), &HashMap::new());
 
         for manager_id in ManagerId::ALL {
             assert!(
@@ -3415,12 +3482,12 @@ mod tests {
 
     #[test]
     fn individual_package_install_support_is_scoped_to_supported_managers() {
-        assert!(supports_individual_package_install(ManagerId::Npm));
-        assert!(supports_individual_package_install(
+        assert!(manager_allows_individual_package_install(ManagerId::Npm));
+        assert!(manager_allows_individual_package_install(
             ManagerId::HomebrewFormula
         ));
-        assert!(!supports_individual_package_install(ManagerId::Mas));
-        assert!(!supports_individual_package_install(
+        assert!(!manager_allows_individual_package_install(ManagerId::Mas));
+        assert!(!manager_allows_individual_package_install(
             ManagerId::SoftwareUpdate
         ));
     }

@@ -67,6 +67,10 @@ struct ManagerStatus: Codable {
     let isImplemented: Bool
     let isOptional: Bool
     let isDetectionOnly: Bool
+    let supportsRemoteSearch: Bool
+    let supportsPackageInstall: Bool
+    let supportsPackageUninstall: Bool
+    let supportsPackageUpgrade: Bool
 }
 
 final class HelmCore: ObservableObject {

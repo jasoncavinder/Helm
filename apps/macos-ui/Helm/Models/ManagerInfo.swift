@@ -74,9 +74,7 @@ struct ManagerInfo: Identifiable {
     var canSearch: Bool {
         [
             "homebrew_formula",
-            "mise",
             "asdf",
-            "rustup",
             "macports",
             "nix_darwin",
             "npm",

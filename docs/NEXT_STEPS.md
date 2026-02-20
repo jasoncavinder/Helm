@@ -19,7 +19,7 @@ Focus:
 
 Current checkpoint:
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
-- `v0.14.1` patch-track started (pre-merge fix slices being implemented off `dev` for review)
+- `v0.14.1` patch-track merged on `dev` (release validation and `dev` -> `main` PR pending)
 - `v0.13.0` stable released (website updates, documentation alignment, version bump)
 - `v0.13.0-rc.2` released (support & feedback entry points, diagnostics copy, GitHub Sponsors integration)
 - `v0.13.0-rc.1` released (inspector sidebar, upgrade reliability, status menu, documentation)
@@ -40,7 +40,7 @@ Next release targets:
 
 ## v0.14.1 Patch Track (In Progress)
 
-### UI/UX Slice (Completed on branch)
+### UI/UX Slice (Completed on `dev`)
 
 Delivered:
 
@@ -51,7 +51,7 @@ Delivered:
 - Added inline clear control to top-right search field
 - Inspector package panel now includes description (when present) and context actions (Update, Pin/Unpin, View Manager)
 
-### Follow-Up Stabilization Slice (Completed on branch)
+### Follow-Up Stabilization Slice (Completed on `dev`)
 
 Delivered:
 
@@ -66,7 +66,7 @@ Delivered:
 - RubyGems now participates in per-package upgrade eligibility in the SwiftUI workflow
 - Added regression tests for task list dedup/terminal-history visibility and prune-policy status filtering
 
-### Cache/Persistence Slice (Completed on branch)
+### Cache/Persistence Slice (Completed on `dev`)
 
 Delivered:
 
@@ -77,7 +77,7 @@ Delivered:
 - Package aggregation now enriches installed/outdated package records with cached summaries when available
 - Package filtering now matches query text against package summaries and merges remote-search summary/latest metadata into local package rows
 
-### Adapter Behavior Slice (Completed on branch)
+### Adapter Behavior Slice (Completed on `dev`)
 
 Delivered:
 
@@ -87,7 +87,7 @@ Delivered:
   - `service.error.homebrew_required`
   - propagated across all supported locales and mirrored locale resources
 
-### Search + Inspector Actions Slice (Completed on branch)
+### Search + Inspector Actions Slice (Completed on `dev`)
 
 Delivered:
 
