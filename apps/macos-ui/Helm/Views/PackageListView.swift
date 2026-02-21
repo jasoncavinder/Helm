@@ -16,7 +16,7 @@ struct PackagesSectionView: View {
         }
     }
 
-    private var displayedPackages: [PackageItem] {
+    private var displayedPackages: [ConsolidatedPackageItem] {
         core.filteredPackages(
             query: context.searchQuery,
             managerId: selectedManagerId ?? context.managerFilterId,
@@ -111,10 +111,12 @@ struct PackagesSectionView: View {
                     .foregroundColor(.secondary)
                 Spacer()
             } else {
-                List(displayedPackages) { package in
+                List(displayedPackages) { packageRow in
+                    let package = packageRow.package
                     PackageRowView(
                         package: package,
-                        isSelected: context.selectedPackageId == package.id,
+                        managerDisplayNames: packageRow.managerDisplayNames,
+                        isSelected: packageRow.containsPackageId(context.selectedPackageId),
                         isPinActionInFlight: core.pinActionPackageIds.contains(package.id),
                         isUpgradeActionInFlight: core.upgradeActionPackageIds.contains(package.id),
                         kegPolicySelection: kegPolicyMenuSelection(for: package),

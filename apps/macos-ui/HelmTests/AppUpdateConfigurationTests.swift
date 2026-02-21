@@ -69,6 +69,34 @@ final class AppUpdateConfigurationTests: XCTestCase {
         XCTAssertEqual(allowsDowngrades.eligibilityFailureReason, .downgradesEnabled)
     }
 
+    func testCanUseSparkleRejectsPrereleaseVersionMetadataMismatch() {
+        let mismatched = AppUpdateConfiguration(
+            channel: .developerID,
+            sparkleEnabled: true,
+            sparkleAllowsDowngrades: false,
+            sparkleFeedURL: "https://updates.example.com/appcast.xml",
+            sparklePublicEdKey: "abc123",
+            bundleShortVersion: "0.17.0",
+            bundleVersion: "17000602",
+            bundlePath: "/Applications/Helm.app"
+        )
+        XCTAssertFalse(mismatched.canUseSparkle)
+        XCTAssertEqual(mismatched.eligibilityFailureReason, .bundleVersionMetadataMismatch)
+
+        let matched = AppUpdateConfiguration(
+            channel: .developerID,
+            sparkleEnabled: true,
+            sparkleAllowsDowngrades: false,
+            sparkleFeedURL: "https://updates.example.com/appcast.xml",
+            sparklePublicEdKey: "abc123",
+            bundleShortVersion: "0.17.0-rc.2",
+            bundleVersion: "17000602",
+            bundlePath: "/Applications/Helm.app"
+        )
+        XCTAssertTrue(matched.canUseSparkle)
+        XCTAssertNil(matched.eligibilityFailureReason)
+    }
+
     func testCanUseSparkleRejectsIneligibleInstallSources() {
         let mountedFromDMG = AppUpdateConfiguration(
             channel: .developerID,
@@ -180,6 +208,25 @@ final class AppUpdateConfigurationTests: XCTestCase {
         XCTAssertFalse(config.hasSparkleConfig)
         XCTAssertFalse(config.canUseSparkle)
         XCTAssertEqual(config.eligibilityFailureReason, .downgradesEnabled)
+    }
+
+    func testFromBundleReadsBundleVersionMetadataForPrereleaseSanityChecks() throws {
+        let bundle = try makeBundle(info: [
+            "HelmDistributionChannel": "developer_id",
+            "HelmSparkleEnabled": "YES",
+            "SUAllowsDowngrades": "NO",
+            "SUFeedURL": "https://updates.example.com/appcast.xml",
+            "SUPublicEDKey": "test-key",
+            "CFBundleShortVersionString": "0.17.0",
+            "CFBundleVersion": "17000602",
+        ])
+        defer { removeBundle(bundle) }
+
+        let config = AppUpdateConfiguration.from(bundle: bundle)
+        XCTAssertEqual(config.bundleShortVersion, "0.17.0")
+        XCTAssertEqual(config.bundleVersion, "17000602")
+        XCTAssertFalse(config.canUseSparkle)
+        XCTAssertEqual(config.eligibilityFailureReason, .bundleVersionMetadataMismatch)
     }
 
     private func makeBundle(info: [String: Any]) throws -> Bundle {

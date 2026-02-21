@@ -8,16 +8,16 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.17.0-rc.2** (diagnostics/logging RC hardening on `dev`).
+Current documentation baseline: **0.17.0-rc.3** (release prep on `dev`) with **0.17.0-rc.2** as the latest released RC.
 
-Implementation baseline: **0.17.0-rc.2** (all six v0.17 diagnostics slices merged; updater/install RC hardening applied on `dev`).
+Implementation baseline: **0.17.0-rc.3** release-prep candidate with post-`rc.2` updater/task/package stabilization delivered.
 
 See:
 - CHANGELOG.md
 
 Active milestone:
 - latest shipped release on `main`: **0.16.2** (Sparkle connectivity hardening + macOS 11 deployment-target alignment)
-- 0.17.x — Diagnostics & Logging (**delivery merged on `dev`**, `v0.17.0-rc.1` released, `v0.17.0-rc.2` hotfix RC prep in progress)
+- 0.17.x — Diagnostics & Logging (**delivery merged on `dev`**, `v0.17.0-rc.1` + `v0.17.0-rc.2` released, post-`rc.2` follow-up delivered, `v0.17.0-rc.3` prep in progress)
   - delivered: `feat/v0.17-log-foundation` (SQLite-backed task lifecycle logs + retrieval plumbing)
   - delivered: `feat/v0.17-task-log-viewer` (inspector diagnostics logs tab with level/status filters + load-more pagination)
   - delivered: `feat/v0.17-structured-error-export` (structured JSON diagnostics export with redaction for support workflows)
@@ -25,6 +25,7 @@ Active milestone:
   - delivered: `feat/v0.17-manager-detection-diagnostics` (manager inspector detection reason diagnostics + latest detection task metadata visibility)
   - delivered: `feat/v0.17-diagnostics-hardening` (attributed last-error capture across fetch/action/settings failures + diagnostics export parity)
   - delivered: `v0.17.0-rc.2` updater hardening (Sparkle sandbox installer entitlements + launcher service metadata + prerelease appcast short-version preservation)
+  - delivered: post-`rc.2` updater/task/package UX follow-up (`v0.17.0-rc.3` candidate): prerelease short-version alignment in Sparkle "up to date" messaging; running-task inline expand/collapse with command + live output panel; same-name package consolidation across managers in package/search surfaces; inspector HTML description rendering/link hardening; inspector detail full-width text layout; package consolidation policy hardening; task-output buffer capping.
   - release-prep validation status: green (`cargo test`, macOS `xcodebuild` suite, locale integrity + locale length audits)
 
 Security rollout staging status:
@@ -105,7 +106,7 @@ Localization coverage:
 - `v0.12.0-beta.1` on-device overflow validation captured at `docs/validation/v0.12.0-beta.1-visual-overflow.md` (Settings surface checks passing)
 - Expanded on-device overflow validation coverage for onboarding/navigation/packages/managers captured at `docs/validation/v0.12.0-beta.2-visual-overflow-expansion.md`
 - Manager display-name localization keys now cover all implemented manager IDs while preserving manager-brand naming where transcreation is not required.
-- Legacy non-English locale set walkthrough keys (es/de/fr/pt-BR/ja) remain translated and validated; `hu` is currently a bootstrap locale focused on onboarding and service/error flows.
+- Legacy non-English locale set walkthrough keys (es/de/fr/pt-BR/ja) remain translated and validated; `hu` remains a staged locale rollout and now includes onboarding/service/error coverage plus post-`rc.2` task/inspector UX additions.
 
 Validation snapshot for `v0.11.0-beta.1` expansion:
 
@@ -867,4 +868,4 @@ Helm is a **functional control plane for 28 implemented managers** with:
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-0.13.x through 0.16.2 stable checkpoints are complete on `main`; `v0.17.0-rc.1` has been released, and updater/install hardening for `v0.17.0-rc.2` is staged on `dev`.
+0.13.x through 0.16.2 stable checkpoints are complete on `main`; `v0.17.0-rc.1` and `v0.17.0-rc.2` are released, and `v0.17.0-rc.3` stabilization/release prep is in progress on `dev`.

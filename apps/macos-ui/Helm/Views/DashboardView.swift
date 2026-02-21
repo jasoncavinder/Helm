@@ -8,6 +8,7 @@ struct RedesignPopoverView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var popoverSearchQuery: String = ""
+    @State private var expandedRunningTaskId: String?
     @State private var activeOverlay: PopoverOverlayRoute?
     let onOpenControlCenter: () -> Void
 
@@ -23,18 +24,15 @@ struct RedesignPopoverView: View {
             }
     }
 
-    private var searchResults: [PackageItem] {
-        let query = popoverSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !query.isEmpty else {
-            return Array(core.allKnownPackages.prefix(10))
-        }
-
-        let localMatches = core.allKnownPackages.filter {
-            $0.name.lowercased().contains(query) || $0.manager.lowercased().contains(query)
-        }
-        let localIds = Set(localMatches.map(\.id))
-        let remoteMatches = core.searchResults.filter { !localIds.contains($0.id) }
-        return Array((localMatches + remoteMatches).prefix(18))
+    private var searchResults: [ConsolidatedPackageItem] {
+        let query = popoverSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        let results = core.filteredPackages(
+            query: query,
+            managerId: nil,
+            statusFilter: nil
+        )
+        let limit = query.isEmpty ? 10 : 18
+        return Array(results.prefix(limit))
     }
 
     private var popoverTasks: [TaskItem] {
@@ -113,6 +111,9 @@ struct RedesignPopoverView: View {
                     if route != nil {
                         NSCursor.arrow.set()
                     }
+                }
+                .onChange(of: popoverTasks.map { "\($0.id):\($0.status)" }) { _ in
+                    collapseExpandedTaskIfNeeded()
                 }
             }
         }
@@ -286,7 +287,19 @@ struct RedesignPopoverView: View {
                     .foregroundColor(.secondary)
             } else {
                 ForEach(popoverTasks) { task in
-                    TaskRowView(task: task, onCancel: task.isRunning ? { core.cancelTask(task) } : nil)
+                    TaskRowView(
+                        task: task,
+                        onCancel: task.isRunning ? { core.cancelTask(task) } : nil,
+                        canExpandDetails: true,
+                        isExpanded: expandedRunningTaskId == task.id,
+                        onToggleDetails: {
+                            if expandedRunningTaskId == task.id {
+                                expandedRunningTaskId = nil
+                            } else {
+                                expandedRunningTaskId = task.id
+                            }
+                        }
+                    )
                 }
             }
         }
@@ -371,6 +384,16 @@ struct RedesignPopoverView: View {
     private func closeOverlay() {
         activeOverlay = nil
         context.popoverOverlayRequest = nil
+    }
+
+    private func collapseExpandedTaskIfNeeded() {
+        guard let expandedRunningTaskId else { return }
+        let stillRunning = popoverTasks.contains {
+            $0.id == expandedRunningTaskId && $0.isRunning
+        }
+        if !stillRunning {
+            self.expandedRunningTaskId = nil
+        }
     }
 
     private func syncSearchQuery(_ query: String) {

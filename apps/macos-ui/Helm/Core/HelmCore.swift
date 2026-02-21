@@ -22,6 +22,7 @@ enum AppUpdateUnavailableReason: String {
     case downgradesEnabled = "downgrades_enabled"
     case missingSparkleConfig = "missing_sparkle_config"
     case insecureSparkleFeed = "insecure_sparkle_feed"
+    case bundleVersionMetadataMismatch = "bundle_version_metadata_mismatch"
     case ineligibleInstallLocation = "ineligible_install_location"
     case packageManagerManagedInstall = "package_manager_managed_install"
     case sparkleFrameworkUnavailable = "sparkle_framework_unavailable"
@@ -39,7 +40,7 @@ enum AppUpdateUnavailableReason: String {
             return L10n.App.Overlay.About.UpdateUnavailable.sparkleMissing
         case .sparkleRuntimeUnavailable:
             return L10n.App.Overlay.About.UpdateUnavailable.runtimeUnavailable
-        case .sparkleDisabled, .downgradesEnabled, .missingSparkleConfig, .insecureSparkleFeed:
+        case .sparkleDisabled, .downgradesEnabled, .missingSparkleConfig, .insecureSparkleFeed, .bundleVersionMetadataMismatch:
             return L10n.App.Overlay.About.UpdateUnavailable.buildConfig
         }
     }
@@ -209,6 +210,8 @@ final class AppUpdateCoordinator: ObservableObject {
             return .missingSparkleConfig
         case .insecureSparkleFeed:
             return .insecureSparkleFeed
+        case .bundleVersionMetadataMismatch:
+            return .bundleVersionMetadataMismatch
         case .ineligibleInstallLocation:
             return .ineligibleInstallLocation
         case .packageManagerManagedInstall:
@@ -248,6 +251,7 @@ struct CoreTaskRecord: Codable {
 
 struct CoreTaskOutputRecord: Codable {
     let taskId: UInt64
+    let command: String?
     let stdout: String?
     let stderr: String?
 }

@@ -60,10 +60,41 @@ This checklist is required before creating a release tag on `main`.
 - [x] Locale checks pass (`apps/macos-ui/scripts/check_locale_integrity.sh` and `apps/macos-ui/scripts/check_locale_lengths.sh`).
 
 ### Branch and Tag
+- [x] Open release-prep PR into `dev` and complete CI checks.
+- [x] Merge release-prep PR into `dev`.
+- [x] Create annotated RC tag from `dev` lineage: `git tag -a v0.17.0-rc.2 -m "Helm v0.17.0-rc.2"`.
+- [x] Push RC tag: `git push origin v0.17.0-rc.2`.
+
+## v0.17.0-rc.3 (Post-rc.2 Stabilization RC)
+
+### Scope and Documentation
+- [x] `CHANGELOG.md` includes `0.17.0-rc.3` release-candidate notes for post-`rc.2` updater/task/package stabilization.
+- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect `rc.3` release-prep status.
+- [x] Website changelog includes `0.17.0-rc.3` notes.
+
+### Versioning
+- [x] Workspace version bumped to `0.17.0-rc.3` in `core/rust/Cargo.toml`.
+- [x] Rust lockfile local package versions aligned to `0.17.0-rc.3` in `core/rust/Cargo.lock`.
+
+### Stabilization Scope
+- [x] Sparkle "up to date" messaging preserves prerelease versions in non-App-Store channels.
+- [x] Running tasks support single-row expand/collapse details with resolved command + live output.
+- [x] Package/search UI consolidates same-name rows across managers while retaining manager-scoped actions.
+- [x] Inspector package descriptions render HTML-formatted content with safe-link filtering and readable fallback.
+- [x] Inspector side-panel detail text containers maintain full-width leading alignment (no centered narrow content when values are short).
+- [x] Updater prerelease eligibility rejects bundle short-version/build metadata mismatches.
+- [x] Task-output storage enforces bounded command/output buffering and Hungarian locale coverage includes new task/inspector strings.
+
+### Validation
+- [x] Rust tests pass (`cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`).
+- [x] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`).
+- [x] Locale checks pass (`apps/macos-ui/scripts/check_locale_integrity.sh` and `apps/macos-ui/scripts/check_locale_lengths.sh`).
+
+### Branch and Tag
 - [ ] Open release-prep PR into `dev` and complete CI checks.
 - [ ] Merge release-prep PR into `dev`.
-- [ ] Create annotated RC tag from `dev` lineage: `git tag -a v0.17.0-rc.2 -m "Helm v0.17.0-rc.2"`.
-- [ ] Push RC tag: `git push origin v0.17.0-rc.2`.
+- [ ] Create annotated RC tag from `dev` lineage: `git tag -a v0.17.0-rc.3 -m "Helm v0.17.0-rc.3"`.
+- [ ] Push RC tag: `git push origin v0.17.0-rc.3`.
 
 ## v0.16.2 (Sparkle Connectivity + macOS 11 Alignment)
 

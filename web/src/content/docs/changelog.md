@@ -11,6 +11,29 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ---
 
+## Unreleased
+- No unreleased changes.
+
+## 0.17.0-rc.3 — 2026-02-21
+
+### Changed
+- Non-App-Store prerelease builds now preserve prerelease marketing versions so Sparkle "up to date" messaging reflects full RC versions (for example, `0.17.0-rc.3`).
+- Running task rows now support inline expand/collapse details with single-row expansion behavior per task list.
+- Package list and popover search now consolidate same-name packages across managers into one row and list all matching managers under the package name.
+- Inspector package descriptions now render HTML summaries as attributed text so bold/italic/code formatting is preserved, with plain-text fallback if parsing fails.
+- Inspector detail content now stays full-width and leading-aligned, avoiding centered narrow text columns when values are short.
+
+### Added
+- Running-task inline details now show the resolved command and a live-updating output panel.
+- Hungarian locale coverage now includes the newly added task/inspector UX copy.
+
+### Fixed
+- Prerelease updater eligibility now rejects bundle metadata mismatches that can cause release-candidate version labeling drift.
+- Inspector description links now only allow safe `http://`/`https://` destinations.
+- Task output buffering now enforces bounded command/output storage for long-running tasks.
+
+---
+
 ## 0.17.0-rc.2 — 2026-02-21
 
 ### Changed

@@ -64,10 +64,24 @@ extension HelmCore {
         return .healthy
     }
 
-    /// Returns a filtered and deduplicated package list.
-    /// Merges local matches with remote search results (deduped by ID),
-    /// then applies optional manager and status filters.
+    /// Returns a filtered package list grouped by package name.
+    /// Merges local matches with remote search results, then applies manager/status filters.
     func filteredPackages(
+        query: String,
+        managerId: String?,
+        statusFilter: PackageStatus?
+    ) -> [ConsolidatedPackageItem] {
+        consolidatePackages(
+            filteredPackagesRaw(
+                query: query,
+                managerId: managerId,
+                statusFilter: statusFilter
+            )
+        )
+    }
+
+    /// Returns manager-scoped package rows used as canonical action targets.
+    private func filteredPackagesRaw(
         query: String,
         managerId: String?,
         statusFilter: PackageStatus?
@@ -459,6 +473,15 @@ extension HelmCore {
         let trimmedCandidate = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedCandidate.isEmpty else { return }
         package.summary = trimmedCandidate
+    }
+
+    private func consolidatePackages(_ packages: [PackageItem]) -> [ConsolidatedPackageItem] {
+        ConsolidatedPackageItem.consolidate(
+            packages,
+            localizedManagerName: { managerId in
+                normalizedManagerName(managerId)
+            }
+        )
     }
 
     private func upgradePlanStepId(for task: CoreTaskRecord) -> String? {

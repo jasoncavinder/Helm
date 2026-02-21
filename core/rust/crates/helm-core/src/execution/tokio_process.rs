@@ -4,8 +4,8 @@ use std::time::{Duration, SystemTime};
 use tokio::io::AsyncReadExt;
 
 use crate::execution::{
-    ExecutionResult, ProcessExecutor, ProcessExitStatus, ProcessOutput, ProcessSpawnRequest,
-    ProcessTerminationMode, ProcessWaitFuture, RunningProcess,
+    CommandSpec, ExecutionResult, ProcessExecutor, ProcessExitStatus, ProcessOutput,
+    ProcessSpawnRequest, ProcessTerminationMode, ProcessWaitFuture, RunningProcess,
 };
 use crate::models::{CoreError, CoreErrorKind, ManagerAction, ManagerId, TaskId, TaskType};
 
@@ -50,6 +50,7 @@ impl ProcessExecutor for TokioProcessExecutor {
             task_type: request.task_type,
             action: request.action,
             task_id: request.task_id,
+            command_display: format_command_for_display(&request.command),
         }))
     }
 }
@@ -63,6 +64,7 @@ struct TokioRunningProcess {
     task_type: TaskType,
     action: ManagerAction,
     task_id: Option<TaskId>,
+    command_display: String,
 }
 
 impl RunningProcess for TokioRunningProcess {
@@ -107,6 +109,7 @@ impl RunningProcess for TokioRunningProcess {
         let action = self.action;
         let pid = self.pid;
         let task_id = self.task_id;
+        let command_display = self.command_display;
 
         Box::pin(async move {
             let mut child = child.ok_or_else(|| {
@@ -118,22 +121,58 @@ impl RunningProcess for TokioRunningProcess {
                 )
             })?;
 
+            if let Some(task_id) = task_id {
+                crate::execution::task_output_store::record_command(task_id, &command_display);
+            }
+
             let stdout_reader = {
                 let mut stdout = child.stdout.take();
+                let stream_task_id = task_id;
                 tokio::spawn(async move {
                     let mut buffer = Vec::new();
                     if let Some(mut handle) = stdout.take() {
-                        let _ = handle.read_to_end(&mut buffer).await;
+                        let mut chunk = vec![0_u8; 4096];
+                        loop {
+                            match handle.read(&mut chunk).await {
+                                Ok(0) => break,
+                                Ok(read_count) => {
+                                    let bytes = &chunk[..read_count];
+                                    buffer.extend_from_slice(bytes);
+                                    if let Some(task_id) = stream_task_id {
+                                        crate::execution::task_output_store::append_stdout(
+                                            task_id, bytes,
+                                        );
+                                    }
+                                }
+                                Err(_) => break,
+                            }
+                        }
                     }
                     buffer
                 })
             };
             let stderr_reader = {
                 let mut stderr = child.stderr.take();
+                let stream_task_id = task_id;
                 tokio::spawn(async move {
                     let mut buffer = Vec::new();
                     if let Some(mut handle) = stderr.take() {
-                        let _ = handle.read_to_end(&mut buffer).await;
+                        let mut chunk = vec![0_u8; 4096];
+                        loop {
+                            match handle.read(&mut chunk).await {
+                                Ok(0) => break,
+                                Ok(read_count) => {
+                                    let bytes = &chunk[..read_count];
+                                    buffer.extend_from_slice(bytes);
+                                    if let Some(task_id) = stream_task_id {
+                                        crate::execution::task_output_store::append_stderr(
+                                            task_id, bytes,
+                                        );
+                                    }
+                                }
+                                Err(_) => break,
+                            }
+                        }
                     }
                     buffer
                 })
@@ -197,7 +236,12 @@ impl RunningProcess for TokioRunningProcess {
             };
 
             if let Some(task_id) = task_id {
-                crate::execution::task_output_store::record(task_id, &stdout, &stderr);
+                crate::execution::task_output_store::record(
+                    task_id,
+                    Some(command_display.as_str()),
+                    &stdout,
+                    &stderr,
+                );
             }
 
             Ok(ProcessOutput {
@@ -209,6 +253,30 @@ impl RunningProcess for TokioRunningProcess {
             })
         })
     }
+}
+
+fn format_command_for_display(command: &CommandSpec) -> String {
+    let mut parts = Vec::with_capacity(command.args.len() + 1);
+    parts.push(shell_escape(&command.program.to_string_lossy()));
+    parts.extend(command.args.iter().map(|arg| shell_escape(arg)));
+
+    parts.join(" ")
+}
+
+fn shell_escape(text: &str) -> String {
+    if text.is_empty() {
+        return "''".to_string();
+    }
+
+    let is_simple = text.chars().all(|character| {
+        character.is_ascii_alphanumeric()
+            || matches!(character, '-' | '_' | '.' | '/' | ':' | '@' | '=' | '+')
+    });
+    if is_simple {
+        return text.to_string();
+    }
+
+    format!("'{}'", text.replace('\'', "'\\''"))
 }
 
 fn process_failure(
