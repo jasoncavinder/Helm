@@ -11,6 +11,29 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ---
 
+## 0.17.0-rc.1 — 2026-02-21
+
+### Added
+- Diagnostics/logging release-candidate delivery for `v0.17.x`:
+  - SQLite-backed task lifecycle logs and retrieval APIs
+  - Inspector task-log viewer with level/status filters and pagination
+  - Structured support export payloads with redaction
+  - Settings service-health diagnostics panel
+  - Manager detection diagnostics in Inspector
+- Hungarian (`hu`) locale bootstrap added across app + service localization files with language-picker support.
+- `SupportRedactor` test coverage added for support-export redaction guarantees.
+
+### Changed
+- Diagnostics/reporting now preserves attributed last-error context (`source`, `action`, `manager`, `task_type`) across fetch/action/settings paths.
+- Third-party licensing compliance baseline documentation is now tracked in release prep for RC handoff.
+- Manager display-name localization coverage expanded across all implemented manager IDs with brand-preserving labels.
+- Task-log ordering in diagnostics now presents newest entries first.
+
+### Fixed
+- Hungarian onboarding copy shortened to pass layout-overflow validation thresholds.
+
+---
+
 ## 0.16.2 — 2026-02-21
 
 ### Fixed

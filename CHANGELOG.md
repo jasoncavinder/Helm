@@ -18,8 +18,10 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
   - new FFI/API surface for retrieving persisted task logs (`helm_list_task_logs`)
 - Inspector diagnostics log viewer with level/status filters and load-more pagination.
 - Structured support export payloads with redaction for diagnostics and support workflows.
+- Hungarian (`hu`) locale bootstrap across canonical + app-mirrored locale trees, including onboarding and service/error flow translations plus language picker support.
 - Settings service health diagnostics panel with copyable health snapshot output.
 - Manager inspector detection diagnostics (reason states plus latest detection task status/ID).
+- Dedicated `SupportRedactor` unit-test coverage for sensitive value redaction and helper-path parity.
 
 ### Changed
 - Legal notice and licensing strategy docs now explicitly link to third-party dependency obligations:
@@ -36,6 +38,11 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
   - support structured export payloads
   - support plaintext diagnostics output
   - service health snapshot diagnostics
+- Manager display-name localization coverage now includes all implemented manager IDs while preserving manager-brand naming conventions where literal names should not be translated.
+- Task log retrieval ordering is now newest-first in diagnostics surfaces.
+
+### Fixed
+- Hungarian onboarding copy adjusted to satisfy overflow guardrails in localized panel-width tests.
 
 ## [0.16.2] - 2026-02-21
 

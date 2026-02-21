@@ -19,7 +19,7 @@ jobs:
       - name: Ensure Locales Stay Synced
         run: |
           set -euo pipefail
-          for locale in en es de fr pt-BR ja; do
+          for locale in en es de fr pt-BR ja hu; do
             diff -ru "locales/$locale" "apps/macos-ui/Helm/Resources/locales/$locale"
           done
 

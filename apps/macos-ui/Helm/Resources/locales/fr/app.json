@@ -349,5 +349,18 @@
   "app.overlay.about.update_unavailable.build_config": "Les mises à jour intégrées ne sont pas disponibles pour ce build.",
   "app.overlay.about.update_unavailable.sparkle_missing": "Les composants de mise à jour Sparkle ne sont pas disponibles dans ce build.",
   "app.overlay.about.update_unavailable.runtime_unavailable": "La vérification des mises à jour est temporairement indisponible.",
-  "app.overlay.about.update_unavailable.package_manager_managed": "Cette installation est gérée par un gestionnaire de paquets. Utilisez ce gestionnaire pour mettre à jour Helm."
+  "app.overlay.about.update_unavailable.package_manager_managed": "Cette installation est gérée par un gestionnaire de paquets. Utilisez ce gestionnaire pour mettre à jour Helm.",
+  "app.settings.label.language.hungarian": "Magyar",
+  "app.managers.name.sparkle": "Sparkle Updaters",
+  "app.managers.name.setapp": "Setapp",
+  "app.managers.name.asdf": "asdf",
+  "app.managers.name.macports": "MacPorts",
+  "app.managers.name.nix_darwin": "nix-darwin",
+  "app.managers.name.docker_desktop": "Docker Desktop",
+  "app.managers.name.podman": "podman",
+  "app.managers.name.colima": "colima",
+  "app.managers.name.parallels_desktop": "Parallels Desktop",
+  "app.managers.name.xcode_command_line_tools": "Xcode Command Line Tools",
+  "app.managers.name.rosetta2": "Rosetta 2",
+  "app.managers.name.firmware_updates": "Firmware Updates"
 }

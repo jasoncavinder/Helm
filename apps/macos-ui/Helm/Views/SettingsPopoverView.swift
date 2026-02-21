@@ -136,6 +136,7 @@ struct SettingsSectionView: View {
                             Text(L10n.App.Settings.Label.french.localized).tag("fr")
                             Text(L10n.App.Settings.Label.portugueseBrazilian.localized).tag("pt-BR")
                             Text(L10n.App.Settings.Label.japanese.localized).tag("ja")
+                            Text(L10n.App.Settings.Label.hungarian.localized).tag("hu")
                         }
                         .labelsHidden()
                         .frame(width: 220)

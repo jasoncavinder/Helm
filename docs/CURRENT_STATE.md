@@ -24,6 +24,7 @@ Active milestone:
   - delivered: `feat/v0.17-service-health-panel` (settings diagnostics panel for service/runtime health + copyable service snapshot)
   - delivered: `feat/v0.17-manager-detection-diagnostics` (manager inspector detection reason diagnostics + latest detection task metadata visibility)
   - delivered: `feat/v0.17-diagnostics-hardening` (attributed last-error capture across fetch/action/settings failures + diagnostics export parity)
+  - release-prep validation status: green (`cargo test`, macOS `xcodebuild` suite, locale integrity + locale length audits)
 
 Security rollout staging status:
 - Stage 0 (`<=0.16.x`): planning/docs only (active in `0.16.1`)
@@ -96,14 +97,14 @@ Fully functional:
 
 Localization coverage:
 
-- All 6 locales (en, es, de, fr, pt-BR, ja) have full key parity across app/common/service files
+- All 7 locales (en, es, de, fr, pt-BR, ja, hu) have full key parity across app/common/service files
 - Locale length audit script added at `apps/macos-ui/scripts/check_locale_lengths.sh` for overflow-risk preflight
 - Locale key/placeholder integrity audit script added at `apps/macos-ui/scripts/check_locale_integrity.sh`
 - `v0.11.0-beta.2` heuristic overflow audit captured at `docs/validation/v0.11.0-beta.2-l10n-overflow.md` (no high-risk candidates flagged)
 - `v0.12.0-beta.1` on-device overflow validation captured at `docs/validation/v0.12.0-beta.1-visual-overflow.md` (Settings surface checks passing)
 - Expanded on-device overflow validation coverage for onboarding/navigation/packages/managers captured at `docs/validation/v0.12.0-beta.2-visual-overflow-expansion.md`
-- Manager display-name localization keys now cover upgrade-preview/task-fallback manager labels (including software update/app store naming)
-- All walkthrough keys (31 keys) translated and validated across all 6 locales
+- Manager display-name localization keys now cover all implemented manager IDs while preserving manager-brand naming where transcreation is not required.
+- Legacy non-English locale set walkthrough keys (es/de/fr/pt-BR/ja) remain translated and validated; `hu` is currently a bootstrap locale focused on onboarding and service/error flows.
 
 Validation snapshot for `v0.11.0-beta.1` expansion:
 
@@ -515,7 +516,7 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
 
 ### Localization
 
-- All 6 locales pass key parity, placeholder consistency, and ICU format checks
+- All 7 locales pass key parity, placeholder consistency, and ICU format checks
 - `check_locale_lengths.sh` included in CI workflow
 - Spanish accent typo in "Actualización" has been corrected
 
@@ -840,7 +841,7 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
   - `asdf` support currently assumes plugin already exists; Helm currently manages install/uninstall/upgrade of tool versions, not plugin bootstrap/removal
   - `nix_darwin` support currently operates through `nix-env` compatibility flows and does not edit declarative nix-darwin configuration files
 - Self-update is intentionally limited to eligible direct Developer ID installs; package-manager-managed installs remain blocked by policy.
-- Diagnostics UI is available in the Inspector (`diagnostics`/`stderr`/`stdout`) but a broader log-viewer workflow remains pending.
+- Diagnostics UI is available in the Inspector (`diagnostics`/`stderr`/`stdout`), including the v0.17 task-log viewer (`logs` tab with level/status filters and pagination).
 - No CLI interface
 
 ---
@@ -860,7 +861,7 @@ Helm is a **functional control plane for 28 implemented managers** with:
 - Working orchestration
 - Task system
 - Pinning and policy
-- Localization foundation (6 locales at full key parity)
+- Localization foundation (7 locales at full key parity)
 - 0.14 platform/detection/optional manager rollout implemented
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.

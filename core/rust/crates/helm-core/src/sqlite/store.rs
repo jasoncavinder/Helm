@@ -776,7 +776,7 @@ SELECT
     created_at_unix
 FROM task_log_records
 WHERE task_id = ?1
-ORDER BY created_at_unix ASC, log_id ASC
+ORDER BY created_at_unix DESC, log_id DESC
 LIMIT ?2
 ",
             )?;
