@@ -82,6 +82,11 @@ private struct InspectorTaskDetailView: View {
     @State private var isLoadingTaskOutput = false
     @State private var taskOutputLoadFailed = false
     @State private var taskOutputRecord: CoreTaskOutputRecord?
+    @State private var isLoadingTaskLogs = false
+    @State private var taskLogsLoadFailed = false
+    @State private var taskLogRecords: [CoreTaskLogRecord] = []
+    @State private var taskLogFetchLimit = Self.taskLogPageSize
+    private static let taskLogPageSize = 50
     let task: TaskItem
 
     var body: some View {
@@ -168,6 +173,7 @@ private struct InspectorTaskDetailView: View {
                             Button(L10n.App.Inspector.viewDiagnostics.localized) {
                                 showDiagnosticsSheet = true
                                 loadTaskOutput(force: true)
+                                loadTaskLogs(force: true, resetPagination: true)
                             }
                             .buttonStyle(HelmSecondaryButtonStyle())
                             .font(.caption)
@@ -186,7 +192,12 @@ private struct InspectorTaskDetailView: View {
                 ),
                 output: taskOutputRecord,
                 isLoading: isLoadingTaskOutput,
-                loadFailed: taskOutputLoadFailed
+                loadFailed: taskOutputLoadFailed,
+                logs: taskLogRecords,
+                isLoadingLogs: isLoadingTaskLogs,
+                logsLoadFailed: taskLogsLoadFailed,
+                canLoadMoreLogs: taskLogRecords.count >= taskLogFetchLimit,
+                onLoadMoreLogs: loadMoreTaskLogs
             )
             .frame(minWidth: 700, minHeight: 420)
         }
@@ -249,6 +260,42 @@ private struct InspectorTaskDetailView: View {
             }
         }
     }
+
+    private func loadTaskLogs(force: Bool, resetPagination: Bool = false) {
+        guard hasNumericTaskId else { return }
+        if resetPagination {
+            taskLogFetchLimit = Self.taskLogPageSize
+        }
+        if isLoadingTaskLogs {
+            return
+        }
+        if !force && !taskLogRecords.isEmpty {
+            return
+        }
+
+        isLoadingTaskLogs = true
+        taskLogsLoadFailed = false
+        core.fetchTaskLogs(taskId: task.id, limit: taskLogFetchLimit) { logs in
+            DispatchQueue.main.async {
+                self.isLoadingTaskLogs = false
+                if let logs {
+                    self.taskLogRecords = logs
+                    self.taskLogsLoadFailed = false
+                } else {
+                    if resetPagination {
+                        self.taskLogRecords = []
+                    }
+                    self.taskLogsLoadFailed = true
+                }
+            }
+        }
+    }
+
+    private func loadMoreTaskLogs() {
+        guard !isLoadingTaskLogs else { return }
+        taskLogFetchLimit += Self.taskLogPageSize
+        loadTaskLogs(force: true)
+    }
 }
 
 private struct TaskDiagnosticsSheetView: View {
@@ -257,6 +304,13 @@ private struct TaskDiagnosticsSheetView: View {
     let output: CoreTaskOutputRecord?
     let isLoading: Bool
     let loadFailed: Bool
+    let logs: [CoreTaskLogRecord]
+    let isLoadingLogs: Bool
+    let logsLoadFailed: Bool
+    let canLoadMoreLogs: Bool
+    let onLoadMoreLogs: () -> Void
+    @State private var levelFilter: TaskLogLevelFilter = .all
+    @State private var statusFilter: TaskLogStatusFilter = .all
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -286,6 +340,17 @@ private struct TaskDiagnosticsSheetView: View {
                     unavailableText: streamUnavailableText()
                 )
                 .tabItem { Text(L10n.App.Inspector.taskOutputStdout.localized) }
+
+                TaskLogListView(
+                    logs: logs,
+                    levelFilter: $levelFilter,
+                    statusFilter: $statusFilter,
+                    isLoading: isLoadingLogs,
+                    loadFailed: logsLoadFailed,
+                    canLoadMore: canLoadMoreLogs,
+                    onLoadMore: onLoadMoreLogs
+                )
+                .tabItem { Text(L10n.App.Inspector.taskOutputLogs.localized) }
             }
         }
         .padding(16)
@@ -299,6 +364,74 @@ private struct TaskDiagnosticsSheetView: View {
             return L10n.App.Inspector.taskOutputLoadFailed.localized
         }
         return L10n.App.Inspector.taskOutputUnavailable.localized
+    }
+}
+
+private enum TaskLogLevelFilter: String, CaseIterable, Identifiable {
+    case all
+    case info
+    case warn
+    case error
+
+    var id: String { rawValue }
+
+    var localizedTitle: String {
+        switch self {
+        case .all:
+            return L10n.App.Inspector.taskLogsLevelAll.localized
+        case .info:
+            return L10n.App.Inspector.taskLogsLevelInfo.localized
+        case .warn:
+            return L10n.Common.warning.localized
+        case .error:
+            return L10n.Common.error.localized
+        }
+    }
+
+    func matches(level: String) -> Bool {
+        switch self {
+        case .all:
+            return true
+        default:
+            return level.lowercased() == rawValue
+        }
+    }
+}
+
+private enum TaskLogStatusFilter: String, CaseIterable, Identifiable {
+    case all
+    case queued
+    case running
+    case completed
+    case cancelled
+    case failed
+
+    var id: String { rawValue }
+
+    var localizedTitle: String {
+        switch self {
+        case .all:
+            return L10n.App.Inspector.taskLogsStatusAll.localized
+        case .queued:
+            return L10n.Service.Task.Status.pending.localized
+        case .running:
+            return L10n.Service.Task.Status.running.localized
+        case .completed:
+            return L10n.Service.Task.Status.completed.localized
+        case .cancelled:
+            return L10n.Service.Task.Status.cancelled.localized
+        case .failed:
+            return L10n.Service.Task.Status.failed.localized
+        }
+    }
+
+    func matches(status: String?) -> Bool {
+        switch self {
+        case .all:
+            return true
+        default:
+            return status?.lowercased() == rawValue
+        }
     }
 }
 
@@ -332,6 +465,170 @@ private struct TaskOutputTextView: View {
                     .foregroundColor(.secondary)
             }
         }
+    }
+}
+
+private struct TaskLogListView: View {
+    let logs: [CoreTaskLogRecord]
+    @Binding var levelFilter: TaskLogLevelFilter
+    @Binding var statusFilter: TaskLogStatusFilter
+    let isLoading: Bool
+    let loadFailed: Bool
+    let canLoadMore: Bool
+    let onLoadMore: () -> Void
+
+    private var filteredLogs: [CoreTaskLogRecord] {
+        logs.filter { entry in
+            levelFilter.matches(level: entry.level)
+            && statusFilter.matches(status: entry.status)
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Picker(L10n.App.Inspector.taskLogsLevelFilter.localized, selection: $levelFilter) {
+                    ForEach(TaskLogLevelFilter.allCases) { filter in
+                        Text(filter.localizedTitle).tag(filter)
+                    }
+                }
+                .frame(maxWidth: 220)
+
+                Picker(L10n.App.Inspector.taskLogsStatusFilter.localized, selection: $statusFilter) {
+                    ForEach(TaskLogStatusFilter.allCases) { filter in
+                        Text(filter.localizedTitle).tag(filter)
+                    }
+                }
+                .frame(maxWidth: 220)
+
+                Spacer()
+            }
+
+            Group {
+                if isLoading && logs.isEmpty {
+                    Text(L10n.App.Inspector.taskOutputLoading.localized)
+                        .foregroundColor(.secondary)
+                } else if loadFailed && logs.isEmpty {
+                    Text(L10n.App.Inspector.taskOutputLoadFailed.localized)
+                        .foregroundColor(.secondary)
+                } else if logs.isEmpty {
+                    Text(L10n.App.Inspector.taskLogsEmpty.localized)
+                        .foregroundColor(.secondary)
+                } else if filteredLogs.isEmpty {
+                    Text(L10n.App.Inspector.taskLogsEmptyFiltered.localized)
+                        .foregroundColor(.secondary)
+                } else {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 8) {
+                            ForEach(filteredLogs) { entry in
+                                TaskLogRowView(entry: entry)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if canLoadMore && !isLoading {
+                Button(L10n.App.Inspector.taskLogsLoadMore.localized) {
+                    onLoadMore()
+                }
+                .buttonStyle(HelmSecondaryButtonStyle())
+                .font(.caption)
+                .helmPointer()
+            }
+        }
+    }
+}
+
+private struct TaskLogRowView: View {
+    let entry: CoreTaskLogRecord
+
+    private static let timestampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .medium
+        return formatter
+    }()
+
+    private var levelColor: Color {
+        switch entry.level.lowercased() {
+        case "error":
+            return .red
+        case "warn":
+            return .orange
+        default:
+            return .secondary
+        }
+    }
+
+    private var statusText: String {
+        switch entry.status?.lowercased() {
+        case "queued":
+            return L10n.Service.Task.Status.pending.localized
+        case "running":
+            return L10n.Service.Task.Status.running.localized
+        case "completed":
+            return L10n.Service.Task.Status.completed.localized
+        case "cancelled":
+            return L10n.Service.Task.Status.cancelled.localized
+        case "failed":
+            return L10n.Service.Task.Status.failed.localized
+        default:
+            return "-"
+        }
+    }
+
+    private var levelText: String {
+        switch entry.level.lowercased() {
+        case "info":
+            return L10n.App.Inspector.taskLogsLevelInfo.localized
+        case "warn":
+            return L10n.Common.warning.localized
+        case "error":
+            return L10n.Common.error.localized
+        default:
+            return entry.level.capitalized
+        }
+    }
+
+    private var timestampText: String {
+        Self.timestampFormatter.string(from: entry.createdAtDate)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text(timestampText)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundColor(.secondary)
+                    .frame(width: 80, alignment: .leading)
+
+                Text(levelText)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundColor(levelColor)
+                    .frame(width: 70, alignment: .leading)
+
+                Text(statusText)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .frame(width: 80, alignment: .leading)
+
+                Text(localizedManagerDisplayName(entry.manager))
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+
+                Spacer()
+            }
+
+            Text(entry.message)
+                .font(.caption.monospacedDigit())
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(NSColor.textBackgroundColor))
+        )
     }
 }
 

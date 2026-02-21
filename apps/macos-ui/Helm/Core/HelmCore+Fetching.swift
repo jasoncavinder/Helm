@@ -396,4 +396,37 @@ extension HelmCore {
         }
     }
 
+    func fetchTaskLogs(taskId: String, limit: Int, completion: @escaping ([CoreTaskLogRecord]?) -> Void) {
+        guard let numericTaskId = Int64(taskId), let svc = service() else {
+            completion(nil)
+            return
+        }
+
+        let clampedLimit = max(limit, 0)
+        if clampedLimit == 0 {
+            completion([])
+            return
+        }
+
+        withTimeout(30, operation: { callback in
+            svc.listTaskLogs(taskId: numericTaskId, limit: Int64(clampedLimit)) { callback($0) }
+        }) { jsonString in
+            guard let jsonString = jsonString,
+                  let data = jsonString.data(using: .utf8) else {
+                completion(nil)
+                return
+            }
+
+            do {
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                let logs = try decoder.decode([CoreTaskLogRecord].self, from: data)
+                completion(logs)
+            } catch {
+                logger.error("fetchTaskLogs: decode failed (\(data.count) bytes): \(error)")
+                completion(nil)
+            }
+        }
+    }
+
 }

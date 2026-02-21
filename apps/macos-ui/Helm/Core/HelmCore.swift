@@ -252,6 +252,21 @@ struct CoreTaskOutputRecord: Codable {
     let stderr: String?
 }
 
+struct CoreTaskLogRecord: Codable, Identifiable {
+    let id: UInt64
+    let taskId: UInt64
+    let manager: String
+    let taskType: String
+    let status: String?
+    let level: String
+    let message: String
+    let createdAtUnix: Int64
+
+    var createdAtDate: Date {
+        Date(timeIntervalSince1970: TimeInterval(createdAtUnix))
+    }
+}
+
 struct CoreSearchResult: Codable {
     let manager: String
     let name: String
