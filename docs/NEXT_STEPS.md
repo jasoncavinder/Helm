@@ -41,6 +41,11 @@ Next release targets:
 - `v0.18.x` — Local security groundwork (internal-only)
 - `v0.19.x` — Stability & Pre-1.0 hardening
 
+License/compliance follow-through:
+- Keep `docs/legal/THIRD_PARTY_LICENSES.md` updated as dependency sets change.
+- Treat third-party notice validation as a required release gate (`docs/RELEASE_CHECKLIST.md`).
+- Add release-automation support for producing a distribution-ready third-party notices artifact in a future docs/automation slice.
+
 ---
 
 ## v0.16.x Kickoff Plan (Completed)

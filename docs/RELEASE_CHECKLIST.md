@@ -2,6 +2,13 @@
 
 This checklist is required before creating a release tag on `main`.
 
+## Third-Party License Compliance (All Releases)
+
+- [ ] Re-audit dependency licenses and update `docs/legal/THIRD_PARTY_LICENSES.md` when versions or dependency sets change.
+- [ ] Confirm release materials retain required third-party attribution/license texts for shipped runtime dependencies.
+- [ ] Confirm Sparkle license + external attributions remain preserved for channels that include Sparkle.
+- [ ] If distributing artifacts that include `sharp/libvips` binaries (outside static-site output), include LGPL notice/corresponding-source obligations for that artifact.
+
 ## v0.16.1 (Documentation-Only)
 
 ### Scope and Documentation
