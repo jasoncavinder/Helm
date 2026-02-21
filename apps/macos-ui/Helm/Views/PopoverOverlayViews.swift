@@ -198,6 +198,7 @@ struct PopoverSettingsOverlayContent: View {
 struct PopoverAboutOverlayContent: View {
     @ObservedObject private var core = HelmCore.shared
     @ObservedObject private var appUpdate = AppUpdateCoordinator.shared
+    @State private var showSupportOptionsModal = false
     let onClose: () -> Void
 
     var body: some View {
@@ -244,12 +245,27 @@ struct PopoverAboutOverlayContent: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
+                Button(L10n.App.Settings.SupportFeedback.supportHelm.localized) {
+                    showSupportOptionsModal = true
+                }
+                .buttonStyle(HelmSecondaryButtonStyle())
+                .helmPointer()
+
                 Spacer()
                 Button(L10n.Common.ok.localized) {
                     onClose()
                 }
                 .buttonStyle(HelmPrimaryButtonStyle())
                 .helmPointer()
+            }
+        }
+        .sheet(isPresented: $showSupportOptionsModal) {
+            SupportHelmOptionsModalView { channel in
+                guard let url = channel.url else { return }
+                HelmSupport.openURL(url)
+                showSupportOptionsModal = false
+            } onClose: {
+                showSupportOptionsModal = false
             }
         }
     }
