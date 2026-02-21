@@ -263,6 +263,16 @@ struct SettingsSectionView: View {
                                     )
                                 }
                             )
+
+                            SettingsActionButton(
+                                title: L10n.App.Settings.SupportFeedback.copyStructuredExport.localized,
+                                badges: [],
+                                isProminent: false,
+                                useSystemStyle: true
+                            ) {
+                                HelmSupport.copyStructuredDiagnosticsToClipboard()
+                                showCopiedBriefly()
+                            }
                         }
                         .frame(maxWidth: .infinity, alignment: .top)
                     }

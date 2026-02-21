@@ -284,6 +284,7 @@
   "app.settings.support_feedback.request_feature": "Funktion vorschlagen",
   "app.settings.support_feedback.send_feedback": "Feedback senden",
   "app.settings.support_feedback.copy_diagnostics": "Diagnose kopieren",
+  "app.settings.support_feedback.copy_structured_export": "Strukturierten Export kopieren (JSON)",
   "app.settings.support_feedback.include_diagnostics": "Diagnose einschließen",
   "app.settings.support_feedback.copied_confirmation": "Kopiert!",
   "app.settings.support_feedback.diagnostics_copied_hint": "Diagnose in die Zwischenablage kopiert",

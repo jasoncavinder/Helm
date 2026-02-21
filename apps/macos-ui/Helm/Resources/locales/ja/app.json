@@ -284,6 +284,7 @@
   "app.settings.support_feedback.request_feature": "機能をリクエスト",
   "app.settings.support_feedback.send_feedback": "フィードバックを送信",
   "app.settings.support_feedback.copy_diagnostics": "診断情報をコピー",
+  "app.settings.support_feedback.copy_structured_export": "構造化エクスポートをコピー (JSON)",
   "app.settings.support_feedback.include_diagnostics": "診断情報を含める",
   "app.settings.support_feedback.copied_confirmation": "コピーしました",
   "app.settings.support_feedback.diagnostics_copied_hint": "診断情報をクリップボードにコピーしました",

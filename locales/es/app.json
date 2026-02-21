@@ -284,6 +284,7 @@
   "app.settings.support_feedback.request_feature": "Solicitar función",
   "app.settings.support_feedback.send_feedback": "Enviar comentarios",
   "app.settings.support_feedback.copy_diagnostics": "Copiar diagnósticos",
+  "app.settings.support_feedback.copy_structured_export": "Copiar exportación estructurada (JSON)",
   "app.settings.support_feedback.include_diagnostics": "Incluir diagnósticos",
   "app.settings.support_feedback.copied_confirmation": "¡Copiado!",
   "app.settings.support_feedback.diagnostics_copied_hint": "Diagnósticos copiados al portapapeles",
