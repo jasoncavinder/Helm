@@ -46,7 +46,7 @@ Next release targets:
 - [ ] `feat/v0.17-task-log-viewer` — per-task log viewer UI with filters and pagination. (in progress: diagnostics logs tab + filter/pagination wiring underway on this branch)
 - [ ] `feat/v0.17-structured-error-export` — structured support/error export payloads with redaction. (in progress: JSON export schema + clipboard workflow + redaction rules)
 - [ ] `feat/v0.17-service-health-panel` — service/runtime health diagnostics panel. (in progress: settings health card + copyable service snapshot diagnostics)
-- [ ] `feat/v0.17-manager-detection-diagnostics` — per-manager detection diagnostics and reason visibility.
+- [ ] `feat/v0.17-manager-detection-diagnostics` — per-manager detection diagnostics and reason visibility. (in progress: inspector reason states + latest detection task status/ID surface)
 - [ ] `feat/v0.17-diagnostics-hardening` — silent-failure sweep, attribution consistency, integration/doc exit checks.
 
 RC-1 release gate for `v0.17.x`:

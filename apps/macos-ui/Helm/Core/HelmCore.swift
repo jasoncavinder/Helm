@@ -267,6 +267,22 @@ struct CoreTaskLogRecord: Codable, Identifiable {
     }
 }
 
+enum ManagerDetectionDiagnosticReason {
+    case detected
+    case notDetected
+    case inProgress
+    case failed
+    case disabled
+    case notImplemented
+    case neverChecked
+}
+
+struct ManagerDetectionDiagnostics {
+    let reason: ManagerDetectionDiagnosticReason
+    let latestTaskId: UInt64?
+    let latestTaskStatus: String?
+}
+
 struct CoreSearchResult: Codable {
     let manager: String
     let name: String
