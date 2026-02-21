@@ -21,6 +21,7 @@ Active milestone:
   - in progress: `feat/v0.17-log-foundation` (SQLite-backed task lifecycle logs + retrieval plumbing)
   - in progress: `feat/v0.17-structured-error-export` (structured JSON diagnostics export with redaction for support workflows)
   - in progress: `feat/v0.17-service-health-panel` (settings diagnostics panel for service/runtime health + copyable service snapshot)
+  - in progress: `feat/v0.17-task-log-viewer` (inspector diagnostics logs tab with level/status filters + load-more pagination)
 
 Security rollout staging status:
 - Stage 0 (`<=0.16.x`): planning/docs only (active in `0.16.1`)

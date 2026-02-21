@@ -43,7 +43,7 @@ Next release targets:
 ## v0.17.x Delivery Tracker (Target: `v0.17.0-rc.1`)
 
 - [ ] `feat/v0.17-log-foundation` — task log event model, SQLite persistence migration, FFI/XPC retrieval surface.
-- [ ] `feat/v0.17-task-log-viewer` — per-task log viewer UI with filters and pagination.
+- [ ] `feat/v0.17-task-log-viewer` — per-task log viewer UI with filters and pagination. (in progress: diagnostics logs tab + filter/pagination wiring underway on this branch)
 - [ ] `feat/v0.17-structured-error-export` — structured support/error export payloads with redaction. (in progress: JSON export schema + clipboard workflow + redaction rules)
 - [ ] `feat/v0.17-service-health-panel` — service/runtime health diagnostics panel. (in progress: settings health card + copyable service snapshot diagnostics)
 - [ ] `feat/v0.17-manager-detection-diagnostics` — per-manager detection diagnostics and reason visibility.
