@@ -119,14 +119,32 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 
 ## Website Status
 
-- Astro + Starlight website now uses a Helm-brand custom theme layer via `web/src/styles/helm-theme.css`
-- Landing page (`web/src/content/docs/index.mdx`) has been redesigned to match brand/copy structure:
+- Astro + Starlight website uses a Helm-brand custom theme layer via `web/src/styles/helm-theme.css` with tokenized color/motion/shape rules aligned to brand docs.
+- Landing page (`web/src/content/docs/index.mdx`) has been redesigned with a calmer dual-audience narrative and command-bridge structure:
   - Hero
   - Problem
   - Solution
-  - Command Bridge
+  - Editions (Helm consumer + Helm Business)
+  - Architecture
   - Helm Pro
   - Footer CTA
+- Website typography/color system now follows explicit Helm website spec:
+  - headings: Neue Haas Grotesk stack
+  - body: Inter
+  - code: SF Mono
+  - light/dark heading color mapping and restrained gold usage for Pro accents
+- Website content/docs pass completed for product clarity and audience fit:
+  - updated overview/roadmap/changelog wording for current `v0.16.0` release-finalization state
+  - expanded consumer vs Helm Business messaging in overview + FAQ
+  - refreshed installation/usage/visual-tour guide copy for current UI/support surfaces
+- Website accessibility verification pass completed:
+  - automated Axe CLI audit executed across key routes (`/`, overview, usage, installation, FAQ, visual-tour, licensing, changelog, roadmap)
+  - fixed homepage hero secondary CTA contrast issue (`color-contrast` on `.actions > .secondary.sl-link-button.not-content`)
+  - post-fix Axe run reports zero violations on audited routes
+  - keyboard focus-visible styling present for links/buttons/navigation
+  - reduced-motion media query support present for animated interactions
+  - heading hierarchy on key pages has no level-skip violations
+  - key text/background contrast pairs meet AA or better (with most body text at AAA)
 - Website redesign planning artifacts added:
   - `docs/website/WEBSITE_REDESIGN_PLAN.md`
   - `docs/website/DESIGN_TOKENS.md`
