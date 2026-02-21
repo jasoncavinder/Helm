@@ -169,6 +169,7 @@ See [`docs/VERSIONING.md`](docs/VERSIONING.md) for the versioning strategy.
 - [Changelog](CHANGELOG.md) — Versioned release notes
 - [Release Checklist](docs/RELEASE_CHECKLIST.md) — Required ship checklist and tag steps
 - [Release Criteria](docs/DEFINITION_OF_DONE.md) — 1.0 definition of done
+- [Third-Party Licenses](docs/legal/THIRD_PARTY_LICENSES.md) — dependency license inventory and release obligations
 - [Enterprise Architecture](docs/enterprise/ENTERPRISE_INTEGRATION_ARCHITECTURE.md) — Integration model for managed enterprise environments
 - [Editions and Entitlements](docs/enterprise/EDITIONS_AND_ENTITLEMENTS.md) — Debug/release build strategy and Free/Pro/Business gating
 - [Business Central Management Spec](docs/enterprise/BUSINESS_CENTRAL_MANAGEMENT_SPEC.md) — Scoped policy, drift, and compliance model

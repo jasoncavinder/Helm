@@ -19,6 +19,17 @@ Helm is free to use for personal, non-commercial purposes.
 
 See the [LICENSE](https://github.com/jasoncavinder/Helm/blob/main/LICENSE) file for the full legal text.
 
+## Third-Party Dependencies
+
+Helm includes third-party dependencies that are governed by their own licenses.
+
+Dependency license inventory and release obligations are tracked in:
+
+- [Third-Party Licenses](https://github.com/jasoncavinder/Helm/blob/main/docs/legal/THIRD_PARTY_LICENSES.md)
+- [NOTICE](https://github.com/jasoncavinder/Helm/blob/main/docs/legal/NOTICE.md)
+
+Helm's project license does not replace third-party license obligations.
+
 ## Future Strategy (Post-1.0)
 
 We intend to transition to a sustainable commercial model at or after version 1.0. The goal is to support ongoing development while maintaining transparency.

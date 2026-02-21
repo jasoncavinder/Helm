@@ -16,6 +16,10 @@ Helm may include or depend on third-party libraries and components, each of whic
 
 Where applicable, third-party licenses and attributions are included in the source repository or accompanying distribution materials.
 
+For current dependency-license inventory and release obligations, see:
+
+- `docs/legal/THIRD_PARTY_LICENSES.md`
+
 ---
 
 No Trademark License

@@ -194,7 +194,22 @@ Possible future additions include:
 
 ---
 
-## 12. Summary
+## 12. Third-Party Dependency Obligations
+
+Helm's project license is separate from third-party dependency licenses.
+
+Third-party obligations are tracked in:
+
+- `docs/legal/THIRD_PARTY_LICENSES.md`
+- `docs/legal/NOTICE.md`
+
+Release process expectations are tracked in:
+
+- `docs/RELEASE_CHECKLIST.md` (third-party license compliance gate)
+
+---
+
+## 13. Summary
 
 Helm is currently:
 

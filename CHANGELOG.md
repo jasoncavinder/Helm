@@ -6,6 +6,23 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+### Added
+- Third-party dependency licensing baseline document:
+  - `docs/legal/THIRD_PARTY_LICENSES.md`
+  - includes runtime/build/toolchain scope split and release obligations.
+
+### Changed
+- Legal notice and licensing strategy docs now explicitly link to third-party dependency obligations:
+  - `docs/legal/NOTICE.md`
+  - `docs/legal/LICENSING_STRATEGY.md`
+- Release process now includes mandatory third-party license compliance gates in:
+  - `docs/RELEASE_CHECKLIST.md`
+- Project state/planning docs now track this compliance baseline:
+  - `docs/CURRENT_STATE.md`
+  - `docs/NEXT_STEPS.md`
+- ADR log adds third-party license compliance baseline decision:
+  - `docs/DECISIONS.md` (Decision 023)
+
 ## [0.16.2] - 2026-02-21
 
 ### Fixed

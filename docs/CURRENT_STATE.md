@@ -25,6 +25,10 @@ Security rollout staging status:
 - Stage 2 (`1.3.x`): Security Advisory System (Pro, planned)
 - Stage 3 (`1.4.x`): Shared Brain infrastructure (planned)
 
+Third-party licensing compliance status:
+- Dependency-license inventory and obligations baseline documented at `docs/legal/THIRD_PARTY_LICENSES.md` (audited 2026-02-21).
+- Release process now includes explicit third-party license checks in `docs/RELEASE_CHECKLIST.md`.
+
 ---
 
 ## Completed Milestones
