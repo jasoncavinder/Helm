@@ -43,6 +43,28 @@ jobs:
             fi
           done
 
+          python3 - <<'PY'
+          import os
+          import socket
+          import sys
+          from urllib.parse import urlparse
+
+          feed_url = os.environ["HELM_SPARKLE_FEED_URL"]
+          parsed = urlparse(feed_url)
+          if parsed.scheme.lower() != "https" or not parsed.hostname:
+              print(f"::error::HELM_SPARKLE_FEED_URL must be an absolute https URL. Got: {feed_url}")
+              sys.exit(1)
+
+          host = parsed.hostname
+          try:
+              socket.getaddrinfo(host, 443)
+          except OSError as exc:
+              print(f"::error::HELM_SPARKLE_FEED_URL host is not resolvable in CI DNS: host={host} error={exc}")
+              sys.exit(1)
+
+          print(f"HELM_SPARKLE_FEED_URL host resolved: {host}")
+          PY
+
       - name: Checkout
         uses: actions/checkout@v4
         with:

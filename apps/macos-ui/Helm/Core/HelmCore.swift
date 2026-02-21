@@ -60,13 +60,25 @@ private struct NoopAppUpdateDriver: AppUpdateDriver {
 private final class SparkleAppUpdateDriver: NSObject, AppUpdateDriver {
     private let updaterController: SPUStandardUpdaterController
 
-    override init() {
+    init(configuration: AppUpdateConfiguration) {
         updaterController = SPUStandardUpdaterController(
             startingUpdater: true,
             updaterDelegate: nil,
             userDriverDelegate: nil
         )
         super.init()
+
+        if let clearedFeedURL = updaterController.updater.clearFeedURLFromUserDefaults() {
+            updateLogger.notice(
+                "Cleared persisted Sparkle feed URL override from user defaults: \(clearedFeedURL.absoluteString, privacy: .public)"
+            )
+        }
+
+        let configuredFeedURL = configuration.sparkleFeedURL ?? "none"
+        let resolvedFeedURL = updaterController.updater.feedURL?.absoluteString ?? "none"
+        updateLogger.info(
+            "Sparkle updater initialized. can_check=\(self.updaterController.updater.canCheckForUpdates, privacy: .public), configured_feed_url=\(configuredFeedURL, privacy: .public), resolved_feed_url=\(resolvedFeedURL, privacy: .public)"
+        )
     }
 
     var canCheckForUpdates: Bool {
@@ -74,6 +86,10 @@ private final class SparkleAppUpdateDriver: NSObject, AppUpdateDriver {
     }
 
     func checkForUpdates() {
+        let resolvedFeedURL = updaterController.updater.feedURL?.absoluteString ?? "none"
+        updateLogger.info(
+            "Dispatching Sparkle update check. can_check=\(self.updaterController.updater.canCheckForUpdates, privacy: .public), feed_url=\(resolvedFeedURL, privacy: .public)"
+        )
         updaterController.checkForUpdates(nil)
     }
 }
@@ -120,12 +136,17 @@ final class AppUpdateCoordinator: ObservableObject {
 
     func checkForUpdates() {
         guard canCheckForUpdates else {
+            updateLogger.warning(
+                "Ignoring manual update check request because updater is unavailable. reason=\(self.unavailableReason?.rawValue ?? "unknown", privacy: .public)"
+            )
             return
         }
         guard !isCheckingForUpdates else {
+            updateLogger.info("Ignoring manual update check request because a check is already in progress.")
             return
         }
 
+        updateLogger.info("Manual update check requested.")
         isCheckingForUpdates = true
         defer { isCheckingForUpdates = false }
         driver.checkForUpdates()
@@ -162,7 +183,7 @@ final class AppUpdateCoordinator: ObservableObject {
 
         #if canImport(Sparkle)
         return AppUpdateDriverSelection(
-            driver: SparkleAppUpdateDriver(),
+            driver: SparkleAppUpdateDriver(configuration: configuration),
             unavailableReason: nil
         )
         #else

@@ -13,7 +13,7 @@ struct PopoverOverlayCard<Content: View>: View {
                 Spacer()
                 Button(action: onClose) {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.escape, modifiers: [])
@@ -101,7 +101,7 @@ struct PopoverAttentionBanner: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: bannerSymbol)
-                .foregroundStyle(bannerTint)
+                .foregroundColor(bannerTint)
                 .font(.system(size: 13, weight: .semibold))
 
             VStack(alignment: .leading, spacing: 2) {
@@ -109,7 +109,7 @@ struct PopoverAttentionBanner: View {
                     .font(.caption.weight(.semibold))
                 Text(bannerMessage)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
             }
 
             Spacer(minLength: 10)
@@ -166,7 +166,7 @@ struct PopoverSearchField: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
+                .foregroundColor(.secondary)
             TextField(
                 "app.popover.search_placeholder".localized,
                 text: Binding(
@@ -191,7 +191,7 @@ struct PopoverSearchField: View {
                     onSyncSearchQuery("")
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
                 .helmPointer()
@@ -224,7 +224,7 @@ struct UpdateAllPillButtonStyle: ButtonStyle {
             .font(.caption.weight(.bold))
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .foregroundStyle(Color.white)
+            .foregroundColor(Color.white)
             .background(
                 Capsule(style: .continuous)
                     .fill(configuration.isPressed ? HelmTheme.actionPrimaryPressed : HelmTheme.actionPrimaryDefault)
@@ -249,7 +249,7 @@ struct MetricChipView: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(label)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundColor(.secondary)
             Text("\(value)")
                 .font(.callout.monospacedDigit().weight(.semibold))
         }

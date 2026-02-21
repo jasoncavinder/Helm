@@ -78,11 +78,11 @@ struct WalkthroughTooltipCard: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(step.titleKey.localized)
                 .font(.headline)
-                .foregroundStyle(Color.primary)
+                .foregroundColor(Color.primary)
 
             Text(step.descriptionKey.localized)
                 .font(.subheadline)
-                .foregroundStyle(Color.secondary)
+                .foregroundColor(Color.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack {
@@ -93,7 +93,7 @@ struct WalkthroughTooltipCard: View {
                 Button(action: onSkip) {
                     Text(L10n.App.Walkthrough.Control.skip.localized)
                         .font(.caption)
-                        .foregroundStyle(Color.secondary)
+                        .foregroundColor(Color.secondary)
                 }
                 .buttonStyle(.plain)
                 .helmPointer()
@@ -117,7 +117,7 @@ struct WalkthroughTooltipCard: View {
         .frame(width: 280)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.ultraThickMaterial)
+                .fill(HelmTheme.surfacePanel.opacity(0.98))
                 .shadow(color: .black.opacity(0.2), radius: 12, y: 4)
         )
         .accessibilityElement(children: .combine)

@@ -11,6 +11,19 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ---
 
+## 0.16.2 — 2026-02-21
+
+### Fixed
+- Sparkle feed access now works in sandboxed builds via `com.apple.security.network.client` app entitlement.
+- Sparkle startup now clears persisted feed URL overrides and logs the resolved feed URL used for manual checks.
+- Release workflow now fails fast when `HELM_SPARKLE_FEED_URL` is not DNS-resolvable or not `https://`.
+
+### Changed
+- macOS deployment target baseline lowered to `11.0` across app, service, and tests.
+- Version metadata source-of-truth bumped to `0.16.2` so generated appcast short version aligns with release tags.
+
+---
+
 ## 0.16.1 — 2026-02-21
 
 ### Changed

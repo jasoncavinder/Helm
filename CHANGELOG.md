@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.16.2] - 2026-02-21
+
+### Fixed
+- Added `com.apple.security.network.client` entitlement to Helm app debug/release profiles so Sparkle feed requests are permitted under app sandboxing.
+- Sparkle startup now clears persisted feed URL overrides from user defaults and logs the resolved feed URL used for manual checks.
+- Release workflow now validates that `HELM_SPARKLE_FEED_URL` is `https://` and DNS-resolvable before build/signing steps.
+
+### Changed
+- Lowered macOS deployment target from `12.0` to `11.0` across Helm macOS project build settings (app, service, and tests).
+- Updated macOS UI/readme and status docs to align with the `macOS 11+` baseline.
+- Bumped workspace package version metadata to `0.16.2` (`core/rust/Cargo.toml`, `core/rust/Cargo.lock`) so generated app bundle versioning matches the `v0.16.2` release.
+
 ## [0.16.1] - 2026-02-21
 
 ### Changed

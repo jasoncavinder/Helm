@@ -64,7 +64,7 @@ struct ControlCenterInspectorView: View {
                 } else {
                     Text(L10n.App.Inspector.empty.localized)
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
                 }
 
                 Spacer()
@@ -92,10 +92,10 @@ private struct InspectorTaskDetailView: View {
             // Status badge
             HStack(spacing: 6) {
                 Image(systemName: task.statusIcon)
-                    .foregroundStyle(task.statusColor)
+                    .foregroundColor(task.statusColor)
                 Text(task.localizedStatus)
                     .font(.callout.weight(.medium))
-                    .foregroundStyle(task.statusColor)
+                    .foregroundColor(task.statusColor)
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel(L10n.App.Inspector.taskStatus.localized)
@@ -103,7 +103,7 @@ private struct InspectorTaskDetailView: View {
 
             InspectorField(label: L10n.App.Inspector.taskId.localized) {
                 Text(task.id)
-                    .font(.caption.monospaced())
+                    .font(.caption.monospacedDigit())
                     .accessibilityLabel(L10n.App.Inspector.taskId.localized)
                     .accessibilityValue(task.id)
             }
@@ -124,16 +124,15 @@ private struct InspectorTaskDetailView: View {
 
             InspectorField(label: L10n.App.Inspector.taskCommand.localized) {
                 Text(taskCommandText())
-                    .font(.caption.monospaced())
-                    .foregroundStyle(diagnosticCommandHint() == nil ? .secondary : .primary)
-                    .textSelection(.enabled)
+                    .font(.caption.monospacedDigit())
+                    .foregroundColor(diagnosticCommandHint() == nil ? .secondary : .primary)
             }
 
             if let labelKey = task.labelKey {
                 InspectorField(label: L10n.App.Inspector.taskLabelKey.localized) {
                     Text(labelKey)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
+                        .font(.caption.monospacedDigit())
+                        .foregroundColor(.secondary)
                         .accessibilityLabel(L10n.App.Inspector.taskLabelKey.localized)
                         .accessibilityValue(labelKey)
                 }
@@ -145,13 +144,13 @@ private struct InspectorTaskDetailView: View {
                         ForEach(labelArgs.sorted(by: { $0.key < $1.key }), id: \.key) { key, value in
                             HStack(spacing: 4) {
                                 Text(key)
-                                    .font(.caption.monospaced())
-                                    .foregroundStyle(.secondary)
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundColor(.secondary)
                                 Text(":")
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundColor(.secondary)
                                 Text(value)
-                                    .font(.caption.monospaced())
+                                    .font(.caption.monospacedDigit())
                             }
                         }
                     }
@@ -163,7 +162,7 @@ private struct InspectorTaskDetailView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(failureHintText())
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundColor(.secondary)
 
                         if hasNumericTaskId {
                             Button(L10n.App.Inspector.viewDiagnostics.localized) {
@@ -266,7 +265,7 @@ private struct TaskDiagnosticsSheetView: View {
 
             Text(taskDescription)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundColor(.secondary)
                 .lineLimit(2)
 
             TabView {
@@ -321,8 +320,7 @@ private struct TaskOutputTextView: View {
                 ScrollView([.horizontal, .vertical]) {
                     Text(normalizedText)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .font(.caption.monospaced())
-                        .textSelection(.enabled)
+                        .font(.caption.monospacedDigit())
                         .padding(8)
                 }
                 .background(
@@ -331,7 +329,7 @@ private struct TaskOutputTextView: View {
                 )
             } else {
                 Text(unavailableText)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
             }
         }
     }
@@ -365,10 +363,10 @@ private struct InspectorPackageDetailView: View {
             // Status badge
             HStack(spacing: 6) {
                 Image(systemName: package.status.iconName)
-                    .foregroundStyle(package.status.iconColor)
+                    .foregroundColor(package.status.iconColor)
                 Text(package.status.displayName)
                     .font(.callout.weight(.medium))
-                    .foregroundStyle(package.status.iconColor)
+                    .foregroundColor(package.status.iconColor)
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel(L10n.App.Inspector.packageStatus.localized)
@@ -376,20 +374,20 @@ private struct InspectorPackageDetailView: View {
 
             InspectorField(label: L10n.App.Inspector.installed.localized) {
                 Text(package.version)
-                    .font(.caption.monospaced())
+                    .font(.caption.monospacedDigit())
             }
 
             if let latest = package.latestVersion {
                 InspectorField(label: L10n.App.Inspector.latest.localized) {
                     Text(latest)
-                        .font(.caption.monospaced())
+                        .font(.caption.monospacedDigit())
                 }
             }
 
             if package.pinned {
                 HStack(spacing: 6) {
                     Image(systemName: "pin.fill")
-                        .foregroundStyle(.orange)
+                        .foregroundColor(.orange)
                         .font(.caption)
                     Text(L10n.App.Inspector.pinned.localized)
                         .font(.callout)
@@ -401,7 +399,7 @@ private struct InspectorPackageDetailView: View {
             if package.restartRequired {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
+                        .foregroundColor(.orange)
                         .font(.caption)
                     Text(L10n.App.Inspector.restartRequired.localized)
                         .font(.callout)
@@ -417,15 +415,15 @@ private struct InspectorPackageDetailView: View {
                 } else if core.packageDescriptionLoadingIds.contains(package.id) {
                     Text(L10n.App.Inspector.descriptionLoading.localized)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
                 } else if core.packageDescriptionUnavailableIds.contains(package.id) {
                     Text(L10n.App.Inspector.descriptionUnavailable.localized)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
                 } else {
                     Text(L10n.App.Inspector.descriptionLoading.localized)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
                 }
             }
 
@@ -484,8 +482,8 @@ private struct InspectorPackageDetailView: View {
 
             InspectorField(label: L10n.App.Inspector.packageId.localized) {
                 Text(package.id)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
+                    .font(.caption.monospacedDigit())
+                    .foregroundColor(.secondary)
                     .accessibilityLabel(L10n.App.Inspector.packageId.localized)
                     .accessibilityValue(package.id)
             }
@@ -524,7 +522,7 @@ private struct InspectorManagerDetailView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: manager.symbolName)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
                 Text(localizedManagerDisplayName(manager.id))
                     .font(.title3.weight(.semibold))
                 Spacer()
@@ -534,13 +532,13 @@ private struct InspectorManagerDetailView: View {
             HStack(spacing: 6) {
                 Text(L10n.App.Managers.Label.packageCount.localized(with: ["count": packageCount]))
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
                 Text("|")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
                 Text(L10n.App.Managers.Tooltip.outdated.localized(with: ["count": outdatedCount]))
                     .font(.caption)
-                    .foregroundStyle(outdatedCount == 0 ? HelmTheme.textSecondary : HelmTheme.stateAttention)
+                    .foregroundColor(outdatedCount == 0 ? HelmTheme.textSecondary : HelmTheme.stateAttention)
             }
 
             InspectorField(label: L10n.App.Inspector.category.localized) {
@@ -550,13 +548,13 @@ private struct InspectorManagerDetailView: View {
 
             Text(manager.authority.key.localized)
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundColor(.secondary)
 
             Group {
                 // Detection status
                 HStack(spacing: 6) {
                     Image(systemName: detected ? "checkmark.circle.fill" : "xmark.circle")
-                        .foregroundStyle(detected ? HelmTheme.stateHealthy : HelmTheme.stateError)
+                        .foregroundColor(detected ? HelmTheme.stateHealthy : HelmTheme.stateError)
                     Text(detected
                         ? L10n.App.Inspector.detected.localized
                         : L10n.App.Inspector.notDetected.localized)
@@ -570,14 +568,14 @@ private struct InspectorManagerDetailView: View {
                 if let version = status?.version {
                     InspectorField(label: L10n.App.Inspector.version.localized) {
                         Text(version)
-                            .font(.caption.monospaced())
+                            .font(.caption.monospacedDigit())
                     }
                 }
 
                 if let path = status?.executablePath {
                     InspectorField(label: L10n.App.Inspector.executablePath.localized) {
                         Text(path)
-                            .font(.caption.monospaced())
+                            .font(.caption.monospacedDigit())
                             .lineLimit(2)
                             .accessibilityLabel(L10n.App.Inspector.executablePath.localized)
                             .accessibilityValue(path)
@@ -587,7 +585,7 @@ private struct InspectorManagerDetailView: View {
                 // Enabled/Disabled
                 HStack(spacing: 6) {
                     Image(systemName: enabled ? "checkmark.circle.fill" : "minus.circle.fill")
-                        .foregroundStyle(enabled ? HelmTheme.stateHealthy : HelmTheme.textSecondary)
+                        .foregroundColor(enabled ? HelmTheme.stateHealthy : HelmTheme.textSecondary)
                     Text(enabled
                         ? L10n.App.Inspector.enabled.localized
                         : L10n.App.Inspector.disabled.localized)
@@ -654,7 +652,7 @@ private struct InspectorField<Content: View>: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundColor(.secondary)
             content
         }
         .accessibilityElement(children: .combine)
