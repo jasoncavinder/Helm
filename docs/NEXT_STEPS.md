@@ -18,7 +18,7 @@ Focus:
 - 0.16.x self-update and installer hardening
 
 Current checkpoint:
-- `v0.16.0-rc.8` pre-release rehearsal in progress on `feat/v0.16.0-kickoff` (channel-aware updater scaffolding + package-manager-aware Sparkle gating + DMG invariant verification + appcast generation/publish + policy validation)
+- `v0.16.0-rc.9` pre-release rehearsal in progress on `feat/v0.16.0-kickoff` (channel-aware updater scaffolding + package-manager-aware Sparkle gating + DMG invariant verification + appcast generation/publish + policy validation)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
 - `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)
@@ -110,8 +110,11 @@ Delivered:
 - Release workflow now lets appcast generation auto-discover Sparkle `sign_update` from available DerivedData artifact paths instead of forcing a single fixed location.
 - Sparkle appcast generation now falls back to downloading Sparkle's official SPM artifact bundle and using its `sign_update` binary if local discovery paths are empty.
 - Appcast publication now checks `git status --porcelain` for the feed path so newly added files are published instead of being misdetected as unchanged.
+- Appcast publication fallback now remains non-fatal when Actions cannot auto-create PRs (`createPullRequest` denied), and emits a manual compare URL so operators can complete publication without rerunning the release.
+- Status-menu `Support Helm` submenu now includes all six support destinations configured in settings (GitHub Sponsors, Patreon, Buy Me a Coffee, Ko-fi, PayPal, Venmo).
+- About overlay now includes a `Support Helm` button that opens the same six-option support picker.
 - Added interruption/recovery validation runbook for release operators:
-  - `docs/validation/v0.16.0-rc.8-installer-recovery.md`
+  - `docs/validation/v0.16.0-rc.9-installer-recovery.md`
 - Build metadata generation now derives monotonic numeric bundle build numbers from semantic versions to keep Sparkle update ordering stable.
 
 ---

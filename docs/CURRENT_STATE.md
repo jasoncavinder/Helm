@@ -8,7 +8,7 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.16.0-rc.8** (pre-release rehearsal in progress on `feat/v0.16.0-kickoff`; latest stable release on `main` is `v0.15.0`)
+Current version: **0.16.0-rc.9** (pre-release rehearsal in progress on `feat/v0.16.0-kickoff`; latest stable release on `main` is `v0.15.0`)
 
 See:
 - CHANGELOG.md
@@ -207,6 +207,7 @@ Implemented on `feat/v0.16.0-kickoff`:
 - Added web feed path scaffold at `web/public/updates/appcast.xml` for direct-channel Sparkle feed hosting.
 - Appcast signing now uses Sparkle's packaged `sign_update` binary from Xcode SPM artifacts (with fallback discovery), removing reliance on `swift run` against Sparkle checkouts.
 - Release workflow now attempts to publish generated appcast content directly to `web/public/updates/appcast.xml` on `main`, and falls back to auto-opening a PR when direct pushes are blocked.
+- Release workflow fallback publication is now non-fatal when GitHub Actions token permissions prevent auto PR creation; workflow emits a manual compare URL for operator completion.
 - Release workflow now enforces Sparkle appcast policy checks (full-installer-only DMG feed, no delta payloads) via `apps/macos-ui/scripts/verify_sparkle_appcast_policy.sh`.
 - Release workflow now pre-renders channel overrides and passes explicit Sparkle/channel build settings to `xcodebuild`, ensuring release artifacts always embed the intended updater metadata on the same build invocation.
 - Release workflow now re-signs Sparkle nested binaries/framework with the active Developer ID identity (timestamped) before packaging/notarization, preventing Sparkle helper signature/timestamp notarization failures.
@@ -214,8 +215,10 @@ Implemented on `feat/v0.16.0-kickoff`:
 - Sparkle appcast generation now falls back to downloading Sparkle's official SPM artifact ZIP and using its bundled `bin/sign_update` when local artifact discovery fails.
 - Appcast publication step now detects untracked feed changes correctly (using `git status --porcelain`) so first-time `web/public/updates/appcast.xml` publication is not skipped as a false no-op.
 - Added installer/update interruption and recovery validation runbook:
-  - `docs/validation/v0.16.0-rc.8-installer-recovery.md`
+  - `docs/validation/v0.16.0-rc.9-installer-recovery.md`
 - Build metadata generation now derives monotonic numeric bundle build numbers from semantic versions (`apps/macos-ui/scripts/build_rust.sh`) to keep Sparkle update ordering stable.
+- Menu-bar status menu `Support Helm` submenu now includes all six configured support channels (GitHub Sponsors, Patreon, Buy Me a Coffee, Ko-fi, PayPal, Venmo).
+- About overlay now includes a `Support Helm` button with the same six-channel support picker used in Settings.
 
 Validation:
 
