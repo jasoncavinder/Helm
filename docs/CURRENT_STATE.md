@@ -8,22 +8,22 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.16.2** (Sparkle connectivity and platform-baseline alignment patch).
+Current documentation baseline: **0.17.0-rc.1** (diagnostics/logging release-candidate prep on `dev`).
 
-Implementation baseline: **0.16.2** (latest shipped patch release target).
+Implementation baseline: **0.17.0-rc.1** (all six v0.17 diagnostics slices merged to `dev`; release prep in progress).
 
 See:
 - CHANGELOG.md
 
 Active milestone:
-- 0.16.2 — Sparkle connectivity hardening + macOS 11 deployment-target alignment
-- 0.17.x — Diagnostics & Logging (next implementation milestone)
-  - in progress: `feat/v0.17-log-foundation` (SQLite-backed task lifecycle logs + retrieval plumbing)
-  - in progress: `feat/v0.17-structured-error-export` (structured JSON diagnostics export with redaction for support workflows)
-  - in progress: `feat/v0.17-service-health-panel` (settings diagnostics panel for service/runtime health + copyable service snapshot)
-  - in progress: `feat/v0.17-task-log-viewer` (inspector diagnostics logs tab with level/status filters + load-more pagination)
-  - in progress: `feat/v0.17-manager-detection-diagnostics` (manager inspector detection reason diagnostics + latest detection task metadata visibility)
-  - in progress: `feat/v0.17-diagnostics-hardening` (attributed last-error capture across fetch/action/settings failures + diagnostics export parity)
+- latest shipped release on `main`: **0.16.2** (Sparkle connectivity hardening + macOS 11 deployment-target alignment)
+- 0.17.x — Diagnostics & Logging (**delivery merged on `dev`**, pending RC tag/release flow)
+  - delivered: `feat/v0.17-log-foundation` (SQLite-backed task lifecycle logs + retrieval plumbing)
+  - delivered: `feat/v0.17-task-log-viewer` (inspector diagnostics logs tab with level/status filters + load-more pagination)
+  - delivered: `feat/v0.17-structured-error-export` (structured JSON diagnostics export with redaction for support workflows)
+  - delivered: `feat/v0.17-service-health-panel` (settings diagnostics panel for service/runtime health + copyable service snapshot)
+  - delivered: `feat/v0.17-manager-detection-diagnostics` (manager inspector detection reason diagnostics + latest detection task metadata visibility)
+  - delivered: `feat/v0.17-diagnostics-hardening` (attributed last-error capture across fetch/action/settings failures + diagnostics export parity)
 
 Security rollout staging status:
 - Stage 0 (`<=0.16.x`): planning/docs only (active in `0.16.1`)
@@ -838,4 +838,4 @@ Helm is a **functional control plane for 28 implemented managers** with:
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-0.13.x through 0.15.x stable checkpoints are complete, and 0.16.0 release finalization is in progress. Next delivery focus after `v0.16.0` is 0.17.x diagnostics/logging hardening.
+0.13.x through 0.16.2 stable checkpoints are complete on `main`, and the full 0.17.x diagnostics/logging slice is now merged on `dev` for `v0.17.0-rc.1` release preparation.

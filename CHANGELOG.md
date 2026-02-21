@@ -6,14 +6,20 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.17.0-rc.1] - 2026-02-21
+
 ### Added
 - Third-party dependency licensing baseline document:
   - `docs/legal/THIRD_PARTY_LICENSES.md`
   - includes runtime/build/toolchain scope split and release obligations.
-- v0.17 diagnostics/logging foundation kickoff:
+- v0.17 diagnostics/logging delivery:
   - SQLite-backed task lifecycle log schema (`task_log_records`)
   - runtime lifecycle log persistence hooks (queued/running/terminal)
   - new FFI/API surface for retrieving persisted task logs (`helm_list_task_logs`)
+- Inspector diagnostics log viewer with level/status filters and load-more pagination.
+- Structured support export payloads with redaction for diagnostics and support workflows.
+- Settings service health diagnostics panel with copyable health snapshot output.
+- Manager inspector detection diagnostics (reason states plus latest detection task status/ID).
 
 ### Changed
 - Legal notice and licensing strategy docs now explicitly link to third-party dependency obligations:
@@ -26,6 +32,10 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
   - `docs/NEXT_STEPS.md`
 - ADR log adds third-party license compliance baseline decision:
   - `docs/DECISIONS.md` (Decision 023)
+- Diagnostics/reporting hardening now captures attributed last-error context (`source`, `action`, `manager`, `task_type`) across fetch/action/settings failure paths and includes that attribution in:
+  - support structured export payloads
+  - support plaintext diagnostics output
+  - service health snapshot diagnostics
 
 ## [0.16.2] - 2026-02-21
 
