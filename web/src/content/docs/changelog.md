@@ -9,6 +9,32 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ---
 
+## 0.16.0 — 2026-02-21
+
+### Added
+- Channel-aware update configuration and direct-channel Sparkle integration scaffolding in the macOS app.
+- Signed appcast generation and publication path for direct Developer ID releases.
+- Expanded support surfaces with six-channel "Support Helm" actions in both Settings and status-menu flows.
+
+### Changed
+- Runtime self-update gating now blocks package-manager-managed, translocated, and DMG-mounted installs.
+- Release automation now enforces appcast policy validation and deterministic rerun-safe artifact publication.
+- Upgrade transparency surfaces now include richer diagnostics (`diagnostics`, `stderr`, `stdout`) and clearer review-first failure handling.
+
+---
+
+## 0.15.0 — 2026-02-20
+
+### Added
+- End-to-end upgrade-plan preview model with scoped execution controls and failed-step retry.
+- Inspector task-output retrieval with command context for troubleshooting.
+
+### Changed
+- Scoped bulk upgrade execution now runs by authority phase with stronger stale-callback and timeout guards.
+- Updates/Inspector UX refined for long-plan scrolling, row selection hit targets, and explicit execution feedback.
+
+---
+
 ## 0.14.0 — 2026-02-19
 
 ### Changed

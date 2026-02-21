@@ -18,7 +18,7 @@ Focus:
 - 0.16.x self-update and installer hardening
 
 Current checkpoint:
-- `v0.16.0-rc.9` pre-release rehearsal in progress on `feat/v0.16.0-kickoff` (channel-aware updater scaffolding + package-manager-aware Sparkle gating + DMG invariant verification + appcast generation/publish + policy validation)
+- `v0.16.0` release finalization in progress on `chore/v0.16.0-release-final` (final version/docs alignment, release PR flow, merge/tag execution)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
 - `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)
@@ -35,11 +35,12 @@ Current checkpoint:
 - `v0.14.0` distribution/licensing architecture planning docs aligned (future-state, no implementation changes)
 
 Next release targets:
-- `v0.16.x` — Self-Update & Installer Hardening
+- `v0.16.0` — final release execution (merge/tag/publish)
+- `v0.17.x` — Diagnostics & Logging
 
 ---
 
-## v0.16.x Kickoff Plan (In Progress)
+## v0.16.x Kickoff Plan (Completed)
 
 ### Alpha.1 — Channel-Aware Updater Scaffolding (Completed on `feat/v0.16.0-kickoff`)
 
@@ -88,7 +89,7 @@ Validation:
 - `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`
 - `swiftlint lint --no-cache apps/macos-ui/Helm/Core/HelmCore.swift apps/macos-ui/Helm/AppDelegate.swift apps/macos-ui/Helm/Views/PopoverOverlayViews.swift apps/macos-ui/Helm/Core/L10n+App.swift`
 
-### Alpha.2 — Installer Packaging Hardening (In Progress on `feat/v0.16.0-kickoff`)
+### Alpha.2 — Installer Packaging Hardening (Completed on `feat/v0.16.0-kickoff`)
 
 Delivered:
 
@@ -832,4 +833,5 @@ Implement:
 - Manager capability sweep artifact is now in place for 0.14 release prep (`docs/validation/v0.14.0-alpha.5-manager-capability-sweep.md`).
 - 0.14 stable release alignment for `v0.14.0` is complete (README/website + version artifacts).
 - Distribution/licensing future-state planning documentation is aligned for 0.14 release notes and roadmap planning (no implementation yet).
-- 0.14.x release execution is complete on `main` with latest stable patch tag `v0.14.1`; next delivery slice is 0.15.x.
+- 0.14.x and 0.15.x release execution are complete on `main` (`v0.14.1` and `v0.15.0`).
+- 0.16.0 release execution is in progress; next delivery slice is 0.17.x diagnostics/logging.
