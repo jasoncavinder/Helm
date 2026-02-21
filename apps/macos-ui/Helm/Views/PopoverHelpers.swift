@@ -101,7 +101,7 @@ struct PopoverAttentionBanner: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: bannerSymbol)
-                .foregroundStyle(bannerTint)
+                .foregroundColor(bannerTint)
                 .font(.system(size: 13, weight: .semibold))
 
             VStack(alignment: .leading, spacing: 2) {
@@ -224,7 +224,7 @@ struct UpdateAllPillButtonStyle: ButtonStyle {
             .font(.caption.weight(.bold))
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .foregroundStyle(Color.white)
+            .foregroundColor(Color.white)
             .background(
                 Capsule(style: .continuous)
                     .fill(configuration.isPressed ? HelmTheme.actionPrimaryPressed : HelmTheme.actionPrimaryDefault)

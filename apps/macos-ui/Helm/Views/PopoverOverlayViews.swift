@@ -76,7 +76,7 @@ struct PopoverSearchOverlayContent: View {
                                     if let latest = result.latestVersion {
                                         Text(latest)
                                             .font(.caption.monospacedDigit())
-                                            .foregroundStyle(HelmTheme.stateAttention)
+                                            .foregroundColor(HelmTheme.stateAttention)
                                     } else {
                                         Text(result.version)
                                             .font(.caption.monospacedDigit())
@@ -286,10 +286,10 @@ struct PopoverQuitOverlayContent: View {
                 .buttonStyle(HelmSecondaryButtonStyle())
                 .helmPointer()
                 Spacer()
-                Button(L10n.App.Settings.Action.quit.localized, role: .destructive) {
+                Button(L10n.App.Settings.Action.quit.localized) {
                     NSApplication.shared.terminate(nil)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(HelmPrimaryButtonStyle())
                 .helmPointer()
             }
         }

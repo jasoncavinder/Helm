@@ -174,7 +174,7 @@ private struct ControlCenterTopBar: View {
                     .fill(HelmTheme.surfaceBase)
             }
         )
-        .overlay(alignment: .bottom) {
+        .overlay(
             HStack(spacing: 0) {
                 Rectangle()
                     .fill(Color.clear)
@@ -184,8 +184,9 @@ private struct ControlCenterTopBar: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 1)
             }
-            .frame(height: 1)
-        }
+            .frame(height: 1),
+            alignment: .bottom
+        )
     }
 }
 
@@ -335,7 +336,7 @@ private struct ControlCenterSidebarButtonStyle: ButtonStyle {
         }()
 
         return configuration.label
-            .foregroundStyle(isSelected ? HelmTheme.blue500 : HelmTheme.textPrimary)
+            .foregroundColor(isSelected ? HelmTheme.blue500 : HelmTheme.textPrimary)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(

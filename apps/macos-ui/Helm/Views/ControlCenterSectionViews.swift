@@ -301,7 +301,7 @@ struct RedesignUpdatesSectionView: View {
                                     Spacer()
                                     Text(core.localizedUpgradePlanStatus(projectedStatus(step)))
                                         .font(.caption)
-                                        .foregroundStyle(
+                                        .foregroundColor(
                                             projectedStatus(step).lowercased() == "failed"
                                                 ? Color.red
                                                 : Color.secondary
@@ -345,7 +345,7 @@ struct RedesignUpdatesSectionView: View {
                                     .foregroundColor(.secondary)
 
                                 Text(packageSummary(group.packageNames, managerId: group.managerId))
-                                    .font(.caption.monospaced())
+                                    .font(.caption.monospacedDigit())
                                     .lineLimit(2)
 
                                 HStack {
@@ -416,10 +416,10 @@ struct RedesignUpdatesSectionView: View {
     private func riskRow(flag: String, active: Bool) -> some View {
         HStack(spacing: 8) {
             Image(systemName: active ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(active ? HelmTheme.stateAttention : HelmTheme.textSecondary)
+                .foregroundColor(active ? HelmTheme.stateAttention : HelmTheme.textSecondary)
             Text(flag)
                 .font(.subheadline)
-                .foregroundStyle(active ? HelmTheme.textPrimary : HelmTheme.textSecondary)
+                .foregroundColor(active ? HelmTheme.textPrimary : HelmTheme.textSecondary)
         }
     }
 }

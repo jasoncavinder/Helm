@@ -282,7 +282,7 @@ struct SettingsSectionView: View {
                     if showCopiedConfirmation {
                         HStack(spacing: 4) {
                             Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
+                                .foregroundColor(.green)
                             Text(L10n.App.Settings.SupportFeedback.copiedConfirmation.localized)
                                 .foregroundColor(.secondary)
                         }
@@ -294,8 +294,8 @@ struct SettingsSectionView: View {
             .padding(20)
         }
         .alert(L10n.App.Settings.Alert.Reset.title.localized, isPresented: $showResetConfirmation) {
-            Button(L10n.Common.cancel.localized, role: .cancel) {}
-            Button(L10n.Common.reset.localized, role: .destructive) {
+            Button(L10n.Common.cancel.localized) {}
+            Button(L10n.Common.reset.localized) {
                 isResetting = true
                 core.resetDatabase { _ in
                     isResetting = false
@@ -350,10 +350,10 @@ private struct SettingsMetricPill: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.caption2)
-                .foregroundStyle(HelmTheme.textSecondary)
+                .foregroundColor(HelmTheme.textSecondary)
             Text("\(value)")
                 .font(.callout.monospacedDigit().weight(.semibold))
-                .foregroundStyle(HelmTheme.textPrimary)
+                .foregroundColor(HelmTheme.textPrimary)
         }
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -597,7 +597,7 @@ struct SupportHelmOptionsModalView: View {
                             if channel.url == nil {
                                 Text(L10n.App.Managers.State.comingSoon.localized)
                                     .font(.caption2)
-                                    .foregroundStyle(HelmTheme.textSecondary)
+                                    .foregroundColor(HelmTheme.textSecondary)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -651,7 +651,7 @@ private struct SettingsBadgeView: View {
                 .lineLimit(1)
         }
         .font(.caption2.weight(.semibold))
-        .foregroundStyle(badge.tint)
+        .foregroundColor(badge.tint)
         .padding(.horizontal, 6)
         .padding(.vertical, 3)
         .background(
