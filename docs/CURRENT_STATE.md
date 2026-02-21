@@ -8,13 +8,13 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.16.0-rc.9** (pre-release rehearsal in progress on `feat/v0.16.0-kickoff`; latest stable release on `main` is `v0.15.0`)
+Current version: **0.16.0** (release finalization in progress on `chore/v0.16.0-release-final`; latest stable release on `main` is `v0.15.0` until `v0.16.0` merge/tag completion)
 
 See:
 - CHANGELOG.md
 
 Active milestone:
-- 0.16.0 — Self-Update & Installer Hardening (rc rehearsal)
+- 0.16.0 — Self-Update & Installer Hardening (release finalization)
 - 0.15.0 — Released on `main` (tag `v0.15.0`)
 
 ---
@@ -761,14 +761,13 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
 - Upgrade-all transparency now provides summary counts + top manager breakdown in confirmation flow
 - Upgrade-preview filtering/sorting logic now has dedicated macOS UI unit coverage (`HelmTests/UpgradePreviewPlannerTests`)
 - Dedicated upgrade preview UI surface is implemented in macOS Settings (execution-plan sections with manager breakdown)
-- Dry-run mode is exposed in the upgrade preview UI (simulation path with no task submission)
 - Onboarding flow updated with friendlier tone; guided walkthrough (spotlight/coach marks) now implemented
 - 0.14 manager inventory is scaffolded in metadata; alpha.2/alpha.3/alpha.4 delivered container/VM, detection-only, security/firmware, and optional-manager slices
 - Optional-manager compatibility caveats:
   - `asdf` support currently assumes plugin already exists; Helm currently manages install/uninstall/upgrade of tool versions, not plugin bootstrap/removal
   - `nix_darwin` support currently operates through `nix-env` compatibility flows and does not edit declarative nix-darwin configuration files
-- No self-update mechanism yet
-- Limited diagnostics UI
+- Self-update is intentionally limited to eligible direct Developer ID installs; package-manager-managed installs remain blocked by policy.
+- Diagnostics UI is available in the Inspector (`diagnostics`/`stderr`/`stdout`) but a broader log-viewer workflow remains pending.
 - No CLI interface
 
 ---
@@ -793,4 +792,4 @@ Helm is a **functional control plane for 28 implemented managers** with:
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-0.13.x and 0.14.x stable checkpoints are complete, with latest stable patch `v0.14.1` merged to `main`, tagged, and released. Next delivery focus is 0.15.x.
+0.13.x through 0.15.x stable checkpoints are complete, and 0.16.0 release finalization is in progress. Next delivery focus after `v0.16.0` is 0.17.x diagnostics/logging hardening.

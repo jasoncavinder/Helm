@@ -498,13 +498,13 @@ Exit Criteria:
 
 ---
 
-## 0.16.x — Self-Update & Installer Hardening (beta)
+## 0.16.x — Self-Update & Installer Hardening (beta) - Completed
 
 Goal:
 
 - Sparkle integration for the direct Developer ID consumer channel
 - Signed update verification
-- Delta updates
+- Full-installer update feed policy (delta payloads deferred beyond `0.16.x`)
 - Self-update testing across versions
 - Explicit channel boundaries for update systems:
   - Sparkle only in direct Developer ID consumer build
@@ -516,6 +516,13 @@ Exit Criteria:
 - Downgrade handling defined
 - Update interruption recovery tested
 - Direct channel Sparkle behavior is isolated from non-Sparkle channels
+
+Delivered (`v0.16.0` checkpoint):
+- Channel-aware app-update configuration in runtime + build settings (`HelmDistributionChannel`, `HelmSparkleEnabled`, `SUFeedURL`, `SUPublicEDKey`, `SUAllowsDowngrades`)
+- Direct-channel Sparkle integration with strict runtime gating (package-manager-managed installs blocked; mounted-DMG/translocated paths blocked)
+- Signed appcast generation/publication automation with policy validation (HTTPS + full-installer DMG only)
+- Packaged DMG verification for updater invariants, Sparkle linkage, and artifact integrity before notarization/release publication
+- Installer/updater interruption-and-recovery validation runbook + idempotent rerun rehearsal
 
 ---
 

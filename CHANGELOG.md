@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-02-21
+
 ### Added
 - App update channel scaffolding in macOS UI:
   - `HelmDistributionChannel` + `HelmUpdateAuthority` runtime model
@@ -63,7 +65,7 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Support diagnostics manager listing is now stable (authority order, then alphabetical) to prevent row reordering churn.
 - Process-executed adapter tasks now carry task ID context through execution so stdout/stderr can be captured and mapped back to task IDs for diagnostics.
 - Removed the redundant `Dry Run` button from Updates now that equivalent plan visibility is always present inline.
-- Release-prep metadata now targets `0.15.0` across workspace versioning and status documentation (README/website/release checklist).
+- Release-prep metadata now targets `0.16.0` across workspace versioning and status documentation (README/website/release checklist).
 - Generated `apps/macos-ui/Generated/HelmVersion.xcconfig` is now ignored and no longer tracked.
 
 ## [0.16.0-rc.9] - 2026-02-21
