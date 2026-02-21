@@ -182,6 +182,19 @@ extension L10n {
                 static let safeModeDescription = "app.onboarding.settings.safe_mode_description"
                 static let autoCleanDescription = "app.onboarding.settings.auto_clean_description"
             }
+            struct License {
+                static let title = "app.onboarding.license.title"
+                static let subtitle = "app.onboarding.license.subtitle"
+                static let version = "app.onboarding.license.version"
+                static let summary = "app.onboarding.license.summary"
+                static let accept = "app.onboarding.license.action.accept"
+            }
+        }
+
+        struct Legal {
+            struct Action {
+                static let viewTerms = "app.legal.action.view_terms"
+            }
         }
 
         struct Settings {

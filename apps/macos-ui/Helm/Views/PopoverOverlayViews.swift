@@ -231,20 +231,33 @@ struct PopoverAboutOverlayContent: View {
             .font(.caption)
             .foregroundColor(.secondary)
 
-            HStack {
-                if appUpdate.canCheckForUpdates {
+            if let unavailableKey = appUpdate.unavailableReasonLocalizationKey, !appUpdate.canCheckForUpdates {
+                Text(unavailableKey.localized)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if appUpdate.canCheckForUpdates {
+                HStack {
                     Button(L10n.App.Overlay.About.checkForUpdates.localized) {
                         appUpdate.checkForUpdates()
                     }
                     .buttonStyle(HelmSecondaryButtonStyle())
                     .disabled(appUpdate.isCheckingForUpdates)
                     .helmPointer(enabled: !appUpdate.isCheckingForUpdates)
-                } else if let unavailableKey = appUpdate.unavailableReasonLocalizationKey {
-                    Text(unavailableKey.localized)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer()
                 }
+            }
+
+            HStack(spacing: 8) {
+
+                Button(L10n.App.Legal.Action.viewTerms.localized) {
+                    HelmSupport.openURL(HelmSupport.licenseTermsURL)
+                }
+                .buttonStyle(HelmSecondaryButtonStyle())
+                .helmPointer()
 
                 Button(L10n.App.Settings.SupportFeedback.supportHelm.localized) {
                     showSupportOptionsModal = true

@@ -51,7 +51,7 @@ struct RedesignPopoverView: View {
 
     var body: some View {
         ZStack {
-            if !core.hasCompletedOnboarding {
+            if !core.hasCompletedOnboarding || core.requiresLicenseTermsAcceptance {
                 OnboardingContainerView {
                     core.completeOnboarding()
                     core.triggerRefresh()

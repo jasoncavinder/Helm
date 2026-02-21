@@ -28,6 +28,8 @@ enum AppUpdateEligibilityFailure: String {
 }
 
 struct AppUpdateConfiguration {
+    static let currentLicenseTermsVersion = "helm-source-available-license-v1.0-pre1.0"
+
     private static let defaultPackageManagerReceiptRoots = [
         "/opt/homebrew/Caskroom",
         "/usr/local/Caskroom"
@@ -255,6 +257,16 @@ struct AppUpdateConfiguration {
             bundlePath: bundle.bundleURL.path,
             packageManagerReceiptRoots: Self.defaultPackageManagerReceiptRoots
         )
+    }
+
+    static func requiresLicenseTermsAcceptance(
+        channel: HelmDistributionChannel,
+        acceptedVersion: String?
+    ) -> Bool {
+        guard channel == .developerID else {
+            return false
+        }
+        return acceptedVersion != currentLicenseTermsVersion
     }
 }
 

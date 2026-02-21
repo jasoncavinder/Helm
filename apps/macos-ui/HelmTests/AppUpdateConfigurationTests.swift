@@ -229,6 +229,45 @@ final class AppUpdateConfigurationTests: XCTestCase {
         XCTAssertEqual(config.eligibilityFailureReason, .bundleVersionMetadataMismatch)
     }
 
+    func testLicenseTermsAcceptancePolicyRequiresDeveloperIdAndCurrentVersion() {
+        XCTAssertTrue(
+            AppUpdateConfiguration.requiresLicenseTermsAcceptance(
+                channel: .developerID,
+                acceptedVersion: nil
+            )
+        )
+        XCTAssertTrue(
+            AppUpdateConfiguration.requiresLicenseTermsAcceptance(
+                channel: .developerID,
+                acceptedVersion: "helm-source-available-license-v0.9.0"
+            )
+        )
+        XCTAssertFalse(
+            AppUpdateConfiguration.requiresLicenseTermsAcceptance(
+                channel: .developerID,
+                acceptedVersion: AppUpdateConfiguration.currentLicenseTermsVersion
+            )
+        )
+        XCTAssertFalse(
+            AppUpdateConfiguration.requiresLicenseTermsAcceptance(
+                channel: .appStore,
+                acceptedVersion: nil
+            )
+        )
+        XCTAssertFalse(
+            AppUpdateConfiguration.requiresLicenseTermsAcceptance(
+                channel: .setapp,
+                acceptedVersion: nil
+            )
+        )
+        XCTAssertFalse(
+            AppUpdateConfiguration.requiresLicenseTermsAcceptance(
+                channel: .fleet,
+                acceptedVersion: nil
+            )
+        )
+    }
+
     private func makeBundle(info: [String: Any]) throws -> Bundle {
         let bundleURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("helm-update-config-\(UUID().uuidString)")

@@ -654,6 +654,7 @@ extension HelmCore {
 
 struct HelmSupport {
     static let supportEmail = "jason.cavinder+helm@gmail.com"
+    static let licenseTermsURL = URL(string: "https://github.com/jasoncavinder/Helm/blob/main/LICENSE")!
     static let gitHubSponsorsURL = URL(string: "https://github.com/sponsors/jasoncavinder")!
     static let gitHubNewIssueURL = URL(string: "https://github.com/jasoncavinder/Helm/issues/new")!
     static let gitHubBugReportURL = URL(string: "https://github.com/jasoncavinder/Helm/issues/new?template=bug_report.yml")!

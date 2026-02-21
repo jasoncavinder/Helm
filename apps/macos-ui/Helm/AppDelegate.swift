@@ -82,7 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil
         )
 
-        if core.hasCompletedOnboarding {
+        if core.hasCompletedOnboarding && !core.requiresLicenseTermsAcceptance {
             core.triggerRefresh()
         }
     }

@@ -366,6 +366,11 @@ struct ManagerStatus: Codable {
 
 final class HelmCore: ObservableObject {
     static let shared = HelmCore()
+    static let currentLicenseTermsVersion = AppUpdateConfiguration.currentLicenseTermsVersion
+
+    private static let onboardingCompletedKey = "hasCompletedOnboarding"
+    private static let acceptedLicenseTermsVersionKey = "acceptedLicenseTermsVersion"
+    private static let acceptedLicenseTermsAcceptedAtUnixKey = "acceptedLicenseTermsAcceptedAtUnix"
 
     @Published var isInitialized = false
     @Published var isConnected = false
@@ -401,7 +406,18 @@ final class HelmCore: ObservableObject {
     @Published var lastError: String?
     @Published var lastErrorAttribution: CoreErrorAttribution?
     @Published var selectedManagerFilter: String?
-    @Published var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
+    @Published var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: HelmCore.onboardingCompletedKey)
+    @Published var acceptedLicenseTermsVersion: String? = UserDefaults.standard.string(
+        forKey: HelmCore.acceptedLicenseTermsVersionKey
+    )
+    @Published var acceptedLicenseTermsAcceptedAtUnix: Int64? = {
+        guard let value = UserDefaults.standard.object(
+            forKey: HelmCore.acceptedLicenseTermsAcceptedAtUnixKey
+        ) as? NSNumber else {
+            return nil
+        }
+        return value.int64Value
+    }()
 
     var timer: Timer?
     var connection: NSXPCConnection?
@@ -427,6 +443,23 @@ final class HelmCore: ObservableObject {
 
     private init() {
         setupConnection()
+    }
+
+    static func requiresLicenseTermsAcceptance(
+        channel: HelmDistributionChannel,
+        acceptedVersion: String?
+    ) -> Bool {
+        AppUpdateConfiguration.requiresLicenseTermsAcceptance(
+            channel: channel,
+            acceptedVersion: acceptedVersion
+        )
+    }
+
+    var requiresLicenseTermsAcceptance: Bool {
+        Self.requiresLicenseTermsAcceptance(
+            channel: HelmDistributionChannel.from(),
+            acceptedVersion: acceptedLicenseTermsVersion
+        )
     }
 
     func setupConnection() {
@@ -663,8 +696,22 @@ final class HelmCore: ObservableObject {
     }
 
     func completeOnboarding() {
-        UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
+        UserDefaults.standard.set(true, forKey: Self.onboardingCompletedKey)
         hasCompletedOnboarding = true
+    }
+
+    func acceptCurrentLicenseTerms(acceptedAt: Date = Date()) {
+        let acceptedAtUnix = Int64(acceptedAt.timeIntervalSince1970)
+        UserDefaults.standard.set(
+            Self.currentLicenseTermsVersion,
+            forKey: Self.acceptedLicenseTermsVersionKey
+        )
+        UserDefaults.standard.set(
+            acceptedAtUnix,
+            forKey: Self.acceptedLicenseTermsAcceptedAtUnixKey
+        )
+        acceptedLicenseTermsVersion = Self.currentLicenseTermsVersion
+        acceptedLicenseTermsAcceptedAtUnix = acceptedAtUnix
     }
 
     func resetDatabase(completion: @escaping (Bool) -> Void) {
@@ -704,7 +751,7 @@ final class HelmCore: ObservableObject {
                     self?.onboardingDetectionPendingManagers = []
                     self?.onboardingDetectionStartedAt = nil
                     self?.lastRefreshTrigger = nil
-                    UserDefaults.standard.removeObject(forKey: "hasCompletedOnboarding")
+                    UserDefaults.standard.removeObject(forKey: Self.onboardingCompletedKey)
                     self?.hasCompletedOnboarding = false
                 }
                 // Resume polling after reset
