@@ -240,7 +240,7 @@ struct SettingsSectionView: View {
                             .background(
                                 GeometryReader { proxy in
                                     Color.clear.preference(
-                                        key: SupportFeedbackTopGroupHeightPreferenceKey.self,
+                                        key: SupportTopGroupHeightKey.self,
                                         value: proxy.size.height
                                     )
                                 }
@@ -258,7 +258,7 @@ struct SettingsSectionView: View {
                             .background(
                                 GeometryReader { proxy in
                                     Color.clear.preference(
-                                        key: SupportFeedbackBottomButtonHeightPreferenceKey.self,
+                                        key: SupportBottomButtonHeightKey.self,
                                         value: proxy.size.height
                                     )
                                 }
@@ -266,10 +266,10 @@ struct SettingsSectionView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .top)
                     }
-                    .onPreferenceChange(SupportFeedbackTopGroupHeightPreferenceKey.self) { height in
+                    .onPreferenceChange(SupportTopGroupHeightKey.self) { height in
                         supportTopGroupHeight = height
                     }
-                    .onPreferenceChange(SupportFeedbackBottomButtonHeightPreferenceKey.self) { height in
+                    .onPreferenceChange(SupportBottomButtonHeightKey.self) { height in
                         supportBottomButtonHeight = height
                     }
 
@@ -504,7 +504,7 @@ private struct SettingsActionButton: View {
     }
 }
 
-private enum SupportHelmChannel: String, CaseIterable, Identifiable {
+enum SupportHelmChannel: String, CaseIterable, Identifiable {
     case gitHubSponsors
     case patreon
     case buyMeACoffee
@@ -566,7 +566,7 @@ private enum SupportHelmChannel: String, CaseIterable, Identifiable {
     }
 }
 
-private struct SupportHelmOptionsModalView: View {
+struct SupportHelmOptionsModalView: View {
     let onSelect: (SupportHelmChannel) -> Void
     let onClose: () -> Void
 
@@ -614,7 +614,7 @@ private struct SupportHelmOptionsModalView: View {
     }
 }
 
-private struct SupportFeedbackTopGroupHeightPreferenceKey: PreferenceKey {
+private struct SupportTopGroupHeightKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
@@ -622,7 +622,7 @@ private struct SupportFeedbackTopGroupHeightPreferenceKey: PreferenceKey {
     }
 }
 
-private struct SupportFeedbackBottomButtonHeightPreferenceKey: PreferenceKey {
+private struct SupportBottomButtonHeightKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {

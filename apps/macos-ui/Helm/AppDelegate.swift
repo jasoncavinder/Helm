@@ -315,6 +315,9 @@ private extension AppDelegate {
 
     func configureStatusMenu() {
         let menu = NSMenu()
+        // We drive enablement explicitly from app/core state.
+        // Cocoa auto-validation can otherwise re-enable items with actions.
+        menu.autoenablesItems = false
 
         let aboutItem = NSMenuItem(
             title: "app.overlay.about.title".localized,
@@ -408,21 +411,17 @@ private extension AppDelegate {
             keyEquivalent: ""
         )
         let submenu = NSMenu()
-        let gitHubSponsorsItem = NSMenuItem(
-            title: L10n.App.Settings.SupportFeedback.gitHubSponsors.localized,
-            action: #selector(openGitHubSponsorsFromMenu),
-            keyEquivalent: ""
-        )
-        gitHubSponsorsItem.target = self
-        submenu.addItem(gitHubSponsorsItem)
-
-        let patreonItem = NSMenuItem(
-            title: L10n.App.Settings.SupportFeedback.patreon.localized,
-            action: #selector(openPatreonFromMenu),
-            keyEquivalent: ""
-        )
-        patreonItem.target = self
-        submenu.addItem(patreonItem)
+        for channel in SupportHelmChannel.allCases {
+            let supportItem = NSMenuItem(
+                title: channel.title,
+                action: #selector(openSupportChannelFromMenu(_:)),
+                keyEquivalent: ""
+            )
+            supportItem.target = self
+            supportItem.representedObject = channel.url
+            supportItem.isEnabled = channel.url != nil
+            submenu.addItem(supportItem)
+        }
         item.submenu = submenu
         return item
     }
@@ -481,12 +480,9 @@ private extension AppDelegate {
         NSApplication.shared.terminate(nil)
     }
 
-    @objc func openGitHubSponsorsFromMenu() {
-        HelmSupport.openURL(HelmSupport.gitHubSponsorsURL)
-    }
-
-    @objc func openPatreonFromMenu() {
-        HelmSupport.openURL(HelmSupport.patreonURL)
+    @objc func openSupportChannelFromMenu(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        HelmSupport.openURL(url)
     }
 
     @objc func handleSystemAppearanceChanged() {

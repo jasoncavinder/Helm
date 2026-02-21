@@ -66,6 +66,17 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Release-prep metadata now targets `0.15.0` across workspace versioning and status documentation (README/website/release checklist).
 - Generated `apps/macos-ui/Generated/HelmVersion.xcconfig` is now ignored and no longer tracked.
 
+## [0.16.0-rc.9] - 2026-02-21
+
+### Changed
+- Status-menu `Support Helm` submenu now includes all six support destinations (GitHub Sponsors, Patreon, Buy Me a Coffee, Ko-fi, PayPal, Venmo), matching the Settings support picker.
+- About overlay now includes a `Support Helm` button that opens the same multi-channel support picker.
+- Status-menu update-item enablement now honors app-managed availability state by disabling Cocoa auto-validation (`menu.autoenablesItems = false`), keeping `Check for Updates` correctly disabled for ineligible installs.
+- Release workflow appcast fallback no longer fails the full release job when Actions token permissions block `gh pr create`; it now logs manual compare URL instructions after pushing the fallback branch.
+- Installer/update interruption runbook version advanced to:
+  - `docs/validation/v0.16.0-rc.9-installer-recovery.md`
+- Workspace package versioning bumped to `0.16.0-rc.9` (`core/rust/Cargo.toml`, `core/rust/Cargo.lock` for local crates).
+
 ## [0.16.0-rc.8] - 2026-02-20
 
 ### Changed
@@ -73,6 +84,7 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Installer/update interruption runbook version advanced to:
   - `docs/validation/v0.16.0-rc.8-installer-recovery.md`
 - Workspace package versioning bumped to `0.16.0-rc.8` (`core/rust/Cargo.toml`, `core/rust/Cargo.lock` for local crates).
+
 
 ## [0.16.0-rc.7] - 2026-02-20
 
@@ -134,6 +146,23 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Workspace package versioning bumped to `0.16.0-rc.2` (`core/rust/Cargo.toml`, `core/rust/Cargo.lock` for local crates).
 - Sparkle release automation now publishes appcast feed updates to `web/public/updates/appcast.xml` with a PR fallback path when direct pushes to `main` are blocked.
 - Helm app Info.plist now includes explicit updater metadata placeholders so packaged-release verification can assert channel/Sparkle keys in artifacts.
+
+## [0.15.0] - 2026-02-20
+
+### Added
+- Upgrade plan preview model surfaced end-to-end (FFI → XPC → SwiftUI), with stable step IDs and ordered manager/action context.
+- Scoped execution controls for Updates (manager/package filters, failed-step retry, cancel remaining).
+- Task-output diagnostics surfaced in Inspector via on-demand stdout/stderr retrieval.
+
+### Changed
+- Scoped upgrade execution now runs phase-by-phase by authority order (authoritative → standard → guarded) with stricter stale-callback and timeout handling.
+- Updates/Inspector UX refinements:
+  - scrollable updates content for long plans/failure sets
+  - full-row plan selection hit targets with stable display ordering
+  - in-progress feedback for active scoped runs
+  - failure banner now routes to review-first flow
+  - consolidated diagnostics modal tabs and command visibility in task inspector
+- Removed redundant `Dry Run` control in Updates in favor of always-visible inline plan context.
 
 ## [0.14.1] - 2026-02-20
 

@@ -468,7 +468,7 @@ jobs:
             exit 0
           fi
 
-          gh pr create \
+          PR_URL="$(gh pr create \
             --repo "$GITHUB_REPOSITORY" \
             --base main \
             --head "$PUBLISH_BRANCH" \
@@ -481,4 +481,13 @@ jobs:
 
           Merge this PR to update \`https://helmapp.dev/updates/appcast.xml\`.
           EOF
-          )"
+          )" 2>&1)" || {
+            echo "::warning::Unable to auto-create fallback PR via GitHub Actions token."
+            echo "::warning::Likely cause: repository setting disallows Actions PR creation."
+            echo "::warning::Fallback branch was pushed: ${PUBLISH_BRANCH}"
+            echo "::warning::Open manual PR: https://github.com/${GITHUB_REPOSITORY}/compare/main...${PUBLISH_BRANCH}?expand=1"
+            echo "::warning::gh output: ${PR_URL}"
+            exit 0
+          }
+
+          echo "Created fallback PR: ${PR_URL}"
