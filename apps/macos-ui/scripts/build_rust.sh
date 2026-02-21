@@ -10,6 +10,22 @@ export PATH="$HOME/.cargo/bin:$PATH"
 REPO_ROOT=$(git rev-parse --show-toplevel)
 cd "$REPO_ROOT/core/rust"
 
+# Keep Rust min deployment target aligned with Xcode (macOS 11.0 baseline).
+export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-11.0}"
+
+MIN_MACOS_LINK_ARG="-C link-arg=-mmacosx-version-min=${MACOSX_DEPLOYMENT_TARGET}"
+case " ${RUSTFLAGS:-} " in
+    *" ${MIN_MACOS_LINK_ARG} "*) ;;
+    *)
+        export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }${MIN_MACOS_LINK_ARG}"
+        ;;
+esac
+
+# Isolate Xcode-driven cargo output so stale artifacts built with higher deployment
+# targets do not leak into app links.
+TARGET_SUFFIX="${MACOSX_DEPLOYMENT_TARGET//./_}"
+export CARGO_TARGET_DIR="$REPO_ROOT/core/rust/target/xcode-macos${TARGET_SUFFIX}"
+
 # Determine build profile
 if [[ "${CONFIGURATION:-Debug}" == Release* ]]; then
     PROFILE="release"
@@ -68,6 +84,7 @@ echo "Requested Xcode ARCHS: $REQUESTED_ARCHS"
 echo "Rust targets: ${RUST_TARGETS[*]}"
 
 LIB_INPUTS=()
+CARGO_OUTPUT_DIR="${CARGO_TARGET_DIR:-target}"
 installed_targets=""
 if command -v rustup >/dev/null 2>&1; then
     installed_targets=$(rustup target list --installed || true)
@@ -93,7 +110,7 @@ for target in "${RUST_TARGETS[@]}"; do
 
     echo "Building helm-ffi for $target..."
     cargo build -p helm-ffi $CARGO_FLAGS --target "$target"
-    LIB_INPUTS+=("target/$target/$PROFILE/libhelm_ffi.a")
+    LIB_INPUTS+=("$CARGO_OUTPUT_DIR/$target/$PROFILE/libhelm_ffi.a")
 done
 
 if [ "${#LIB_INPUTS[@]}" -eq 0 ]; then
