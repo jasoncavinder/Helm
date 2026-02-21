@@ -613,6 +613,9 @@ Goal:
   - ICU syntax validation
 - UI validation for text expansion
 - Localization fallback behavior tested
+- App Design Refinement (planned):
+  - finalize production typography direction across app/website
+  - reminder: purchase Neue Haas Grotesk commercial license before shipping it in product branding
 
 Exit Criteria:
 
