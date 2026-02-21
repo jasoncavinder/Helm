@@ -11,15 +11,22 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-0.16.x
+0.17.x
 ```
 
 Focus:
-- 0.16.2 Sparkle connectivity stabilization and platform-baseline alignment
-- begin 0.17.x diagnostics/logging implementation planning
+- finalize `v0.17.0-rc.1` release-prep artifacts on `dev`
+- complete validation gates and release handoff for RC tagging
 
 Current checkpoint:
-- `v0.16.2` release prep in progress (Sparkle entitlement/feed hardening + macOS 11 deployment-target enforcement)
+- `v0.17.0-rc.1` release prep in progress on `dev` after merged diagnostics/logging slices:
+  - `#93` `feat/v0.17-log-foundation`
+  - `#95` `feat/v0.17-structured-error-export`
+  - `#96` `feat/v0.17-service-health-panel`
+  - `#97` `feat/v0.17-task-log-viewer`
+  - `#98` `feat/v0.17-manager-detection-diagnostics`
+  - `#99` `feat/v0.17-diagnostics-hardening`
+- latest stable release on `main`: `v0.16.2`
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
 - `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)
@@ -42,13 +49,12 @@ Next release targets:
 
 ## v0.17.x Delivery Tracker (Target: `v0.17.0-rc.1`)
 
-- [ ] `feat/v0.17-log-foundation` — task log event model, SQLite persistence migration, FFI/XPC retrieval surface.
-- [ ] `feat/v0.17-task-log-viewer` — per-task log viewer UI with filters and pagination. (in progress: diagnostics logs tab + filter/pagination wiring underway on this branch)
-- [ ] `feat/v0.17-structured-error-export` — structured support/error export payloads with redaction. (in progress: JSON export schema + clipboard workflow + redaction rules)
-- [ ] `feat/v0.17-service-health-panel` — service/runtime health diagnostics panel. (in progress: settings health card + copyable service snapshot diagnostics)
-- [ ] `feat/v0.17-manager-detection-diagnostics` — per-manager detection diagnostics and reason visibility. (in progress: inspector reason states + latest detection task status/ID surface)
-- [ ] `feat/v0.17-diagnostics-hardening` — silent-failure sweep, attribution consistency, integration/doc exit checks.
-- [ ] `feat/v0.17-diagnostics-hardening` — silent-failure sweep, attribution consistency, integration/doc exit checks. (in progress: attributed error context capture + support snapshot/export enrichment)
+- [x] `feat/v0.17-log-foundation` — task log event model, SQLite persistence migration, FFI/XPC retrieval surface.
+- [x] `feat/v0.17-task-log-viewer` — per-task log viewer UI with filters and pagination.
+- [x] `feat/v0.17-structured-error-export` — structured support/error export payloads with redaction.
+- [x] `feat/v0.17-service-health-panel` — service/runtime health diagnostics panel.
+- [x] `feat/v0.17-manager-detection-diagnostics` — per-manager detection diagnostics and reason visibility.
+- [x] `feat/v0.17-diagnostics-hardening` — silent-failure sweep, attribution consistency, integration/doc exit checks.
 
 RC-1 release gate for `v0.17.x`:
 - Logs are accessible in UI.
@@ -881,4 +887,4 @@ Implement:
 - 0.14 stable release alignment for `v0.14.0` is complete (README/website + version artifacts).
 - Distribution/licensing future-state planning documentation is aligned for 0.14 release notes and roadmap planning (no implementation yet).
 - 0.14.x and 0.15.x release execution are complete on `main` (`v0.14.1` and `v0.15.0`).
-- 0.16.0 release execution is in progress; next delivery slice is 0.17.x diagnostics/logging.
+- 0.16.2 release execution is complete on `main`; 0.17.x diagnostics/logging delivery is complete on `dev` pending `v0.17.0-rc.1` tag/release cut.

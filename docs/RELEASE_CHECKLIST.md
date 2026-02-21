@@ -9,6 +9,28 @@ This checklist is required before creating a release tag on `main`.
 - [ ] Confirm Sparkle license + external attributions remain preserved for channels that include Sparkle.
 - [ ] If distributing artifacts that include `sharp/libvips` binaries (outside static-site output), include LGPL notice/corresponding-source obligations for that artifact.
 
+## v0.17.0-rc.1 (Diagnostics & Logging RC)
+
+### Scope and Documentation
+- [x] `CHANGELOG.md` includes `0.17.0-rc.1` release-candidate notes for all diagnostics/logging slices.
+- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect merged `0.17.x` delivery state and RC prep status.
+- [x] `docs/RELEASE_CHECKLIST.md` includes `v0.17.0-rc.1` release tasks.
+
+### Versioning
+- [x] Workspace version bumped to `0.17.0-rc.1` in `core/rust/Cargo.toml`.
+- [x] Rust lockfile local package versions aligned to `0.17.0-rc.1` in `core/rust/Cargo.lock`.
+
+### Validation
+- [x] Rust tests pass (`cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`).
+- [x] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`).
+- [x] Locale checks pass (`apps/macos-ui/scripts/check_locale_integrity.sh` and `apps/macos-ui/scripts/check_locale_lengths.sh`).
+
+### Branch and Tag
+- [ ] Open release-prep PR into `dev` and complete CI checks.
+- [ ] Merge release-prep PR into `dev`.
+- [ ] Create annotated RC tag from `dev` lineage: `git tag -a v0.17.0-rc.1 -m "Helm v0.17.0-rc.1"`.
+- [ ] Push RC tag: `git push origin v0.17.0-rc.1`.
+
 ## v0.16.2 (Sparkle Connectivity + macOS 11 Alignment)
 
 ### Scope and Documentation
