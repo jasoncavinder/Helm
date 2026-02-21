@@ -2,7 +2,17 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>HelmDistributionChannel</key>
+	<string>$(HELM_DISTRIBUTION_CHANNEL)</string>
+	<key>HelmSparkleEnabled</key>
+	<string>$(HELM_SPARKLE_ENABLED)</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>SUAllowsDowngrades</key>
+	<string>$(HELM_SPARKLE_ALLOW_DOWNGRADES)</string>
+	<key>SUFeedURL</key>
+	<string>$(HELM_SPARKLE_FEED_URL)</string>
+	<key>SUPublicEDKey</key>
+	<string>$(HELM_SPARKLE_PUBLIC_ED_KEY)</string>
 </dict>
 </plist>

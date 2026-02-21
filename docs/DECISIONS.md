@@ -290,6 +290,26 @@ Channel rules:
 
 ---
 
+## Decision 021 — Sparkle Delta Policy for 0.16.x
+
+**Decision:**
+For `0.16.x`, direct-channel Sparkle updates ship full signed DMG payloads only. Delta updates are explicitly disabled until a later milestone.
+
+Policy guardrails:
+
+- Appcast contains exactly one release `<item>` and one full-installer `<enclosure>`.
+- `sparkle:deltas` blocks and `sparkle:deltaFrom` attributes are rejected.
+- Enclosure URL must use `https://` and target a `.dmg` payload.
+- Release workflow enforces this policy via `apps/macos-ui/scripts/verify_sparkle_appcast_policy.sh`.
+
+**Rationale:**
+
+- Keeps updater behavior simple and auditable while direct-channel hardening is still in progress.
+- Avoids additional signing, generation, and rollback complexity in first Sparkle-enabled release candidates.
+- Provides a deterministic release artifact model for RC validation and operator troubleshooting.
+
+---
+
 ## Summary
 
 Helm prioritizes:

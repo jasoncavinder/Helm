@@ -582,7 +582,11 @@ struct HelmSupport {
     static let gitHubNewIssueURL = URL(string: "https://github.com/jasoncavinder/Helm/issues/new")!
     static let gitHubBugReportURL = URL(string: "https://github.com/jasoncavinder/Helm/issues/new?template=bug_report.yml")!
     static let gitHubFeatureRequestURL = URL(string: "https://github.com/jasoncavinder/Helm/issues/new?template=feature_request.yml")!
-    static let patreonURL = URL(string: "https://patreon.com/jasoncavinder")!
+    static let patreonURL = URL(string: "https://www.patreon.com/cw/jasoncavinder")!
+    static let buyMeACoffeeURL = URL(string: "https://buymeacoffee.com/jasoncavinder")!
+    static let koFiURL = URL(string: "https://ko-fi.com/jasoncavinder")!
+    static let payPalURL = URL(string: "https://paypal.me/jasoncavinder")!
+    static let venmoURL = URL(string: "https://www.venmo.com/u/JasonCavinder")!
     
     struct FeedbackBody {
         let type: String

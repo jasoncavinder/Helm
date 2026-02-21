@@ -1,8 +1,200 @@
 import AppKit
 import Foundation
 import os.log
+#if canImport(Sparkle)
+import Sparkle
+#endif
 
 private let logger = Logger(subsystem: "com.jasoncavinder.Helm", category: "core")
+private let updateLogger = Logger(subsystem: "com.jasoncavinder.Helm", category: "app_update")
+
+enum HelmUpdateAuthority: String {
+    case sparkle = "sparkle"
+    case appStore = "app_store"
+    case setapp = "setapp"
+    case adminControlled = "admin_controlled"
+    case unavailable = "unavailable"
+}
+
+enum AppUpdateUnavailableReason: String {
+    case channelNotSupported = "channel_not_supported"
+    case sparkleDisabled = "sparkle_disabled"
+    case downgradesEnabled = "downgrades_enabled"
+    case missingSparkleConfig = "missing_sparkle_config"
+    case insecureSparkleFeed = "insecure_sparkle_feed"
+    case ineligibleInstallLocation = "ineligible_install_location"
+    case packageManagerManagedInstall = "package_manager_managed_install"
+    case sparkleFrameworkUnavailable = "sparkle_framework_unavailable"
+    case sparkleRuntimeUnavailable = "sparkle_runtime_unavailable"
+
+    var localizationKey: String {
+        switch self {
+        case .channelNotSupported:
+            return L10n.App.Overlay.About.UpdateUnavailable.channelManaged
+        case .ineligibleInstallLocation:
+            return L10n.App.Overlay.About.UpdateUnavailable.installLocation
+        case .packageManagerManagedInstall:
+            return L10n.App.Overlay.About.UpdateUnavailable.packageManagerManaged
+        case .sparkleFrameworkUnavailable:
+            return L10n.App.Overlay.About.UpdateUnavailable.sparkleMissing
+        case .sparkleRuntimeUnavailable:
+            return L10n.App.Overlay.About.UpdateUnavailable.runtimeUnavailable
+        case .sparkleDisabled, .downgradesEnabled, .missingSparkleConfig, .insecureSparkleFeed:
+            return L10n.App.Overlay.About.UpdateUnavailable.buildConfig
+        }
+    }
+}
+
+private protocol AppUpdateDriver {
+    var canCheckForUpdates: Bool { get }
+    func checkForUpdates()
+}
+
+private struct NoopAppUpdateDriver: AppUpdateDriver {
+    let canCheckForUpdates = false
+
+    func checkForUpdates() {}
+}
+
+#if canImport(Sparkle)
+private final class SparkleAppUpdateDriver: NSObject, AppUpdateDriver {
+    private let updaterController: SPUStandardUpdaterController
+
+    override init() {
+        updaterController = SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: nil,
+            userDriverDelegate: nil
+        )
+        super.init()
+    }
+
+    var canCheckForUpdates: Bool {
+        updaterController.updater.canCheckForUpdates
+    }
+
+    func checkForUpdates() {
+        updaterController.checkForUpdates(nil)
+    }
+}
+#endif
+
+final class AppUpdateCoordinator: ObservableObject {
+    static let shared = AppUpdateCoordinator()
+
+    @Published private(set) var configuration: AppUpdateConfiguration
+    @Published private(set) var updateAuthority: HelmUpdateAuthority
+    @Published private(set) var canCheckForUpdates: Bool
+    @Published private(set) var unavailableReason: AppUpdateUnavailableReason?
+    @Published private(set) var isCheckingForUpdates = false
+    @Published private(set) var lastCheckDate: Date?
+
+    var distributionChannel: HelmDistributionChannel {
+        configuration.channel
+    }
+
+    private let driver: AppUpdateDriver
+
+    private init() {
+        let configuration = AppUpdateConfiguration.from()
+        self.configuration = configuration
+        self.updateAuthority = AppUpdateCoordinator.resolveAuthority(for: configuration.channel)
+        let selection = AppUpdateCoordinator.makeDriver(for: configuration)
+        self.driver = selection.driver
+        if selection.driver.canCheckForUpdates {
+            self.canCheckForUpdates = true
+            self.unavailableReason = nil
+        } else {
+            self.canCheckForUpdates = false
+            self.unavailableReason = selection.unavailableReason ?? .sparkleRuntimeUnavailable
+        }
+
+        updateLogger.info(
+            "Configured app updater. channel=\(configuration.channel.rawValue, privacy: .public), authority=\(self.updateAuthority.rawValue, privacy: .public), sparkle_enabled=\(configuration.sparkleEnabled, privacy: .public), sparkle_allows_downgrades=\(configuration.sparkleAllowsDowngrades, privacy: .public), mounted_dmg=\(configuration.appearsMountedFromDiskImage, privacy: .public), translocated=\(configuration.appearsTranslocated, privacy: .public), package_manager_managed=\(configuration.appearsPackageManagerManaged, privacy: .public), feed_configured=\(configuration.sparkleFeedURL != nil, privacy: .public), key_configured=\(configuration.sparklePublicEdKey != nil, privacy: .public), can_check=\(self.canCheckForUpdates, privacy: .public), unavailable_reason=\(self.unavailableReason?.rawValue ?? "none", privacy: .public)"
+        )
+    }
+
+    var unavailableReasonLocalizationKey: String? {
+        unavailableReason?.localizationKey
+    }
+
+    func checkForUpdates() {
+        guard canCheckForUpdates else {
+            return
+        }
+        guard !isCheckingForUpdates else {
+            return
+        }
+
+        isCheckingForUpdates = true
+        defer { isCheckingForUpdates = false }
+        driver.checkForUpdates()
+        lastCheckDate = Date()
+    }
+
+    private static func resolveAuthority(for channel: HelmDistributionChannel) -> HelmUpdateAuthority {
+        switch channel {
+        case .developerID:
+            return .sparkle
+        case .appStore:
+            return .appStore
+        case .setapp:
+            return .setapp
+        case .fleet:
+            return .adminControlled
+        case .unknown:
+            return .unavailable
+        }
+    }
+
+    private struct AppUpdateDriverSelection {
+        let driver: AppUpdateDriver
+        let unavailableReason: AppUpdateUnavailableReason?
+    }
+
+    private static func makeDriver(for configuration: AppUpdateConfiguration) -> AppUpdateDriverSelection {
+        if let failure = configuration.eligibilityFailureReason {
+            return AppUpdateDriverSelection(
+                driver: NoopAppUpdateDriver(),
+                unavailableReason: mapFailureReason(failure)
+            )
+        }
+
+        #if canImport(Sparkle)
+        return AppUpdateDriverSelection(
+            driver: SparkleAppUpdateDriver(),
+            unavailableReason: nil
+        )
+        #else
+        updateLogger.warning(
+            "Sparkle build flag enabled for Developer ID channel, but Sparkle framework is unavailable."
+        )
+        return AppUpdateDriverSelection(
+            driver: NoopAppUpdateDriver(),
+            unavailableReason: .sparkleFrameworkUnavailable
+        )
+        #endif
+    }
+
+    private static func mapFailureReason(_ reason: AppUpdateEligibilityFailure) -> AppUpdateUnavailableReason {
+        switch reason {
+        case .channelNotSupported:
+            return .channelNotSupported
+        case .sparkleDisabled:
+            return .sparkleDisabled
+        case .downgradesEnabled:
+            return .downgradesEnabled
+        case .missingSparkleConfig:
+            return .missingSparkleConfig
+        case .insecureSparkleFeed:
+            return .insecureSparkleFeed
+        case .ineligibleInstallLocation:
+            return .ineligibleInstallLocation
+        case .packageManagerManagedInstall:
+            return .packageManagerManagedInstall
+        }
+    }
+}
 
 struct CorePackageRef: Codable {
     let manager: String
@@ -143,7 +335,7 @@ final class HelmCore: ObservableObject {
     @Published var packageKegPolicyOverrides: [String: HomebrewKegPolicyOverride] = [:]
     @Published var safeModeEnabled: Bool = false
     @Published var lastError: String?
-    @Published var selectedManagerFilter: String? = nil
+    @Published var selectedManagerFilter: String?
     @Published var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
 
     var timer: Timer?

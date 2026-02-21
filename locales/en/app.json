@@ -234,6 +234,7 @@
   "app.overlay.about.subtitle": "Unified package control for macOS",
   "app.overlay.about.version": "Version {version}",
   "app.overlay.about.summary": "{managers} managers active, {updates} updates pending",
+  "app.overlay.about.check_updates": "Check for Updates",
   "app.overlay.quit.title": "Quit Helm",
   "app.overlay.quit.message": "Quit now? {tasks} running tasks may be interrupted.",
   "app.control_center.subtitle": "Operational visibility and package controls",
@@ -288,6 +289,10 @@
   "app.settings.support_feedback.diagnostics_copied_hint": "Diagnostics copied to clipboard",
   "app.settings.support_feedback.github_sponsors": "GitHub Sponsors",
   "app.settings.support_feedback.patreon": "Patreon",
+  "app.settings.support_feedback.buy_me_a_coffee": "Buy Me a Coffee",
+  "app.settings.support_feedback.ko_fi": "Ko-fi",
+  "app.settings.support_feedback.paypal": "PayPal",
+  "app.settings.support_feedback.venmo": "Venmo",
   "app.inspector.description_loading": "Loading description...",
   "app.inspector.description_unavailable": "Description not available.",
   "app.inspector.task_failure_feedback": "Failure Details",
@@ -304,5 +309,11 @@
   "app.inspector.view_diagnostics": "View Diagnostics",
   "app.inspector.task_diagnostics": "Diagnostics",
   "app.inspector.task_diagnostics_unavailable": "Diagnostics are not available.",
-  "app.inspector.task_output.diagnostics": "diagnostics"
+  "app.inspector.task_output.diagnostics": "diagnostics",
+  "app.overlay.about.update_unavailable.channel_managed": "Updates are managed by this distribution channel.",
+  "app.overlay.about.update_unavailable.install_location": "Move Helm to Applications to enable in-app updates.",
+  "app.overlay.about.update_unavailable.build_config": "In-app updates are unavailable for this build configuration.",
+  "app.overlay.about.update_unavailable.sparkle_missing": "Sparkle updater components are unavailable in this build.",
+  "app.overlay.about.update_unavailable.runtime_unavailable": "Update checks are temporarily unavailable.",
+  "app.overlay.about.update_unavailable.package_manager_managed": "This installation is managed by a package manager. Use that manager to update Helm."
 }

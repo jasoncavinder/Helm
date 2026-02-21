@@ -39,7 +39,11 @@ struct PopoverSearchOverlayContent: View {
             .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.primary.opacity(0.06))
+                    .fill(HelmTheme.surfacePanel)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(HelmTheme.borderSubtle.opacity(0.95), lineWidth: 0.8)
+                    )
             )
 
             if searchResults.isEmpty && !popoverSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -74,7 +78,7 @@ struct PopoverSearchOverlayContent: View {
                                     if let latest = result.latestVersion {
                                         Text(latest)
                                             .font(.caption.monospacedDigit())
-                                            .foregroundStyle(Color.orange)
+                                            .foregroundStyle(HelmTheme.stateAttention)
                                     } else {
                                         Text(result.version)
                                             .font(.caption.monospacedDigit())
@@ -85,7 +89,11 @@ struct PopoverSearchOverlayContent: View {
                                 .padding(.vertical, 8)
                                 .background(
                                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .fill(Color.primary.opacity(0.05))
+                                        .fill(HelmTheme.surfaceElevated)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                                .strokeBorder(HelmTheme.borderSubtle.opacity(0.9), lineWidth: 0.8)
+                                        )
                                 )
                                 .contentShape(Rectangle())
                             }
@@ -189,6 +197,8 @@ struct PopoverSettingsOverlayContent: View {
 
 struct PopoverAboutOverlayContent: View {
     @ObservedObject private var core = HelmCore.shared
+    @ObservedObject private var appUpdate = AppUpdateCoordinator.shared
+    @State private var showSupportOptionsModal = false
     let onClose: () -> Void
 
     var body: some View {
@@ -221,12 +231,41 @@ struct PopoverAboutOverlayContent: View {
             .foregroundStyle(.secondary)
 
             HStack {
+                if appUpdate.canCheckForUpdates {
+                    Button(L10n.App.Overlay.About.checkForUpdates.localized) {
+                        appUpdate.checkForUpdates()
+                    }
+                    .buttonStyle(HelmSecondaryButtonStyle())
+                    .disabled(appUpdate.isCheckingForUpdates)
+                    .helmPointer(enabled: !appUpdate.isCheckingForUpdates)
+                } else if let unavailableKey = appUpdate.unavailableReasonLocalizationKey {
+                    Text(unavailableKey.localized)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Button(L10n.App.Settings.SupportFeedback.supportHelm.localized) {
+                    showSupportOptionsModal = true
+                }
+                .buttonStyle(HelmSecondaryButtonStyle())
+                .helmPointer()
+
                 Spacer()
                 Button(L10n.Common.ok.localized) {
                     onClose()
                 }
                 .buttonStyle(HelmPrimaryButtonStyle())
                 .helmPointer()
+            }
+        }
+        .sheet(isPresented: $showSupportOptionsModal) {
+            SupportHelmOptionsModalView { channel in
+                guard let url = channel.url else { return }
+                HelmSupport.openURL(url)
+                showSupportOptionsModal = false
+            } onClose: {
+                showSupportOptionsModal = false
             }
         }
     }

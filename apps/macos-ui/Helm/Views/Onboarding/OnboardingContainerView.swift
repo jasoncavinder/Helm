@@ -18,7 +18,7 @@ struct OnboardingContainerView: View {
             HStack(spacing: 8) {
                 ForEach(OnboardingStep.allCases, id: \.rawValue) { step in
                     Circle()
-                        .fill(step == currentStep ? Color.accentColor : Color.gray.opacity(0.3))
+                        .fill(step == currentStep ? HelmTheme.actionPrimaryDefault : HelmTheme.borderSubtle.opacity(0.8))
                         .frame(width: 8, height: 8)
                 }
             }

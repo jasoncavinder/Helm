@@ -8,11 +8,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var eventMonitor: EventMonitor?
     private var controlCenterWindowController: NSWindowController?
     private var statusMenu: NSMenu?
+    private var checkForUpdatesMenuItem: NSMenuItem?
     private var upgradeAllMenuItem: NSMenuItem?
     private var refreshMenuItem: NSMenuItem?
     private var cancellables: Set<AnyCancellable> = []
 
     private let core = HelmCore.shared
+    private let appUpdate = AppUpdateCoordinator.shared
     private let controlCenterContext = ControlCenterContext()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -127,6 +129,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.updateStatusItemAppearance()
                 self?.updateStatusMenuState()
                 self?.resizePopoverIfVisible()
+            }
+            .store(in: &cancellables)
+
+        appUpdate.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.updateStatusMenuState()
             }
             .store(in: &cancellables)
     }
@@ -306,6 +315,9 @@ private extension AppDelegate {
 
     func configureStatusMenu() {
         let menu = NSMenu()
+        // We drive enablement explicitly from app/core state.
+        // Cocoa auto-validation can otherwise re-enable items with actions.
+        menu.autoenablesItems = false
 
         let aboutItem = NSMenuItem(
             title: "app.overlay.about.title".localized,
@@ -314,6 +326,15 @@ private extension AppDelegate {
         )
         aboutItem.target = self
         menu.addItem(aboutItem)
+
+        let checkForUpdatesItem = NSMenuItem(
+            title: L10n.App.Overlay.About.checkForUpdates.localized,
+            action: #selector(checkForUpdatesFromMenu),
+            keyEquivalent: ""
+        )
+        checkForUpdatesItem.target = self
+        menu.addItem(checkForUpdatesItem)
+        checkForUpdatesMenuItem = checkForUpdatesItem
 
         let controlCenterItem = NSMenuItem(
             title: L10n.App.Action.openControlCenter.localized,
@@ -390,26 +411,24 @@ private extension AppDelegate {
             keyEquivalent: ""
         )
         let submenu = NSMenu()
-        let gitHubSponsorsItem = NSMenuItem(
-            title: L10n.App.Settings.SupportFeedback.gitHubSponsors.localized,
-            action: #selector(openGitHubSponsorsFromMenu),
-            keyEquivalent: ""
-        )
-        gitHubSponsorsItem.target = self
-        submenu.addItem(gitHubSponsorsItem)
-
-        let patreonItem = NSMenuItem(
-            title: L10n.App.Settings.SupportFeedback.patreon.localized,
-            action: #selector(openPatreonFromMenu),
-            keyEquivalent: ""
-        )
-        patreonItem.target = self
-        submenu.addItem(patreonItem)
+        for channel in SupportHelmChannel.allCases {
+            let supportItem = NSMenuItem(
+                title: channel.title,
+                action: #selector(openSupportChannelFromMenu(_:)),
+                keyEquivalent: ""
+            )
+            supportItem.target = self
+            supportItem.representedObject = channel.url
+            supportItem.isEnabled = channel.url != nil
+            submenu.addItem(supportItem)
+        }
         item.submenu = submenu
         return item
     }
 
     func updateStatusMenuState() {
+        checkForUpdatesMenuItem?.isEnabled = appUpdate.canCheckForUpdates && !appUpdate.isCheckingForUpdates
+        checkForUpdatesMenuItem?.toolTip = appUpdate.unavailableReasonLocalizationKey?.localized
         upgradeAllMenuItem?.isEnabled = !core.outdatedPackages.isEmpty
         refreshMenuItem?.isEnabled = !core.isRefreshing
     }
@@ -427,6 +446,10 @@ private extension AppDelegate {
 
     @objc func openAboutFromMenu() {
         openPopoverOverlay(.about)
+    }
+
+    @objc func checkForUpdatesFromMenu() {
+        appUpdate.checkForUpdates()
     }
 
     @objc func openControlCenterFromMenu() {
@@ -457,12 +480,9 @@ private extension AppDelegate {
         NSApplication.shared.terminate(nil)
     }
 
-    @objc func openGitHubSponsorsFromMenu() {
-        HelmSupport.openURL(HelmSupport.gitHubSponsorsURL)
-    }
-
-    @objc func openPatreonFromMenu() {
-        HelmSupport.openURL(HelmSupport.patreonURL)
+    @objc func openSupportChannelFromMenu(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        HelmSupport.openURL(url)
     }
 
     @objc func handleSystemAppearanceChanged() {

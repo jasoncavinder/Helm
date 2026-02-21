@@ -2,7 +2,38 @@
 
 This checklist is required before creating a release tag on `main`.
 
-## v0.15.0 (In Progress)
+## v0.16.0 (In Progress)
+
+### Sparkle Feed and Distribution Safety
+- [x] `HELM_SPARKLE_FEED_URL`, `HELM_SPARKLE_PUBLIC_ED_KEY`, and `HELM_SPARKLE_PRIVATE_ED_KEY` secrets are present for release workflow.
+- [x] `HELM_SPARKLE_FEED_URL` is set to the canonical feed URL: `https://helmapp.dev/updates/appcast.xml`.
+- [x] Sparkle feed endpoint is published at `web/public/updates/appcast.xml` (or `HELM_SPARKLE_FEED_URL` points to the hosted equivalent).
+- [x] Release workflow generates and uploads `appcast.xml` alongside DMG artifacts.
+- [x] Release workflow publishes generated `appcast.xml` into `web/public/updates/appcast.xml` on `main` (or auto-opens fallback PR if direct push is blocked).
+- [x] Runtime self-update is blocked for package-manager-managed installs (Homebrew Cask receipt detection + Homebrew/MacPorts path heuristics) and enabled for eligible direct-channel DMG installs.
+- [x] Generated `CURRENT_PROJECT_VERSION` is monotonic for Sparkle version ordering (semver-derived numeric build number).
+- [x] Sparkle package reference remains pinned to `2.8.1` in `apps/macos-ui/Helm.xcodeproj/project.pbxproj` for macOS 11+/12 compatibility.
+- [x] Appcast policy validation passes in release workflow (`apps/macos-ui/scripts/verify_sparkle_appcast_policy.sh`), ensuring full-installer-only feed output (no deltas).
+- [x] Delta update policy (`full installer only` for `0.16.x`) is documented in `docs/DECISIONS.md` and reflected in release automation.
+
+### Installer/Updater Recovery Validation
+- [x] Execute interruption/recovery validation runbook: `docs/validation/v0.16.0-rc.9-installer-recovery.md`.
+- [x] Confirm workflow rerun behavior for same tag remains idempotent (artifact clobber + deterministic appcast publish target).
+- [ ] Confirm protected-branch recovery path by validating fallback appcast PR flow if direct `main` push is rejected.
+
+### Sparkle Key Bootstrap (One-Time)
+1. Locate Sparkle key tooling from Xcode DerivedData artifacts:
+   `find "$HOME/Library/Developer/Xcode/DerivedData" -path '*/SourcePackages/artifacts/sparkle/bin/generate_keys' -print -quit`
+2. Generate or reuse keys:
+   `.../generate_keys`
+3. Export private key from Keychain to base64 (single line) and store as `HELM_SPARKLE_PRIVATE_ED_KEY`.
+4. Print public key with `.../generate_keys -p` and store as `HELM_SPARKLE_PUBLIC_ED_KEY`.
+5. Add/update repository secrets:
+   `gh secret set HELM_SPARKLE_PRIVATE_ED_KEY`
+   `gh secret set HELM_SPARKLE_PUBLIC_ED_KEY`
+   `gh secret set HELM_SPARKLE_FEED_URL`
+
+## v0.15.0 (Completed)
 
 ### Scope and Documentation
 - [x] `CHANGELOG.md` `[Unreleased]` notes track final `v0.15.0` delivery and stabilization changes.
@@ -17,15 +48,15 @@ This checklist is required before creating a release tag on `main`.
 ### Versioning
 - [x] Workspace version bumped to `0.15.0` in `core/rust/Cargo.toml`.
 - [x] Rust lockfile package versions aligned to `0.15.0` in `core/rust/Cargo.lock`.
-- [ ] Generated app version artifacts aligned to `0.15.0` by build flow (build-generated, not tracked in git).
+- [x] Generated app version artifacts aligned to `0.15.0` by build flow (build-generated, not tracked in git).
 
 ### Branch and Tag
-- [ ] Open PR with final prep deltas into `dev` (for verified commit provenance).
-- [ ] Merge prep PR into `dev`.
-- [ ] Open PR from `dev` to `main` for `v0.15.0` and complete CI checks.
-- [ ] Merge `dev` into `main` for release.
-- [ ] Create annotated tag from `main`: `git tag -a v0.15.0 -m "Helm v0.15.0"`.
-- [ ] Push tag: `git push origin v0.15.0`.
+- [x] Open PR with final prep deltas into `dev` (for verified commit provenance).
+- [x] Merge prep PR into `dev`.
+- [x] Open PR from `dev` to `main` for `v0.15.0` and complete CI checks.
+- [x] Merge `dev` into `main` for release.
+- [x] Create annotated tag from `main`: `git tag -a v0.15.0 -m "Helm v0.15.0"`.
+- [x] Push tag: `git push origin v0.15.0`.
 
 ## v0.14.1 (Completed)
 

@@ -9,6 +9,7 @@ export default defineConfig({
 		starlight({
 			title: 'Helm',
 			tagline: 'Take the helm.',
+			customCss: ['./src/styles/helm-theme.css'],
 			logo: {
 				src: './src/assets/helm-icon.png',
 			},

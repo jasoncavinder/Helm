@@ -6,13 +6,49 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-02-21
+
 ### Added
+- App update channel scaffolding in macOS UI:
+  - `HelmDistributionChannel` + `HelmUpdateAuthority` runtime model
+  - `AppUpdateCoordinator` with channel-gated manual update checks
+  - optional Sparkle bridge guarded by `#if canImport(Sparkle)`
+- Sparkle Swift Package Manager dependency linked into the Helm app target for direct-channel runtime update checks.
+- Regression tests for app-update config parsing and Sparkle channel gating (`AppUpdateConfigurationTests`).
+- Channel profile build templates for distribution/update authority separation:
+  - `apps/macos-ui/Config/channels/developer_id.xcconfig`
+  - `apps/macos-ui/Config/channels/app_store.xcconfig`
+  - `apps/macos-ui/Config/channels/setapp.xcconfig`
+  - `apps/macos-ui/Config/channels/fleet.xcconfig`
+- Manual `Check for Updates` entry points in both the menu-bar status menu and About popover overlay.
+- New localized UI key `app.overlay.about.check_updates` across all supported locales (canonical + mirrored locale trees).
 - Upgrade-plan preview model surfaced end-to-end (FFI → XPC → SwiftUI) with stable step IDs, order indices, manager/action/authority context, and localized reason metadata.
 - Updates inspector plan-step details with projected runtime status and linked runtime task IDs.
 - Scoped Updates controls for manager/package filtering and failed-step retry targeting.
 - Failed-task inspector now provides a dedicated task-output sheet with `stderr`/`stdout` tabs backed by on-demand FFI/XPC task-output retrieval.
+- Sparkle appcast generation script added (`apps/macos-ui/scripts/generate_sparkle_appcast.sh`) for signing a finalized DMG and emitting `appcast.xml`.
+- Website Sparkle feed path scaffolded at `web/public/updates/appcast.xml`.
 
 ### Changed
+- Added default app update-channel metadata to `Info.plist`:
+  - `HelmDistributionChannel=developer_id`
+  - `HelmSparkleEnabled=false`
+- Build script now emits generated channel settings (`apps/macos-ui/Generated/HelmChannel.xcconfig`) from `HELM_CHANNEL_PROFILE` with optional CI overrides.
+- Helm target Info.plist channel/feed/signature keys now come from build settings (`HelmDistributionChannel`, `HelmSparkleEnabled`, `SUFeedURL`, `SUPublicEDKey`) instead of hardcoded plist entries.
+- App update channel/config parsing model was extracted to `Helm/Core/AppUpdateConfiguration.swift` so runtime and tests share the same source of truth.
+- Release DMG workflow now validates Sparkle feed/signature secrets and injects Developer ID channel Sparkle metadata during signed release builds.
+- Build-time channel policy validation now fails fast in `build_rust.sh` when Sparkle metadata/settings violate channel boundaries (non-Developer-ID channels cannot enable Sparkle; Developer ID + Sparkle requires feed URL + public key).
+- Build/runtime Sparkle enablement gates now require an `https://` Sparkle feed URL for Developer ID channel update checks.
+- Sparkle downgrade policy is now explicitly disabled via build metadata (`SUAllowsDowngrades=NO`) and enforced in both runtime updater gating and release artifact verification.
+- Runtime Sparkle gating now requires an eligible install location (not DMG-mounted under `/Volumes/...` and not App Translocation) before enabling in-app update checks.
+- Runtime Sparkle gating now also disables in-app updates for package-manager-managed installs (Homebrew Cask receipts and Homebrew/MacPorts path heuristics), with a dedicated localized reason.
+- About overlay and status-menu update controls now show localized reasons when update checks are unavailable due to channel/config/install-location policy.
+- Channel config rendering/policy enforcement now runs through a shared script (`apps/macos-ui/scripts/render_channel_xcconfig.sh`) reused by build generation and test validation flows.
+- CI now runs a channel-policy matrix check (`apps/macos-ui/scripts/check_channel_policy.sh`) before Xcode build/test.
+- Release DMG verification now enforces packaged updater invariants (`HelmDistributionChannel`, `HelmSparkleEnabled`, `SUFeedURL`, `SUPublicEDKey`) and validates Sparkle framework bundling/linkage.
+- Release DMG workflow now validates final packaged DMG contents (app bundle presence, `/Applications` symlink, background asset, updater invariants, and codesign integrity) via `apps/macos-ui/scripts/verify_release_dmg.sh`.
+- Release DMG workflow now generates a signed Sparkle `appcast.xml` from the finalized stapled DMG and uploads it to release assets.
+- Build metadata generation now derives a monotonic numeric `CURRENT_PROJECT_VERSION` from semantic versions to keep Sparkle version ordering stable across prerelease/stable builds.
 - Runtime upgrade task labels now include `plan_step_id` metadata so task rows can be projected onto execution-plan rows.
 - Partial-failure summaries now group failed plan steps by manager and affected package set.
 - Scoped plan execution now runs phase-by-phase by authority rank (authoritative → standard → guarded) instead of submitting all manager steps concurrently.
@@ -29,8 +65,106 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Support diagnostics manager listing is now stable (authority order, then alphabetical) to prevent row reordering churn.
 - Process-executed adapter tasks now carry task ID context through execution so stdout/stderr can be captured and mapped back to task IDs for diagnostics.
 - Removed the redundant `Dry Run` button from Updates now that equivalent plan visibility is always present inline.
-- Release-prep metadata now targets `0.15.0` across workspace versioning and status documentation (README/website/release checklist).
+- Release-prep metadata now targets `0.16.0` across workspace versioning and status documentation (README/website/release checklist).
 - Generated `apps/macos-ui/Generated/HelmVersion.xcconfig` is now ignored and no longer tracked.
+
+## [0.16.0-rc.9] - 2026-02-21
+
+### Changed
+- Status-menu `Support Helm` submenu now includes all six support destinations (GitHub Sponsors, Patreon, Buy Me a Coffee, Ko-fi, PayPal, Venmo), matching the Settings support picker.
+- About overlay now includes a `Support Helm` button that opens the same multi-channel support picker.
+- Status-menu update-item enablement now honors app-managed availability state by disabling Cocoa auto-validation (`menu.autoenablesItems = false`), keeping `Check for Updates` correctly disabled for ineligible installs.
+- Release workflow appcast fallback no longer fails the full release job when Actions token permissions block `gh pr create`; it now logs manual compare URL instructions after pushing the fallback branch.
+- Installer/update interruption runbook version advanced to:
+  - `docs/validation/v0.16.0-rc.9-installer-recovery.md`
+- Workspace package versioning bumped to `0.16.0-rc.9` (`core/rust/Cargo.toml`, `core/rust/Cargo.lock` for local crates).
+
+## [0.16.0-rc.8] - 2026-02-20
+
+### Changed
+- Appcast publication logic in `release-macos-dmg.yml` now checks `git status --porcelain -- web/public/updates/appcast.xml` instead of `git diff --quiet` so untracked feed files are published on first write.
+- Installer/update interruption runbook version advanced to:
+  - `docs/validation/v0.16.0-rc.8-installer-recovery.md`
+- Workspace package versioning bumped to `0.16.0-rc.8` (`core/rust/Cargo.toml`, `core/rust/Cargo.lock` for local crates).
+
+
+## [0.16.0-rc.7] - 2026-02-20
+
+### Changed
+- Sparkle appcast generation now downloads Sparkle's official SPM artifact ZIP (`Sparkle-for-Swift-Package-Manager.zip`) and extracts `bin/sign_update` when no local DerivedData artifact path can be found.
+- Release workflow appcast generation step reverted to default script discovery behavior (no forced Sparkle path arguments), letting script-level fallback logic handle runner differences.
+- Installer/update interruption runbook version advanced to:
+  - `docs/validation/v0.16.0-rc.7-installer-recovery.md`
+- Workspace package versioning bumped to `0.16.0-rc.7` (`core/rust/Cargo.toml`, `core/rust/Cargo.lock` for local crates).
+
+## [0.16.0-rc.6] - 2026-02-20
+
+### Changed
+- Sparkle appcast generation now falls back to `swift run --package-path <Sparkle checkout> sign_update` when no prebuilt `sign_update` binary is available from DerivedData artifacts.
+- Release workflow now passes Sparkle checkout path (`build/DerivedData/SourcePackages/checkouts/Sparkle`) to appcast generation so fallback signing can run deterministically in CI.
+- Installer/update interruption runbook version advanced to:
+  - `docs/validation/v0.16.0-rc.6-installer-recovery.md`
+- Workspace package versioning bumped to `0.16.0-rc.6` (`core/rust/Cargo.toml`, `core/rust/Cargo.lock` for local crates).
+
+## [0.16.0-rc.5] - 2026-02-20
+
+### Changed
+- Release DMG workflow no longer passes a fixed Sparkle bin directory to appcast generation; it now relies on script-side auto-discovery for `sign_update` across available DerivedData locations.
+- Installer/update interruption runbook version advanced to:
+  - `docs/validation/v0.16.0-rc.5-installer-recovery.md`
+- Workspace package versioning bumped to `0.16.0-rc.5` (`core/rust/Cargo.toml`, `core/rust/Cargo.lock` for local crates).
+
+## [0.16.0-rc.4] - 2026-02-20
+
+### Changed
+- Release DMG workflow now re-signs Sparkle nested code (`Autoupdate`, `Updater.app`, `Downloader.xpc`, `Installer.xpc`, and `Sparkle.framework`) using the active Developer ID identity with secure timestamps before notarization.
+- Release DMG workflow now verifies Sparkle helper signatures include Developer ID authority and timestamps prior to artifact verification/notarization.
+- Installer/update interruption runbook version advanced to:
+  - `docs/validation/v0.16.0-rc.4-installer-recovery.md`
+- Workspace package versioning bumped to `0.16.0-rc.4` (`core/rust/Cargo.toml`, `core/rust/Cargo.lock` for local crates).
+
+## [0.16.0-rc.3] - 2026-02-20
+
+### Changed
+- Release DMG workflow now pre-renders release channel config before build and passes explicit `HELM_*` Sparkle/channel build settings to `xcodebuild` so packaged `Info.plist` metadata is correct in the same invocation.
+- Release DMG workflow now logs the generated `apps/macos-ui/Generated/HelmChannel.xcconfig` in CI for easier troubleshooting of release metadata overrides.
+- Installer/update interruption runbook version advanced to:
+  - `docs/validation/v0.16.0-rc.3-installer-recovery.md`
+- Workspace package versioning bumped to `0.16.0-rc.3` (`core/rust/Cargo.toml`, `core/rust/Cargo.lock` for local crates).
+
+## [0.16.0-rc.2] - 2026-02-20
+
+### Added
+- Sparkle appcast policy validator script (`apps/macos-ui/scripts/verify_sparkle_appcast_policy.sh`) that enforces direct-channel RC policy:
+  - no delta update payloads
+  - exactly one full-installer `<enclosure>` payload
+  - required Sparkle signature/version metadata
+  - HTTPS download URL targeting DMG payloads
+- Release workflow now runs appcast policy validation immediately after appcast generation.
+- Installer/update interruption and recovery validation runbook added:
+  - `docs/validation/v0.16.0-rc.2-installer-recovery.md`
+
+### Changed
+- Workspace package versioning bumped to `0.16.0-rc.2` (`core/rust/Cargo.toml`, `core/rust/Cargo.lock` for local crates).
+- Sparkle release automation now publishes appcast feed updates to `web/public/updates/appcast.xml` with a PR fallback path when direct pushes to `main` are blocked.
+- Helm app Info.plist now includes explicit updater metadata placeholders so packaged-release verification can assert channel/Sparkle keys in artifacts.
+
+## [0.15.0] - 2026-02-20
+
+### Added
+- Upgrade plan preview model surfaced end-to-end (FFI → XPC → SwiftUI), with stable step IDs and ordered manager/action context.
+- Scoped execution controls for Updates (manager/package filters, failed-step retry, cancel remaining).
+- Task-output diagnostics surfaced in Inspector via on-demand stdout/stderr retrieval.
+
+### Changed
+- Scoped upgrade execution now runs phase-by-phase by authority order (authoritative → standard → guarded) with stricter stale-callback and timeout handling.
+- Updates/Inspector UX refinements:
+  - scrollable updates content for long plans/failure sets
+  - full-row plan selection hit targets with stable display ordering
+  - in-progress feedback for active scoped runs
+  - failure banner now routes to review-first flow
+  - consolidated diagnostics modal tabs and command visibility in task inspector
+- Removed redundant `Dry Run` control in Updates in favor of always-visible inline plan context.
 
 ## [0.14.1] - 2026-02-20
 

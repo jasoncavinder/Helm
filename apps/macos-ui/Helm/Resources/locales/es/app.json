@@ -234,6 +234,7 @@
   "app.overlay.about.subtitle": "Control unificado de paquetes para macOS",
   "app.overlay.about.version": "Versión {version}",
   "app.overlay.about.summary": "{managers} gestores activos, {updates} actualizaciones pendientes",
+  "app.overlay.about.check_updates": "Buscar actualizaciones",
   "app.overlay.quit.title": "Salir de Helm",
   "app.overlay.quit.message": "¿Salir ahora? {tasks} tareas en ejecución podrían interrumpirse.",
   "app.control_center.subtitle": "Visibilidad operativa y control de paquetes",
@@ -288,6 +289,10 @@
   "app.settings.support_feedback.diagnostics_copied_hint": "Diagnósticos copiados al portapapeles",
   "app.settings.support_feedback.github_sponsors": "GitHub Sponsors",
   "app.settings.support_feedback.patreon": "Patreon",
+  "app.settings.support_feedback.buy_me_a_coffee": "Buy Me a Coffee",
+  "app.settings.support_feedback.ko_fi": "Ko-fi",
+  "app.settings.support_feedback.paypal": "PayPal",
+  "app.settings.support_feedback.venmo": "Venmo",
   "app.inspector.description_loading": "Cargando descripción...",
   "app.inspector.description_unavailable": "Descripción no disponible.",
   "app.inspector.task_failure_feedback": "Detalles del fallo",
@@ -304,5 +309,11 @@
   "app.inspector.view_diagnostics": "Ver diagnósticos",
   "app.inspector.task_diagnostics": "Diagnósticos",
   "app.inspector.task_diagnostics_unavailable": "Los diagnósticos no están disponibles.",
-  "app.inspector.task_output.diagnostics": "diagnósticos"
+  "app.inspector.task_output.diagnostics": "diagnósticos",
+  "app.overlay.about.update_unavailable.channel_managed": "Las actualizaciones las gestiona este canal de distribución.",
+  "app.overlay.about.update_unavailable.install_location": "Mueve Helm a Aplicaciones para habilitar actualizaciones en la app.",
+  "app.overlay.about.update_unavailable.build_config": "Las actualizaciones en la app no están disponibles para este build.",
+  "app.overlay.about.update_unavailable.sparkle_missing": "Los componentes de Sparkle no están disponibles en este build.",
+  "app.overlay.about.update_unavailable.runtime_unavailable": "La comprobación de actualizaciones no está disponible.",
+  "app.overlay.about.update_unavailable.package_manager_managed": "Esta instalación está gestionada por un administrador de paquetes. Usa ese administrador para actualizar Helm."
 }

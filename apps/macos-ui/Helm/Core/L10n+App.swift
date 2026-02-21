@@ -240,18 +240,12 @@ extension L10n {
                 static let includeDiagnostics = "app.settings.support_feedback.include_diagnostics"
                 static let copiedConfirmation = "app.settings.support_feedback.copied_confirmation"
                 static let diagnosticsCopiedHint = "app.settings.support_feedback.diagnostics_copied_hint"
-            static let gitHubSponsors = "app.settings.support_feedback.github_sponsors"
-            static let patreon = "app.settings.support_feedback.patreon"
-            }
-        }
-
-        struct Tasks {
-            static let noRecentTasks = "app.tasks.no_recent_tasks"
-            static let fallbackDescription = "app.tasks.fallback.description"
-            static let cancelUnavailable = "app.tasks.help.cancel_unavailable"
-
-            struct Action {
-                static let cancel = "app.tasks.action.cancel"
+                static let gitHubSponsors = "app.settings.support_feedback.github_sponsors"
+                static let patreon = "app.settings.support_feedback.patreon"
+                static let buyMeACoffee = "app.settings.support_feedback.buy_me_a_coffee"
+                static let koFi = "app.settings.support_feedback.ko_fi"
+                static let payPal = "app.settings.support_feedback.paypal"
+                static let venmo = "app.settings.support_feedback.venmo"
             }
         }
 
@@ -386,6 +380,7 @@ extension L10n {
                 static let subtitle = "app.overlay.about.subtitle"
                 static let version = "app.overlay.about.version"
                 static let summary = "app.overlay.about.summary"
+                static let checkForUpdates = "app.overlay.about.check_updates"
             }
             struct Quit {
                 static let title = "app.overlay.quit.title"
@@ -411,6 +406,29 @@ extension L10n {
             static let upgrade = "app.capability.upgrade"
             static let pin = "app.capability.pin"
         }
+    }
+}
+
+extension L10n.App {
+    struct Tasks {
+        static let noRecentTasks = "app.tasks.no_recent_tasks"
+        static let fallbackDescription = "app.tasks.fallback.description"
+        static let cancelUnavailable = "app.tasks.help.cancel_unavailable"
+
+        struct Action {
+            static let cancel = "app.tasks.action.cancel"
+        }
+    }
+}
+
+extension L10n.App.Overlay.About {
+    struct UpdateUnavailable {
+        static let channelManaged = "app.overlay.about.update_unavailable.channel_managed"
+        static let installLocation = "app.overlay.about.update_unavailable.install_location"
+        static let packageManagerManaged = "app.overlay.about.update_unavailable.package_manager_managed"
+        static let buildConfig = "app.overlay.about.update_unavailable.build_config"
+        static let sparkleMissing = "app.overlay.about.update_unavailable.sparkle_missing"
+        static let runtimeUnavailable = "app.overlay.about.update_unavailable.runtime_unavailable"
     }
 }
 

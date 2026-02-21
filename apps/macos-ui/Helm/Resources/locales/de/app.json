@@ -234,6 +234,7 @@
   "app.overlay.about.subtitle": "Einheitliche Paketverwaltung für macOS",
   "app.overlay.about.version": "Version {version}",
   "app.overlay.about.summary": "{managers} Manager aktiv, {updates} Updates ausstehend",
+  "app.overlay.about.check_updates": "Nach Updates suchen",
   "app.overlay.quit.title": "Helm beenden",
   "app.overlay.quit.message": "Jetzt beenden? {tasks} laufende Aufgaben könnten unterbrochen werden.",
   "app.control_center.subtitle": "Betriebsübersicht und Paketsteuerung",
@@ -288,6 +289,10 @@
   "app.settings.support_feedback.diagnostics_copied_hint": "Diagnose in die Zwischenablage kopiert",
   "app.settings.support_feedback.github_sponsors": "GitHub Sponsors",
   "app.settings.support_feedback.patreon": "Patreon",
+  "app.settings.support_feedback.buy_me_a_coffee": "Buy Me a Coffee",
+  "app.settings.support_feedback.ko_fi": "Ko-fi",
+  "app.settings.support_feedback.paypal": "PayPal",
+  "app.settings.support_feedback.venmo": "Venmo",
   "app.inspector.description_loading": "Beschreibung wird geladen...",
   "app.inspector.description_unavailable": "Beschreibung nicht verfügbar.",
   "app.inspector.task_failure_feedback": "Fehlerdetails",
@@ -304,5 +309,11 @@
   "app.inspector.view_diagnostics": "Diagnose anzeigen",
   "app.inspector.task_diagnostics": "Diagnose",
   "app.inspector.task_diagnostics_unavailable": "Diagnose ist nicht verfügbar.",
-  "app.inspector.task_output.diagnostics": "diagnose"
+  "app.inspector.task_output.diagnostics": "diagnose",
+  "app.overlay.about.update_unavailable.channel_managed": "Updates werden von diesem Distributionskanal verwaltet.",
+  "app.overlay.about.update_unavailable.install_location": "Verschiebe Helm nach „Programme“, um In-App-Updates zu aktivieren.",
+  "app.overlay.about.update_unavailable.build_config": "In-App-Updates sind für diese Build-Konfiguration nicht verfügbar.",
+  "app.overlay.about.update_unavailable.sparkle_missing": "Sparkle-Updater-Komponenten sind in diesem Build nicht verfügbar.",
+  "app.overlay.about.update_unavailable.runtime_unavailable": "Update-Prüfungen sind vorübergehend nicht verfügbar.",
+  "app.overlay.about.update_unavailable.package_manager_managed": "Diese Installation wird von einem Paketmanager verwaltet. Aktualisiere Helm über diesen Paketmanager."
 }
