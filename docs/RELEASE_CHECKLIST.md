@@ -2,6 +2,20 @@
 
 This checklist is required before creating a release tag on `main`.
 
+## v0.16.1 (Documentation-Only)
+
+### Scope and Documentation
+- [x] `README.md` updated for `macOS 11+ (Big Sur)` minimum and staged security rollout summary.
+- [x] `docs/ROADMAP.md` and website roadmap updated for milestone restructuring (`0.18.x` groundwork, `0.19.x` hardening, `1.4.x` Shared Brain insertion, `1.4.x+` forward shift).
+- [x] `docs/ARCHITECTURE.md` includes staged security model and explicit Security Advisory vs Shared Brain separation.
+- [x] `docs/DECISIONS.md` includes ADR for platform baseline + milestone restructure + system separation.
+- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect `v0.16.1` docs/planning state and revised milestone sequence.
+- [x] `CHANGELOG.md` and website changelog include `0.16.1` documentation-only release notes.
+
+### Validation
+- [x] Documentation consistency sweep confirms no pre-`1.4.x` placement of Shared Brain infrastructure.
+- [x] Documentation consistency sweep confirms no centralized-backend dependency claims for `1.3.x` Security Advisory System.
+
 ## v0.16.0 (In Progress)
 
 ### Sparkle Feed and Distribution Safety

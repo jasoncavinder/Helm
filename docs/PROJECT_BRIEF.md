@@ -157,6 +157,8 @@ System integrity and tooling:
 ## **Platform & UX Choices**
 
 - Menu bar macOS utility (`LSUIElement`, no Dock icon).
+- Minimum platform baseline: **macOS 11+ (Big Sur)**.
+  - Rationale: aligns with planned modern security primitives for future App Attest usage in post-1.0 Shared Brain features.
 - SwiftUI frontend for native look & feel.
 - Floating panel UI from the menu bar icon.
 - Background execution for long-running tasks.
@@ -383,7 +385,7 @@ This scope is planned for 1.x and is not a 1.0 release gate.
 5. `0.9.x` internationalization foundation (completed): centralized locale loading, key-based UI string accessors, locale preference persistence.
 6. `0.10.x` core language manager delivery (completed): npm/pipx/pip/cargo/cargo-binstall end-to-end plus hardening baseline.
 7. `0.11.x-0.12.x` language + localization expansion (completed): extended language adapters (pnpm/yarn/poetry/rubygems/bundler), non-English locale hardening, upgrade preview, dry-run.
-8. `0.13.x-0.18.x` UX/platform, reliability & hardening (in progress — 0.13.x at rc.1): UI/UX analysis and redesign, platform managers (docker/xcode), self-update, diagnostics, stress testing.
+8. `0.13.x-0.19.x` UX/platform, reliability & hardening (in progress): UI/UX analysis and redesign, platform managers (docker/xcode), self-update, diagnostics, security groundwork staging (`0.18.x`), and stress/hardening (`0.19.x`).
 9. `1.0.0` stabilization: release criteria closure, documentation lock, and production readiness sign-off.
 
 ---
