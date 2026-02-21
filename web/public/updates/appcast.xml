@@ -6,16 +6,16 @@
     <description>Helm direct-channel updates</description>
     <language>en</language>
     <item>
-      <title>Helm 0.17.0-rc.2</title>
-      <pubDate>Sat, 21 Feb 2026 18:42:17 +0000</pubDate>
-      <sparkle:releaseNotesLink>https://github.com/jasoncavinder/Helm/releases/tag/v0.17.0-rc.2</sparkle:releaseNotesLink>
+      <title>Helm 0.17.0-rc.3</title>
+      <pubDate>Sat, 21 Feb 2026 20:41:18 +0000</pubDate>
+      <sparkle:releaseNotesLink>https://github.com/jasoncavinder/Helm/releases/tag/v0.17.0-rc.3</sparkle:releaseNotesLink>
       <enclosure
-        url="https://github.com/jasoncavinder/Helm/releases/download/v0.17.0-rc.2/Helm-v0.17.0-rc.2-macos-universal.dmg"
-        sparkle:version="17000602"
-        sparkle:shortVersionString="0.17.0-rc.2"
-        sparkle:edSignature="wYkdqgozQ9f4sUfL4ID5XpWdDKK/uY7kryubL+kYihPgwZbsTbF6iFzmSrAeoMjPIAzgLzsF8PznFbq7ZYb3Ag=="
+        url="https://github.com/jasoncavinder/Helm/releases/download/v0.17.0-rc.3/Helm-v0.17.0-rc.3-macos-universal.dmg"
+        sparkle:version="17000603"
+        sparkle:shortVersionString="0.17.0-rc.3"
+        sparkle:edSignature="WvHmFvoH7OP6yoq3PQVZSItmjrv/zr+kj4ZUYWAZJDdYrsMhfty1bCj+FKEpHzxlFQTpJIJobnam7hBH/96OCQ=="
          sparkle:minimumSystemVersion="11.0"
-        length="12479038"
+        length="12665245"
         type="application/octet-stream"/>
     </item>
   </channel>
