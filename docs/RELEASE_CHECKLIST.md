@@ -91,10 +91,10 @@ This checklist is required before creating a release tag on `main`.
 - [x] Locale checks pass (`apps/macos-ui/scripts/check_locale_integrity.sh` and `apps/macos-ui/scripts/check_locale_lengths.sh`).
 
 ### Branch and Tag
-- [ ] Open release-prep PR into `dev` and complete CI checks.
-- [ ] Merge release-prep PR into `dev`.
-- [ ] Create annotated RC tag from `dev` lineage: `git tag -a v0.17.0-rc.3 -m "Helm v0.17.0-rc.3"`.
-- [ ] Push RC tag: `git push origin v0.17.0-rc.3`.
+- [x] Open release-prep PR into `dev` and complete CI checks.
+- [x] Merge release-prep PR into `dev`.
+- [x] Create annotated RC tag from `dev` lineage: `git tag -a v0.17.0-rc.3 -m "Helm v0.17.0-rc.3"`.
+- [x] Push RC tag: `git push origin v0.17.0-rc.3`.
 
 ## v0.16.2 (Sparkle Connectivity + macOS 11 Alignment)
 
