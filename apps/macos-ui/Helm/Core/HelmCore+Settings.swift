@@ -19,12 +19,25 @@ extension HelmCore {
     }
 
     func setSafeMode(_ enabled: Bool) {
-        service()?.setSafeMode(enabled: enabled) { [weak self] success in
+        guard let service = service() else {
+            recordLastError(
+                source: "core.settings",
+                action: "setSafeMode.service_unavailable",
+                taskType: "settings"
+            )
+            return
+        }
+        service.setSafeMode(enabled: enabled) { [weak self] success in
             DispatchQueue.main.async {
                 if success {
                     self?.safeModeEnabled = enabled
                 } else {
                     logger.error("setSafeMode(\(enabled)) failed")
+                    self?.recordLastError(
+                        source: "core.settings",
+                        action: "setSafeMode",
+                        taskType: "settings"
+                    )
                 }
             }
         }
@@ -41,12 +54,27 @@ extension HelmCore {
     }
 
     func setHomebrewKegAutoCleanup(_ enabled: Bool) {
-        service()?.setHomebrewKegAutoCleanup(enabled: enabled) { [weak self] success in
+        guard let service = service() else {
+            recordLastError(
+                source: "core.settings",
+                action: "setHomebrewKegAutoCleanup.service_unavailable",
+                managerId: "homebrew_formula",
+                taskType: "settings"
+            )
+            return
+        }
+        service.setHomebrewKegAutoCleanup(enabled: enabled) { [weak self] success in
             DispatchQueue.main.async {
                 if success {
                     self?.homebrewKegAutoCleanupEnabled = enabled
                 } else {
                     logger.error("setHomebrewKegAutoCleanup(\(enabled)) failed")
+                    self?.recordLastError(
+                        source: "core.settings",
+                        action: "setHomebrewKegAutoCleanup",
+                        managerId: "homebrew_formula",
+                        taskType: "settings"
+                    )
                 }
             }
         }
@@ -72,6 +100,12 @@ extension HelmCore {
                 }
             } catch {
                 logger.error("Failed to decode package keg policies: \(error)")
+                self?.recordLastError(
+                    source: "core.settings",
+                    action: "listPackageKegPolicies.decode",
+                    managerId: "homebrew_formula",
+                    taskType: "settings"
+                )
             }
         }
     }
@@ -102,11 +136,27 @@ extension HelmCore {
             policyMode = 1
         }
 
-        service()?.setPackageKegPolicy(managerId: package.managerId, packageName: package.name, policyMode: policyMode) { [weak self] success in
+        guard let service = service() else {
+            recordLastError(
+                source: "core.settings",
+                action: "setPackageKegPolicy.service_unavailable",
+                managerId: package.managerId,
+                taskType: "settings"
+            )
+            return
+        }
+
+        service.setPackageKegPolicy(managerId: package.managerId, packageName: package.name, policyMode: policyMode) { [weak self] success in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 guard success else {
                     logger.error("setPackageKegPolicy(\(package.managerId):\(package.name), \(policyMode)) failed")
+                    self.recordLastError(
+                        source: "core.settings",
+                        action: "setPackageKegPolicy",
+                        managerId: package.managerId,
+                        taskType: "settings"
+                    )
                     return
                 }
                 switch selection {
@@ -132,15 +182,36 @@ extension HelmCore {
             }
             self.rebuildUpgradePlanFailureGroups()
         }
-        service()?.upgradeAll(includePinned: includePinned, allowOsUpdates: allowOsUpdates) { success in
+        guard let service = service() else {
+            recordLastError(
+                source: "core.settings",
+                action: "upgradeAll.service_unavailable",
+                taskType: "upgrade"
+            )
+            return
+        }
+        service.upgradeAll(includePinned: includePinned, allowOsUpdates: allowOsUpdates) { success in
             if !success {
                 logger.error("upgradeAll(includePinned: \(includePinned), allowOsUpdates: \(allowOsUpdates)) failed")
+                self.recordLastError(
+                    source: "core.settings",
+                    action: "upgradeAll",
+                    taskType: "upgrade"
+                )
             }
         }
     }
 
     func refreshUpgradePlan(includePinned: Bool = false, allowOsUpdates: Bool = false) {
-        service()?.previewUpgradePlan(includePinned: includePinned, allowOsUpdates: allowOsUpdates) { [weak self] jsonString in
+        guard let service = service() else {
+            recordLastError(
+                source: "core.settings",
+                action: "previewUpgradePlan.service_unavailable",
+                taskType: "upgrade"
+            )
+            return
+        }
+        service.previewUpgradePlan(includePinned: includePinned, allowOsUpdates: allowOsUpdates) { [weak self] jsonString in
             guard let self = self else { return }
             guard let jsonString, let data = jsonString.data(using: .utf8) else { return }
 
@@ -158,6 +229,11 @@ extension HelmCore {
                 }
             } catch {
                 logger.error("refreshUpgradePlan: decode failed (\(data.count) bytes): \(error)")
+                self.recordLastError(
+                    source: "core.settings",
+                    action: "previewUpgradePlan.decode",
+                    taskType: "upgrade"
+                )
             }
         }
     }
@@ -593,6 +669,8 @@ struct HelmSupport {
         let generatedAt: String
         let app: SupportExportAppContext
         let system: SupportExportSystemContext
+        let lastError: String?
+        let lastErrorAttribution: SupportExportErrorAttribution?
         let managers: [SupportExportManagerContext]
         let tasks: [SupportExportTaskContext]
         let failures: [SupportExportFailureContext]
@@ -646,6 +724,14 @@ struct HelmSupport {
     private struct SupportExportRedactionContext: Codable {
         let appliedRules: [String]
         let replacementCount: Int
+    }
+
+    private struct SupportExportErrorAttribution: Codable {
+        let source: String
+        let action: String
+        let managerId: String?
+        let taskType: String?
+        let occurredAtUnix: Int64
     }
 
     private struct SupportRedactor {
@@ -848,6 +934,16 @@ struct HelmSupport {
                 macOSVersion: ProcessInfo.processInfo.operatingSystemVersionString,
                 architecture: machineArchitecture()
             ),
+            lastError: redactor.redactOptionalString(core.lastError),
+            lastErrorAttribution: core.lastErrorAttribution.map { attribution in
+                SupportExportErrorAttribution(
+                    source: attribution.source,
+                    action: attribution.action,
+                    managerId: attribution.managerId,
+                    taskType: attribution.taskType,
+                    occurredAtUnix: attribution.occurredAtUnix
+                )
+            },
             managers: managerSnapshots,
             tasks: taskSnapshots,
             failures: failureSnapshots,
@@ -931,6 +1027,19 @@ struct HelmSupport {
                 info += "\n"
             }
         }
+        if let lastError = core.lastError, !lastError.isEmpty {
+            info += "\nLast Error: \(lastError)\n"
+        }
+        if let attribution = core.lastErrorAttribution {
+            info += "Last Error Source: \(attribution.source)\n"
+            info += "Last Error Action: \(attribution.action)\n"
+            if let managerId = attribution.managerId, !managerId.isEmpty {
+                info += "Last Error Manager: \(managerId)\n"
+            }
+            if let taskType = attribution.taskType, !taskType.isEmpty {
+                info += "Last Error Task Type: \(taskType)\n"
+            }
+        }
         
         return info
     }
@@ -978,6 +1087,16 @@ struct HelmSupport {
         info += "Managers Missing: \(managerCounts.missing)\n"
         if let lastError = core.lastError, !lastError.isEmpty {
             info += "Last Error: \(lastError)\n"
+        }
+        if let attribution = core.lastErrorAttribution {
+            info += "Last Error Source: \(attribution.source)\n"
+            info += "Last Error Action: \(attribution.action)\n"
+            if let managerId = attribution.managerId, !managerId.isEmpty {
+                info += "Last Error Manager: \(managerId)\n"
+            }
+            if let taskType = attribution.taskType, !taskType.isEmpty {
+                info += "Last Error Task Type: \(taskType)\n"
+            }
         }
         return info
     }

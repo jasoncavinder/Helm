@@ -48,6 +48,7 @@ Next release targets:
 - [ ] `feat/v0.17-service-health-panel` — service/runtime health diagnostics panel. (in progress: settings health card + copyable service snapshot diagnostics)
 - [ ] `feat/v0.17-manager-detection-diagnostics` — per-manager detection diagnostics and reason visibility. (in progress: inspector reason states + latest detection task status/ID surface)
 - [ ] `feat/v0.17-diagnostics-hardening` — silent-failure sweep, attribution consistency, integration/doc exit checks.
+- [ ] `feat/v0.17-diagnostics-hardening` — silent-failure sweep, attribution consistency, integration/doc exit checks. (in progress: attributed error context capture + support snapshot/export enrichment)
 
 RC-1 release gate for `v0.17.x`:
 - Logs are accessible in UI.

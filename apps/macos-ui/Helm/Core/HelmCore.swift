@@ -283,6 +283,14 @@ struct ManagerDetectionDiagnostics {
     let latestTaskStatus: String?
 }
 
+struct CoreErrorAttribution: Codable {
+    let source: String
+    let action: String
+    let managerId: String?
+    let taskType: String?
+    let occurredAtUnix: Int64
+}
+
 struct CoreSearchResult: Codable {
     let manager: String
     let name: String
@@ -387,6 +395,7 @@ final class HelmCore: ObservableObject {
     @Published var packageKegPolicyOverrides: [String: HomebrewKegPolicyOverride] = [:]
     @Published var safeModeEnabled: Bool = false
     @Published var lastError: String?
+    @Published var lastErrorAttribution: CoreErrorAttribution?
     @Published var selectedManagerFilter: String?
     @Published var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
 
@@ -485,6 +494,10 @@ final class HelmCore: ObservableObject {
     /// handler is called with `fallback` and the actual result is discarded.
     func withTimeout<T>(
         _ seconds: TimeInterval,
+        source: String = "core.xpc",
+        action: String = "unknown",
+        managerId: String? = nil,
+        taskType: String? = nil,
         operation: @escaping (@escaping (T?) -> Void) -> Void,
         fallback: T? = nil,
         completion: @escaping (T?) -> Void
@@ -497,9 +510,16 @@ final class HelmCore: ObservableObject {
             if !hasCompleted {
                 hasCompleted = true
                 completed.signal()
-                logger.warning("XPC call timed out after \(seconds)s")
+                logger.warning(
+                    "XPC call timed out after \(seconds)s (source=\(source), action=\(action), manager=\(managerId ?? "none"), task_type=\(taskType ?? "none"))"
+                )
                 DispatchQueue.main.async {
-                    self?.lastError = L10n.Common.error.localized
+                    self?.recordLastError(
+                        source: source,
+                        action: action,
+                        managerId: managerId,
+                        taskType: taskType
+                    )
                     completion(fallback)
                 }
             } else {
@@ -518,6 +538,27 @@ final class HelmCore: ObservableObject {
             } else {
                 completed.signal()
             }
+        }
+    }
+
+    func recordLastError(
+        message: String = L10n.Common.error.localized,
+        source: String,
+        action: String,
+        managerId: String? = nil,
+        taskType: String? = nil
+    ) {
+        let attribution = CoreErrorAttribution(
+            source: source,
+            action: action,
+            managerId: managerId,
+            taskType: taskType,
+            occurredAtUnix: Int64(Date().timeIntervalSince1970)
+        )
+
+        DispatchQueue.main.async {
+            self.lastError = message
+            self.lastErrorAttribution = attribution
         }
     }
 
@@ -541,6 +582,11 @@ final class HelmCore: ObservableObject {
         service()?.triggerRefresh { success in
             if !success {
                 logger.error("triggerRefresh failed")
+                self.recordLastError(
+                    source: "core",
+                    action: "triggerRefresh",
+                    taskType: "refresh"
+                )
                 DispatchQueue.main.async {
                     self.isRefreshing = false
                     self.lastRefreshTrigger = nil
