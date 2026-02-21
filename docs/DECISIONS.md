@@ -335,6 +335,31 @@ Version restructuring:
 
 ---
 
+## Decision 023 — Third-Party License Compliance Baseline
+
+**Decision:**
+Maintain an explicit dependency-license inventory and release-gate checklist for third-party components.
+
+Implementation baseline:
+
+- canonical inventory doc: `docs/legal/THIRD_PARTY_LICENSES.md`
+- release gating entries: `docs/RELEASE_CHECKLIST.md` (all releases)
+- legal notice cross-reference: `docs/legal/NOTICE.md`
+
+Scope clarifications:
+
+- Runtime app dependencies and build-time dependencies are tracked separately.
+- Sparkle attributions remain required for channels that include Sparkle.
+- Website toolchain dependencies (including `sharp/libvips`) are tracked with distribution-path-specific obligations.
+
+**Rationale:**
+
+- Helm's project license does not supersede third-party license obligations.
+- A documented baseline reduces release risk from dependency changes.
+- Explicit runtime-vs-build separation prevents over- or under-scoping compliance actions.
+
+---
+
 ## Summary
 
 Helm prioritizes:
