@@ -9,7 +9,7 @@
   <br>
   A native macOS menu bar app for unified package manager control.
   <br>
-  <strong>Pre-1.0 &middot; v0.16.2</strong>
+  <strong>Pre-1.0 &middot; v0.17.0-rc.1</strong>
 </p>
 
 <p align="center">
@@ -23,9 +23,9 @@
 
 Helm manages software across multiple package managers (Homebrew, npm, pip, Cargo, etc.) and runtime tools (mise, rustup) from a single menu bar interface. It is designed as infrastructure software: deterministic, safety-first, and explicit about authority, orchestration, and error handling.
 
-> **Status:** Active pre-1.0 development at `v0.16.2` (Sparkle connectivity hardening + macOS 11 deployment baseline enforcement).
+> **Status:** Active pre-1.0 development at `v0.17.0-rc.1` (Diagnostics & Logging RC on `dev`; latest stable on `main` is `v0.16.2`).
 >
-> **Testing:** Please test `v0.16.2` and report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Testing:** Please test `v0.17.0-rc.1` and report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
 ## Editions (Beta)
 

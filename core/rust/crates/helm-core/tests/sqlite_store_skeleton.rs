@@ -751,11 +751,11 @@ fn append_and_list_task_logs_roundtrip() {
 
     let logs = store.list_task_logs(task.id, 10).unwrap();
     assert_eq!(logs.len(), 2);
-    assert_eq!(logs[0].status, Some(TaskStatus::Queued));
-    assert_eq!(logs[0].level, TaskLogLevel::Info);
-    assert_eq!(logs[1].status, Some(TaskStatus::Failed));
-    assert_eq!(logs[1].level, TaskLogLevel::Error);
-    assert!(logs[1].message.contains("simulated error"));
+    assert_eq!(logs[0].status, Some(TaskStatus::Failed));
+    assert_eq!(logs[0].level, TaskLogLevel::Error);
+    assert!(logs[0].message.contains("simulated error"));
+    assert_eq!(logs[1].status, Some(TaskStatus::Queued));
+    assert_eq!(logs[1].level, TaskLogLevel::Info);
 
     let _ = std::fs::remove_file(path);
 }

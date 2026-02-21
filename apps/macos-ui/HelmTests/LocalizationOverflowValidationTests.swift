@@ -2,7 +2,7 @@ import XCTest
 import AppKit
 
 final class LocalizationOverflowValidationTests: XCTestCase {
-    private let locales = ["es", "fr", "de", "pt-BR", "ja"]
+    private let locales = ["es", "fr", "de", "pt-BR", "ja", "hu"]
     private let panelWidth: CGFloat = 360
 
     // Mirrors SettingsPopoverView fixed widths.
@@ -48,6 +48,7 @@ final class LocalizationOverflowValidationTests: XCTestCase {
             "app.settings.label.language.french",
             "app.settings.label.language.portuguese_brazilian",
             "app.settings.label.language.japanese",
+            "app.settings.label.language.hungarian",
         ]
 
         let optionFont = NSFont.systemFont(ofSize: 13)

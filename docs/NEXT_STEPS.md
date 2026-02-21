@@ -16,7 +16,7 @@ Helm is in:
 
 Focus:
 - finalize `v0.17.0-rc.1` release-prep artifacts on `dev`
-- complete validation gates and release handoff for RC tagging
+- complete release handoff tasks (release-prep PR, merge, RC tag creation/push)
 
 Current checkpoint:
 - `v0.17.0-rc.1` release prep in progress on `dev` after merged diagnostics/logging slices:
@@ -27,6 +27,7 @@ Current checkpoint:
   - `#98` `feat/v0.17-manager-detection-diagnostics`
   - `#99` `feat/v0.17-diagnostics-hardening`
 - latest stable release on `main`: `v0.16.2`
+- validation gates currently green for RC prep (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
 - `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)
@@ -55,6 +56,7 @@ Next release targets:
 - [x] `feat/v0.17-service-health-panel` — service/runtime health diagnostics panel.
 - [x] `feat/v0.17-manager-detection-diagnostics` — per-manager detection diagnostics and reason visibility.
 - [x] `feat/v0.17-diagnostics-hardening` — silent-failure sweep, attribution consistency, integration/doc exit checks.
+- [x] `v0.17.0-rc.1` localization follow-through — manager display-name key coverage expanded across all implemented manager IDs with brand-preserving labels; Hungarian (`hu`) locale added with onboarding + service/error translation bootstrap and CI parity checks.
 
 RC-1 release gate for `v0.17.x`:
 - Logs are accessible in UI.
@@ -797,7 +799,7 @@ Delivered:
 
 ### Priority 3 — Localization Expansion (Completed)
 
-- All 6 locales (en, es, de, fr, pt-BR, ja) at full key parity ✅
+- All 7 locales (en, es, de, fr, pt-BR, ja, hu) at full key parity ✅
 - CI enforcement for locale parity + integrity ✅
 - On-device overflow validation ✅
 

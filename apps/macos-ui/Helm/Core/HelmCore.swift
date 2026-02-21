@@ -642,6 +642,18 @@ final class HelmCore: ObservableObject {
         case "rustup": return L10n.App.Managers.Name.rustup.localized
         case "softwareupdate": return L10n.App.Managers.Name.softwareUpdate.localized
         case "mas": return L10n.App.Managers.Name.appStore.localized
+        case "sparkle": return L10n.App.Managers.Name.sparkle.localized
+        case "setapp": return L10n.App.Managers.Name.setapp.localized
+        case "asdf": return L10n.App.Managers.Name.asdf.localized
+        case "macports": return L10n.App.Managers.Name.macports.localized
+        case "nix_darwin": return L10n.App.Managers.Name.nixDarwin.localized
+        case "docker_desktop": return L10n.App.Managers.Name.dockerDesktop.localized
+        case "podman": return L10n.App.Managers.Name.podman.localized
+        case "colima": return L10n.App.Managers.Name.colima.localized
+        case "parallels_desktop": return L10n.App.Managers.Name.parallelsDesktop.localized
+        case "xcode_command_line_tools": return L10n.App.Managers.Name.xcodeCommandLineTools.localized
+        case "rosetta2": return L10n.App.Managers.Name.rosetta2.localized
+        case "firmware_updates": return L10n.App.Managers.Name.firmwareUpdates.localized
         default: return raw.replacingOccurrences(of: "_", with: " ").capitalized
         }
     }
