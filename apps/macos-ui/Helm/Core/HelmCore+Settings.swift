@@ -942,6 +942,53 @@ struct HelmSupport {
         pasteboard.setString(diagnostics, forType: .string)
     }
 
+    private static func serviceHealthManagerCounts(
+        core: HelmCore
+    ) -> (enabled: Int, detected: Int, missing: Int) {
+        let trackedStatuses = core.managerStatuses.values
+            .filter { $0.isImplemented && $0.enabled }
+        let enabled = trackedStatuses.count
+        let detected = trackedStatuses.filter(\.detected).count
+        return (enabled, detected, max(enabled - detected, 0))
+    }
+
+    static func generateServiceHealthDiagnostics() -> String {
+        let core = HelmCore.shared
+        let appUpdate = AppUpdateCoordinator.shared
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let managerCounts = serviceHealthManagerCounts(core: core)
+
+        var info = ""
+        info += "Service Health Snapshot\n"
+        info += "Generated: \(isoFormatter.string(from: Date()))\n"
+        info += "Helm Version: \(helmVersion)\n"
+        info += "Connection: \(core.isConnected ? "Connected" : "Disconnected")\n"
+        info += "Refresh State: \(core.isRefreshing ? "Refreshing" : "Idle")\n"
+        info += "Aggregate Health: \(core.aggregateHealth.key.localized)\n"
+        if let lastCheckDate = appUpdate.lastCheckDate {
+            info += "Last Check: \(isoFormatter.string(from: lastCheckDate))\n"
+        } else {
+            info += "Last Check: Never\n"
+        }
+        info += "Running Tasks: \(core.runningTaskCount)\n"
+        info += "Failed Tasks: \(core.failedTaskCount)\n"
+        info += "Pending Updates: \(core.outdatedPackages.count)\n"
+        info += "Detected Managers: \(managerCounts.detected)/\(managerCounts.enabled)\n"
+        info += "Managers Missing: \(managerCounts.missing)\n"
+        if let lastError = core.lastError, !lastError.isEmpty {
+            info += "Last Error: \(lastError)\n"
+        }
+        return info
+    }
+
+    static func copyServiceHealthDiagnosticsToClipboard() {
+        let snapshot = generateServiceHealthDiagnostics()
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(snapshot, forType: .string)
+    }
+
     static func copyStructuredDiagnosticsToClipboard() {
         let diagnostics = generateStructuredDiagnostics()
         let pasteboard = NSPasteboard.general

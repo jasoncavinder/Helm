@@ -214,6 +214,25 @@ extension L10n {
                 static let updates = "app.settings.metric.updates"
                 static let tasks = "app.settings.metric.tasks"
             }
+            struct ServiceHealth {
+                static let section = "app.settings.section.service_health"
+                static let connection = "app.settings.service_health.connection"
+                static let refreshState = "app.settings.service_health.refresh_state"
+                static let lastCheck = "app.settings.service_health.last_check"
+                static let failedTasks = "app.settings.service_health.failed_tasks"
+                static let managersDetected = "app.settings.service_health.managers_detected"
+                static let managersMissing = "app.settings.service_health.managers_missing"
+                static let lastError = "app.settings.service_health.last_error"
+                static let copySnapshot = "app.settings.service_health.copy_snapshot"
+
+                struct Status {
+                    static let connected = "app.settings.service_health.status.connected"
+                    static let disconnected = "app.settings.service_health.status.disconnected"
+                    static let refreshing = "app.settings.service_health.status.refreshing"
+                    static let idle = "app.settings.service_health.status.idle"
+                    static let never = "app.settings.service_health.status.never"
+                }
+            }
             struct Alert {
                 struct Reset {
                     static let title = "app.settings.alert.reset.title"

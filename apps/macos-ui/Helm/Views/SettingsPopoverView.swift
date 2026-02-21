@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsSectionView: View {
     @ObservedObject private var core = HelmCore.shared
+    @ObservedObject private var appUpdate = AppUpdateCoordinator.shared
     @ObservedObject private var localization = LocalizationManager.shared
     @ObservedObject private var walkthrough = WalkthroughManager.shared
 
@@ -10,11 +11,18 @@ struct SettingsSectionView: View {
     @State private var isResetting = false
     @State private var includeDiagnostics = false
     @State private var showCopiedConfirmation = false
+    @State private var showServiceSnapshotCopied = false
     @State private var showSupportOptionsModal = false
     @State private var supportTopGroupHeight: CGFloat = 0
     @State private var supportBottomButtonHeight: CGFloat = 0
 
     private let supportButtonSpacing: CGFloat = 8
+    private static let healthTimestampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
 
     private var selectedFrequencyLabel: String {
         switch checkFrequency {
@@ -52,6 +60,44 @@ struct SettingsSectionView: View {
                 showCopiedConfirmation = false
             }
         }
+    }
+
+    private func showServiceSnapshotCopiedBriefly() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showServiceSnapshotCopied = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                showServiceSnapshotCopied = false
+            }
+        }
+    }
+
+    private var serviceConnectionStatusLabel: String {
+        core.isConnected
+            ? L10n.App.Settings.ServiceHealth.Status.connected.localized
+            : L10n.App.Settings.ServiceHealth.Status.disconnected.localized
+    }
+
+    private var serviceRefreshStatusLabel: String {
+        core.isRefreshing
+            ? L10n.App.Settings.ServiceHealth.Status.refreshing.localized
+            : L10n.App.Settings.ServiceHealth.Status.idle.localized
+    }
+
+    private var serviceLastCheckLabel: String {
+        guard let lastCheckDate = appUpdate.lastCheckDate else {
+            return L10n.App.Settings.ServiceHealth.Status.never.localized
+        }
+        return Self.healthTimestampFormatter.string(from: lastCheckDate)
+    }
+
+    private var serviceManagerCounts: (enabled: Int, detected: Int, missing: Int) {
+        let trackedStatuses = core.managerStatuses.values
+            .filter { $0.isImplemented && $0.enabled }
+        let enabled = trackedStatuses.count
+        let detected = trackedStatuses.filter(\.detected).count
+        return (enabled, detected, max(enabled - detected, 0))
     }
 
     var body: some View {
@@ -170,6 +216,83 @@ struct SettingsSectionView: View {
                             walkthrough.resetWalkthroughs()
                             walkthrough.startPopoverWalkthrough()
                         }
+                    }
+                }
+
+                SettingsCard(
+                    title: L10n.App.Settings.ServiceHealth.section.localized,
+                    icon: "stethoscope",
+                    fill: cardFill
+                ) {
+                    HStack {
+                        HealthBadgeView(status: core.aggregateHealth)
+                        Spacer()
+                        Text(core.aggregateHealth.key.localized)
+                            .font(.caption)
+                            .foregroundColor(HelmTheme.textSecondary)
+                    }
+
+                    Divider()
+
+                    Group {
+                        ServiceHealthStatusRow(
+                            title: L10n.App.Settings.ServiceHealth.connection.localized,
+                            value: serviceConnectionStatusLabel
+                        )
+                        ServiceHealthStatusRow(
+                            title: L10n.App.Settings.ServiceHealth.refreshState.localized,
+                            value: serviceRefreshStatusLabel
+                        )
+                        ServiceHealthStatusRow(
+                            title: L10n.App.Settings.ServiceHealth.lastCheck.localized,
+                            value: serviceLastCheckLabel
+                        )
+                    }
+
+                    Group {
+                        ServiceHealthStatusRow(
+                            title: L10n.App.Settings.ServiceHealth.failedTasks.localized,
+                            value: "\(core.failedTaskCount)"
+                        )
+                        ServiceHealthStatusRow(
+                            title: L10n.App.Settings.ServiceHealth.managersDetected.localized,
+                            value: "\(serviceManagerCounts.detected)/\(serviceManagerCounts.enabled)"
+                        )
+                        ServiceHealthStatusRow(
+                            title: L10n.App.Settings.ServiceHealth.managersMissing.localized,
+                            value: "\(serviceManagerCounts.missing)"
+                        )
+                        if let lastError = core.lastError, !lastError.isEmpty {
+                            ServiceHealthStatusRow(
+                                title: L10n.App.Settings.ServiceHealth.lastError.localized,
+                                value: lastError,
+                                multiline: true,
+                                emphasize: true
+                            )
+                        }
+                    }
+
+                    Divider()
+
+                    SettingsActionButton(
+                        title: L10n.App.Settings.ServiceHealth.copySnapshot.localized,
+                        badges: [],
+                        isProminent: false,
+                        useSystemStyle: true
+                    ) {
+                        HelmSupport.copyServiceHealthDiagnosticsToClipboard()
+                        showServiceSnapshotCopiedBriefly()
+                    }
+
+                    if showServiceSnapshotCopied {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.green)
+                            Text(L10n.App.Settings.SupportFeedback.copiedConfirmation.localized)
+                                .foregroundColor(.secondary)
+                        }
+                        .font(.caption)
+                        .transition(.opacity.combined(with: .scale))
                     }
                 }
 
@@ -380,6 +503,41 @@ private struct SettingsMetricPill: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
         .accessibilityValue("\(value)")
+    }
+}
+
+private struct ServiceHealthStatusRow: View {
+    let title: String
+    let value: String
+    let multiline: Bool
+    let emphasize: Bool
+
+    init(
+        title: String,
+        value: String,
+        multiline: Bool = false,
+        emphasize: Bool = false
+    ) {
+        self.title = title
+        self.value = value
+        self.multiline = multiline
+        self.emphasize = emphasize
+    }
+
+    var body: some View {
+        HStack(alignment: multiline ? .top : .firstTextBaseline, spacing: 10) {
+            Text(title)
+                .foregroundColor(HelmTheme.textSecondary)
+            Spacer(minLength: 8)
+            Text(value)
+                .foregroundColor(emphasize ? .orange : HelmTheme.textPrimary)
+                .font(multiline ? .caption : .subheadline.monospacedDigit())
+                .multilineTextAlignment(.trailing)
+                .lineLimit(multiline ? 3 : 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(title)
+        .accessibilityValue(value)
     }
 }
 
