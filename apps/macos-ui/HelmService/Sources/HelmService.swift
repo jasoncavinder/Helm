@@ -60,6 +60,16 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(String(cString: cString))
     }
 
+    func listTaskLogs(taskId: Int64, limit: Int64, withReply reply: @escaping (String?) -> Void) {
+        guard let cString = helm_list_task_logs(taskId, limit) else {
+            logger.warning("helm_list_task_logs(\(taskId), \(limit)) returned nil")
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(cString) }
+        reply(String(cString: cString))
+    }
+
     func triggerRefresh(withReply reply: @escaping (Bool) -> Void) {
         let result = helm_trigger_refresh()
         logger.info("helm_trigger_refresh result: \(result)")

@@ -40,6 +40,20 @@ Next release targets:
 - `v0.18.x` — Local security groundwork (internal-only)
 - `v0.19.x` — Stability & Pre-1.0 hardening
 
+## v0.17.x Delivery Tracker (Target: `v0.17.0-rc.1`)
+
+- [ ] `feat/v0.17-log-foundation` — task log event model, SQLite persistence migration, FFI/XPC retrieval surface.
+- [ ] `feat/v0.17-task-log-viewer` — per-task log viewer UI with filters and pagination.
+- [ ] `feat/v0.17-structured-error-export` — structured support/error export payloads with redaction.
+- [ ] `feat/v0.17-service-health-panel` — service/runtime health diagnostics panel.
+- [ ] `feat/v0.17-manager-detection-diagnostics` — per-manager detection diagnostics and reason visibility.
+- [ ] `feat/v0.17-diagnostics-hardening` — silent-failure sweep, attribution consistency, integration/doc exit checks.
+
+RC-1 release gate for `v0.17.x`:
+- Logs are accessible in UI.
+- No silent failures in task execution/reporting paths.
+- Support data export works and is operator-usable.
+
 License/compliance follow-through:
 - Keep `docs/legal/THIRD_PARTY_LICENSES.md` updated as dependency sets change.
 - Treat third-party notice validation as a required release gate (`docs/RELEASE_CHECKLIST.md`).

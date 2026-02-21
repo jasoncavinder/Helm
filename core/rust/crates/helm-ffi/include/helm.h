@@ -28,6 +28,13 @@ char *helm_list_tasks(void);
  */
 char *helm_get_task_output(int64_t task_id);
 
+/**
+ * Return persisted lifecycle task logs for a task ID as JSON.
+ *
+ * Returns `null` only on invalid input or serialization/allocation failure.
+ */
+char *helm_list_task_logs(int64_t task_id, int64_t limit);
+
 bool helm_trigger_refresh(void);
 
 /**
