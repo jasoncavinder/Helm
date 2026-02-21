@@ -361,15 +361,13 @@ private extension Color {
         lightAlpha: CGFloat = 1,
         darkAlpha: CGFloat = 1
     ) -> Color {
-        Color(
-            nsColor: NSColor(name: nil) { appearance in
-                let resolvedAppearance = appearance.bestMatch(from: [.darkAqua, .aqua]) ?? .aqua
-                if resolvedAppearance == .darkAqua {
-                    return NSColor.helmHex(dark, alpha: darkAlpha)
-                }
-                return NSColor.helmHex(light, alpha: lightAlpha)
+        Color(NSColor(name: nil) { appearance in
+            let resolvedAppearance = appearance.bestMatch(from: [.darkAqua, .aqua]) ?? .aqua
+            if resolvedAppearance == .darkAqua {
+                return NSColor.helmHex(dark, alpha: darkAlpha)
             }
-        )
+            return NSColor.helmHex(light, alpha: lightAlpha)
+        })
     }
 }
 

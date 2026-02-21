@@ -149,7 +149,10 @@ struct HealthBadgeView: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .foregroundColor(status.color)
-            .background(status.color.opacity(0.15), in: Capsule())
+            .background(
+                Capsule()
+                    .fill(status.color.opacity(0.15))
+            )
             .accessibilityLabel(status.key.localized)
     }
 }

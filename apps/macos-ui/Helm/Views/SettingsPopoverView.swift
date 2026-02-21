@@ -293,16 +293,18 @@ struct SettingsSectionView: View {
             }
             .padding(20)
         }
-        .alert(L10n.App.Settings.Alert.Reset.title.localized, isPresented: $showResetConfirmation) {
-            Button(L10n.Common.cancel.localized) {}
-            Button(L10n.Common.reset.localized) {
-                isResetting = true
-                core.resetDatabase { _ in
-                    isResetting = false
-                }
-            }
-        } message: {
-            Text(L10n.App.Settings.Alert.Reset.message.localized)
+        .alert(isPresented: $showResetConfirmation) {
+            Alert(
+                title: Text(L10n.App.Settings.Alert.Reset.title.localized),
+                message: Text(L10n.App.Settings.Alert.Reset.message.localized),
+                primaryButton: .default(Text(L10n.Common.reset.localized)) {
+                    isResetting = true
+                    core.resetDatabase { _ in
+                        isResetting = false
+                    }
+                },
+                secondaryButton: .cancel(Text(L10n.Common.cancel.localized))
+            )
         }
         .sheet(isPresented: $showSupportOptionsModal) {
             SupportHelmOptionsModalView { channel in

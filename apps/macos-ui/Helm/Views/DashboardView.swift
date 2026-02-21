@@ -66,13 +66,16 @@ struct RedesignPopoverView: View {
             } else {
                 ZStack {
                     popoverBaseContent
-                        .overlay {
-                            if activeOverlay != nil {
-                                Color.black.opacity(colorScheme == .dark ? 0.34 : 0.18)
-                                    .ignoresSafeArea()
-                                    .transition(.opacity)
-                            }
-                        }
+                        .overlay(
+                            Group {
+                                if activeOverlay != nil {
+                                    Color.black.opacity(colorScheme == .dark ? 0.34 : 0.18)
+                                        .ignoresSafeArea()
+                                        .transition(.opacity)
+                                }
+                            },
+                            alignment: .center
+                        )
                         .blur(radius: activeOverlay == nil || accessibilityReduceMotion ? 0 : 0.8)
                         .allowsHitTesting(activeOverlay == nil)
 
@@ -191,12 +194,12 @@ struct RedesignPopoverView: View {
             LinearGradient(
                 colors: colorScheme == .dark
                     ? [
-                        Color(nsColor: .windowBackgroundColor).opacity(0.9),
-                        Color(nsColor: .underPageBackgroundColor).opacity(0.82)
+                        HelmTheme.surfaceBase.opacity(0.9),
+                        HelmTheme.surfaceElevated.opacity(0.82)
                     ]
                     : [
                         Color.white.opacity(0.98),
-                        Color(nsColor: .windowBackgroundColor).opacity(0.86)
+                        HelmTheme.surfacePanel.opacity(0.86)
                     ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
