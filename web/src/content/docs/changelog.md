@@ -7,9 +7,25 @@ All notable changes to Helm are documented here. The format is based on [Keep a 
 
 For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncavinder/Helm/blob/main/CHANGELOG.md).
 
+> Latest entries below reflect the current release-finalization snapshots.
+
 ---
 
-## 0.16.0 — 2026-02-21
+## 0.16.1 — 2026-02-21
+
+### Changed
+- Documentation-only rollout restructuring (no security feature implementation shipped).
+- Added staged security model:
+  - Stage 1 (`0.18.x`) local internal groundwork
+  - Stage 2 (`1.3.x`) Security Advisory System (Pro, local-first, optional public advisory APIs, local TTL cache)
+  - Stage 3 (`1.4.x`) Shared Brain (fingerprint sharing, known-fix lookup, centralized backend, App Attest controls)
+- Moved previous `0.18.x` hardening scope to `0.19.x`.
+- Shifted previous `1.4.x+` roadmap milestones forward by one minor version.
+- Updated documented minimum platform to `macOS 11+ (Big Sur)` in README/website installation references.
+
+---
+
+## 0.16.0 — 2026-02-21 (Release Finalization Snapshot)
 
 ### Added
 - Channel-aware update configuration and direct-channel Sparkle integration scaffolding in the macOS app.

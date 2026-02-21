@@ -8,11 +8,16 @@ Helm is a native macOS menu bar app that gives you a single control plane for al
 
 ## Who is Helm for?
 
-Developers and power users on macOS who manage software through multiple package managers and want a unified, safe way to keep everything up to date.
+Helm serves two operational audiences:
+
+- **Developers and power users on macOS** who want one local control plane for package and toolchain updates.
+- **Platform, IT, and security teams** that need deterministic, auditable workflows for managed development environments.
+
+Helm is planned as two product lifecycles: **Helm (Consumer)** and **Helm Business (Fleet)**.
 
 ## What it does today
 
-Helm v0.16.0 supports twenty-eight managers:
+Helm `v0.16.x` supports twenty-eight managers:
 
 | Category | Managers |
 |---------|----------|
@@ -40,7 +45,7 @@ Key features:
 - **Localization** — `en`, `es`, `de`, `fr`, `pt-BR`, and `ja` with locale override in Settings
 - **Upgrade transparency** — dedicated upgrade preview surface with scoped execution and failure-attribution visibility
 
-> **Testing Program:** `v0.16.0` is available for pre-1.0 testing. Please report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Current Track:** `v0.16.0` release finalization is in progress for pre-1.0 testing. Please report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
 ## How it works
 

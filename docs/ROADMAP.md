@@ -543,7 +543,56 @@ Exit Criteria:
 
 ---
 
-## 0.18.x — Stability & Pre-1.0 Hardening (rc)
+## Security Staging (Planned)
+
+Stage 0 (`<=0.16.x`):
+- Documentation and planning only
+- No security advisory logic implemented
+
+Stage 1 (`0.18.x`):
+- Internal local-only groundwork for vulnerability data handling
+- No public feature exposure
+- No Pro gating
+- No centralized backend
+
+Stage 2 (`1.3.x`) — Security Advisory System (Pro):
+- Local-first CVE/advisory scanning and recommendations
+- Optional public vulnerability API queries
+- Local cache with TTL-based refresh
+- No Helm-operated central database
+- No fingerprint sharing
+- No App Attest
+
+Stage 3 (`1.4.x`) — Shared Brain:
+- Centralized fingerprint database and known-fix lookup
+- Managed Postgres backend and edge/serverless API
+- Anonymous per-install auth with Apple App Attest
+- Request signing, nonce and replay protection, rate limiting, and abuse controls
+
+---
+
+## 0.18.x — Local Security Groundwork (rc)
+
+Goal:
+
+- Local vulnerability data model abstractions in core
+- Manager-agnostic normalization contract for advisory records
+- Local cache schema groundwork (TTL-ready metadata)
+- Task/orchestration hooks for future advisory refresh/evaluation tasks
+- No UI exposure and no user-facing advisory feature gate yet
+- No Pro entitlement gating in this phase
+- No centralized Helm backend in this phase
+
+Exit Criteria:
+
+- Core contracts for local advisory data handling are documented and testable
+- Advisory groundwork paths preserve deterministic task execution
+- No user-facing Security Advisory UI shipped in this milestone
+- No backend dependency introduced
+
+---
+
+## 0.19.x — Stability & Pre-1.0 Hardening (rc)
 
 Goal:
 
@@ -564,6 +613,9 @@ Goal:
   - ICU syntax validation
 - UI validation for text expansion
 - Localization fallback behavior tested
+- App Design Refinement (planned):
+  - finalize production typography direction across app/website
+  - reminder: purchase Neue Haas Grotesk commercial license before shipping it in product branding
 
 Exit Criteria:
 
@@ -630,14 +682,17 @@ Exit Criteria:
 
 Goal:
 
-- CVE vulnerability awareness for installed packages
-- Local-first advisory evaluation (advisory only, no enforcement)
-- Data sources: OSV.dev, NVD, manager-specific feeds
-- Matching engine: package name + version range → severity + recommendations
-- SQLite-backed advisory cache with periodic refresh
+- Local-first CVE vulnerability awareness for installed packages
+- Advisory-only recommendations (no enforcement)
+- Optional public advisory API queries (OSV.dev, GitHub Advisory Database, NVD, manager-specific feeds)
+- Matching engine: package name + version range -> severity + recommendations
+- SQLite-backed advisory cache with TTL-based refresh
 - UI: vulnerability status, severity badges, and recommended actions per package
 - Offline-capable with cached advisory data
 - Non-blocking: advisory checks never delay operations
+- No Helm-operated central database required
+- No fingerprint sharing in this milestone
+- No App Attest in this milestone
 
 Exit Criteria:
 
@@ -647,10 +702,32 @@ Exit Criteria:
 - Advisory refresh works offline using cached data
 - Advisory evaluation does not block or delay any manager operations
 - Pro edition entitlement gate verified (feature unavailable in Free edition)
+- Implementation works without any Helm-operated backend dependency
 
 ---
 
-## 1.4.x — Business Policy and Drift Management
+## 1.4.x — Shared Brain
+
+Goal:
+
+- Fingerprint sharing for anonymous package/environment signals
+- Known-fix lookup and recommendation enrichment
+- Managed Postgres-backed central data store
+- Edge/serverless API layer for advisory enrichment queries
+- Anonymous per-install authentication via Apple App Attest
+- Request signing, nonce handling, and replay protection
+- Rate limiting per attested install and abuse-detection controls
+
+Exit Criteria:
+
+- Shared Brain API contract is documented and versioned
+- App Attest-based request validation flow is testable end-to-end
+- Security controls (nonce/replay/rate-limit/abuse) are enforced and observable
+- Shared Brain enrichments are additive and do not block local advisory behavior
+
+---
+
+## 1.5.x — Business Policy and Drift Management
 
 Goal:
 
@@ -670,7 +747,7 @@ Exit Criteria:
 
 ---
 
-## 1.5.x — Enterprise Rollout, Approvals, and Audit
+## 1.6.x — Enterprise Rollout, Approvals, and Audit
 
 Goal:
 
@@ -687,7 +764,7 @@ Exit Criteria:
 
 ---
 
-## 1.6.x — Mac App Store Distribution Channel
+## 1.7.x — Mac App Store Distribution Channel
 
 Goal:
 
@@ -703,7 +780,7 @@ Exit Criteria:
 
 ---
 
-## 1.7.x — Setapp Distribution Channel
+## 1.8.x — Setapp Distribution Channel
 
 Goal:
 
@@ -719,7 +796,7 @@ Exit Criteria:
 
 ---
 
-## 1.8.x — Helm Business Fleet Product
+## 1.9.x — Helm Business Fleet Product
 
 Goal:
 
@@ -735,7 +812,7 @@ Exit Criteria:
 
 ---
 
-## 1.9.x — PKG + MDM Deployment and Offline Licensing
+## 1.10.x — PKG + MDM Deployment and Offline Licensing
 
 Goal:
 

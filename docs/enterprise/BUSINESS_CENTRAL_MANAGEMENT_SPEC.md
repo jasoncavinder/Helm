@@ -174,7 +174,7 @@ Helm is authoritative for package-manager policy execution.
 Business central management features are delivered across three post-1.0 milestones (see `docs/ROADMAP.md`):
 
 1. **1.2.x** (Editions and Entitlement Foundations): entitlement scaffolding + managed bootstrap + policy snapshot store
-2. **1.4.x** (Business Policy and Drift Management): scoped policy evaluation + drift detection + compliance reporting
-3. **1.5.x** (Enterprise Rollout, Approvals, and Audit): rollout rings + approvals + audit export integrations
+2. **1.5.x** (Business Policy and Drift Management): scoped policy evaluation + drift detection + compliance reporting
+3. **1.6.x** (Enterprise Rollout, Approvals, and Audit): rollout rings + approvals + audit export integrations
 
-Note: Milestones 1.1.x (Globalization Expansion) and 1.3.x (Security Advisory System, Pro tier) are interleaved between these but are not part of the business central management scope.
+Note: Milestones 1.1.x (Globalization Expansion), 1.3.x (Security Advisory System, Pro tier), and 1.4.x (Shared Brain infrastructure) are interleaved between these but are not part of the business central management scope.

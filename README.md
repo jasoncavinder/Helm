@@ -9,11 +9,11 @@
   <br>
   A native macOS menu bar app for unified package manager control.
   <br>
-  <strong>Pre-1.0 &middot; v0.16.0</strong>
+  <strong>Pre-1.0 &middot; v0.16.1</strong>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-macOS%2012%2B-blue" alt="macOS 12+">
+  <img src="https://img.shields.io/badge/platform-macOS%2011%2B-blue" alt="macOS 11+">
   <img src="https://img.shields.io/badge/swift-5.7%2B-orange" alt="Swift 5.7+">
   <img src="https://img.shields.io/badge/rust-2024%20edition-brown" alt="Rust 2024">
   <img src="https://img.shields.io/github/v/tag/jasoncavinder/Helm?label=version" alt="Version">
@@ -23,7 +23,7 @@
 
 Helm manages software across multiple package managers (Homebrew, npm, pip, Cargo, etc.) and runtime tools (mise, rustup) from a single menu bar interface. It is designed as infrastructure software: deterministic, safety-first, and explicit about authority, orchestration, and error handling.
 
-> **Status:** Active pre-1.0 development at `v0.16.0`. Twenty-eight managers are implemented with authority-ordered refresh, progressive search, pin/safe-mode policy controls, optional/detection-only manager handling, and localization coverage for `en`, `es`, `de`, `fr`, `pt-BR`, and `ja`.
+> **Status:** Active pre-1.0 development at `v0.16.1` (documentation and planning update). Current implemented release baseline remains `v0.16.0`.
 >
 > **Testing:** Please test `v0.16.0` and report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
@@ -61,18 +61,7 @@ Your support helps fund continued development.
 Install the latest beta DMG from GitHub Releases:
 - https://github.com/jasoncavinder/Helm/releases
 
-DMG builds target **Any Mac (Apple Silicon + Intel)** on **macOS 12+** and use standard drag-to-`Applications` installation.
-
-## Support Helm
-
-Helm is an independent project.
-
-If you find it useful, consider supporting development:
-
-- GitHub Sponsors: https://github.com/sponsors/jasoncavinder
-- Patreon: https://patreon.com/yourname
-
-Your support helps fund continued development and long-term sustainability.
+DMG builds target **Any Mac (Apple Silicon + Intel)** on **macOS 11+ (Big Sur)** and use standard drag-to-`Applications` installation.
 
 ## Features
 
@@ -100,7 +89,7 @@ The XPC boundary isolates process execution from the sandboxed app. The Rust cor
 
 ### Prerequisites
 
-- macOS 12+
+- macOS 11+ (Big Sur)
 - Xcode 14+
 - Rust stable toolchain (2024 edition)
 
@@ -138,11 +127,21 @@ Or open `apps/macos-ui/Helm.xcodeproj` in Xcode and run the **Helm** scheme. The
 | 0.14.x | Platform, Detection & Optional Managers — Docker, Xcode, Rosetta, Sparkle | Completed (`v0.14.x` stable, latest patch `v0.14.1`) |
 | 0.15.x | Upgrade Preview & Execution Transparency — bulk preview, scoped execution, failure isolation | Completed (`v0.15.0`) |
 | 0.16.x | Self-Update & Installer Hardening — Sparkle integration, signed verification | Completed (`v0.16.0`) |
+| 0.16.1 | Documentation, Milestone Restructure & Security Staging Clarification | Completed (documentation-only) |
 | 0.17.x | Diagnostics & Logging — log viewer, structured error export, health panel | Planned |
-| 0.18.x | Stability & Pre-1.0 Hardening — stress tests, crash recovery, memory audit | Planned |
+| 0.18.x | Local Security Groundwork — local vulnerability abstractions and cache plumbing (no public feature surface) | Planned |
+| 0.19.x | Stability & Pre-1.0 Hardening — stress tests, crash recovery, memory audit | Planned |
 | 1.0.0 | Stable Control Plane Release — production-safe execution, full feature set | Planned |
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full roadmap through 1.x.
+
+## Security Rollout (Planned)
+
+- **Phase 1 (`0.18.x`)**: Local-only security groundwork. Internal abstractions and data-handling preparation only. No Pro gate and no centralized backend.
+- **Phase 2 (`1.3.x`, Helm Pro)**: **Security Advisory System**. Local-first CVE/advisory evaluation, optional public API queries (OSV/GitHub Advisory DB/NVD-style sources), local TTL cache, and actionable recommendations.
+- **Phase 3 (`1.4.x`)**: **Shared Brain**. Fingerprint sharing, known-fix lookup, centralized Postgres-backed services, and App Attest-based request authentication.
+
+Security Advisory System and Shared Brain are separate systems. Shared Brain is additive and depends on additional infrastructure not required for Phase 2.
 
 ## Repository Layout
 

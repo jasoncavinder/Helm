@@ -1,116 +1,139 @@
-# Security Advisory System (CVE)
+# Security Advisory System (v1.3.x, Helm Pro)
 
-This document defines Helm’s vulnerability awareness system.
+This document defines Helm's local-first advisory model planned for `v1.3.x`.
 
----
-
-## 1. Purpose
-
-Helm provides visibility into known vulnerabilities affecting installed packages.
-
-It does not enforce actions.
+It is explicitly separate from the `v1.4.x` Shared Brain system.
 
 ---
 
-## 2. Design Principles
+## 1. Scope
 
-- Advisory only
+The Security Advisory System provides CVE/advisory awareness for installed packages and toolchains.
+
+It is advisory-only and does not enforce actions automatically.
+
+---
+
+## 2. Version Boundaries
+
+Stage 0 (`<=0.16.x`):
+- Planning/documentation only
+
+Stage 1 (`0.18.x`):
+- Internal local groundwork only (no public feature)
+
+Stage 2 (`1.3.x`):
+- Security Advisory System (this document)
+
+Stage 3 (`1.4.x`):
+- Shared Brain (separate document/scope)
+
+---
+
+## 3. Design Principles
+
 - Local-first evaluation
-- Deterministic results
-- Transparent output
+- Deterministic matching behavior
+- Transparent recommendations
+- Non-blocking execution
+- Offline-safe behavior from cached advisory data
 
 ---
 
-## 3. Data Sources
+## 4. Data Sources
 
-Potential sources:
+Supported source strategy:
 
-- OSV.dev
-- NVD (National Vulnerability Database)
-- Manager-specific feeds
+- Local advisory cache (primary at runtime)
+- Optional pull from public advisory APIs (for example OSV.dev, GitHub Advisory Database, NVD, manager-specific feeds)
 
-Data may be aggregated.
-
----
-
-## 4. Data Flow
-
-```
-
-CVE Sources → Local Cache → Matching Engine → UI
-
-```
+No Helm-operated central advisory database is required for `1.3.x`.
 
 ---
 
-## 5. Matching Engine
+## 5. Local Cache and TTL
 
-Matches:
+Advisory records are cached in SQLite with freshness metadata:
 
-- Package name
-- Version range
+- source
+- query or manager origin
+- fetched timestamp
+- expiry timestamp (TTL)
 
-Produces:
+Cache rules:
+
+- Read from cache first
+- Refresh on TTL expiry or explicit refresh request
+- Use stale cache when offline (with stale marker in UI metadata)
+
+---
+
+## 6. Matching Engine
+
+Match inputs:
+
+- manager
+- normalized package name
+- installed version
+- advisory affected range
+
+Match outputs:
 
 ```rust
 struct SecurityAdvisory {
+    manager: String,
     package: String,
     affected_versions: String,
     severity: Severity,
-    description: String,
+    summary: String,
     fixed_version: Option<String>,
+    source: String,
+    fetched_at_epoch_ms: i64,
+    expires_at_epoch_ms: i64,
 }
 ```
 
 ---
 
-## 6. Output
-
-For each affected package:
-
-* Vulnerability status
-* Severity
-* Recommended actions
-
----
-
 ## 7. Recommendations
 
-Helm may suggest:
+For affected packages, Helm may recommend:
 
-* Upgrade
-* Pin
-* Avoid upgrade
-* Remove package
+- update to fixed version
+- pin temporarily
+- avoid risky upgrade path
+- remove package
 
-Helm does not enforce actions.
-
----
-
-## 8. Storage
-
-* Local database (SQLite)
-* Cached advisory data
-* Periodic refresh
+These recommendations are operator guidance only.
 
 ---
 
-## 9. Entitlement
+## 8. Entitlement and UX
 
-This system is part of **Pro edition**.
-
----
-
-## 10. Constraints
-
-* Must work offline
-* Must not block operations
-* Must not execute external code
+- Feature tier: Helm Pro (`1.3.x`)
+- Free tier: no advisory UI surfaces
+- Advisory evaluation must never block install/upgrade/uninstall/refresh tasks
 
 ---
 
-## 11. Future Enhancements
+## 9. Explicit Non-Goals for v1.3.x
 
-* Dependency graph analysis
-* Risk scoring
-* Historical tracking
+The following are out of scope until `1.4.x` Shared Brain:
+
+- fingerprint sharing
+- known-fix crowdsourced lookup
+- centralized Postgres backend
+- App Attest-based install authentication
+- request signing/nonce/replay protection for centralized APIs
+
+---
+
+## 10. Relationship to Shared Brain (`1.4.x`)
+
+Security Advisory System is standalone and useful without Shared Brain.
+
+Shared Brain is additive:
+
+- augments local advisory context with shared signals
+- requires new backend/auth/security infrastructure
+- must not be a hard dependency for local advisory evaluation

@@ -8,14 +8,22 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.16.0** (release finalization in progress on `chore/v0.16.0-release-final`; latest stable release on `main` is `v0.15.0` until `v0.16.0` merge/tag completion)
+Current documentation baseline: **0.16.1** (documentation-only milestone restructuring and staged security planning update).
+
+Implementation baseline remains: **0.16.0** (latest shipped feature release).
 
 See:
 - CHANGELOG.md
 
 Active milestone:
-- 0.16.0 — Self-Update & Installer Hardening (release finalization)
-- 0.15.0 — Released on `main` (tag `v0.15.0`)
+- 0.16.1 — Documentation, roadmap, and architecture clarification (no security feature implementation)
+- 0.17.x — Diagnostics & Logging (next implementation milestone)
+
+Security rollout staging status:
+- Stage 0 (`<=0.16.x`): planning/docs only (active in `0.16.1`)
+- Stage 1 (`0.18.x`): local security groundwork (planned)
+- Stage 2 (`1.3.x`): Security Advisory System (Pro, planned)
+- Stage 3 (`1.4.x`): Shared Brain infrastructure (planned)
 
 ---
 
@@ -111,14 +119,36 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 
 ## Website Status
 
-- Astro + Starlight website now uses a Helm-brand custom theme layer via `web/src/styles/helm-theme.css`
-- Landing page (`web/src/content/docs/index.mdx`) has been redesigned to match brand/copy structure:
+- Astro + Starlight website uses a Helm-brand custom theme layer via `web/src/styles/helm-theme.css` with tokenized color/motion/shape rules aligned to brand docs.
+- Landing page (`web/src/content/docs/index.mdx`) has been redesigned with a calmer dual-audience narrative and command-bridge structure:
   - Hero
   - Problem
   - Solution
-  - Command Bridge
+  - Editions (Helm consumer + Helm Business)
+  - Architecture
   - Helm Pro
   - Footer CTA
+- Website typography/color system now follows explicit Helm website spec:
+  - headings: Neue Haas Grotesk stack
+  - body: Inter
+  - code: SF Mono
+  - light/dark heading color mapping and restrained gold usage for Pro accents
+- Theme-aware screenshot rendering is now supported via reusable website component:
+  - `web/src/components/ThemeImage.astro`
+  - routes can provide light/dark image variants and render based on active website theme
+  - website tour/landing screenshot assets now use paired naming convention (`name.png` + `name-dark.png`)
+- Website content/docs pass completed for product clarity and audience fit:
+  - updated overview/roadmap/changelog wording for current `v0.16.0` release-finalization state
+  - expanded consumer vs Helm Business messaging in overview + FAQ
+  - refreshed installation/usage/visual-tour guide copy for current UI/support surfaces
+- Website accessibility verification pass completed:
+  - automated Axe CLI audit executed across key routes (`/`, overview, usage, installation, FAQ, visual-tour, licensing, changelog, roadmap)
+  - fixed homepage hero secondary CTA contrast issue (`color-contrast` on `.actions > .secondary.sl-link-button.not-content`)
+  - post-fix Axe run reports zero violations on audited routes
+  - keyboard focus-visible styling present for links/buttons/navigation
+  - reduced-motion media query support present for animated interactions
+  - heading hierarchy on key pages has no level-skip violations
+  - key text/background contrast pairs meet AA or better (with most body text at AAA)
 - Website redesign planning artifacts added:
   - `docs/website/WEBSITE_REDESIGN_PLAN.md`
   - `docs/website/DESIGN_TOKENS.md`
@@ -488,7 +518,10 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
 - "Control Center" item added to right-click status menu (opens dashboard overview)
 
 ### Documentation
-- Security Advisory System incorporated into ROADMAP.md as milestone 1.3.x
+- Security rollout clarified and re-staged in ROADMAP.md:
+  - `0.18.x` reserved for local groundwork
+  - prior `0.18.x` hardening shifted to `0.19.x`
+  - `1.4.x` now reserved for Shared Brain infrastructure
 - CHANGELOG.md, CURRENT_STATE.md, NEXT_STEPS.md updated
 
 ---

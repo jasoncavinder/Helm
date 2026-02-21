@@ -26,9 +26,13 @@ Helm currently supports twenty-eight managers across six categories:
 
 Helm is currently in pre-1.0 beta with all features available. Post-1.0 planning includes Helm (Consumer: Free + Pro) and Helm Business (Fleet) as a separate product lifecycle. See the [licensing page](/licensing/) for details.
 
+### Is Helm Business included in the consumer app?
+
+No. Helm Business is planned as a separate fleet product lifecycle, not a hidden mode inside the consumer app.
+
 ### What macOS versions are supported?
 
-Helm requires macOS 12 (Monterey) or later and runs natively on both Apple Silicon and Intel Macs.
+Helm requires macOS 11 (Big Sur) or later and runs natively on both Apple Silicon and Intel Macs.
 
 ### Does Helm require administrator privileges?
 
@@ -93,7 +97,7 @@ This only needs to be done once. After that, the app opens normally.
 
 ### How do I build from source?
 
-See the [Installation guide](/guides/installation/) for prerequisites and build steps. You'll need macOS 12+, Xcode 14+, and a Rust stable toolchain.
+See the [Installation guide](/guides/installation/) for prerequisites and build steps. You'll need macOS 11+ (Big Sur), Xcode 14+, and a Rust stable toolchain.
 
 ---
 

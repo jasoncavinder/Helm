@@ -21,6 +21,11 @@ Primary goals:
 - Complete transparency of operations
 - Extensibility via adapters
 
+Minimum platform baseline:
+
+- macOS 11+ (Big Sur)
+- Rationale: aligns with modern platform security primitives required for planned App Attest-based install authentication in the Shared Brain stage (`1.4.x`)
+
 Helm is not a shell wrapper. It is a **structured execution engine**.
 
 ---
@@ -361,6 +366,8 @@ Failures:
 
 ## 6. Security Model
 
+### 6.1 Core Execution Security
+
 Helm enforces:
 
 - No shell injection vectors
@@ -368,6 +375,39 @@ Helm enforces:
 - XPC boundary validation
 - Code signing checks
 - Guardrails for privileged operations
+
+### 6.2 Staged Security Rollout
+
+Security capabilities are staged and intentionally separated:
+
+Stage 0 (`<=0.16.x`):
+- Documentation and planning only
+- No implemented security advisory logic
+
+Stage 1 (`0.18.x`):
+- Internal local-only groundwork for vulnerability data handling
+- No public feature exposure
+- No Pro gating
+- No centralized backend
+
+Stage 2 (`1.3.x`) - Security Advisory System (Helm Pro):
+- Local-first CVE/advisory scanning and recommendation engine
+- Optional queries to public advisory APIs (for example OSV / GitHub Advisory Database)
+- Local SQLite cache with TTL-based refresh
+- No Helm-operated central database required
+- No fingerprint sharing
+- No App Attest
+
+Stage 3 (`1.4.x`) - Shared Brain:
+- Centralized fingerprint and known-fix lookup services
+- Managed Postgres backend with edge/serverless API entry points
+- Anonymous per-install auth via Apple App Attest
+- Signed requests, nonce/replay protection, per-install rate limiting, and abuse controls
+
+### 6.3 System Boundary
+
+- The Security Advisory System (`1.3.x`) is independent of Shared Brain and remains functional without Helm-hosted services.
+- Shared Brain (`1.4.x`) is additive infrastructure that can enrich advisory outcomes but is not a prerequisite for local advisory evaluation.
 
 ---
 

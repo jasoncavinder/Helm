@@ -9,6 +9,7 @@ export default defineConfig({
 		starlight({
 			title: 'Helm',
 			tagline: 'Take the helm.',
+			favicon: '/favicon.ico',
 			customCss: ['./src/styles/helm-theme.css'],
 			logo: {
 				src: './src/assets/helm-icon.png',
@@ -18,6 +19,13 @@ export default defineConfig({
 			],
 			lastUpdated: true,
 			head: [
+				{
+					tag: 'link',
+					attrs: {
+						rel: 'apple-touch-icon',
+						href: '/apple-touch-icon.png',
+					},
+				},
 				{
 					tag: 'meta',
 					attrs: {

@@ -15,10 +15,12 @@ Helm is in:
 ```
 
 Focus:
-- 0.16.x self-update and installer hardening
+- 0.16.1 documentation-only milestone restructuring and staged security planning
+- no security feature implementation in 0.16.x
 
 Current checkpoint:
-- `v0.16.0` release finalization in progress on `chore/v0.16.0-release-final` (final version/docs alignment, release PR flow, merge/tag execution)
+- `v0.16.1` documentation/planning milestone alignment in progress (roadmap, architecture, ADR updates)
+- `v0.16.0` remains the latest implemented feature baseline
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
 - `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)
@@ -35,8 +37,9 @@ Current checkpoint:
 - `v0.14.0` distribution/licensing architecture planning docs aligned (future-state, no implementation changes)
 
 Next release targets:
-- `v0.16.0` — final release execution (merge/tag/publish)
 - `v0.17.x` — Diagnostics & Logging
+- `v0.18.x` — Local security groundwork (internal-only)
+- `v0.19.x` — Stability & Pre-1.0 hardening
 
 ---
 
@@ -120,7 +123,7 @@ Delivered:
 
 ---
 
-## Website Workstream (2026-02-20)
+## Website Workstream (2026-02-21)
 
 Completed:
 
@@ -130,17 +133,37 @@ Completed:
 - Implemented a custom Helm visual theme for the Astro/Starlight site:
   - `web/src/styles/helm-theme.css`
   - wired through `web/astro.config.mjs`
-- Rebuilt landing page structure and copy hierarchy in `web/src/content/docs/index.mdx` to match:
+- Rebuilt landing page structure and copy hierarchy in `web/src/content/docs/index.mdx` with dual-audience framing:
   - Hero
   - Problem
   - Solution
-  - Command Bridge
+  - Editions (Helm consumer + Helm Business)
+  - Architecture
   - Helm Pro
   - Footer CTA
+- Applied explicit Helm website typography/color specification in `web/src/styles/helm-theme.css`:
+  - Neue Haas Grotesk heading stack, Inter body text, SF Mono code
+  - specified H1/H2/H3/body/small scale and heading color mapping by theme
+  - 8pt spacing rhythm and restrained Pro-only gold accents
+  - calm, structured visual tone (no neon/startup-style hero effects)
+- Added reusable theme-aware screenshot rendering for website content:
+  - `web/src/components/ThemeImage.astro`
+  - visual tour and landing architecture screenshot now support light/dark asset switching by active site theme
+- Completed website content alignment pass across docs pages:
+  - updated release-status wording consistency for `v0.16.0` release finalization
+  - clarified consumer vs Helm Business positioning in overview + FAQ
+  - refreshed installation/usage/visual-tour copy for current UX
+- Completed manual accessibility verification pass for key routes:
+  - automated Axe CLI scan across key website routes reports zero violations after remediation
+  - patched homepage hero secondary CTA contrast to resolve Axe `color-contrast` failure
+  - verified heading hierarchy and image alt coverage on docs content
+  - verified focus-visible and reduced-motion support in theme CSS
 
 Immediate follow-up:
 
 - Perform manual visual QA in both light and dark theme across mobile/tablet/desktop breakpoints before release publishing.
+- Replace visual-tour screenshots after UI styling refresh in `web/src/assets/tour/` and re-run manual QA.
+  - use paired filenames so theme switching remains automatic: `name.png` (light) and `name-dark.png` (dark)
 
 ---
 
@@ -496,7 +519,10 @@ Delivered:
 
 Delivered:
 
-- Security Advisory System milestone added to ROADMAP.md (1.3.x)
+- Security roadmap restructured with staged boundaries:
+  - `0.18.x` local groundwork, `0.19.x` hardening
+  - `1.3.x` Security Advisory System (Pro)
+  - `1.4.x` Shared Brain
 - CHANGELOG.md, CURRENT_STATE.md, NEXT_STEPS.md, ROADMAP.md updated for rc.1
 
 ---

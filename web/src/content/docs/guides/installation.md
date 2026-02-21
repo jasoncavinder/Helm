@@ -3,9 +3,9 @@ title: Installation
 description: Build and run Helm from source.
 ---
 
-Helm is pre-1.0 software and now ships beta binaries in addition to source builds.
+Helm is pre-1.0 software and ships signed test binaries in addition to source builds.
 
-## Download Beta DMG (Recommended)
+## Download DMG (Recommended)
 
 Download the latest beta DMG from GitHub Releases:
 - [Helm Releases](https://github.com/jasoncavinder/Helm/releases)
@@ -15,11 +15,11 @@ When you open the DMG, install like a standard macOS app:
 2. Launch Helm from `Applications`.
 3. If macOS prompts, confirm opening the app and grant requested permissions.
 
-The beta DMG is built for **Any Mac (Apple Silicon + Intel)** with a **macOS 12+** deployment target.
+The DMG is built for **Any Mac (Apple Silicon + Intel)** with a **macOS 11+ (Big Sur)** minimum target.
 
 ## Prerequisites
 
-- macOS 12 (Monterey) or later
+- macOS 11 (Big Sur) or later
 - Xcode 14+
 - Rust stable toolchain (2024 edition)
 
