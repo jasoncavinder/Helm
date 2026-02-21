@@ -146,6 +146,9 @@ Completed:
   - specified H1/H2/H3/body/small scale and heading color mapping by theme
   - 8pt spacing rhythm and restrained Pro-only gold accents
   - calm, structured visual tone (no neon/startup-style hero effects)
+- Added reusable theme-aware screenshot rendering for website content:
+  - `web/src/components/ThemeImage.astro`
+  - visual tour and landing architecture screenshot now support light/dark asset switching by active site theme
 - Completed website content alignment pass across docs pages:
   - updated release-status wording consistency for `v0.16.0` release finalization
   - clarified consumer vs Helm Business positioning in overview + FAQ
@@ -160,6 +163,7 @@ Immediate follow-up:
 
 - Perform manual visual QA in both light and dark theme across mobile/tablet/desktop breakpoints before release publishing.
 - Replace visual-tour screenshots after UI styling refresh in `web/src/assets/tour/` and re-run manual QA.
+  - use paired filenames so theme switching remains automatic: `name.png` (light) and `name-dark.png` (dark)
 
 ---
 

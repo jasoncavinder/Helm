@@ -6,7 +6,8 @@ hero:
   title: "Take the helm."
   tagline: "Helm centralizes package and toolchain operations across macOS environments with deterministic, auditable workflows."
   image:
-    file: ../../assets/tour/control-center-overview.png
+    light: ../../assets/tour/control-center-overview.png
+    dark: ../../assets/tour/control-center-overview-dark.png
     alt: "Helm Control Center showing manager and package status."
   actions:
     - text: Download Helm
@@ -20,7 +21,9 @@ hero:
 ---
 
 import { LinkButton } from '@astrojs/starlight/components';
+import ThemeImage from '../../components/ThemeImage.astro';
 import statusMenuShot from '../../assets/tour/status-menu.png';
+import statusMenuShotDark from '../../assets/tour/status-menu-dark.png';
 
 <div class="landing-shell">
   <nav class="landing-nav" aria-label="Section navigation">
@@ -121,7 +124,12 @@ import statusMenuShot from '../../assets/tour/status-menu.png';
         </div>
       </div>
       <div class="panel media-panel">
-        <img src={statusMenuShot.src} alt="Helm status menu with tasks and quick actions." loading="lazy" />
+        <ThemeImage
+          light={statusMenuShot}
+          dark={statusMenuShotDark}
+          alt="Helm status menu with tasks and quick actions."
+          class="landing-shot"
+        />
       </div>
     </div>
   </section>
