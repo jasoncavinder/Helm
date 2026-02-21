@@ -192,39 +192,41 @@ struct HelmProButtonStyle: ButtonStyle {
     var horizontalPadding: CGFloat = 12
     var verticalPadding: CGFloat = 8
 
-    func makeBody(configuration: Configuration) -> some View {
-        let fillGradient: LinearGradient = {
-            guard isEnabled else {
-                return LinearGradient(
-                    colors: [
-                        HelmTheme.proAccentTop.opacity(0.42),
-                        HelmTheme.proAccentDeep.opacity(0.38)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            }
-
-            if configuration.isPressed {
-                return LinearGradient(
-                    colors: [
-                        HelmTheme.proAccent.opacity(0.96),
-                        HelmTheme.proAccentDeep
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            }
-
+    private func proFillGradient(isPressed: Bool) -> LinearGradient {
+        guard isEnabled else {
             return LinearGradient(
                 colors: [
-                    HelmTheme.proAccentTop,
-                    HelmTheme.proAccent
+                    HelmTheme.proAccentTop.opacity(0.42),
+                    HelmTheme.proAccentDeep.opacity(0.38)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
             )
-        }()
+        }
+
+        if isPressed {
+            return LinearGradient(
+                colors: [
+                    HelmTheme.proAccent.opacity(0.96),
+                    HelmTheme.proAccentDeep
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+
+        return LinearGradient(
+            colors: [
+                HelmTheme.proAccentTop,
+                HelmTheme.proAccent
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
+
+    func makeBody(configuration: Configuration) -> some View {
+        let fillGradient = proFillGradient(isPressed: configuration.isPressed)
 
         return configuration.label
             .font(.subheadline.weight(.semibold))

@@ -249,16 +249,6 @@ extension L10n {
             }
         }
 
-        struct Tasks {
-            static let noRecentTasks = "app.tasks.no_recent_tasks"
-            static let fallbackDescription = "app.tasks.fallback.description"
-            static let cancelUnavailable = "app.tasks.help.cancel_unavailable"
-
-            struct Action {
-                static let cancel = "app.tasks.action.cancel"
-            }
-        }
-
         struct Window {
             static let controlCenter = "app.window.control_center"
         }
@@ -415,6 +405,18 @@ extension L10n {
             static let uninstall = "app.capability.uninstall"
             static let upgrade = "app.capability.upgrade"
             static let pin = "app.capability.pin"
+        }
+    }
+}
+
+extension L10n.App {
+    struct Tasks {
+        static let noRecentTasks = "app.tasks.no_recent_tasks"
+        static let fallbackDescription = "app.tasks.fallback.description"
+        static let cancelUnavailable = "app.tasks.help.cancel_unavailable"
+
+        struct Action {
+            static let cancel = "app.tasks.action.cancel"
         }
     }
 }
