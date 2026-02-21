@@ -203,3 +203,51 @@ struct UpgradePreviewPlanner {
         return true
     }
 }
+
+struct PackageConsolidationPolicy {
+    static func statusRank(_ rawStatus: String) -> Int {
+        switch rawStatus.lowercased() {
+        case "upgradable":
+            return 0
+        case "installed":
+            return 1
+        case "available":
+            return 2
+        default:
+            return 3
+        }
+    }
+
+    static func sortedManagerIds(
+        _ managerIds: [String],
+        localizedManagerName: (String) -> String
+    ) -> [String] {
+        Array(Set(managerIds)).sorted { lhs, rhs in
+            localizedManagerName(lhs).localizedCaseInsensitiveCompare(localizedManagerName(rhs)) == .orderedAscending
+        }
+    }
+
+    static func shouldPrefer(
+        lhsStatus: String,
+        rhsStatus: String,
+        lhsPinned: Bool,
+        rhsPinned: Bool,
+        lhsRestartRequired: Bool,
+        rhsRestartRequired: Bool,
+        lhsManagerName: String,
+        rhsManagerName: String
+    ) -> Bool {
+        let lhsRank = statusRank(lhsStatus)
+        let rhsRank = statusRank(rhsStatus)
+        if lhsRank != rhsRank {
+            return lhsRank < rhsRank
+        }
+        if lhsPinned != rhsPinned {
+            return lhsPinned
+        }
+        if lhsRestartRequired != rhsRestartRequired {
+            return lhsRestartRequired
+        }
+        return lhsManagerName.localizedCaseInsensitiveCompare(rhsManagerName) == .orderedAscending
+    }
+}

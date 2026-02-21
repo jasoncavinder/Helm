@@ -15,11 +15,11 @@ Helm is in:
 ```
 
 Focus:
-- finalize `v0.17.0-rc.2` updater hardening release-prep artifacts on `dev`
-- complete `rc.2` release handoff tasks (release-prep PR, merge, RC tag creation/push)
+- finalize `v0.17.0-rc.3` release prep on `dev`
+- execute next 0.17 RC cut workflow (release-prep PR, merge, tag, publish)
 
 Current checkpoint:
-- `v0.17.0-rc.2` release prep in progress on `dev` after merged diagnostics/logging slices and updater hotfix follow-through:
+- `v0.17.0-rc.2` is released; post-rc.2 follow-up has been delivered on `dev` for the `v0.17.0-rc.3` candidate after merged diagnostics/logging slices and updater hotfix delivery:
   - `#93` `feat/v0.17-log-foundation`
   - `#95` `feat/v0.17-structured-error-export`
   - `#96` `feat/v0.17-service-health-panel`
@@ -27,6 +27,14 @@ Current checkpoint:
   - `#98` `feat/v0.17-manager-detection-diagnostics`
   - `#99` `feat/v0.17-diagnostics-hardening`
   - updater/install hardening for Sparkle sandboxed flows and prerelease appcast short-version labeling
+  - post-rc.2 follow-up delivered for `rc.3`:
+    - preserve prerelease bundle short version in Sparkle "up to date" messaging
+    - add running-task inline expand/collapse command/live-output panel
+    - consolidate same-name packages across managers in package/search UI surfaces while preserving manager-scoped actions
+    - render HTML package descriptions in inspector with safe-link policy and readable fallback
+    - keep inspector detail text containers full-width with leading alignment in the side panel
+    - harden package-consolidation row selection policy and task-output buffer caps
+    - add prerelease updater bundle-metadata sanity checks and Hungarian translation follow-through for new UI strings
 - latest stable release on `main`: `v0.16.2`
 - validation gates currently green for RC prep (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke from `v0.17.0-rc.1`)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
@@ -49,7 +57,7 @@ Next release targets:
 - `v0.18.x` — Local security groundwork (internal-only)
 - `v0.19.x` — Stability & Pre-1.0 hardening
 
-## v0.17.x Delivery Tracker (Target: `v0.17.0-rc.2`)
+## v0.17.x Delivery Tracker (Target: next `0.17.0` RC)
 
 - [x] `feat/v0.17-log-foundation` — task log event model, SQLite persistence migration, FFI/XPC retrieval surface.
 - [x] `feat/v0.17-task-log-viewer` — per-task log viewer UI with filters and pagination.
@@ -59,13 +67,22 @@ Next release targets:
 - [x] `feat/v0.17-diagnostics-hardening` — silent-failure sweep, attribution consistency, integration/doc exit checks.
 - [x] `v0.17.0-rc.1` localization follow-through — manager display-name key coverage expanded across all implemented manager IDs with brand-preserving labels; Hungarian (`hu`) locale added with onboarding + service/error translation bootstrap and CI parity checks.
 - [x] `v0.17.0-rc.2` updater/install hardening — Sparkle sandbox installer entitlements + installer launcher service metadata added; prerelease appcast short-version labeling now preserves RC identifiers.
+- [x] post-`rc.2` updater version-label alignment — non-App-Store prerelease builds now preserve prerelease marketing version so Sparkle "up to date" messaging reflects full RC versions.
+- [x] post-`rc.2` running-task execution transparency — running tasks now expose inline expand/collapse details showing command and live-updating output.
+- [x] post-`rc.2` cross-manager package presentation consolidation — package list and popover search now collapse same-name entries into one package row and display all contributing managers beneath the package name.
+- [x] post-`rc.2` inspector rich-description hardening — inspector now renders HTML package descriptions as attributed text, with safe-link filtering and readable fallback behavior.
+- [x] post-`rc.2` inspector layout hardening — inspector detail containers now stay full-width with leading alignment to avoid centered narrow text content.
+- [x] post-`rc.2` updater prerelease guardrails — updater eligibility now rejects bundle marketing/build metadata mismatches that would blur prerelease vs stable version semantics.
+- [x] post-`rc.2` diagnostics/runtime hardening — task-output store now enforces bounded command/output buffering for long-running tasks, and Hungarian locale coverage includes the new task/inspector strings.
 
-RC-2 release gate for `v0.17.x`:
+RC-3 release gate for `v0.17.x`:
 - Logs are accessible in UI.
 - No silent failures in task execution/reporting paths.
 - Support data export works and is operator-usable.
 - Sparkle updater can launch installer successfully for eligible direct-channel installs.
 - Appcast `sparkle:shortVersionString` preserves prerelease labels for RC builds.
+- Sparkle updater eligibility rejects prerelease/stable bundle-version metadata mismatches.
+- Task execution transparency surfaces command + live output while keeping diagnostics storage bounded.
 License/compliance follow-through:
 - Keep `docs/legal/THIRD_PARTY_LICENSES.md` updated as dependency sets change.
 - Treat third-party notice validation as a required release gate (`docs/RELEASE_CHECKLIST.md`).
@@ -893,4 +910,4 @@ Implement:
 - 0.14 stable release alignment for `v0.14.0` is complete (README/website + version artifacts).
 - Distribution/licensing future-state planning documentation is aligned for 0.14 release notes and roadmap planning (no implementation yet).
 - 0.14.x and 0.15.x release execution are complete on `main` (`v0.14.1` and `v0.15.0`).
-- 0.16.2 release execution is complete on `main`; 0.17.x diagnostics/logging delivery is complete with `v0.17.0-rc.1` released and `v0.17.0-rc.2` updater hardening in release prep on `dev`.
+- 0.16.2 release execution is complete on `main`; 0.17.x diagnostics/logging delivery is complete with `v0.17.0-rc.1` and `v0.17.0-rc.2` released, and `v0.17.0-rc.3` stabilization/release prep now active on `dev`.

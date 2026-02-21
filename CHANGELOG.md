@@ -5,6 +5,26 @@ All notable changes to this project are documented in this file.
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
 ## [Unreleased]
+- No unreleased changes.
+
+## [0.17.0-rc.3] - 2026-02-21
+
+### Changed
+- Build-time version metadata generation now preserves prerelease identifiers in `MARKETING_VERSION` for non-App-Store channels, so Sparkle "up to date" messaging reflects the full release-candidate version (for example, `0.17.0-rc.3`).
+- Running task rows now support inline expand/collapse details with single-row expansion behavior per task list.
+- Package list and popover search results now consolidate same-name packages across managers into a single row while showing all contributing managers under each package.
+- Inspector package descriptions now render HTML-formatted summaries as attributed text in the Inspector so emphasis/code formatting is preserved (with readable plain-text fallback if rich parsing fails).
+- Inspector detail content now keeps full-width leading alignment even for short text values, preventing centered/narrow content columns in the side panel.
+
+### Added
+- Running-task inline details now show the resolved command and a live-updating output panel.
+- Task output capture now persists the executed command string and streams incremental `stdout`/`stderr` chunks while tasks are running.
+- Hungarian localization coverage now includes the new running-task and inspector strings introduced by post-`rc.2` UX updates.
+
+### Fixed
+- Sparkle prerelease eligibility checks now reject bundle metadata mismatches between `CFBundleShortVersionString` and `CFBundleVersion`, preventing prerelease/stable version-label drift.
+- Inspector description links now only allow safe `http://` and `https://` URLs with a host, blocking non-web URI schemes.
+- Task-output storage now applies byte caps to both command strings and streamed output chunks to keep long-running task diagnostics bounded.
 
 ## [0.17.0-rc.2] - 2026-02-21
 

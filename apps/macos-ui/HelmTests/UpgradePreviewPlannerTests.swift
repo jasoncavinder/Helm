@@ -248,3 +248,59 @@ final class UpgradePreviewPlannerTests: XCTestCase {
         )
     }
 }
+
+final class PackageConsolidationPolicyTests: XCTestCase {
+    func testStatusRankPrioritizesUpgradableThenInstalledThenAvailable() {
+        XCTAssertLessThan(
+            PackageConsolidationPolicy.statusRank("upgradable"),
+            PackageConsolidationPolicy.statusRank("installed")
+        )
+        XCTAssertLessThan(
+            PackageConsolidationPolicy.statusRank("installed"),
+            PackageConsolidationPolicy.statusRank("available")
+        )
+    }
+
+    func testSortedManagerIdsOrdersByLocalizedDisplayNameAndDeduplicates() {
+        let sorted = PackageConsolidationPolicy.sortedManagerIds(
+            ["pnpm", "npm", "pnpm", "brew"]
+        ) { managerId in
+            switch managerId {
+            case "brew": return "Homebrew"
+            case "npm": return "npm"
+            case "pnpm": return "pnpm"
+            default: return managerId
+            }
+        }
+
+        XCTAssertEqual(sorted, ["brew", "npm", "pnpm"])
+    }
+
+    func testShouldPreferFavorsPinnedAndRestartRequiredAfterStatusRank() {
+        XCTAssertTrue(
+            PackageConsolidationPolicy.shouldPrefer(
+                lhsStatus: "installed",
+                rhsStatus: "installed",
+                lhsPinned: true,
+                rhsPinned: false,
+                lhsRestartRequired: false,
+                rhsRestartRequired: false,
+                lhsManagerName: "a",
+                rhsManagerName: "b"
+            )
+        )
+
+        XCTAssertTrue(
+            PackageConsolidationPolicy.shouldPrefer(
+                lhsStatus: "installed",
+                rhsStatus: "installed",
+                lhsPinned: false,
+                rhsPinned: false,
+                lhsRestartRequired: true,
+                rhsRestartRequired: false,
+                lhsManagerName: "a",
+                rhsManagerName: "b"
+            )
+        )
+    }
+}

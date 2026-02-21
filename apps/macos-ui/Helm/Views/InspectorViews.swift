@@ -70,6 +70,7 @@ struct ControlCenterInspectorView: View {
 
                 Spacer()
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
         }
     }
@@ -184,6 +185,7 @@ private struct InspectorTaskDetailView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .popover(isPresented: $showDiagnosticsSheet, arrowEdge: .leading) {
             TaskDiagnosticsSheetView(
                 taskDescription: task.description,
@@ -638,15 +640,8 @@ private struct TaskLogRowView: View {
 private struct InspectorPackageDetailView: View {
     @ObservedObject private var core = HelmCore.shared
     @EnvironmentObject private var context: ControlCenterContext
+    @State private var renderedPackageDescription: PackageDescriptionRenderer.RenderedDescription?
     let package: PackageItem
-
-    private var packageDescriptionText: String? {
-        guard let summary = package.summary?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !summary.isEmpty else {
-            return nil
-        }
-        return summary
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -707,9 +702,15 @@ private struct InspectorPackageDetailView: View {
             }
 
             InspectorField(label: L10n.App.Inspector.description.localized) {
-                if let packageDescriptionText {
-                    Text(packageDescriptionText)
-                        .font(.caption)
+                if let renderedPackageDescription {
+                    switch renderedPackageDescription {
+                    case .plain(let text):
+                        Text(text)
+                            .font(.caption)
+                    case .rich(let attributed):
+                        InspectorAttributedText(attributedText: attributed)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 } else if core.packageDescriptionLoadingIds.contains(package.id) {
                     Text(L10n.App.Inspector.descriptionLoading.localized)
                         .font(.caption)
@@ -786,15 +787,87 @@ private struct InspectorPackageDetailView: View {
                     .accessibilityValue(package.id)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear {
             core.ensurePackageDescription(for: package)
+            refreshRenderedPackageDescription()
         }
         .onChange(of: package.id) { _ in
             core.ensurePackageDescription(for: package)
+            refreshRenderedPackageDescription()
         }
         .onChange(of: package.summary) { _ in
             core.ensurePackageDescription(for: package)
+            refreshRenderedPackageDescription()
         }
+    }
+
+    private func refreshRenderedPackageDescription() {
+        renderedPackageDescription = PackageDescriptionRenderer.render(package.summary)
+    }
+}
+
+private struct InspectorAttributedText: NSViewRepresentable {
+    let attributedText: NSAttributedString
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> InspectorLinkTextView {
+        let textView = InspectorLinkTextView()
+        textView.delegate = context.coordinator
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.drawsBackground = false
+        textView.isRichText = true
+        textView.isHorizontallyResizable = false
+        textView.isVerticallyResizable = true
+        textView.textContainerInset = .zero
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.heightTracksTextView = false
+        textView.linkTextAttributes = [
+            .foregroundColor: NSColor.linkColor,
+            .underlineStyle: NSUnderlineStyle.single.rawValue
+        ]
+        return textView
+    }
+
+    func updateNSView(_ nsView: InspectorLinkTextView, context: Context) {
+        nsView.textStorage?.setAttributedString(attributedText)
+        nsView.invalidateIntrinsicContentSize()
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
+            guard let url = InspectorLinkPolicy.safeURL(from: link) else { return false }
+            NSWorkspace.shared.open(url)
+            return true
+        }
+    }
+}
+
+private final class InspectorLinkTextView: NSTextView {
+    override var intrinsicContentSize: NSSize {
+        guard let textContainer, let layoutManager else {
+            return NSSize(width: NSView.noIntrinsicMetric, height: 0)
+        }
+
+        let fittingWidth = bounds.width > 0 ? bounds.width : 320
+        if textContainer.containerSize.width != fittingWidth {
+            textContainer.containerSize = NSSize(width: fittingWidth, height: .greatestFiniteMagnitude)
+        }
+
+        layoutManager.ensureLayout(for: textContainer)
+        let usedRect = layoutManager.usedRect(for: textContainer)
+        let height = ceil(usedRect.height + (textContainerInset.height * 2))
+        return NSSize(width: NSView.noIntrinsicMetric, height: max(height, 14))
+    }
+
+    override func layout() {
+        super.layout()
+        invalidateIntrinsicContentSize()
     }
 }
 
@@ -937,6 +1010,7 @@ private struct InspectorManagerDetailView: View {
                 .helmPointer()
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func localizedCategoryName(_ category: String) -> String {
@@ -996,6 +1070,7 @@ private struct InspectorField<Content: View>: View {
                 .foregroundColor(.secondary)
             content
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
     }
 }

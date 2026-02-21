@@ -5,7 +5,7 @@ struct PopoverSearchOverlayContent: View {
     @ObservedObject private var core = HelmCore.shared
     @EnvironmentObject private var context: ControlCenterContext
     @Binding var popoverSearchQuery: String
-    let searchResults: [PackageItem]
+    let searchResults: [ConsolidatedPackageItem]
     let onSyncSearchQuery: (String) -> Void
     let onOpenControlCenter: () -> Void
     let onClose: () -> Void
@@ -54,9 +54,10 @@ struct PopoverSearchOverlayContent: View {
                 ScrollView {
                     VStack(spacing: 6) {
                         ForEach(searchResults) { result in
+                            let package = result.package
                             Button {
-                                context.selectedPackageId = result.id
-                                context.selectedManagerId = result.managerId
+                                context.selectedPackageId = package.id
+                                context.selectedManagerId = package.managerId
                                 context.selectedTaskId = nil
                                 context.selectedUpgradePlanStepId = nil
                                 context.selectedSection = .packages
@@ -65,20 +66,21 @@ struct PopoverSearchOverlayContent: View {
                             } label: {
                                 HStack(spacing: 8) {
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(result.name)
+                                        Text(package.name)
                                             .font(.subheadline.weight(.medium))
                                             .lineLimit(1)
-                                        Text(result.manager)
+                                        Text(result.managerDisplayText)
                                             .font(.caption2)
                                             .foregroundColor(.secondary)
+                                            .lineLimit(2)
                                     }
                                     Spacer()
-                                    if let latest = result.latestVersion {
+                                    if let latest = package.latestVersion {
                                         Text(latest)
                                             .font(.caption.monospacedDigit())
                                             .foregroundColor(HelmTheme.stateAttention)
                                     } else {
-                                        Text(result.version)
+                                        Text(package.version)
                                             .font(.caption.monospacedDigit())
                                             .foregroundColor(.secondary)
                                     }
@@ -147,6 +149,7 @@ struct PopoverSettingsOverlayContent: View {
                     Text(L10n.App.Settings.Label.french.localized).tag("fr")
                     Text(L10n.App.Settings.Label.portugueseBrazilian.localized).tag("pt-BR")
                     Text(L10n.App.Settings.Label.japanese.localized).tag("ja")
+                    Text(L10n.App.Settings.Label.hungarian.localized).tag("hu")
                 }
                 .labelsHidden()
                 .frame(width: 180)

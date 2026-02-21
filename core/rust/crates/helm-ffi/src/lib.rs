@@ -1276,6 +1276,7 @@ pub extern "C" fn helm_list_tasks() -> *mut c_char {
 #[serde(rename_all = "camelCase")]
 struct FfiTaskOutputRecord {
     task_id: TaskId,
+    command: Option<String>,
     stdout: Option<String>,
     stderr: Option<String>,
 }
@@ -1307,6 +1308,7 @@ pub extern "C" fn helm_get_task_output(task_id: i64) -> *mut c_char {
 
     let record = FfiTaskOutputRecord {
         task_id,
+        command: output.as_ref().and_then(|entry| entry.command.clone()),
         stdout: output.as_ref().and_then(|entry| entry.stdout.clone()),
         stderr: output.as_ref().and_then(|entry| entry.stderr.clone()),
     };

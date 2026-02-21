@@ -140,9 +140,14 @@ cat > "$DEST_DIR/HelmVersion.swift" <<SWIFT
 let helmVersion = "$VERSION"
 SWIFT
 
-# Generate xcconfig for Xcode bundle version synchronization
-# Strip prerelease tag for MARKETING_VERSION (Apple requires X.Y.Z)
-MARKETING_VERSION=$(echo "$VERSION" | sed 's/-.*//')
+# Generate xcconfig for Xcode bundle version synchronization.
+# Keep prerelease suffixes in MARKETING_VERSION for direct-channel RC visibility
+# in Sparkle "up to date" UI. App Store channel continues to receive X.Y.Z only.
+if [[ "${HELM_DISTRIBUTION_CHANNEL:-developer_id}" == "app_store" ]]; then
+    MARKETING_VERSION=$(echo "$VERSION" | sed 's/-.*//')
+else
+    MARKETING_VERSION="$VERSION"
+fi
 
 # Derive a monotonic numeric build number for Sparkle comparisons.
 # Format:
