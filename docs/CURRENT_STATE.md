@@ -8,22 +8,23 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.17.0-rc.1** (diagnostics/logging release-candidate prep on `dev`).
+Current documentation baseline: **0.17.0-rc.2** (diagnostics/logging RC hardening on `dev`).
 
-Implementation baseline: **0.17.0-rc.1** (all six v0.17 diagnostics slices merged to `dev`; release prep in progress).
+Implementation baseline: **0.17.0-rc.2** (all six v0.17 diagnostics slices merged; updater/install RC hardening applied on `dev`).
 
 See:
 - CHANGELOG.md
 
 Active milestone:
 - latest shipped release on `main`: **0.16.2** (Sparkle connectivity hardening + macOS 11 deployment-target alignment)
-- 0.17.x — Diagnostics & Logging (**delivery merged on `dev`**, pending RC tag/release flow)
+- 0.17.x — Diagnostics & Logging (**delivery merged on `dev`**, `v0.17.0-rc.1` released, `v0.17.0-rc.2` hotfix RC prep in progress)
   - delivered: `feat/v0.17-log-foundation` (SQLite-backed task lifecycle logs + retrieval plumbing)
   - delivered: `feat/v0.17-task-log-viewer` (inspector diagnostics logs tab with level/status filters + load-more pagination)
   - delivered: `feat/v0.17-structured-error-export` (structured JSON diagnostics export with redaction for support workflows)
   - delivered: `feat/v0.17-service-health-panel` (settings diagnostics panel for service/runtime health + copyable service snapshot)
   - delivered: `feat/v0.17-manager-detection-diagnostics` (manager inspector detection reason diagnostics + latest detection task metadata visibility)
   - delivered: `feat/v0.17-diagnostics-hardening` (attributed last-error capture across fetch/action/settings failures + diagnostics export parity)
+  - delivered: `v0.17.0-rc.2` updater hardening (Sparkle sandbox installer entitlements + launcher service metadata + prerelease appcast short-version preservation)
   - release-prep validation status: green (`cargo test`, macOS `xcodebuild` suite, locale integrity + locale length audits)
 
 Security rollout staging status:
@@ -866,4 +867,4 @@ Helm is a **functional control plane for 28 implemented managers** with:
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-0.13.x through 0.16.2 stable checkpoints are complete on `main`, and the full 0.17.x diagnostics/logging slice is now merged on `dev` for `v0.17.0-rc.1` release preparation.
+0.13.x through 0.16.2 stable checkpoints are complete on `main`; `v0.17.0-rc.1` has been released, and updater/install hardening for `v0.17.0-rc.2` is staged on `dev`.

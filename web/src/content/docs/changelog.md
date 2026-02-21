@@ -11,6 +11,20 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ---
 
+## 0.17.0-rc.2 — 2026-02-21
+
+### Changed
+- Sparkle appcast generation now preserves prerelease display versions (for example, `0.17.0-rc.2`) in `sparkle:shortVersionString` and appcast item titles.
+- Release automation now passes tag-derived display versions into appcast generation for prerelease tags.
+- Release DMG verification now enforces Sparkle installer-launcher and sandbox entitlement requirements for updater compatibility.
+
+### Fixed
+- Enabled Sparkle installer launcher service metadata in Helm app bundles for sandboxed update installs.
+- Added required Sparkle sandbox entitlement exceptions for installer/status mach services and shared preference access.
+- Fixed updater install failures seen in `v0.17.0-rc.1` where Sparkle could download updates but fail launching the installer.
+
+---
+
 ## 0.17.0-rc.1 — 2026-02-21
 
 ### Added

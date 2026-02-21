@@ -15,19 +15,20 @@ Helm is in:
 ```
 
 Focus:
-- finalize `v0.17.0-rc.1` release-prep artifacts on `dev`
-- complete release handoff tasks (release-prep PR, merge, RC tag creation/push)
+- finalize `v0.17.0-rc.2` updater hardening release-prep artifacts on `dev`
+- complete `rc.2` release handoff tasks (release-prep PR, merge, RC tag creation/push)
 
 Current checkpoint:
-- `v0.17.0-rc.1` release prep in progress on `dev` after merged diagnostics/logging slices:
+- `v0.17.0-rc.2` release prep in progress on `dev` after merged diagnostics/logging slices and updater hotfix follow-through:
   - `#93` `feat/v0.17-log-foundation`
   - `#95` `feat/v0.17-structured-error-export`
   - `#96` `feat/v0.17-service-health-panel`
   - `#97` `feat/v0.17-task-log-viewer`
   - `#98` `feat/v0.17-manager-detection-diagnostics`
   - `#99` `feat/v0.17-diagnostics-hardening`
+  - updater/install hardening for Sparkle sandboxed flows and prerelease appcast short-version labeling
 - latest stable release on `main`: `v0.16.2`
-- validation gates currently green for RC prep (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits)
+- validation gates currently green for RC prep (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke from `v0.17.0-rc.1`)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
 - `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)
@@ -48,7 +49,7 @@ Next release targets:
 - `v0.18.x` — Local security groundwork (internal-only)
 - `v0.19.x` — Stability & Pre-1.0 hardening
 
-## v0.17.x Delivery Tracker (Target: `v0.17.0-rc.1`)
+## v0.17.x Delivery Tracker (Target: `v0.17.0-rc.2`)
 
 - [x] `feat/v0.17-log-foundation` — task log event model, SQLite persistence migration, FFI/XPC retrieval surface.
 - [x] `feat/v0.17-task-log-viewer` — per-task log viewer UI with filters and pagination.
@@ -57,11 +58,14 @@ Next release targets:
 - [x] `feat/v0.17-manager-detection-diagnostics` — per-manager detection diagnostics and reason visibility.
 - [x] `feat/v0.17-diagnostics-hardening` — silent-failure sweep, attribution consistency, integration/doc exit checks.
 - [x] `v0.17.0-rc.1` localization follow-through — manager display-name key coverage expanded across all implemented manager IDs with brand-preserving labels; Hungarian (`hu`) locale added with onboarding + service/error translation bootstrap and CI parity checks.
+- [x] `v0.17.0-rc.2` updater/install hardening — Sparkle sandbox installer entitlements + installer launcher service metadata added; prerelease appcast short-version labeling now preserves RC identifiers.
 
-RC-1 release gate for `v0.17.x`:
+RC-2 release gate for `v0.17.x`:
 - Logs are accessible in UI.
 - No silent failures in task execution/reporting paths.
 - Support data export works and is operator-usable.
+- Sparkle updater can launch installer successfully for eligible direct-channel installs.
+- Appcast `sparkle:shortVersionString` preserves prerelease labels for RC builds.
 License/compliance follow-through:
 - Keep `docs/legal/THIRD_PARTY_LICENSES.md` updated as dependency sets change.
 - Treat third-party notice validation as a required release gate (`docs/RELEASE_CHECKLIST.md`).
@@ -889,4 +893,4 @@ Implement:
 - 0.14 stable release alignment for `v0.14.0` is complete (README/website + version artifacts).
 - Distribution/licensing future-state planning documentation is aligned for 0.14 release notes and roadmap planning (no implementation yet).
 - 0.14.x and 0.15.x release execution are complete on `main` (`v0.14.1` and `v0.15.0`).
-- 0.16.2 release execution is complete on `main`; 0.17.x diagnostics/logging delivery is complete on `dev` pending `v0.17.0-rc.1` tag/release cut.
+- 0.16.2 release execution is complete on `main`; 0.17.x diagnostics/logging delivery is complete with `v0.17.0-rc.1` released and `v0.17.0-rc.2` updater hardening in release prep on `dev`.
