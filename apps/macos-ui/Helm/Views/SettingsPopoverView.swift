@@ -102,7 +102,7 @@ struct SettingsSectionView: View {
                         Spacer()
                         Text(L10n.App.Managers.State.comingSoon.localized)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundColor(.secondary)
                     }
 
                     HStack {
@@ -110,7 +110,7 @@ struct SettingsSectionView: View {
                         Spacer()
                         Text(selectedFrequencyLabel)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundColor(.secondary)
                     }
                 }
 
@@ -284,7 +284,7 @@ struct SettingsSectionView: View {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundStyle(.green)
                             Text(L10n.App.Settings.SupportFeedback.copiedConfirmation.localized)
-                                .foregroundStyle(.secondary)
+                                .foregroundColor(.secondary)
                         }
                         .font(.caption)
                         .transition(.opacity.combined(with: .scale))

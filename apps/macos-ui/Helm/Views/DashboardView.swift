@@ -149,7 +149,7 @@ struct RedesignPopoverView: View {
                             .font(.headline.weight(.semibold))
                         Text(L10n.App.Popover.systemHealth.localized)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundColor(.secondary)
                     }
                     Spacer()
                     HealthBadgeView(status: core.aggregateHealth)
@@ -216,14 +216,14 @@ struct RedesignPopoverView: View {
                 }
                 .buttonStyle(.plain)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundColor(.secondary)
                 .helmPointer()
             }
 
             if managerRows.isEmpty {
                 Text(L10n.App.Dashboard.State.emptyManagers.localized)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
             } else {
                 ForEach(managerRows.prefix(4)) { manager in
                     Button {
@@ -241,7 +241,7 @@ struct RedesignPopoverView: View {
                             Spacer()
                             Text("\(core.outdatedCount(forManagerId: manager.id))")
                                 .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
+                                .foregroundColor(.secondary)
                             HealthBadgeView(status: core.health(forManagerId: manager.id))
                         }
                         .contentShape(Rectangle())
@@ -272,7 +272,7 @@ struct RedesignPopoverView: View {
                         .font(.caption)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
+                .foregroundColor(.secondary)
                 .helmPointer()
                 .accessibilityLabel(L10n.App.Action.openControlCenter.localized)
             }
@@ -280,7 +280,7 @@ struct RedesignPopoverView: View {
             if popoverTasks.isEmpty {
                 Text(L10n.App.Tasks.noRecentTasks.localized)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
             } else {
                 ForEach(popoverTasks) { task in
                     TaskRowView(task: task, onCancel: task.isRunning ? { core.cancelTask(task) } : nil)
@@ -298,7 +298,7 @@ struct RedesignPopoverView: View {
             }
             .buttonStyle(.plain)
             .font(.caption2)
-            .foregroundStyle(.secondary)
+            .foregroundColor(.secondary)
             .helmPointer()
 
             Spacer(minLength: 10)

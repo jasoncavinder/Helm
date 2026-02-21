@@ -32,7 +32,7 @@ struct ManagersSectionView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text(group.authority.key.localized)
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                                .foregroundColor(.secondary)
                                 .textCase(.uppercase)
                                 .padding(.horizontal, 20)
 
@@ -65,7 +65,7 @@ struct ManagersSectionView: View {
                 if implementedManagers.isEmpty {
                     Text(L10n.App.ManagersSection.empty.localized)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
                         .padding(.horizontal, 20)
                 }
             }
@@ -127,10 +127,10 @@ private struct ManagerSectionRow: View {
                     HStack(spacing: 6) {
                         Text(L10n.App.Managers.Label.packageCount.localized(with: ["count": packageCount]))
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundColor(.secondary)
                         Text("|")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundColor(.secondary)
                         Text(L10n.App.Managers.Tooltip.outdated.localized(with: ["count": outdatedCount]))
                             .font(.caption)
                             .foregroundStyle(outdatedCount == 0 ? HelmTheme.textSecondary : HelmTheme.stateAttention)
@@ -145,12 +145,12 @@ private struct ManagerSectionRow: View {
                             .controlSize(.mini)
                         Text(operationStatus)
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundColor(.secondary)
                     }
                 } else {
                     Text(detected ? (enabled ? L10n.App.Managers.State.enabled.localized : L10n.App.Managers.State.disabled.localized) : L10n.App.Managers.State.notInstalled.localized)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
                 }
 
                 if detected {

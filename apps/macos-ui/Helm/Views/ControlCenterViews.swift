@@ -97,7 +97,7 @@ private struct ControlCenterTopBar: View {
 
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
                 TextField(
                     L10n.App.ControlCenter.searchPlaceholder.localized,
                     text: Binding(
@@ -120,7 +120,7 @@ private struct ControlCenterTopBar: View {
                         core.searchText = ""
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
+                            .foregroundColor(.secondary)
                     }
                     .buttonStyle(.plain)
                     .helmPointer()

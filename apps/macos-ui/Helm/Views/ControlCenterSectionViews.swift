@@ -56,7 +56,7 @@ struct RedesignOverviewSectionView: View {
                 if core.activeTasks.isEmpty {
                     Text(L10n.App.Tasks.noRecentTasks.localized)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
                 } else {
                     VStack(spacing: 0) {
                         ForEach(Array(core.activeTasks.prefix(10))) { task in
@@ -246,11 +246,11 @@ struct RedesignUpdatesSectionView: View {
                             Text("\(row.managerCount)")
                                 .font(.body.monospacedDigit())
                             Text(L10n.App.Updates.managers.localized)
-                                .foregroundStyle(.secondary)
+                                .foregroundColor(.secondary)
                             Text("\(row.packageCount)")
                                 .font(.body.monospacedDigit())
                             Text(L10n.App.Updates.packages.localized)
-                                .foregroundStyle(.secondary)
+                                .foregroundColor(.secondary)
                         }
                         .padding(.vertical, 4)
                     }
@@ -265,7 +265,7 @@ struct RedesignUpdatesSectionView: View {
                         Spacer()
                         Text("\(scopedInFlightStepCount)")
                             .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
+                            .foregroundColor(.secondary)
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
@@ -275,7 +275,7 @@ struct RedesignUpdatesSectionView: View {
                 if visiblePlanSteps.isEmpty {
                     Text(L10n.App.Tasks.noRecentTasks.localized)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
                 } else {
                     VStack(spacing: 0) {
                         ForEach(Array(visiblePlanSteps.enumerated()), id: \.element.id) { index, step in
@@ -288,14 +288,14 @@ struct RedesignUpdatesSectionView: View {
                                 HStack(spacing: 8) {
                                     Text("\(index + 1).")
                                         .font(.caption.monospacedDigit())
-                                        .foregroundStyle(.secondary)
+                                        .foregroundColor(.secondary)
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(planStepTitle(step))
                                             .font(.subheadline.weight(.medium))
                                             .lineLimit(1)
                                         Text(localizedManagerDisplayName(step.managerId))
                                             .font(.caption)
-                                            .foregroundStyle(.secondary)
+                                            .foregroundColor(.secondary)
                                             .lineLimit(1)
                                     }
                                     Spacer()
@@ -342,7 +342,7 @@ struct RedesignUpdatesSectionView: View {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(core.localizedUpgradePlanFailureCause(for: group))
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundColor(.secondary)
 
                                 Text(packageSummary(group.packageNames, managerId: group.managerId))
                                     .font(.caption.monospaced())
@@ -357,7 +357,7 @@ struct RedesignUpdatesSectionView: View {
                                     Spacer()
                                     Text(localizedManagerDisplayName(group.managerId))
                                         .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundColor(.secondary)
                                 }
                             }
                             .padding(10)
@@ -489,7 +489,7 @@ struct MetricCardView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundColor(.secondary)
             Text("\(value)")
                 .font(.title3.monospacedDigit().weight(.semibold))
         }
@@ -520,15 +520,15 @@ struct ManagerHealthCardView: View {
             HStack(spacing: 6) {
                 Text(authority.key.localized)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
                 Text("|")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
                 Text("\(outdatedCount)")
                     .font(.caption.monospacedDigit())
                 Text(L10n.App.Packages.Filter.upgradable.localized)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
             }
         }
         .padding(14)

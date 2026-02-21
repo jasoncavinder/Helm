@@ -20,7 +20,7 @@ struct TasksSectionView: View {
                 Spacer()
                 Text(L10n.App.TasksSection.empty.localized)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
                 Spacer()
             } else {
                 List(core.activeTasks) { task in

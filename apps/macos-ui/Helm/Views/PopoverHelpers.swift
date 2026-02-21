@@ -13,7 +13,7 @@ struct PopoverOverlayCard<Content: View>: View {
                 Spacer()
                 Button(action: onClose) {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.escape, modifiers: [])
@@ -109,7 +109,7 @@ struct PopoverAttentionBanner: View {
                     .font(.caption.weight(.semibold))
                 Text(bannerMessage)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
             }
 
             Spacer(minLength: 10)
@@ -166,7 +166,7 @@ struct PopoverSearchField: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
+                .foregroundColor(.secondary)
             TextField(
                 "app.popover.search_placeholder".localized,
                 text: Binding(
@@ -191,7 +191,7 @@ struct PopoverSearchField: View {
                     onSyncSearchQuery("")
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
                 .helmPointer()
@@ -249,7 +249,7 @@ struct MetricChipView: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(label)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundColor(.secondary)
             Text("\(value)")
                 .font(.callout.monospacedDigit().weight(.semibold))
         }

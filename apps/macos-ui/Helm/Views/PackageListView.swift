@@ -108,7 +108,7 @@ struct PackagesSectionView: View {
                 Spacer()
                 Text(L10n.App.Packages.State.noPackagesFound.localized)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
                 Spacer()
             } else {
                 List(displayedPackages) { package in
