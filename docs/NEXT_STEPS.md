@@ -45,7 +45,7 @@ Next release targets:
 - [ ] `feat/v0.17-log-foundation` — task log event model, SQLite persistence migration, FFI/XPC retrieval surface.
 - [ ] `feat/v0.17-task-log-viewer` — per-task log viewer UI with filters and pagination.
 - [ ] `feat/v0.17-structured-error-export` — structured support/error export payloads with redaction.
-- [ ] `feat/v0.17-service-health-panel` — service/runtime health diagnostics panel.
+- [ ] `feat/v0.17-service-health-panel` — service/runtime health diagnostics panel. (in progress: settings health card + copyable service snapshot diagnostics)
 - [ ] `feat/v0.17-manager-detection-diagnostics` — per-manager detection diagnostics and reason visibility.
 - [ ] `feat/v0.17-diagnostics-hardening` — silent-failure sweep, attribution consistency, integration/doc exit checks.
 

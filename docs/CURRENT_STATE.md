@@ -19,6 +19,7 @@ Active milestone:
 - 0.16.2 — Sparkle connectivity hardening + macOS 11 deployment-target alignment
 - 0.17.x — Diagnostics & Logging (next implementation milestone)
   - in progress: `feat/v0.17-log-foundation` (SQLite-backed task lifecycle logs + retrieval plumbing)
+  - in progress: `feat/v0.17-service-health-panel` (settings diagnostics panel for service/runtime health + copyable service snapshot)
 
 Security rollout staging status:
 - Stage 0 (`<=0.16.x`): planning/docs only (active in `0.16.1`)
