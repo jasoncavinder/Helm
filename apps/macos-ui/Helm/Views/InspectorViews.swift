@@ -52,6 +52,7 @@ struct ControlCenterInspectorView: View {
                     InspectorManagerDetailView(
                         manager: manager,
                         status: core.managerStatuses[manager.id],
+                        detectionDiagnostics: core.managerDetectionDiagnostics(for: manager.id),
                         health: core.health(forManagerId: manager.id),
                         packageCount: core.installedPackages.filter { $0.managerId == manager.id }.count,
                         outdatedCount: core.outdatedCount(forManagerId: manager.id),
@@ -802,6 +803,7 @@ private struct InspectorPackageDetailView: View {
 private struct InspectorManagerDetailView: View {
     let manager: ManagerInfo
     let status: ManagerStatus?
+    let detectionDiagnostics: ManagerDetectionDiagnostics
     let health: OperationalHealth
     let packageCount: Int
     let outdatedCount: Int
@@ -861,6 +863,25 @@ private struct InspectorManagerDetailView: View {
                 .accessibilityValue(detected
                     ? L10n.App.Inspector.detected.localized
                     : L10n.App.Inspector.notDetected.localized)
+
+                InspectorField(label: L10n.App.Inspector.detectionDiagnostics.localized) {
+                    Text(localizedDetectionReason(detectionDiagnostics.reason))
+                        .font(.callout)
+                }
+
+                if let lastStatus = detectionDiagnostics.latestTaskStatus {
+                    InspectorField(label: L10n.App.Inspector.detectionLastTaskStatus.localized) {
+                        Text(localizedTaskStatus(lastStatus))
+                            .font(.callout)
+                    }
+                }
+
+                if let lastTaskId = detectionDiagnostics.latestTaskId {
+                    InspectorField(label: L10n.App.Inspector.detectionLastTaskId.localized) {
+                        Text(String(lastTaskId))
+                            .font(.caption.monospacedDigit())
+                    }
+                }
 
                 if let version = status?.version {
                     InspectorField(label: L10n.App.Inspector.version.localized) {
@@ -935,6 +956,29 @@ private struct InspectorManagerDetailView: View {
         case .updateOnly: return L10n.App.Inspector.InstallMethod.updateOnly.localized
         case .systemBinary: return L10n.App.Inspector.InstallMethod.systemBinary.localized
         case .notManageable: return L10n.App.Inspector.InstallMethod.notManageable.localized
+        }
+    }
+
+    private func localizedDetectionReason(_ reason: ManagerDetectionDiagnosticReason) -> String {
+        switch reason {
+        case .detected: return L10n.App.Inspector.detectionReasonDetected.localized
+        case .notDetected: return L10n.App.Inspector.detectionReasonNotDetected.localized
+        case .inProgress: return L10n.App.Inspector.detectionReasonInProgress.localized
+        case .failed: return L10n.App.Inspector.detectionReasonFailed.localized
+        case .disabled: return L10n.App.Inspector.detectionReasonDisabled.localized
+        case .notImplemented: return L10n.App.Inspector.detectionReasonNotImplemented.localized
+        case .neverChecked: return L10n.App.Inspector.detectionReasonNeverChecked.localized
+        }
+    }
+
+    private func localizedTaskStatus(_ status: String) -> String {
+        switch status.lowercased() {
+        case "queued": return L10n.Service.Task.Status.pending.localized
+        case "running": return L10n.Service.Task.Status.running.localized
+        case "completed": return L10n.Service.Task.Status.completed.localized
+        case "failed": return L10n.Service.Task.Status.failed.localized
+        case "cancelled": return L10n.Service.Task.Status.cancelled.localized
+        default: return status
         }
     }
 }

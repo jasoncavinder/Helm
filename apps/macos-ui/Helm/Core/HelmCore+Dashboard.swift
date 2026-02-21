@@ -411,6 +411,47 @@ extension HelmCore {
         }
     }
 
+    func latestDetectionTask(for managerId: String) -> CoreTaskRecord? {
+        latestCoreTasksSnapshot
+            .filter { task in
+                task.manager == managerId && task.taskType.lowercased() == "detection"
+            }
+            .max { lhs, rhs in lhs.id < rhs.id }
+    }
+
+    func managerDetectionDiagnostics(for managerId: String) -> ManagerDetectionDiagnostics {
+        let managerInfo = ManagerInfo.find(byId: managerId)
+        let status = managerStatuses[managerId]
+        let isImplemented = status?.isImplemented ?? managerInfo?.isImplemented ?? true
+        let isEnabled = status?.enabled ?? true
+        let isDetected = status?.detected ?? false
+        let latestTask = latestDetectionTask(for: managerId)
+        let latestStatus = latestTask?.status.lowercased()
+
+        let reason: ManagerDetectionDiagnosticReason
+        if !isImplemented {
+            reason = .notImplemented
+        } else if !isEnabled {
+            reason = .disabled
+        } else if latestStatus == "queued" || latestStatus == "running" {
+            reason = .inProgress
+        } else if latestStatus == "failed" || latestStatus == "cancelled" {
+            reason = .failed
+        } else if isDetected {
+            reason = .detected
+        } else if latestStatus == "completed" {
+            reason = .notDetected
+        } else {
+            reason = .neverChecked
+        }
+
+        return ManagerDetectionDiagnostics(
+            reason: reason,
+            latestTaskId: latestTask?.id,
+            latestTaskStatus: latestStatus
+        )
+    }
+
     private func mergeSummary(into package: inout PackageItem, from candidate: String?) {
         let existingSummary = package.summary?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard existingSummary?.isEmpty != false else { return }
