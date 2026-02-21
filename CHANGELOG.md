@@ -6,6 +6,21 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-02-21
+
+### Changed
+- Documentation-only release planning update for staged security rollout (no feature implementation changes).
+- Revised milestone sequencing:
+  - new `0.18.x` local security groundwork milestone
+  - prior `0.18.x` stability/hardening milestone moved to `0.19.x`
+  - new `1.4.x` Shared Brain milestone inserted
+  - prior `1.4.x+` milestones shifted forward by one minor version
+- Security architecture clarified as three staged phases:
+  - Stage 1 (`0.18.x`) local internal groundwork
+  - Stage 2 (`1.3.x`) Security Advisory System (Helm Pro, local-first, optional public API queries, local TTL cache)
+  - Stage 3 (`1.4.x`) Shared Brain (fingerprint sharing, known-fix lookup, centralized backend, App Attest request controls)
+- Minimum supported macOS baseline documentation updated to `macOS 11+ (Big Sur)` across README and website installation/FAQ surfaces.
+
 ## [0.16.0] - 2026-02-21
 
 ### Added

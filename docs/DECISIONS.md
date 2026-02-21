@@ -310,6 +310,31 @@ Policy guardrails:
 
 ---
 
+## Decision 022 — Security Rollout Staging and Platform Baseline
+
+**Decision:**
+Adopt a staged security rollout with explicit milestone separation and set platform baseline to macOS 11+ (Big Sur).
+
+Staging:
+
+- `<=0.16.x`: documentation/planning only (no security advisory implementation)
+- `0.18.x`: local-only internal groundwork
+- `1.3.x`: Security Advisory System (Helm Pro, local-first, optional public advisory API queries)
+- `1.4.x`: Shared Brain (centralized fingerprint/fix services with App Attest-backed request controls)
+
+Version restructuring:
+
+- Existing `0.18.x` hardening scope is moved to `0.19.x`
+- Existing `1.4.x+` milestones are shifted forward by one minor version
+
+**Rationale:**
+
+- Keeps local advisory capabilities independent from centralized infrastructure
+- Reduces coupling and delivery risk by separating local security value from backend-heavy features
+- Aligns future Shared Brain auth requirements with modern platform primitives available from macOS 11+
+
+---
+
 ## Summary
 
 Helm prioritizes:

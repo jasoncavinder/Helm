@@ -8,14 +8,22 @@ It reflects reality, not intention.
 
 ## Version
 
-Current version: **0.16.0** (release finalization in progress on `chore/v0.16.0-release-final`; latest stable release on `main` is `v0.15.0` until `v0.16.0` merge/tag completion)
+Current documentation baseline: **0.16.1** (documentation-only milestone restructuring and staged security planning update).
+
+Implementation baseline remains: **0.16.0** (latest shipped feature release).
 
 See:
 - CHANGELOG.md
 
 Active milestone:
-- 0.16.0 — Self-Update & Installer Hardening (release finalization)
-- 0.15.0 — Released on `main` (tag `v0.15.0`)
+- 0.16.1 — Documentation, roadmap, and architecture clarification (no security feature implementation)
+- 0.17.x — Diagnostics & Logging (next implementation milestone)
+
+Security rollout staging status:
+- Stage 0 (`<=0.16.x`): planning/docs only (active in `0.16.1`)
+- Stage 1 (`0.18.x`): local security groundwork (planned)
+- Stage 2 (`1.3.x`): Security Advisory System (Pro, planned)
+- Stage 3 (`1.4.x`): Shared Brain infrastructure (planned)
 
 ---
 
@@ -488,7 +496,10 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
 - "Control Center" item added to right-click status menu (opens dashboard overview)
 
 ### Documentation
-- Security Advisory System incorporated into ROADMAP.md as milestone 1.3.x
+- Security rollout clarified and re-staged in ROADMAP.md:
+  - `0.18.x` reserved for local groundwork
+  - prior `0.18.x` hardening shifted to `0.19.x`
+  - `1.4.x` now reserved for Shared Brain infrastructure
 - CHANGELOG.md, CURRENT_STATE.md, NEXT_STEPS.md updated
 
 ---

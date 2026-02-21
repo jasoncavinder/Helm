@@ -15,10 +15,12 @@ Helm is in:
 ```
 
 Focus:
-- 0.16.x self-update and installer hardening
+- 0.16.1 documentation-only milestone restructuring and staged security planning
+- no security feature implementation in 0.16.x
 
 Current checkpoint:
-- `v0.16.0` release finalization in progress on `chore/v0.16.0-release-final` (final version/docs alignment, release PR flow, merge/tag execution)
+- `v0.16.1` documentation/planning milestone alignment in progress (roadmap, architecture, ADR updates)
+- `v0.16.0` remains the latest implemented feature baseline
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
 - `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)
@@ -35,8 +37,9 @@ Current checkpoint:
 - `v0.14.0` distribution/licensing architecture planning docs aligned (future-state, no implementation changes)
 
 Next release targets:
-- `v0.16.0` — final release execution (merge/tag/publish)
 - `v0.17.x` — Diagnostics & Logging
+- `v0.18.x` — Local security groundwork (internal-only)
+- `v0.19.x` — Stability & Pre-1.0 hardening
 
 ---
 
@@ -496,7 +499,10 @@ Delivered:
 
 Delivered:
 
-- Security Advisory System milestone added to ROADMAP.md (1.3.x)
+- Security roadmap restructured with staged boundaries:
+  - `0.18.x` local groundwork, `0.19.x` hardening
+  - `1.3.x` Security Advisory System (Pro)
+  - `1.4.x` Shared Brain
 - CHANGELOG.md, CURRENT_STATE.md, NEXT_STEPS.md, ROADMAP.md updated for rc.1
 
 ---
