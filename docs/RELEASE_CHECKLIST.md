@@ -9,6 +9,11 @@ This checklist is required before creating a release tag on `main`.
 - [ ] Confirm Sparkle license + external attributions remain preserved for channels that include Sparkle.
 - [ ] If distributing artifacts that include `sharp/libvips` binaries (outside static-site output), include LGPL notice/corresponding-source obligations for that artifact.
 
+## Website Hosting Integrity (All Releases)
+
+- [ ] Confirm `.github/workflows/deploy-web.yml` is absent (Cloudflare Pages is the production website host).
+- [ ] Confirm website hosting/operations docs still point to Cloudflare Pages and not GitHub Pages.
+
 ## v0.17.0-rc.1 (Diagnostics & Logging RC)
 
 ### Scope and Documentation

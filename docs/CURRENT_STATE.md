@@ -30,6 +30,7 @@ Security rollout staging status:
 - Stage 1 (`0.18.x`): local security groundwork (planned)
 - Stage 2 (`1.3.x`): Security Advisory System (Pro, planned)
 - Stage 3 (`1.4.x`): Shared Brain infrastructure (planned)
+- Current release behavior (`<=0.17.x`): no package/fingerprint data is sent to any Helm-operated shared backend; security/advisory value remains local-first.
 
 Third-party licensing compliance status:
 - Dependency-license inventory and obligations baseline documented at `docs/legal/THIRD_PARTY_LICENSES.md` (audited 2026-02-21).
@@ -130,6 +131,12 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 ## Website Status
 
 - Astro + Starlight website uses a Helm-brand custom theme layer via `web/src/styles/helm-theme.css` with tokenized color/motion/shape rules aligned to brand docs.
+- Website production hosting is Cloudflare Pages (GitHub Pages is not the production host).
+  - Root directory: `web/`
+  - Build command: `npm ci && npm run build`
+  - Output directory: `dist`
+  - Framework: Astro (Starlight)
+  - Deploy model: Cloudflare GitHub integration builds/deploys from `main`; PRs/branches get preview deployments.
 - Landing page (`web/src/content/docs/index.mdx`) has been redesigned with a calmer dual-audience narrative and command-bridge structure:
   - Hero
   - Problem
@@ -162,6 +169,26 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 - Website redesign planning artifacts added:
   - `docs/website/WEBSITE_REDESIGN_PLAN.md`
   - `docs/website/DESIGN_TOKENS.md`
+
+### Website Hosting Verification (Operations)
+
+Use the production docs domain (currently `helmapp.dev`) and verify Cloudflare headers/routing:
+
+```bash
+dig +short helmapp.dev A
+dig +short helmapp.dev AAAA
+curl -sI https://helmapp.dev | egrep -i 'cf-ray|server: cloudflare|cf-cache-status'
+```
+
+Operational references:
+
+- Production/preview deployment status: Cloudflare Pages dashboard for the Helm project
+- Preview behavior: each PR/branch deploys to an isolated preview URL managed by Cloudflare Pages
+- Minimal rollback concept: temporarily point DNS to a fallback static host, then restore Cloudflare Pages as primary after remediation
+
+Follow-up cleanup item:
+
+- Legacy GitHub Pages workflow file (`.github/workflows/deploy-web.yml`) has already been removed from `main`; if it appears on non-main branches, treat it as legacy branch residue rather than active production deployment state.
 
 ---
 

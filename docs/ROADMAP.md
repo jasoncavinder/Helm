@@ -565,9 +565,11 @@ Stage 2 (`1.3.x`) — Security Advisory System (Pro):
 
 Stage 3 (`1.4.x`) — Shared Brain:
 - Centralized fingerprint database and known-fix lookup
-- Managed Postgres backend and edge/serverless API
+- Postgres-first system-of-record
+- Optional edge/serverless API layer (Cloudflare Workers may be used, but is not required)
 - Anonymous per-install auth with Apple App Attest
 - Request signing, nonce and replay protection, rate limiting, and abuse controls
+- Provider portability requirement (no Durable Objects / D1 lock-in as core persistence)
 
 ---
 
@@ -712,11 +714,14 @@ Goal:
 
 - Fingerprint sharing for anonymous package/environment signals
 - Known-fix lookup and recommendation enrichment
-- Managed Postgres-backed central data store
-- Edge/serverless API layer for advisory enrichment queries
+- Postgres-backed central system-of-record
+- Provider-portable HTTP API architecture
+- Optional stateless edge/API layer for advisory enrichment queries (Cloudflare Workers is acceptable but replaceable)
 - Anonymous per-install authentication via Apple App Attest
 - Request signing, nonce handling, and replay protection
 - Rate limiting per attested install and abuse-detection controls
+- Core data operations handled with standard Postgres patterns (constraints/UPSERT, ranking/selection queries, materialized views, FTS/trigram)
+- Large artifacts (if introduced later) stored in S3-compatible object storage; Postgres stores references/metadata
 
 Exit Criteria:
 
@@ -724,6 +729,7 @@ Exit Criteria:
 - App Attest-based request validation flow is testable end-to-end
 - Security controls (nonce/replay/rate-limit/abuse) are enforced and observable
 - Shared Brain enrichments are additive and do not block local advisory behavior
+- Cloudflare-specific stores (Durable Objects / D1) are not required for correctness of core Shared Brain data paths
 
 ---
 
