@@ -163,6 +163,7 @@ Immediate follow-up:
 
 - Perform manual visual QA in both light and dark theme across mobile/tablet/desktop breakpoints before release publishing.
 - Replace visual-tour screenshots after UI styling refresh in `web/src/assets/tour/` and re-run manual QA.
+  - use paired filenames so theme switching remains automatic: `name.png` (light) and `name-dark.png` (dark)
 
 ---
 

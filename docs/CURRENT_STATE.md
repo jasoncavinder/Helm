@@ -136,6 +136,7 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 - Theme-aware screenshot rendering is now supported via reusable website component:
   - `web/src/components/ThemeImage.astro`
   - routes can provide light/dark image variants and render based on active website theme
+  - website tour/landing screenshot assets now use paired naming convention (`name.png` + `name-dark.png`)
 - Website content/docs pass completed for product clarity and audience fit:
   - updated overview/roadmap/changelog wording for current `v0.16.0` release-finalization state
   - expanded consumer vs Helm Business messaging in overview + FAQ

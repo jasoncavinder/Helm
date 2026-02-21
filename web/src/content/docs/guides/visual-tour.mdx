@@ -8,13 +8,21 @@ import ThemeImage from '../../../components/ThemeImage.astro';
 import menuBarPopoverLight from '../../../assets/tour/menu-bar-popover.png';
 import menuBarPopoverDark from '../../../assets/tour/menu-bar-popover-dark.png';
 import statusMenuShot from '../../../assets/tour/status-menu.png';
+import statusMenuShotDark from '../../../assets/tour/status-menu-dark.png';
 import controlCenterOverviewShot from '../../../assets/tour/control-center-overview.png';
+import controlCenterOverviewShotDark from '../../../assets/tour/control-center-overview-dark.png';
 import controlCenterPackagesShot from '../../../assets/tour/control-center-packages.png';
+import controlCenterPackagesShotDark from '../../../assets/tour/control-center-packages-dark.png';
 import controlCenterTasksShot from '../../../assets/tour/control-center-tasks.png';
+import controlCenterTasksShotDark from '../../../assets/tour/control-center-tasks-dark.png';
 import controlCenterManagersShot from '../../../assets/tour/control-center-managers.png';
+import controlCenterManagersShotDark from '../../../assets/tour/control-center-managers-dark.png';
 import controlCenterSettingsShot from '../../../assets/tour/control-center-settings.png';
+import controlCenterSettingsShotDark from '../../../assets/tour/control-center-settings-dark.png';
 import inspectorSidebarShot from '../../../assets/tour/inspector-sidebar.png';
+import inspectorSidebarShotDark from '../../../assets/tour/inspector-sidebar-dark.png';
 import onboardingSpotlightShot from '../../../assets/tour/onboarding-spotlight.png';
+import onboardingSpotlightShotDark from '../../../assets/tour/onboarding-spotlight-dark.png';
 
 Helm has two main surfaces: a **menu bar popover** for quick triage and a **Control Center window** for deeper management. This tour walks through each.
 
@@ -44,6 +52,7 @@ Right-click the Helm icon for quick actions: About, Control Center, Upgrade All,
 <ThemeImage
   class="tour-shot"
   light={statusMenuShot}
+  dark={statusMenuShotDark}
   alt="Right-click status menu with quick actions."
 />
 
@@ -56,6 +65,7 @@ The Control Center is a standalone window with sidebar navigation. The **Overvie
 <ThemeImage
   class="tour-shot"
   light={controlCenterOverviewShot}
+  dark={controlCenterOverviewShotDark}
   alt="Control Center overview with health posture and manager grid."
 />
 
@@ -68,6 +78,7 @@ Browse installed, upgradable, and available packages. Filter by status or manage
 <ThemeImage
   class="tour-shot"
   light={controlCenterPackagesShot}
+  dark={controlCenterPackagesShotDark}
   alt="Packages tab with package list and filters."
 />
 
@@ -80,6 +91,7 @@ Track all background operations in real time. Tasks show lifecycle states: Queue
 <ThemeImage
   class="tour-shot"
   light={controlCenterTasksShot}
+  dark={controlCenterTasksShotDark}
   alt="Tasks tab showing task list with status indicators."
 />
 
@@ -92,6 +104,7 @@ View per-manager health, detection status, and capabilities. Managers show healt
 <ThemeImage
   class="tour-shot"
   light={controlCenterManagersShot}
+  dark={controlCenterManagersShotDark}
   alt="Managers tab showing health badges across package managers."
 />
 
@@ -104,6 +117,7 @@ Configure cadence, policy, localization, and accessibility. The **Support & Feed
 <ThemeImage
   class="tour-shot"
   light={controlCenterSettingsShot}
+  dark={controlCenterSettingsShotDark}
   alt="Settings tab with General, Managers, Advanced, and Support and Feedback cards."
 />
 
@@ -116,6 +130,7 @@ Select any task, package, or manager in the Control Center to open the inspector
 <ThemeImage
   class="tour-shot"
   light={inspectorSidebarShot}
+  dark={inspectorSidebarShotDark}
   alt="Inspector sidebar showing package or manager detail."
 />
 
@@ -128,5 +143,6 @@ On first launch, Helm offers a guided walkthrough using spotlight overlays that 
 <ThemeImage
   class="tour-shot"
   light={onboardingSpotlightShot}
+  dark={onboardingSpotlightShotDark}
   alt="Walkthrough spotlight overlay highlighting a UI element."
 />
