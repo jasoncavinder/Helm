@@ -156,16 +156,20 @@ samp {
   height: auto;
 }
 
-.theme-image-dark {
-  display: none;
+.theme-image .theme-image-light {
+  display: block !important;
 }
 
-:root[data-theme="dark"] .theme-image-light {
-  display: none;
+.theme-image .theme-image-dark {
+  display: none !important;
 }
 
-:root[data-theme="dark"] .theme-image-dark {
-  display: block;
+:root[data-theme="dark"] .theme-image .theme-image-light {
+  display: none !important;
+}
+
+:root[data-theme="dark"] .theme-image .theme-image-dark {
+  display: block !important;
 }
 
 .tour-shot {
