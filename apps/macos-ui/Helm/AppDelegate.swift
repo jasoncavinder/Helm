@@ -315,6 +315,9 @@ private extension AppDelegate {
 
     func configureStatusMenu() {
         let menu = NSMenu()
+        // We drive enablement explicitly from app/core state.
+        // Cocoa auto-validation can otherwise re-enable items with actions.
+        menu.autoenablesItems = false
 
         let aboutItem = NSMenuItem(
             title: "app.overlay.about.title".localized,
