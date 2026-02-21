@@ -18,6 +18,10 @@ concurrency:
   group: release-dmg-${{ github.event.release.tag_name || github.event.inputs.tag }}
   cancel-in-progress: true
 
+concurrency:
+  group: release-dmg-${{ github.event.release.tag_name || github.event.inputs.tag }}
+  cancel-in-progress: true
+
 jobs:
   build-and-upload-dmg:
     runs-on: macos-14
