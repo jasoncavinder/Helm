@@ -10,6 +10,10 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Third-party dependency licensing baseline document:
   - `docs/legal/THIRD_PARTY_LICENSES.md`
   - includes runtime/build/toolchain scope split and release obligations.
+- v0.17 diagnostics/logging foundation kickoff:
+  - SQLite-backed task lifecycle log schema (`task_log_records`)
+  - runtime lifecycle log persistence hooks (queued/running/terminal)
+  - new FFI/API surface for retrieving persisted task logs (`helm_list_task_logs`)
 
 ### Changed
 - Legal notice and licensing strategy docs now explicitly link to third-party dependency obligations:
@@ -22,6 +26,18 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
   - `docs/NEXT_STEPS.md`
 - ADR log adds third-party license compliance baseline decision:
   - `docs/DECISIONS.md` (Decision 023)
+
+## [0.16.2] - 2026-02-21
+
+### Fixed
+- Added `com.apple.security.network.client` entitlement to Helm app debug/release profiles so Sparkle feed requests are permitted under app sandboxing.
+- Sparkle startup now clears persisted feed URL overrides from user defaults and logs the resolved feed URL used for manual checks.
+- Release workflow now validates that `HELM_SPARKLE_FEED_URL` is `https://` and DNS-resolvable before build/signing steps.
+
+### Changed
+- Lowered macOS deployment target from `12.0` to `11.0` across Helm macOS project build settings (app, service, and tests).
+- Updated macOS UI/readme and status docs to align with the `macOS 11+` baseline.
+- Bumped workspace package version metadata to `0.16.2` (`core/rust/Cargo.toml`, `core/rust/Cargo.lock`) so generated app bundle versioning matches the `v0.16.2` release.
 
 ## [0.16.1] - 2026-02-21
 

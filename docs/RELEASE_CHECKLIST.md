@@ -9,6 +9,23 @@ This checklist is required before creating a release tag on `main`.
 - [ ] Confirm Sparkle license + external attributions remain preserved for channels that include Sparkle.
 - [ ] If distributing artifacts that include `sharp/libvips` binaries (outside static-site output), include LGPL notice/corresponding-source obligations for that artifact.
 
+## v0.16.2 (Sparkle Connectivity + macOS 11 Alignment)
+
+### Scope and Documentation
+- [x] `CHANGELOG.md` includes `0.16.2` patch notes (Sparkle connectivity + deployment target alignment).
+- [x] README release status references `v0.16.2`.
+- [x] Website changelog includes `0.16.2` release notes.
+
+### Versioning
+- [x] Workspace version bumped to `0.16.2` in `core/rust/Cargo.toml`.
+- [x] Rust lockfile local package versions aligned to `0.16.2` in `core/rust/Cargo.lock`.
+
+### Sparkle / Updater Validation
+- [x] Helm app debug/release entitlements include `com.apple.security.network.client`.
+- [x] Sparkle runtime clears persisted feed overrides and logs resolved feed URL for manual checks.
+- [x] Release workflow validates `HELM_SPARKLE_FEED_URL` is `https://` and DNS-resolvable before build/signing.
+- [x] Xcode build settings report `MACOSX_DEPLOYMENT_TARGET = 11.0` for Helm target.
+
 ## v0.16.1 (Documentation-Only)
 
 ### Scope and Documentation
@@ -27,13 +44,16 @@ This checklist is required before creating a release tag on `main`.
 
 ### Sparkle Feed and Distribution Safety
 - [x] `HELM_SPARKLE_FEED_URL`, `HELM_SPARKLE_PUBLIC_ED_KEY`, and `HELM_SPARKLE_PRIVATE_ED_KEY` secrets are present for release workflow.
-- [x] `HELM_SPARKLE_FEED_URL` is set to the canonical feed URL: `https://helmapp.dev/updates/appcast.xml`.
+- [x] Helm app entitlements include `com.apple.security.network.client` for Sparkle feed access.
+- [ ] `HELM_SPARKLE_FEED_URL` points to a resolvable, stable HTTPS feed endpoint.
+  - Recommended fallback while custom-domain DNS is unstable: `https://github.com/jasoncavinder/Helm/releases/latest/download/appcast.xml`.
+- [ ] If using `https://helmapp.dev/updates/appcast.xml`, confirm public DNS resolution for `helmapp.dev` before release cut.
 - [x] Sparkle feed endpoint is published at `web/public/updates/appcast.xml` (or `HELM_SPARKLE_FEED_URL` points to the hosted equivalent).
 - [x] Release workflow generates and uploads `appcast.xml` alongside DMG artifacts.
 - [x] Release workflow publishes generated `appcast.xml` into `web/public/updates/appcast.xml` on `main` (or auto-opens fallback PR if direct push is blocked).
 - [x] Runtime self-update is blocked for package-manager-managed installs (Homebrew Cask receipt detection + Homebrew/MacPorts path heuristics) and enabled for eligible direct-channel DMG installs.
 - [x] Generated `CURRENT_PROJECT_VERSION` is monotonic for Sparkle version ordering (semver-derived numeric build number).
-- [x] Sparkle package reference remains pinned to `2.8.1` in `apps/macos-ui/Helm.xcodeproj/project.pbxproj` for macOS 11+/12 compatibility.
+- [x] Sparkle package reference remains pinned to `2.8.1` in `apps/macos-ui/Helm.xcodeproj/project.pbxproj` for macOS 11+ compatibility.
 - [x] Appcast policy validation passes in release workflow (`apps/macos-ui/scripts/verify_sparkle_appcast_policy.sh`), ensuring full-installer-only feed output (no deltas).
 - [x] Delta update policy (`full installer only` for `0.16.x`) is documented in `docs/DECISIONS.md` and reflected in release automation.
 

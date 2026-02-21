@@ -3,8 +3,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use helm_core::models::{
     CachedSearchResult, CoreErrorKind, HomebrewKegPolicy, InstalledPackage, ManagerId,
-    OutdatedPackage, PackageCandidate, PackageRef, PinKind, PinRecord, TaskId, TaskRecord,
-    TaskStatus, TaskType,
+    NewTaskLogRecord, OutdatedPackage, PackageCandidate, PackageRef, PinKind, PinRecord, TaskId,
+    TaskLogLevel, TaskRecord, TaskStatus, TaskType,
 };
 use helm_core::persistence::{
     DetectionStore, MigrationStore, PackageStore, PinStore, SearchCacheStore, TaskStore,
@@ -707,6 +707,95 @@ fn prune_completed_tasks_keeps_cancelled_and_running_records() {
         remaining
             .iter()
             .any(|task| task.status == TaskStatus::Running)
+    );
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn append_and_list_task_logs_roundtrip() {
+    let path = test_db_path("task-logs-roundtrip");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let task = TaskRecord {
+        id: TaskId(77),
+        manager: ManagerId::Npm,
+        task_type: TaskType::Refresh,
+        status: TaskStatus::Queued,
+        created_at: UNIX_EPOCH + Duration::from_secs(900),
+    };
+    store.create_task(&task).unwrap();
+
+    let first = NewTaskLogRecord {
+        task_id: task.id,
+        manager: task.manager,
+        task_type: task.task_type,
+        status: Some(TaskStatus::Queued),
+        level: TaskLogLevel::Info,
+        message: "task queued".to_string(),
+        created_at: UNIX_EPOCH + Duration::from_secs(901),
+    };
+    let second = NewTaskLogRecord {
+        task_id: task.id,
+        manager: task.manager,
+        task_type: task.task_type,
+        status: Some(TaskStatus::Failed),
+        level: TaskLogLevel::Error,
+        message: "task failed: simulated error".to_string(),
+        created_at: UNIX_EPOCH + Duration::from_secs(902),
+    };
+
+    store.append_task_log(&first).unwrap();
+    store.append_task_log(&second).unwrap();
+
+    let logs = store.list_task_logs(task.id, 10).unwrap();
+    assert_eq!(logs.len(), 2);
+    assert_eq!(logs[0].status, Some(TaskStatus::Queued));
+    assert_eq!(logs[0].level, TaskLogLevel::Info);
+    assert_eq!(logs[1].status, Some(TaskStatus::Failed));
+    assert_eq!(logs[1].level, TaskLogLevel::Error);
+    assert!(logs[1].message.contains("simulated error"));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn prune_completed_tasks_removes_associated_task_logs() {
+    let path = test_db_path("task-logs-prune-with-task");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let old_created_at = UNIX_EPOCH + Duration::from_secs(5);
+    let completed_task = TaskRecord {
+        id: TaskId(101),
+        manager: ManagerId::HomebrewFormula,
+        task_type: TaskType::Refresh,
+        status: TaskStatus::Completed,
+        created_at: old_created_at,
+    };
+
+    store.create_task(&completed_task).unwrap();
+    store
+        .append_task_log(&NewTaskLogRecord {
+            task_id: completed_task.id,
+            manager: completed_task.manager,
+            task_type: completed_task.task_type,
+            status: Some(TaskStatus::Completed),
+            level: TaskLogLevel::Info,
+            message: "task completed".to_string(),
+            created_at: old_created_at,
+        })
+        .unwrap();
+
+    let deleted = store.prune_completed_tasks(1).unwrap();
+    assert_eq!(deleted, 1);
+    assert!(store.list_recent_tasks(10).unwrap().is_empty());
+    assert!(
+        store
+            .list_task_logs(completed_task.id, 10)
+            .unwrap()
+            .is_empty()
     );
 
     let _ = std::fs::remove_file(path);

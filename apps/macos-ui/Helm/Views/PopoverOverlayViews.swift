@@ -5,7 +5,6 @@ struct PopoverSearchOverlayContent: View {
     @ObservedObject private var core = HelmCore.shared
     @EnvironmentObject private var context: ControlCenterContext
     @Binding var popoverSearchQuery: String
-    var isOverlaySearchFocused: FocusState<Bool>.Binding
     let searchResults: [PackageItem]
     let onSyncSearchQuery: (String) -> Void
     let onOpenControlCenter: () -> Void
@@ -15,7 +14,7 @@ struct PopoverSearchOverlayContent: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
                 TextField(
                     L10n.App.Popover.searchPlaceholder.localized,
                     text: Binding(
@@ -28,7 +27,6 @@ struct PopoverSearchOverlayContent: View {
                 )
                 .textFieldStyle(.plain)
                 .font(.subheadline)
-                .focused(isOverlaySearchFocused)
 
                 if core.isSearching {
                     ProgressView()
@@ -49,7 +47,7 @@ struct PopoverSearchOverlayContent: View {
             if searchResults.isEmpty && !popoverSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(L10n.App.Overlay.Search.empty.localized)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 8)
             } else {
@@ -72,17 +70,17 @@ struct PopoverSearchOverlayContent: View {
                                             .lineLimit(1)
                                         Text(result.manager)
                                             .font(.caption2)
-                                            .foregroundStyle(.secondary)
+                                            .foregroundColor(.secondary)
                                     }
                                     Spacer()
                                     if let latest = result.latestVersion {
                                         Text(latest)
                                             .font(.caption.monospacedDigit())
-                                            .foregroundStyle(HelmTheme.stateAttention)
+                                            .foregroundColor(HelmTheme.stateAttention)
                                     } else {
                                         Text(result.version)
                                             .font(.caption.monospacedDigit())
-                                            .foregroundStyle(.secondary)
+                                            .foregroundColor(.secondary)
                                     }
                                 }
                                 .padding(.horizontal, 10)
@@ -207,7 +205,7 @@ struct PopoverAboutOverlayContent: View {
                 Image("MenuBarIcon")
                     .resizable()
                     .renderingMode(.template)
-                    .foregroundStyle(.primary)
+                    .foregroundColor(.primary)
                     .scaledToFit()
                     .frame(width: 22, height: 22)
                 VStack(alignment: .leading, spacing: 2) {
@@ -215,7 +213,7 @@ struct PopoverAboutOverlayContent: View {
                         .font(.headline)
                     Text(L10n.App.Overlay.About.subtitle.localized)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
                 }
                 Spacer()
             }
@@ -228,7 +226,7 @@ struct PopoverAboutOverlayContent: View {
                 "updates": core.outdatedPackages.count
             ]))
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundColor(.secondary)
 
             HStack {
                 if appUpdate.canCheckForUpdates {
@@ -241,7 +239,7 @@ struct PopoverAboutOverlayContent: View {
                 } else if let unavailableKey = appUpdate.unavailableReasonLocalizationKey {
                     Text(unavailableKey.localized)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -279,7 +277,7 @@ struct PopoverQuitOverlayContent: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(L10n.App.Overlay.Quit.message.localized(with: ["tasks": core.runningTaskCount]))
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundColor(.secondary)
 
             HStack {
                 Button(L10n.Common.cancel.localized) {
@@ -288,10 +286,10 @@ struct PopoverQuitOverlayContent: View {
                 .buttonStyle(HelmSecondaryButtonStyle())
                 .helmPointer()
                 Spacer()
-                Button(L10n.App.Settings.Action.quit.localized, role: .destructive) {
+                Button(L10n.App.Settings.Action.quit.localized) {
                     NSApplication.shared.terminate(nil)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(HelmPrimaryButtonStyle())
                 .helmPointer()
             }
         }
