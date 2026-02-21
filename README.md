@@ -9,7 +9,7 @@
   <br>
   A native macOS menu bar app for unified package manager control.
   <br>
-  <strong>Pre-1.0 &middot; v0.16.1</strong>
+  <strong>Pre-1.0 &middot; v0.16.2</strong>
 </p>
 
 <p align="center">
@@ -23,9 +23,9 @@
 
 Helm manages software across multiple package managers (Homebrew, npm, pip, Cargo, etc.) and runtime tools (mise, rustup) from a single menu bar interface. It is designed as infrastructure software: deterministic, safety-first, and explicit about authority, orchestration, and error handling.
 
-> **Status:** Active pre-1.0 development at `v0.16.1` (documentation and planning update). Current implemented release baseline remains `v0.16.0`.
+> **Status:** Active pre-1.0 development at `v0.16.2` (Sparkle connectivity hardening + macOS 11 deployment baseline enforcement).
 >
-> **Testing:** Please test `v0.16.0` and report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Testing:** Please test `v0.16.2` and report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
 ## Editions (Beta)
 
@@ -128,6 +128,7 @@ Or open `apps/macos-ui/Helm.xcodeproj` in Xcode and run the **Helm** scheme. The
 | 0.15.x | Upgrade Preview & Execution Transparency — bulk preview, scoped execution, failure isolation | Completed (`v0.15.0`) |
 | 0.16.x | Self-Update & Installer Hardening — Sparkle integration, signed verification | Completed (`v0.16.0`) |
 | 0.16.1 | Documentation, Milestone Restructure & Security Staging Clarification | Completed (documentation-only) |
+| 0.16.2 | Sparkle Connectivity + Platform Baseline Alignment — network-client entitlement, feed diagnostics, macOS 11 deployment target enforcement | Completed |
 | 0.17.x | Diagnostics & Logging — log viewer, structured error export, health panel | Planned |
 | 0.18.x | Local Security Groundwork — local vulnerability abstractions and cache plumbing (no public feature surface) | Planned |
 | 0.19.x | Stability & Pre-1.0 Hardening — stress tests, crash recovery, memory audit | Planned |

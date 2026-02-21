@@ -8,15 +8,15 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.16.1** (documentation-only milestone restructuring and staged security planning update).
+Current documentation baseline: **0.16.2** (Sparkle connectivity and platform-baseline alignment patch).
 
-Implementation baseline remains: **0.16.0** (latest shipped feature release).
+Implementation baseline: **0.16.2** (latest shipped patch release target).
 
 See:
 - CHANGELOG.md
 
 Active milestone:
-- 0.16.1 — Documentation, roadmap, and architecture clarification (no security feature implementation)
+- 0.16.2 — Sparkle connectivity hardening + macOS 11 deployment-target alignment
 - 0.17.x — Diagnostics & Logging (next implementation milestone)
 
 Security rollout staging status:
@@ -170,7 +170,7 @@ Implemented on `feat/v0.16.0-kickoff`:
   - non-direct channels remain no-op at runtime (MAS/Setapp/Fleet isolation)
 - Added optional Sparkle bridge implementation guarded with `#if canImport(Sparkle)` so non-Sparkle builds remain compile-safe
 - Wired Sparkle SPM package linkage into the Helm app target for direct-channel runtime update checks
-- Pinned Sparkle SPM dependency to exact `2.8.1` to keep update-framework compatibility aligned with macOS 11+ and current macOS 12 deployment targets.
+- Pinned Sparkle SPM dependency to exact `2.8.1` to keep update-framework compatibility aligned with macOS 11+ deployment targets.
 - Added user entry points for manual update checks:
   - status-menu `Check for Updates`
   - popover About overlay `Check for Updates`
@@ -206,6 +206,8 @@ Implemented on `feat/v0.16.0-kickoff`:
 - Runtime app-update configuration now also blocks Sparkle checks when downgrades are enabled in metadata.
 - Runtime app-update configuration now also requires an eligible install location (not mounted from `/Volumes/...` and not App Translocation paths) before enabling Sparkle checks.
 - Runtime app-update configuration now also blocks Sparkle checks for package-manager-managed installs (Homebrew Cask receipt detection plus Homebrew/MacPorts path heuristics), so direct-channel self-update remains DMG-oriented.
+- Helm app sandbox entitlements now include `com.apple.security.network.client` (debug + release) so Sparkle feed requests are permitted under app sandboxing.
+- Sparkle runtime now clears any persisted user-default feed override (`clearFeedURLFromUserDefaults`) at startup and logs the resolved feed URL used for manual checks (`app_update` logger).
 - About overlay and status-menu update controls now surface localized unavailability reasons when manual update checks are blocked by channel/config/install-location policy.
 
 Validation:
@@ -239,6 +241,7 @@ Implemented on `feat/v0.16.0-kickoff`:
 - Release workflow now attempts to publish generated appcast content directly to `web/public/updates/appcast.xml` on `main`, and falls back to auto-opening a PR when direct pushes are blocked.
 - Release workflow fallback publication is now non-fatal when GitHub Actions token permissions prevent auto PR creation; workflow emits a manual compare URL for operator completion.
 - Release workflow now enforces Sparkle appcast policy checks (full-installer-only DMG feed, no delta payloads) via `apps/macos-ui/scripts/verify_sparkle_appcast_policy.sh`.
+- Release workflow now validates that the configured `HELM_SPARKLE_FEED_URL` hostname resolves in CI before build/signing work begins.
 - Release workflow now pre-renders channel overrides and passes explicit Sparkle/channel build settings to `xcodebuild`, ensuring release artifacts always embed the intended updater metadata on the same build invocation.
 - Release workflow now re-signs Sparkle nested binaries/framework with the active Developer ID identity (timestamped) before packaging/notarization, preventing Sparkle helper signature/timestamp notarization failures.
 - Release workflow now lets appcast generation auto-discover Sparkle `sign_update` in DerivedData instead of forcing a fixed artifact path, improving runner portability.
