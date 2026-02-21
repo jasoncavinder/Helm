@@ -152,11 +152,22 @@ pub fn get(task_id: TaskId) -> Option<TaskOutputRecord> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Mutex, OnceLock};
+
     use super::{
         MAX_STREAM_BYTES, MAX_TASK_OUTPUT_RECORDS, append_stderr, append_stdout, get, record,
         record_command, task_outputs,
     };
     use crate::models::TaskId;
+
+    static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn acquire_test_lock() -> std::sync::MutexGuard<'static, ()> {
+        TEST_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("task output store test lock should not be poisoned")
+    }
 
     fn clear_store() {
         if let Ok(mut outputs) = task_outputs().lock() {
@@ -166,6 +177,7 @@ mod tests {
 
     #[test]
     fn record_and_get_round_trip_output() {
+        let _guard = acquire_test_lock();
         clear_store();
         let task_id = TaskId(9001);
         record(task_id, Some("brew upgrade ripgrep"), b"hello\n", b"warn\n");
@@ -178,6 +190,7 @@ mod tests {
 
     #[test]
     fn output_is_truncated_to_tail_window() {
+        let _guard = acquire_test_lock();
         clear_store();
         let task_id = TaskId(9002);
         let input = vec![b'a'; MAX_STREAM_BYTES + 32];
@@ -190,6 +203,7 @@ mod tests {
 
     #[test]
     fn append_stdout_updates_live_output_tail() {
+        let _guard = acquire_test_lock();
         clear_store();
         let task_id = TaskId(9003);
         record_command(task_id, "brew update");
@@ -203,6 +217,7 @@ mod tests {
 
     #[test]
     fn append_stderr_is_truncated_to_tail_window() {
+        let _guard = acquire_test_lock();
         clear_store();
         let task_id = TaskId(9004);
         record_command(task_id, "brew update");
@@ -217,6 +232,7 @@ mod tests {
 
     #[test]
     fn record_capacity_prunes_oldest_task_records() {
+        let _guard = acquire_test_lock();
         clear_store();
         for offset in 0..=MAX_TASK_OUTPUT_RECORDS {
             let task_id = TaskId((10_000 + offset) as u64);
