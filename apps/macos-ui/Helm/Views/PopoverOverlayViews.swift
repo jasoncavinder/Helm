@@ -5,7 +5,6 @@ struct PopoverSearchOverlayContent: View {
     @ObservedObject private var core = HelmCore.shared
     @EnvironmentObject private var context: ControlCenterContext
     @Binding var popoverSearchQuery: String
-    var isOverlaySearchFocused: FocusState<Bool>.Binding
     let searchResults: [PackageItem]
     let onSyncSearchQuery: (String) -> Void
     let onOpenControlCenter: () -> Void
@@ -28,7 +27,6 @@ struct PopoverSearchOverlayContent: View {
                 )
                 .textFieldStyle(.plain)
                 .font(.subheadline)
-                .focused(isOverlaySearchFocused)
 
                 if core.isSearching {
                     ProgressView()

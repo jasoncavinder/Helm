@@ -29,8 +29,8 @@ struct SettingsSectionView: View {
         }
     }
 
-    private var cardFill: AnyShapeStyle {
-        AnyShapeStyle(HelmTheme.surfacePanel)
+    private var cardFill: Color {
+        HelmTheme.surfacePanel
     }
 
     private var supportButtonHeight: CGFloat? {
@@ -319,7 +319,7 @@ struct SettingsSectionView: View {
 private struct SettingsCard<Content: View>: View {
     let title: String
     let icon: String
-    let fill: AnyShapeStyle
+    let fill: Color
     @ViewBuilder let content: Content
 
     var body: some View {

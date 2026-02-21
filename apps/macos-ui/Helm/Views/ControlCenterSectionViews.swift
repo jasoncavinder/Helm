@@ -427,7 +427,7 @@ struct RedesignUpdatesSectionView: View {
 struct RedesignUpgradeSheetView: View {
     @ObservedObject private var core = HelmCore.shared
     @EnvironmentObject private var context: ControlCenterContext
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.presentationMode) private var presentationMode
     @State private var includeOsUpdates = false
 
     private var noOsCount: Int {
@@ -460,7 +460,7 @@ struct RedesignUpgradeSheetView: View {
             HStack {
                 Button(L10n.Common.cancel.localized) {
                     context.showUpgradeSheet = false
-                    dismiss()
+                    presentationMode.wrappedValue.dismiss()
                 }
                 .buttonStyle(HelmSecondaryButtonStyle())
                 Spacer()
@@ -470,7 +470,7 @@ struct RedesignUpgradeSheetView: View {
                 Button(L10n.App.Action.runPlan.localized) {
                     core.upgradeAll(includePinned: false, allowOsUpdates: includeOsUpdates)
                     context.showUpgradeSheet = false
-                    dismiss()
+                    presentationMode.wrappedValue.dismiss()
                 }
                 .buttonStyle(HelmPrimaryButtonStyle())
                 .disabled((includeOsUpdates ? withOsCount : noOsCount) == 0)

@@ -85,7 +85,6 @@ private struct ControlCenterTopBar: View {
     @EnvironmentObject private var context: ControlCenterContext
     @ObservedObject private var core = HelmCore.shared
     @Environment(\.colorScheme) private var colorScheme
-    @FocusState private var isSearchFocused: Bool
     let sidebarWidth: CGFloat
 
     var body: some View {
@@ -114,7 +113,6 @@ private struct ControlCenterTopBar: View {
                 )
                 .textFieldStyle(.plain)
                 .font(.subheadline)
-                .focused($isSearchFocused)
 
                 if !context.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Button {
@@ -187,9 +185,6 @@ private struct ControlCenterTopBar: View {
                     .frame(height: 1)
             }
             .frame(height: 1)
-        }
-        .onChange(of: context.controlCenterSearchFocusToken) { _ in
-            isSearchFocused = true
         }
     }
 }

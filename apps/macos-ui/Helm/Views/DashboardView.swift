@@ -7,7 +7,6 @@ struct RedesignPopoverView: View {
     @EnvironmentObject private var context: ControlCenterContext
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
-    @FocusState private var isOverlaySearchFocused: Bool
     @State private var popoverSearchQuery: String = ""
     @State private var activeOverlay: PopoverOverlayRoute?
     let onOpenControlCenter: () -> Void
@@ -97,9 +96,6 @@ struct RedesignPopoverView: View {
                 .onChange(of: context.popoverOverlayRequest) { route in
                     guard let route else { return }
                     activeOverlay = route
-                    if route == .search {
-                        isOverlaySearchFocused = true
-                    }
                 }
                 .onChange(of: context.popoverOverlayDismissToken) { _ in
                     if activeOverlay != nil {
@@ -108,7 +104,6 @@ struct RedesignPopoverView: View {
                 }
                 .onChange(of: context.popoverSearchFocusToken) { _ in
                     activeOverlay = .search
-                    isOverlaySearchFocused = true
                 }
                 .onChange(of: activeOverlay) { route in
                     context.isPopoverOverlayVisible = route != nil
@@ -144,7 +139,6 @@ struct RedesignPopoverView: View {
                     onSyncSearchQuery: syncSearchQuery,
                     onActivateSearch: {
                         activeOverlay = .search
-                        isOverlaySearchFocused = true
                     }
                 )
                 .spotlightAnchor("searchField")
@@ -329,7 +323,6 @@ struct RedesignPopoverView: View {
             ) {
                 PopoverSearchOverlayContent(
                     popoverSearchQuery: $popoverSearchQuery,
-                    isOverlaySearchFocused: $isOverlaySearchFocused,
                     searchResults: searchResults,
                     onSyncSearchQuery: syncSearchQuery,
                     onOpenControlCenter: onOpenControlCenter,
