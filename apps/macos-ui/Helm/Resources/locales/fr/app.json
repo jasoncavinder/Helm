@@ -298,6 +298,7 @@
   "app.settings.support_feedback.request_feature": "Suggérer une fonction",
   "app.settings.support_feedback.send_feedback": "Envoyer un retour",
   "app.settings.support_feedback.copy_diagnostics": "Copier les diagnostics",
+  "app.settings.support_feedback.copy_structured_export": "Copier l'export structuré (JSON)",
   "app.settings.support_feedback.include_diagnostics": "Inclure les diagnostics",
   "app.settings.support_feedback.copied_confirmation": "Copié !",
   "app.settings.support_feedback.diagnostics_copied_hint": "Diagnostics copiés dans le presse-papiers",

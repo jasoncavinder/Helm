@@ -587,6 +587,146 @@ struct HelmSupport {
     static let koFiURL = URL(string: "https://ko-fi.com/jasoncavinder")!
     static let payPalURL = URL(string: "https://paypal.me/jasoncavinder")!
     static let venmoURL = URL(string: "https://www.venmo.com/u/JasonCavinder")!
+
+    private struct SupportExportPayload: Codable {
+        let schemaVersion: String
+        let generatedAt: String
+        let app: SupportExportAppContext
+        let system: SupportExportSystemContext
+        let managers: [SupportExportManagerContext]
+        let tasks: [SupportExportTaskContext]
+        let failures: [SupportExportFailureContext]
+        let redaction: SupportExportRedactionContext
+    }
+
+    private struct SupportExportAppContext: Codable {
+        let version: String
+        let locale: String
+        let distributionChannel: String
+        let safeModeEnabled: Bool
+        let managerCount: Int
+        let outdatedCount: Int
+        let runningTaskCount: Int
+    }
+
+    private struct SupportExportSystemContext: Codable {
+        let macOSVersion: String
+        let architecture: String
+    }
+
+    private struct SupportExportManagerContext: Codable {
+        let id: String
+        let displayName: String
+        let enabled: Bool
+        let detected: Bool
+        let version: String?
+        let executablePath: String?
+        let authority: String
+    }
+
+    private struct SupportExportTaskContext: Codable {
+        let id: String
+        let status: String
+        let managerId: String?
+        let taskType: String?
+        let description: String
+        let labelKey: String?
+        let labelArgs: [String: String]?
+    }
+
+    private struct SupportExportFailureContext: Codable {
+        let taskId: String
+        let managerId: String?
+        let taskType: String?
+        let status: String
+        let description: String
+        let suggestedCommand: String?
+    }
+
+    private struct SupportExportRedactionContext: Codable {
+        let appliedRules: [String]
+        let replacementCount: Int
+    }
+
+    private struct SupportRedactor {
+        private(set) var appliedRules: Set<String> = []
+        private(set) var replacementCount: Int = 0
+        private let homeDirectory = NSHomeDirectory()
+
+        mutating func redactString(_ raw: String) -> String {
+            var value = raw
+            value = applyLiteral(
+                rule: "home_directory",
+                value: value,
+                target: homeDirectory,
+                replacement: "~"
+            )
+            value = applyRegex(
+                rule: "user_path",
+                value: value,
+                pattern: #"/Users/[^/\s]+"#,
+                replacement: "/Users/[redacted-user]"
+            )
+            value = applyRegex(
+                rule: "email",
+                value: value,
+                pattern: #"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b"#,
+                replacement: "[redacted-email]"
+            )
+            value = applyRegex(
+                rule: "github_token",
+                value: value,
+                pattern: #"\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b"#,
+                replacement: "[redacted-token]"
+            )
+            return value
+        }
+
+        mutating func redactOptionalString(_ raw: String?) -> String? {
+            guard let raw else { return nil }
+            return redactString(raw)
+        }
+
+        mutating func redactDictionary(_ raw: [String: String]?) -> [String: String]? {
+            guard let raw else { return nil }
+            var redacted: [String: String] = [:]
+            for (key, value) in raw {
+                redacted[key] = redactString(value)
+            }
+            return redacted
+        }
+
+        private mutating func applyLiteral(
+            rule: String,
+            value: String,
+            target: String,
+            replacement: String
+        ) -> String {
+            guard !target.isEmpty else { return value }
+            let count = value.components(separatedBy: target).count - 1
+            guard count > 0 else { return value }
+            appliedRules.insert(rule)
+            replacementCount += count
+            return value.replacingOccurrences(of: target, with: replacement)
+        }
+
+        private mutating func applyRegex(
+            rule: String,
+            value: String,
+            pattern: String,
+            replacement: String
+        ) -> String {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else {
+                return value
+            }
+            let range = NSRange(value.startIndex..<value.endIndex, in: value)
+            let matches = regex.numberOfMatches(in: value, range: range)
+            guard matches > 0 else { return value }
+            appliedRules.insert(rule)
+            replacementCount += matches
+            return regex.stringByReplacingMatches(in: value, range: range, withTemplate: replacement)
+        }
+    }
     
     struct FeedbackBody {
         let type: String
@@ -612,6 +752,122 @@ struct HelmSupport {
             \(diagnostics)
             """
         }
+    }
+
+    private static func machineArchitecture() -> String {
+        var sysInfo = utsname()
+        uname(&sysInfo)
+        return withUnsafeBytes(of: &sysInfo.machine) { buf in
+            guard let baseAddress = buf.baseAddress else { return "" }
+            return String(cString: baseAddress.assumingMemoryBound(to: CChar.self))
+        }
+    }
+
+    private static func buildStructuredDiagnosticsPayload() -> SupportExportPayload {
+        let core = HelmCore.shared
+        var redactor = SupportRedactor()
+
+        let sortedManagers = core.managerStatuses.map { id, status in
+            let manager = ManagerInfo.find(byId: id)
+            let authorityRank: Int
+            switch manager?.authority {
+            case .authoritative:
+                authorityRank = 0
+            case .standard, .none:
+                authorityRank = 1
+            case .guarded:
+                authorityRank = 2
+            }
+            return (
+                id: id,
+                status: status,
+                authorityRank: authorityRank,
+                sortName: manager?.displayName ?? id,
+                authorityName: manager?.authority.key.localized ?? "standard"
+            )
+        }.sorted { lhs, rhs in
+            if lhs.authorityRank != rhs.authorityRank {
+                return lhs.authorityRank < rhs.authorityRank
+            }
+            return lhs.sortName.localizedCaseInsensitiveCompare(rhs.sortName) == .orderedAscending
+        }
+
+        let managerSnapshots = sortedManagers.map { entry in
+            SupportExportManagerContext(
+                id: entry.id,
+                displayName: localizedManagerDisplayName(entry.id),
+                enabled: entry.status.enabled,
+                detected: entry.status.detected,
+                version: redactor.redactOptionalString(entry.status.version),
+                executablePath: redactor.redactOptionalString(entry.status.executablePath),
+                authority: entry.authorityName
+            )
+        }
+
+        let taskSnapshots = core.activeTasks.map { task in
+            SupportExportTaskContext(
+                id: task.id,
+                status: task.status,
+                managerId: task.managerId,
+                taskType: task.taskType,
+                description: redactor.redactString(task.description),
+                labelKey: task.labelKey,
+                labelArgs: redactor.redactDictionary(task.labelArgs)
+            )
+        }
+
+        let failureSnapshots = core.activeTasks
+            .filter { $0.status.lowercased() == "failed" }
+            .map { task in
+                SupportExportFailureContext(
+                    taskId: task.id,
+                    managerId: task.managerId,
+                    taskType: task.taskType,
+                    status: task.status,
+                    description: redactor.redactString(task.description),
+                    suggestedCommand: redactor.redactOptionalString(core.diagnosticCommandHint(for: task))
+                )
+            }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        return SupportExportPayload(
+            schemaVersion: "1.0.0",
+            generatedAt: formatter.string(from: Date()),
+            app: SupportExportAppContext(
+                version: helmVersion,
+                locale: Locale.current.identifier,
+                distributionChannel: AppUpdateConfiguration.from().channel.rawValue,
+                safeModeEnabled: core.safeModeEnabled,
+                managerCount: core.visibleManagers.count,
+                outdatedCount: core.outdatedPackages.count,
+                runningTaskCount: core.runningTaskCount
+            ),
+            system: SupportExportSystemContext(
+                macOSVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+                architecture: machineArchitecture()
+            ),
+            managers: managerSnapshots,
+            tasks: taskSnapshots,
+            failures: failureSnapshots,
+            redaction: SupportExportRedactionContext(
+                appliedRules: redactor.appliedRules.sorted(),
+                replacementCount: redactor.replacementCount
+            )
+        )
+    }
+
+    static func generateStructuredDiagnostics() -> String {
+        let payload = buildStructuredDiagnosticsPayload()
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+
+        guard let data = try? encoder.encode(payload),
+              let json = String(data: data, encoding: .utf8) else {
+            return "{}"
+        }
+        return json
     }
 
     static func generateDiagnostics() -> String {
@@ -733,6 +989,18 @@ struct HelmSupport {
         pasteboard.setString(snapshot, forType: .string)
     }
 
+    static func copyStructuredDiagnosticsToClipboard() {
+        let diagnostics = generateStructuredDiagnostics()
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(diagnostics, forType: .string)
+    }
+
+    static func redactForStructuredExport(_ raw: String) -> String {
+        var redactor = SupportRedactor()
+        return redactor.redactString(raw)
+    }
+
     static func generateTaskDiagnostics(task: TaskItem, suggestedCommand: String?) -> String {
         var info = generateDiagnostics()
         info += "\nTask Focus:\n"
@@ -818,7 +1086,7 @@ struct HelmSupport {
 
     static func reportBug(includeDiagnostics: Bool = false) {
         if includeDiagnostics {
-            copyDiagnosticsToClipboard()
+            copyStructuredDiagnosticsToClipboard()
         }
         var components = URLComponents(url: gitHubBugReportURL, resolvingAgainstBaseURL: true)
         var queryItems = components?.queryItems ?? []
@@ -831,7 +1099,7 @@ struct HelmSupport {
 
     static func requestFeature(includeDiagnostics: Bool = false) {
         if includeDiagnostics {
-            copyDiagnosticsToClipboard()
+            copyStructuredDiagnosticsToClipboard()
         }
         var components = URLComponents(url: gitHubFeatureRequestURL, resolvingAgainstBaseURL: true)
         var queryItems = components?.queryItems ?? []

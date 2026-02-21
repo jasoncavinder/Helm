@@ -256,6 +256,7 @@ extension L10n {
                 static let requestFeature = "app.settings.support_feedback.request_feature"
                 static let sendFeedback = "app.settings.support_feedback.send_feedback"
                 static let copyDiagnostics = "app.settings.support_feedback.copy_diagnostics"
+                static let copyStructuredExport = "app.settings.support_feedback.copy_structured_export"
                 static let includeDiagnostics = "app.settings.support_feedback.include_diagnostics"
                 static let copiedConfirmation = "app.settings.support_feedback.copied_confirmation"
                 static let diagnosticsCopiedHint = "app.settings.support_feedback.diagnostics_copied_hint"
