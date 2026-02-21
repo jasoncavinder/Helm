@@ -6,8 +6,9 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::models::{
     CachedSearchResult, CoreError, CoreErrorKind, DetectionInfo, HomebrewKegPolicy,
-    InstalledPackage, ManagerId, OutdatedPackage, PackageCandidate, PackageKegPolicy, PackageRef,
-    PinKind, PinRecord, TaskId, TaskRecord, TaskStatus, TaskType,
+    InstalledPackage, ManagerId, NewTaskLogRecord, OutdatedPackage, PackageCandidate,
+    PackageKegPolicy, PackageRef, PinKind, PinRecord, TaskId, TaskLogLevel, TaskLogRecord,
+    TaskRecord, TaskStatus, TaskType,
 };
 use crate::persistence::{
     DetectionStore, MigrationStore, PackageStore, PersistenceResult, PinStore, SearchCacheStore,
@@ -691,7 +692,20 @@ LIMIT ?1
                 .unwrap_or(Duration::ZERO)
                 .as_secs() as i64
                 - max_age_secs;
-            let deleted = connection.execute(
+            let transaction = connection.transaction()?;
+            transaction.execute(
+                "
+DELETE FROM task_log_records
+WHERE task_id IN (
+    SELECT task_id
+    FROM task_records
+    WHERE status IN ('completed', 'failed')
+      AND created_at_unix < ?1
+)
+",
+                params![cutoff],
+            )?;
+            let deleted = transaction.execute(
                 "
 DELETE FROM task_records
 WHERE status IN ('completed', 'failed')
@@ -699,6 +713,7 @@ WHERE status IN ('completed', 'failed')
 ",
                 params![cutoff],
             )?;
+            transaction.commit()?;
             Ok(deleted)
         })
     }
@@ -706,8 +721,108 @@ WHERE status IN ('completed', 'failed')
     fn delete_all_tasks(&self) -> PersistenceResult<()> {
         self.with_connection("delete_all_tasks", |connection| {
             ensure_schema_ready(connection)?;
-            connection.execute("DELETE FROM task_records", [])?;
+            let transaction = connection.transaction()?;
+            transaction.execute("DELETE FROM task_log_records", [])?;
+            transaction.execute("DELETE FROM task_records", [])?;
+            transaction.commit()?;
             Ok(())
+        })
+    }
+
+    fn append_task_log(&self, entry: &NewTaskLogRecord) -> PersistenceResult<()> {
+        self.with_connection("append_task_log", |connection| {
+            ensure_schema_ready(connection)?;
+            connection.execute(
+                "
+INSERT INTO task_log_records (
+    task_id, manager_id, task_type, status, level, message, created_at_unix
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+",
+                params![
+                    task_id_to_i64(entry.task_id)?,
+                    entry.manager.as_str(),
+                    task_type_to_str(entry.task_type),
+                    entry.status.map(task_status_to_str),
+                    task_log_level_to_str(entry.level),
+                    entry.message.as_str(),
+                    to_unix_seconds(entry.created_at)?,
+                ],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn list_task_logs(
+        &self,
+        task_id: TaskId,
+        limit: usize,
+    ) -> PersistenceResult<Vec<TaskLogRecord>> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+
+        self.with_connection("list_task_logs", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection.prepare(
+                "
+SELECT
+    log_id,
+    task_id,
+    manager_id,
+    task_type,
+    status,
+    level,
+    message,
+    created_at_unix
+FROM task_log_records
+WHERE task_id = ?1
+ORDER BY created_at_unix ASC, log_id ASC
+LIMIT ?2
+",
+            )?;
+            let rows =
+                statement.query_map(params![task_id_to_i64(task_id)?, to_i64(limit)?], |row| {
+                    let log_id_raw: i64 = row.get(0)?;
+                    let task_id_raw: i64 = row.get(1)?;
+                    let manager_raw: String = row.get(2)?;
+                    let task_type_raw: String = row.get(3)?;
+                    let status_raw: Option<String> = row.get(4)?;
+                    let level_raw: String = row.get(5)?;
+                    let message: String = row.get(6)?;
+                    let created_at_unix: i64 = row.get(7)?;
+
+                    Ok(TaskLogRecord {
+                        id: i64_to_u64(log_id_raw)?,
+                        task_id: TaskId(i64_to_u64(task_id_raw)?),
+                        manager: parse_manager_id(&manager_raw)?,
+                        task_type: parse_task_type(&task_type_raw)?,
+                        status: status_raw.as_deref().map(parse_task_status).transpose()?,
+                        level: parse_task_log_level(&level_raw)?,
+                        message,
+                        created_at: from_unix_seconds(created_at_unix)?,
+                    })
+                })?;
+
+            rows.collect()
+        })
+    }
+
+    fn prune_task_logs(&self, max_age_secs: i64) -> PersistenceResult<usize> {
+        self.with_connection("prune_task_logs", |connection| {
+            ensure_schema_ready(connection)?;
+            let cutoff = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or(Duration::ZERO)
+                .as_secs() as i64
+                - max_age_secs;
+            let deleted = connection.execute(
+                "
+DELETE FROM task_log_records
+WHERE created_at_unix < ?1
+",
+                params![cutoff],
+            )?;
+            Ok(deleted)
         })
     }
 }
@@ -1166,6 +1281,25 @@ fn parse_task_status(raw: &str) -> rusqlite::Result<TaskStatus> {
         "failed" => Ok(TaskStatus::Failed),
         _ => Err(storage_error_sqlite(&format!(
             "unknown task status '{raw}' in sqlite record"
+        ))),
+    }
+}
+
+fn task_log_level_to_str(value: TaskLogLevel) -> &'static str {
+    match value {
+        TaskLogLevel::Info => "info",
+        TaskLogLevel::Warn => "warn",
+        TaskLogLevel::Error => "error",
+    }
+}
+
+fn parse_task_log_level(raw: &str) -> rusqlite::Result<TaskLogLevel> {
+    match raw {
+        "info" => Ok(TaskLogLevel::Info),
+        "warn" => Ok(TaskLogLevel::Warn),
+        "error" => Ok(TaskLogLevel::Error),
+        _ => Err(storage_error_sqlite(&format!(
+            "unknown task log level '{raw}' in sqlite record"
         ))),
     }
 }

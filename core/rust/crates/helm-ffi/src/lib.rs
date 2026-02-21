@@ -18,7 +18,7 @@
 //!   accessing the engine. Poisoned-lock recovery is implemented via
 //!   [`lock_or_recover`] to prevent lock-poison panics at the FFI boundary.
 //!
-//! ## FFI Exports (29 functions)
+//! ## FFI Exports (30 functions)
 //!
 //! | Function | Category |
 //! |----------|----------|
@@ -27,6 +27,7 @@
 //! | `helm_list_outdated_packages` | Package queries |
 //! | `helm_list_tasks` | Task management |
 //! | `helm_get_task_output` | Task management |
+//! | `helm_list_task_logs` | Task management |
 //! | `helm_trigger_refresh` | Task management |
 //! | `helm_cancel_task` | Task management |
 //! | `helm_search_local` | Search |
@@ -125,7 +126,7 @@ use helm_core::adapters::{
 use helm_core::execution::tokio_process::TokioProcessExecutor;
 use helm_core::models::{
     Capability, DetectionInfo, HomebrewKegPolicy, ManagerAuthority, ManagerId, OutdatedPackage,
-    PackageRef, PinKind, PinRecord, SearchQuery, TaskId, TaskStatus, TaskType,
+    PackageRef, PinKind, PinRecord, SearchQuery, TaskId, TaskLogLevel, TaskStatus, TaskType,
 };
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
 use helm_core::orchestration::{AdapterTaskTerminalState, CancellationMode};
@@ -1279,6 +1280,19 @@ struct FfiTaskOutputRecord {
     stderr: Option<String>,
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FfiTaskLogRecord {
+    id: u64,
+    task_id: TaskId,
+    manager: ManagerId,
+    task_type: TaskType,
+    status: Option<&'static str>,
+    level: &'static str,
+    message: String,
+    created_at_unix: i64,
+}
+
 /// Return captured stdout/stderr for a task ID as JSON.
 ///
 /// Returns `null` only on serialization/allocation failure.
@@ -1305,6 +1319,79 @@ pub extern "C" fn helm_get_task_output(task_id: i64) -> *mut c_char {
     match CString::new(json) {
         Ok(c_string) => c_string.into_raw(),
         Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Return persisted lifecycle task logs for a task ID as JSON.
+///
+/// Returns `null` only on invalid input or serialization/allocation failure.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_list_task_logs(task_id: i64, limit: i64) -> *mut c_char {
+    if task_id < 0 || limit < 0 {
+        return std::ptr::null_mut();
+    }
+
+    let guard = lock_or_recover(&STATE, "state");
+    let state = match guard.as_ref() {
+        Some(s) => s,
+        None => return std::ptr::null_mut(),
+    };
+
+    let entries = match state
+        .store
+        .list_task_logs(TaskId(task_id as u64), limit as usize)
+    {
+        Ok(entries) => entries,
+        Err(error) => {
+            eprintln!("Failed to list task logs for task {}: {}", task_id, error);
+            return std::ptr::null_mut();
+        }
+    };
+
+    let payload: Vec<FfiTaskLogRecord> = entries
+        .into_iter()
+        .map(|entry| FfiTaskLogRecord {
+            id: entry.id,
+            task_id: entry.task_id,
+            manager: entry.manager,
+            task_type: entry.task_type,
+            status: entry.status.map(task_status_str),
+            level: task_log_level_str(entry.level),
+            message: entry.message,
+            created_at_unix: entry
+                .created_at
+                .duration_since(UNIX_EPOCH)
+                .map(|duration| duration.as_secs() as i64)
+                .unwrap_or(0),
+        })
+        .collect();
+
+    let json = match serde_json::to_string(&payload) {
+        Ok(value) => value,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    match CString::new(json) {
+        Ok(c_string) => c_string.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+fn task_status_str(status: TaskStatus) -> &'static str {
+    match status {
+        TaskStatus::Queued => "queued",
+        TaskStatus::Running => "running",
+        TaskStatus::Completed => "completed",
+        TaskStatus::Cancelled => "cancelled",
+        TaskStatus::Failed => "failed",
+    }
+}
+
+fn task_log_level_str(level: TaskLogLevel) -> &'static str {
+    match level {
+        TaskLogLevel::Info => "info",
+        TaskLogLevel::Warn => "warn",
+        TaskLogLevel::Error => "error",
     }
 }
 

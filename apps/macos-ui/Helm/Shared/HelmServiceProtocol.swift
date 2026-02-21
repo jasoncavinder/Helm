@@ -5,6 +5,7 @@ import Foundation
     func listOutdatedPackages(withReply reply: @escaping (String?) -> Void)
     func listTasks(withReply reply: @escaping (String?) -> Void)
     func getTaskOutput(taskId: Int64, withReply reply: @escaping (String?) -> Void)
+    func listTaskLogs(taskId: Int64, limit: Int64, withReply reply: @escaping (String?) -> Void)
     func triggerRefresh(withReply reply: @escaping (Bool) -> Void)
     func searchLocal(query: String, withReply reply: @escaping (String?) -> Void)
     func triggerRemoteSearch(query: String, withReply reply: @escaping (Int64) -> Void)

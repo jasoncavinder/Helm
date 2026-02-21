@@ -10,6 +10,10 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Third-party dependency licensing baseline document:
   - `docs/legal/THIRD_PARTY_LICENSES.md`
   - includes runtime/build/toolchain scope split and release obligations.
+- v0.17 diagnostics/logging foundation kickoff:
+  - SQLite-backed task lifecycle log schema (`task_log_records`)
+  - runtime lifecycle log persistence hooks (queued/running/terminal)
+  - new FFI/API surface for retrieving persisted task logs (`helm_list_task_logs`)
 
 ### Changed
 - Legal notice and licensing strategy docs now explicitly link to third-party dependency obligations:
