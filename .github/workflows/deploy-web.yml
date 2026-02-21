@@ -11,6 +11,12 @@ on:
       - main
     paths:
       - 'web/**'
+  workflow_run:
+    workflows:
+      - 'Release macOS DMG'
+    types:
+      - completed
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -23,6 +29,9 @@ concurrency:
 
 jobs:
   build:
+    if: |
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -36,7 +45,12 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.repository.full_name == github.repository)
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
