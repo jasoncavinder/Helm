@@ -146,6 +146,32 @@ samp {
   font-family: var(--font-code);
 }
 
+.theme-image {
+  display: block;
+}
+
+.theme-image > img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.theme-image-dark {
+  display: none;
+}
+
+:root[data-theme="dark"] .theme-image-light {
+  display: none;
+}
+
+:root[data-theme="dark"] .theme-image-dark {
+  display: block;
+}
+
+.tour-shot {
+  margin-top: var(--space-2);
+}
+
 .header {
   background-color: var(--sl-color-bg-nav);
   backdrop-filter: blur(6px);
@@ -441,6 +467,11 @@ button[data-open-modal] {
 .architecture-grid .media-panel img {
   width: 100%;
   height: auto;
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: var(--radius-md);
+}
+
+.landing-shot img {
   border: 1px solid var(--sl-color-hairline);
   border-radius: var(--radius-md);
 }

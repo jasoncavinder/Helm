@@ -20,6 +20,7 @@ hero:
 ---
 
 import { LinkButton } from '@astrojs/starlight/components';
+import ThemeImage from '../../components/ThemeImage.astro';
 import statusMenuShot from '../../assets/tour/status-menu.png';
 
 <div class="landing-shell">
@@ -121,7 +122,11 @@ import statusMenuShot from '../../assets/tour/status-menu.png';
         </div>
       </div>
       <div class="panel media-panel">
-        <img src={statusMenuShot.src} alt="Helm status menu with tasks and quick actions." loading="lazy" />
+        <ThemeImage
+          light={statusMenuShot}
+          alt="Helm status menu with tasks and quick actions."
+          class="landing-shot"
+        />
       </div>
     </div>
   </section>

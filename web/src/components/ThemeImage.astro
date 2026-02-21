@@ -1,0 +1,55 @@
+---
+import type { ImageMetadata } from 'astro';
+
+type ImageSource = ImageMetadata | string;
+
+interface Props {
+  light: ImageSource;
+  dark?: ImageSource;
+  alt: string;
+  class?: string;
+  loading?: 'lazy' | 'eager';
+  decoding?: 'async' | 'sync' | 'auto';
+}
+
+const {
+  light,
+  dark,
+  alt,
+  class: className = '',
+  loading = 'lazy',
+  decoding = 'async',
+} = Astro.props;
+
+const lightSrc = typeof light === 'string' ? light : light.src;
+const darkSrc = dark ? (typeof dark === 'string' ? dark : dark.src) : lightSrc;
+
+const lightWidth = typeof light === 'string' ? undefined : light.width;
+const lightHeight = typeof light === 'string' ? undefined : light.height;
+
+const darkWidth = !dark || typeof dark === 'string' ? lightWidth : dark.width;
+const darkHeight = !dark || typeof dark === 'string' ? lightHeight : dark.height;
+
+const classes = ['theme-image', className].filter(Boolean).join(' ');
+---
+
+<span class={classes}>
+  <img
+    class="theme-image-light"
+    src={lightSrc}
+    width={lightWidth}
+    height={lightHeight}
+    alt={alt}
+    loading={loading}
+    decoding={decoding}
+  />
+  <img
+    class="theme-image-dark"
+    src={darkSrc}
+    width={darkWidth}
+    height={darkHeight}
+    alt={alt}
+    loading={loading}
+    decoding={decoding}
+  />
+</span>

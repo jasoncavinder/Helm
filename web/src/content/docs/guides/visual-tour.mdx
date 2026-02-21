@@ -4,6 +4,17 @@ description: A guided walkthrough of the Helm user interface.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
+import ThemeImage from '../../../components/ThemeImage.astro';
+import menuBarPopoverLight from '../../../assets/tour/menu-bar-popover.png';
+import menuBarPopoverDark from '../../../assets/tour/menu-bar-popover-dark.png';
+import statusMenuShot from '../../../assets/tour/status-menu.png';
+import controlCenterOverviewShot from '../../../assets/tour/control-center-overview.png';
+import controlCenterPackagesShot from '../../../assets/tour/control-center-packages.png';
+import controlCenterTasksShot from '../../../assets/tour/control-center-tasks.png';
+import controlCenterManagersShot from '../../../assets/tour/control-center-managers.png';
+import controlCenterSettingsShot from '../../../assets/tour/control-center-settings.png';
+import inspectorSidebarShot from '../../../assets/tour/inspector-sidebar.png';
+import onboardingSpotlightShot from '../../../assets/tour/onboarding-spotlight.png';
 
 Helm has two main surfaces: a **menu bar popover** for quick triage and a **Control Center window** for deeper management. This tour walks through each.
 
@@ -17,11 +28,12 @@ Screenshots show Helm `v0.16.0` UI surfaces on macOS. Minor styling may change b
 
 Click the Helm icon in the menu bar to open the popover. It shows your environment health at a glance: update counts, active tasks, and quick actions.
 
-![Menu bar popover showing health status, pending updates, and quick actions](../../../assets/tour/menu-bar-popover.png)
-
-The popover adapts to dark mode automatically.
-
-![Menu bar popover in dark mode](../../../assets/tour/menu-bar-popover-dark.png)
+<ThemeImage
+  class="tour-shot"
+  light={menuBarPopoverLight}
+  dark={menuBarPopoverDark}
+  alt="Menu bar popover showing health status, pending updates, and quick actions."
+/>
 
 ---
 
@@ -29,7 +41,11 @@ The popover adapts to dark mode automatically.
 
 Right-click the Helm icon for quick actions: About, Control Center, Upgrade All, Settings, Support Helm, Refresh, and Quit.
 
-![Right-click status menu with quick actions](../../../assets/tour/status-menu.png)
+<ThemeImage
+  class="tour-shot"
+  light={statusMenuShot}
+  alt="Right-click status menu with quick actions."
+/>
 
 ---
 
@@ -37,7 +53,11 @@ Right-click the Helm icon for quick actions: About, Control Center, Upgrade All,
 
 The Control Center is a standalone window with sidebar navigation. The **Overview** tab shows health posture, package statistics, the manager grid, and recent task activity.
 
-![Control Center overview with health posture and manager grid](../../../assets/tour/control-center-overview.png)
+<ThemeImage
+  class="tour-shot"
+  light={controlCenterOverviewShot}
+  alt="Control Center overview with health posture and manager grid."
+/>
 
 ---
 
@@ -45,7 +65,11 @@ The Control Center is a standalone window with sidebar navigation. The **Overvie
 
 Browse installed, upgradable, and available packages. Filter by status or manager. Click any package to see details in the inspector sidebar.
 
-![Packages tab with package list and filters](../../../assets/tour/control-center-packages.png)
+<ThemeImage
+  class="tour-shot"
+  light={controlCenterPackagesShot}
+  alt="Packages tab with package list and filters."
+/>
 
 ---
 
@@ -53,7 +77,11 @@ Browse installed, upgradable, and available packages. Filter by status or manage
 
 Track all background operations in real time. Tasks show lifecycle states: Queued, Running, Completed, Failed, or Canceled.
 
-![Tasks tab showing task list with status indicators](../../../assets/tour/control-center-tasks.png)
+<ThemeImage
+  class="tour-shot"
+  light={controlCenterTasksShot}
+  alt="Tasks tab showing task list with status indicators."
+/>
 
 ---
 
@@ -61,7 +89,11 @@ Track all background operations in real time. Tasks show lifecycle states: Queue
 
 View per-manager health, detection status, and capabilities. Managers show health badges (Healthy, Attention, Error, Not Installed).
 
-![Managers tab showing health badges across package managers](../../../assets/tour/control-center-managers.png)
+<ThemeImage
+  class="tour-shot"
+  light={controlCenterManagersShot}
+  alt="Managers tab showing health badges across package managers."
+/>
 
 ---
 
@@ -69,7 +101,11 @@ View per-manager health, detection status, and capabilities. Managers show healt
 
 Configure cadence, policy, localization, and accessibility. The **Support & Feedback** card provides direct links to report bugs, request features, and share diagnostics.
 
-![Settings tab with General, Managers, Advanced, and Support & Feedback cards](../../../assets/tour/control-center-settings.png)
+<ThemeImage
+  class="tour-shot"
+  light={controlCenterSettingsShot}
+  alt="Settings tab with General, Managers, Advanced, and Support and Feedback cards."
+/>
 
 ---
 
@@ -77,7 +113,11 @@ Configure cadence, policy, localization, and accessibility. The **Support & Feed
 
 Select any task, package, or manager in the Control Center to open the inspector sidebar. It shows contextual detail: version info, pin state, manager attribution, health badges, and available actions.
 
-![Inspector sidebar showing package or manager detail](../../../assets/tour/inspector-sidebar.png)
+<ThemeImage
+  class="tour-shot"
+  light={inspectorSidebarShot}
+  alt="Inspector sidebar showing package or manager detail."
+/>
 
 ---
 
@@ -85,4 +125,8 @@ Select any task, package, or manager in the Control Center to open the inspector
 
 On first launch, Helm offers a guided walkthrough using spotlight overlays that highlight key UI elements with step-by-step explanations. You can replay it anytime from Settings.
 
-![Walkthrough spotlight overlay highlighting a UI element](../../../assets/tour/onboarding-spotlight.png)
+<ThemeImage
+  class="tour-shot"
+  light={onboardingSpotlightShot}
+  alt="Walkthrough spotlight overlay highlighting a UI element."
+/>
