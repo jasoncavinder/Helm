@@ -255,6 +255,8 @@ Completed:
 - Added website redesign planning docs aligned to the Helm brand system:
   - `docs/website/WEBSITE_REDESIGN_PLAN.md`
   - `docs/website/DESIGN_TOKENS.md`
+  - `docs/brand/TYPOGRAPHY_COLOR_SYSTEM.md`
+  - `docs/brand/WEBSITE_TYPOGRAPHY_COLOR_SPEC.md`
 - Implemented a custom Helm visual theme for the Astro/Starlight site:
   - `web/src/styles/helm-theme.css`
   - wired through `web/astro.config.mjs`
@@ -289,6 +291,7 @@ Immediate follow-up:
 - Perform manual visual QA in both light and dark theme across mobile/tablet/desktop breakpoints before release publishing.
 - Replace visual-tour screenshots after UI styling refresh in `web/src/assets/tour/` and re-run manual QA.
   - use paired filenames so theme switching remains automatic: `name.png` (light) and `name-dark.png` (dark)
+- Purchase Neue Haas Grotesk commercial webfont license before production website deployment using that typeface.
 
 ---
 

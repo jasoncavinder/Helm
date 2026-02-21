@@ -87,17 +87,25 @@ Dark mode:
 
 ## 4. Typography
 
-Primary UI: SF Pro (system default)
-Monospace: SF Mono
+Brand headings:
+- Neue Haas Grotesk (primary)
+- Weights: 600-700 for display/section hierarchy
 
-Website fallback:
-- Inter
-- IBM Plex Sans
+Body and interface copy:
+- Inter (primary)
+- Weights: 400/500/600 depending on emphasis
+
+Monospace:
+- SF Mono (primary), with IBM Plex Mono fallback when needed
 
 Rules:
 - Large, confident headings
 - Generous spacing
 - Never cramped layouts
+
+Authoritative specs:
+- `docs/brand/TYPOGRAPHY_COLOR_SYSTEM.md`
+- `docs/brand/WEBSITE_TYPOGRAPHY_COLOR_SPEC.md`
 
 ---
 
@@ -155,4 +163,3 @@ Avoid:
 - “Next-gen”
 
 Helm speaks like a senior engineer, not a startup pitch deck.
-

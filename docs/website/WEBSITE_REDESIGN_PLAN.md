@@ -7,6 +7,8 @@ Define a full website redesign direction for Helm that aligns with:
 - `docs/brand/UI_COMPONENT_SPEC.md`
 - `docs/brand/VISUAL_IDENTITY_GUIDE.md`
 - `docs/brand/LANDING_COPY_REWRITE.md`
+- `docs/brand/TYPOGRAPHY_COLOR_SYSTEM.md`
+- `docs/brand/WEBSITE_TYPOGRAPHY_COLOR_SPEC.md`
 
 This plan is design-only. No feature or product-positioning changes are included.
 
@@ -16,6 +18,7 @@ This plan is design-only. No feature or product-positioning changes are included
 - Visual priority: Helm Blue is primary.
 - Rope Gold is reserved for Pro UI only and kept below 10% visual weight.
 - Style direction: high clarity and hierarchy (inspired by Avast/Docker structure), without flashy startup aesthetics.
+- Typography authority: headings use Neue Haas Grotesk and body uses Inter per website typography spec.
 
 ## 1) Proposed Layout Structure (Section by Section)
 ## 0. Global Frame
