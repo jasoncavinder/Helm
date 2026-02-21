@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.17.0-rc.2] - 2026-02-21
+
+### Changed
+- Sparkle appcast generation now supports an explicit display-version override so prerelease tags are preserved in appcast metadata (`sparkle:shortVersionString` / title) instead of collapsing to stripped marketing versions.
+- Release workflow now passes display version derived from tag name when generating Sparkle appcasts (for example, `v0.17.0-rc.2` -> `0.17.0-rc.2`).
+- Release DMG verification now enforces Sparkle installer-launcher and sandbox entitlement requirements used by sandboxed updater flows.
+
+### Fixed
+- Enabled Sparkle installer launcher service in app metadata (`SUEnableInstallerLauncherService`) for direct-channel updater installs.
+- Added required Sparkle sandbox entitlement exceptions for installer/status mach services (`-spki`, `-spks`) and shared preference access in both debug and release app entitlements.
+- Addressed Sparkle installer-launch failures seen in `v0.17.0-rc.1` (`Failed to make auth right set`, `Failed copying system domain rights: -60005`, `Failed to submit installer job`), which surfaced as “An error occurred while launching the installer.”
+
 ## [0.17.0-rc.1] - 2026-02-21
 
 ### Added

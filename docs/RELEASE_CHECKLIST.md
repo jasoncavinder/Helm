@@ -31,10 +31,39 @@ This checklist is required before creating a release tag on `main`.
 - [x] Locale checks pass (`apps/macos-ui/scripts/check_locale_integrity.sh` and `apps/macos-ui/scripts/check_locale_lengths.sh`).
 
 ### Branch and Tag
+- [x] Open release-prep PR into `dev` and complete CI checks.
+- [x] Merge release-prep PR into `dev`.
+- [x] Create annotated RC tag from `dev` lineage: `git tag -a v0.17.0-rc.1 -m "Helm v0.17.0-rc.1"`.
+- [x] Push RC tag: `git push origin v0.17.0-rc.1`.
+
+## v0.17.0-rc.2 (Updater Install/Version Label Hotfix RC)
+
+### Scope and Documentation
+- [x] `CHANGELOG.md` includes `0.17.0-rc.2` release-candidate notes for updater install + appcast version-label fixes.
+- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect `rc.2` updater hardening status.
+- [x] Website changelog includes `0.17.0-rc.2` notes.
+
+### Versioning
+- [x] Workspace version bumped to `0.17.0-rc.2` in `core/rust/Cargo.toml`.
+- [x] Rust lockfile local package versions aligned to `0.17.0-rc.2` in `core/rust/Cargo.lock`.
+
+### Updater/Sparkle Hardening
+- [x] App entitlements include Sparkle installer/status mach-lookup exceptions and shared-preference exception in both debug/release profiles.
+- [x] App metadata enables Sparkle installer launcher service (`SUEnableInstallerLauncherService=true`).
+- [x] Appcast generation supports explicit prerelease display version and writes that value into `sparkle:shortVersionString`.
+- [x] Release workflow passes tag-derived display version into appcast generation.
+- [x] Release DMG verification enforces Sparkle installer launcher + entitlement requirements.
+
+### Validation
+- [x] Rust tests pass (`cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`).
+- [x] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`).
+- [x] Locale checks pass (`apps/macos-ui/scripts/check_locale_integrity.sh` and `apps/macos-ui/scripts/check_locale_lengths.sh`).
+
+### Branch and Tag
 - [ ] Open release-prep PR into `dev` and complete CI checks.
 - [ ] Merge release-prep PR into `dev`.
-- [ ] Create annotated RC tag from `dev` lineage: `git tag -a v0.17.0-rc.1 -m "Helm v0.17.0-rc.1"`.
-- [ ] Push RC tag: `git push origin v0.17.0-rc.1`.
+- [ ] Create annotated RC tag from `dev` lineage: `git tag -a v0.17.0-rc.2 -m "Helm v0.17.0-rc.2"`.
+- [ ] Push RC tag: `git push origin v0.17.0-rc.2`.
 
 ## v0.16.2 (Sparkle Connectivity + macOS 11 Alignment)
 

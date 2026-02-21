@@ -22,8 +22,8 @@ The Helm project license (`LICENSE`) does not replace third-party license obliga
 
 Release context:
 
-- docs baseline: `v0.17.0-rc.1`
-- app release baseline: `v0.17.0-rc.1` (RC branch on `dev`)
+- docs baseline: `v0.17.0-rc.2`
+- app release baseline: `v0.17.0-rc.2` (RC branch on `dev`)
 
 ### 1) macOS App Runtime Dependencies
 
