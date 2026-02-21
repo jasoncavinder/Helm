@@ -4,7 +4,7 @@ description: Take the helm. Operational clarity for macOS toolchains.
 template: splash
 hero:
   title: "Take the helm."
-  tagline: "Helm centralizes your toolchain and restores operational clarity across package managers."
+  tagline: "Helm centralizes package and toolchain operations across macOS environments with deterministic, auditable workflows."
   image:
     file: ../../assets/tour/control-center-overview.png
     alt: "Helm Control Center showing manager and package status."
@@ -20,119 +20,140 @@ hero:
 ---
 
 import { LinkButton } from '@astrojs/starlight/components';
-import menuBarPopover from '../../assets/tour/menu-bar-popover-dark.png';
+import statusMenuShot from '../../assets/tour/status-menu.png';
 
 <div class="landing-shell">
+  <nav class="landing-nav" aria-label="Section navigation">
+    <a href="#problem">Problem</a>
+    <a href="#solution">Solution</a>
+    <a href="#audiences">Editions</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#pro">Helm Pro</a>
+  </nav>
+
   <section id="problem" class="landing-section">
     <div class="section-head">
-      <p class="landing-kicker"><span class="section-index">01</span> Problem</p>
-      <h2>Modern development environments are fragmented.</h2>
+      <p class="section-kicker">Problem</p>
+      <h2>Modern macOS environments are operationally fragmented.</h2>
     </div>
-    <div class="landing-problem-grid">
-      <div class="landing-problem-copy">
-        <p>Homebrew. npm. pip. cargo. RubyGems.</p>
-        <p>Each manages its own universe.</p>
-        <p>Your system state becomes opaque.</p>
-        <p>Updates break silently.</p>
-        <p>You lose visibility.</p>
+    <div class="split-grid">
+      <div class="panel body-lg">
+        <p>Homebrew, npm, pip, cargo, and runtime managers all maintain separate state.</p>
+        <p>Developers lose visibility, and platform teams inherit drift, brittle scripts, and inconsistent update behavior.</p>
       </div>
-      <div class="fragmentation-map">
-        <p class="fragmentation-map-title">Typical fragmented manager surface</p>
-        <div class="manager-chip-grid">
-          <div class="manager-chip">Homebrew</div>
-          <div class="manager-chip">npm</div>
-          <div class="manager-chip">pip</div>
-          <div class="manager-chip">cargo</div>
-          <div class="manager-chip">RubyGems</div>
-          <div class="manager-chip">rustup</div>
-        </div>
+      <div class="panel panel-compact">
+        <h3>Common failure pattern</h3>
+        <ul>
+          <li>Toolchain and package updates run out of order</li>
+          <li>No shared, auditable execution view</li>
+          <li>Breakage is discovered only after impact</li>
+        </ul>
       </div>
     </div>
   </section>
 
   <section id="solution" class="landing-section">
     <div class="section-head">
-      <p class="landing-kicker"><span class="section-index">02</span> Solution</p>
-      <h2>Helm restores control.</h2>
+      <p class="section-kicker">Solution</p>
+      <h2>Helm provides one command bridge for package operations.</h2>
     </div>
-    <ul class="feature-list">
-      <li class="feature-item">
-        <h3>Unified visibility across managers</h3>
-        <p>One control plane for package and toolchain state.</p>
-      </li>
-      <li class="feature-item">
-        <h3>Centralized upgrade strategy</h3>
-        <p>Operator-friendly execution order with clear manager context.</p>
-      </li>
-      <li class="feature-item">
-        <h3>Deterministic system state</h3>
-        <p>Deterministic actions and traceable outcomes.</p>
-      </li>
-      <li class="feature-item">
-        <h3>Clear update history</h3>
-        <p>Auditable task records and explicit status.</p>
-      </li>
-      <li class="feature-item pro">
-        <h3>CVE awareness <span class="pro-inline-badge">Pro</span></h3>
-        <p>Security context for risk-aware upgrade decisions.</p>
-      </li>
-    </ul>
-    <p class="landing-close-line">Your system. Clearly understood.</p>
+    <div class="card-grid">
+      <article class="panel capability-card">
+        <h3>Unified visibility</h3>
+        <p>Installed, outdated, and available state across managers in one control surface.</p>
+      </article>
+      <article class="panel capability-card">
+        <h3>Deterministic orchestration</h3>
+        <p>Authority-ordered execution with explicit task lifecycle and cancellation.</p>
+      </article>
+      <article class="panel capability-card">
+        <h3>Operational clarity</h3>
+        <p>Structured logs and manager/task/action attribution for reliable diagnosis.</p>
+      </article>
+      <article class="panel capability-card">
+        <h3>Local-first behavior</h3>
+        <p>Fast local search and progressive enrichment without cloud dependence.</p>
+      </article>
+    </div>
   </section>
 
-  <section id="command-bridge" class="landing-section">
+  <section id="audiences" class="landing-section">
     <div class="section-head">
-      <p class="landing-kicker"><span class="section-index">03</span> Command Bridge</p>
-      <h2>Think of Helm as your command bridge.</h2>
+      <p class="section-kicker">Editions</p>
+      <h2>Built for individual developers and enterprise platform teams.</h2>
     </div>
-    <div class="landing-command-grid">
-      <div>
-        <p>One interface. All managers. Total visibility.</p>
-        <p>Helm gives operators a stable, centralized control surface for routine maintenance.</p>
-      </div>
-      <div class="bridge-diagram">
-        <div class="bridge-grid">
-          <div class="bridge-node"><strong>Inputs</strong><br />brew, npm, pip, cargo, rustup</div>
-          <div class="bridge-arrow">-&gt;</div>
-          <div class="bridge-core"><strong>Helm Core</strong><br />Orchestration + task visibility</div>
-          <div class="bridge-arrow">-&gt;</div>
-          <div class="bridge-node"><strong>Output</strong><br />Clear system state</div>
+    <div class="split-grid">
+      <article class="panel edition-card">
+        <p class="edition-label">Helm (Consumer)</p>
+        <h3>Daily control for developers</h3>
+        <p>Menu bar-native workflows for maintaining package and toolchain state without terminal overhead.</p>
+        <LinkButton href="/guides/usage/" icon="right-arrow" variant="minimal">Usage guide</LinkButton>
+      </article>
+      <article class="panel edition-card">
+        <p class="edition-label">Helm Business</p>
+        <h3>Governance workflows for organizations</h3>
+        <p>Policy-oriented, auditable operations for managed macOS development environments.</p>
+        <LinkButton href="/product-overview/" icon="right-arrow" variant="minimal">Product overview</LinkButton>
+      </article>
+    </div>
+  </section>
+
+  <section id="architecture" class="landing-section">
+    <div class="section-head">
+      <p class="section-kicker">Architecture</p>
+      <h2>Structured around UI, service boundary, and deterministic core.</h2>
+    </div>
+    <div class="split-grid architecture-grid">
+      <div class="panel panel-stack">
+        <div class="lane">
+          <p class="lane-label">UI</p>
+          <p>SwiftUI presentation layer for state and operator intent.</p>
         </div>
-        <img class="bridge-shot" src={menuBarPopover.src} alt="Helm menu bar popover with update status and tasks." loading="lazy" />
+        <div class="lane-arrow">↓</div>
+        <div class="lane">
+          <p class="lane-label">Service</p>
+          <p>XPC boundary for process isolation and execution control.</p>
+        </div>
+        <div class="lane-arrow">↓</div>
+        <div class="lane">
+          <p class="lane-label">Core</p>
+          <p>Rust adapters, orchestration, persistence, and policy enforcement.</p>
+        </div>
+      </div>
+      <div class="panel media-panel">
+        <img src={statusMenuShot.src} alt="Helm status menu with tasks and quick actions." loading="lazy" />
       </div>
     </div>
   </section>
 
-  <section id="helm-pro" class="landing-section">
+  <section id="pro" class="landing-section">
     <div class="section-head">
-      <p class="landing-kicker"><span class="section-index">04</span> Helm Pro</p>
-      <h2>Helm Pro adds advanced system intelligence.</h2>
+      <p class="section-kicker">Helm Pro</p>
+      <h2>Advanced operational intelligence for high-control environments.</h2>
     </div>
-    <div class="pro-panel">
-      <ul class="pro-list">
-        <li>CVE detection</li>
+    <div class="panel pro-panel">
+      <p class="pro-badge">Pro</p>
+      <ul>
+        <li>CVE awareness</li>
         <li>Priority upgrade recommendations</li>
         <li>Audit-ready update history</li>
         <li>Proactive risk insights</li>
       </ul>
-      <p>Professional-grade control for serious builders.</p>
+      <LinkButton href="/licensing/" icon="right-arrow" variant="secondary">Edition and licensing details</LinkButton>
     </div>
   </section>
 
-  <section class="landing-section footer-cta">
-    <div class="section-head">
-      <p class="landing-kicker"><span class="section-index">05</span> Get Helm</p>
+  <section class="landing-section panel cta-panel">
+    <div>
+      <p class="section-kicker">Get Helm</p>
+      <h2>Take the helm.</h2>
+      <p>Download Helm for macOS and run updates with operational clarity.</p>
     </div>
-    <h2>Take the helm.</h2>
-    <p>Download Helm for macOS.</p>
-    <div class="footer-cta-actions">
+    <div class="cta-actions">
       <LinkButton href="https://github.com/jasoncavinder/Helm/releases/latest/download/Helm.dmg" icon="download" variant="primary">Download Helm</LinkButton>
       <LinkButton href="https://github.com/jasoncavinder/Helm" icon="external" variant="secondary">View on GitHub</LinkButton>
-      <LinkButton href="/product-overview/" icon="right-arrow" variant="minimal">Product overview</LinkButton>
-      <LinkButton href="/product-roadmap/" icon="document" variant="minimal">Roadmap</LinkButton>
+      <LinkButton href="/product-roadmap/" icon="document" variant="minimal">Product roadmap</LinkButton>
     </div>
-    <p class="release-note">
-      Helm is currently source-available under a non-commercial license. See the <a href="/licensing/">licensing page</a> for details.
-    </p>
+    <p class="small-note">Helm is currently source-available under a non-commercial license.</p>
   </section>
 </div>

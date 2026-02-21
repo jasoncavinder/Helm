@@ -7,6 +7,8 @@ All notable changes to Helm are documented here. The format is based on [Keep a 
 
 For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncavinder/Helm/blob/main/CHANGELOG.md).
 
+> Latest entries below reflect the current release-finalization snapshots.
+
 ---
 
 ## 0.16.1 — 2026-02-21
@@ -23,7 +25,7 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ---
 
-## 0.16.0 — 2026-02-21
+## 0.16.0 — 2026-02-21 (Release Finalization Snapshot)
 
 ### Added
 - Channel-aware update configuration and direct-channel Sparkle integration scaffolding in the macOS app.

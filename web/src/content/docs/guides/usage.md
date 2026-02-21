@@ -25,6 +25,8 @@ The Control Center is a standalone window with sidebar navigation across six dom
 5. **Managers** — per-manager health, capabilities, and configuration
 6. **Settings** — cadence, policy, localization, accessibility, and diagnostics
 
+The Settings surface also includes **Support & Feedback** actions for bug reports, feature requests, and diagnostics copy/export.
+
 ## Inspector Sidebar
 
 Selecting any task, package, or manager in the Control Center opens the **inspector sidebar** on the right. It shows contextual detail: version delta, pin state, manager attribution, available actions, task logs, or manager capabilities — depending on what is selected.

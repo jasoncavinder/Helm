@@ -123,7 +123,7 @@ Delivered:
 
 ---
 
-## Website Workstream (2026-02-20)
+## Website Workstream (2026-02-21)
 
 Completed:
 
@@ -133,17 +133,33 @@ Completed:
 - Implemented a custom Helm visual theme for the Astro/Starlight site:
   - `web/src/styles/helm-theme.css`
   - wired through `web/astro.config.mjs`
-- Rebuilt landing page structure and copy hierarchy in `web/src/content/docs/index.mdx` to match:
+- Rebuilt landing page structure and copy hierarchy in `web/src/content/docs/index.mdx` with dual-audience framing:
   - Hero
   - Problem
   - Solution
-  - Command Bridge
+  - Editions (Helm consumer + Helm Business)
+  - Architecture
   - Helm Pro
   - Footer CTA
+- Applied explicit Helm website typography/color specification in `web/src/styles/helm-theme.css`:
+  - Neue Haas Grotesk heading stack, Inter body text, SF Mono code
+  - specified H1/H2/H3/body/small scale and heading color mapping by theme
+  - 8pt spacing rhythm and restrained Pro-only gold accents
+  - calm, structured visual tone (no neon/startup-style hero effects)
+- Completed website content alignment pass across docs pages:
+  - updated release-status wording consistency for `v0.16.0` release finalization
+  - clarified consumer vs Helm Business positioning in overview + FAQ
+  - refreshed installation/usage/visual-tour copy for current UX
+- Completed manual accessibility verification pass for key routes:
+  - automated Axe CLI scan across key website routes reports zero violations after remediation
+  - patched homepage hero secondary CTA contrast to resolve Axe `color-contrast` failure
+  - verified heading hierarchy and image alt coverage on docs content
+  - verified focus-visible and reduced-motion support in theme CSS
 
 Immediate follow-up:
 
 - Perform manual visual QA in both light and dark theme across mobile/tablet/desktop breakpoints before release publishing.
+- Replace visual-tour screenshots after UI styling refresh in `web/src/assets/tour/` and re-run manual QA.
 
 ---
 
