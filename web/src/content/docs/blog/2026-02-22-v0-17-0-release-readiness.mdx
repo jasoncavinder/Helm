@@ -1,0 +1,30 @@
+---
+title: "Toward v0.17.0: Release Readiness and Final Validation"
+description: "What changed through the v0.17.0 RC cycle and what we are validating before the stable cut."
+summary: "A concise update on RC hardening, updater reliability, diagnostics improvements, and the final validation gate for v0.17.0."
+publishDate: 2026-02-22
+author: Helm Team
+sidebar:
+  label: "v0.17.0 readiness"
+---
+
+Helm `v0.17.0` is moving from release-candidate hardening toward the stable cut.
+
+## What landed during the RC cycle
+
+- Self-update reliability fixes for Sparkle prerelease semantics and installer launch behavior.
+- Expanded diagnostics coverage across task lifecycle logging, manager detection details, and support export workflows.
+- Inspector and task-surface quality improvements for command/output visibility and troubleshooting flow.
+- Privileged-action authentication support using managed `sudo -A` handling for elevated manager operations.
+- Responsiveness work in Control Center and popover surfaces, including adaptive polling and lazy list rendering.
+
+## Stable-release gate
+
+Before the stable `v0.17.0` release, we are validating:
+
+- Core Rust and macOS test suites.
+- Localization integrity and length safety.
+- Updater feed behavior and direct-channel update checks.
+- Release-process artifacts and website/changelog synchronization.
+
+If you are testing `v0.17.0-rc.5`, please file any reproducible issue details in GitHub with environment, expected behavior, and observed behavior.

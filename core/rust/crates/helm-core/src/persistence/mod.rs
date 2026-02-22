@@ -58,7 +58,7 @@ pub trait TaskStore: Send + Sync {
 
     fn next_task_id(&self) -> PersistenceResult<u64>;
 
-    /// Delete completed/failed tasks older than `max_age_secs` seconds.
+    /// Delete terminal tasks older than `max_age_secs` seconds.
     /// Returns the number of rows deleted.
     fn prune_completed_tasks(&self, max_age_secs: i64) -> PersistenceResult<usize>;
 

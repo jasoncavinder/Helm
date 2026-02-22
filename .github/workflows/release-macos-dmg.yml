@@ -412,8 +412,40 @@ jobs:
           APP_PATH="$PWD/build/DerivedData/Build/Products/Release/Helm.app"
           DMG_PATH="$PWD/build/release-assets/Helm-${TAG_NAME}-macos-universal.dmg"
           APPCAST_PATH="$PWD/build/release-assets/appcast.xml"
+          RELEASE_NOTES_PATH="$PWD/build/release-assets/release-notes/${TAG_NAME}.html"
           DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/Helm-${TAG_NAME}-macos-universal.dmg"
-          RELEASE_NOTES_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG_NAME}"
+          RELEASE_NOTES_URL="$(
+            python3 - <<'PY'
+          import os
+          from urllib.parse import urlparse, urlunparse
+
+          feed_url = os.environ["HELM_SPARKLE_FEED_URL"]
+          tag_name = os.environ["TAG_NAME"]
+          parsed = urlparse(feed_url)
+
+          base_path = parsed.path
+          if base_path.endswith("/appcast.xml"):
+            base_path = base_path[: -len("/appcast.xml")]
+          else:
+            base_path = base_path.rstrip("/")
+
+          if not base_path:
+            notes_path = f"/release-notes/{tag_name}.html"
+          else:
+            notes_path = f"{base_path}/release-notes/{tag_name}.html"
+
+          print(urlunparse((parsed.scheme, parsed.netloc, notes_path, "", "", "")))
+          PY
+          )"
+          GITHUB_RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG_NAME}"
+          DISPLAY_VERSION="${TAG_NAME#v}"
+
+          apps/macos-ui/scripts/generate_release_notes_html.py \
+            --changelog-path "$PWD/CHANGELOG.md" \
+            --tag "$TAG_NAME" \
+            --output-path "$RELEASE_NOTES_PATH" \
+            --canonical-url "$RELEASE_NOTES_URL" \
+            --fallback-release-url "$GITHUB_RELEASE_URL"
 
           apps/macos-ui/scripts/generate_sparkle_appcast.sh \
             --app-path "$APP_PATH" \
@@ -421,6 +453,7 @@ jobs:
             --output-path "$APPCAST_PATH" \
             --download-url "$DOWNLOAD_URL" \
             --appcast-url "$HELM_SPARKLE_FEED_URL" \
+            --display-version "$DISPLAY_VERSION" \
             --release-notes-url "$RELEASE_NOTES_URL"
 
       - name: Enforce Sparkle appcast policy (full installer only)
@@ -435,6 +468,7 @@ jobs:
           path: |
             build/release-assets/*.dmg
             build/release-assets/appcast.xml
+            build/release-assets/release-notes/*.html
 
       - name: Upload DMGs to GitHub release
         if: ${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
@@ -446,9 +480,10 @@ jobs:
             "build/release-assets/Helm-${TAG_NAME}-macos-universal.dmg#Helm-${TAG_NAME}-macos-universal.dmg" \
             "build/release-assets/Helm.dmg#Helm.dmg" \
             "build/release-assets/appcast.xml#appcast.xml" \
+            "build/release-assets/release-notes/${TAG_NAME}.html#release-notes-${TAG_NAME}.html" \
             --clobber
 
-      - name: Publish appcast to website source
+      - name: Publish appcast and release notes to website source
         if: ${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
         env:
           GH_TOKEN: ${{ github.token }}
@@ -456,24 +491,28 @@ jobs:
           set -euo pipefail
 
           APPCAST_PATH="$PWD/build/release-assets/appcast.xml"
+          RELEASE_NOTES_PATH="$PWD/build/release-assets/release-notes/${TAG_NAME}.html"
           FEED_PATH="web/public/updates/appcast.xml"
+          RELEASE_NOTES_FEED_PATH="web/public/updates/release-notes/${TAG_NAME}.html"
           PUBLISH_DIR="$RUNNER_TEMP/appcast-publish"
-          PUBLISH_BRANCH="chore/publish-appcast-${TAG_NAME}"
+          PUBLISH_BRANCH="chore/publish-updates-${TAG_NAME}"
 
           git clone --depth 1 --branch main "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$PUBLISH_DIR"
           mkdir -p "$PUBLISH_DIR/$(dirname "$FEED_PATH")"
+          mkdir -p "$PUBLISH_DIR/$(dirname "$RELEASE_NOTES_FEED_PATH")"
           cp "$APPCAST_PATH" "$PUBLISH_DIR/$FEED_PATH"
+          cp "$RELEASE_NOTES_PATH" "$PUBLISH_DIR/$RELEASE_NOTES_FEED_PATH"
 
           cd "$PUBLISH_DIR"
-          if [ -z "$(git status --porcelain -- "$FEED_PATH")" ]; then
-            echo "Appcast is already current on main."
+          if [ -z "$(git status --porcelain -- "$FEED_PATH" "$RELEASE_NOTES_FEED_PATH")" ]; then
+            echo "Appcast and release notes are already current on main."
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$FEED_PATH"
-          git commit -m "chore(release): publish Sparkle appcast for ${TAG_NAME}"
+          git add "$FEED_PATH" "$RELEASE_NOTES_FEED_PATH"
+          git commit -m "chore(release): publish Sparkle appcast + release notes for ${TAG_NAME}"
 
           if git push origin HEAD:main; then
             echo "Published appcast directly to main."
@@ -494,14 +533,17 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --base main \
             --head "$PUBLISH_BRANCH" \
-            --title "chore(release): publish Sparkle appcast for ${TAG_NAME}" \
+            --title "chore(release): publish Sparkle appcast + release notes for ${TAG_NAME}" \
             --body "$(cat <<EOF
           This PR was auto-generated by \`release-macos-dmg.yml\`.
 
-          It publishes the latest Sparkle feed for \`${TAG_NAME}\` to:
+          It publishes Sparkle update metadata for \`${TAG_NAME}\` to:
           - \`${FEED_PATH}\`
+          - \`${RELEASE_NOTES_FEED_PATH}\`
 
-          Merge this PR to update \`https://helmapp.dev/updates/appcast.xml\`.
+          Merge this PR to update:
+          - \`https://helmapp.dev/updates/appcast.xml\`
+          - \`https://helmapp.dev/updates/release-notes/${TAG_NAME}.html\`
           EOF
           )" 2>&1)" || {
             echo "::warning::Unable to auto-create fallback PR via GitHub Actions token."

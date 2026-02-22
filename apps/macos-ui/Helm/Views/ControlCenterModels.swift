@@ -129,6 +129,42 @@ final class ControlCenterContext: ObservableObject {
     @Published var popoverSearchFocusToken: Int = 0
     @Published var controlCenterSearchFocusToken: Int = 0
     @Published var isPopoverOverlayVisible: Bool = false
+    @Published var suppressWindowBackgroundDragging: Bool = false
+
+    func clearInspectorSelection() {
+        selectedManagerId = nil
+        selectedPackageId = nil
+        selectedTaskId = nil
+        selectedUpgradePlanStepId = nil
+    }
+
+    func alignInspectorSelection(for section: ControlCenterSection?) {
+        guard let section else {
+            clearInspectorSelection()
+            return
+        }
+
+        switch section {
+        case .overview, .settings:
+            clearInspectorSelection()
+        case .updates:
+            let retainedStepId = selectedUpgradePlanStepId
+            clearInspectorSelection()
+            selectedUpgradePlanStepId = retainedStepId
+        case .packages:
+            let retainedPackageId = selectedPackageId
+            clearInspectorSelection()
+            selectedPackageId = retainedPackageId
+        case .tasks:
+            let retainedTaskId = selectedTaskId
+            clearInspectorSelection()
+            selectedTaskId = retainedTaskId
+        case .managers:
+            let retainedManagerId = selectedManagerId
+            clearInspectorSelection()
+            selectedManagerId = retainedManagerId
+        }
+    }
 }
 
 enum PopoverOverlayRoute: String, Identifiable {
@@ -154,32 +190,6 @@ struct HealthBadgeView: View {
                     .fill(status.color.opacity(0.15))
             )
             .accessibilityLabel(status.key.localized)
-    }
-}
-
-func localizedManagerDisplayName(_ managerId: String) -> String {
-    switch managerId.lowercased() {
-    case "homebrew_formula": return L10n.App.Managers.Name.homebrew.localized
-    case "homebrew_cask": return L10n.App.Managers.Name.homebrewCask.localized
-    case "npm", "npm_global": return L10n.App.Managers.Name.npm.localized
-    case "pnpm": return L10n.App.Managers.Name.pnpm.localized
-    case "yarn": return L10n.App.Managers.Name.yarn.localized
-    case "poetry": return L10n.App.Managers.Name.poetry.localized
-    case "rubygems": return L10n.App.Managers.Name.rubygems.localized
-    case "bundler": return L10n.App.Managers.Name.bundler.localized
-    case "pip": return L10n.App.Managers.Name.pip.localized
-    case "pipx": return L10n.App.Managers.Name.pipx.localized
-    case "cargo": return L10n.App.Managers.Name.cargo.localized
-    case "cargo_binstall": return L10n.App.Managers.Name.cargoBinstall.localized
-    case "mise": return L10n.App.Managers.Name.mise.localized
-    case "rustup": return L10n.App.Managers.Name.rustup.localized
-    case "softwareupdate": return L10n.App.Managers.Name.softwareUpdate.localized
-    case "mas": return L10n.App.Managers.Name.appStore.localized
-    default:
-        if let manager = ManagerInfo.find(byId: managerId) {
-            return manager.displayName
-        }
-        return managerId.replacingOccurrences(of: "_", with: " ").capitalized
     }
 }
 

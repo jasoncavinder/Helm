@@ -8,6 +8,8 @@
 	<string>$(HELM_SPARKLE_ENABLED)</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>SUEnableInstallerLauncherService</key>
+	<true/>
 	<key>SUAllowsDowngrades</key>
 	<string>$(HELM_SPARKLE_ALLOW_DOWNGRADES)</string>
 	<key>SUFeedURL</key>

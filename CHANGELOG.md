@@ -6,14 +6,120 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-02-22
+
+Stable `0.17.0` consolidates all `rc.1` through `rc.5` delivery slices plus final release-readiness hardening across diagnostics, updater reliability, UI responsiveness, and website release surfaces.
+
+### Added
+- Diagnostics/logging delivery is now fully shipped in stable: per-task log persistence, Inspector log viewing filters/pagination, structured support export redaction, service-health diagnostics, and manager detection diagnostics.
+- Packages now include a localized `Pinned` filter (with upgradable exclusion), and popover package search rows now include quick icon actions for install/uninstall/update/pin.
+- Failed tasks now support inline command/output expansion with single-expanded-task behavior; managers in error state expose `View Diagnostics`.
+- Privileged manager operations now prompt for administrator authentication through managed `sudo -A` askpass handling.
+- Website now includes a blog section with RSS feed support, social-share actions on blog posts, and right-aligned landing navigation links for `Blog` and `Docs`.
+
+### Changed
+- Pre-stable hardening now centralizes manager display-name localization through a shared helper, emits localization diagnostics via structured logging, adds lower-frequency idle polling cadence, and applies default SQLite pragmas (`WAL`, `NORMAL`, `busy_timeout`, foreign keys).
+- Rust build script now fingerprints Rust/script/build inputs and skips redundant artifact regeneration when unchanged.
+- Release automation now publishes website-hosted Sparkle release notes and appcast `releaseNotesLink` targets those hosted pages.
+- Developer ID onboarding now requires license-terms acceptance (tracked by version/timestamp) with About-surface license review access.
+- Popover and Control Center behavior is mutually exclusive, with deep links from status/metric cards to target Control Center sections.
+
+### Fixed
+- Software Update manager symbol mapping now uses valid SF Symbol naming (`applelogo`).
+- Manager-priority drag interactions now take precedence over window drag-to-move in Managers.
+- Inflight task deduplication now prefers running/newer rows so command/output details populate when backend process output exists.
+- Task terminal retention now starts at completion/failure transition time and includes `cancelled` terminal-state pruning.
+- SwiftLint configuration/rule usage has been normalized for current rule IDs, clearing low-risk lint debt in touched surfaces.
+
+## [0.17.0-rc.5] - 2026-02-22
+
+### Added
+- Packages now include a localized `Pinned` filter, and the upgradable view excludes pinned packages.
+- Popover package search rows now include icon quick actions for install, uninstall, update, and pin.
+- Failed tasks now support inline command/output expansion (single-expanded-task behavior), and manager inspector error states now expose `View Diagnostics`.
+- Privileged manager operations now trigger administrator authentication through a managed `sudo -A` askpass flow when elevation is required.
+
+### Changed
+- Control Center and popover surfaces now use section-scoped derived state snapshots, adaptive polling cadence, and lazy container layouts in scroll-heavy sections to improve responsiveness on lower-spec Macs.
+- Inflight task deduplication now prefers running/newest task rows so command/live-output panes stay populated when backend output exists.
+- Task terminal retention timing now starts from completion/failure transition time, preserving diagnostics visibility for long-running tasks that fail near the end.
+- Package inspector actions and popover search actions now use compact icon affordances with tooltip-backed labels for better space utilization.
+
+### Fixed
+- Software Update manager icon mapping now uses a valid SF Symbol (`applelogo`), removing the Xcode symbol warning.
+- Manager-priority drag interactions now take precedence over window drag-to-move in Managers, restoring smooth priority reordering.
+- Manager inspector executable-path lists now become scrollable when long, preventing inspector layout bloat.
+
+## [0.17.0-rc.4] - 2026-02-22
+
+### Added
+- Settings now include a `Launch Helm at login` toggle (macOS 13+), with localized guidance when unsupported on older systems.
+- Manager inspector now lists all discovered executable paths and emphasizes the active executable path.
+- Manager inspector now exposes install-method metadata via a disabled dropdown with localized recommended/preferred tags.
+- Manager cards are now drag-reorderable within authority groups, with a new `Restore Manager Priority` action in advanced settings.
+
+### Changed
+- Release automation now generates and publishes a website-hosted Sparkle release-notes page per tag at `web/public/updates/release-notes/<tag>.html`, and appcast entries now point `sparkle:releaseNotesLink` to that hosted page (instead of the GitHub release page URL).
+- Developer ID channel builds now require first-run acceptance of current Helm license terms before onboarding can proceed, with acceptance persisted by license version + timestamp and automatic re-prompting when the tracked license version changes.
+- About overlay now includes a direct `View License Terms` action so users can reopen current license terms after onboarding.
+- Popover and Control Center interaction flow is now mutually exclusive: opening/focusing Control Center suppresses the popover, and popover status/metric cards deep-link to their corresponding Control Center sections.
+- Control Center workflow polish includes full-row running-task expand/collapse toggles, full-window drag-to-move background behavior (while preserving interactive control handling), clickable settings metric cards, and explicit selected-row/card highlighting for inspected entities.
+- Manager/package consolidation ordering now uses explicit authority-aware priority ranking (authoritative -> standard -> guarded) to keep default manager preference deterministic when names overlap across managers.
+- About overlay now shows build number, distribution channel, update authority, and last update-check timestamp.
+
+### Fixed
+- Popover outside-click monitoring now only reacts to click events (not pointer-move/drag events), preventing accidental panel dismissal while moving the cursor.
+- Popover hover cursor behavior no longer forces arrow cursor rects across the entire floating panel, restoring expected hover affordances for interactive controls.
+- Executable-path discovery performance is improved by skipping deep-path discovery for undetected managers and caching discovery results for detected managers.
+- Reset local data now clears persisted license-acceptance state in addition to onboarding completion and cached runtime state.
+
+## [0.17.0-rc.3] - 2026-02-21
+
+### Changed
+- Build-time version metadata generation now preserves prerelease identifiers in `MARKETING_VERSION` for non-App-Store channels, so Sparkle "up to date" messaging reflects the full release-candidate version (for example, `0.17.0-rc.3`).
+- Running task rows now support inline expand/collapse details with single-row expansion behavior per task list.
+- Package list and popover search results now consolidate same-name packages across managers into a single row while showing all contributing managers under each package.
+- Inspector package descriptions now render HTML-formatted summaries as attributed text in the Inspector so emphasis/code formatting is preserved (with readable plain-text fallback if rich parsing fails).
+- Inspector detail content now keeps full-width leading alignment even for short text values, preventing centered/narrow content columns in the side panel.
+
+### Added
+- Running-task inline details now show the resolved command and a live-updating output panel.
+- Task output capture now persists the executed command string and streams incremental `stdout`/`stderr` chunks while tasks are running.
+- Hungarian localization coverage now includes the new running-task and inspector strings introduced by post-`rc.2` UX updates.
+
+### Fixed
+- Sparkle prerelease eligibility checks now reject bundle metadata mismatches between `CFBundleShortVersionString` and `CFBundleVersion`, preventing prerelease/stable version-label drift.
+- Inspector description links now only allow safe `http://` and `https://` URLs with a host, blocking non-web URI schemes.
+- Task-output storage now applies byte caps to both command strings and streamed output chunks to keep long-running task diagnostics bounded.
+
+## [0.17.0-rc.2] - 2026-02-21
+
+### Changed
+- Sparkle appcast generation now supports an explicit display-version override so prerelease tags are preserved in appcast metadata (`sparkle:shortVersionString` / title) instead of collapsing to stripped marketing versions.
+- Release workflow now passes display version derived from tag name when generating Sparkle appcasts (for example, `v0.17.0-rc.2` -> `0.17.0-rc.2`).
+- Release DMG verification now enforces Sparkle installer-launcher and sandbox entitlement requirements used by sandboxed updater flows.
+
+### Fixed
+- Enabled Sparkle installer launcher service in app metadata (`SUEnableInstallerLauncherService`) for direct-channel updater installs.
+- Added required Sparkle sandbox entitlement exceptions for installer/status mach services (`-spki`, `-spks`) and shared preference access in both debug and release app entitlements.
+- Addressed Sparkle installer-launch failures seen in `v0.17.0-rc.1` (`Failed to make auth right set`, `Failed copying system domain rights: -60005`, `Failed to submit installer job`), which surfaced as “An error occurred while launching the installer.”
+
+## [0.17.0-rc.1] - 2026-02-21
+
 ### Added
 - Third-party dependency licensing baseline document:
   - `docs/legal/THIRD_PARTY_LICENSES.md`
   - includes runtime/build/toolchain scope split and release obligations.
-- v0.17 diagnostics/logging foundation kickoff:
+- v0.17 diagnostics/logging delivery:
   - SQLite-backed task lifecycle log schema (`task_log_records`)
   - runtime lifecycle log persistence hooks (queued/running/terminal)
   - new FFI/API surface for retrieving persisted task logs (`helm_list_task_logs`)
+- Inspector diagnostics log viewer with level/status filters and load-more pagination.
+- Structured support export payloads with redaction for diagnostics and support workflows.
+- Hungarian (`hu`) locale bootstrap across canonical + app-mirrored locale trees, including onboarding and service/error flow translations plus language picker support.
+- Settings service health diagnostics panel with copyable health snapshot output.
+- Manager inspector detection diagnostics (reason states plus latest detection task status/ID).
+- Dedicated `SupportRedactor` unit-test coverage for sensitive value redaction and helper-path parity.
 
 ### Changed
 - Legal notice and licensing strategy docs now explicitly link to third-party dependency obligations:
@@ -26,6 +132,15 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
   - `docs/NEXT_STEPS.md`
 - ADR log adds third-party license compliance baseline decision:
   - `docs/DECISIONS.md` (Decision 023)
+- Diagnostics/reporting hardening now captures attributed last-error context (`source`, `action`, `manager`, `task_type`) across fetch/action/settings failure paths and includes that attribution in:
+  - support structured export payloads
+  - support plaintext diagnostics output
+  - service health snapshot diagnostics
+- Manager display-name localization coverage now includes all implemented manager IDs while preserving manager-brand naming conventions where literal names should not be translated.
+- Task log retrieval ordering is now newest-first in diagnostics surfaces.
+
+### Fixed
+- Hungarian onboarding copy adjusted to satisfy overflow guardrails in localized panel-width tests.
 
 ## [0.16.2] - 2026-02-21
 

@@ -4,10 +4,191 @@ This checklist is required before creating a release tag on `main`.
 
 ## Third-Party License Compliance (All Releases)
 
-- [ ] Re-audit dependency licenses and update `docs/legal/THIRD_PARTY_LICENSES.md` when versions or dependency sets change.
-- [ ] Confirm release materials retain required third-party attribution/license texts for shipped runtime dependencies.
-- [ ] Confirm Sparkle license + external attributions remain preserved for channels that include Sparkle.
-- [ ] If distributing artifacts that include `sharp/libvips` binaries (outside static-site output), include LGPL notice/corresponding-source obligations for that artifact.
+- [x] Re-audit dependency licenses and update `docs/legal/THIRD_PARTY_LICENSES.md` when versions or dependency sets change.
+- [x] Confirm release materials retain required third-party attribution/license texts for shipped runtime dependencies.
+- [x] Confirm Sparkle license + external attributions remain preserved for channels that include Sparkle.
+- [x] If distributing artifacts that include `sharp/libvips` binaries (outside static-site output), include LGPL notice/corresponding-source obligations for that artifact.
+
+## Website Hosting Integrity (All Releases)
+
+- [x] Confirm `.github/workflows/deploy-web.yml` is absent (Cloudflare Pages is the production website host).
+- [x] Confirm website hosting/operations docs still point to Cloudflare Pages and not GitHub Pages.
+
+## v0.17.0 (Stable Release Gate)
+
+### Scope and Documentation
+- [ ] `CHANGELOG.md` includes finalized `0.17.0` stable notes with RC consolidation context.
+- [ ] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect stable release-cut status from `v0.17.0-rc.5`.
+- [ ] Website changelog includes `0.17.0` stable entry and release-order alignment.
+
+### Versioning
+- [ ] Workspace version bumped to `0.17.0` in `core/rust/Cargo.toml`.
+- [ ] Rust lockfile local package versions aligned to `0.17.0` in `core/rust/Cargo.lock`.
+- [ ] Generated app version artifacts aligned to `0.17.0` (`apps/macos-ui/Generated/HelmVersion.swift`, `apps/macos-ui/Generated/HelmVersion.xcconfig`).
+
+### Validation
+- [ ] Rust tests pass (`cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`).
+- [ ] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`).
+- [ ] Locale checks pass (`apps/macos-ui/scripts/check_locale_integrity.sh` and `apps/macos-ui/scripts/check_locale_lengths.sh`).
+- [ ] Third-party license audit commands complete without runtime-license scope regressions (`cargo metadata`, `cargo tree`, website lockfile license scan).
+- [ ] Sparkle feed publication + direct-channel update smoke validation complete against the stable appcast entry.
+
+### Branch and Tag
+- [ ] Release-prep PR merged to `dev`.
+- [ ] `dev` merged into `main` for stable cut.
+- [ ] Create annotated stable tag from `main`: `git tag -a v0.17.0 -m "Helm v0.17.0"`.
+- [ ] Push stable tag: `git push origin v0.17.0`.
+- [ ] Publish GitHub release for `v0.17.0` (mark as latest, non-prerelease).
+
+## Historical RC and Prior-Release Checklists (Archive)
+
+The sections below are retained for traceability. Unchecked items in archived sections are historical records and are non-blocking for the current active release gate.
+
+## v0.17.0-rc.5 (Post-rc.4 Remediation + Auth/Responsiveness Hardening RC)
+
+### Scope and Documentation
+- [x] `CHANGELOG.md` includes `0.17.0-rc.5` release-candidate notes for post-`rc.4` remediation/hardening work.
+- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect `rc.5` release execution status.
+- [x] Website changelog includes both `0.17.0-rc.4` and `0.17.0-rc.5` entries in release order.
+- [x] Third-party dependency baseline was re-audited and release context updated in `docs/legal/THIRD_PARTY_LICENSES.md` (audit date `2026-02-22`).
+
+### Versioning
+- [x] Workspace version bumped to `0.17.0-rc.5` in `core/rust/Cargo.toml`.
+- [x] Rust lockfile local package versions aligned to `0.17.0-rc.5` in `core/rust/Cargo.lock`.
+- [x] Generated app version artifacts aligned to `0.17.0-rc.5` (`apps/macos-ui/Generated/HelmVersion.swift`, `apps/macos-ui/Generated/HelmVersion.xcconfig`).
+
+### Stabilization Scope
+- [x] Packages now include localized `Pinned` filtering with upgradable exclusion behavior.
+- [x] Popover package search rows expose quick icon actions (install/uninstall/update/pin).
+- [x] Failed-task inline command/output expansion and manager inspector error diagnostics (`View Diagnostics`) are available.
+- [x] Privileged operations marked `requires_elevation` execute via structured `sudo -A` with askpass support.
+- [x] Control-center/popover responsiveness hardening delivered (section-scoped derived-state snapshots, adaptive polling cadence, and lazy-stack usage for scroll-heavy views).
+
+### Validation
+- [x] Rust tests pass (`cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`).
+- [x] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`).
+- [x] Locale checks pass (`apps/macos-ui/scripts/check_locale_integrity.sh` and `apps/macos-ui/scripts/check_locale_lengths.sh`).
+- [x] Third-party license audit commands complete without runtime-license scope regressions (`cargo metadata`, `cargo tree`, website lockfile license scan).
+
+### Branch and Tag
+- [x] Commit release-prep deltas on `dev`.
+- [x] Create annotated RC tag from `dev` lineage: `git tag -a v0.17.0-rc.5 -m "Helm v0.17.0-rc.5"`.
+- [x] Push commit + RC tag (`git push origin dev` and `git push origin v0.17.0-rc.5`).
+- [x] Publish GitHub pre-release for `v0.17.0-rc.5`.
+
+## v0.17.0-rc.1 (Diagnostics & Logging RC)
+
+### Scope and Documentation
+- [x] `CHANGELOG.md` includes `0.17.0-rc.1` release-candidate notes for all diagnostics/logging slices.
+- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect merged `0.17.x` delivery state and RC prep status.
+- [x] `docs/RELEASE_CHECKLIST.md` includes `v0.17.0-rc.1` release tasks.
+
+### Versioning
+- [x] Workspace version bumped to `0.17.0-rc.1` in `core/rust/Cargo.toml`.
+- [x] Rust lockfile local package versions aligned to `0.17.0-rc.1` in `core/rust/Cargo.lock`.
+
+### Validation
+- [x] Rust tests pass (`cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`).
+- [x] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`).
+- [x] Locale checks pass (`apps/macos-ui/scripts/check_locale_integrity.sh` and `apps/macos-ui/scripts/check_locale_lengths.sh`).
+
+### Branch and Tag
+- [x] Open release-prep PR into `dev` and complete CI checks.
+- [x] Merge release-prep PR into `dev`.
+- [x] Create annotated RC tag from `dev` lineage: `git tag -a v0.17.0-rc.1 -m "Helm v0.17.0-rc.1"`.
+- [x] Push RC tag: `git push origin v0.17.0-rc.1`.
+
+## v0.17.0-rc.2 (Updater Install/Version Label Hotfix RC)
+
+### Scope and Documentation
+- [x] `CHANGELOG.md` includes `0.17.0-rc.2` release-candidate notes for updater install + appcast version-label fixes.
+- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect `rc.2` updater hardening status.
+- [x] Website changelog includes `0.17.0-rc.2` notes.
+
+### Versioning
+- [x] Workspace version bumped to `0.17.0-rc.2` in `core/rust/Cargo.toml`.
+- [x] Rust lockfile local package versions aligned to `0.17.0-rc.2` in `core/rust/Cargo.lock`.
+
+### Updater/Sparkle Hardening
+- [x] App entitlements include Sparkle installer/status mach-lookup exceptions and shared-preference exception in both debug/release profiles.
+- [x] App metadata enables Sparkle installer launcher service (`SUEnableInstallerLauncherService=true`).
+- [x] Appcast generation supports explicit prerelease display version and writes that value into `sparkle:shortVersionString`.
+- [x] Release workflow passes tag-derived display version into appcast generation.
+- [x] Release DMG verification enforces Sparkle installer launcher + entitlement requirements.
+
+### Validation
+- [x] Rust tests pass (`cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`).
+- [x] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`).
+- [x] Locale checks pass (`apps/macos-ui/scripts/check_locale_integrity.sh` and `apps/macos-ui/scripts/check_locale_lengths.sh`).
+
+### Branch and Tag
+- [x] Open release-prep PR into `dev` and complete CI checks.
+- [x] Merge release-prep PR into `dev`.
+- [x] Create annotated RC tag from `dev` lineage: `git tag -a v0.17.0-rc.2 -m "Helm v0.17.0-rc.2"`.
+- [x] Push RC tag: `git push origin v0.17.0-rc.2`.
+
+## v0.17.0-rc.4 (Post-rc.3 Interaction/Priority Stabilization RC)
+
+### Scope and Documentation
+- [x] `CHANGELOG.md` includes `0.17.0-rc.4` release-candidate notes for post-`rc.3` interaction/prioritization stabilization.
+- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect `rc.4` release execution status.
+- [x] Website changelog includes `0.17.0-rc.4` notes.
+
+### Versioning
+- [x] Workspace version bumped to `0.17.0-rc.4` in `core/rust/Cargo.toml`.
+- [x] Rust lockfile local package versions aligned to `0.17.0-rc.4` in `core/rust/Cargo.lock`.
+- [x] Generated app version artifacts aligned to `0.17.0-rc.4` (`apps/macos-ui/Generated/HelmVersion.swift`, `apps/macos-ui/Generated/HelmVersion.xcconfig`).
+
+### Stabilization Scope
+- [x] Launch-at-login setting is available with platform-aware behavior messaging.
+- [x] Popover/control-center interaction exclusivity is enforced, with control-center deep links from health/summary cards.
+- [x] Manager inspector shows full executable-path discovery and install-method metadata tags.
+- [x] Manager priority ordering is authority-aware with drag reorder + restore defaults.
+- [x] Popover outside-click dismissal ignores pointer movement and responds to click events only.
+- [x] Cursor handling preserves hover affordances for interactive controls.
+- [x] Manager status discovery avoids undetected-manager deep scans and caches detected-manager path discovery.
+
+### Validation
+- [x] Rust tests pass (`cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`).
+- [x] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`).
+- [x] Locale checks pass (`apps/macos-ui/scripts/check_locale_integrity.sh` and `apps/macos-ui/scripts/check_locale_lengths.sh`).
+
+### Branch and Tag
+- [x] Open release-prep PR into `dev` and complete CI checks.
+- [x] Merge release-prep PR into `dev`.
+- [x] Create annotated RC tag from `dev` lineage: `git tag -a v0.17.0-rc.4 -m "Helm v0.17.0-rc.4"`.
+- [x] Push RC tag: `git push origin v0.17.0-rc.4`.
+
+## v0.17.0-rc.3 (Post-rc.2 Stabilization RC)
+
+### Scope and Documentation
+- [x] `CHANGELOG.md` includes `0.17.0-rc.3` release-candidate notes for post-`rc.2` updater/task/package stabilization.
+- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect `rc.3` release-prep status.
+- [x] Website changelog includes `0.17.0-rc.3` notes.
+
+### Versioning
+- [x] Workspace version bumped to `0.17.0-rc.3` in `core/rust/Cargo.toml`.
+- [x] Rust lockfile local package versions aligned to `0.17.0-rc.3` in `core/rust/Cargo.lock`.
+
+### Stabilization Scope
+- [x] Sparkle "up to date" messaging preserves prerelease versions in non-App-Store channels.
+- [x] Running tasks support single-row expand/collapse details with resolved command + live output.
+- [x] Package/search UI consolidates same-name rows across managers while retaining manager-scoped actions.
+- [x] Inspector package descriptions render HTML-formatted content with safe-link filtering and readable fallback.
+- [x] Inspector side-panel detail text containers maintain full-width leading alignment (no centered narrow content when values are short).
+- [x] Updater prerelease eligibility rejects bundle short-version/build metadata mismatches.
+- [x] Task-output storage enforces bounded command/output buffering and Hungarian locale coverage includes new task/inspector strings.
+
+### Validation
+- [x] Rust tests pass (`cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`).
+- [x] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`).
+- [x] Locale checks pass (`apps/macos-ui/scripts/check_locale_integrity.sh` and `apps/macos-ui/scripts/check_locale_lengths.sh`).
+
+### Branch and Tag
+- [x] Open release-prep PR into `dev` and complete CI checks.
+- [x] Merge release-prep PR into `dev`.
+- [x] Create annotated RC tag from `dev` lineage: `git tag -a v0.17.0-rc.3 -m "Helm v0.17.0-rc.3"`.
+- [x] Push RC tag: `git push origin v0.17.0-rc.3`.
 
 ## v0.16.2 (Sparkle Connectivity + macOS 11 Alignment)
 
@@ -51,6 +232,8 @@ This checklist is required before creating a release tag on `main`.
 - [x] Sparkle feed endpoint is published at `web/public/updates/appcast.xml` (or `HELM_SPARKLE_FEED_URL` points to the hosted equivalent).
 - [x] Release workflow generates and uploads `appcast.xml` alongside DMG artifacts.
 - [x] Release workflow publishes generated `appcast.xml` into `web/public/updates/appcast.xml` on `main` (or auto-opens fallback PR if direct push is blocked).
+- [x] Release workflow generates and uploads per-tag website release notes HTML from `CHANGELOG.md` at `build/release-assets/release-notes/<tag>.html`.
+- [x] Release workflow publishes per-tag website release notes to `web/public/updates/release-notes/<tag>.html` and appcast `sparkle:releaseNotesLink` points to the hosted URL.
 - [x] Runtime self-update is blocked for package-manager-managed installs (Homebrew Cask receipt detection + Homebrew/MacPorts path heuristics) and enabled for eligible direct-channel DMG installs.
 - [x] Generated `CURRENT_PROJECT_VERSION` is monotonic for Sparkle version ordering (semver-derived numeric build number).
 - [x] Sparkle package reference remains pinned to `2.8.1` in `apps/macos-ui/Helm.xcodeproj/project.pbxproj` for macOS 11+ compatibility.
