@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsSectionView: View {
     @ObservedObject private var core = HelmCore.shared
+    @ObservedObject private var overviewState = HelmCore.shared.overviewState
     @ObservedObject private var appUpdate = AppUpdateCoordinator.shared
     @ObservedObject private var localization = LocalizationManager.shared
     @ObservedObject private var walkthrough = WalkthroughManager.shared
@@ -103,12 +104,12 @@ struct SettingsSectionView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            LazyVStack(alignment: .leading, spacing: 14) {
                 HStack {
                     Text(ControlCenterSection.settings.title)
                         .font(.title2.weight(.semibold))
                     Spacer()
-                    HealthBadgeView(status: core.aggregateHealth)
+                    HealthBadgeView(status: overviewState.aggregateHealth)
                 }
 
                 HStack(spacing: 8) {
@@ -117,7 +118,7 @@ struct SettingsSectionView: View {
                     } label: {
                         SettingsMetricPill(
                             title: L10n.App.Settings.Metric.managers.localized,
-                            value: core.visibleManagers.count
+                            value: overviewState.visibleManagers.count
                         )
                     }
                     .buttonStyle(.plain)
@@ -128,7 +129,7 @@ struct SettingsSectionView: View {
                     } label: {
                         SettingsMetricPill(
                             title: L10n.App.Settings.Metric.updates.localized,
-                            value: core.outdatedPackages.count
+                            value: overviewState.outdatedPackagesCount
                         )
                     }
                     .buttonStyle(.plain)
@@ -139,7 +140,7 @@ struct SettingsSectionView: View {
                     } label: {
                         SettingsMetricPill(
                             title: L10n.App.Settings.Metric.tasks.localized,
-                            value: core.runningTaskCount
+                            value: overviewState.runningTaskCount
                         )
                     }
                     .buttonStyle(.plain)
@@ -271,9 +272,9 @@ struct SettingsSectionView: View {
                     fill: cardFill
                 ) {
                     HStack {
-                        HealthBadgeView(status: core.aggregateHealth)
+                        HealthBadgeView(status: overviewState.aggregateHealth)
                         Spacer()
-                        Text(core.aggregateHealth.key.localized)
+                        Text(overviewState.aggregateHealth.key.localized)
                             .font(.caption)
                             .foregroundColor(HelmTheme.textSecondary)
                     }
@@ -298,7 +299,7 @@ struct SettingsSectionView: View {
                     Group {
                         ServiceHealthStatusRow(
                             title: L10n.App.Settings.ServiceHealth.failedTasks.localized,
-                            value: "\(core.failedTaskCount)"
+                            value: "\(overviewState.failedTaskCount)"
                         )
                         ServiceHealthStatusRow(
                             title: L10n.App.Settings.ServiceHealth.managersDetected.localized,

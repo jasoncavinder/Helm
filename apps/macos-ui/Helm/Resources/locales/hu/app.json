@@ -109,6 +109,7 @@
   "app.packages.filter.installed": "Installed",
   "app.packages.filter.upgradable": "Upgradable",
   "app.packages.filter.available": "Available",
+  "app.packages.filter.pinned": "Rögzített",
   "app.packages.state.no_packages_found": "No packages found",
   "app.packages.label.restart_required": "Restart required",
   "app.packages.label.pinned": "Pinned",

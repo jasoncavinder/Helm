@@ -109,6 +109,7 @@
   "app.packages.filter.installed": "Installiert",
   "app.packages.filter.upgradable": "Aktualisierbar",
   "app.packages.filter.available": "Verfügbar",
+  "app.packages.filter.pinned": "Angeheftet",
   "app.packages.state.no_packages_found": "Keine Pakete gefunden",
   "app.packages.label.restart_required": "Neustart erforderlich",
   "app.packages.label.pinned": "Gepinnt",

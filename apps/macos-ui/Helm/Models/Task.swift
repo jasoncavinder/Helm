@@ -14,6 +14,14 @@ struct TaskItem: Identifiable {
         return s == "running" || s == "queued"
     }
 
+    var isFailed: Bool {
+        status.lowercased() == "failed"
+    }
+
+    var supportsInlineDetails: Bool {
+        isRunning || isFailed
+    }
+
     /// Sort order: running first, then queued, then terminal states.
     var statusSortOrder: Int {
         switch status.lowercased() {

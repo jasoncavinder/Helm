@@ -365,6 +365,74 @@ struct ManagerStatus: Codable {
     let supportsPackageUpgrade: Bool
 }
 
+final class HelmOverviewState: ObservableObject {
+    @Published private(set) var aggregateHealth: OperationalHealth = .healthy
+    @Published private(set) var failedTaskCount: Int = 0
+    @Published private(set) var runningTaskCount: Int = 0
+    @Published private(set) var outdatedPackagesCount: Int = 0
+    @Published private(set) var isRefreshing: Bool = false
+    @Published private(set) var visibleManagers: [ManagerInfo] = []
+    @Published private(set) var outdatedCountByManager: [String: Int] = [:]
+    @Published private(set) var managerHealthById: [String: OperationalHealth] = [:]
+    @Published private(set) var recentTasksTop10: [TaskItem] = []
+    @Published private(set) var runningTasksTop4: [TaskItem] = []
+    @Published private(set) var popoverManagerRows: [ManagerInfo] = []
+
+    func apply(
+        aggregateHealth: OperationalHealth,
+        failedTaskCount: Int,
+        runningTaskCount: Int,
+        outdatedPackagesCount: Int,
+        isRefreshing: Bool,
+        visibleManagers: [ManagerInfo],
+        outdatedCountByManager: [String: Int],
+        managerHealthById: [String: OperationalHealth],
+        recentTasksTop10: [TaskItem],
+        runningTasksTop4: [TaskItem],
+        popoverManagerRows: [ManagerInfo]
+    ) {
+        self.aggregateHealth = aggregateHealth
+        self.failedTaskCount = failedTaskCount
+        self.runningTaskCount = runningTaskCount
+        self.outdatedPackagesCount = outdatedPackagesCount
+        self.isRefreshing = isRefreshing
+        self.visibleManagers = visibleManagers
+        self.outdatedCountByManager = outdatedCountByManager
+        self.managerHealthById = managerHealthById
+        self.recentTasksTop10 = recentTasksTop10
+        self.runningTasksTop4 = runningTasksTop4
+        self.popoverManagerRows = popoverManagerRows
+    }
+}
+
+final class HelmManagersState: ObservableObject {
+    @Published private(set) var authoritativeManagers: [ManagerInfo] = []
+    @Published private(set) var standardManagers: [ManagerInfo] = []
+    @Published private(set) var guardedManagers: [ManagerInfo] = []
+    @Published private(set) var managerStatusesById: [String: ManagerStatus] = [:]
+    @Published private(set) var managerOperationsById: [String: String] = [:]
+    @Published private(set) var installedCountByManager: [String: Int] = [:]
+    @Published private(set) var outdatedCountByManager: [String: Int] = [:]
+
+    func apply(
+        authoritativeManagers: [ManagerInfo],
+        standardManagers: [ManagerInfo],
+        guardedManagers: [ManagerInfo],
+        managerStatusesById: [String: ManagerStatus],
+        managerOperationsById: [String: String],
+        installedCountByManager: [String: Int],
+        outdatedCountByManager: [String: Int]
+    ) {
+        self.authoritativeManagers = authoritativeManagers
+        self.standardManagers = standardManagers
+        self.guardedManagers = guardedManagers
+        self.managerStatusesById = managerStatusesById
+        self.managerOperationsById = managerOperationsById
+        self.installedCountByManager = installedCountByManager
+        self.outdatedCountByManager = outdatedCountByManager
+    }
+}
+
 final class HelmCore: ObservableObject {
     static let shared = HelmCore()
     static let currentLicenseTermsVersion = AppUpdateConfiguration.currentLicenseTermsVersion
@@ -377,14 +445,22 @@ final class HelmCore: ObservableObject {
 
     @Published var isInitialized = false
     @Published var isConnected = false
-    @Published var isRefreshing = false
+    @Published var isRefreshing = false {
+        didSet { scheduleDerivedViewStateRefresh() }
+    }
     @Published var isSearching = false
     @Published var searchText: String = "" {
         didSet { onSearchTextChanged(searchText) }
     }
-    @Published var installedPackages: [PackageItem] = []
-    @Published var outdatedPackages: [PackageItem] = []
-    @Published var activeTasks: [TaskItem] = []
+    @Published var installedPackages: [PackageItem] = [] {
+        didSet { scheduleDerivedViewStateRefresh() }
+    }
+    @Published var outdatedPackages: [PackageItem] = [] {
+        didSet { scheduleDerivedViewStateRefresh() }
+    }
+    @Published var activeTasks: [TaskItem] = [] {
+        didSet { scheduleDerivedViewStateRefresh() }
+    }
     @Published var searchResults: [PackageItem] = []
     @Published var cachedAvailablePackages: [PackageItem] = []
     @Published var upgradePlanSteps: [CoreUpgradePlanStep] = []
@@ -393,10 +469,18 @@ final class HelmCore: ObservableObject {
     @Published var upgradePlanAllowOsUpdates: Bool = false
     @Published var upgradePlanIncludePinned: Bool = false
     @Published var scopedUpgradePlanRunInProgress: Bool = false
-    @Published var detectedManagers: Set<String> = []
-    @Published var managerStatuses: [String: ManagerStatus] = [:]
-    @Published var managerPriorityOverrides: [String: Int] = HelmCore.loadManagerPriorityOverrides()
-    @Published var managerOperations: [String: String] = [:]
+    @Published var detectedManagers: Set<String> = [] {
+        didSet { scheduleDerivedViewStateRefresh() }
+    }
+    @Published var managerStatuses: [String: ManagerStatus] = [:] {
+        didSet { scheduleDerivedViewStateRefresh() }
+    }
+    @Published var managerPriorityOverrides: [String: Int] = HelmCore.loadManagerPriorityOverrides() {
+        didSet { scheduleDerivedViewStateRefresh() }
+    }
+    @Published var managerOperations: [String: String] = [:] {
+        didSet { scheduleDerivedViewStateRefresh() }
+    }
     @Published var pinActionPackageIds: Set<String> = []
     @Published var upgradeActionPackageIds: Set<String> = []
     @Published var installActionPackageIds: Set<String> = []
@@ -426,6 +510,9 @@ final class HelmCore: ObservableObject {
         forKey: HelmCore.launchAtLoginEnabledKey
     )
 
+    let overviewState = HelmOverviewState()
+    let managersState = HelmManagersState()
+
     var timer: Timer?
     var connection: NSXPCConnection?
     var lastRefreshTrigger: Date?
@@ -447,6 +534,18 @@ final class HelmCore: ObservableObject {
     var previousRefreshState: Bool = false
     var scopedUpgradePlanRunToken = UUID()
     private var reconnectAttempt: Int = 0
+    private var lastFullSnapshotRefreshAt: Date = .distantPast
+    private var isPopoverVisibleForPolling = false
+    private var isControlCenterVisibleForPolling = false
+    private var derivedViewStateRefreshWorkItem: DispatchWorkItem?
+    private var packageDescriptionRenderCache: [String: PackageDescriptionRenderCacheEntry] = [:]
+    private var packageDescriptionRenderCacheOrder: [String] = []
+    private static let maxPackageDescriptionRenderCacheEntries = 256
+
+    private enum PackageDescriptionRenderCacheEntry {
+        case none
+        case rendered(PackageDescriptionRenderer.RenderedDescription)
+    }
 
     private init() {
         setupConnection()
@@ -512,6 +611,7 @@ final class HelmCore: ObservableObject {
         fetchSafeMode()
         fetchHomebrewKegAutoCleanup()
         fetchPackageKegPolicies()
+        scheduleDerivedViewStateRefresh()
     }
 
     func scheduleReconnection() {
@@ -526,16 +626,42 @@ final class HelmCore: ObservableObject {
 
     func startPolling() {
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            self?.fetchTasks()
-            self?.fetchPackages()
-            self?.fetchOutdatedPackages()
-            self?.fetchManagerStatus()
-            self?.refreshCachedAvailablePackages()
+            self?.performPollingTick()
+        }
+    }
 
-            // Re-query local cache to pick up enriched results from remote search
-            if let query = self?.searchText, !query.trimmingCharacters(in: .whitespaces).isEmpty {
-                self?.fetchSearchResults(query: query)
+    private func performPollingTick() {
+        fetchTasks()
+
+        let now = Date()
+        let fullSnapshotInterval: TimeInterval = {
+            if isRefreshing {
+                return 2.0
             }
+            if isPopoverVisibleForPolling || isControlCenterVisibleForPolling {
+                return 2.0
+            }
+            return 6.0
+        }()
+
+        guard now.timeIntervalSince(lastFullSnapshotRefreshAt) >= fullSnapshotInterval else {
+            return
+        }
+
+        triggerFullSnapshotRefresh()
+    }
+
+    private func triggerFullSnapshotRefresh() {
+        lastFullSnapshotRefreshAt = Date()
+        fetchPackages()
+        fetchOutdatedPackages()
+        fetchManagerStatus()
+        refreshCachedAvailablePackages()
+
+        // Re-query local cache to pick up enriched results from remote search.
+        let trimmedQuery = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedQuery.isEmpty {
+            fetchSearchResults(query: trimmedQuery)
         }
     }
 
@@ -631,6 +757,7 @@ final class HelmCore: ObservableObject {
     func triggerRefresh() {
         logger.info("triggerRefresh called")
         self.lastRefreshTrigger = Date()
+        self.lastFullSnapshotRefreshAt = .distantPast
         self.isRefreshing = true
         postAccessibilityAnnouncement(L10n.Common.refresh.localized)
         service()?.triggerRefresh { success in
@@ -649,8 +776,22 @@ final class HelmCore: ObservableObject {
                 }
             } else {
                 DispatchQueue.main.async {
+                    self.triggerFullSnapshotRefresh()
                     self.triggerAvailablePackagesWarmupSearch()
                 }
+            }
+        }
+    }
+
+    func setInteractiveSurfaceVisibility(
+        popoverVisible: Bool,
+        controlCenterVisible: Bool
+    ) {
+        DispatchQueue.main.async {
+            self.isPopoverVisibleForPolling = popoverVisible
+            self.isControlCenterVisibleForPolling = controlCenterVisible
+            if popoverVisible || controlCenterVisible {
+                self.lastFullSnapshotRefreshAt = .distantPast
             }
         }
     }
@@ -735,6 +876,8 @@ final class HelmCore: ObservableObject {
         // Stop polling during reset to prevent stale reads
         timer?.invalidate()
         timer = nil
+        packageDescriptionRenderCache = [:]
+        packageDescriptionRenderCacheOrder = []
 
         service()?.resetDatabase { [weak self] success in
             DispatchQueue.main.async {
@@ -777,6 +920,7 @@ final class HelmCore: ObservableObject {
                 }
                 // Resume polling after reset
                 self?.startPolling()
+                self?.scheduleDerivedViewStateRefresh()
                 completion(success)
             }
         }
@@ -808,5 +952,160 @@ final class HelmCore: ObservableObject {
         onboardingDetectionInProgress = false
         onboardingDetectionPendingManagers.removeAll()
         onboardingDetectionStartedAt = nil
+    }
+
+    private func scheduleDerivedViewStateRefresh() {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in
+                self?.scheduleDerivedViewStateRefresh()
+            }
+            return
+        }
+
+        derivedViewStateRefreshWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.refreshDerivedViewStates()
+        }
+        derivedViewStateRefreshWorkItem = workItem
+        DispatchQueue.main.async(execute: workItem)
+    }
+
+    private func refreshDerivedViewStates() {
+        let installedCountByManager = Dictionary(grouping: installedPackages, by: \.managerId)
+            .mapValues(\.count)
+        let outdatedCountByManager = Dictionary(grouping: outdatedPackages, by: \.managerId)
+            .mapValues(\.count)
+
+        let visibleManagers = ManagerInfo.all.filter { manager in
+            let status = managerStatuses[manager.id]
+            let isImplemented = status?.isImplemented ?? manager.isImplemented
+            let isEnabled = status?.enabled ?? true
+            let isDetected = status?.detected ?? false
+            return isImplemented && isEnabled && isDetected
+        }
+
+        let failedManagerIds = Set(
+            activeTasks
+                .filter { $0.status.lowercased() == "failed" }
+                .compactMap(\.managerId)
+        )
+        let runningManagerIds = Set(
+            activeTasks
+                .filter(\.isRunning)
+                .compactMap(\.managerId)
+        )
+        let outdatedManagerIds = Set(outdatedPackages.map(\.managerId))
+
+        var managerHealthById: [String: OperationalHealth] = [:]
+        managerHealthById.reserveCapacity(visibleManagers.count)
+        for manager in visibleManagers {
+            if failedManagerIds.contains(manager.id) {
+                managerHealthById[manager.id] = .error
+            } else if runningManagerIds.contains(manager.id) {
+                managerHealthById[manager.id] = .running
+            } else if outdatedManagerIds.contains(manager.id) {
+                managerHealthById[manager.id] = .attention
+            } else {
+                managerHealthById[manager.id] = .healthy
+            }
+        }
+
+        let popoverManagerRows = visibleManagers
+            .sorted { lhs, rhs in
+                let lhsOutdated = outdatedCountByManager[lhs.id, default: 0]
+                let rhsOutdated = outdatedCountByManager[rhs.id, default: 0]
+                if lhsOutdated == rhsOutdated {
+                    return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
+                }
+                return lhsOutdated > rhsOutdated
+            }
+
+        let failedTaskCount = activeTasks.filter { $0.status.lowercased() == "failed" }.count
+        let runningTasks = activeTasks.filter(\.isRunning)
+        let runningTaskCount = runningTasks.count
+        let aggregateHealth: OperationalHealth = {
+            if failedTaskCount > 0 {
+                return .error
+            }
+            if runningTaskCount > 0 || isRefreshing {
+                return .running
+            }
+            if !outdatedPackages.isEmpty {
+                return .attention
+            }
+            return .healthy
+        }()
+
+        overviewState.apply(
+            aggregateHealth: aggregateHealth,
+            failedTaskCount: failedTaskCount,
+            runningTaskCount: runningTaskCount,
+            outdatedPackagesCount: outdatedPackages.count,
+            isRefreshing: isRefreshing,
+            visibleManagers: visibleManagers,
+            outdatedCountByManager: outdatedCountByManager,
+            managerHealthById: managerHealthById,
+            recentTasksTop10: Array(activeTasks.prefix(10)),
+            runningTasksTop4: Array(runningTasks.prefix(4)),
+            popoverManagerRows: popoverManagerRows
+        )
+
+        let implementedManagers = ManagerInfo.all.filter { manager in
+            managerStatuses[manager.id]?.isImplemented ?? manager.isImplemented
+        }
+        managersState.apply(
+            authoritativeManagers: sortedManagersByPriority(
+                implementedManagers.filter { $0.authority == .authoritative }
+            ),
+            standardManagers: sortedManagersByPriority(
+                implementedManagers.filter { $0.authority == .standard }
+            ),
+            guardedManagers: sortedManagersByPriority(
+                implementedManagers.filter { $0.authority == .guarded }
+            ),
+            managerStatusesById: managerStatuses,
+            managerOperationsById: managerOperations,
+            installedCountByManager: installedCountByManager,
+            outdatedCountByManager: outdatedCountByManager
+        )
+    }
+
+    func renderedPackageDescription(for package: PackageItem) -> PackageDescriptionRenderer.RenderedDescription? {
+        let key = [
+            package.id,
+            package.version,
+            package.latestVersion ?? "",
+            package.summary ?? ""
+        ].joined(separator: "|")
+
+        if let cached = packageDescriptionRenderCache[key] {
+            touchDescriptionRenderCacheKey(key)
+            switch cached {
+            case .none:
+                return nil
+            case .rendered(let rendered):
+                return rendered
+            }
+        }
+
+        let rendered = PackageDescriptionRenderer.render(package.summary)
+        packageDescriptionRenderCache[key] =
+            rendered.map(PackageDescriptionRenderCacheEntry.rendered)
+            ?? PackageDescriptionRenderCacheEntry.none
+        touchDescriptionRenderCacheKey(key)
+        trimPackageDescriptionRenderCacheIfNeeded()
+        return rendered
+    }
+
+    private func touchDescriptionRenderCacheKey(_ key: String) {
+        packageDescriptionRenderCacheOrder.removeAll { $0 == key }
+        packageDescriptionRenderCacheOrder.append(key)
+    }
+
+    private func trimPackageDescriptionRenderCacheIfNeeded() {
+        while packageDescriptionRenderCacheOrder.count > Self.maxPackageDescriptionRenderCacheEntries {
+            let oldest = packageDescriptionRenderCacheOrder.removeFirst()
+            packageDescriptionRenderCache.removeValue(forKey: oldest)
+        }
     }
 }

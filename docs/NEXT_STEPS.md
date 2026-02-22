@@ -15,11 +15,11 @@ Helm is in:
 ```
 
 Focus:
-- complete `v0.17.0-rc.4` release execution on `dev` (tag + GitHub pre-release)
+- complete `v0.17.0-rc.5` release execution on `dev` (tag + GitHub pre-release)
 - run final validation and operator testing toward stable `v0.17.0`
 
 Current checkpoint:
-- `v0.17.0-rc.4` is ready on `dev`; post-`rc.3` follow-up has been delivered after merged diagnostics/logging slices and updater hotfix delivery:
+- `v0.17.0-rc.5` is ready on `dev`; post-`rc.4` remediation/hardening has been consolidated after merged diagnostics/logging slices and prior updater follow-up delivery:
   - `#93` `feat/v0.17-log-foundation`
   - `#95` `feat/v0.17-structured-error-export`
   - `#96` `feat/v0.17-service-health-panel`
@@ -64,8 +64,28 @@ Current checkpoint:
     - consolidated package default-manager ordering now respects authority-aware manager priority
     - executable-path discovery now skips undetected managers and caches detected-manager discovery results
     - targeted regression coverage added for priority-ranked consolidation behavior and manager-status executable-path behavior
+  - post-rc.4 issue-remediation follow-up delivered on `dev`:
+    - softwareupdate manager icon mapping corrected to valid SF Symbol naming (`applelogo`)
+    - manager-priority drag interactions now take precedence over full-window drag-to-move in the Managers section
+    - inflight task dedupe now prefers running/newest IDs so command/stdout panes stay populated when backend output exists
+    - Packages now includes localized `Pinned` filtering, excludes pinned packages from `Upgradable`, and uses horizontal filter-chip scrolling to preserve localization fit
+  - post-rc.4 UX/task-diagnostics follow-up delivered on `dev`:
+    - popover package search rows now expose icon quick actions (install/uninstall/update/pin) without opening Control Center
+    - package inspector actions now use icon + tooltip controls to preserve usability in narrow inspector widths
+    - manager inspector executable-path lists become scrollable when long, and managers in error state now expose `View Diagnostics`
+    - failed tasks now support inline expand/collapse command+output panes, with single-selected expansion behavior
+    - task-pruning retention windows now start at completion/failure timestamp rather than original queue/start time
+  - post-rc.4 privileged-auth follow-up delivered on `dev`:
+    - adapter operations marked `requires_elevation` now execute via structured `sudo -A -- <program> <args...>` wrapping in the core process executor
+    - executor auto-provisions a local askpass helper script (or honors `HELM_SUDO_ASKPASS` override) so privileged tasks trigger administrator authentication prompts in-app flow
+    - task command/output capture remains active for elevated runs, preserving diagnostics transparency for auth-denied/privileged-failure cases
+  - post-rc.4 responsiveness follow-up delivered on `dev`:
+    - overview/managers/popover/settings now read section-scoped derived state (manager health/count maps, top task slices) instead of repeatedly recomputing per-render dictionaries
+    - polling cadence now adapts to interactive surface visibility (popover/control-center visible vs background), with lifecycle visibility hooks in `AppDelegate`
+    - inspector package-description rendering now goes through a bounded core-level LRU render cache
+    - scroll-heavy managers/overview/updates/settings/popover-search sections now use lazy stack containers where applicable
 - latest stable release on `main`: `v0.16.2`
-- validation gates currently green for RC prep (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke from `v0.17.0-rc.1`)
+- validation gates currently green for RC prep (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke across `v0.17.0-rc.1` through `v0.17.0-rc.4`)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
 - `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)
@@ -112,6 +132,11 @@ Next release targets:
 - [x] post-`rc.3` control-center workflow polish — reset-local-data clears license-acceptance state; running-task row taps toggle details; settings metrics deep-link to managers/updates/tasks; inspector selection clears on section changes and selected entities are highlighted.
 - [x] post-`rc.3` startup/interaction polish — launch-at-login setting added (macOS 13+), popover cursor handling restored for hover affordance clarity, full-window Control Center drag support enabled, and count-heavy UI lists now use precomputed manager count maps for smoother drag/scroll behavior on lower-spec Macs.
 - [x] pre-`rc.4` stabilization — popover outside-click behavior hardened to click-only event handling; floating-panel cursor forcing removed; consolidated package manager preference now authority-aware; executable-path discovery cost reduced via undetected-manager skip + discovery caching; targeted policy/manager-status regression tests added.
+- [x] post-`rc.4` issue-remediation — softwareupdate symbol mapping corrected; manager drag-vs-window-drag precedence fixed; inflight-task dedupe now prefers running/newer rows for live command/output panes; Packages gained localized `Pinned` filtering with upgradable exclusion and overflow-safe horizontal chip layout.
+- [x] post-`rc.4` UX/task-diagnostics hardening — popover search package rows gained quick icon actions (install/uninstall/update/pin), package inspector actions moved to icon+tooltip buttons, manager inspector executable paths now scroll when long and include error-state `View Diagnostics`, failed tasks now support inline details with single-selection expansion, and task retention timing now starts from terminal transition time.
+- [x] post-`rc.4` privileged-auth support — core execution now wraps `requires_elevation` requests with structured `sudo -A` plus askpass helper provisioning, enabling first-class administrator authentication prompts for privileged install/update operations while retaining command/output diagnostics visibility.
+- [x] post-`rc.4` responsiveness hardening — section-scoped derived state now backs overview/managers/popover/settings metrics; polling cadence adapts to visible interactive surfaces; package-description rendering now uses a bounded core LRU cache; lazy stacks now back scroll-heavy managers/overview/updates/settings/popover-search surfaces.
+- [x] `v0.17.0-rc.5` release-prep consolidation — post-`rc.4` issue-remediation, UX/task diagnostics hardening, privileged-auth execution support, and responsiveness improvements are bundled with changelog/docs alignment for the next RC cut.
 
 RC-3 release gate for `v0.17.x`:
 - Logs are accessible in UI.
@@ -948,4 +973,4 @@ Implement:
 - 0.14 stable release alignment for `v0.14.0` is complete (README/website + version artifacts).
 - Distribution/licensing future-state planning documentation is aligned for 0.14 release notes and roadmap planning (no implementation yet).
 - 0.14.x and 0.15.x release execution are complete on `main` (`v0.14.1` and `v0.15.0`).
-- 0.16.2 release execution is complete on `main`; 0.17.x diagnostics/logging delivery is complete with `v0.17.0-rc.1` through `v0.17.0-rc.4` cut from `dev` for final stabilization toward `0.17.0`.
+- 0.16.2 release execution is complete on `main`; 0.17.x diagnostics/logging delivery is complete with `v0.17.0-rc.1` through `v0.17.0-rc.5` cut from `dev` for final stabilization toward `0.17.0`.

@@ -81,6 +81,7 @@
   "app.packages.detail.version.pinned": "固定",
   "app.packages.filter.all_managers": "すべてのマネージャー",
   "app.packages.filter.available": "利用可能",
+  "app.packages.filter.pinned": "固定済み",
   "app.packages.filter.installed": "インストール済み",
   "app.packages.filter.upgradable": "更新可能",
   "app.packages.keg_policy.cleanup_old": "古いkegをクリーンアップ",

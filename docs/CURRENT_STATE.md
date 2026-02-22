@@ -8,16 +8,16 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.17.0-rc.4** on `dev`, with **0.17.0-rc.3** as the prior released RC.
+Current documentation baseline: **0.17.0-rc.5** on `dev`, with **0.17.0-rc.4** as the prior released RC.
 
-Implementation baseline: **0.17.0-rc.4** with post-`rc.3` release-notes/onboarding/workflow follow-up delivered plus pre-`rc.4` stabilization hardening.
+Implementation baseline: **0.17.0-rc.5** with post-`rc.4` issue-remediation, UX/task-diagnostics hardening, privileged-auth execution flow, and responsiveness improvements delivered.
 
 See:
 - CHANGELOG.md
 
 Active milestone:
 - latest shipped release on `main`: **0.16.2** (Sparkle connectivity hardening + macOS 11 deployment-target alignment)
-- 0.17.x — Diagnostics & Logging (**delivery merged on `dev`**, `v0.17.0-rc.1` + `v0.17.0-rc.2` + `v0.17.0-rc.3` released, post-`rc.3` follow-up and pre-`rc.4` stabilization delivered in `v0.17.0-rc.4`)
+- 0.17.x — Diagnostics & Logging (**delivery merged on `dev`**, `v0.17.0-rc.1` + `v0.17.0-rc.2` + `v0.17.0-rc.3` + `v0.17.0-rc.4` released, with post-`rc.4` remediation/hardening consolidated into `v0.17.0-rc.5`)
   - delivered: `feat/v0.17-log-foundation` (SQLite-backed task lifecycle logs + retrieval plumbing)
   - delivered: `feat/v0.17-task-log-viewer` (inspector diagnostics logs tab with level/status filters + load-more pagination)
   - delivered: `feat/v0.17-structured-error-export` (structured JSON diagnostics export with redaction for support workflows)
@@ -34,7 +34,11 @@ Active milestone:
   - delivered: post-`rc.3` control-center polish follow-up: reset-local-data now clears stored license acceptance; running-task expansion now toggles from full-row taps; Control Center drag region now spans the full window background; settings metrics now deep-link to Managers/Updates/Tasks; inspector selection state now clears on section switches and selected rows/cards are visually highlighted.
   - delivered: post-`rc.3` operator ergonomics/perf follow-up: launch-at-login setting added (macOS 13+ via `SMAppService.mainApp`), popover hover cursor forcing relaxed to restore clickable hover affordance, and manager/popover count rendering now uses precomputed dictionaries to reduce repeated per-row filtering during scroll/drag interactions.
   - delivered: pre-`rc.4` stabilization follow-up: popover outside-click monitoring now ignores pointer-move/drag events; floating-panel cursor forcing removed to restore interactive hover affordances; manager-priority ranking now enforces authority ordering for consolidated package selection; executable-path discovery now avoids undetected-manager scans and caches detected-manager discovery results.
-  - release-prep validation status: green (`cargo test`, macOS `xcodebuild` suite, locale integrity + locale length audits)
+  - delivered: post-`rc.4` issue-remediation follow-up: softwareupdate manager symbol mapping now uses valid SF Symbol naming (`applelogo`); manager-priority drag interactions now take precedence over full-window drag-to-move in Managers; inflight task dedupe now prefers running/newest task IDs so command/live-output details populate when backend process output exists; Packages adds localized `Pinned` filter support and excludes pinned entries from `Upgradable`, with horizontal chip scrolling to preserve localization fit.
+  - delivered: post-`rc.4` UX/task-diagnostics follow-up: popover package search rows now include icon quick actions (install/uninstall/update/pin); package inspector actions moved to icon+tooltip buttons; manager inspector executable-path lists now scroll when long and managers in error state expose `View Diagnostics`; failed tasks now support inline command/output expansion with single-selected expansion behavior; task terminal retention now starts at completion/failure timestamp.
+  - delivered: post-`rc.4` privileged-auth follow-up: process execution now enforces elevated operations through a structured `sudo -A` wrapper when adapters flag `requires_elevation`, with a managed askpass helper script and explicit command/output capture so privileged install/update flows prompt for administrator authentication instead of failing silently.
+  - delivered: post-`rc.4` responsiveness follow-up: Control Center/Popover overview + managers surfaces now consume section-scoped derived state snapshots (precomputed manager counts/health/task slices); snapshot polling cadence is adaptive to interactive-surface visibility and now tracks popover/control-center visibility from app lifecycle events; package-description rich/plain rendering now uses bounded LRU caching in core; scroll-heavy managers/overview/updates/settings/search stacks now use lazy container variants where applicable.
+  - release-prep validation status: green (`cargo test`, macOS `xcodebuild` suite, locale integrity + locale length audits) for `v0.17.0-rc.5` cut
 
 Security rollout staging status:
 - Stage 0 (`<=0.16.x`): planning/docs only (active in `0.16.1`)
@@ -44,7 +48,7 @@ Security rollout staging status:
 - Current release behavior (`<=0.17.x`): no package/fingerprint data is sent to any Helm-operated shared backend; security/advisory value remains local-first.
 
 Third-party licensing compliance status:
-- Dependency-license inventory and obligations baseline documented at `docs/legal/THIRD_PARTY_LICENSES.md` (audited 2026-02-21).
+- Dependency-license inventory and obligations baseline documented at `docs/legal/THIRD_PARTY_LICENSES.md` (audited 2026-02-22).
 - Release process now includes explicit third-party license checks in `docs/RELEASE_CHECKLIST.md`.
 
 ---
@@ -876,4 +880,4 @@ Helm is a **functional control plane for 28 implemented managers** with:
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-0.13.x through 0.16.2 stable checkpoints are complete on `main`; `v0.17.0-rc.1` through `v0.17.0-rc.4` are now cut from `dev` for final 0.17 stabilization.
+0.13.x through 0.16.2 stable checkpoints are complete on `main`; `v0.17.0-rc.1` through `v0.17.0-rc.5` are now cut from `dev` for final 0.17 stabilization.

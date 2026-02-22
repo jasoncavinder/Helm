@@ -14,6 +14,38 @@ This checklist is required before creating a release tag on `main`.
 - [x] Confirm `.github/workflows/deploy-web.yml` is absent (Cloudflare Pages is the production website host).
 - [x] Confirm website hosting/operations docs still point to Cloudflare Pages and not GitHub Pages.
 
+## v0.17.0-rc.5 (Post-rc.4 Remediation + Auth/Responsiveness Hardening RC)
+
+### Scope and Documentation
+- [x] `CHANGELOG.md` includes `0.17.0-rc.5` release-candidate notes for post-`rc.4` remediation/hardening work.
+- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect `rc.5` release execution status.
+- [x] Website changelog includes both `0.17.0-rc.4` and `0.17.0-rc.5` entries in release order.
+- [x] Third-party dependency baseline was re-audited and release context updated in `docs/legal/THIRD_PARTY_LICENSES.md` (audit date `2026-02-22`).
+
+### Versioning
+- [x] Workspace version bumped to `0.17.0-rc.5` in `core/rust/Cargo.toml`.
+- [x] Rust lockfile local package versions aligned to `0.17.0-rc.5` in `core/rust/Cargo.lock`.
+- [x] Generated app version artifacts aligned to `0.17.0-rc.5` (`apps/macos-ui/Generated/HelmVersion.swift`, `apps/macos-ui/Generated/HelmVersion.xcconfig`).
+
+### Stabilization Scope
+- [x] Packages now include localized `Pinned` filtering with upgradable exclusion behavior.
+- [x] Popover package search rows expose quick icon actions (install/uninstall/update/pin).
+- [x] Failed-task inline command/output expansion and manager inspector error diagnostics (`View Diagnostics`) are available.
+- [x] Privileged operations marked `requires_elevation` execute via structured `sudo -A` with askpass support.
+- [x] Control-center/popover responsiveness hardening delivered (section-scoped derived-state snapshots, adaptive polling cadence, and lazy-stack usage for scroll-heavy views).
+
+### Validation
+- [x] Rust tests pass (`cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`).
+- [x] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`).
+- [x] Locale checks pass (`apps/macos-ui/scripts/check_locale_integrity.sh` and `apps/macos-ui/scripts/check_locale_lengths.sh`).
+- [x] Third-party license audit commands complete without runtime-license scope regressions (`cargo metadata`, `cargo tree`, website lockfile license scan).
+
+### Branch and Tag
+- [x] Commit release-prep deltas on `dev`.
+- [x] Create annotated RC tag from `dev` lineage: `git tag -a v0.17.0-rc.5 -m "Helm v0.17.0-rc.5"`.
+- [x] Push commit + RC tag (`git push origin dev` and `git push origin v0.17.0-rc.5`).
+- [x] Publish GitHub pre-release for `v0.17.0-rc.5`.
+
 ## v0.17.0-rc.1 (Diagnostics & Logging RC)
 
 ### Scope and Documentation

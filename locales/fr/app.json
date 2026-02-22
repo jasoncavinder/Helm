@@ -81,6 +81,7 @@
   "app.packages.detail.version.pinned": "Épinglée",
   "app.packages.filter.all_managers": "Tous les gestionnaires",
   "app.packages.filter.available": "Disponibles",
+  "app.packages.filter.pinned": "Épinglés",
   "app.packages.filter.installed": "Installés",
   "app.packages.filter.upgradable": "Mise à jour disponible",
   "app.packages.keg_policy.cleanup_old": "Nettoyer les anciens kegs",

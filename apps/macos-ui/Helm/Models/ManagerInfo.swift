@@ -189,7 +189,7 @@ struct ManagerInfo: Identifiable {
     var symbolName: String {
         switch id {
         case "softwareupdate":
-            return "apple.logo"
+            return "applelogo"
         case "homebrew_formula", "homebrew_cask":
             return "cup.and.saucer.fill"
         case "mise", "asdf", "rustup":

@@ -129,6 +129,7 @@ final class ControlCenterContext: ObservableObject {
     @Published var popoverSearchFocusToken: Int = 0
     @Published var controlCenterSearchFocusToken: Int = 0
     @Published var isPopoverOverlayVisible: Bool = false
+    @Published var suppressWindowBackgroundDragging: Bool = false
 
     func clearInspectorSelection() {
         selectedManagerId = nil

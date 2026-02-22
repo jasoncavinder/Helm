@@ -38,6 +38,7 @@ extension L10n {
                 static let installed = "app.packages.filter.installed"
                 static let upgradable = "app.packages.filter.upgradable"
                 static let available = "app.packages.filter.available"
+                static let pinned = "app.packages.filter.pinned"
             }
             struct State {
                 static let noPackagesFound = "app.packages.state.no_packages_found"

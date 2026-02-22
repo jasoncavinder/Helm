@@ -81,6 +81,7 @@
   "app.packages.detail.version.pinned": "Fixado",
   "app.packages.filter.all_managers": "Todos os gerenciadores",
   "app.packages.filter.available": "Disponíveis",
+  "app.packages.filter.pinned": "Fixados",
   "app.packages.filter.installed": "Instalados",
   "app.packages.filter.upgradable": "Atualizáveis",
   "app.packages.keg_policy.cleanup_old": "Limpar kegs antigos",

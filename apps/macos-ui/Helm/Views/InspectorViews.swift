@@ -726,58 +726,67 @@ private struct InspectorPackageDetailView: View {
                 }
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 if core.canInstallPackage(package) {
-                    Button(L10n.App.Packages.Action.install.localized) {
+                    packageActionButton(
+                        symbol: "arrow.down.circle",
+                        tooltip: L10n.App.Packages.Action.install.localized,
+                        enabled: !core.installActionPackageIds.contains(package.id)
+                    ) {
                         core.installPackage(package)
                     }
-                    .buttonStyle(HelmSecondaryButtonStyle())
-                    .disabled(core.installActionPackageIds.contains(package.id))
-                    .helmPointer(enabled: !core.installActionPackageIds.contains(package.id))
                 }
 
                 if core.canUninstallPackage(package) {
-                    Button(L10n.App.Packages.Action.uninstall.localized) {
+                    packageActionButton(
+                        symbol: "trash",
+                        tooltip: L10n.App.Packages.Action.uninstall.localized,
+                        enabled: !core.uninstallActionPackageIds.contains(package.id)
+                    ) {
                         core.uninstallPackage(package)
                     }
-                    .buttonStyle(HelmSecondaryButtonStyle())
-                    .disabled(core.uninstallActionPackageIds.contains(package.id))
-                    .helmPointer(enabled: !core.uninstallActionPackageIds.contains(package.id))
                 }
 
                 if core.canUpgradeIndividually(package) {
-                    Button(L10n.Common.update.localized) {
+                    packageActionButton(
+                        symbol: "arrow.up.circle",
+                        tooltip: L10n.Common.update.localized,
+                        enabled: !core.upgradeActionPackageIds.contains(package.id)
+                    ) {
                         core.upgradePackage(package)
                     }
-                    .buttonStyle(HelmSecondaryButtonStyle())
-                    .disabled(core.upgradeActionPackageIds.contains(package.id))
-                    .helmPointer(enabled: !core.upgradeActionPackageIds.contains(package.id))
                 }
 
                 if core.canPinPackage(package) {
-                    Button(package.pinned ? L10n.App.Packages.Action.unpin.localized : L10n.App.Packages.Action.pin.localized) {
+                    packageActionButton(
+                        symbol: package.pinned ? "pin.slash" : "pin",
+                        tooltip: package.pinned
+                            ? L10n.App.Packages.Action.unpin.localized
+                            : L10n.App.Packages.Action.pin.localized,
+                        enabled: !core.pinActionPackageIds.contains(package.id)
+                    ) {
                         if package.pinned {
                             core.unpinPackage(package)
                         } else {
                             core.pinPackage(package)
                         }
                     }
-                    .buttonStyle(HelmSecondaryButtonStyle())
-                    .disabled(core.pinActionPackageIds.contains(package.id))
-                    .helmPointer(enabled: !core.pinActionPackageIds.contains(package.id))
                 }
 
-                Button(L10n.App.Inspector.viewManager.localized) {
+                packageActionButton(
+                    symbol: "slider.horizontal.3",
+                    tooltip: L10n.App.Inspector.viewManager.localized,
+                    enabled: true
+                ) {
                     context.selectedManagerId = package.managerId
                     context.selectedPackageId = nil
                     context.selectedTaskId = nil
                     context.selectedUpgradePlanStepId = nil
                     context.selectedSection = .managers
                 }
-                .buttonStyle(HelmSecondaryButtonStyle())
-                .helmPointer()
+
+                Spacer(minLength: 0)
             }
-            .font(.caption)
 
             InspectorField(label: L10n.App.Inspector.packageId.localized) {
                 Text(package.id)
@@ -803,7 +812,23 @@ private struct InspectorPackageDetailView: View {
     }
 
     private func refreshRenderedPackageDescription() {
-        renderedPackageDescription = PackageDescriptionRenderer.render(package.summary)
+        renderedPackageDescription = core.renderedPackageDescription(for: package)
+    }
+
+    private func packageActionButton(
+        symbol: String,
+        tooltip: String,
+        enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+        }
+        .buttonStyle(HelmIconButtonStyle())
+        .help(tooltip)
+        .accessibilityLabel(tooltip)
+        .disabled(!enabled)
+        .helmPointer(enabled: enabled)
     }
 }
 
@@ -875,6 +900,7 @@ private final class InspectorLinkTextView: NSTextView {
 
 private struct InspectorManagerDetailView: View {
     @ObservedObject private var core = HelmCore.shared
+    @EnvironmentObject private var context: ControlCenterContext
     let manager: ManagerInfo
     let status: ManagerStatus?
     let detectionDiagnostics: ManagerDetectionDiagnostics
@@ -911,6 +937,12 @@ private struct InspectorManagerDetailView: View {
             executablePath: activeExecutablePath,
             installedPackages: core.installedPackages
         )
+    }
+
+    private var latestFailedTask: TaskItem? {
+        core.activeTasks.first { task in
+            task.status.lowercased() == "failed" && task.managerId == manager.id
+        }
     }
 
     var body: some View {
@@ -983,15 +1015,36 @@ private struct InspectorManagerDetailView: View {
 
                 if !executablePaths.isEmpty {
                     InspectorField(label: L10n.App.Inspector.executablePaths.localized) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            ForEach(executablePaths, id: \.self) { path in
-                                Text(path)
-                                    .font(
-                                        path == activeExecutablePath
-                                            ? .caption.monospacedDigit().weight(.semibold)
-                                            : .caption.monospacedDigit()
-                                    )
-                                    .lineLimit(2)
+                        Group {
+                            if executablePaths.count > 5 {
+                                ScrollView {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        ForEach(executablePaths, id: \.self) { path in
+                                            Text(path)
+                                                .font(
+                                                    path == activeExecutablePath
+                                                        ? .caption.monospacedDigit().weight(.semibold)
+                                                        : .caption.monospacedDigit()
+                                                )
+                                                .lineLimit(2)
+                                        }
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .frame(maxHeight: 96)
+                            } else {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    ForEach(executablePaths, id: \.self) { path in
+                                        Text(path)
+                                            .font(
+                                                path == activeExecutablePath
+                                                    ? .caption.monospacedDigit().weight(.semibold)
+                                                    : .caption.monospacedDigit()
+                                            )
+                                            .lineLimit(2)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             }
                         }
                         .accessibilityLabel(L10n.App.Inspector.executablePaths.localized)
@@ -1041,6 +1094,17 @@ private struct InspectorManagerDetailView: View {
                     onViewPackages()
                 }
                 .font(.caption)
+                .helmPointer()
+            }
+
+            if health == .error, let failedTask = latestFailedTask {
+                Button(L10n.App.Inspector.viewDiagnostics.localized) {
+                    context.selectedTaskId = failedTask.id
+                    context.selectedPackageId = nil
+                    context.selectedUpgradePlanStepId = nil
+                }
+                .font(.caption)
+                .buttonStyle(HelmSecondaryButtonStyle())
                 .helmPointer()
             }
         }

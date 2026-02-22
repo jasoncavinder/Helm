@@ -16,11 +16,11 @@ struct OnboardingContainerView: View {
 
     private var stepSequence: [OnboardingStep] {
         var steps: [OnboardingStep] = []
-        if core.requiresLicenseTermsAcceptance {
-            steps.append(.license)
-        }
         if !core.hasCompletedOnboarding {
             steps.append(contentsOf: [.welcome, .detection, .configure, .settings])
+        }
+        if core.requiresLicenseTermsAcceptance {
+            steps.append(.license)
         }
         return steps
     }
@@ -68,13 +68,19 @@ struct OnboardingContainerView: View {
                         advanceFromCurrentStep()
                     }
                 case .settings:
-                    OnboardingSettingsView(onFinish: onComplete)
+                    OnboardingSettingsView(onFinish: {
+                        if core.requiresLicenseTermsAcceptance, stepSequence.contains(.license) {
+                            currentStep = .license
+                        } else {
+                            onComplete()
+                        }
+                    })
                 }
             }
             .frame(maxHeight: .infinity)
         }
         .onAppear {
-            alignCurrentStepToAvailableSequence()
+            resetToFirstAvailableStep()
         }
         .onChange(of: core.hasCompletedOnboarding) { _ in
             alignCurrentStepToAvailableSequence()
@@ -105,6 +111,13 @@ struct OnboardingContainerView: View {
         if !stepSequence.contains(currentStep) {
             currentStep = firstStep
         }
+    }
+
+    private func resetToFirstAvailableStep() {
+        guard let firstStep = stepSequence.first else {
+            return
+        }
+        currentStep = firstStep
     }
 }
 

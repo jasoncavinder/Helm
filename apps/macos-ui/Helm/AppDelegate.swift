@@ -2,7 +2,7 @@ import Cocoa
 import SwiftUI
 import Combine
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem?
     private var panel: FloatingPanel!
     private var eventMonitor: EventMonitor?
@@ -77,6 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil
         )
         core.refreshLaunchAtLogin()
+        core.setInteractiveSurfaceVisibility(popoverVisible: false, controlCenterVisible: false)
 
         if core.hasCompletedOnboarding && !core.requiresLicenseTermsAcceptance {
             core.triggerRefresh()
@@ -158,11 +159,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         eventMonitor?.start()
+        core.setInteractiveSurfaceVisibility(popoverVisible: true, controlCenterVisible: isControlCenterVisible)
     }
 
     private func closePanel() {
         panel.orderOut(nil)
         eventMonitor?.stop()
+        core.setInteractiveSurfaceVisibility(popoverVisible: false, controlCenterVisible: isControlCenterVisible)
     }
 
     private func bindStatusItem() {
@@ -179,6 +182,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.updateStatusMenuState()
+            }
+            .store(in: &cancellables)
+
+        controlCenterContext.$suppressWindowBackgroundDragging
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.updateControlCenterWindowDragBehavior()
+            }
+            .store(in: &cancellables)
+
+        controlCenterContext.$selectedSection
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.updateControlCenterWindowDragBehavior()
             }
             .store(in: &cancellables)
     }
@@ -337,7 +354,8 @@ private extension AppDelegate {
             window.title = "app.window.control_center".localized
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
-            window.isMovableByWindowBackground = true
+            window.isMovableByWindowBackground = shouldAllowControlCenterWindowBackgroundDragging()
+            window.delegate = self
             if #available(macOS 11.0, *) {
                 window.toolbarStyle = .unifiedCompact
             }
@@ -358,8 +376,20 @@ private extension AppDelegate {
         }
 
         guard let window = controlCenterWindowController?.window else { return }
+        updateControlCenterWindowDragBehavior()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        core.setInteractiveSurfaceVisibility(popoverVisible: false, controlCenterVisible: true)
+    }
+
+    private func shouldAllowControlCenterWindowBackgroundDragging() -> Bool {
+        // Interactive controls and manager drag/drop can suppress background dragging.
+        return !controlCenterContext.suppressWindowBackgroundDragging
+    }
+
+    func updateControlCenterWindowDragBehavior() {
+        controlCenterWindowController?.window?.isMovableByWindowBackground =
+            shouldAllowControlCenterWindowBackgroundDragging()
     }
 
     func configureStatusMenu() {
@@ -536,5 +566,15 @@ private extension AppDelegate {
 
     @objc func handleSystemAppearanceChanged() {
         updateStatusItemAppearance()
+    }
+}
+
+extension AppDelegate {
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow,
+              window == controlCenterWindowController?.window else {
+            return
+        }
+        core.setInteractiveSurfaceVisibility(popoverVisible: panel.isVisible, controlCenterVisible: false)
     }
 }

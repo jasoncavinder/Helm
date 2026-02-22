@@ -591,6 +591,20 @@ fn is_inflight_status(status: TaskStatus) -> bool {
     matches!(status, TaskStatus::Queued | TaskStatus::Running)
 }
 
+fn should_replace_visible_inflight_task(
+    current: &helm_core::models::TaskRecord,
+    candidate: &helm_core::models::TaskRecord,
+) -> bool {
+    let current_running = current.status == TaskStatus::Running;
+    let candidate_running = candidate.status == TaskStatus::Running;
+
+    if current_running != candidate_running {
+        return candidate_running;
+    }
+
+    candidate.id.0 > current.id.0
+}
+
 fn is_recent_inflight_task(task: &helm_core::models::TaskRecord) -> bool {
     std::time::SystemTime::now()
         .duration_since(task.created_at)
@@ -603,7 +617,7 @@ fn build_visible_tasks(
     labels: &std::collections::HashMap<u64, TaskLabel>,
 ) -> Vec<helm_core::models::TaskRecord> {
     let mut visible = Vec::with_capacity(tasks.len());
-    let mut seen_inflight = std::collections::HashSet::new();
+    let mut seen_inflight: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     let mut terminal_count = 0usize;
 
     for task in tasks {
@@ -622,7 +636,13 @@ fn build_visible_tasks(
                     encoded
                 })
                 .unwrap_or_else(|| format!("{:?}:{:?}", task.manager, task.task_type));
-            if seen_inflight.insert(key) {
+
+            if let Some(existing_index) = seen_inflight.get(&key).copied() {
+                if should_replace_visible_inflight_task(&visible[existing_index], &task) {
+                    visible[existing_index] = task;
+                }
+            } else {
+                seen_inflight.insert(key, visible.len());
                 visible.push(task);
             }
             continue;
@@ -4126,7 +4146,32 @@ mod tests {
         let visible = build_visible_tasks(tasks, &labels);
         assert_eq!(visible.len(), 2);
         assert_eq!(visible[0].id, TaskId(10));
-        assert_eq!(visible[1].id, TaskId(8));
+        assert_eq!(visible[1].id, TaskId(7));
+    }
+
+    #[test]
+    fn build_visible_tasks_prefers_newer_inflight_row_when_status_matches() {
+        let tasks = vec![
+            TaskRecord {
+                id: TaskId(21),
+                manager: ManagerId::Npm,
+                task_type: TaskType::Upgrade,
+                status: TaskStatus::Queued,
+                created_at: std::time::SystemTime::now(),
+            },
+            TaskRecord {
+                id: TaskId(22),
+                manager: ManagerId::Npm,
+                task_type: TaskType::Upgrade,
+                status: TaskStatus::Queued,
+                created_at: std::time::SystemTime::now(),
+            },
+        ];
+
+        let labels = std::collections::HashMap::new();
+        let visible = build_visible_tasks(tasks, &labels);
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].id, TaskId(22));
     }
 
     #[test]

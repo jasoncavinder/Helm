@@ -34,34 +34,19 @@ extension HelmCore {
     }
 
     var visibleManagers: [ManagerInfo] {
-        ManagerInfo.all.filter { manager in
-            let status = managerStatuses[manager.id]
-            let isImplemented = status?.isImplemented ?? manager.isImplemented
-            let enabled = status?.enabled ?? true
-            let detected = status?.detected ?? false
-            return isImplemented && enabled && detected
-        }
+        overviewState.visibleManagers
     }
 
     var failedTaskCount: Int {
-        activeTasks.filter { $0.status.lowercased() == "failed" }.count
+        overviewState.failedTaskCount
     }
 
     var runningTaskCount: Int {
-        activeTasks.filter(\.isRunning).count
+        overviewState.runningTaskCount
     }
 
     var aggregateHealth: OperationalHealth {
-        if failedTaskCount > 0 {
-            return .error
-        }
-        if runningTaskCount > 0 || isRefreshing {
-            return .running
-        }
-        if !outdatedPackages.isEmpty {
-            return .attention
-        }
-        return .healthy
+        overviewState.aggregateHealth
     }
 
     /// Returns a filtered package list grouped by package name.
@@ -69,13 +54,15 @@ extension HelmCore {
     func filteredPackages(
         query: String,
         managerId: String?,
-        statusFilter: PackageStatus?
+        statusFilter: PackageStatus?,
+        pinnedOnly: Bool = false
     ) -> [ConsolidatedPackageItem] {
         consolidatePackages(
             filteredPackagesRaw(
                 query: query,
                 managerId: managerId,
-                statusFilter: statusFilter
+                statusFilter: statusFilter,
+                pinnedOnly: pinnedOnly
             )
         )
     }
@@ -84,7 +71,8 @@ extension HelmCore {
     private func filteredPackagesRaw(
         query: String,
         managerId: String?,
-        statusFilter: PackageStatus?
+        statusFilter: PackageStatus?,
+        pinnedOnly: Bool
     ) -> [PackageItem] {
         var base = allKnownPackages
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -117,8 +105,15 @@ extension HelmCore {
             base = base.filter { $0.managerId == managerId }
         }
 
+        if pinnedOnly {
+            base = base.filter(\.pinned)
+        }
+
         if let statusFilter {
             base = base.filter { package in
+                if statusFilter == .upgradable, package.pinned {
+                    return false
+                }
                 if package.status == statusFilter {
                     return true
                 }
@@ -133,7 +128,7 @@ extension HelmCore {
     }
 
     func outdatedCount(forManagerId managerId: String) -> Int {
-        outdatedPackages.filter { $0.managerId == managerId }.count
+        managersState.outdatedCountByManager[managerId, default: 0]
     }
 
     func upgradeAllPackages(forManagerId managerId: String) {
@@ -146,6 +141,9 @@ extension HelmCore {
     }
 
     func health(forManagerId managerId: String) -> OperationalHealth {
+        if let precomputed = overviewState.managerHealthById[managerId] {
+            return precomputed
+        }
         if let status = managerStatuses[managerId], status.detected == false {
             return .notInstalled
         }

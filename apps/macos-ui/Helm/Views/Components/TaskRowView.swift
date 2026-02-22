@@ -1,11 +1,17 @@
 import SwiftUI
 
+enum TaskOutputSurface {
+    case controlCenter
+    case popover
+}
+
 struct TaskRowView: View {
     let task: TaskItem
     var onCancel: (() -> Void)? = nil
     var canExpandDetails = false
     var isExpanded = false
     var isSelected = false
+    var outputSurface: TaskOutputSurface = .controlCenter
     var onToggleDetails: (() -> Void)? = nil
     var onSelect: (() -> Void)? = nil
 
@@ -70,7 +76,7 @@ struct TaskRowView: View {
             .helmPointer(enabled: canExpandDetails || onSelect != nil)
 
             if canExpandDetails && isExpanded {
-                TaskRowLiveOutputView(task: task)
+                TaskRowLiveOutputView(task: task, outputSurface: outputSurface)
             }
         }
         .padding(.vertical, 3)
@@ -88,13 +94,16 @@ struct TaskRowView: View {
 
 private struct TaskRowLiveOutputView: View {
     @ObservedObject private var core = HelmCore.shared
+    @EnvironmentObject private var context: ControlCenterContext
     private static let outputAnchorId = "task-output-bottom"
     private let refreshTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
     let task: TaskItem
+    let outputSurface: TaskOutputSurface
 
     @State private var isLoadingOutput = false
     @State private var taskOutputLoadFailed = false
     @State private var taskOutputRecord: CoreTaskOutputRecord?
+    @State private var lastOutputRefreshAt: Date = .distantPast
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -140,9 +149,25 @@ private struct TaskRowLiveOutputView: View {
         .onAppear {
             loadTaskOutput(force: true)
         }
+        .onChange(of: context.selectedSection) { _ in
+            if shouldPollOutput {
+                loadTaskOutput(force: true)
+            }
+        }
         .onReceive(refreshTimer) { _ in
             guard task.isRunning else { return }
-            loadTaskOutput(force: true)
+            guard shouldPollOutput else { return }
+            loadTaskOutput(force: false)
+        }
+    }
+
+    private var shouldPollOutput: Bool {
+        switch outputSurface {
+        case .popover:
+            return true
+        case .controlCenter:
+            let section = context.selectedSection ?? .overview
+            return section == .overview || section == .tasks
         }
     }
 
@@ -158,6 +183,17 @@ private struct TaskRowLiveOutputView: View {
         return core.diagnosticCommandHint(for: task) ?? L10n.App.Inspector.taskCommandUnavailable.localized
     }
 
+    private var hasCapturedCommand: Bool {
+        if let command = taskOutputRecord?.command?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            return !command.isEmpty
+        }
+        return false
+    }
+
+    private var hasDiagnosticCommandHint: Bool {
+        core.diagnosticCommandHint(for: task) != nil
+    }
+
     private var commandIsUnavailable: Bool {
         commandText == L10n.App.Inspector.taskCommandUnavailable.localized
     }
@@ -167,6 +203,9 @@ private struct TaskRowLiveOutputView: View {
             return output
         }
         if isLoadingOutput {
+            return L10n.App.Inspector.taskOutputLoading.localized
+        }
+        if task.isRunning, hasCapturedCommand || hasDiagnosticCommandHint {
             return L10n.App.Inspector.taskOutputLoading.localized
         }
         if taskOutputLoadFailed {
@@ -194,14 +233,19 @@ private struct TaskRowLiveOutputView: View {
 
     private func loadTaskOutput(force: Bool) {
         guard hasNumericTaskId else { return }
+        let now = Date()
+        if !force && now.timeIntervalSince(lastOutputRefreshAt) < 1.0 {
+            return
+        }
         if isLoadingOutput {
             return
         }
-        if taskOutputRecord != nil && !force {
+        if taskOutputRecord != nil && !force && !task.isRunning {
             return
         }
 
         isLoadingOutput = true
+        lastOutputRefreshAt = now
         taskOutputLoadFailed = false
         core.fetchTaskOutput(taskId: task.id) { output in
             DispatchQueue.main.async {

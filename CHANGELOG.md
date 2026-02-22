@@ -6,6 +6,25 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.17.0-rc.5] - 2026-02-22
+
+### Added
+- Packages now include a localized `Pinned` filter, and the upgradable view excludes pinned packages.
+- Popover package search rows now include icon quick actions for install, uninstall, update, and pin.
+- Failed tasks now support inline command/output expansion (single-expanded-task behavior), and manager inspector error states now expose `View Diagnostics`.
+- Privileged manager operations now trigger administrator authentication through a managed `sudo -A` askpass flow when elevation is required.
+
+### Changed
+- Control Center and popover surfaces now use section-scoped derived state snapshots, adaptive polling cadence, and lazy container layouts in scroll-heavy sections to improve responsiveness on lower-spec Macs.
+- Inflight task deduplication now prefers running/newest task rows so command/live-output panes stay populated when backend output exists.
+- Task terminal retention timing now starts from completion/failure transition time, preserving diagnostics visibility for long-running tasks that fail near the end.
+- Package inspector actions and popover search actions now use compact icon affordances with tooltip-backed labels for better space utilization.
+
+### Fixed
+- Software Update manager icon mapping now uses a valid SF Symbol (`applelogo`), removing the Xcode symbol warning.
+- Manager-priority drag interactions now take precedence over window drag-to-move in Managers, restoring smooth priority reordering.
+- Manager inspector executable-path lists now become scrollable when long, preventing inspector layout bloat.
+
 ## [0.17.0-rc.4] - 2026-02-22
 
 ### Added

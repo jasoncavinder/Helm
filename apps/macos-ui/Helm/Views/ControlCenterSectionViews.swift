@@ -1,23 +1,19 @@
 import SwiftUI
 
 struct RedesignOverviewSectionView: View {
-    @ObservedObject private var core = HelmCore.shared
+    private let core = HelmCore.shared
+    @ObservedObject private var overviewState = HelmCore.shared.overviewState
     @EnvironmentObject private var context: ControlCenterContext
-    @State private var expandedRunningTaskId: String?
-
-    private var outdatedCountByManager: [String: Int] {
-        Dictionary(grouping: core.outdatedPackages, by: \.managerId)
-            .mapValues(\.count)
-    }
+    @State private var expandedTaskId: String?
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            LazyVStack(alignment: .leading, spacing: 18) {
                 HStack {
                     Text(ControlCenterSection.overview.title)
                         .font(.title2.weight(.semibold))
                     Spacer()
-                    HealthBadgeView(status: core.aggregateHealth)
+                    HealthBadgeView(status: overviewState.aggregateHealth)
                 }
 
                 HStack(spacing: 14) {
@@ -26,7 +22,7 @@ struct RedesignOverviewSectionView: View {
                     } label: {
                         MetricCardView(
                             title: L10n.App.Popover.pendingUpdates.localized,
-                            value: core.outdatedPackages.count
+                            value: overviewState.outdatedPackagesCount
                         )
                     }
                     .buttonStyle(.plain)
@@ -37,7 +33,7 @@ struct RedesignOverviewSectionView: View {
                     } label: {
                         MetricCardView(
                             title: L10n.App.Popover.failures.localized,
-                            value: core.failedTaskCount
+                            value: overviewState.failedTaskCount
                         )
                     }
                     .buttonStyle(.plain)
@@ -48,7 +44,7 @@ struct RedesignOverviewSectionView: View {
                     } label: {
                         MetricCardView(
                             title: L10n.App.Popover.runningTasks.localized,
-                            value: core.runningTaskCount
+                            value: overviewState.runningTaskCount
                         )
                     }
                     .buttonStyle(.plain)
@@ -59,12 +55,12 @@ struct RedesignOverviewSectionView: View {
                     .font(.headline)
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], spacing: 12) {
-                    ForEach(core.visibleManagers) { manager in
+                    ForEach(overviewState.visibleManagers) { manager in
                         ManagerHealthCardView(
                             title: localizedManagerDisplayName(manager.id),
                             authority: manager.authority,
-                            status: core.health(forManagerId: manager.id),
-                            outdatedCount: outdatedCountByManager[manager.id, default: 0],
+                            status: overviewState.managerHealthById[manager.id] ?? .healthy,
+                            outdatedCount: overviewState.outdatedCountByManager[manager.id, default: 0],
                             isSelected: context.selectedManagerId == manager.id
                         )
                         .onTapGesture {
@@ -80,24 +76,24 @@ struct RedesignOverviewSectionView: View {
                 Text(L10n.App.Overview.recentTasks.localized)
                     .font(.headline)
 
-                if core.activeTasks.isEmpty {
+                if overviewState.recentTasksTop10.isEmpty {
                     Text(L10n.App.Tasks.noRecentTasks.localized)
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 } else {
                     VStack(spacing: 0) {
-                        ForEach(Array(core.activeTasks.prefix(10))) { task in
+                        ForEach(overviewState.recentTasksTop10) { task in
                             TaskRowView(
                                 task: task,
                                 onCancel: task.isRunning ? { core.cancelTask(task) } : nil,
-                                canExpandDetails: task.isRunning,
-                                isExpanded: expandedRunningTaskId == task.id,
+                                canExpandDetails: task.supportsInlineDetails,
+                                isExpanded: expandedTaskId == task.id,
                                 isSelected: context.selectedTaskId == task.id,
                                 onToggleDetails: {
-                                    if expandedRunningTaskId == task.id {
-                                        expandedRunningTaskId = nil
+                                    if expandedTaskId == task.id {
+                                        expandedTaskId = nil
                                     } else {
-                                        expandedRunningTaskId = task.id
+                                        expandedTaskId = task.id
                                     }
                                 },
                                 onSelect: {
@@ -105,6 +101,9 @@ struct RedesignOverviewSectionView: View {
                                     context.selectedPackageId = nil
                                     context.selectedManagerId = task.managerId
                                     context.selectedUpgradePlanStepId = nil
+                                    if !task.supportsInlineDetails {
+                                        expandedTaskId = nil
+                                    }
                                 }
                             )
                             Divider()
@@ -115,18 +114,23 @@ struct RedesignOverviewSectionView: View {
             }
             .padding(20)
         }
-        .onChange(of: core.activeTasks.map { "\($0.id):\($0.status)" }) { _ in
+        .onChange(of: overviewState.recentTasksTop10.map { "\($0.id):\($0.status)" }) { _ in
             collapseExpandedTaskIfNeeded()
+        }
+        .onChange(of: context.selectedTaskId) { selectedTaskId in
+            if expandedTaskId != selectedTaskId {
+                expandedTaskId = nil
+            }
         }
     }
 
     private func collapseExpandedTaskIfNeeded() {
-        guard let expandedRunningTaskId else { return }
-        let stillRunning = core.activeTasks.contains {
-            $0.id == expandedRunningTaskId && $0.isRunning
+        guard let expandedTaskId else { return }
+        let stillVisible = overviewState.recentTasksTop10.contains {
+            $0.id == expandedTaskId && $0.supportsInlineDetails
         }
-        if !stillRunning {
-            self.expandedRunningTaskId = nil
+        if !stillVisible {
+            self.expandedTaskId = nil
         }
     }
 }
@@ -249,7 +253,7 @@ struct RedesignUpdatesSectionView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            LazyVStack(alignment: .leading, spacing: 16) {
                 HStack {
                     Text(ControlCenterSection.updates.title)
                         .font(.title2.weight(.semibold))
@@ -328,7 +332,7 @@ struct RedesignUpdatesSectionView: View {
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 } else {
-                    VStack(spacing: 0) {
+                    LazyVStack(spacing: 0) {
                         ForEach(Array(visiblePlanSteps.enumerated()), id: \.element.id) { index, step in
                             Button {
                                 context.selectedUpgradePlanStepId = step.id

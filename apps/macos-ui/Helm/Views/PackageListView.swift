@@ -4,6 +4,7 @@ struct PackagesSectionView: View {
     @ObservedObject private var core = HelmCore.shared
     @EnvironmentObject private var context: ControlCenterContext
     @State private var selectedStatusFilter: PackageStatus?
+    @State private var showPinnedOnly = false
     @State private var selectedManagerId: String?
 
     private var allPackages: [PackageItem] {
@@ -20,7 +21,8 @@ struct PackagesSectionView: View {
         core.filteredPackages(
             query: context.searchQuery,
             managerId: selectedManagerId ?? context.managerFilterId,
-            statusFilter: selectedStatusFilter
+            statusFilter: selectedStatusFilter,
+            pinnedOnly: showPinnedOnly
         )
     }
 
@@ -51,18 +53,34 @@ struct PackagesSectionView: View {
                 }
             }
 
-            HStack(spacing: 6) {
-                ForEach(PackageStatus.allCases, id: \.self) { status in
-                    FilterButton(
-                        title: status.displayName,
-                        isSelected: selectedStatusFilter == status,
-                        action: {
-                            selectedStatusFilter = (selectedStatusFilter == status) ? nil : status
+            HStack(spacing: 8) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(PackageStatus.allCases, id: \.self) { status in
+                            FilterButton(
+                                title: status.displayName,
+                                isSelected: selectedStatusFilter == status,
+                                action: {
+                                    selectedStatusFilter = (selectedStatusFilter == status) ? nil : status
+                                    showPinnedOnly = false
+                                }
+                            )
                         }
-                    )
-                }
 
-                Spacer()
+                        FilterButton(
+                            title: L10n.App.Packages.Filter.pinned.localized,
+                            isSelected: showPinnedOnly,
+                            action: {
+                                showPinnedOnly.toggle()
+                                if showPinnedOnly {
+                                    selectedStatusFilter = nil
+                                }
+                            }
+                        )
+                    }
+                    .padding(.vertical, 1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 Menu {
                     Button(L10n.App.Packages.Filter.allManagers.localized) {

@@ -52,54 +52,59 @@ struct PopoverSearchOverlayContent: View {
                     .padding(.vertical, 8)
             } else {
                 ScrollView {
-                    VStack(spacing: 6) {
+                    LazyVStack(spacing: 6) {
                         ForEach(searchResults) { result in
                             let package = result.package
-                            Button {
-                                context.selectedPackageId = package.id
-                                context.selectedManagerId = package.managerId
-                                context.selectedTaskId = nil
-                                context.selectedUpgradePlanStepId = nil
-                                context.selectedSection = .packages
-                                onOpenControlCenter()
-                                onClose()
-                            } label: {
-                                HStack(spacing: 8) {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(package.name)
-                                            .font(.subheadline.weight(.medium))
-                                            .lineLimit(1)
-                                        Text(result.managerDisplayText)
-                                            .font(.caption2)
-                                            .foregroundColor(.secondary)
-                                            .lineLimit(2)
+                            HStack(spacing: 8) {
+                                Button {
+                                    context.selectedPackageId = package.id
+                                    context.selectedManagerId = package.managerId
+                                    context.selectedTaskId = nil
+                                    context.selectedUpgradePlanStepId = nil
+                                    context.selectedSection = .packages
+                                    onOpenControlCenter()
+                                    onClose()
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(package.name)
+                                                .font(.subheadline.weight(.medium))
+                                                .lineLimit(1)
+                                            Text(result.managerDisplayText)
+                                                .font(.caption2)
+                                                .foregroundColor(.secondary)
+                                                .lineLimit(2)
+                                        }
+                                        Spacer()
+                                        if let latest = package.latestVersion {
+                                            Text(latest)
+                                                .font(.caption.monospacedDigit())
+                                                .foregroundColor(HelmTheme.stateAttention)
+                                        } else {
+                                            Text(package.version)
+                                                .font(.caption.monospacedDigit())
+                                                .foregroundColor(.secondary)
+                                        }
                                     }
-                                    Spacer()
-                                    if let latest = package.latestVersion {
-                                        Text(latest)
-                                            .font(.caption.monospacedDigit())
-                                            .foregroundColor(HelmTheme.stateAttention)
-                                    } else {
-                                        Text(package.version)
-                                            .font(.caption.monospacedDigit())
-                                            .foregroundColor(.secondary)
-                                    }
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 8)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            .fill(HelmTheme.surfaceElevated)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                                    .strokeBorder(HelmTheme.borderSubtle.opacity(0.9), lineWidth: 0.8)
+                                            )
+                                    )
+                                    .contentShape(Rectangle())
                                 }
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 8)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .fill(HelmTheme.surfaceElevated)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                                .strokeBorder(HelmTheme.borderSubtle.opacity(0.9), lineWidth: 0.8)
-                                        )
-                                )
-                                .contentShape(Rectangle())
+                                .buttonStyle(.plain)
+                                .helmPointer()
+                                .accessibilityElement(children: .combine)
+
+                                quickActionButtons(for: package)
                             }
-                            .buttonStyle(.plain)
-                            .helmPointer()
-                            .accessibilityElement(children: .combine)
                         }
                     }
                 }
@@ -127,6 +132,74 @@ struct PopoverSearchOverlayContent: View {
                 .helmPointer(enabled: !popoverSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
+    }
+
+    @ViewBuilder
+    private func quickActionButtons(for package: PackageItem) -> some View {
+        HStack(spacing: 4) {
+            if core.canInstallPackage(package) {
+                iconActionButton(
+                    symbol: "arrow.down.circle",
+                    tooltip: L10n.App.Packages.Action.install.localized,
+                    enabled: !core.installActionPackageIds.contains(package.id)
+                ) {
+                    core.installPackage(package)
+                }
+            }
+
+            if core.canUninstallPackage(package) {
+                iconActionButton(
+                    symbol: "trash",
+                    tooltip: L10n.App.Packages.Action.uninstall.localized,
+                    enabled: !core.uninstallActionPackageIds.contains(package.id)
+                ) {
+                    core.uninstallPackage(package)
+                }
+            }
+
+            if core.canUpgradeIndividually(package) {
+                iconActionButton(
+                    symbol: "arrow.up.circle",
+                    tooltip: L10n.Common.update.localized,
+                    enabled: !core.upgradeActionPackageIds.contains(package.id)
+                ) {
+                    core.upgradePackage(package)
+                }
+            }
+
+            if core.canPinPackage(package) {
+                let pinTooltip = package.pinned
+                    ? L10n.App.Packages.Action.unpin.localized
+                    : L10n.App.Packages.Action.pin.localized
+                iconActionButton(
+                    symbol: package.pinned ? "pin.slash" : "pin",
+                    tooltip: pinTooltip,
+                    enabled: !core.pinActionPackageIds.contains(package.id)
+                ) {
+                    if package.pinned {
+                        core.unpinPackage(package)
+                    } else {
+                        core.pinPackage(package)
+                    }
+                }
+            }
+        }
+    }
+
+    private func iconActionButton(
+        symbol: String,
+        tooltip: String,
+        enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+        }
+        .buttonStyle(HelmIconButtonStyle())
+        .help(tooltip)
+        .accessibilityLabel(tooltip)
+        .disabled(!enabled)
+        .helmPointer(enabled: enabled)
     }
 }
 
@@ -197,7 +270,7 @@ struct PopoverSettingsOverlayContent: View {
 }
 
 struct PopoverAboutOverlayContent: View {
-    @ObservedObject private var core = HelmCore.shared
+    @ObservedObject private var overviewState = HelmCore.shared.overviewState
     @ObservedObject private var appUpdate = AppUpdateCoordinator.shared
     @State private var showSupportOptionsModal = false
     let onClose: () -> Void
@@ -279,8 +352,8 @@ struct PopoverAboutOverlayContent: View {
             }
 
             Text(L10n.App.Overlay.About.summary.localized(with: [
-                "managers": core.visibleManagers.count,
-                "updates": core.outdatedPackages.count
+                "managers": overviewState.visibleManagers.count,
+                "updates": overviewState.outdatedPackagesCount
             ]))
             .font(.caption)
             .foregroundColor(.secondary)
@@ -369,12 +442,12 @@ struct PopoverAboutOverlayContent: View {
 }
 
 struct PopoverQuitOverlayContent: View {
-    @ObservedObject private var core = HelmCore.shared
+    @ObservedObject private var overviewState = HelmCore.shared.overviewState
     let onClose: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(L10n.App.Overlay.Quit.message.localized(with: ["tasks": core.runningTaskCount]))
+            Text(L10n.App.Overlay.Quit.message.localized(with: ["tasks": overviewState.runningTaskCount]))
                 .font(.callout)
                 .foregroundColor(.secondary)
 

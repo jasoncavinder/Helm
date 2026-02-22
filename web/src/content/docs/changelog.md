@@ -14,6 +14,49 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 ## Unreleased
 - No unreleased changes.
 
+## 0.17.0-rc.5 — 2026-02-22
+
+### Added
+- Packages now include a localized `Pinned` filter, and Upgradable excludes pinned packages.
+- Popover package search rows now include quick icon actions for install, uninstall, update, and pin.
+- Failed tasks now support inline command/output expansion (single-expanded-task behavior), and manager inspector error states now include `View Diagnostics`.
+- Privileged manager actions now prompt for administrator authentication via a managed `sudo -A` askpass flow when elevation is required.
+
+### Changed
+- Control Center/popover responsiveness improved with section-scoped derived-state snapshots, adaptive polling cadence, and lazy container usage in scroll-heavy surfaces.
+- Inflight task deduplication now prefers running/newest rows so command/live output remains populated when backend output exists.
+- Task terminal retention timing now starts at completion/failure transition time to preserve diagnostics visibility.
+- Package and inspector actions now use compact icon affordances with tooltip labels for narrow layouts.
+
+### Fixed
+- Software Update manager now maps to valid SF Symbol `applelogo`.
+- Manager-priority drag interactions now take precedence over window drag-to-move behavior in Managers.
+- Manager inspector executable-path lists are now scrollable when the list is long.
+
+---
+
+## 0.17.0-rc.4 — 2026-02-22
+
+### Added
+- Settings now include a `Launch Helm at login` toggle (macOS 13+), with localized unsupported guidance on older systems.
+- Manager inspector now lists all discovered executable paths, emphasizing the active executable.
+- Manager inspector now exposes install-method metadata through a disabled dropdown with localized recommended/preferred tags.
+- Managers are now drag-reorderable within authority groups, with `Restore Manager Priority` in advanced settings.
+
+### Changed
+- Sparkle appcast entries now link to website-hosted per-tag release notes pages.
+- Developer ID onboarding now requires current license-terms acceptance (tracked by version/timestamp) with automatic re-prompt on license-version changes.
+- About now includes `View License Terms` plus build/channel/update-authority/last-update-check metadata.
+- Popover and Control Center are now mutually exclusive, with popover health/metric cards deep-linking to Control Center sections.
+
+### Fixed
+- Popover outside-click handling now responds only to click events (not pointer movement).
+- Popover hover cursor forcing was removed so interactive controls keep expected hover affordances.
+- Reset local data now clears persisted license-acceptance state.
+- Executable-path discovery now skips undetected managers and caches detected-manager discovery results.
+
+---
+
 ## 0.17.0-rc.3 — 2026-02-21
 
 ### Changed
