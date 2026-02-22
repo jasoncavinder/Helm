@@ -38,6 +38,7 @@ Active milestone:
   - delivered: post-`rc.4` UX/task-diagnostics follow-up: popover package search rows now include icon quick actions (install/uninstall/update/pin); package inspector actions moved to icon+tooltip buttons; manager inspector executable-path lists now scroll when long and managers in error state expose `View Diagnostics`; failed tasks now support inline command/output expansion with single-selected expansion behavior; task terminal retention now starts at completion/failure timestamp.
   - delivered: post-`rc.4` privileged-auth follow-up: process execution now enforces elevated operations through a structured `sudo -A` wrapper when adapters flag `requires_elevation`, with a managed askpass helper script and explicit command/output capture so privileged install/update flows prompt for administrator authentication instead of failing silently.
   - delivered: post-`rc.4` responsiveness follow-up: Control Center/Popover overview + managers surfaces now consume section-scoped derived state snapshots (precomputed manager counts/health/task slices); snapshot polling cadence is adaptive to interactive-surface visibility and now tracks popover/control-center visibility from app lifecycle events; package-description rich/plain rendering now uses bounded LRU caching in core; scroll-heavy managers/overview/updates/settings/search stacks now use lazy container variants where applicable.
+  - delivered: pre-stable `rc.5 -> 0.17.0` hardening follow-up: manager display-name localization mapping is now centralized in one shared helper across Core/UI surfaces; localization diagnostics now use structured logger output; polling cadence now introduces a lower-frequency idle-visible mode for no-inflight states; SQLite connections now enforce `WAL`/`NORMAL`/`busy_timeout`/foreign-key pragmas by default; terminal-task pruning now includes `cancelled`; Rust build script now fingerprints Rust/script inputs and skips rebuilds when generated artifacts are unchanged.
   - `v0.17.0-rc.5` pre-release execution status: complete (validation green + tag + GitHub pre-release published)
 
 Security rollout staging status:
@@ -336,13 +337,13 @@ Released in `v0.14.1` (follow-up stabilization slice):
 - Onboarding manager rows now keep manager name + version on a single line in both detection and configure steps
 - Task list now deduplicates in-flight rows by `(manager, task_type)` while keeping bounded terminal history
 - Task list fetches a wider recent-task window so long-running queued/running entries are less likely to drop out under queue churn
-- Task pruning now expires only completed/failed tasks (cancelled tasks are retained)
+- Task pruning now expires completed/failed/cancelled tasks using terminal-status timestamps
 - Duplicate submission guards now reuse existing queued/running task IDs for identical manager install/update/uninstall and package upgrade actions
 - Refresh trigger now skips launching a new sweep while refresh/detection tasks are already in flight
 - RubyGems is now included in per-package upgrade eligibility for control-center package actions
 - Added regression coverage:
   - FFI unit tests for in-flight deduplication and bounded terminal history behavior
-  - SQLite store test validating prune policy keeps cancelled/running rows
+  - SQLite store test validating prune policy prunes terminal statuses and retains running rows
 
 Released in `v0.14.1` (adapter behavior slice):
 

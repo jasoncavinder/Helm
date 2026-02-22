@@ -1459,7 +1459,7 @@ pub extern "C" fn helm_list_tasks() -> *mut c_char {
         None => return std::ptr::null_mut(),
     };
 
-    // Auto-prune completed/failed tasks older than 5 minutes.
+    // Auto-prune terminal tasks older than 5 minutes.
     let _ = state.store.prune_completed_tasks(TASK_PRUNE_MAX_AGE_SECS);
 
     // Fetch a wider snapshot so long-running queued/running tasks do not disappear

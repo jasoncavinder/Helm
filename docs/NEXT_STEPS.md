@@ -84,6 +84,14 @@ Current checkpoint:
     - polling cadence now adapts to interactive surface visibility (popover/control-center visible vs background), with lifecycle visibility hooks in `AppDelegate`
     - inspector package-description rendering now goes through a bounded core-level LRU render cache
     - scroll-heavy managers/overview/updates/settings/popover-search sections now use lazy stack containers where applicable
+  - pre-stable `rc.5 -> 0.17.0` hardening follow-up delivered on `dev`:
+    - manager display-name localization now resolves through one shared helper across Core + UI surfaces
+    - localization file/missing-key diagnostics now emit structured logger events instead of direct `print` output
+    - polling cadence now slows further during idle/no-inflight states even while interactive surfaces are visible
+    - SQLite connection defaults now enforce `WAL`, `NORMAL` sync, `busy_timeout`, and foreign-key pragmas
+    - terminal-task pruning now includes `cancelled` status with terminal-time retention behavior
+    - Rust build script now fingerprints Rust/script inputs and skips rebuild work when generated artifacts are unchanged
+    - release checklist now includes a dedicated `v0.17.0` stable gate and archival guidance for historical checklist sections
 - latest stable release on `main`: `v0.16.2`
 - validation gates are green for `v0.17.0-rc.5` (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke across `v0.17.0-rc.1` through `v0.17.0-rc.5`)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
@@ -392,7 +400,7 @@ Delivered:
   - "Pick Your Managers"
 - Task list visibility now deduplicates in-flight task rows by `(manager, task_type)` and keeps bounded terminal history
 - Task list visibility now fetches a wider recent-task window to avoid hiding long-running in-flight entries under queue churn
-- Task pruning timeout policy now removes only `completed` and `failed` records (no timeout pruning of `cancelled`)
+- Task pruning timeout policy now removes terminal (`completed`/`failed`/`cancelled`) records using terminal-status timestamps
 - Duplicate task submission guard added for manager install/update/uninstall and package upgrade actions when an identical labeled task is already queued/running
 - Refresh trigger now skips creating a new refresh sweep while refresh/detection tasks are already in flight
 - RubyGems now participates in per-package upgrade eligibility in the SwiftUI workflow

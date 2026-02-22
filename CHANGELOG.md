@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+### Changed
+- Manager display-name localization now resolves through a single shared helper used by Core and SwiftUI surfaces, reducing mapping drift risk.
+- Localization loading/missing-key diagnostics now emit structured `os.Logger` events instead of console `print` output.
+- Control Center/popover polling now uses state-aware cadence (faster during in-flight work, slower at idle) for smoother low-end performance.
+- Task auto-pruning now treats `cancelled` as terminal for timeout cleanup, aligned with terminal timestamp retention behavior.
+- Rust build script now fingerprints Rust/script/build-input state and reuses generated artifacts when unchanged to reduce repetitive Xcode build overhead.
+- Release checklist now includes a dedicated `v0.17.0` stable gate section and explicit archive guidance for historical checklist blocks.
+
+### Fixed
+- Updated SwiftLint configuration to remove obsolete rule identifiers and keep lint output current.
+- Cleared low-risk Swift lint debt in package/task row models and support redaction helper (`redundant_optional_initialization`, `empty_count`).
+
 ## [0.17.0-rc.5] - 2026-02-22
 
 ### Added

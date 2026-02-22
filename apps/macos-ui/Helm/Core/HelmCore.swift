@@ -632,17 +632,35 @@ final class HelmCore: ObservableObject {
     }
 
     private func performPollingTick() {
-        fetchTasks()
-
         let now = Date()
+        let hasInFlightWork = isRefreshing
+            || activeTasks.contains(where: \.isRunning)
+            || !activeRemoteSearchTaskIds.isEmpty
+        let interactiveSurfaceVisible = isPopoverVisibleForPolling || isControlCenterVisibleForPolling
+
+        let taskSnapshotInterval: TimeInterval = {
+            if hasInFlightWork {
+                return 1.0
+            }
+            if interactiveSurfaceVisible {
+                return 2.0
+            }
+            return 5.0
+        }()
+
+        if now.timeIntervalSince(lastTaskSnapshotRefreshAt) >= taskSnapshotInterval {
+            lastTaskSnapshotRefreshAt = now
+            fetchTasks()
+        }
+
         let fullSnapshotInterval: TimeInterval = {
-            if isRefreshing {
+            if hasInFlightWork {
                 return 2.0
             }
-            if isPopoverVisibleForPolling || isControlCenterVisibleForPolling {
-                return 2.0
+            if interactiveSurfaceVisible {
+                return 4.0
             }
-            return 6.0
+            return 8.0
         }()
 
         guard now.timeIntervalSince(lastFullSnapshotRefreshAt) >= fullSnapshotInterval else {
@@ -758,6 +776,7 @@ final class HelmCore: ObservableObject {
     func triggerRefresh() {
         logger.info("triggerRefresh called")
         self.lastRefreshTrigger = Date()
+        self.lastTaskSnapshotRefreshAt = .distantPast
         self.lastFullSnapshotRefreshAt = .distantPast
         self.isRefreshing = true
         postAccessibilityAnnouncement(L10n.Common.refresh.localized)
@@ -883,6 +902,7 @@ final class HelmCore: ObservableObject {
                     self?.onboardingDetectionPendingManagers = []
                     self?.onboardingDetectionStartedAt = nil
                     self?.lastRefreshTrigger = nil
+                    self?.lastTaskSnapshotRefreshAt = .distantPast
                     UserDefaults.standard.removeObject(forKey: Self.onboardingCompletedKey)
                     UserDefaults.standard.removeObject(forKey: Self.acceptedLicenseTermsVersionKey)
                     UserDefaults.standard.removeObject(forKey: Self.acceptedLicenseTermsAcceptedAtUnixKey)
