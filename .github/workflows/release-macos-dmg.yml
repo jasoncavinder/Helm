@@ -546,12 +546,73 @@ jobs:
           - \`https://helmapp.dev/updates/release-notes/${TAG_NAME}.html\`
           EOF
           )" 2>&1)" || {
-            echo "::warning::Unable to auto-create fallback PR via GitHub Actions token."
-            echo "::warning::Likely cause: repository setting disallows Actions PR creation."
-            echo "::warning::Fallback branch was pushed: ${PUBLISH_BRANCH}"
-            echo "::warning::Open manual PR: https://github.com/${GITHUB_REPOSITORY}/compare/main...${PUBLISH_BRANCH}?expand=1"
-            echo "::warning::gh output: ${PR_URL}"
-            exit 0
+            echo "::error::Unable to auto-create fallback PR via GitHub Actions token."
+            echo "::error::Likely cause: repository setting disallows Actions PR creation."
+            echo "::error::Fallback branch was pushed: ${PUBLISH_BRANCH}"
+            echo "::error::Open manual PR: https://github.com/${GITHUB_REPOSITORY}/compare/main...${PUBLISH_BRANCH}?expand=1"
+            echo "::error::gh output: ${PR_URL}"
+            exit 1
           }
 
           echo "Created fallback PR: ${PR_URL}"
+
+      - name: Verify appcast on main matches release tag
+        if: ${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          FEED_PATH="web/public/updates/appcast.xml"
+          VERIFY_DIR="$RUNNER_TEMP/appcast-verify-main"
+          EXPECTED_VERSION="${TAG_NAME#v}"
+
+          git clone --depth 1 --branch main "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$VERIFY_DIR"
+          MAIN_FEED="$VERIFY_DIR/$FEED_PATH"
+
+          if [ ! -f "$MAIN_FEED" ]; then
+            echo "::error::Expected appcast file not found on main: ${FEED_PATH}"
+            exit 1
+          fi
+
+          ACTUAL_VERSION="$(
+            MAIN_FEED="$MAIN_FEED" python3 - <<'PY'
+            import os
+            import xml.etree.ElementTree as ET
+
+            sparkle_ns = "http://www.andymatuschak.org/xml-namespaces/sparkle"
+            feed_path = os.environ["MAIN_FEED"]
+
+            root = ET.parse(feed_path).getroot()
+            item = root.find("./channel/item")
+            if item is None:
+                print("")
+                raise SystemExit(0)
+
+            enclosure = item.find("enclosure")
+            version = ""
+            if enclosure is not None:
+                version = enclosure.attrib.get(f"{{{sparkle_ns}}}shortVersionString", "").strip()
+
+            if not version:
+                title = (item.findtext("title") or "").strip()
+                if title.lower().startswith("helm "):
+                    version = title[5:].strip()
+
+            print(version)
+            PY
+          )"
+
+          if [ -z "$ACTUAL_VERSION" ]; then
+            echo "::error::Unable to read top appcast version from main at ${FEED_PATH}"
+            exit 1
+          fi
+
+          if [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "::error::Appcast on main does not match release tag."
+            echo "::error::expected=${EXPECTED_VERSION} actual=${ACTUAL_VERSION} file=${FEED_PATH}"
+            echo "::error::If fallback publishing was required, merge branch chore/publish-updates-${TAG_NAME} and rerun this workflow."
+            exit 1
+          fi
+
+          echo "Verified appcast on main matches release tag: ${ACTUAL_VERSION}"

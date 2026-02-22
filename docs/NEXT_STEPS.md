@@ -97,6 +97,10 @@ Current checkpoint:
     - website now renders a global beta-tester announcement banner with a refined brand-consistent visual treatment
     - blog pages now include social-share actions (X, LinkedIn, Reddit, Email)
     - landing navigation now includes right-aligned `Blog` and `Docs` links for faster access
+  - post-`v0.17.1` release-automation guardrails delivered on `dev`:
+    - release workflow now treats fallback appcast-publish PR-creation failures as blocking errors (no soft-success path)
+    - release workflow now verifies `web/public/updates/appcast.xml` on `main` matches the release tag before marking release success
+    - new scheduled/manual `Appcast Drift Guard` workflow now fails when latest stable GitHub release and top appcast version diverge
 - latest stable release on `main`: `v0.17.0`
 - validation gates are green through the stable cut (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke across `v0.17.0-rc.1` through `v0.17.0-rc.5`)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
