@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Helm 0.17.0-rc.4 Release Notes</title>
+  <link rel="canonical" href="https://helmapp.dev/updates/release-notes/v0.17.0-rc.4.html">
+  <style>
+    :root {
+      color-scheme: light dark;
+    }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+      line-height: 1.55;
+      background: #f7f8fa;
+      color: #111827;
+    }
+    main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    article {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 24px;
+    }
+    h1 {
+      margin: 0 0 4px;
+      font-size: 1.6rem;
+      line-height: 1.3;
+    }
+    h2 {
+      margin: 24px 0 8px;
+      font-size: 1.1rem;
+    }
+    p, ul {
+      margin: 8px 0;
+    }
+    ul {
+      padding-left: 20px;
+    }
+    .meta {
+      color: #4b5563;
+      font-size: 0.95rem;
+      margin: 0 0 12px;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      background: #f3f4f6;
+      border-radius: 6px;
+      padding: 0.1rem 0.35rem;
+      font-size: 0.92em;
+    }
+    footer {
+      margin-top: 16px;
+      color: #6b7280;
+      font-size: 0.9rem;
+    }
+    @media (prefers-color-scheme: dark) {
+      body {
+        background: #0b1220;
+        color: #e5e7eb;
+      }
+      article {
+        background: #0f172a;
+        border-color: #1f2937;
+      }
+      .meta {
+        color: #9ca3af;
+      }
+      code {
+        background: #111827;
+      }
+      footer {
+        color: #9ca3af;
+      }
+      a {
+        color: #93c5fd;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <article>
+      <h1>Helm 0.17.0-rc.4 Release Notes</h1>
+      <p class="meta">Release date: February 22, 2026</p>
+    <h2>Added</h2>
+    <ul>
+      <li>Settings now include a <code>Launch Helm at login</code> toggle (macOS 13+), with localized guidance when unsupported on older systems.</li>
+      <li>Manager inspector now lists all discovered executable paths and emphasizes the active executable path.</li>
+      <li>Manager inspector now exposes install-method metadata via a disabled dropdown with localized recommended/preferred tags.</li>
+      <li>Manager cards are now drag-reorderable within authority groups, with a new <code>Restore Manager Priority</code> action in advanced settings.</li>
+    </ul>
+    <h2>Changed</h2>
+    <ul>
+      <li>Release automation now generates and publishes a website-hosted Sparkle release-notes page per tag at <code>web/public/updates/release-notes/&lt;tag&gt;.html</code>, and appcast entries now point <code>sparkle:releaseNotesLink</code> to that hosted page (instead of the GitHub release page URL).</li>
+      <li>Developer ID channel builds now require first-run acceptance of current Helm license terms before onboarding can proceed, with acceptance persisted by license version + timestamp and automatic re-prompting when the tracked license version changes.</li>
+      <li>About overlay now includes a direct <code>View License Terms</code> action so users can reopen current license terms after onboarding.</li>
+      <li>Popover and Control Center interaction flow is now mutually exclusive: opening/focusing Control Center suppresses the popover, and popover status/metric cards deep-link to their corresponding Control Center sections.</li>
+      <li>Control Center workflow polish includes full-row running-task expand/collapse toggles, full-window drag-to-move background behavior (while preserving interactive control handling), clickable settings metric cards, and explicit selected-row/card highlighting for inspected entities.</li>
+      <li>Manager/package consolidation ordering now uses explicit authority-aware priority ranking (authoritative -&gt; standard -&gt; guarded) to keep default manager preference deterministic when names overlap across managers.</li>
+      <li>About overlay now shows build number, distribution channel, update authority, and last update-check timestamp.</li>
+    </ul>
+    <h2>Fixed</h2>
+    <ul>
+      <li>Popover outside-click monitoring now only reacts to click events (not pointer-move/drag events), preventing accidental panel dismissal while moving the cursor.</li>
+      <li>Popover hover cursor behavior no longer forces arrow cursor rects across the entire floating panel, restoring expected hover affordances for interactive controls.</li>
+      <li>Executable-path discovery performance is improved by skipping deep-path discovery for undetected managers and caching discovery results for detected managers.</li>
+      <li>Reset local data now clears persisted license-acceptance state in addition to onboarding completion and cached runtime state.</li>
+    </ul>
+    <p class="meta">Need full context? <a href="https://github.com/jasoncavinder/Helm/releases/tag/v0.17.0-rc.4" rel="noopener noreferrer">View this release on GitHub</a>.</p>
+    </article>
+    <footer>Generated from <code>CHANGELOG.md</code>.</footer>
+  </main>
+</body>
+</html>
