@@ -15,11 +15,11 @@ Helm is in:
 ```
 
 Focus:
-- complete `v0.17.0-rc.5` release execution on `dev` (tag + GitHub pre-release)
-- run final validation and operator testing toward stable `v0.17.0`
+- run operator testing on `v0.17.0-rc.5` toward stable `v0.17.0`
+- prepare stable `v0.17.0` release cut once `rc.5` validation feedback is clear
 
 Current checkpoint:
-- `v0.17.0-rc.5` is ready on `dev`; post-`rc.4` remediation/hardening has been consolidated after merged diagnostics/logging slices and prior updater follow-up delivery:
+- `v0.17.0-rc.5` is released from `dev` (tag + GitHub pre-release published); post-`rc.4` remediation/hardening is now bundled into the active RC for final validation:
   - `#93` `feat/v0.17-log-foundation`
   - `#95` `feat/v0.17-structured-error-export`
   - `#96` `feat/v0.17-service-health-panel`
@@ -85,7 +85,7 @@ Current checkpoint:
     - inspector package-description rendering now goes through a bounded core-level LRU render cache
     - scroll-heavy managers/overview/updates/settings/popover-search sections now use lazy stack containers where applicable
 - latest stable release on `main`: `v0.16.2`
-- validation gates currently green for RC prep (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke across `v0.17.0-rc.1` through `v0.17.0-rc.4`)
+- validation gates are green for `v0.17.0-rc.5` (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke across `v0.17.0-rc.1` through `v0.17.0-rc.5`)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
 - `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)

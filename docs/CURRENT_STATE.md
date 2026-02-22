@@ -8,7 +8,7 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.17.0-rc.5** on `dev`, with **0.17.0-rc.4** as the prior released RC.
+Current documentation baseline: **0.17.0-rc.5** on `dev`, and **0.17.0-rc.5** is now the latest released RC.
 
 Implementation baseline: **0.17.0-rc.5** with post-`rc.4` issue-remediation, UX/task-diagnostics hardening, privileged-auth execution flow, and responsiveness improvements delivered.
 
@@ -17,7 +17,7 @@ See:
 
 Active milestone:
 - latest shipped release on `main`: **0.16.2** (Sparkle connectivity hardening + macOS 11 deployment-target alignment)
-- 0.17.x — Diagnostics & Logging (**delivery merged on `dev`**, `v0.17.0-rc.1` + `v0.17.0-rc.2` + `v0.17.0-rc.3` + `v0.17.0-rc.4` released, with post-`rc.4` remediation/hardening consolidated into `v0.17.0-rc.5`)
+- 0.17.x — Diagnostics & Logging (**delivery merged on `dev`**, `v0.17.0-rc.1` + `v0.17.0-rc.2` + `v0.17.0-rc.3` + `v0.17.0-rc.4` + `v0.17.0-rc.5` released)
   - delivered: `feat/v0.17-log-foundation` (SQLite-backed task lifecycle logs + retrieval plumbing)
   - delivered: `feat/v0.17-task-log-viewer` (inspector diagnostics logs tab with level/status filters + load-more pagination)
   - delivered: `feat/v0.17-structured-error-export` (structured JSON diagnostics export with redaction for support workflows)
@@ -38,7 +38,7 @@ Active milestone:
   - delivered: post-`rc.4` UX/task-diagnostics follow-up: popover package search rows now include icon quick actions (install/uninstall/update/pin); package inspector actions moved to icon+tooltip buttons; manager inspector executable-path lists now scroll when long and managers in error state expose `View Diagnostics`; failed tasks now support inline command/output expansion with single-selected expansion behavior; task terminal retention now starts at completion/failure timestamp.
   - delivered: post-`rc.4` privileged-auth follow-up: process execution now enforces elevated operations through a structured `sudo -A` wrapper when adapters flag `requires_elevation`, with a managed askpass helper script and explicit command/output capture so privileged install/update flows prompt for administrator authentication instead of failing silently.
   - delivered: post-`rc.4` responsiveness follow-up: Control Center/Popover overview + managers surfaces now consume section-scoped derived state snapshots (precomputed manager counts/health/task slices); snapshot polling cadence is adaptive to interactive-surface visibility and now tracks popover/control-center visibility from app lifecycle events; package-description rich/plain rendering now uses bounded LRU caching in core; scroll-heavy managers/overview/updates/settings/search stacks now use lazy container variants where applicable.
-  - release-prep validation status: green (`cargo test`, macOS `xcodebuild` suite, locale integrity + locale length audits) for `v0.17.0-rc.5` cut
+  - `v0.17.0-rc.5` pre-release execution status: complete (validation green + tag + GitHub pre-release published)
 
 Security rollout staging status:
 - Stage 0 (`<=0.16.x`): planning/docs only (active in `0.16.1`)
