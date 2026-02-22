@@ -516,7 +516,13 @@ fn default_manager_executable_path(id: ManagerId, executable_paths: &[String]) -
     if let Some(first) = executable_paths.first() {
         return Some(first.clone());
     }
-    for discovered in cached_discovered_executable_paths(id, manager_executable_candidates(id)) {
+    if let Some(discovered) = cached_discovered_executable_paths(
+        id,
+        manager_executable_candidates(id),
+    )
+    .into_iter()
+    .next()
+    {
         return Some(discovered);
     }
     None
@@ -556,13 +562,8 @@ fn manager_install_method_candidates(id: ManagerId) -> &'static [&'static str] {
 }
 
 fn normalize_install_method(id: ManagerId, method: Option<String>) -> Option<String> {
-    let Some(method) = normalize_nonempty(method) else {
-        return None;
-    };
-    if manager_install_method_candidates(id)
-        .iter()
-        .any(|candidate| *candidate == method)
-    {
+    let method = normalize_nonempty(method)?;
+    if manager_install_method_candidates(id).contains(&method.as_str()) {
         return Some(method);
     }
     None
@@ -3923,10 +3924,7 @@ pub unsafe extern "C" fn helm_set_manager_install_method(
         };
         if method.is_empty() {
             None
-        } else if manager_install_method_candidates(manager)
-            .iter()
-            .any(|candidate| *candidate == method)
-        {
+        } else if manager_install_method_candidates(manager).contains(&method) {
             Some(method.to_string())
         } else {
             return return_error_bool("service.error.invalid_input");
