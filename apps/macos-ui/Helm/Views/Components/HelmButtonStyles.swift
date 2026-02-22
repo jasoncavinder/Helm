@@ -107,7 +107,7 @@ struct HelmPrimaryButtonStyle: ButtonStyle {
 
         configuration.label
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(Color.white)
+            .foregroundColor(Color.white)
             .padding(.horizontal, horizontalPadding)
             .padding(.vertical, verticalPadding)
             .background(
@@ -144,7 +144,7 @@ struct HelmSecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(isEnabled ? HelmTheme.actionSecondaryText : HelmTheme.textSecondary.opacity(0.78))
+            .foregroundColor(isEnabled ? HelmTheme.actionSecondaryText : HelmTheme.textSecondary.opacity(0.78))
             .padding(.horizontal, horizontalPadding)
             .padding(.vertical, verticalPadding)
             .background(
@@ -174,7 +174,7 @@ struct HelmTertiaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(isEnabled ? HelmTheme.textSecondary : HelmTheme.textSecondary.opacity(0.72))
+            .foregroundColor(isEnabled ? HelmTheme.textSecondary : HelmTheme.textSecondary.opacity(0.72))
             .opacity(configuration.isPressed ? 0.8 : 1)
             .scaleEffect(accessibilityReduceMotion ? 1 : (configuration.isPressed ? 0.985 : 1))
             .animation(
@@ -230,7 +230,7 @@ struct HelmProButtonStyle: ButtonStyle {
 
         return configuration.label
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(HelmTheme.proOnAccent)
+            .foregroundColor(HelmTheme.proOnAccent)
             .padding(.horizontal, horizontalPadding)
             .padding(.vertical, verticalPadding)
             .background(
@@ -290,7 +290,7 @@ struct HelmIconButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(isEnabled ? HelmTheme.actionPrimaryDefault : HelmTheme.textSecondary.opacity(0.78))
+            .foregroundColor(isEnabled ? HelmTheme.actionPrimaryDefault : HelmTheme.textSecondary.opacity(0.78))
             .frame(width: 28, height: 28)
             .background(
                 Circle()
@@ -361,15 +361,13 @@ private extension Color {
         lightAlpha: CGFloat = 1,
         darkAlpha: CGFloat = 1
     ) -> Color {
-        Color(
-            nsColor: NSColor(name: nil) { appearance in
-                let resolvedAppearance = appearance.bestMatch(from: [.darkAqua, .aqua]) ?? .aqua
-                if resolvedAppearance == .darkAqua {
-                    return NSColor.helmHex(dark, alpha: darkAlpha)
-                }
-                return NSColor.helmHex(light, alpha: lightAlpha)
+        Color(NSColor(name: nil) { appearance in
+            let resolvedAppearance = appearance.bestMatch(from: [.darkAqua, .aqua]) ?? .aqua
+            if resolvedAppearance == .darkAqua {
+                return NSColor.helmHex(dark, alpha: darkAlpha)
             }
-        )
+            return NSColor.helmHex(light, alpha: lightAlpha)
+        })
     }
 }
 

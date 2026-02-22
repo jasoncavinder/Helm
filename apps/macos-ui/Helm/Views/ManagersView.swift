@@ -1,27 +1,29 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ManagersSectionView: View {
-    @ObservedObject private var core = HelmCore.shared
+    private let core = HelmCore.shared
+    @ObservedObject private var managersState = HelmCore.shared.managersState
     @EnvironmentObject private var context: ControlCenterContext
-
-    private var implementedManagers: [ManagerInfo] {
-        ManagerInfo.all.filter { manager in
-            core.managerStatuses[manager.id]?.isImplemented ?? manager.isImplemented
-        }
-    }
+    @State private var draggedManagerId: String?
 
     private var groupedManagers: [(authority: ManagerAuthority, managers: [ManagerInfo])] {
-        ManagerAuthority.allCases.map { authorityLevel in
-            let managers = implementedManagers
-                .filter { $0.authority == authorityLevel }
-                .sorted { localizedManagerDisplayName($0.id).localizedCaseInsensitiveCompare(localizedManagerDisplayName($1.id)) == .orderedAscending }
-            return (authority: authorityLevel, managers: managers)
-        }
+        [
+            (authority: .authoritative, managers: managersState.authoritativeManagers),
+            (authority: .standard, managers: managersState.standardManagers),
+            (authority: .guarded, managers: managersState.guardedManagers)
+        ]
+    }
+
+    private var hasImplementedManagers: Bool {
+        !managersState.authoritativeManagers.isEmpty
+            || !managersState.standardManagers.isEmpty
+            || !managersState.guardedManagers.isEmpty
     }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
+            LazyVStack(alignment: .leading, spacing: 12) {
                 Text(ControlCenterSection.managers.title)
                     .font(.title2.weight(.semibold))
                     .padding(.horizontal, 20)
@@ -32,17 +34,19 @@ struct ManagersSectionView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text(group.authority.key.localized)
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                                .foregroundColor(.secondary)
                                 .textCase(.uppercase)
                                 .padding(.horizontal, 20)
 
                             ForEach(group.managers) { manager in
                                 ManagerSectionRow(
                                     manager: manager,
-                                    status: core.managerStatuses[manager.id],
-                                    outdatedCount: core.outdatedCount(forManagerId: manager.id),
-                                    packageCount: core.installedPackages.filter { $0.managerId == manager.id }.count,
-                                    operationStatus: core.managerOperations[manager.id],
+                                    status: managersState.managerStatusesById[manager.id],
+                                    health: core.health(forManagerId: manager.id),
+                                    outdatedCount: managersState.outdatedCountByManager[manager.id, default: 0],
+                                    packageCount: managersState.installedCountByManager[manager.id, default: 0],
+                                    operationStatus: managersState.managerOperationsById[manager.id],
+                                    isSelected: context.selectedManagerId == manager.id,
                                     onSelect: {
                                         context.selectedManagerId = manager.id
                                         context.selectedPackageId = nil
@@ -57,31 +61,55 @@ struct ManagersSectionView: View {
                                         context.selectedSection = .packages
                                     }
                                 )
+                                .onDrag {
+                                    draggedManagerId = manager.id
+                                    context.suppressWindowBackgroundDragging = true
+                                    return NSItemProvider(object: manager.id as NSString)
+                                }
+                                .onDrop(
+                                    of: [UTType.text.identifier],
+                                    delegate: ManagerPriorityDropDelegate(
+                                        core: core,
+                                        authority: group.authority,
+                                        targetManagerId: manager.id,
+                                        draggedManagerId: $draggedManagerId,
+                                        suppressWindowBackgroundDragging: $context.suppressWindowBackgroundDragging
+                                    )
+                                )
                             }
                         }
                     }
                 }
 
-                if implementedManagers.isEmpty {
+                if !hasImplementedManagers {
                     Text(L10n.App.ManagersSection.empty.localized)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
                         .padding(.horizontal, 20)
                 }
             }
             .padding(.bottom, 18)
         }
+        .onHover { hovering in
+            context.suppressWindowBackgroundDragging = hovering || draggedManagerId != nil
+        }
+        .onDisappear {
+            draggedManagerId = nil
+            context.suppressWindowBackgroundDragging = false
+        }
     }
 }
 
 private struct ManagerSectionRow: View {
-    @ObservedObject private var core = HelmCore.shared
+    private let core = HelmCore.shared
 
     let manager: ManagerInfo
     let status: ManagerStatus?
+    let health: OperationalHealth
     let outdatedCount: Int
     let packageCount: Int
     let operationStatus: String?
+    let isSelected: Bool
     let onSelect: () -> Void
     let onViewPackages: () -> Void
 
@@ -112,14 +140,10 @@ private struct ManagerSectionRow: View {
         status?.enabled ?? true
     }
 
-    private var currentHealth: OperationalHealth {
-        core.health(forManagerId: manager.id)
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
-                HealthBadgeView(status: currentHealth)
+                HealthBadgeView(status: health)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(localizedManagerDisplayName(manager.id))
@@ -127,13 +151,13 @@ private struct ManagerSectionRow: View {
                     HStack(spacing: 6) {
                         Text(L10n.App.Managers.Label.packageCount.localized(with: ["count": packageCount]))
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundColor(.secondary)
                         Text("|")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundColor(.secondary)
                         Text(L10n.App.Managers.Tooltip.outdated.localized(with: ["count": outdatedCount]))
                             .font(.caption)
-                            .foregroundStyle(outdatedCount == 0 ? HelmTheme.textSecondary : HelmTheme.stateAttention)
+                            .foregroundColor(outdatedCount == 0 ? HelmTheme.textSecondary : HelmTheme.stateAttention)
                     }
                 }
 
@@ -145,12 +169,12 @@ private struct ManagerSectionRow: View {
                             .controlSize(.mini)
                         Text(operationStatus)
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundColor(.secondary)
                     }
                 } else {
                     Text(detected ? (enabled ? L10n.App.Managers.State.enabled.localized : L10n.App.Managers.State.disabled.localized) : L10n.App.Managers.State.notInstalled.localized)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
                 }
 
                 if detected {
@@ -205,6 +229,14 @@ private struct ManagerSectionRow: View {
         }
         .padding(12)
         .helmCardSurface(cornerRadius: 12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isSelected ? HelmTheme.selectionFill : Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(isSelected ? HelmTheme.selectionStroke : Color.clear, lineWidth: 0.9)
+                )
+        )
         .padding(.horizontal, 20)
         .contentShape(Rectangle())
         .onTapGesture {
@@ -214,7 +246,7 @@ private struct ManagerSectionRow: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(localizedManagerDisplayName(manager.id))
         .accessibilityValue([
-            currentHealth.key.localized,
+            health.key.localized,
             detected ? (enabled ? L10n.App.Managers.State.enabled.localized : L10n.App.Managers.State.disabled.localized) : L10n.App.Managers.State.notInstalled.localized,
             L10n.App.Managers.Label.packageCount.localized(with: ["count": packageCount])
         ].joined(separator: ", "))
@@ -252,5 +284,32 @@ struct ManagersView: View {
 
     var body: some View {
         ManagersSectionView()
+    }
+}
+
+private struct ManagerPriorityDropDelegate: DropDelegate {
+    let core: HelmCore
+    let authority: ManagerAuthority
+    let targetManagerId: String
+    @Binding var draggedManagerId: String?
+    @Binding var suppressWindowBackgroundDragging: Bool
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard let draggedManagerId else { return false }
+        core.moveManagerPriority(
+            authority: authority,
+            draggedManagerId: draggedManagerId,
+            targetManagerId: targetManagerId
+        )
+        self.draggedManagerId = nil
+        suppressWindowBackgroundDragging = true
+        return true
+    }
+
+    func dropExited(info: DropInfo) {
+        if !info.hasItemsConforming(to: [UTType.text.identifier]) {
+            draggedManagerId = nil
+            suppressWindowBackgroundDragging = true
+        }
     }
 }

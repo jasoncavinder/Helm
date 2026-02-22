@@ -360,6 +360,59 @@ Scope clarifications:
 
 ---
 
+## Decision 024 — Website Hosting on Cloudflare Pages
+
+**Decision:**
+Helm website hosting is standardized on Cloudflare Pages as the production path.
+
+Operational baseline:
+
+- Root directory: `web/`
+- Build command: `npm ci && npm run build`
+- Output directory: `dist`
+- Framework: Astro (Starlight)
+- Deploy model: GitHub-connected automatic deployments from `main`, plus preview deployments for pull requests/branches
+
+**Rationale:**
+
+- Consolidates production and preview deployments under one managed platform.
+- Reduces custom deployment glue and keeps website hosting aligned with current operational workflow.
+- Supports fast preview validation for docs/website changes.
+
+Repository cleanup follow-up:
+
+- Legacy GitHub Pages workflow/config references are expected to stay removed on `main`; if present on non-main branches, they are treated as temporary branch drift and not production deployment intent.
+
+---
+
+## Decision 025 — Shared Brain Backend: Postgres-First and Provider-Portable
+
+**Decision:**
+For `1.4.x` Shared Brain planning, use a Postgres-backed system-of-record with provider-portable API architecture.
+
+Design constraints:
+
+- Core persistence is Postgres (not provider-specific state stores).
+- Cloudflare Workers may be used as a stateless edge/API layer, but must remain replaceable.
+- Durable Objects / D1 are explicitly out-of-scope as core persistence architecture.
+- Large artifacts (if needed later) use S3-compatible object storage with references/metadata persisted in Postgres.
+
+Expected Postgres primitives:
+
+- constraints + UPSERT for dedupe/idempotency
+- ranking/selection queries (for example best-fix selection)
+- materialized views plus FTS/trigram for aggregation/search
+- optional RLS/advisory locks if multi-tenant isolation/coordination is required
+
+**Rationale:**
+
+- Keeps core backend logic portable across cloud providers.
+- Uses well-understood relational patterns for ranking, dedupe, and queryability.
+- Avoids coupling Shared Brain correctness to a single vendor-specific database model.
+- Preserves local-first value delivery: current releases (`<=0.17.x`) remain backend-independent for security/advisory workflows.
+
+---
+
 ## Summary
 
 Helm prioritizes:

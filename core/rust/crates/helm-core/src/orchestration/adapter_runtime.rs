@@ -9,8 +9,8 @@ use crate::adapters::{
     ManagerAdapter,
 };
 use crate::models::{
-    Capability, CoreError, CoreErrorKind, ManagerAction, ManagerId, TaskId, TaskRecord, TaskStatus,
-    TaskType,
+    Capability, CoreError, CoreErrorKind, ManagerAction, ManagerId, NewTaskLogRecord, TaskId,
+    TaskLogLevel, TaskRecord, TaskStatus, TaskType,
 };
 use crate::orchestration::{
     AdapterExecutionRuntime, AdapterTaskSnapshot, AdapterTaskTerminalState, CancellationMode,
@@ -369,6 +369,34 @@ impl AdapterRuntime {
                 return Err(error);
             }
 
+            if let Err(error) = persist_append_task_log(
+                task_store.clone(),
+                NewTaskLogRecord {
+                    task_id,
+                    manager,
+                    task_type,
+                    status: Some(TaskStatus::Queued),
+                    level: TaskLogLevel::Info,
+                    message: "task queued".to_string(),
+                    created_at: SystemTime::now(),
+                },
+                manager,
+                task_type,
+                action,
+            )
+            .await
+            {
+                tracing::warn!(
+                    manager = ?manager,
+                    task_id = task_id.0,
+                    task_type = ?task_type,
+                    action = ?action,
+                    kind = ?error.kind,
+                    message = %error.message,
+                    "failed to persist queued task log"
+                );
+            }
+
             spawn_terminal_persistence_watcher(PersistenceWatcherContext {
                 execution: self.execution.clone(),
                 task_store: task_store.clone(),
@@ -448,6 +476,23 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
                     let _ = persist_update_task(
                         task_store.clone(),
                         running_record,
+                        manager,
+                        task_type,
+                        action,
+                    )
+                    .await;
+
+                    let _ = persist_append_task_log(
+                        task_store.clone(),
+                        NewTaskLogRecord {
+                            task_id,
+                            manager,
+                            task_type,
+                            status: Some(TaskStatus::Running),
+                            level: TaskLogLevel::Info,
+                            message: "task started".to_string(),
+                            created_at: SystemTime::now(),
+                        },
                         manager,
                         task_type,
                         action,
@@ -541,11 +586,13 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
             manager: snapshot.runtime.manager,
             task_type: snapshot.runtime.task_type,
             status: snapshot.runtime.status,
-            created_at: snapshot.runtime.created_at,
+            // Use terminal timestamp so retention windows for completed/failed tasks
+            // are measured from completion/failure, not from original queue time.
+            created_at: SystemTime::now(),
         };
 
         if let Err(error) = persist_update_task(
-            task_store,
+            task_store.clone(),
             updated,
             snapshot.runtime.manager,
             snapshot.runtime.task_type,
@@ -561,6 +608,39 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
                 kind = ?error.kind,
                 message = %error.message,
                 "failed to persist terminal task status"
+            );
+        }
+
+        let terminal_status = snapshot.runtime.status;
+        let terminal_error_message = snapshot.runtime.error_message.clone();
+        let terminal_level = task_log_level_for_status(terminal_status);
+        let terminal_message = task_log_message_for_status(terminal_status, terminal_error_message);
+
+        if let Err(error) = persist_append_task_log(
+            task_store.clone(),
+            NewTaskLogRecord {
+                task_id: snapshot.runtime.id,
+                manager: snapshot.runtime.manager,
+                task_type: snapshot.runtime.task_type,
+                status: Some(terminal_status),
+                level: terminal_level,
+                message: terminal_message,
+                created_at: SystemTime::now(),
+            },
+            snapshot.runtime.manager,
+            snapshot.runtime.task_type,
+            action,
+        )
+        .await
+        {
+            tracing::warn!(
+                manager = ?manager,
+                task_id = task_id.0,
+                task_type = ?task_type,
+                action = ?action,
+                kind = ?error.kind,
+                message = %error.message,
+                "failed to persist terminal task log"
             );
         }
     });
@@ -689,6 +769,64 @@ async fn persist_update_task(
         TaskStoreOperation::Update,
     )
     .await
+}
+
+async fn persist_append_task_log(
+    task_store: Arc<dyn TaskStore>,
+    entry: NewTaskLogRecord,
+    manager: ManagerId,
+    task_type: TaskType,
+    action: ManagerAction,
+) -> OrchestrationResult<()> {
+    let mut remaining_attempts = TASK_PERSIST_RETRY_ATTEMPTS;
+    loop {
+        let store = task_store.clone();
+        let log_entry = entry.clone();
+        let op_result = tokio::task::spawn_blocking(move || store.append_task_log(&log_entry))
+            .await
+            .map_err(|join_error| CoreError {
+                manager: Some(manager),
+                task: Some(task_type),
+                action: Some(action),
+                kind: CoreErrorKind::Internal,
+                message: format!("task log persistence join failure: {join_error}"),
+            })?;
+
+        match op_result {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                let attributed = attribute_error(error, manager, task_type, action);
+                remaining_attempts = remaining_attempts.saturating_sub(1);
+                if remaining_attempts == 0 || attributed.kind != CoreErrorKind::StorageFailure {
+                    return Err(attributed);
+                }
+
+                tokio::time::sleep(Duration::from_millis(TASK_PERSIST_RETRY_DELAY_MS)).await;
+            }
+        }
+    }
+}
+
+fn task_log_level_for_status(status: TaskStatus) -> TaskLogLevel {
+    match status {
+        TaskStatus::Queued | TaskStatus::Running | TaskStatus::Completed => TaskLogLevel::Info,
+        TaskStatus::Cancelled => TaskLogLevel::Warn,
+        TaskStatus::Failed => TaskLogLevel::Error,
+    }
+}
+
+fn task_log_message_for_status(status: TaskStatus, error_message: Option<String>) -> String {
+    match status {
+        TaskStatus::Queued => "task queued".to_string(),
+        TaskStatus::Running => "task started".to_string(),
+        TaskStatus::Completed => "task completed".to_string(),
+        TaskStatus::Cancelled => error_message
+            .map(|message| format!("task cancelled: {message}"))
+            .unwrap_or_else(|| "task cancelled".to_string()),
+        TaskStatus::Failed => error_message
+            .map(|message| format!("task failed: {message}"))
+            .unwrap_or_else(|| "task failed".to_string()),
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

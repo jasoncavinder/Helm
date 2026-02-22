@@ -3,43 +3,33 @@ import AppKit
 
 struct RedesignPopoverView: View {
     @ObservedObject private var core = HelmCore.shared
+    @ObservedObject private var overviewState = HelmCore.shared.overviewState
     @ObservedObject private var walkthrough = WalkthroughManager.shared
     @EnvironmentObject private var context: ControlCenterContext
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
-    @FocusState private var isOverlaySearchFocused: Bool
     @State private var popoverSearchQuery: String = ""
+    @State private var expandedTaskId: String?
     @State private var activeOverlay: PopoverOverlayRoute?
     let onOpenControlCenter: () -> Void
 
     private var managerRows: [ManagerInfo] {
-        core.visibleManagers
-            .sorted { lhs, rhs in
-                let leftOutdated = core.outdatedCount(forManagerId: lhs.id)
-                let rightOutdated = core.outdatedCount(forManagerId: rhs.id)
-                if leftOutdated == rightOutdated {
-                    return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
-                }
-                return leftOutdated > rightOutdated
-            }
+        overviewState.popoverManagerRows
     }
 
-    private var searchResults: [PackageItem] {
-        let query = popoverSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !query.isEmpty else {
-            return Array(core.allKnownPackages.prefix(10))
-        }
-
-        let localMatches = core.allKnownPackages.filter {
-            $0.name.lowercased().contains(query) || $0.manager.lowercased().contains(query)
-        }
-        let localIds = Set(localMatches.map(\.id))
-        let remoteMatches = core.searchResults.filter { !localIds.contains($0.id) }
-        return Array((localMatches + remoteMatches).prefix(18))
+    private var searchResults: [ConsolidatedPackageItem] {
+        let query = popoverSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        let results = core.filteredPackages(
+            query: query,
+            managerId: nil,
+            statusFilter: nil
+        )
+        let limit = query.isEmpty ? 10 : 18
+        return Array(results.prefix(limit))
     }
 
     private var popoverTasks: [TaskItem] {
-        Array(core.activeTasks.filter(\.isRunning).prefix(4))
+        overviewState.runningTasksTop4
     }
 
     private var overlayTransition: AnyTransition {
@@ -54,7 +44,7 @@ struct RedesignPopoverView: View {
 
     var body: some View {
         ZStack {
-            if !core.hasCompletedOnboarding {
+            if !core.hasCompletedOnboarding || core.requiresLicenseTermsAcceptance {
                 OnboardingContainerView {
                     core.completeOnboarding()
                     core.triggerRefresh()
@@ -67,13 +57,16 @@ struct RedesignPopoverView: View {
             } else {
                 ZStack {
                     popoverBaseContent
-                        .overlay {
-                            if activeOverlay != nil {
-                                Color.black.opacity(colorScheme == .dark ? 0.34 : 0.18)
-                                    .ignoresSafeArea()
-                                    .transition(.opacity)
-                            }
-                        }
+                        .overlay(
+                            Group {
+                                if activeOverlay != nil {
+                                    Color.black.opacity(colorScheme == .dark ? 0.34 : 0.18)
+                                        .ignoresSafeArea()
+                                        .transition(.opacity)
+                                }
+                            },
+                            alignment: .center
+                        )
                         .blur(radius: activeOverlay == nil || accessibilityReduceMotion ? 0 : 0.8)
                         .allowsHitTesting(activeOverlay == nil)
 
@@ -97,9 +90,6 @@ struct RedesignPopoverView: View {
                 .onChange(of: context.popoverOverlayRequest) { route in
                     guard let route else { return }
                     activeOverlay = route
-                    if route == .search {
-                        isOverlaySearchFocused = true
-                    }
                 }
                 .onChange(of: context.popoverOverlayDismissToken) { _ in
                     if activeOverlay != nil {
@@ -108,13 +98,15 @@ struct RedesignPopoverView: View {
                 }
                 .onChange(of: context.popoverSearchFocusToken) { _ in
                     activeOverlay = .search
-                    isOverlaySearchFocused = true
                 }
                 .onChange(of: activeOverlay) { route in
                     context.isPopoverOverlayVisible = route != nil
                     if route != nil {
                         NSCursor.arrow.set()
                     }
+                }
+                .onChange(of: popoverTasks.map { "\($0.id):\($0.status)" }) { _ in
+                    collapseExpandedTaskIfNeeded()
                 }
             }
         }
@@ -132,7 +124,7 @@ struct RedesignPopoverView: View {
     private var popoverBaseContent: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
-                if !core.isConnected || core.failedTaskCount > 0 || !core.outdatedPackages.isEmpty {
+                if !core.isConnected || overviewState.failedTaskCount > 0 || overviewState.outdatedPackagesCount > 0 {
                     PopoverAttentionBanner(onOpenControlCenter: {
                         onOpenControlCenter()
                     })
@@ -144,38 +136,68 @@ struct RedesignPopoverView: View {
                     onSyncSearchQuery: syncSearchQuery,
                     onActivateSearch: {
                         activeOverlay = .search
-                        isOverlaySearchFocused = true
                     }
                 )
                 .spotlightAnchor("searchField")
 
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(L10n.App.Dashboard.title.localized)
-                            .font(.headline.weight(.semibold))
-                        Text(L10n.App.Popover.systemHealth.localized)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                Button {
+                    context.selectedSection = preferredSectionForHealthBadge
+                    onOpenControlCenter()
+                } label: {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(L10n.App.Dashboard.title.localized)
+                                .font(.headline.weight(.semibold))
+                            Text(L10n.App.Popover.systemHealth.localized)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        HealthBadgeView(status: overviewState.aggregateHealth)
                     }
-                    Spacer()
-                    HealthBadgeView(status: core.aggregateHealth)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .helmPointer()
                 .spotlightAnchor("healthBadge")
                 .padding(.top, 4)
 
                 HStack(spacing: 8) {
-                    MetricChipView(
-                        label: L10n.App.Popover.pendingUpdates.localized,
-                        value: core.outdatedPackages.count
-                    )
-                    MetricChipView(
-                        label: L10n.App.Popover.failures.localized,
-                        value: core.failedTaskCount
-                    )
-                    MetricChipView(
-                        label: L10n.App.Popover.runningTasks.localized,
-                        value: core.runningTaskCount
-                    )
+                    Button {
+                        context.selectedSection = .updates
+                        onOpenControlCenter()
+                    } label: {
+                        MetricChipView(
+                            label: L10n.App.Popover.pendingUpdates.localized,
+                            value: overviewState.outdatedPackagesCount
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .helmPointer()
+
+                    Button {
+                        context.selectedSection = .overview
+                        onOpenControlCenter()
+                    } label: {
+                        MetricChipView(
+                            label: L10n.App.Popover.failures.localized,
+                            value: overviewState.failedTaskCount
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .helmPointer()
+
+                    Button {
+                        context.selectedSection = .tasks
+                        onOpenControlCenter()
+                    } label: {
+                        MetricChipView(
+                            label: L10n.App.Popover.runningTasks.localized,
+                            value: overviewState.runningTaskCount
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .helmPointer()
                 }
 
                 managerSnapshotCard
@@ -197,12 +219,12 @@ struct RedesignPopoverView: View {
             LinearGradient(
                 colors: colorScheme == .dark
                     ? [
-                        Color(nsColor: .windowBackgroundColor).opacity(0.9),
-                        Color(nsColor: .underPageBackgroundColor).opacity(0.82)
+                        HelmTheme.surfaceBase.opacity(0.9),
+                        HelmTheme.surfaceElevated.opacity(0.82)
                     ]
                     : [
                         Color.white.opacity(0.98),
-                        Color(nsColor: .windowBackgroundColor).opacity(0.86)
+                        HelmTheme.surfacePanel.opacity(0.86)
                     ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -222,14 +244,14 @@ struct RedesignPopoverView: View {
                 }
                 .buttonStyle(.plain)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundColor(.secondary)
                 .helmPointer()
             }
 
             if managerRows.isEmpty {
                 Text(L10n.App.Dashboard.State.emptyManagers.localized)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
             } else {
                 ForEach(managerRows.prefix(4)) { manager in
                     Button {
@@ -245,10 +267,10 @@ struct RedesignPopoverView: View {
                                 .font(.caption)
                                 .lineLimit(1)
                             Spacer()
-                            Text("\(core.outdatedCount(forManagerId: manager.id))")
+                            Text("\(overviewState.outdatedCountByManager[manager.id, default: 0])")
                                 .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                            HealthBadgeView(status: core.health(forManagerId: manager.id))
+                                .foregroundColor(.secondary)
+                            HealthBadgeView(status: overviewState.managerHealthById[manager.id] ?? .healthy)
                         }
                         .contentShape(Rectangle())
                     }
@@ -256,7 +278,7 @@ struct RedesignPopoverView: View {
                     .helmPointer()
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel(localizedManagerDisplayName(manager.id))
-                    .accessibilityValue("\(core.outdatedCount(forManagerId: manager.id)) \(L10n.App.Packages.Filter.upgradable.localized)")
+                    .accessibilityValue("\(overviewState.outdatedCountByManager[manager.id, default: 0]) \(L10n.App.Packages.Filter.upgradable.localized)")
                 }
             }
         }
@@ -278,7 +300,7 @@ struct RedesignPopoverView: View {
                         .font(.caption)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
+                .foregroundColor(.secondary)
                 .helmPointer()
                 .accessibilityLabel(L10n.App.Action.openControlCenter.localized)
             }
@@ -286,10 +308,23 @@ struct RedesignPopoverView: View {
             if popoverTasks.isEmpty {
                 Text(L10n.App.Tasks.noRecentTasks.localized)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
             } else {
                 ForEach(popoverTasks) { task in
-                    TaskRowView(task: task, onCancel: task.isRunning ? { core.cancelTask(task) } : nil)
+                    TaskRowView(
+                        task: task,
+                        onCancel: task.isRunning ? { core.cancelTask(task) } : nil,
+                        canExpandDetails: task.supportsInlineDetails,
+                        isExpanded: expandedTaskId == task.id,
+                        outputSurface: .popover,
+                        onToggleDetails: {
+                            if expandedTaskId == task.id {
+                                expandedTaskId = nil
+                            } else {
+                                expandedTaskId = task.id
+                            }
+                        }
+                    )
                 }
             }
         }
@@ -304,7 +339,7 @@ struct RedesignPopoverView: View {
             }
             .buttonStyle(.plain)
             .font(.caption2)
-            .foregroundStyle(.secondary)
+            .foregroundColor(.secondary)
             .helmPointer()
 
             Spacer(minLength: 10)
@@ -329,7 +364,6 @@ struct RedesignPopoverView: View {
             ) {
                 PopoverSearchOverlayContent(
                     popoverSearchQuery: $popoverSearchQuery,
-                    isOverlaySearchFocused: $isOverlaySearchFocused,
                     searchResults: searchResults,
                     onSyncSearchQuery: syncSearchQuery,
                     onOpenControlCenter: onOpenControlCenter,
@@ -377,6 +411,16 @@ struct RedesignPopoverView: View {
         context.popoverOverlayRequest = nil
     }
 
+    private func collapseExpandedTaskIfNeeded() {
+        guard let expandedTaskId else { return }
+        let stillVisible = popoverTasks.contains {
+            $0.id == expandedTaskId && $0.supportsInlineDetails
+        }
+        if !stillVisible {
+            self.expandedTaskId = nil
+        }
+    }
+
     private func syncSearchQuery(_ query: String) {
         context.searchQuery = query
         core.searchText = query
@@ -387,6 +431,19 @@ struct RedesignPopoverView: View {
         } else if activeOverlay == nil || activeOverlay == .search {
             activeOverlay = .search
         }
+    }
+
+    private var preferredSectionForHealthBadge: ControlCenterSection {
+        if overviewState.failedTaskCount > 0 {
+            return .tasks
+        }
+        if overviewState.outdatedPackagesCount > 0 {
+            return .updates
+        }
+        if overviewState.runningTaskCount > 0 || overviewState.isRefreshing {
+            return .tasks
+        }
+        return .overview
     }
 
     @ViewBuilder

@@ -8,7 +8,12 @@ extension HelmCore {
 
     func fetchPackages() {
         guard let svc = service() else { return }
-        withTimeout(30, operation: { completion in
+        withTimeout(
+            30,
+            source: "core.fetching",
+            action: "listInstalledPackages",
+            taskType: "refresh",
+            operation: { completion in
             svc.listInstalledPackages { completion($0) }
         }) { [weak self] jsonString in
             guard let jsonString = jsonString, let data = jsonString.data(using: String.Encoding.utf8) else { return }
@@ -32,14 +37,23 @@ extension HelmCore {
                 }
             } catch {
                 logger.error("fetchPackages: decode failed (\(data.count) bytes): \(error)")
-                DispatchQueue.main.async { self?.lastError = L10n.Common.error.localized }
+                self?.recordLastError(
+                    source: "core.fetching",
+                    action: "listInstalledPackages.decode",
+                    taskType: "refresh"
+                )
             }
         }
     }
 
     func fetchOutdatedPackages() {
         guard let svc = service() else { return }
-        withTimeout(30, operation: { completion in
+        withTimeout(
+            30,
+            source: "core.fetching",
+            action: "listOutdatedPackages",
+            taskType: "refresh",
+            operation: { completion in
             svc.listOutdatedPackages { completion($0) }
         }) { [weak self] jsonString in
             guard let jsonString = jsonString, let data = jsonString.data(using: String.Encoding.utf8) else { return }
@@ -71,7 +85,11 @@ extension HelmCore {
                 }
             } catch {
                 logger.error("fetchOutdatedPackages: decode failed (\(data.count) bytes): \(error)")
-                DispatchQueue.main.async { self?.lastError = L10n.Common.error.localized }
+                self?.recordLastError(
+                    source: "core.fetching",
+                    action: "listOutdatedPackages.decode",
+                    taskType: "refresh"
+                )
             }
         }
     }
@@ -79,7 +97,12 @@ extension HelmCore {
     // swiftlint:disable:next function_body_length
     func fetchTasks() {
         guard let svc = service() else { return }
-        withTimeout(30, operation: { completion in
+        withTimeout(
+            30,
+            source: "core.fetching",
+            action: "listTasks",
+            taskType: "refresh",
+            operation: { completion in
             svc.listTasks { completion($0) }
         }) { [weak self] jsonString in
             guard let jsonString = jsonString, let data = jsonString.data(using: String.Encoding.utf8) else { return }
@@ -220,7 +243,11 @@ extension HelmCore {
                 }
             } catch {
                 logger.error("fetchTasks: decode failed (\(data.count) bytes): \(error)")
-                DispatchQueue.main.async { self?.lastError = L10n.Common.error.localized }
+                self?.recordLastError(
+                    source: "core.fetching",
+                    action: "listTasks.decode",
+                    taskType: "refresh"
+                )
             }
         }
     }
@@ -273,8 +300,12 @@ extension HelmCore {
                 logger.error("fetchSearchResults: decode failed (\(data.count) bytes): \(error)")
                 DispatchQueue.main.async {
                     self?.searchResults = []
-                    self?.lastError = L10n.Common.error.localized
                 }
+                self?.recordLastError(
+                    source: "core.fetching",
+                    action: "searchLocal.decode",
+                    taskType: "search"
+                )
             }
         }
     }
@@ -337,6 +368,11 @@ extension HelmCore {
                 }
             } catch {
                 logger.error("refreshCachedAvailablePackages: decode failed (\(data.count) bytes): \(error)")
+                self?.recordLastError(
+                    source: "core.fetching",
+                    action: "refreshCachedAvailablePackages.decode",
+                    taskType: "search"
+                )
             }
         }
     }
@@ -345,7 +381,12 @@ extension HelmCore {
 
     func fetchManagerStatus() {
         guard let svc = service() else { return }
-        withTimeout(30, operation: { completion in
+        withTimeout(
+            30,
+            source: "core.fetching",
+            action: "listManagerStatus",
+            taskType: "refresh",
+            operation: { completion in
             svc.listManagerStatus { completion($0) }
         }) { [weak self] jsonString in
             guard let jsonString = jsonString, let data = jsonString.data(using: .utf8) else { return }
@@ -364,20 +405,38 @@ extension HelmCore {
                 }
             } catch {
                 logger.error("fetchManagerStatus: decode failed (\(data.count) bytes): \(error)")
-                DispatchQueue.main.async { self?.lastError = L10n.Common.error.localized }
+                self?.recordLastError(
+                    source: "core.fetching",
+                    action: "listManagerStatus.decode",
+                    taskType: "refresh"
+                )
             }
         }
     }
 
     func fetchTaskOutput(taskId: String, completion: @escaping (CoreTaskOutputRecord?) -> Void) {
-        guard let numericTaskId = Int64(taskId), let svc = service() else {
+        guard let numericTaskId = Int64(taskId) else {
+            completion(nil)
+            return
+        }
+        guard let svc = service() else {
+            recordLastError(
+                source: "core.fetching",
+                action: "getTaskOutput.service_unavailable",
+                taskType: "diagnostics"
+            )
             completion(nil)
             return
         }
 
-        withTimeout(30, operation: { callback in
+        withTimeout(
+            30,
+            source: "core.fetching",
+            action: "getTaskOutput",
+            taskType: "diagnostics",
+            operation: { callback in
             svc.getTaskOutput(taskId: numericTaskId) { callback($0) }
-        }) { jsonString in
+        }) { [weak self] jsonString in
             guard let jsonString = jsonString,
                   let data = jsonString.data(using: .utf8) else {
                 completion(nil)
@@ -391,6 +450,63 @@ extension HelmCore {
                 completion(output)
             } catch {
                 logger.error("fetchTaskOutput: decode failed (\(data.count) bytes): \(error)")
+                self?.recordLastError(
+                    source: "core.fetching",
+                    action: "getTaskOutput.decode",
+                    taskType: "diagnostics"
+                )
+                completion(nil)
+            }
+        }
+    }
+
+    func fetchTaskLogs(taskId: String, limit: Int, completion: @escaping ([CoreTaskLogRecord]?) -> Void) {
+        guard let numericTaskId = Int64(taskId) else {
+            completion(nil)
+            return
+        }
+        guard let svc = service() else {
+            recordLastError(
+                source: "core.fetching",
+                action: "listTaskLogs.service_unavailable",
+                taskType: "diagnostics"
+            )
+            completion(nil)
+            return
+        }
+
+        let clampedLimit = max(limit, 0)
+        if clampedLimit == 0 {
+            completion([])
+            return
+        }
+
+        withTimeout(
+            30,
+            source: "core.fetching",
+            action: "listTaskLogs",
+            taskType: "diagnostics",
+            operation: { callback in
+            svc.listTaskLogs(taskId: numericTaskId, limit: Int64(clampedLimit)) { callback($0) }
+        }) { [weak self] jsonString in
+            guard let jsonString = jsonString,
+                  let data = jsonString.data(using: .utf8) else {
+                completion(nil)
+                return
+            }
+
+            do {
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                let logs = try decoder.decode([CoreTaskLogRecord].self, from: data)
+                completion(logs)
+            } catch {
+                logger.error("fetchTaskLogs: decode failed (\(data.count) bytes): \(error)")
+                self?.recordLastError(
+                    source: "core.fetching",
+                    action: "listTaskLogs.decode",
+                    taskType: "diagnostics"
+                )
                 completion(nil)
             }
         }

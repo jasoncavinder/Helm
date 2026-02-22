@@ -203,3 +203,69 @@ struct UpgradePreviewPlanner {
         return true
     }
 }
+
+struct PackageConsolidationPolicy {
+    static func statusRank(_ rawStatus: String) -> Int {
+        switch rawStatus.lowercased() {
+        case "upgradable":
+            return 0
+        case "installed":
+            return 1
+        case "available":
+            return 2
+        default:
+            return 3
+        }
+    }
+
+    static func sortedManagerIds(
+        _ managerIds: [String],
+        localizedManagerName: (String) -> String,
+        priorityRank: ((String) -> Int)? = nil
+    ) -> [String] {
+        Array(Set(managerIds)).sorted { lhs, rhs in
+            if let priorityRank {
+                let lhsPriority = priorityRank(lhs)
+                let rhsPriority = priorityRank(rhs)
+                if lhsPriority != rhsPriority {
+                    return lhsPriority < rhsPriority
+                }
+            }
+            return localizedManagerName(lhs).localizedCaseInsensitiveCompare(localizedManagerName(rhs)) == .orderedAscending
+        }
+    }
+
+    static func shouldPrefer(
+        lhsStatus: String,
+        rhsStatus: String,
+        lhsPinned: Bool,
+        rhsPinned: Bool,
+        lhsRestartRequired: Bool,
+        rhsRestartRequired: Bool,
+        lhsManagerId: String,
+        rhsManagerId: String,
+        localizedManagerName: (String) -> String,
+        priorityRank: ((String) -> Int)? = nil
+    ) -> Bool {
+        let lhsRank = statusRank(lhsStatus)
+        let rhsRank = statusRank(rhsStatus)
+        if lhsRank != rhsRank {
+            return lhsRank < rhsRank
+        }
+        if lhsPinned != rhsPinned {
+            return lhsPinned
+        }
+        if lhsRestartRequired != rhsRestartRequired {
+            return lhsRestartRequired
+        }
+        if let priorityRank {
+            let lhsPriority = priorityRank(lhsManagerId)
+            let rhsPriority = priorityRank(rhsManagerId)
+            if lhsPriority != rhsPriority {
+                return lhsPriority < rhsPriority
+            }
+        }
+        return localizedManagerName(lhsManagerId)
+            .localizedCaseInsensitiveCompare(localizedManagerName(rhsManagerId)) == .orderedAscending
+    }
+}

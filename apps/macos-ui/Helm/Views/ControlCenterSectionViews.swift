@@ -1,44 +1,67 @@
 import SwiftUI
 
 struct RedesignOverviewSectionView: View {
-    @ObservedObject private var core = HelmCore.shared
+    private let core = HelmCore.shared
+    @ObservedObject private var overviewState = HelmCore.shared.overviewState
     @EnvironmentObject private var context: ControlCenterContext
+    @State private var expandedTaskId: String?
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            LazyVStack(alignment: .leading, spacing: 18) {
                 HStack {
                     Text(ControlCenterSection.overview.title)
                         .font(.title2.weight(.semibold))
                     Spacer()
-                    HealthBadgeView(status: core.aggregateHealth)
+                    HealthBadgeView(status: overviewState.aggregateHealth)
                 }
 
                 HStack(spacing: 14) {
-                    MetricCardView(
-                        title: L10n.App.Popover.pendingUpdates.localized,
-                        value: core.outdatedPackages.count
-                    )
-                    MetricCardView(
-                        title: L10n.App.Popover.failures.localized,
-                        value: core.failedTaskCount
-                    )
-                    MetricCardView(
-                        title: L10n.App.Popover.runningTasks.localized,
-                        value: core.runningTaskCount
-                    )
+                    Button {
+                        context.selectedSection = .updates
+                    } label: {
+                        MetricCardView(
+                            title: L10n.App.Popover.pendingUpdates.localized,
+                            value: overviewState.outdatedPackagesCount
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .helmPointer()
+
+                    Button {
+                        context.selectedSection = .overview
+                    } label: {
+                        MetricCardView(
+                            title: L10n.App.Popover.failures.localized,
+                            value: overviewState.failedTaskCount
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .helmPointer()
+
+                    Button {
+                        context.selectedSection = .tasks
+                    } label: {
+                        MetricCardView(
+                            title: L10n.App.Popover.runningTasks.localized,
+                            value: overviewState.runningTaskCount
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .helmPointer()
                 }
 
                 Text(L10n.App.Overview.managerHealth.localized)
                     .font(.headline)
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], spacing: 12) {
-                    ForEach(core.visibleManagers) { manager in
+                    ForEach(overviewState.visibleManagers) { manager in
                         ManagerHealthCardView(
                             title: localizedManagerDisplayName(manager.id),
                             authority: manager.authority,
-                            status: core.health(forManagerId: manager.id),
-                            outdatedCount: core.outdatedCount(forManagerId: manager.id)
+                            status: overviewState.managerHealthById[manager.id] ?? .healthy,
+                            outdatedCount: overviewState.outdatedCountByManager[manager.id, default: 0],
+                            isSelected: context.selectedManagerId == manager.id
                         )
                         .onTapGesture {
                             context.selectedManagerId = manager.id
@@ -53,22 +76,36 @@ struct RedesignOverviewSectionView: View {
                 Text(L10n.App.Overview.recentTasks.localized)
                     .font(.headline)
 
-                if core.activeTasks.isEmpty {
+                if overviewState.recentTasksTop10.isEmpty {
                     Text(L10n.App.Tasks.noRecentTasks.localized)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
                 } else {
                     VStack(spacing: 0) {
-                        ForEach(Array(core.activeTasks.prefix(10))) { task in
-                            TaskRowView(task: task, onCancel: task.isRunning ? { core.cancelTask(task) } : nil)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
+                        ForEach(overviewState.recentTasksTop10) { task in
+                            TaskRowView(
+                                task: task,
+                                onCancel: task.isRunning ? { core.cancelTask(task) } : nil,
+                                canExpandDetails: task.supportsInlineDetails,
+                                isExpanded: expandedTaskId == task.id,
+                                isSelected: context.selectedTaskId == task.id,
+                                onToggleDetails: {
+                                    if expandedTaskId == task.id {
+                                        expandedTaskId = nil
+                                    } else {
+                                        expandedTaskId = task.id
+                                    }
+                                },
+                                onSelect: {
                                     context.selectedTaskId = task.id
                                     context.selectedPackageId = nil
                                     context.selectedManagerId = task.managerId
                                     context.selectedUpgradePlanStepId = nil
+                                    if !task.supportsInlineDetails {
+                                        expandedTaskId = nil
+                                    }
                                 }
-                                .helmPointer()
+                            )
                             Divider()
                         }
                     }
@@ -76,6 +113,24 @@ struct RedesignOverviewSectionView: View {
                 }
             }
             .padding(20)
+        }
+        .onChange(of: overviewState.recentTasksTop10.map { "\($0.id):\($0.status)" }) { _ in
+            collapseExpandedTaskIfNeeded()
+        }
+        .onChange(of: context.selectedTaskId) { selectedTaskId in
+            if expandedTaskId != selectedTaskId {
+                expandedTaskId = nil
+            }
+        }
+    }
+
+    private func collapseExpandedTaskIfNeeded() {
+        guard let expandedTaskId else { return }
+        let stillVisible = overviewState.recentTasksTop10.contains {
+            $0.id == expandedTaskId && $0.supportsInlineDetails
+        }
+        if !stillVisible {
+            self.expandedTaskId = nil
         }
     }
 }
@@ -198,7 +253,7 @@ struct RedesignUpdatesSectionView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            LazyVStack(alignment: .leading, spacing: 16) {
                 HStack {
                     Text(ControlCenterSection.updates.title)
                         .font(.title2.weight(.semibold))
@@ -246,11 +301,11 @@ struct RedesignUpdatesSectionView: View {
                             Text("\(row.managerCount)")
                                 .font(.body.monospacedDigit())
                             Text(L10n.App.Updates.managers.localized)
-                                .foregroundStyle(.secondary)
+                                .foregroundColor(.secondary)
                             Text("\(row.packageCount)")
                                 .font(.body.monospacedDigit())
                             Text(L10n.App.Updates.packages.localized)
-                                .foregroundStyle(.secondary)
+                                .foregroundColor(.secondary)
                         }
                         .padding(.vertical, 4)
                     }
@@ -265,7 +320,7 @@ struct RedesignUpdatesSectionView: View {
                         Spacer()
                         Text("\(scopedInFlightStepCount)")
                             .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
+                            .foregroundColor(.secondary)
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
@@ -275,9 +330,9 @@ struct RedesignUpdatesSectionView: View {
                 if visiblePlanSteps.isEmpty {
                     Text(L10n.App.Tasks.noRecentTasks.localized)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
                 } else {
-                    VStack(spacing: 0) {
+                    LazyVStack(spacing: 0) {
                         ForEach(Array(visiblePlanSteps.enumerated()), id: \.element.id) { index, step in
                             Button {
                                 context.selectedUpgradePlanStepId = step.id
@@ -288,20 +343,20 @@ struct RedesignUpdatesSectionView: View {
                                 HStack(spacing: 8) {
                                     Text("\(index + 1).")
                                         .font(.caption.monospacedDigit())
-                                        .foregroundStyle(.secondary)
+                                        .foregroundColor(.secondary)
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(planStepTitle(step))
                                             .font(.subheadline.weight(.medium))
                                             .lineLimit(1)
                                         Text(localizedManagerDisplayName(step.managerId))
                                             .font(.caption)
-                                            .foregroundStyle(.secondary)
+                                            .foregroundColor(.secondary)
                                             .lineLimit(1)
                                     }
                                     Spacer()
                                     Text(core.localizedUpgradePlanStatus(projectedStatus(step)))
                                         .font(.caption)
-                                        .foregroundStyle(
+                                        .foregroundColor(
                                             projectedStatus(step).lowercased() == "failed"
                                                 ? Color.red
                                                 : Color.secondary
@@ -342,10 +397,10 @@ struct RedesignUpdatesSectionView: View {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(core.localizedUpgradePlanFailureCause(for: group))
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundColor(.secondary)
 
                                 Text(packageSummary(group.packageNames, managerId: group.managerId))
-                                    .font(.caption.monospaced())
+                                    .font(.caption.monospacedDigit())
                                     .lineLimit(2)
 
                                 HStack {
@@ -357,7 +412,7 @@ struct RedesignUpdatesSectionView: View {
                                     Spacer()
                                     Text(localizedManagerDisplayName(group.managerId))
                                         .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundColor(.secondary)
                                 }
                             }
                             .padding(10)
@@ -416,10 +471,10 @@ struct RedesignUpdatesSectionView: View {
     private func riskRow(flag: String, active: Bool) -> some View {
         HStack(spacing: 8) {
             Image(systemName: active ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(active ? HelmTheme.stateAttention : HelmTheme.textSecondary)
+                .foregroundColor(active ? HelmTheme.stateAttention : HelmTheme.textSecondary)
             Text(flag)
                 .font(.subheadline)
-                .foregroundStyle(active ? HelmTheme.textPrimary : HelmTheme.textSecondary)
+                .foregroundColor(active ? HelmTheme.textPrimary : HelmTheme.textSecondary)
         }
     }
 }
@@ -427,7 +482,7 @@ struct RedesignUpdatesSectionView: View {
 struct RedesignUpgradeSheetView: View {
     @ObservedObject private var core = HelmCore.shared
     @EnvironmentObject private var context: ControlCenterContext
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.presentationMode) private var presentationMode
     @State private var includeOsUpdates = false
 
     private var noOsCount: Int {
@@ -460,7 +515,7 @@ struct RedesignUpgradeSheetView: View {
             HStack {
                 Button(L10n.Common.cancel.localized) {
                     context.showUpgradeSheet = false
-                    dismiss()
+                    presentationMode.wrappedValue.dismiss()
                 }
                 .buttonStyle(HelmSecondaryButtonStyle())
                 Spacer()
@@ -470,7 +525,7 @@ struct RedesignUpgradeSheetView: View {
                 Button(L10n.App.Action.runPlan.localized) {
                     core.upgradeAll(includePinned: false, allowOsUpdates: includeOsUpdates)
                     context.showUpgradeSheet = false
-                    dismiss()
+                    presentationMode.wrappedValue.dismiss()
                 }
                 .buttonStyle(HelmPrimaryButtonStyle())
                 .disabled((includeOsUpdates ? withOsCount : noOsCount) == 0)
@@ -489,7 +544,7 @@ struct MetricCardView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundColor(.secondary)
             Text("\(value)")
                 .font(.title3.monospacedDigit().weight(.semibold))
         }
@@ -507,6 +562,7 @@ struct ManagerHealthCardView: View {
     let authority: ManagerAuthority
     let status: OperationalHealth
     let outdatedCount: Int
+    let isSelected: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -520,20 +576,28 @@ struct ManagerHealthCardView: View {
             HStack(spacing: 6) {
                 Text(authority.key.localized)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
                 Text("|")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
                 Text("\(outdatedCount)")
                     .font(.caption.monospacedDigit())
                 Text(L10n.App.Packages.Filter.upgradable.localized)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
             }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .helmCardSurface(cornerRadius: 12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isSelected ? HelmTheme.selectionFill : Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(isSelected ? HelmTheme.selectionStroke : Color.clear, lineWidth: 0.9)
+                )
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title), \(authority.key.localized)")
         .accessibilityValue("\(status.key.localized), \(outdatedCount) \(L10n.App.Packages.Filter.upgradable.localized)")

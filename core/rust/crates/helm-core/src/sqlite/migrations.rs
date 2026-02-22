@@ -146,12 +146,41 @@ DROP TABLE IF EXISTS package_keg_policies;
 "#,
 };
 
-const MIGRATIONS: [SqliteMigration; 5] = [
+const MIGRATION_0006: SqliteMigration = SqliteMigration {
+    version: 6,
+    name: "add_task_log_records",
+    up_sql: r#"
+CREATE TABLE IF NOT EXISTS task_log_records (
+    log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL,
+    manager_id TEXT NOT NULL,
+    task_type TEXT NOT NULL,
+    status TEXT,
+    level TEXT NOT NULL,
+    message TEXT NOT NULL,
+    created_at_unix INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_log_records_task_time
+    ON task_log_records (task_id, created_at_unix DESC, log_id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_task_log_records_created_at
+    ON task_log_records (created_at_unix);
+"#,
+    down_sql: r#"
+DROP INDEX IF EXISTS idx_task_log_records_created_at;
+DROP INDEX IF EXISTS idx_task_log_records_task_time;
+DROP TABLE IF EXISTS task_log_records;
+"#,
+};
+
+const MIGRATIONS: [SqliteMigration; 6] = [
     MIGRATION_0001,
     MIGRATION_0002,
     MIGRATION_0003,
     MIGRATION_0004,
     MIGRATION_0005,
+    MIGRATION_0006,
 ];
 
 pub fn migrations() -> &'static [SqliteMigration] {

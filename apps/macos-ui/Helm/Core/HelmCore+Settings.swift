@@ -2,11 +2,69 @@ import AppKit
 import Foundation
 import os.log
 import Darwin
+import ServiceManagement
 
 private let logger = Logger(subsystem: "com.jasoncavinder.Helm", category: "core.settings")
 
 extension HelmCore {
     static let allManagersScopeId = UpgradePreviewPlanner.allManagersScopeId
+
+    // MARK: - App Lifecycle
+
+    var launchAtLoginSupported: Bool {
+        if #available(macOS 13.0, *) {
+            return true
+        }
+        return false
+    }
+
+    func refreshLaunchAtLogin() {
+        guard launchAtLoginSupported else {
+            DispatchQueue.main.async {
+                UserDefaults.standard.removeObject(forKey: Self.launchAtLoginEnabledKey)
+                self.launchAtLoginEnabled = false
+            }
+            return
+        }
+
+        if #available(macOS 13.0, *) {
+            let enabled = SMAppService.mainApp.status == .enabled
+            DispatchQueue.main.async {
+                UserDefaults.standard.set(enabled, forKey: Self.launchAtLoginEnabledKey)
+                self.launchAtLoginEnabled = enabled
+            }
+        }
+    }
+
+    func setLaunchAtLogin(_ enabled: Bool) {
+        guard launchAtLoginSupported else {
+            recordLastError(
+                source: "core.settings",
+                action: "setLaunchAtLogin.unsupported",
+                taskType: "settings"
+            )
+            return
+        }
+
+        if #available(macOS 13.0, *) {
+            do {
+                if enabled {
+                    try SMAppService.mainApp.register()
+                } else {
+                    try SMAppService.mainApp.unregister()
+                }
+            } catch {
+                logger.error("setLaunchAtLogin(\(enabled)) failed: \(error.localizedDescription)")
+                recordLastError(
+                    source: "core.settings",
+                    action: "setLaunchAtLogin",
+                    taskType: "settings"
+                )
+            }
+        }
+
+        refreshLaunchAtLogin()
+    }
 
     // MARK: - Safe Mode
 
@@ -19,12 +77,25 @@ extension HelmCore {
     }
 
     func setSafeMode(_ enabled: Bool) {
-        service()?.setSafeMode(enabled: enabled) { [weak self] success in
+        guard let service = service() else {
+            recordLastError(
+                source: "core.settings",
+                action: "setSafeMode.service_unavailable",
+                taskType: "settings"
+            )
+            return
+        }
+        service.setSafeMode(enabled: enabled) { [weak self] success in
             DispatchQueue.main.async {
                 if success {
                     self?.safeModeEnabled = enabled
                 } else {
                     logger.error("setSafeMode(\(enabled)) failed")
+                    self?.recordLastError(
+                        source: "core.settings",
+                        action: "setSafeMode",
+                        taskType: "settings"
+                    )
                 }
             }
         }
@@ -41,12 +112,27 @@ extension HelmCore {
     }
 
     func setHomebrewKegAutoCleanup(_ enabled: Bool) {
-        service()?.setHomebrewKegAutoCleanup(enabled: enabled) { [weak self] success in
+        guard let service = service() else {
+            recordLastError(
+                source: "core.settings",
+                action: "setHomebrewKegAutoCleanup.service_unavailable",
+                managerId: "homebrew_formula",
+                taskType: "settings"
+            )
+            return
+        }
+        service.setHomebrewKegAutoCleanup(enabled: enabled) { [weak self] success in
             DispatchQueue.main.async {
                 if success {
                     self?.homebrewKegAutoCleanupEnabled = enabled
                 } else {
                     logger.error("setHomebrewKegAutoCleanup(\(enabled)) failed")
+                    self?.recordLastError(
+                        source: "core.settings",
+                        action: "setHomebrewKegAutoCleanup",
+                        managerId: "homebrew_formula",
+                        taskType: "settings"
+                    )
                 }
             }
         }
@@ -72,6 +158,12 @@ extension HelmCore {
                 }
             } catch {
                 logger.error("Failed to decode package keg policies: \(error)")
+                self?.recordLastError(
+                    source: "core.settings",
+                    action: "listPackageKegPolicies.decode",
+                    managerId: "homebrew_formula",
+                    taskType: "settings"
+                )
             }
         }
     }
@@ -102,11 +194,27 @@ extension HelmCore {
             policyMode = 1
         }
 
-        service()?.setPackageKegPolicy(managerId: package.managerId, packageName: package.name, policyMode: policyMode) { [weak self] success in
+        guard let service = service() else {
+            recordLastError(
+                source: "core.settings",
+                action: "setPackageKegPolicy.service_unavailable",
+                managerId: package.managerId,
+                taskType: "settings"
+            )
+            return
+        }
+
+        service.setPackageKegPolicy(managerId: package.managerId, packageName: package.name, policyMode: policyMode) { [weak self] success in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 guard success else {
                     logger.error("setPackageKegPolicy(\(package.managerId):\(package.name), \(policyMode)) failed")
+                    self.recordLastError(
+                        source: "core.settings",
+                        action: "setPackageKegPolicy",
+                        managerId: package.managerId,
+                        taskType: "settings"
+                    )
                     return
                 }
                 switch selection {
@@ -132,15 +240,36 @@ extension HelmCore {
             }
             self.rebuildUpgradePlanFailureGroups()
         }
-        service()?.upgradeAll(includePinned: includePinned, allowOsUpdates: allowOsUpdates) { success in
+        guard let service = service() else {
+            recordLastError(
+                source: "core.settings",
+                action: "upgradeAll.service_unavailable",
+                taskType: "upgrade"
+            )
+            return
+        }
+        service.upgradeAll(includePinned: includePinned, allowOsUpdates: allowOsUpdates) { success in
             if !success {
                 logger.error("upgradeAll(includePinned: \(includePinned), allowOsUpdates: \(allowOsUpdates)) failed")
+                self.recordLastError(
+                    source: "core.settings",
+                    action: "upgradeAll",
+                    taskType: "upgrade"
+                )
             }
         }
     }
 
     func refreshUpgradePlan(includePinned: Bool = false, allowOsUpdates: Bool = false) {
-        service()?.previewUpgradePlan(includePinned: includePinned, allowOsUpdates: allowOsUpdates) { [weak self] jsonString in
+        guard let service = service() else {
+            recordLastError(
+                source: "core.settings",
+                action: "previewUpgradePlan.service_unavailable",
+                taskType: "upgrade"
+            )
+            return
+        }
+        service.previewUpgradePlan(includePinned: includePinned, allowOsUpdates: allowOsUpdates) { [weak self] jsonString in
             guard let self = self else { return }
             guard let jsonString, let data = jsonString.data(using: .utf8) else { return }
 
@@ -158,6 +287,11 @@ extension HelmCore {
                 }
             } catch {
                 logger.error("refreshUpgradePlan: decode failed (\(data.count) bytes): \(error)")
+                self.recordLastError(
+                    source: "core.settings",
+                    action: "previewUpgradePlan.decode",
+                    taskType: "upgrade"
+                )
             }
         }
     }
@@ -578,6 +712,7 @@ extension HelmCore {
 
 struct HelmSupport {
     static let supportEmail = "jason.cavinder+helm@gmail.com"
+    static let licenseTermsURL = URL(string: "https://github.com/jasoncavinder/Helm/blob/main/LICENSE")!
     static let gitHubSponsorsURL = URL(string: "https://github.com/sponsors/jasoncavinder")!
     static let gitHubNewIssueURL = URL(string: "https://github.com/jasoncavinder/Helm/issues/new")!
     static let gitHubBugReportURL = URL(string: "https://github.com/jasoncavinder/Helm/issues/new?template=bug_report.yml")!
@@ -587,7 +722,77 @@ struct HelmSupport {
     static let koFiURL = URL(string: "https://ko-fi.com/jasoncavinder")!
     static let payPalURL = URL(string: "https://paypal.me/jasoncavinder")!
     static let venmoURL = URL(string: "https://www.venmo.com/u/JasonCavinder")!
-    
+
+    private struct SupportExportPayload: Codable {
+        let schemaVersion: String
+        let generatedAt: String
+        let app: SupportExportAppContext
+        let system: SupportExportSystemContext
+        let lastError: String?
+        let lastErrorAttribution: SupportExportErrorAttribution?
+        let managers: [SupportExportManagerContext]
+        let tasks: [SupportExportTaskContext]
+        let failures: [SupportExportFailureContext]
+        let redaction: SupportExportRedactionContext
+    }
+
+    private struct SupportExportAppContext: Codable {
+        let version: String
+        let locale: String
+        let distributionChannel: String
+        let safeModeEnabled: Bool
+        let managerCount: Int
+        let outdatedCount: Int
+        let runningTaskCount: Int
+    }
+
+    private struct SupportExportSystemContext: Codable {
+        let macOSVersion: String
+        let architecture: String
+    }
+
+    private struct SupportExportManagerContext: Codable {
+        let id: String
+        let displayName: String
+        let enabled: Bool
+        let detected: Bool
+        let version: String?
+        let executablePath: String?
+        let authority: String
+    }
+
+    private struct SupportExportTaskContext: Codable {
+        let id: String
+        let status: String
+        let managerId: String?
+        let taskType: String?
+        let description: String
+        let labelKey: String?
+        let labelArgs: [String: String]?
+    }
+
+    private struct SupportExportFailureContext: Codable {
+        let taskId: String
+        let managerId: String?
+        let taskType: String?
+        let status: String
+        let description: String
+        let suggestedCommand: String?
+    }
+
+    private struct SupportExportRedactionContext: Codable {
+        let appliedRules: [String]
+        let replacementCount: Int
+    }
+
+    private struct SupportExportErrorAttribution: Codable {
+        let source: String
+        let action: String
+        let managerId: String?
+        let taskType: String?
+        let occurredAtUnix: Int64
+    }
+
     struct FeedbackBody {
         let type: String
         let description: String
@@ -612,6 +817,132 @@ struct HelmSupport {
             \(diagnostics)
             """
         }
+    }
+
+    private static func machineArchitecture() -> String {
+        var sysInfo = utsname()
+        uname(&sysInfo)
+        return withUnsafeBytes(of: &sysInfo.machine) { buf in
+            guard let baseAddress = buf.baseAddress else { return "" }
+            return String(cString: baseAddress.assumingMemoryBound(to: CChar.self))
+        }
+    }
+
+    private static func buildStructuredDiagnosticsPayload() -> SupportExportPayload {
+        let core = HelmCore.shared
+        var redactor = SupportRedactor()
+
+        let sortedManagers = core.managerStatuses.map { id, status in
+            let manager = ManagerInfo.find(byId: id)
+            let authorityRank: Int
+            switch manager?.authority {
+            case .authoritative:
+                authorityRank = 0
+            case .standard, .none:
+                authorityRank = 1
+            case .guarded:
+                authorityRank = 2
+            }
+            return (
+                id: id,
+                status: status,
+                authorityRank: authorityRank,
+                sortName: manager?.displayName ?? id,
+                authorityName: manager?.authority.key.localized ?? "standard"
+            )
+        }.sorted { lhs, rhs in
+            if lhs.authorityRank != rhs.authorityRank {
+                return lhs.authorityRank < rhs.authorityRank
+            }
+            return lhs.sortName.localizedCaseInsensitiveCompare(rhs.sortName) == .orderedAscending
+        }
+
+        let managerSnapshots = sortedManagers.map { entry in
+            SupportExportManagerContext(
+                id: entry.id,
+                displayName: localizedManagerDisplayName(entry.id),
+                enabled: entry.status.enabled,
+                detected: entry.status.detected,
+                version: redactor.redactOptionalString(entry.status.version),
+                executablePath: redactor.redactOptionalString(entry.status.executablePath),
+                authority: entry.authorityName
+            )
+        }
+
+        let taskSnapshots = core.activeTasks.map { task in
+            SupportExportTaskContext(
+                id: task.id,
+                status: task.status,
+                managerId: task.managerId,
+                taskType: task.taskType,
+                description: redactor.redactString(task.description),
+                labelKey: task.labelKey,
+                labelArgs: redactor.redactDictionary(task.labelArgs)
+            )
+        }
+
+        let failureSnapshots = core.activeTasks
+            .filter { $0.status.lowercased() == "failed" }
+            .map { task in
+                SupportExportFailureContext(
+                    taskId: task.id,
+                    managerId: task.managerId,
+                    taskType: task.taskType,
+                    status: task.status,
+                    description: redactor.redactString(task.description),
+                    suggestedCommand: redactor.redactOptionalString(core.diagnosticCommandHint(for: task))
+                )
+            }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        return SupportExportPayload(
+            schemaVersion: "1.0.0",
+            generatedAt: formatter.string(from: Date()),
+            app: SupportExportAppContext(
+                version: helmVersion,
+                locale: Locale.current.identifier,
+                distributionChannel: AppUpdateConfiguration.from().channel.rawValue,
+                safeModeEnabled: core.safeModeEnabled,
+                managerCount: core.visibleManagers.count,
+                outdatedCount: core.outdatedPackages.count,
+                runningTaskCount: core.runningTaskCount
+            ),
+            system: SupportExportSystemContext(
+                macOSVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+                architecture: machineArchitecture()
+            ),
+            lastError: redactor.redactOptionalString(core.lastError),
+            lastErrorAttribution: core.lastErrorAttribution.map { attribution in
+                SupportExportErrorAttribution(
+                    source: attribution.source,
+                    action: attribution.action,
+                    managerId: attribution.managerId,
+                    taskType: attribution.taskType,
+                    occurredAtUnix: attribution.occurredAtUnix
+                )
+            },
+            managers: managerSnapshots,
+            tasks: taskSnapshots,
+            failures: failureSnapshots,
+            redaction: SupportExportRedactionContext(
+                appliedRules: redactor.appliedRules.sorted(),
+                replacementCount: redactor.replacementCount
+            )
+        )
+    }
+
+    static func generateStructuredDiagnostics() -> String {
+        let payload = buildStructuredDiagnosticsPayload()
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+
+        guard let data = try? encoder.encode(payload),
+              let json = String(data: data, encoding: .utf8) else {
+            return "{}"
+        }
+        return json
     }
 
     static func generateDiagnostics() -> String {
@@ -675,6 +1006,19 @@ struct HelmSupport {
                 info += "\n"
             }
         }
+        if let lastError = core.lastError, !lastError.isEmpty {
+            info += "\nLast Error: \(lastError)\n"
+        }
+        if let attribution = core.lastErrorAttribution {
+            info += "Last Error Source: \(attribution.source)\n"
+            info += "Last Error Action: \(attribution.action)\n"
+            if let managerId = attribution.managerId, !managerId.isEmpty {
+                info += "Last Error Manager: \(managerId)\n"
+            }
+            if let taskType = attribution.taskType, !taskType.isEmpty {
+                info += "Last Error Task Type: \(taskType)\n"
+            }
+        }
         
         return info
     }
@@ -684,6 +1028,75 @@ struct HelmSupport {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(diagnostics, forType: .string)
+    }
+
+    private static func serviceHealthManagerCounts(
+        core: HelmCore
+    ) -> (enabled: Int, detected: Int, missing: Int) {
+        let trackedStatuses = core.managerStatuses.values
+            .filter { $0.isImplemented && $0.enabled }
+        let enabled = trackedStatuses.count
+        let detected = trackedStatuses.filter(\.detected).count
+        return (enabled, detected, max(enabled - detected, 0))
+    }
+
+    static func generateServiceHealthDiagnostics() -> String {
+        let core = HelmCore.shared
+        let appUpdate = AppUpdateCoordinator.shared
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let managerCounts = serviceHealthManagerCounts(core: core)
+
+        var info = ""
+        info += "Service Health Snapshot\n"
+        info += "Generated: \(isoFormatter.string(from: Date()))\n"
+        info += "Helm Version: \(helmVersion)\n"
+        info += "Connection: \(core.isConnected ? "Connected" : "Disconnected")\n"
+        info += "Refresh State: \(core.isRefreshing ? "Refreshing" : "Idle")\n"
+        info += "Aggregate Health: \(core.aggregateHealth.key.localized)\n"
+        if let lastCheckDate = appUpdate.lastCheckDate {
+            info += "Last Check: \(isoFormatter.string(from: lastCheckDate))\n"
+        } else {
+            info += "Last Check: Never\n"
+        }
+        info += "Running Tasks: \(core.runningTaskCount)\n"
+        info += "Failed Tasks: \(core.failedTaskCount)\n"
+        info += "Pending Updates: \(core.outdatedPackages.count)\n"
+        info += "Detected Managers: \(managerCounts.detected)/\(managerCounts.enabled)\n"
+        info += "Managers Missing: \(managerCounts.missing)\n"
+        if let lastError = core.lastError, !lastError.isEmpty {
+            info += "Last Error: \(lastError)\n"
+        }
+        if let attribution = core.lastErrorAttribution {
+            info += "Last Error Source: \(attribution.source)\n"
+            info += "Last Error Action: \(attribution.action)\n"
+            if let managerId = attribution.managerId, !managerId.isEmpty {
+                info += "Last Error Manager: \(managerId)\n"
+            }
+            if let taskType = attribution.taskType, !taskType.isEmpty {
+                info += "Last Error Task Type: \(taskType)\n"
+            }
+        }
+        return info
+    }
+
+    static func copyServiceHealthDiagnosticsToClipboard() {
+        let snapshot = generateServiceHealthDiagnostics()
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(snapshot, forType: .string)
+    }
+
+    static func copyStructuredDiagnosticsToClipboard() {
+        let diagnostics = generateStructuredDiagnostics()
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(diagnostics, forType: .string)
+    }
+
+    static func redactForStructuredExport(_ raw: String) -> String {
+        var redactor = SupportRedactor()
+        return redactor.redactString(raw)
     }
 
     static func generateTaskDiagnostics(task: TaskItem, suggestedCommand: String?) -> String {
@@ -771,7 +1184,7 @@ struct HelmSupport {
 
     static func reportBug(includeDiagnostics: Bool = false) {
         if includeDiagnostics {
-            copyDiagnosticsToClipboard()
+            copyStructuredDiagnosticsToClipboard()
         }
         var components = URLComponents(url: gitHubBugReportURL, resolvingAgainstBaseURL: true)
         var queryItems = components?.queryItems ?? []
@@ -784,7 +1197,7 @@ struct HelmSupport {
 
     static func requestFeature(includeDiagnostics: Bool = false) {
         if includeDiagnostics {
-            copyDiagnosticsToClipboard()
+            copyStructuredDiagnosticsToClipboard()
         }
         var components = URLComponents(url: gitHubFeatureRequestURL, resolvingAgainstBaseURL: true)
         var queryItems = components?.queryItems ?? []

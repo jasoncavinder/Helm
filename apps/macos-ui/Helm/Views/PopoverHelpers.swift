@@ -13,7 +13,7 @@ struct PopoverOverlayCard<Content: View>: View {
                 Spacer()
                 Button(action: onClose) {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.escape, modifiers: [])
@@ -39,6 +39,7 @@ struct PopoverOverlayCard<Content: View>: View {
 
 struct PopoverAttentionBanner: View {
     @ObservedObject private var core = HelmCore.shared
+    @ObservedObject private var overviewState = HelmCore.shared.overviewState
     @EnvironmentObject private var context: ControlCenterContext
     @Environment(\.colorScheme) private var colorScheme
     let onOpenControlCenter: () -> Void
@@ -47,14 +48,14 @@ struct PopoverAttentionBanner: View {
         if !core.isConnected {
             return "bolt.horizontal.circle.fill"
         }
-        if core.failedTaskCount > 0 {
+        if overviewState.failedTaskCount > 0 {
             return "exclamationmark.octagon.fill"
         }
         return "arrow.up.circle.fill"
     }
 
     private var bannerTint: Color {
-        if !core.isConnected || core.failedTaskCount > 0 {
+        if !core.isConnected || overviewState.failedTaskCount > 0 {
             return colorScheme == .dark
                 ? Color(red: 1.0, green: 120.0 / 255.0, blue: 120.0 / 255.0)
                 : Color(red: 224.0 / 255.0, green: 58.0 / 255.0, blue: 58.0 / 255.0)
@@ -65,14 +66,14 @@ struct PopoverAttentionBanner: View {
     }
 
     private var bannerBackgroundOpacity: Double {
-        if !core.isConnected || core.failedTaskCount > 0 {
+        if !core.isConnected || overviewState.failedTaskCount > 0 {
             return 0.16
         }
         return 0.14
     }
 
     private var bannerBorderOpacity: Double {
-        if !core.isConnected || core.failedTaskCount > 0 {
+        if !core.isConnected || overviewState.failedTaskCount > 0 {
             return 0.38
         }
         return 0.32
@@ -82,17 +83,17 @@ struct PopoverAttentionBanner: View {
         if !core.isConnected {
             return L10n.App.Popover.Banner.disconnectedTitle.localized
         }
-        if core.failedTaskCount > 0 {
-            return L10n.App.Popover.Banner.failedTitle.localized(with: ["count": core.failedTaskCount])
+        if overviewState.failedTaskCount > 0 {
+            return L10n.App.Popover.Banner.failedTitle.localized(with: ["count": overviewState.failedTaskCount])
         }
-        return L10n.App.Popover.Banner.updatesTitle.localized(with: ["count": core.outdatedPackages.count])
+        return L10n.App.Popover.Banner.updatesTitle.localized(with: ["count": overviewState.outdatedPackagesCount])
     }
 
     private var bannerMessage: String {
         if !core.isConnected {
             return L10n.App.Popover.Banner.disconnectedMessage.localized
         }
-        if core.failedTaskCount > 0 {
+        if overviewState.failedTaskCount > 0 {
             return L10n.App.Popover.Banner.failedMessage.localized
         }
         return L10n.App.Popover.Banner.updatesMessage.localized
@@ -101,7 +102,7 @@ struct PopoverAttentionBanner: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: bannerSymbol)
-                .foregroundStyle(bannerTint)
+                .foregroundColor(bannerTint)
                 .font(.system(size: 13, weight: .semibold))
 
             VStack(alignment: .leading, spacing: 2) {
@@ -109,12 +110,12 @@ struct PopoverAttentionBanner: View {
                     .font(.caption.weight(.semibold))
                 Text(bannerMessage)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
             }
 
             Spacer(minLength: 10)
 
-            if core.failedTaskCount > 0 {
+            if overviewState.failedTaskCount > 0 {
                 Button(L10n.App.Popover.Banner.review.localized) {
                     context.selectedSection = .tasks
                     context.selectedTaskId = firstFailedTaskId
@@ -125,7 +126,7 @@ struct PopoverAttentionBanner: View {
                 }
                 .buttonStyle(UpdateAllPillButtonStyle())
                 .helmPointer()
-            } else if !core.outdatedPackages.isEmpty {
+            } else if overviewState.outdatedPackagesCount > 0 {
                 Button(L10n.App.Settings.Action.upgradeAll.localized) {
                     context.showUpgradeSheet = true
                 }
@@ -166,7 +167,7 @@ struct PopoverSearchField: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
+                .foregroundColor(.secondary)
             TextField(
                 "app.popover.search_placeholder".localized,
                 text: Binding(
@@ -191,7 +192,7 @@ struct PopoverSearchField: View {
                     onSyncSearchQuery("")
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
                 .helmPointer()
@@ -224,7 +225,7 @@ struct UpdateAllPillButtonStyle: ButtonStyle {
             .font(.caption.weight(.bold))
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .foregroundStyle(Color.white)
+            .foregroundColor(Color.white)
             .background(
                 Capsule(style: .continuous)
                     .fill(configuration.isPressed ? HelmTheme.actionPrimaryPressed : HelmTheme.actionPrimaryDefault)
@@ -249,7 +250,7 @@ struct MetricChipView: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(label)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundColor(.secondary)
             Text("\(value)")
                 .font(.callout.monospacedDigit().weight(.semibold))
         }

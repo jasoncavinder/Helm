@@ -1,5 +1,4 @@
 import SwiftUI
-import AppKit
 
 struct ControlCenterWindowView: View {
     @EnvironmentObject private var context: ControlCenterContext
@@ -67,7 +66,11 @@ struct ControlCenterWindowView: View {
                   let step = walkthrough.currentStep else { return }
             navigateToSection(for: step.targetAnchor)
         }
+        .onChange(of: context.selectedSection) { newSection in
+            context.alignInspectorSelection(for: newSection)
+        }
         .onAppear {
+            context.alignInspectorSelection(for: context.selectedSection)
             if core.hasCompletedOnboarding {
                 core.triggerRefresh()
             }
@@ -85,7 +88,6 @@ private struct ControlCenterTopBar: View {
     @EnvironmentObject private var context: ControlCenterContext
     @ObservedObject private var core = HelmCore.shared
     @Environment(\.colorScheme) private var colorScheme
-    @FocusState private var isSearchFocused: Bool
     let sidebarWidth: CGFloat
 
     var body: some View {
@@ -98,7 +100,7 @@ private struct ControlCenterTopBar: View {
 
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
                 TextField(
                     L10n.App.ControlCenter.searchPlaceholder.localized,
                     text: Binding(
@@ -114,7 +116,6 @@ private struct ControlCenterTopBar: View {
                 )
                 .textFieldStyle(.plain)
                 .font(.subheadline)
-                .focused($isSearchFocused)
 
                 if !context.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Button {
@@ -122,7 +123,7 @@ private struct ControlCenterTopBar: View {
                         core.searchText = ""
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
+                            .foregroundColor(.secondary)
                     }
                     .buttonStyle(.plain)
                     .helmPointer()
@@ -176,7 +177,7 @@ private struct ControlCenterTopBar: View {
                     .fill(HelmTheme.surfaceBase)
             }
         )
-        .overlay(alignment: .bottom) {
+        .overlay(
             HStack(spacing: 0) {
                 Rectangle()
                     .fill(Color.clear)
@@ -186,11 +187,9 @@ private struct ControlCenterTopBar: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 1)
             }
-            .frame(height: 1)
-        }
-        .onChange(of: context.controlCenterSearchFocusToken) { _ in
-            isSearchFocused = true
-        }
+            .frame(height: 1),
+            alignment: .bottom
+        )
     }
 }
 
@@ -340,7 +339,7 @@ private struct ControlCenterSidebarButtonStyle: ButtonStyle {
         }()
 
         return configuration.label
-            .foregroundStyle(isSelected ? HelmTheme.blue500 : HelmTheme.textPrimary)
+            .foregroundColor(isSelected ? HelmTheme.blue500 : HelmTheme.textPrimary)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(

@@ -2,7 +2,7 @@ import XCTest
 import AppKit
 
 final class LocalizationOverflowValidationTests: XCTestCase {
-    private let locales = ["es", "fr", "de", "pt-BR", "ja"]
+    private let locales = ["es", "fr", "de", "pt-BR", "ja", "hu"]
     private let panelWidth: CGFloat = 360
 
     // Mirrors SettingsPopoverView fixed widths.
@@ -48,6 +48,7 @@ final class LocalizationOverflowValidationTests: XCTestCase {
             "app.settings.label.language.french",
             "app.settings.label.language.portuguese_brazilian",
             "app.settings.label.language.japanese",
+            "app.settings.label.language.hungarian",
         ]
 
         let optionFont = NSFont.systemFont(ofSize: 13)
@@ -204,7 +205,7 @@ final class LocalizationOverflowValidationTests: XCTestCase {
 
         let navTabsBudget = panelContentWidth - 20 // reserve room for settings button
         let searchFieldTextBudget = panelContentWidth - 46 // search icon + clear affordance + field padding
-        let packageFilterBudget = panelContentWidth - 36 // reserve room for manager menu and spacing
+        let packageFilterChipMaxWidth = panelContentWidth - 24
         let managerMenuTextBudget: CGFloat = 130
 
         let tabKeys = [
@@ -216,6 +217,7 @@ final class LocalizationOverflowValidationTests: XCTestCase {
             "app.packages.filter.installed",
             "app.packages.filter.upgradable",
             "app.packages.filter.available",
+            "app.packages.filter.pinned",
         ]
 
         for locale in locales {
@@ -241,10 +243,11 @@ final class LocalizationOverflowValidationTests: XCTestCase {
 
             let filterWidths = filterKeys.compactMap { strings[$0].map { width(for: $0, font: filterFont) + 16 } }
             XCTAssertEqual(filterWidths.count, filterKeys.count, "Missing package filter key(s) in locale \(locale)")
+            let maxFilterChipWidth = filterWidths.max() ?? 0
             XCTAssertLessThanOrEqual(
-                filterWidths.reduce(0, +) + 8, // HStack spacing between 3 buttons
-                packageFilterBudget,
-                "Package filter button overflow risk for locale \(locale)"
+                maxFilterChipWidth,
+                packageFilterChipMaxWidth,
+                "Package filter chip overflow risk for locale \(locale)"
             )
 
             guard let allManagers = strings["app.packages.filter.all_managers"] else {

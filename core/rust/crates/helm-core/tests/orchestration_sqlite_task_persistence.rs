@@ -123,6 +123,55 @@ async fn completed_task_is_persisted_to_sqlite() {
 }
 
 #[tokio::test]
+async fn completed_task_persists_lifecycle_logs_to_sqlite() {
+    let path = test_db_path("orchestration-sqlite-lifecycle-logs");
+    let store = Arc::new(SqliteStore::new(&path));
+    store.migrate_to_latest().unwrap();
+
+    let adapter: Arc<dyn ManagerAdapter> =
+        Arc::new(TestAdapter::new(ManagerId::Npm, AdapterBehavior::Succeeds));
+    let runtime = AdapterRuntime::with_task_store([adapter], store.clone()).unwrap();
+
+    let task_id = runtime
+        .submit(ManagerId::Npm, AdapterRequest::Refresh(RefreshRequest))
+        .await
+        .unwrap();
+    let terminal = runtime
+        .wait_for_terminal(task_id, Some(Duration::from_secs(1)))
+        .await
+        .unwrap();
+
+    assert_eq!(terminal.runtime.status, TaskStatus::Completed);
+
+    let mut logs = Vec::new();
+    for _ in 0..30 {
+        logs = store
+            .list_task_logs(task_id, 20)
+            .expect("list_task_logs should succeed");
+        if logs
+            .iter()
+            .any(|entry| entry.status == Some(TaskStatus::Completed))
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    assert!(
+        logs.iter()
+            .any(|entry| entry.status == Some(TaskStatus::Queued)),
+        "expected queued lifecycle log"
+    );
+    assert!(
+        logs.iter()
+            .any(|entry| entry.status == Some(TaskStatus::Completed)),
+        "expected completed lifecycle log"
+    );
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[tokio::test]
 async fn failed_task_is_persisted_to_sqlite() {
     let path = test_db_path("orchestration-sqlite-failed");
     let store = Arc::new(SqliteStore::new(&path));

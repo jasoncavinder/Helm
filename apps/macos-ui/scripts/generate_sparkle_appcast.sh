@@ -9,6 +9,7 @@ Usage: generate_sparkle_appcast.sh \
   --output-path <appcast.xml> \
   --download-url <https://.../Helm.dmg> \
   --appcast-url <https://.../appcast.xml> \
+  [--display-version <X.Y.Z[-prerelease]>] \
   [--release-notes-url <https://...>] \
   [--sparkle-bin-dir <Sparkle bin directory>] \
   [--sparkle-package-path <Sparkle checkout path, legacy fallback>]
@@ -24,6 +25,7 @@ OUTPUT_PATH=""
 DOWNLOAD_URL=""
 APPCAST_URL=""
 RELEASE_NOTES_URL=""
+DISPLAY_VERSION=""
 SPARKLE_PACKAGE_PATH=""
 SPARKLE_BIN_DIR=""
 
@@ -51,6 +53,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --release-notes-url)
       RELEASE_NOTES_URL="$2"
+      shift 2
+      ;;
+    --display-version)
+      DISPLAY_VERSION="$2"
       shift 2
       ;;
     --sparkle-bin-dir)
@@ -153,6 +159,7 @@ fi
 SHORT_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$INFO_PLIST")
 BUNDLE_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$INFO_PLIST")
 MIN_SYSTEM_VERSION=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$INFO_PLIST" 2>/dev/null || true)
+APPCAST_DISPLAY_VERSION="${DISPLAY_VERSION:-$SHORT_VERSION}"
 
 if [[ -z "$RELEASE_NOTES_URL" ]]; then
   RELEASE_NOTES_URL="$APPCAST_URL"
@@ -194,13 +201,13 @@ cat > "$OUTPUT_PATH" <<XML
     <description>Helm direct-channel updates</description>
     <language>en</language>
     <item>
-      <title>Helm $SHORT_VERSION</title>
+      <title>Helm $APPCAST_DISPLAY_VERSION</title>
       <pubDate>$PUB_DATE</pubDate>
       <sparkle:releaseNotesLink>$RELEASE_NOTES_URL</sparkle:releaseNotesLink>
       <enclosure
         url="$DOWNLOAD_URL"
         sparkle:version="$BUNDLE_VERSION"
-        sparkle:shortVersionString="$SHORT_VERSION"
+        sparkle:shortVersionString="$APPCAST_DISPLAY_VERSION"
         sparkle:edSignature="$SIGNATURE"
         $MIN_SYSTEM_VERSION_ATTR
         length="$LENGTH"

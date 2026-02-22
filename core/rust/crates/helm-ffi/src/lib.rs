@@ -18,7 +18,7 @@
 //!   accessing the engine. Poisoned-lock recovery is implemented via
 //!   [`lock_or_recover`] to prevent lock-poison panics at the FFI boundary.
 //!
-//! ## FFI Exports (29 functions)
+//! ## FFI Exports (30 functions)
 //!
 //! | Function | Category |
 //! |----------|----------|
@@ -27,6 +27,7 @@
 //! | `helm_list_outdated_packages` | Package queries |
 //! | `helm_list_tasks` | Task management |
 //! | `helm_get_task_output` | Task management |
+//! | `helm_list_task_logs` | Task management |
 //! | `helm_trigger_refresh` | Task management |
 //! | `helm_cancel_task` | Task management |
 //! | `helm_search_local` | Search |
@@ -58,7 +59,7 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::process::Command;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::Duration;
 use std::time::UNIX_EPOCH;
 
@@ -125,7 +126,7 @@ use helm_core::adapters::{
 use helm_core::execution::tokio_process::TokioProcessExecutor;
 use helm_core::models::{
     Capability, DetectionInfo, HomebrewKegPolicy, ManagerAuthority, ManagerId, OutdatedPackage,
-    PackageRef, PinKind, PinRecord, SearchQuery, TaskId, TaskStatus, TaskType,
+    PackageRef, PinKind, PinRecord, SearchQuery, TaskId, TaskLogLevel, TaskStatus, TaskType,
 };
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
 use helm_core::orchestration::{AdapterTaskTerminalState, CancellationMode};
@@ -272,6 +273,7 @@ struct FfiManagerStatus {
     detected: bool,
     version: Option<String>,
     executable_path: Option<String>,
+    executable_paths: Vec<String>,
     enabled: bool,
     is_implemented: bool,
     is_optional: bool,
@@ -280,6 +282,224 @@ struct FfiManagerStatus {
     supports_package_install: bool,
     supports_package_uninstall: bool,
     supports_package_upgrade: bool,
+}
+
+static EXECUTABLE_DISCOVERY_CACHE: OnceLock<Mutex<std::collections::HashMap<ManagerId, Vec<String>>>> =
+    OnceLock::new();
+
+fn manager_executable_candidates(id: ManagerId) -> &'static [&'static str] {
+    match id {
+        ManagerId::HomebrewFormula | ManagerId::HomebrewCask => {
+            &["/opt/homebrew/bin/brew", "/usr/local/bin/brew", "brew"]
+        }
+        ManagerId::Asdf => &["asdf"],
+        ManagerId::Mise => &["mise"],
+        ManagerId::Rustup => &["rustup"],
+        ManagerId::Npm => &["npm"],
+        ManagerId::Pnpm => &["pnpm"],
+        ManagerId::Yarn => &["yarn"],
+        ManagerId::Pip => &["pip3", "pip", "python3"],
+        ManagerId::Pipx => &["pipx"],
+        ManagerId::Poetry => &["poetry"],
+        ManagerId::RubyGems => &["gem"],
+        ManagerId::Bundler => &["bundle"],
+        ManagerId::Cargo => &["cargo"],
+        ManagerId::CargoBinstall => &["cargo-binstall"],
+        ManagerId::MacPorts => &["/opt/local/bin/port", "port"],
+        ManagerId::NixDarwin => &["darwin-rebuild", "nix"],
+        ManagerId::Mas => &["mas"],
+        ManagerId::DockerDesktop => &["docker"],
+        ManagerId::Podman => &["podman"],
+        ManagerId::Colima => &["colima"],
+        ManagerId::XcodeCommandLineTools => &["xcode-select"],
+        ManagerId::SoftwareUpdate => &["/usr/sbin/softwareupdate"],
+        _ => &[],
+    }
+}
+
+fn normalize_path_string(path: &std::path::Path) -> Option<String> {
+    let rendered = path.to_string_lossy().trim().to_string();
+    if rendered.is_empty() {
+        None
+    } else {
+        Some(rendered)
+    }
+}
+
+fn manager_additional_bin_roots() -> Vec<std::path::PathBuf> {
+    let mut roots = vec![
+        std::path::PathBuf::from("/opt/homebrew/bin"),
+        std::path::PathBuf::from("/usr/local/bin"),
+        std::path::PathBuf::from("/opt/local/bin"),
+    ];
+
+    if let Some(home) = std::env::var_os("HOME").map(std::path::PathBuf::from) {
+        roots.push(home.join(".local/bin"));
+        roots.push(home.join(".cargo/bin"));
+        roots.push(home.join(".asdf/bin"));
+        roots.push(home.join(".asdf/shims"));
+    }
+
+    roots
+}
+
+fn manager_versioned_install_roots(id: ManagerId) -> Vec<std::path::PathBuf> {
+    let mut roots = Vec::new();
+
+    if matches!(
+        id,
+        ManagerId::HomebrewFormula
+            | ManagerId::HomebrewCask
+            | ManagerId::Mise
+            | ManagerId::Asdf
+            | ManagerId::Rustup
+            | ManagerId::Npm
+            | ManagerId::Pnpm
+            | ManagerId::Yarn
+            | ManagerId::Pip
+            | ManagerId::Pipx
+            | ManagerId::Poetry
+            | ManagerId::RubyGems
+            | ManagerId::Bundler
+            | ManagerId::Cargo
+            | ManagerId::CargoBinstall
+            | ManagerId::Mas
+            | ManagerId::DockerDesktop
+            | ManagerId::Podman
+            | ManagerId::Colima
+    ) {
+        roots.push(std::path::PathBuf::from("/opt/homebrew/Cellar"));
+        roots.push(std::path::PathBuf::from("/usr/local/Cellar"));
+    }
+
+    if matches!(
+        id,
+        ManagerId::Npm
+            | ManagerId::Pnpm
+            | ManagerId::Yarn
+            | ManagerId::Pip
+            | ManagerId::Pipx
+            | ManagerId::Poetry
+            | ManagerId::RubyGems
+            | ManagerId::Bundler
+            | ManagerId::Cargo
+            | ManagerId::CargoBinstall
+    ) && let Some(home) = std::env::var_os("HOME").map(std::path::PathBuf::from)
+    {
+        roots.push(home.join(".asdf/installs"));
+        roots.push(home.join(".local/share/mise/installs"));
+    }
+
+    roots
+}
+
+fn push_discovered_path(
+    candidate_path: &std::path::Path,
+    discovered: &mut Vec<String>,
+    seen: &mut std::collections::HashSet<String>,
+) {
+    if candidate_path.is_file()
+        && let Some(rendered) = normalize_path_string(candidate_path)
+        && seen.insert(rendered.clone())
+    {
+        discovered.push(rendered);
+    }
+}
+
+fn discover_executable_paths(id: ManagerId, candidates: &[&str]) -> Vec<String> {
+    let mut discovered = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let additional_bin_roots = manager_additional_bin_roots();
+    let versioned_roots = manager_versioned_install_roots(id);
+
+    let path_dirs: Vec<std::path::PathBuf> = std::env::var_os("PATH")
+        .as_deref()
+        .map(std::env::split_paths)
+        .map(|iter| iter.collect::<Vec<_>>())
+        .unwrap_or_default();
+
+    for candidate in candidates {
+        if candidate.contains('/') {
+            let absolute = std::path::PathBuf::from(candidate);
+            push_discovered_path(absolute.as_path(), &mut discovered, &mut seen);
+            continue;
+        }
+
+        for path_dir in &path_dirs {
+            let full = path_dir.join(candidate);
+            push_discovered_path(full.as_path(), &mut discovered, &mut seen);
+        }
+
+        for path_dir in &additional_bin_roots {
+            let full = path_dir.join(candidate);
+            push_discovered_path(full.as_path(), &mut discovered, &mut seen);
+        }
+
+        for root in &versioned_roots {
+            let Ok(tool_dirs) = std::fs::read_dir(root) else {
+                continue;
+            };
+            for tool_dir in tool_dirs.flatten() {
+                let tool_path = tool_dir.path();
+                if !tool_path.is_dir() {
+                    continue;
+                }
+
+                let Ok(version_dirs) = std::fs::read_dir(&tool_path) else {
+                    continue;
+                };
+                for version_dir in version_dirs.flatten() {
+                    let version_path = version_dir.path();
+                    if !version_path.is_dir() {
+                        continue;
+                    }
+                    let full = version_path.join("bin").join(candidate);
+                    push_discovered_path(full.as_path(), &mut discovered, &mut seen);
+                }
+            }
+        }
+    }
+
+    discovered
+}
+
+fn cached_discovered_executable_paths(id: ManagerId, candidates: &[&str]) -> Vec<String> {
+    let cache = EXECUTABLE_DISCOVERY_CACHE
+        .get_or_init(|| Mutex::new(std::collections::HashMap::new()));
+
+    if let Ok(guard) = cache.lock()
+        && let Some(cached) = guard.get(&id)
+    {
+        return cached.clone();
+    }
+
+    let discovered = discover_executable_paths(id, candidates);
+
+    if let Ok(mut guard) = cache.lock() {
+        guard.insert(id, discovered.clone());
+    }
+
+    discovered
+}
+
+fn collect_manager_executable_paths(id: ManagerId, active_path: Option<&std::path::Path>) -> Vec<String> {
+    let mut resolved = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    if let Some(active_path) = active_path
+        && let Some(rendered) = normalize_path_string(active_path)
+    {
+        seen.insert(rendered.clone());
+        resolved.push(rendered);
+    }
+
+    for discovered in cached_discovered_executable_paths(id, manager_executable_candidates(id)) {
+        if seen.insert(discovered.clone()) {
+            resolved.push(discovered);
+        }
+    }
+
+    resolved
 }
 
 fn build_manager_statuses(
@@ -306,6 +526,11 @@ fn build_manager_statuses(
                         .map(|p| p.to_string_lossy().to_string()),
                 )
             });
+            let executable_paths = if detected {
+                collect_manager_executable_paths(id, detection.and_then(|d| d.executable_path.as_deref()))
+            } else {
+                Vec::new()
+            };
             let version = detection.and_then(|d| normalize_nonempty(d.version.clone()));
             let supports_remote_search = runtime
                 .map(|runtime| can_submit_remote_search(runtime, id))
@@ -329,6 +554,7 @@ fn build_manager_statuses(
                 detected,
                 version,
                 executable_path,
+                executable_paths,
                 enabled,
                 is_implemented,
                 is_optional,
@@ -365,6 +591,20 @@ fn is_inflight_status(status: TaskStatus) -> bool {
     matches!(status, TaskStatus::Queued | TaskStatus::Running)
 }
 
+fn should_replace_visible_inflight_task(
+    current: &helm_core::models::TaskRecord,
+    candidate: &helm_core::models::TaskRecord,
+) -> bool {
+    let current_running = current.status == TaskStatus::Running;
+    let candidate_running = candidate.status == TaskStatus::Running;
+
+    if current_running != candidate_running {
+        return candidate_running;
+    }
+
+    candidate.id.0 > current.id.0
+}
+
 fn is_recent_inflight_task(task: &helm_core::models::TaskRecord) -> bool {
     std::time::SystemTime::now()
         .duration_since(task.created_at)
@@ -377,7 +617,7 @@ fn build_visible_tasks(
     labels: &std::collections::HashMap<u64, TaskLabel>,
 ) -> Vec<helm_core::models::TaskRecord> {
     let mut visible = Vec::with_capacity(tasks.len());
-    let mut seen_inflight = std::collections::HashSet::new();
+    let mut seen_inflight: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     let mut terminal_count = 0usize;
 
     for task in tasks {
@@ -396,7 +636,13 @@ fn build_visible_tasks(
                     encoded
                 })
                 .unwrap_or_else(|| format!("{:?}:{:?}", task.manager, task.task_type));
-            if seen_inflight.insert(key) {
+
+            if let Some(existing_index) = seen_inflight.get(&key).copied() {
+                if should_replace_visible_inflight_task(&visible[existing_index], &task) {
+                    visible[existing_index] = task;
+                }
+            } else {
+                seen_inflight.insert(key, visible.len());
                 visible.push(task);
             }
             continue;
@@ -1213,7 +1459,7 @@ pub extern "C" fn helm_list_tasks() -> *mut c_char {
         None => return std::ptr::null_mut(),
     };
 
-    // Auto-prune completed/failed tasks older than 5 minutes.
+    // Auto-prune terminal tasks older than 5 minutes.
     let _ = state.store.prune_completed_tasks(TASK_PRUNE_MAX_AGE_SECS);
 
     // Fetch a wider snapshot so long-running queued/running tasks do not disappear
@@ -1275,8 +1521,22 @@ pub extern "C" fn helm_list_tasks() -> *mut c_char {
 #[serde(rename_all = "camelCase")]
 struct FfiTaskOutputRecord {
     task_id: TaskId,
+    command: Option<String>,
     stdout: Option<String>,
     stderr: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FfiTaskLogRecord {
+    id: u64,
+    task_id: TaskId,
+    manager: ManagerId,
+    task_type: TaskType,
+    status: Option<&'static str>,
+    level: &'static str,
+    message: String,
+    created_at_unix: i64,
 }
 
 /// Return captured stdout/stderr for a task ID as JSON.
@@ -1293,6 +1553,7 @@ pub extern "C" fn helm_get_task_output(task_id: i64) -> *mut c_char {
 
     let record = FfiTaskOutputRecord {
         task_id,
+        command: output.as_ref().and_then(|entry| entry.command.clone()),
         stdout: output.as_ref().and_then(|entry| entry.stdout.clone()),
         stderr: output.as_ref().and_then(|entry| entry.stderr.clone()),
     };
@@ -1305,6 +1566,79 @@ pub extern "C" fn helm_get_task_output(task_id: i64) -> *mut c_char {
     match CString::new(json) {
         Ok(c_string) => c_string.into_raw(),
         Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Return persisted lifecycle task logs for a task ID as JSON.
+///
+/// Returns `null` only on invalid input or serialization/allocation failure.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_list_task_logs(task_id: i64, limit: i64) -> *mut c_char {
+    if task_id < 0 || limit < 0 {
+        return std::ptr::null_mut();
+    }
+
+    let guard = lock_or_recover(&STATE, "state");
+    let state = match guard.as_ref() {
+        Some(s) => s,
+        None => return std::ptr::null_mut(),
+    };
+
+    let entries = match state
+        .store
+        .list_task_logs(TaskId(task_id as u64), limit as usize)
+    {
+        Ok(entries) => entries,
+        Err(error) => {
+            eprintln!("Failed to list task logs for task {}: {}", task_id, error);
+            return std::ptr::null_mut();
+        }
+    };
+
+    let payload: Vec<FfiTaskLogRecord> = entries
+        .into_iter()
+        .map(|entry| FfiTaskLogRecord {
+            id: entry.id,
+            task_id: entry.task_id,
+            manager: entry.manager,
+            task_type: entry.task_type,
+            status: entry.status.map(task_status_str),
+            level: task_log_level_str(entry.level),
+            message: entry.message,
+            created_at_unix: entry
+                .created_at
+                .duration_since(UNIX_EPOCH)
+                .map(|duration| duration.as_secs() as i64)
+                .unwrap_or(0),
+        })
+        .collect();
+
+    let json = match serde_json::to_string(&payload) {
+        Ok(value) => value,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    match CString::new(json) {
+        Ok(c_string) => c_string.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+fn task_status_str(status: TaskStatus) -> &'static str {
+    match status {
+        TaskStatus::Queued => "queued",
+        TaskStatus::Running => "running",
+        TaskStatus::Completed => "completed",
+        TaskStatus::Cancelled => "cancelled",
+        TaskStatus::Failed => "failed",
+    }
+}
+
+fn task_log_level_str(level: TaskLogLevel) -> &'static str {
+    match level {
+        TaskLogLevel::Info => "info",
+        TaskLogLevel::Warn => "warn",
+        TaskLogLevel::Error => "error",
     }
 }
 
@@ -3558,7 +3892,8 @@ mod tests {
         upgrade_task_label_for,
     };
     use helm_core::models::{
-        ManagerId, OutdatedPackage, PackageRef, TaskId, TaskRecord, TaskStatus, TaskType,
+        DetectionInfo, ManagerId, OutdatedPackage, PackageRef, TaskId, TaskRecord, TaskStatus,
+        TaskType,
     };
     use std::collections::HashMap;
     use std::path::Path;
@@ -3750,6 +4085,31 @@ mod tests {
     }
 
     #[test]
+    fn manager_status_skips_executable_path_discovery_for_missing_managers() {
+        let statuses = build_manager_statuses(None, &HashMap::new(), &HashMap::new());
+        assert!(status_for(&statuses, ManagerId::Npm).executable_paths.is_empty());
+    }
+
+    #[test]
+    fn manager_status_includes_active_executable_path_when_detected() {
+        let detection_map = HashMap::from([(
+            ManagerId::Npm,
+            DetectionInfo {
+                installed: true,
+                executable_path: Some(std::path::PathBuf::from("/tmp/helm-test-npm")),
+                version: Some("1.0.0".to_string()),
+            },
+        )]);
+        let statuses = build_manager_statuses(None, &detection_map, &HashMap::new());
+        let npm_status = status_for(&statuses, ManagerId::Npm);
+        assert!(
+            npm_status
+                .executable_paths
+                .contains(&"/tmp/helm-test-npm".to_string())
+        );
+    }
+
+    #[test]
     fn build_visible_tasks_deduplicates_inflight_rows_by_manager_and_type() {
         let tasks = vec![
             TaskRecord {
@@ -3786,7 +4146,32 @@ mod tests {
         let visible = build_visible_tasks(tasks, &labels);
         assert_eq!(visible.len(), 2);
         assert_eq!(visible[0].id, TaskId(10));
-        assert_eq!(visible[1].id, TaskId(8));
+        assert_eq!(visible[1].id, TaskId(7));
+    }
+
+    #[test]
+    fn build_visible_tasks_prefers_newer_inflight_row_when_status_matches() {
+        let tasks = vec![
+            TaskRecord {
+                id: TaskId(21),
+                manager: ManagerId::Npm,
+                task_type: TaskType::Upgrade,
+                status: TaskStatus::Queued,
+                created_at: std::time::SystemTime::now(),
+            },
+            TaskRecord {
+                id: TaskId(22),
+                manager: ManagerId::Npm,
+                task_type: TaskType::Upgrade,
+                status: TaskStatus::Queued,
+                created_at: std::time::SystemTime::now(),
+            },
+        ];
+
+        let labels = std::collections::HashMap::new();
+        let visible = build_visible_tasks(tasks, &labels);
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].id, TaskId(22));
     }
 
     #[test]

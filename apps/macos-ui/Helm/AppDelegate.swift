@@ -2,7 +2,7 @@ import Cocoa
 import SwiftUI
 import Combine
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem?
     private var panel: FloatingPanel!
     private var eventMonitor: EventMonitor?
@@ -16,6 +16,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let core = HelmCore.shared
     private let appUpdate = AppUpdateCoordinator.shared
     private let controlCenterContext = ControlCenterContext()
+    private var isControlCenterVisible: Bool {
+        controlCenterWindowController?.window?.isVisible == true
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -56,24 +59,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         bindStatusItem()
         updateStatusItemAppearance()
 
-        eventMonitor = EventMonitor(mask: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-            guard let self else { return }
-            guard self.panel.isVisible else { return }
-
-            let clickPoint: NSPoint
-            if let event, let sourceWindow = event.window {
-                clickPoint = sourceWindow.convertPoint(toScreen: event.locationInWindow)
-            } else {
-                clickPoint = NSEvent.mouseLocation
+        eventMonitor = EventMonitor(
+            mask: [.leftMouseDown, .rightMouseDown],
+            localHandler: { [weak self] event in
+                guard let self else { return event }
+                return self.handlePanelLocalEvent(event)
+            },
+            globalHandler: { [weak self] event in
+                self?.handlePanelGlobalEvent(event)
             }
-
-            let clickInPanel = self.panel.frame.contains(clickPoint)
-            let clickInStatusItem = self.statusItemButtonFrame()?.contains(clickPoint) ?? false
-
-            if !clickInPanel && !clickInStatusItem {
-                self.closePanel()
-            }
-        }
+        )
 
         DistributedNotificationCenter.default().addObserver(
             self,
@@ -81,15 +76,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: Notification.Name("AppleInterfaceThemeChangedNotification"),
             object: nil
         )
+        core.refreshLaunchAtLogin()
+        core.setInteractiveSurfaceVisibility(popoverVisible: false, controlCenterVisible: false)
 
-        if core.hasCompletedOnboarding {
+        if core.hasCompletedOnboarding && !core.requiresLicenseTermsAcceptance {
             core.triggerRefresh()
+        }
+    }
+
+    private func handlePanelLocalEvent(_ event: NSEvent) -> NSEvent? {
+        guard panel.isVisible else { return event }
+
+        let eventPoint: NSPoint
+        if let sourceWindow = event.window {
+            eventPoint = sourceWindow.convertPoint(toScreen: event.locationInWindow)
+        } else {
+            eventPoint = NSEvent.mouseLocation
+        }
+
+        let clickInPanel = panel.frame.contains(eventPoint)
+        let clickInStatusItem = statusItemButtonFrame()?.contains(eventPoint) ?? false
+        if !clickInPanel && !clickInStatusItem {
+            closePanel()
+        }
+        return event
+    }
+
+    private func handlePanelGlobalEvent(_ event: NSEvent?) {
+        guard panel.isVisible else { return }
+        guard event?.type == .leftMouseDown || event?.type == .rightMouseDown else { return }
+
+        let clickPoint: NSPoint
+        if let event, let sourceWindow = event.window {
+            clickPoint = sourceWindow.convertPoint(toScreen: event.locationInWindow)
+        } else {
+            clickPoint = NSEvent.mouseLocation
+        }
+
+        let clickInPanel = panel.frame.contains(clickPoint)
+        let clickInStatusItem = statusItemButtonFrame()?.contains(clickPoint) ?? false
+        if !clickInPanel && !clickInStatusItem {
+            closePanel()
         }
     }
 
     @objc private func togglePanel(_ sender: AnyObject?) {
         if NSApp.currentEvent?.type == .rightMouseUp {
             showStatusMenu()
+            return
+        }
+
+        if isControlCenterVisible {
+            openControlCenter()
+            closePanel()
             return
         }
 
@@ -102,6 +141,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showPanel() {
         guard statusItem?.button != nil else { return }
+        guard !isControlCenterVisible else {
+            openControlCenter()
+            return
+        }
 
         let buttonRect = statusItemButtonFrame() ?? .zero
 
@@ -114,12 +157,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         panel.setFrameOrigin(NSPoint(x: x, y: y))
         panel.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
         eventMonitor?.start()
+        core.setInteractiveSurfaceVisibility(popoverVisible: true, controlCenterVisible: isControlCenterVisible)
     }
 
     private func closePanel() {
         panel.orderOut(nil)
         eventMonitor?.stop()
+        core.setInteractiveSurfaceVisibility(popoverVisible: false, controlCenterVisible: isControlCenterVisible)
     }
 
     private func bindStatusItem() {
@@ -136,6 +182,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.updateStatusMenuState()
+            }
+            .store(in: &cancellables)
+
+        controlCenterContext.$suppressWindowBackgroundDragging
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.updateControlCenterWindowDragBehavior()
+            }
+            .store(in: &cancellables)
+
+        controlCenterContext.$selectedSection
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.updateControlCenterWindowDragBehavior()
             }
             .store(in: &cancellables)
     }
@@ -238,6 +298,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func openPopoverOverlay(_ route: PopoverOverlayRoute) {
+        guard !isControlCenterVisible else {
+            openControlCenter()
+            return
+        }
         showPanel()
         controlCenterContext.popoverOverlayRequest = nil
         DispatchQueue.main.async { [weak self] in
@@ -268,6 +332,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 private extension AppDelegate {
     func openControlCenter() {
+        closePanel()
+
         if controlCenterWindowController == nil {
             let rootView = ControlCenterWindowView()
                 .environmentObject(controlCenterContext)
@@ -288,7 +354,8 @@ private extension AppDelegate {
             window.title = "app.window.control_center".localized
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
-            window.isMovableByWindowBackground = false
+            window.isMovableByWindowBackground = shouldAllowControlCenterWindowBackgroundDragging()
+            window.delegate = self
             if #available(macOS 11.0, *) {
                 window.toolbarStyle = .unifiedCompact
             }
@@ -309,8 +376,20 @@ private extension AppDelegate {
         }
 
         guard let window = controlCenterWindowController?.window else { return }
+        updateControlCenterWindowDragBehavior()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        core.setInteractiveSurfaceVisibility(popoverVisible: false, controlCenterVisible: true)
+    }
+
+    private func shouldAllowControlCenterWindowBackgroundDragging() -> Bool {
+        // Interactive controls and manager drag/drop can suppress background dragging.
+        return !controlCenterContext.suppressWindowBackgroundDragging
+    }
+
+    func updateControlCenterWindowDragBehavior() {
+        controlCenterWindowController?.window?.isMovableByWindowBackground =
+            shouldAllowControlCenterWindowBackgroundDragging()
     }
 
     func configureStatusMenu() {
@@ -487,5 +566,15 @@ private extension AppDelegate {
 
     @objc func handleSystemAppearanceChanged() {
         updateStatusItemAppearance()
+    }
+}
+
+extension AppDelegate {
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow,
+              window == controlCenterWindowController?.window else {
+            return
+        }
+        core.setInteractiveSurfaceVisibility(popoverVisible: panel.isVisible, controlCenterVisible: false)
     }
 }

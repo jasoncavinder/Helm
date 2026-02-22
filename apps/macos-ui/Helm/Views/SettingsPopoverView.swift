@@ -2,19 +2,29 @@ import SwiftUI
 
 struct SettingsSectionView: View {
     @ObservedObject private var core = HelmCore.shared
+    @ObservedObject private var overviewState = HelmCore.shared.overviewState
+    @ObservedObject private var appUpdate = AppUpdateCoordinator.shared
     @ObservedObject private var localization = LocalizationManager.shared
     @ObservedObject private var walkthrough = WalkthroughManager.shared
+    @EnvironmentObject private var context: ControlCenterContext
 
     @State private var checkFrequency = 60
     @State private var showResetConfirmation = false
     @State private var isResetting = false
     @State private var includeDiagnostics = false
     @State private var showCopiedConfirmation = false
+    @State private var showServiceSnapshotCopied = false
     @State private var showSupportOptionsModal = false
     @State private var supportTopGroupHeight: CGFloat = 0
     @State private var supportBottomButtonHeight: CGFloat = 0
 
     private let supportButtonSpacing: CGFloat = 8
+    private static let healthTimestampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
 
     private var selectedFrequencyLabel: String {
         switch checkFrequency {
@@ -29,8 +39,8 @@ struct SettingsSectionView: View {
         }
     }
 
-    private var cardFill: AnyShapeStyle {
-        AnyShapeStyle(HelmTheme.surfacePanel)
+    private var cardFill: Color {
+        HelmTheme.surfacePanel
     }
 
     private var supportButtonHeight: CGFloat? {
@@ -54,29 +64,87 @@ struct SettingsSectionView: View {
         }
     }
 
+    private func showServiceSnapshotCopiedBriefly() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showServiceSnapshotCopied = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                showServiceSnapshotCopied = false
+            }
+        }
+    }
+
+    private var serviceConnectionStatusLabel: String {
+        core.isConnected
+            ? L10n.App.Settings.ServiceHealth.Status.connected.localized
+            : L10n.App.Settings.ServiceHealth.Status.disconnected.localized
+    }
+
+    private var serviceRefreshStatusLabel: String {
+        core.isRefreshing
+            ? L10n.App.Settings.ServiceHealth.Status.refreshing.localized
+            : L10n.App.Settings.ServiceHealth.Status.idle.localized
+    }
+
+    private var serviceLastCheckLabel: String {
+        guard let lastCheckDate = appUpdate.lastCheckDate else {
+            return L10n.App.Settings.ServiceHealth.Status.never.localized
+        }
+        return Self.healthTimestampFormatter.string(from: lastCheckDate)
+    }
+
+    private var serviceManagerCounts: (enabled: Int, detected: Int, missing: Int) {
+        let trackedStatuses = core.managerStatuses.values
+            .filter { $0.isImplemented && $0.enabled }
+        let enabled = trackedStatuses.count
+        let detected = trackedStatuses.filter(\.detected).count
+        return (enabled, detected, max(enabled - detected, 0))
+    }
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            LazyVStack(alignment: .leading, spacing: 14) {
                 HStack {
                     Text(ControlCenterSection.settings.title)
                         .font(.title2.weight(.semibold))
                     Spacer()
-                    HealthBadgeView(status: core.aggregateHealth)
+                    HealthBadgeView(status: overviewState.aggregateHealth)
                 }
 
                 HStack(spacing: 8) {
-                    SettingsMetricPill(
-                        title: L10n.App.Settings.Metric.managers.localized,
-                        value: core.visibleManagers.count
-                    )
-                    SettingsMetricPill(
-                        title: L10n.App.Settings.Metric.updates.localized,
-                        value: core.outdatedPackages.count
-                    )
-                    SettingsMetricPill(
-                        title: L10n.App.Settings.Metric.tasks.localized,
-                        value: core.runningTaskCount
-                    )
+                    Button {
+                        context.selectedSection = .managers
+                    } label: {
+                        SettingsMetricPill(
+                            title: L10n.App.Settings.Metric.managers.localized,
+                            value: overviewState.visibleManagers.count
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .helmPointer()
+
+                    Button {
+                        context.selectedSection = .updates
+                    } label: {
+                        SettingsMetricPill(
+                            title: L10n.App.Settings.Metric.updates.localized,
+                            value: overviewState.outdatedPackagesCount
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .helmPointer()
+
+                    Button {
+                        context.selectedSection = .tasks
+                    } label: {
+                        SettingsMetricPill(
+                            title: L10n.App.Settings.Metric.tasks.localized,
+                            value: overviewState.runningTaskCount
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .helmPointer()
                 }
 
                 SettingsCard(title: L10n.App.Settings.Section.general.localized, icon: "globe", fill: cardFill) {
@@ -90,9 +158,25 @@ struct SettingsSectionView: View {
                             Text(L10n.App.Settings.Label.french.localized).tag("fr")
                             Text(L10n.App.Settings.Label.portugueseBrazilian.localized).tag("pt-BR")
                             Text(L10n.App.Settings.Label.japanese.localized).tag("ja")
+                            Text(L10n.App.Settings.Label.hungarian.localized).tag("hu")
                         }
                         .labelsHidden()
                         .frame(width: 220)
+                    }
+
+                    Divider()
+
+                    Toggle(L10n.App.Settings.Label.launchAtLogin.localized, isOn: Binding(
+                        get: { core.launchAtLoginEnabled },
+                        set: { core.setLaunchAtLogin($0) }
+                    ))
+                    .toggleStyle(.switch)
+                    .disabled(!core.launchAtLoginSupported)
+
+                    if !core.launchAtLoginSupported {
+                        Text(L10n.App.Settings.Label.launchAtLoginRequiresMacOS13.localized)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
 
                     Divider()
@@ -102,7 +186,7 @@ struct SettingsSectionView: View {
                         Spacer()
                         Text(L10n.App.Managers.State.comingSoon.localized)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundColor(.secondary)
                     }
 
                     HStack {
@@ -110,7 +194,7 @@ struct SettingsSectionView: View {
                         Spacer()
                         Text(selectedFrequencyLabel)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundColor(.secondary)
                     }
                 }
 
@@ -170,6 +254,92 @@ struct SettingsSectionView: View {
                             walkthrough.resetWalkthroughs()
                             walkthrough.startPopoverWalkthrough()
                         }
+
+                        SettingsActionButton(
+                            title: L10n.App.Settings.Action.restoreManagerPriority.localized,
+                            badges: [],
+                            isProminent: false,
+                            useSystemStyle: true
+                        ) {
+                            core.restoreDefaultManagerPriorities()
+                        }
+                    }
+                }
+
+                SettingsCard(
+                    title: L10n.App.Settings.ServiceHealth.section.localized,
+                    icon: "stethoscope",
+                    fill: cardFill
+                ) {
+                    HStack {
+                        HealthBadgeView(status: overviewState.aggregateHealth)
+                        Spacer()
+                        Text(overviewState.aggregateHealth.key.localized)
+                            .font(.caption)
+                            .foregroundColor(HelmTheme.textSecondary)
+                    }
+
+                    Divider()
+
+                    Group {
+                        ServiceHealthStatusRow(
+                            title: L10n.App.Settings.ServiceHealth.connection.localized,
+                            value: serviceConnectionStatusLabel
+                        )
+                        ServiceHealthStatusRow(
+                            title: L10n.App.Settings.ServiceHealth.refreshState.localized,
+                            value: serviceRefreshStatusLabel
+                        )
+                        ServiceHealthStatusRow(
+                            title: L10n.App.Settings.ServiceHealth.lastCheck.localized,
+                            value: serviceLastCheckLabel
+                        )
+                    }
+
+                    Group {
+                        ServiceHealthStatusRow(
+                            title: L10n.App.Settings.ServiceHealth.failedTasks.localized,
+                            value: "\(overviewState.failedTaskCount)"
+                        )
+                        ServiceHealthStatusRow(
+                            title: L10n.App.Settings.ServiceHealth.managersDetected.localized,
+                            value: "\(serviceManagerCounts.detected)/\(serviceManagerCounts.enabled)"
+                        )
+                        ServiceHealthStatusRow(
+                            title: L10n.App.Settings.ServiceHealth.managersMissing.localized,
+                            value: "\(serviceManagerCounts.missing)"
+                        )
+                        if let lastError = core.lastError, !lastError.isEmpty {
+                            ServiceHealthStatusRow(
+                                title: L10n.App.Settings.ServiceHealth.lastError.localized,
+                                value: lastError,
+                                multiline: true,
+                                emphasize: true
+                            )
+                        }
+                    }
+
+                    Divider()
+
+                    SettingsActionButton(
+                        title: L10n.App.Settings.ServiceHealth.copySnapshot.localized,
+                        badges: [],
+                        isProminent: false,
+                        useSystemStyle: true
+                    ) {
+                        HelmSupport.copyServiceHealthDiagnosticsToClipboard()
+                        showServiceSnapshotCopiedBriefly()
+                    }
+
+                    if showServiceSnapshotCopied {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.green)
+                            Text(L10n.App.Settings.SupportFeedback.copiedConfirmation.localized)
+                                .foregroundColor(.secondary)
+                        }
+                        .font(.caption)
+                        .transition(.opacity.combined(with: .scale))
                     }
                 }
 
@@ -263,6 +433,16 @@ struct SettingsSectionView: View {
                                     )
                                 }
                             )
+
+                            SettingsActionButton(
+                                title: L10n.App.Settings.SupportFeedback.copyStructuredExport.localized,
+                                badges: [],
+                                isProminent: false,
+                                useSystemStyle: true
+                            ) {
+                                HelmSupport.copyStructuredDiagnosticsToClipboard()
+                                showCopiedBriefly()
+                            }
                         }
                         .frame(maxWidth: .infinity, alignment: .top)
                     }
@@ -282,9 +462,9 @@ struct SettingsSectionView: View {
                     if showCopiedConfirmation {
                         HStack(spacing: 4) {
                             Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
+                                .foregroundColor(.green)
                             Text(L10n.App.Settings.SupportFeedback.copiedConfirmation.localized)
-                                .foregroundStyle(.secondary)
+                                .foregroundColor(.secondary)
                         }
                         .font(.caption)
                         .transition(.opacity.combined(with: .scale))
@@ -293,16 +473,18 @@ struct SettingsSectionView: View {
             }
             .padding(20)
         }
-        .alert(L10n.App.Settings.Alert.Reset.title.localized, isPresented: $showResetConfirmation) {
-            Button(L10n.Common.cancel.localized, role: .cancel) {}
-            Button(L10n.Common.reset.localized, role: .destructive) {
-                isResetting = true
-                core.resetDatabase { _ in
-                    isResetting = false
-                }
-            }
-        } message: {
-            Text(L10n.App.Settings.Alert.Reset.message.localized)
+        .alert(isPresented: $showResetConfirmation) {
+            Alert(
+                title: Text(L10n.App.Settings.Alert.Reset.title.localized),
+                message: Text(L10n.App.Settings.Alert.Reset.message.localized),
+                primaryButton: .default(Text(L10n.Common.reset.localized)) {
+                    isResetting = true
+                    core.resetDatabase { _ in
+                        isResetting = false
+                    }
+                },
+                secondaryButton: .cancel(Text(L10n.Common.cancel.localized))
+            )
         }
         .sheet(isPresented: $showSupportOptionsModal) {
             SupportHelmOptionsModalView { channel in
@@ -313,13 +495,16 @@ struct SettingsSectionView: View {
                 showSupportOptionsModal = false
             }
         }
+        .onAppear {
+            core.refreshLaunchAtLogin()
+        }
     }
 }
 
 private struct SettingsCard<Content: View>: View {
     let title: String
     let icon: String
-    let fill: AnyShapeStyle
+    let fill: Color
     @ViewBuilder let content: Content
 
     var body: some View {
@@ -350,10 +535,10 @@ private struct SettingsMetricPill: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.caption2)
-                .foregroundStyle(HelmTheme.textSecondary)
+                .foregroundColor(HelmTheme.textSecondary)
             Text("\(value)")
                 .font(.callout.monospacedDigit().weight(.semibold))
-                .foregroundStyle(HelmTheme.textPrimary)
+                .foregroundColor(HelmTheme.textPrimary)
         }
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -368,6 +553,41 @@ private struct SettingsMetricPill: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
         .accessibilityValue("\(value)")
+    }
+}
+
+private struct ServiceHealthStatusRow: View {
+    let title: String
+    let value: String
+    let multiline: Bool
+    let emphasize: Bool
+
+    init(
+        title: String,
+        value: String,
+        multiline: Bool = false,
+        emphasize: Bool = false
+    ) {
+        self.title = title
+        self.value = value
+        self.multiline = multiline
+        self.emphasize = emphasize
+    }
+
+    var body: some View {
+        HStack(alignment: multiline ? .top : .firstTextBaseline, spacing: 10) {
+            Text(title)
+                .foregroundColor(HelmTheme.textSecondary)
+            Spacer(minLength: 8)
+            Text(value)
+                .foregroundColor(emphasize ? .orange : HelmTheme.textPrimary)
+                .font(multiline ? .caption : .subheadline.monospacedDigit())
+                .multilineTextAlignment(.trailing)
+                .lineLimit(multiline ? 3 : 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(title)
+        .accessibilityValue(value)
     }
 }
 
@@ -597,7 +817,7 @@ struct SupportHelmOptionsModalView: View {
                             if channel.url == nil {
                                 Text(L10n.App.Managers.State.comingSoon.localized)
                                     .font(.caption2)
-                                    .foregroundStyle(HelmTheme.textSecondary)
+                                    .foregroundColor(HelmTheme.textSecondary)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -651,7 +871,7 @@ private struct SettingsBadgeView: View {
                 .lineLimit(1)
         }
         .font(.caption2.weight(.semibold))
-        .foregroundStyle(badge.tint)
+        .foregroundColor(badge.tint)
         .padding(.horizontal, 6)
         .padding(.vertical, 3)
         .background(
@@ -676,5 +896,6 @@ struct SettingsPopoverView: View {
     var body: some View {
         SettingsSectionView()
             .frame(width: 440)
+            .environmentObject(ControlCenterContext())
     }
 }

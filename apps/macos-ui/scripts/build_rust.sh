@@ -10,6 +10,22 @@ export PATH="$HOME/.cargo/bin:$PATH"
 REPO_ROOT=$(git rev-parse --show-toplevel)
 cd "$REPO_ROOT/core/rust"
 
+# Keep Rust min deployment target aligned with Xcode (macOS 11.0 baseline).
+export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-11.0}"
+
+MIN_MACOS_LINK_ARG="-C link-arg=-mmacosx-version-min=${MACOSX_DEPLOYMENT_TARGET}"
+case " ${RUSTFLAGS:-} " in
+    *" ${MIN_MACOS_LINK_ARG} "*) ;;
+    *)
+        export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }${MIN_MACOS_LINK_ARG}"
+        ;;
+esac
+
+# Isolate Xcode-driven cargo output so stale artifacts built with higher deployment
+# targets do not leak into app links.
+TARGET_SUFFIX="${MACOSX_DEPLOYMENT_TARGET//./_}"
+export CARGO_TARGET_DIR="$REPO_ROOT/core/rust/target/xcode-macos${TARGET_SUFFIX}"
+
 # Determine build profile
 if [[ "${CONFIGURATION:-Debug}" == Release* ]]; then
     PROFILE="release"
@@ -67,7 +83,63 @@ fi
 echo "Requested Xcode ARCHS: $REQUESTED_ARCHS"
 echo "Rust targets: ${RUST_TARGETS[*]}"
 
+DEST_DIR="$REPO_ROOT/apps/macos-ui/Generated"
+mkdir -p "$DEST_DIR"
+
+FINGERPRINT_PATH="$DEST_DIR/.rust-build-fingerprint"
+OUTPUT_FILES=(
+    "$DEST_DIR/libhelm_ffi.a"
+    "$DEST_DIR/helm.h"
+    "$DEST_DIR/HelmVersion.swift"
+    "$DEST_DIR/HelmVersion.xcconfig"
+    "$DEST_DIR/HelmChannel.xcconfig"
+)
+
+compute_inputs_fingerprint() {
+    local tracked_files
+    tracked_files=$(git -C "$REPO_ROOT" ls-files \
+        core/rust \
+        apps/macos-ui/scripts/build_rust.sh \
+        apps/macos-ui/scripts/render_channel_xcconfig.sh \
+        2>/dev/null || true)
+    if [ -z "$tracked_files" ]; then
+        return 0
+    fi
+
+    {
+        echo "configuration=${CONFIGURATION:-Debug}"
+        echo "profile=$PROFILE"
+        echo "deployment_target=${MACOSX_DEPLOYMENT_TARGET:-11.0}"
+        echo "target_suffix=$TARGET_SUFFIX"
+        echo "requested_archs=$REQUESTED_ARCHS"
+        echo "rust_targets=${RUST_TARGETS[*]}"
+        echo "distribution_channel=${HELM_DISTRIBUTION_CHANNEL:-developer_id}"
+        while IFS= read -r relative; do
+            [ -z "$relative" ] && continue
+            local absolute="$REPO_ROOT/$relative"
+            [ -f "$absolute" ] && shasum -a 256 "$absolute"
+        done <<< "$tracked_files"
+    } | shasum -a 256 | awk '{print $1}'
+}
+
+INPUTS_FINGERPRINT="$(compute_inputs_fingerprint)"
+if [ -n "$INPUTS_FINGERPRINT" ] && [ -f "$FINGERPRINT_PATH" ]; then
+    outputs_present=1
+    for output in "${OUTPUT_FILES[@]}"; do
+        if [ ! -f "$output" ]; then
+            outputs_present=0
+            break
+        fi
+    done
+
+    if [ "$outputs_present" -eq 1 ] && [ "$(cat "$FINGERPRINT_PATH")" = "$INPUTS_FINGERPRINT" ]; then
+        echo "Rust core unchanged for current Xcode inputs; reusing Generated artifacts."
+        exit 0
+    fi
+fi
+
 LIB_INPUTS=()
+CARGO_OUTPUT_DIR="${CARGO_TARGET_DIR:-target}"
 installed_targets=""
 if command -v rustup >/dev/null 2>&1; then
     installed_targets=$(rustup target list --installed || true)
@@ -93,18 +165,13 @@ for target in "${RUST_TARGETS[@]}"; do
 
     echo "Building helm-ffi for $target..."
     cargo build -p helm-ffi $CARGO_FLAGS --target "$target"
-    LIB_INPUTS+=("target/$target/$PROFILE/libhelm_ffi.a")
+    LIB_INPUTS+=("$CARGO_OUTPUT_DIR/$target/$PROFILE/libhelm_ffi.a")
 done
 
 if [ "${#LIB_INPUTS[@]}" -eq 0 ]; then
     echo "No Rust targets were built. Ensure rustup targets are installed." >&2
     exit 1
 fi
-
-# Copy artifacts to a build directory inside apps/macos-ui
-# ensuring Xcode can find them
-DEST_DIR="$REPO_ROOT/apps/macos-ui/Generated"
-mkdir -p "$DEST_DIR"
 
 "$REPO_ROOT/apps/macos-ui/scripts/render_channel_xcconfig.sh" "$DEST_DIR/HelmChannel.xcconfig"
 
@@ -123,9 +190,14 @@ cat > "$DEST_DIR/HelmVersion.swift" <<SWIFT
 let helmVersion = "$VERSION"
 SWIFT
 
-# Generate xcconfig for Xcode bundle version synchronization
-# Strip prerelease tag for MARKETING_VERSION (Apple requires X.Y.Z)
-MARKETING_VERSION=$(echo "$VERSION" | sed 's/-.*//')
+# Generate xcconfig for Xcode bundle version synchronization.
+# Keep prerelease suffixes in MARKETING_VERSION for direct-channel RC visibility
+# in Sparkle "up to date" UI. App Store channel continues to receive X.Y.Z only.
+if [[ "${HELM_DISTRIBUTION_CHANNEL:-developer_id}" == "app_store" ]]; then
+    MARKETING_VERSION=$(echo "$VERSION" | sed 's/-.*//')
+else
+    MARKETING_VERSION="$VERSION"
+fi
 
 # Derive a monotonic numeric build number for Sparkle comparisons.
 # Format:
@@ -181,5 +253,9 @@ cat > "$DEST_DIR/HelmVersion.xcconfig" <<XCCONFIG
 MARKETING_VERSION = $MARKETING_VERSION
 CURRENT_PROJECT_VERSION = $BUILD_NUMBER
 XCCONFIG
+
+if [ -n "$INPUTS_FINGERPRINT" ]; then
+    printf '%s\n' "$INPUTS_FINGERPRINT" > "$FINGERPRINT_PATH"
+fi
 
 echo "Rust build complete (v$VERSION). Artifacts in $DEST_DIR"
