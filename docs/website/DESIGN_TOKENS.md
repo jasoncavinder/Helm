@@ -3,11 +3,16 @@
 ## Purpose
 Define CSS variable tokens for the redesigned Helm website, aligned to the official brand system. This is a proposal for design and implementation planning.
 
+Authoritative references:
+- `docs/brand/TYPOGRAPHY_COLOR_SYSTEM.md`
+- `docs/brand/WEBSITE_TYPOGRAPHY_COLOR_SPEC.md`
+
 ## Token Principles
 - Helm Blue is the primary interactive and brand color family.
 - Rope Gold is Pro-only accent color.
 - Semantic tokens should be consumed by components; raw palette tokens stay foundational.
 - Gold usage should remain below 10% of total visual weight on any page.
+- Headings use Neue Haas Grotesk, while body/interface text uses Inter.
 
 ## 1) Foundation Tokens
 ```css
@@ -40,8 +45,11 @@ Define CSS variable tokens for the redesigned Helm website, aligned to the offic
   --color-critical-500: #d64545;
 
   /* Typography */
-  --font-sans: "SF Pro Text", "SF Pro Display", "Inter", "IBM Plex Sans",
+  --font-heading: "Neue Haas Grotesk Display Pro", "Neue Haas Grotesk Text Pro",
+    "Neue Haas Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Inter", "SF Pro Text", "SF Pro Display", "IBM Plex Sans",
     -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-sans: var(--font-body);
   --font-mono: "SF Mono", "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
 
   /* Radius */
@@ -255,3 +263,5 @@ Define CSS variable tokens for the redesigned Helm website, aligned to the offic
 - Reserve all `--color-gold-*` tokens for Pro-specific badges, borders, and actions.
 - Keep focus states in Helm Blue for clear consistency and accessibility.
 - Keep contrast compliant in both themes before visual refinements are approved.
+- Use `--font-heading` for hero/section headings and `--font-body` for paragraphs/controls.
+- Keep Neue Haas fallbacks active until webfont licensing and distribution are finalized.

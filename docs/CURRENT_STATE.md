@@ -188,6 +188,8 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 - Website redesign planning artifacts added:
   - `docs/website/WEBSITE_REDESIGN_PLAN.md`
   - `docs/website/DESIGN_TOKENS.md`
+  - `docs/brand/TYPOGRAPHY_COLOR_SYSTEM.md`
+  - `docs/brand/WEBSITE_TYPOGRAPHY_COLOR_SPEC.md`
 
 ### Website Hosting Verification (Operations)
 
