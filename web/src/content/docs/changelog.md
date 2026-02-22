@@ -13,6 +13,14 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ## Unreleased
 
+## 0.17.1 — 2026-02-22
+
+Patch `0.17.1` supersedes the failed `v0.17.0` artifact build attempt and ships stable signed artifacts from the corrected release source.
+
+### Fixed
+- Stable macOS release builds now include the `LocalizationManager` explicit-`self` capture fix required by release compilation settings.
+- Release packaging now publishes signed/notarized artifacts from the corrected `0.17.1` tag lineage instead of the failed `v0.17.0` tag build.
+
 ## 0.17.0 — 2026-02-22
 
 Stable `0.17.0` consolidates all `rc.1` through `rc.5` deliveries and includes final release-readiness hardening across diagnostics, updater reliability, responsiveness, and website release surfaces.
