@@ -1,0 +1,28 @@
+---
+title: "Helm v0.17.2 Released"
+description: "v0.17.2 is now live with manager-selection execution routing, onboarding/detection hardening, and diagnostics UX improvements."
+summary: "A quick release note for v0.17.2 and what changed in this stable patch."
+publishDate: 2026-02-22
+author: Helm Team
+sidebar:
+  label: "v0.17.2 release"
+---
+
+Helm `v0.17.2` is now released on `main`.
+
+This stable patch follows `v0.17.0` and `v0.17.1` and focuses on operator-facing reliability and control improvements across manager execution selection, onboarding detection flow, and diagnostics usability.
+
+## Highlights
+
+- Manager executable-path and install-method selections are now actionable and enforced in runtime command routing.
+- Onboarding now runs detection-only first-pass behavior with clearer version-loading state handling.
+- Failed-task diagnostics now support selectable text and `Copy All` actions across diagnostics, stdout, stderr, and logs.
+- Disabled manager behavior is now consistently enforced across refresh/search/task flows.
+- Dark-mode list-surface styling is aligned in both Tasks and Packages views.
+
+## Release links
+
+- [GitHub Release: v0.17.2](https://github.com/jasoncavinder/Helm/releases/tag/v0.17.2)
+- [Changelog](https://helmapp.dev/changelog/)
+
+If you run into issues, please file a report with environment details and reproduction steps in [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
