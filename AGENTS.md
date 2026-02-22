@@ -259,16 +259,20 @@ Helm is infrastructure. Treat it like one.
 ## 13. Git Workflow (Required)
 
 ### Branch model
-- `main`: stable/releasable; protected; merges come from `dev` (except hotfixes).
-- `dev`: integration branch; protected; feature work merges here first.
-- Feature branches: branch off `dev`, merge back to `dev` via PR:
-  - `feat/...`, `fix/...`, `chore/...`, `docs/...`, `test/...`, `refactor/...`
-- Hotfixes: branch off `main` as `hotfix/...`, then merge into both `main` and `dev`.
+- `main`: stable/releasable branch; protected.
+- `dev`: code integration branch; protected; app/core/runtime work merges here first.
+- `docs`: documentation integration branch; protected; docs/policy/licensing docs work merges here first.
+- `web`: website integration branch; protected; website work under `web/` merges here first.
+- Feature branches:
+  - code work: branch from `dev`, open PRs to `dev` (`feat/...`, `fix/...`, `chore/...`, `test/...`, `refactor/...`)
+  - docs work: branch from `docs`, open PRs to `docs` (`docs/...`)
+  - website work: branch from `web`, open PRs to `web` (`web/...`)
+- Hotfixes: branch from `main` as `hotfix/...`, merge to `main`, then back-merge/cherry-pick to each impacted integration branch (`dev`, `docs`, `web` as applicable).
 
 ### Rules
-- Do not commit directly to `main`.
+- Do not commit directly to long-lived branches: `main`, `dev`, `docs`, `web`.
 - Exception: direct commits to `main` are allowed when explicitly instructed by the user/repo owner in the current session.
-- Avoid committing directly to `dev` except trivial docs fixes; prefer PRs.
+- Prefer PR-based updates for all long-lived branches.
 - Do not rewrite published history (no force-push) unless explicitly instructed.
 - Prefer small, coherent commits.
 
@@ -290,7 +294,13 @@ Helm uses different integration branches depending on change type.
 
 #### Documentation-Only Changes
 - Use `docs/...` branches
-- Open PRs targeting `main`
+- Branch from `docs`
+- Open PRs targeting `docs`
+
+#### Website-Only Changes
+- Use `web/...` branches
+- Branch from `web`
+- Open PRs targeting `web`
 
 Documentation-only changes include:
 - README updates
@@ -300,6 +310,14 @@ Documentation-only changes include:
 If a change includes both code and documentation:
 - Prefer merging into `dev`
 - Or split into separate PRs if appropriate
+
+If a change includes both documentation and website updates (without app code):
+- Prefer split PRs (`docs` and `web`) unless explicitly instructed to combine.
+
+Promotion to stable `main`:
+- App releases: merge `dev` -> `main`
+- Docs publishes: merge `docs` -> `main`
+- Website publishes: merge `web` -> `main`
 
 Agents must select the correct base branch before starting work.
 If unsure, ask for clarification.
@@ -401,12 +419,22 @@ Before starting work, agents MUST:
 2. Update their branch:
 
    ```bash
+   # code branches
    git rebase origin/dev
    ```
 
-   or, for documentation branches:
+   ```bash
+   # documentation branches
+   git rebase origin/docs
+   ```
 
    ```bash
+   # website branches
+   git rebase origin/web
+   ```
+
+   ```bash
+   # hotfix/release branches based on stable
    git rebase origin/main
    ```
 
@@ -446,7 +474,7 @@ Agents SHOULD:
 Agents should:
 
 * Push their branch to origin
-* Open a PR targeting the correct base branch (`dev` or `main`)
+* Open a PR targeting the correct base branch (`dev`, `docs`, `web`, or `main`)
 * Keep PRs small and focused
 
 ---

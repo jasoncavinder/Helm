@@ -2,8 +2,9 @@ name: Semgrep
 
 on:
   pull_request:
+    branches: [ "main", "dev" ]
   push:
-    branches: [ "main" ]
+    branches: [ "main", "dev" ]
 
 permissions:
   contents: read

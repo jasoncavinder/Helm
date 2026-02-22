@@ -36,6 +36,8 @@ This checklist is required before creating a release tag on `main`.
 ### Branch and Tag
 - [ ] Release-prep PR merged to `dev`.
 - [ ] `dev` merged into `main` for stable cut.
+- [ ] If release-critical docs updates were developed on `docs`, merge `docs` into `main`.
+- [ ] If release-critical website updates were developed on `web`, merge `web` into `main`.
 - [ ] Create annotated stable tag from `main`: `git tag -a v0.17.0 -m "Helm v0.17.0"`.
 - [ ] Push stable tag: `git push origin v0.17.0`.
 - [ ] Publish GitHub release for `v0.17.0` (mark as latest, non-prerelease).
