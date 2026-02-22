@@ -198,7 +198,7 @@ class LocalizationManager: ObservableObject {
             return "⟦\(key)⟧"
             #else
             localizationLogger.warning(
-                "Missing localization key \(key, privacy: .public) for locale \(currentLocale, privacy: .public)"
+                "Missing localization key \(key, privacy: .public) for locale \(self.currentLocale, privacy: .public)"
             )
             return key
             #endif
