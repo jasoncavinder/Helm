@@ -1,0 +1,85 @@
+name: Appcast Drift Guard
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 */6 * * *"
+  push:
+    branches: [main]
+    paths:
+      - "web/public/updates/appcast.xml"
+      - ".github/workflows/release-macos-dmg.yml"
+      - ".github/workflows/appcast-drift.yml"
+
+jobs:
+  verify-appcast-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compare latest stable release with appcast top version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          FEED_PATH="web/public/updates/appcast.xml"
+          if [ ! -f "$FEED_PATH" ]; then
+            echo "::error::Missing appcast file: $FEED_PATH"
+            exit 1
+          fi
+
+          LATEST_STABLE_TAG="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '[.[] | select((.draft|not) and (.prerelease|not))][0].tag_name')"
+          if [ -z "$LATEST_STABLE_TAG" ] || [ "$LATEST_STABLE_TAG" = "null" ]; then
+            echo "::error::Unable to determine latest stable release tag from GitHub releases."
+            exit 1
+          fi
+          EXPECTED_VERSION="${LATEST_STABLE_TAG#v}"
+
+          APPCAST_VERSION="$(
+            FEED_PATH="$FEED_PATH" python3 - <<'PY'
+            import os
+            import xml.etree.ElementTree as ET
+
+            sparkle_ns = "http://www.andymatuschak.org/xml-namespaces/sparkle"
+            feed_path = os.environ["FEED_PATH"]
+
+            root = ET.parse(feed_path).getroot()
+            item = root.find("./channel/item")
+            if item is None:
+                print("")
+                raise SystemExit(0)
+
+            enclosure = item.find("enclosure")
+            version = ""
+            if enclosure is not None:
+                version = enclosure.attrib.get(f"{{{sparkle_ns}}}shortVersionString", "").strip()
+
+            if not version:
+                title = (item.findtext("title") or "").strip()
+                if title.lower().startswith("helm "):
+                    version = title[5:].strip()
+
+            print(version)
+            PY
+          )"
+
+          if [ -z "$APPCAST_VERSION" ]; then
+            echo "::error::Unable to parse top appcast version from ${FEED_PATH}"
+            exit 1
+          fi
+
+          echo "Latest stable tag: ${LATEST_STABLE_TAG}"
+          echo "Appcast top version: ${APPCAST_VERSION}"
+
+          if [ "$APPCAST_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "::error::Appcast drift detected: latest stable is ${EXPECTED_VERSION}, but appcast advertises ${APPCAST_VERSION}."
+            echo "::error::Update ${FEED_PATH} via the release-publish workflow fallback branch/PR."
+            exit 1
+          fi
+
+          echo "Appcast version matches latest stable release (${EXPECTED_VERSION})."
