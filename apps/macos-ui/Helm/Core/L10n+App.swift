@@ -38,6 +38,7 @@ extension L10n {
                 static let installed = "app.packages.filter.installed"
                 static let upgradable = "app.packages.filter.upgradable"
                 static let available = "app.packages.filter.available"
+                static let pinned = "app.packages.filter.pinned"
             }
             struct State {
                 static let noPackagesFound = "app.packages.state.no_packages_found"
@@ -99,6 +100,18 @@ extension L10n {
                 static let rustup = "app.managers.name.rustup"
                 static let softwareUpdate = "app.managers.name.software_update"
                 static let appStore = "app.managers.name.app_store"
+                static let sparkle = "app.managers.name.sparkle"
+                static let setapp = "app.managers.name.setapp"
+                static let asdf = "app.managers.name.asdf"
+                static let macports = "app.managers.name.macports"
+                static let nixDarwin = "app.managers.name.nix_darwin"
+                static let dockerDesktop = "app.managers.name.docker_desktop"
+                static let podman = "app.managers.name.podman"
+                static let colima = "app.managers.name.colima"
+                static let parallelsDesktop = "app.managers.name.parallels_desktop"
+                static let xcodeCommandLineTools = "app.managers.name.xcode_command_line_tools"
+                static let rosetta2 = "app.managers.name.rosetta2"
+                static let firmwareUpdates = "app.managers.name.firmware_updates"
             }
             struct Category {
                 static let toolchain = "app.managers.category.toolchain"
@@ -170,6 +183,19 @@ extension L10n {
                 static let safeModeDescription = "app.onboarding.settings.safe_mode_description"
                 static let autoCleanDescription = "app.onboarding.settings.auto_clean_description"
             }
+            struct License {
+                static let title = "app.onboarding.license.title"
+                static let subtitle = "app.onboarding.license.subtitle"
+                static let version = "app.onboarding.license.version"
+                static let summary = "app.onboarding.license.summary"
+                static let accept = "app.onboarding.license.action.accept"
+            }
+        }
+
+        struct Legal {
+            struct Action {
+                static let viewTerms = "app.legal.action.view_terms"
+            }
         }
 
         struct Settings {
@@ -191,6 +217,9 @@ extension L10n {
                 static let french = "app.settings.label.language.french"
                 static let portugueseBrazilian = "app.settings.label.language.portuguese_brazilian"
                 static let japanese = "app.settings.label.language.japanese"
+                static let hungarian = "app.settings.label.language.hungarian"
+                static let launchAtLogin = "app.settings.label.launch_at_login"
+                static let launchAtLoginRequiresMacOS13 = "app.settings.label.launch_at_login_requires_macos_13"
                 static let autoCheck = "app.settings.label.auto_check"
                 static let checkFrequency = "app.settings.label.check_frequency"
                 static let safeMode = "app.settings.label.safe_mode"
@@ -208,11 +237,31 @@ extension L10n {
                 static let reset = "app.settings.action.reset"
                 static let quit = "app.settings.action.quit"
                 static let replayWalkthrough = "app.settings.action.replay_walkthrough"
+                static let restoreManagerPriority = "app.settings.action.restore_manager_priority"
             }
             struct Metric {
                 static let managers = "app.settings.metric.managers"
                 static let updates = "app.settings.metric.updates"
                 static let tasks = "app.settings.metric.tasks"
+            }
+            struct ServiceHealth {
+                static let section = "app.settings.section.service_health"
+                static let connection = "app.settings.service_health.connection"
+                static let refreshState = "app.settings.service_health.refresh_state"
+                static let lastCheck = "app.settings.service_health.last_check"
+                static let failedTasks = "app.settings.service_health.failed_tasks"
+                static let managersDetected = "app.settings.service_health.managers_detected"
+                static let managersMissing = "app.settings.service_health.managers_missing"
+                static let lastError = "app.settings.service_health.last_error"
+                static let copySnapshot = "app.settings.service_health.copy_snapshot"
+
+                struct Status {
+                    static let connected = "app.settings.service_health.status.connected"
+                    static let disconnected = "app.settings.service_health.status.disconnected"
+                    static let refreshing = "app.settings.service_health.status.refreshing"
+                    static let idle = "app.settings.service_health.status.idle"
+                    static let never = "app.settings.service_health.status.never"
+                }
             }
             struct Alert {
                 struct Reset {
@@ -237,6 +286,7 @@ extension L10n {
                 static let requestFeature = "app.settings.support_feedback.request_feature"
                 static let sendFeedback = "app.settings.support_feedback.send_feedback"
                 static let copyDiagnostics = "app.settings.support_feedback.copy_diagnostics"
+                static let copyStructuredExport = "app.settings.support_feedback.copy_structured_export"
                 static let includeDiagnostics = "app.settings.support_feedback.include_diagnostics"
                 static let copiedConfirmation = "app.settings.support_feedback.copied_confirmation"
                 static let diagnosticsCopiedHint = "app.settings.support_feedback.diagnostics_copied_hint"
@@ -341,26 +391,66 @@ extension L10n {
             static let taskOutputLoadFailed = "app.inspector.task_output_load_failed"
             static let taskOutputUnavailable = "app.inspector.task_output_unavailable"
             static let taskOutputDiagnostics = "app.inspector.task_output.diagnostics"
+            static let taskOutputLogs = "app.inspector.task_output.logs"
             static let taskOutputStdout = "app.inspector.task_output.stdout"
             static let taskOutputStderr = "app.inspector.task_output.stderr"
+            static let taskLogsLevelFilter = "app.inspector.task_logs.level_filter"
+            static let taskLogsStatusFilter = "app.inspector.task_logs.status_filter"
+            static let taskLogsLevelAll = "app.inspector.task_logs.level.all"
+            static let taskLogsLevelInfo = "app.inspector.task_logs.level.info"
+            static let taskLogsStatusAll = "app.inspector.task_logs.status.all"
+            static let taskLogsEmpty = "app.inspector.task_logs.empty"
+            static let taskLogsEmptyFiltered = "app.inspector.task_logs.empty_filtered"
+            static let taskLogsLoadMore = "app.inspector.task_logs.load_more"
             static let packageId = "app.inspector.package_id"
             static let packageStatus = "app.inspector.package_status"
             static let pinned = "app.inspector.pinned"
             static let restartRequired = "app.inspector.restart_required"
             static let detected = "app.inspector.detected"
             static let notDetected = "app.inspector.not_detected"
+            static let detectionDiagnostics = "app.inspector.detection_diagnostics"
+            static let detectionLastTaskStatus = "app.inspector.detection_last_task_status"
+            static let detectionLastTaskId = "app.inspector.detection_last_task_id"
+            static let detectionReasonDetected = "app.inspector.detection_reason.detected"
+            static let detectionReasonNotDetected = "app.inspector.detection_reason.not_detected"
+            static let detectionReasonInProgress = "app.inspector.detection_reason.in_progress"
+            static let detectionReasonFailed = "app.inspector.detection_reason.failed"
+            static let detectionReasonDisabled = "app.inspector.detection_reason.disabled"
+            static let detectionReasonNotImplemented = "app.inspector.detection_reason.not_implemented"
+            static let detectionReasonNeverChecked = "app.inspector.detection_reason.never_checked"
             static let version = "app.inspector.version"
             static let executablePath = "app.inspector.executable_path"
+            static let executablePaths = "app.inspector.executable_paths"
             static let enabled = "app.inspector.enabled"
             static let disabled = "app.inspector.disabled"
             static let category = "app.inspector.category"
             static let installMethod = "app.inspector.install_method"
+            static let installMethodTagRecommended = "app.inspector.install_method.tag.recommended"
+            static let installMethodTagPreferred = "app.inspector.install_method.tag.preferred"
             static let viewManager = "app.inspector.view_manager"
             struct InstallMethod {
                 static let automatable = "app.inspector.install_method.automatable"
                 static let updateAndUninstall = "app.inspector.install_method.update_and_uninstall"
                 static let updateOnly = "app.inspector.install_method.update_only"
                 static let systemBinary = "app.inspector.install_method.system_binary"
+                static let homebrew = "app.inspector.install_method.homebrew"
+                static let macports = "app.inspector.install_method.macports"
+                static let appStore = "app.inspector.install_method.app_store"
+                static let setapp = "app.inspector.install_method.setapp"
+                static let officialInstaller = "app.inspector.install_method.official_installer"
+                static let scriptInstaller = "app.inspector.install_method.script_installer"
+                static let corepack = "app.inspector.install_method.corepack"
+                static let rustupInstaller = "app.inspector.install_method.rustup_installer"
+                static let xcodeSelect = "app.inspector.install_method.xcode_select"
+                static let softwareUpdate = "app.inspector.install_method.software_update"
+                static let systemProvided = "app.inspector.install_method.system_provided"
+                static let npm = "app.inspector.install_method.npm"
+                static let pip = "app.inspector.install_method.pip"
+                static let pipx = "app.inspector.install_method.pipx"
+                static let gem = "app.inspector.install_method.gem"
+                static let cargoInstall = "app.inspector.install_method.cargo_install"
+                static let asdf = "app.inspector.install_method.asdf"
+                static let mise = "app.inspector.install_method.mise"
                 static let notManageable = "app.inspector.install_method.not_manageable"
             }
         }
@@ -379,8 +469,29 @@ extension L10n {
                 static let name = "app.overlay.about.name"
                 static let subtitle = "app.overlay.about.subtitle"
                 static let version = "app.overlay.about.version"
+                static let build = "app.overlay.about.build"
                 static let summary = "app.overlay.about.summary"
+                static let channel = "app.overlay.about.channel"
+                static let updateAuthority = "app.overlay.about.update_authority"
+                static let lastChecked = "app.overlay.about.last_checked"
+                static let never = "app.overlay.about.never"
                 static let checkForUpdates = "app.overlay.about.check_updates"
+
+                struct Channel {
+                    static let developerID = "app.overlay.about.channel.developer_id"
+                    static let appStore = "app.overlay.about.channel.app_store"
+                    static let setapp = "app.overlay.about.channel.setapp"
+                    static let fleet = "app.overlay.about.channel.fleet"
+                    static let unknown = "app.overlay.about.channel.unknown"
+                }
+
+                struct UpdateAuthority {
+                    static let sparkle = "app.overlay.about.update_authority.sparkle"
+                    static let appStore = "app.overlay.about.update_authority.app_store"
+                    static let setapp = "app.overlay.about.update_authority.setapp"
+                    static let adminControlled = "app.overlay.about.update_authority.admin_controlled"
+                    static let unavailable = "app.overlay.about.update_authority.unavailable"
+                }
             }
             struct Quit {
                 static let title = "app.overlay.quit.title"

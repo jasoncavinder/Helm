@@ -20,6 +20,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Guardrail - ensure legacy GitHub Pages workflow is absent
+        run: |
+          set -euo pipefail
+          if [ -f ".github/workflows/deploy-web.yml" ]; then
+            echo "error: .github/workflows/deploy-web.yml must not be reintroduced; website hosting is Cloudflare Pages." >&2
+            exit 1
+          fi
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 

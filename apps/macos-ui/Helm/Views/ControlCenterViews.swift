@@ -1,5 +1,4 @@
 import SwiftUI
-import AppKit
 
 struct ControlCenterWindowView: View {
     @EnvironmentObject private var context: ControlCenterContext
@@ -67,7 +66,11 @@ struct ControlCenterWindowView: View {
                   let step = walkthrough.currentStep else { return }
             navigateToSection(for: step.targetAnchor)
         }
+        .onChange(of: context.selectedSection) { newSection in
+            context.alignInspectorSelection(for: newSection)
+        }
         .onAppear {
+            context.alignInspectorSelection(for: context.selectedSection)
             if core.hasCompletedOnboarding {
                 core.triggerRefresh()
             }

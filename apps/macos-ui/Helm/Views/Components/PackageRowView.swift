@@ -8,17 +8,19 @@ enum KegPolicyMenuSelection {
 
 struct PackageRowView: View {
     let package: PackageItem
+    var managerDisplayNames: [String]?
     var isSelected: Bool = false
     var isPinActionInFlight: Bool = false
     var isUpgradeActionInFlight: Bool = false
     var isInstallActionInFlight: Bool = false
-    var kegPolicySelection: KegPolicyMenuSelection? = nil
-    var onSelectKegPolicy: ((KegPolicyMenuSelection) -> Void)? = nil
-    var onUpgrade: (() -> Void)? = nil
-    var onInstall: (() -> Void)? = nil
-    var onTogglePin: (() -> Void)? = nil
+    var kegPolicySelection: KegPolicyMenuSelection?
+    var onSelectKegPolicy: ((KegPolicyMenuSelection) -> Void)?
+    var onUpgrade: (() -> Void)?
+    var onInstall: (() -> Void)?
+    var onTogglePin: (() -> Void)?
 
     private var accessibilityDescription: String {
+        let managerList = displayedManagerNames.joined(separator: ", ")
         var parts = [package.name, package.status.displayName]
         parts.append(package.version)
         if let latest = package.latestVersion {
@@ -30,8 +32,16 @@ struct PackageRowView: View {
         if package.restartRequired {
             parts.append(L10n.App.Packages.Label.restartRequired.localized)
         }
-        parts.append(package.manager)
+        parts.append(managerList)
         return parts.joined(separator: ", ")
+    }
+
+    private var displayedManagerNames: [String] {
+        let names = managerDisplayNames?.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? []
+        if names.isEmpty {
+            return [package.manager]
+        }
+        return names
     }
 
     var body: some View {
@@ -82,19 +92,26 @@ struct PackageRowView: View {
                     }
                 }
 
-                Text(package.manager)
-                    .font(.caption2)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
-                    .background(
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .fill(HelmTheme.surfaceElevated)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                    .strokeBorder(HelmTheme.borderSubtle.opacity(0.9), lineWidth: 0.8)
-                            )
-                    )
-                    .foregroundColor(HelmTheme.textSecondary)
+                if displayedManagerNames.count == 1 {
+                    Text(displayedManagerNames[0])
+                        .font(.caption2)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(HelmTheme.surfaceElevated)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                        .strokeBorder(HelmTheme.borderSubtle.opacity(0.9), lineWidth: 0.8)
+                                )
+                        )
+                        .foregroundColor(HelmTheme.textSecondary)
+                } else {
+                    Text(displayedManagerNames.joined(separator: ", "))
+                        .font(.caption2)
+                        .foregroundColor(HelmTheme.textSecondary)
+                        .lineLimit(2)
+                }
             }
 
             Spacer()

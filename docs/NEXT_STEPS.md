@@ -11,15 +11,94 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-0.16.x
+0.18.x kickoff preparation
 ```
 
 Focus:
-- 0.16.2 Sparkle connectivity stabilization and platform-baseline alignment
-- begin 0.17.x diagnostics/logging implementation planning
+- monitor post-release feedback on stable `v0.17.0`
+- begin planning and branch setup for `0.18.x` local security groundwork
 
 Current checkpoint:
-- `v0.16.2` release prep in progress (Sparkle entitlement/feed hardening + macOS 11 deployment-target enforcement)
+- `v0.17.0` is released on `main`; the full `rc.1` through `rc.5` hardening lineage is consolidated in stable:
+  - `#93` `feat/v0.17-log-foundation`
+  - `#95` `feat/v0.17-structured-error-export`
+  - `#96` `feat/v0.17-service-health-panel`
+  - `#97` `feat/v0.17-task-log-viewer`
+  - `#98` `feat/v0.17-manager-detection-diagnostics`
+  - `#99` `feat/v0.17-diagnostics-hardening`
+  - updater/install hardening for Sparkle sandboxed flows and prerelease appcast short-version labeling
+  - post-rc.2 follow-up delivered for `rc.3`:
+    - preserve prerelease bundle short version in Sparkle "up to date" messaging
+    - add running-task inline expand/collapse command/live-output panel
+    - consolidate same-name packages across managers in package/search UI surfaces while preserving manager-scoped actions
+    - render HTML package descriptions in inspector with safe-link policy and readable fallback
+    - keep inspector detail text containers full-width with leading alignment in the side panel
+    - harden package-consolidation row selection policy and task-output buffer caps
+    - add prerelease updater bundle-metadata sanity checks and Hungarian translation follow-through for new UI strings
+  - post-rc.3 release automation follow-up delivered on `dev`:
+    - generate and publish website-hosted Sparkle release-notes pages from `CHANGELOG.md` under `web/public/updates/release-notes/<tag>.html`
+    - point appcast `sparkle:releaseNotesLink` to hosted website release notes instead of GitHub release pages
+  - post-rc.3 onboarding/legal follow-up delivered on `dev`:
+    - require first-run license-terms acceptance for `developer_id` channel before onboarding can proceed
+    - persist accepted license version + timestamp and re-prompt automatically when tracked license version changes
+    - expose `View License Terms` in About overlay for post-onboarding re-review
+  - post-rc.3 control-center/popover workflow follow-up delivered on `dev`:
+    - suppress popover while Control Center is open and focus Control Center on status-item clicks during that state
+    - make popover health + metric cards and overview metric cards route directly to their Control Center sections
+    - extend top-bar drag surface to match the full visible top bar
+  - post-rc.3 manager-priority/inspector follow-up delivered on `dev`:
+    - replace alphabetical manager ordering with priority ordering (installed first), add intra-authority drag reordering, and expose restore-default-priority action in advanced settings
+    - expand manager inspector to show full executable-path discovery set with active-path emphasis and install-method dropdown metadata (recommended/preferred tagging, selection disabled for future gated flow)
+    - expand manager install-method catalog coverage across implemented managers and improve About overlay diagnostics metadata (build/channel/update authority/last-check)
+  - post-rc.3 control-center polish follow-up delivered on `dev`:
+    - reset-local-data now clears onboarding license-acceptance state in addition to cached runtime data
+    - running-task rows now toggle expand/collapse from whole-row taps (not only indicator affordances)
+    - Control Center drag-to-move now applies across the full window background (interactive controls still take precedence)
+    - settings top metric cards now deep-link to Managers/Updates/Tasks
+    - inspector selection now clears when sections change and selected rows/cards are visually highlighted
+    - launch-at-login setting added for supported systems (macOS 13+), with localized unsupported messaging on older systems
+    - manager/popover count rendering paths precompute per-manager counts to reduce repeated filtering work in hot UI update loops
+  - pre-rc.4 stabilization follow-up delivered on `dev`:
+    - popover outside-click close handling now only reacts to click events (not hover/drag movement)
+    - floating-panel cursor forcing removed so interactive controls retain expected hover affordances
+    - consolidated package default-manager ordering now respects authority-aware manager priority
+    - executable-path discovery now skips undetected managers and caches detected-manager discovery results
+    - targeted regression coverage added for priority-ranked consolidation behavior and manager-status executable-path behavior
+  - post-rc.4 issue-remediation follow-up delivered on `dev`:
+    - softwareupdate manager icon mapping corrected to valid SF Symbol naming (`applelogo`)
+    - manager-priority drag interactions now take precedence over full-window drag-to-move in the Managers section
+    - inflight task dedupe now prefers running/newest IDs so command/stdout panes stay populated when backend output exists
+    - Packages now includes localized `Pinned` filtering, excludes pinned packages from `Upgradable`, and uses horizontal filter-chip scrolling to preserve localization fit
+  - post-rc.4 UX/task-diagnostics follow-up delivered on `dev`:
+    - popover package search rows now expose icon quick actions (install/uninstall/update/pin) without opening Control Center
+    - package inspector actions now use icon + tooltip controls to preserve usability in narrow inspector widths
+    - manager inspector executable-path lists become scrollable when long, and managers in error state now expose `View Diagnostics`
+    - failed tasks now support inline expand/collapse command+output panes, with single-selected expansion behavior
+    - task-pruning retention windows now start at completion/failure timestamp rather than original queue/start time
+  - post-rc.4 privileged-auth follow-up delivered on `dev`:
+    - adapter operations marked `requires_elevation` now execute via structured `sudo -A -- <program> <args...>` wrapping in the core process executor
+    - executor auto-provisions a local askpass helper script (or honors `HELM_SUDO_ASKPASS` override) so privileged tasks trigger administrator authentication prompts in-app flow
+    - task command/output capture remains active for elevated runs, preserving diagnostics transparency for auth-denied/privileged-failure cases
+  - post-rc.4 responsiveness follow-up delivered on `dev`:
+    - overview/managers/popover/settings now read section-scoped derived state (manager health/count maps, top task slices) instead of repeatedly recomputing per-render dictionaries
+    - polling cadence now adapts to interactive surface visibility (popover/control-center visible vs background), with lifecycle visibility hooks in `AppDelegate`
+    - inspector package-description rendering now goes through a bounded core-level LRU render cache
+    - scroll-heavy managers/overview/updates/settings/popover-search sections now use lazy stack containers where applicable
+  - pre-stable `rc.5 -> 0.17.0` hardening follow-up delivered on `dev`:
+    - manager display-name localization now resolves through one shared helper across Core + UI surfaces
+    - localization file/missing-key diagnostics now emit structured logger events instead of direct `print` output
+    - polling cadence now slows further during idle/no-inflight states even while interactive surfaces are visible
+    - SQLite connection defaults now enforce `WAL`, `NORMAL` sync, `busy_timeout`, and foreign-key pragmas
+    - terminal-task pruning now includes `cancelled` status with terminal-time retention behavior
+    - Rust build script now fingerprints Rust/script inputs and skips rebuild work when generated artifacts are unchanged
+    - release checklist now includes a dedicated `v0.17.0` stable gate and archival guidance for historical checklist sections
+  - website release-readiness follow-up delivered on `dev`:
+    - Starlight now runs a local blog plugin that inserts `/blog/` navigation and an RSS social link
+    - website now renders a global beta-tester announcement banner with a refined brand-consistent visual treatment
+    - blog pages now include social-share actions (X, LinkedIn, Reddit, Email)
+    - landing navigation now includes right-aligned `Blog` and `Docs` links for faster access
+- latest stable release on `main`: `v0.17.0`
+- validation gates are green through the stable cut (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke across `v0.17.0-rc.1` through `v0.17.0-rc.5`)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
 - `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)
@@ -36,24 +115,49 @@ Current checkpoint:
 - `v0.14.0` distribution/licensing architecture planning docs aligned (future-state, no implementation changes)
 
 Next release targets:
-- `v0.17.x` — Diagnostics & Logging
 - `v0.18.x` — Local security groundwork (internal-only)
 - `v0.19.x` — Stability & Pre-1.0 hardening
 
-## v0.17.x Delivery Tracker (Target: `v0.17.0-rc.1`)
+## v0.17.x Delivery Tracker (Stable `0.17.0` Complete)
 
-- [ ] `feat/v0.17-log-foundation` — task log event model, SQLite persistence migration, FFI/XPC retrieval surface.
-- [ ] `feat/v0.17-task-log-viewer` — per-task log viewer UI with filters and pagination.
-- [ ] `feat/v0.17-structured-error-export` — structured support/error export payloads with redaction.
-- [ ] `feat/v0.17-service-health-panel` — service/runtime health diagnostics panel.
-- [ ] `feat/v0.17-manager-detection-diagnostics` — per-manager detection diagnostics and reason visibility.
-- [ ] `feat/v0.17-diagnostics-hardening` — silent-failure sweep, attribution consistency, integration/doc exit checks.
+- [x] `feat/v0.17-log-foundation` — task log event model, SQLite persistence migration, FFI/XPC retrieval surface.
+- [x] `feat/v0.17-task-log-viewer` — per-task log viewer UI with filters and pagination.
+- [x] `feat/v0.17-structured-error-export` — structured support/error export payloads with redaction.
+- [x] `feat/v0.17-service-health-panel` — service/runtime health diagnostics panel.
+- [x] `feat/v0.17-manager-detection-diagnostics` — per-manager detection diagnostics and reason visibility.
+- [x] `feat/v0.17-diagnostics-hardening` — silent-failure sweep, attribution consistency, integration/doc exit checks.
+- [x] `v0.17.0-rc.1` localization follow-through — manager display-name key coverage expanded across all implemented manager IDs with brand-preserving labels; Hungarian (`hu`) locale added with onboarding + service/error translation bootstrap and CI parity checks.
+- [x] `v0.17.0-rc.2` updater/install hardening — Sparkle sandbox installer entitlements + installer launcher service metadata added; prerelease appcast short-version labeling now preserves RC identifiers.
+- [x] post-`rc.2` updater version-label alignment — non-App-Store prerelease builds now preserve prerelease marketing version so Sparkle "up to date" messaging reflects full RC versions.
+- [x] post-`rc.2` running-task execution transparency — running tasks now expose inline expand/collapse details showing command and live-updating output.
+- [x] post-`rc.2` cross-manager package presentation consolidation — package list and popover search now collapse same-name entries into one package row and display all contributing managers beneath the package name.
+- [x] post-`rc.2` inspector rich-description hardening — inspector now renders HTML package descriptions as attributed text, with safe-link filtering and readable fallback behavior.
+- [x] post-`rc.2` inspector layout hardening — inspector detail containers now stay full-width with leading alignment to avoid centered narrow text content.
+- [x] post-`rc.2` updater prerelease guardrails — updater eligibility now rejects bundle marketing/build metadata mismatches that would blur prerelease vs stable version semantics.
+- [x] post-`rc.2` diagnostics/runtime hardening — task-output store now enforces bounded command/output buffering for long-running tasks, and Hungarian locale coverage includes the new task/inspector strings.
+- [x] post-`rc.3` updater release-notes hosting — release workflow now generates a per-tag website release-notes HTML page from `CHANGELOG.md`, publishes it with appcast updates, and links Sparkle release-notes URLs to the hosted page.
+- [x] post-`rc.3` onboarding/legal acceptance — Developer ID onboarding now requires explicit license-terms acceptance tracked by version + timestamp, with re-prompting on license-version changes and a persistent About link to review terms.
+- [x] post-`rc.3` popover/control-center interaction hardening — status-item popover no longer coexists with Control Center; status-item clicks focus Control Center while open; popover/overview health and metrics now deep-link to the appropriate Control Center section.
+- [x] post-`rc.3` manager-priority workflow — manager cards are priority-ordered by authority with installed-first enforcement, drag-reorder support, and advanced-settings restore-default-priority action.
+- [x] post-`rc.3` manager inspector install-metadata expansion — inspector now shows all discovered executable paths (active path emphasized), install-method dropdown metadata with recommended/preferred tags, and expanded per-manager install-method catalogs.
+- [x] post-`rc.3` About diagnostics metadata enhancement — About overlay now surfaces build number, distribution channel, update authority, and last update-check timestamp.
+- [x] post-`rc.3` control-center workflow polish — reset-local-data clears license-acceptance state; running-task row taps toggle details; settings metrics deep-link to managers/updates/tasks; inspector selection clears on section changes and selected entities are highlighted.
+- [x] post-`rc.3` startup/interaction polish — launch-at-login setting added (macOS 13+), popover cursor handling restored for hover affordance clarity, full-window Control Center drag support enabled, and count-heavy UI lists now use precomputed manager count maps for smoother drag/scroll behavior on lower-spec Macs.
+- [x] pre-`rc.4` stabilization — popover outside-click behavior hardened to click-only event handling; floating-panel cursor forcing removed; consolidated package manager preference now authority-aware; executable-path discovery cost reduced via undetected-manager skip + discovery caching; targeted policy/manager-status regression tests added.
+- [x] post-`rc.4` issue-remediation — softwareupdate symbol mapping corrected; manager drag-vs-window-drag precedence fixed; inflight-task dedupe now prefers running/newer rows for live command/output panes; Packages gained localized `Pinned` filtering with upgradable exclusion and overflow-safe horizontal chip layout.
+- [x] post-`rc.4` UX/task-diagnostics hardening — popover search package rows gained quick icon actions (install/uninstall/update/pin), package inspector actions moved to icon+tooltip buttons, manager inspector executable paths now scroll when long and include error-state `View Diagnostics`, failed tasks now support inline details with single-selection expansion, and task retention timing now starts from terminal transition time.
+- [x] post-`rc.4` privileged-auth support — core execution now wraps `requires_elevation` requests with structured `sudo -A` plus askpass helper provisioning, enabling first-class administrator authentication prompts for privileged install/update operations while retaining command/output diagnostics visibility.
+- [x] post-`rc.4` responsiveness hardening — section-scoped derived state now backs overview/managers/popover/settings metrics; polling cadence adapts to visible interactive surfaces; package-description rendering now uses a bounded core LRU cache; lazy stacks now back scroll-heavy managers/overview/updates/settings/popover-search surfaces.
+- [x] `v0.17.0-rc.5` release-prep consolidation — post-`rc.4` issue-remediation, UX/task diagnostics hardening, privileged-auth execution support, and responsiveness improvements are bundled with changelog/docs alignment for the next RC cut.
 
-RC-1 release gate for `v0.17.x`:
+RC-3 release gate for `v0.17.x`:
 - Logs are accessible in UI.
 - No silent failures in task execution/reporting paths.
 - Support data export works and is operator-usable.
-
+- Sparkle updater can launch installer successfully for eligible direct-channel installs.
+- Appcast `sparkle:shortVersionString` preserves prerelease labels for RC builds.
+- Sparkle updater eligibility rejects prerelease/stable bundle-version metadata mismatches.
+- Task execution transparency surfaces command + live output while keeping diagnostics storage bounded.
 License/compliance follow-through:
 - Keep `docs/legal/THIRD_PARTY_LICENSES.md` updated as dependency sets change.
 - Treat third-party notice validation as a required release gate (`docs/RELEASE_CHECKLIST.md`).
@@ -300,7 +404,7 @@ Delivered:
   - "Pick Your Managers"
 - Task list visibility now deduplicates in-flight task rows by `(manager, task_type)` and keeps bounded terminal history
 - Task list visibility now fetches a wider recent-task window to avoid hiding long-running in-flight entries under queue churn
-- Task pruning timeout policy now removes only `completed` and `failed` records (no timeout pruning of `cancelled`)
+- Task pruning timeout policy now removes terminal (`completed`/`failed`/`cancelled`) records using terminal-status timestamps
 - Duplicate task submission guard added for manager install/update/uninstall and package upgrade actions when an identical labeled task is already queued/running
 - Refresh trigger now skips creating a new refresh sweep while refresh/detection tasks are already in flight
 - RubyGems now participates in per-package upgrade eligibility in the SwiftUI workflow
@@ -791,7 +895,7 @@ Delivered:
 
 ### Priority 3 — Localization Expansion (Completed)
 
-- All 6 locales (en, es, de, fr, pt-BR, ja) at full key parity ✅
+- All 7 locales (en, es, de, fr, pt-BR, ja, hu) at full key parity ✅
 - CI enforcement for locale parity + integrity ✅
 - On-device overflow validation ✅
 
@@ -881,4 +985,4 @@ Implement:
 - 0.14 stable release alignment for `v0.14.0` is complete (README/website + version artifacts).
 - Distribution/licensing future-state planning documentation is aligned for 0.14 release notes and roadmap planning (no implementation yet).
 - 0.14.x and 0.15.x release execution are complete on `main` (`v0.14.1` and `v0.15.0`).
-- 0.16.0 release execution is in progress; next delivery slice is 0.17.x diagnostics/logging.
+- 0.17.0 release execution is complete on `main`; 0.17.x diagnostics/logging delivery is now closed with `v0.17.0-rc.1` through `v0.17.0-rc.5` as the completed stabilization lineage.
