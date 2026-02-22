@@ -1,0 +1,128 @@
+name: Policy Gate
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [main, dev, docs, web]
+
+jobs:
+  policy-gate:
+    name: Policy Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Enforce branch and scope policy
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          is_docs_path() {
+            case "$1" in
+              docs/*|README.md|CHANGELOG.md|AGENTS.md|.github/cla.yml|.github/FUNDING.yml|.github/ISSUE_TEMPLATE/*) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          is_web_path() {
+            case "$1" in
+              web/*|docs/website/*|docs/brand/WEBSITE_*|docs/brand/LANDING_COPY_REWRITE.md) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          is_release_publish_path() {
+            case "$1" in
+              web/public/updates/appcast.xml|web/public/updates/release-notes/*) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          error_count=0
+          report_error() {
+            echo "::error::$1"
+            error_count=$((error_count + 1))
+          }
+
+          mapfile -t changed_files < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+
+          docs_only=true
+          web_only=true
+          release_publish_only=true
+          for path in "${changed_files[@]}"; do
+            is_docs_path "$path" || docs_only=false
+            is_web_path "$path" || web_only=false
+            is_release_publish_path "$path" || release_publish_only=false
+          done
+
+          case "$BASE_REF" in
+            main)
+              if [[ ! "$HEAD_REF" =~ ^(dev|docs|web)$ ]] \
+                && [[ ! "$HEAD_REF" =~ ^hotfix/ ]] \
+                && [[ ! "$HEAD_REF" =~ ^release/ ]] \
+                && [[ ! "$HEAD_REF" =~ ^chore/publish-updates- ]]; then
+                report_error "PRs into main must come from dev, docs, web, hotfix/*, release/*, or chore/publish-updates-*."
+              fi
+
+              if [[ "$HEAD_REF" =~ ^chore/publish-updates- ]] && [[ "$release_publish_only" != "true" ]]; then
+                report_error "chore/publish-updates-* branches may only change web/public/updates/appcast.xml and web/public/updates/release-notes/*."
+              fi
+              ;;
+            dev)
+              if [[ "$HEAD_REF" != "main" ]] \
+                && [[ ! "$HEAD_REF" =~ ^(feat|fix|chore|test|refactor|agent|hotfix|release)/ ]] \
+                && [[ ! "$HEAD_REF" =~ ^dependabot/ ]]; then
+                report_error "PRs into dev must use feature branch prefixes (feat|fix|chore|test|refactor|agent|hotfix|release)."
+              fi
+
+              if [[ "$docs_only" == "true" ]]; then
+                report_error "Docs-only PRs should target docs, not dev."
+              fi
+
+              if [[ "$web_only" == "true" ]]; then
+                report_error "Web-only PRs should target web, not dev."
+              fi
+              ;;
+            docs)
+              if [[ "$HEAD_REF" != "main" ]] && [[ ! "$HEAD_REF" =~ ^docs/ ]]; then
+                report_error "PRs into docs must come from docs/* (or main for sync PRs)."
+              fi
+
+              if [[ "$HEAD_REF" != "main" ]] && [[ "$docs_only" != "true" ]]; then
+                report_error "PRs into docs may only change docs scope files."
+              fi
+              ;;
+            web)
+              if [[ "$HEAD_REF" != "main" ]] && [[ ! "$HEAD_REF" =~ ^web/ ]]; then
+                report_error "PRs into web must come from web/* (or main for sync PRs)."
+              fi
+
+              if [[ "$HEAD_REF" != "main" ]] && [[ "$web_only" != "true" ]]; then
+                report_error "PRs into web may only change web scope files."
+              fi
+              ;;
+            *)
+              report_error "Unsupported base branch '$BASE_REF'. Allowed base branches are main, dev, docs, and web."
+              ;;
+          esac
+
+          if (( error_count > 0 )); then
+            echo "Changed files:"
+            if ((${#changed_files[@]} == 0)); then
+              echo " - (none)"
+            else
+              printf " - %s\n" "${changed_files[@]}"
+            fi
+            exit 1
+          fi
+
+          echo "Policy gate passed for ${HEAD_REF} -> ${BASE_REF}."
