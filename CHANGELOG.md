@@ -6,6 +6,14 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-02-22
+
+Patch `0.17.1` supersedes the failed `v0.17.0` artifact build attempt and ships stable signed artifacts from the corrected release source.
+
+### Fixed
+- macOS release build now succeeds for stable tags by including the `LocalizationManager` explicit-`self` capture fix in release-tagged source.
+- Stable release packaging flow now produces signed/notarized artifacts from the corrected `0.17.1` tag lineage, avoiding the `v0.17.0` tag's compile-time failure during DMG build.
+
 ## [0.17.0] - 2026-02-22
 
 Stable `0.17.0` consolidates all `rc.1` through `rc.5` delivery slices plus final release-readiness hardening across diagnostics, updater reliability, UI responsiveness, and website release surfaces.
