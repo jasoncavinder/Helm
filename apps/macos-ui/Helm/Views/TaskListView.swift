@@ -24,34 +24,43 @@ struct TasksSectionView: View {
                     .foregroundColor(.secondary)
                 Spacer()
             } else {
-                List(core.activeTasks) { task in
-                    TaskRowView(
-                        task: task,
-                        onCancel: task.isRunning ? { core.cancelTask(task) } : nil,
-                        canExpandDetails: task.supportsInlineDetails,
-                        isExpanded: expandedTaskId == task.id,
-                        isSelected: context.selectedTaskId == task.id,
-                        onToggleDetails: {
-                            if expandedTaskId == task.id {
-                                expandedTaskId = nil
-                            } else {
-                                expandedTaskId = task.id
-                            }
-                        },
-                        onSelect: {
-                            context.selectedTaskId = task.id
-                            context.selectedPackageId = nil
-                            context.selectedUpgradePlanStepId = nil
-                            if let managerId = task.managerId {
-                                context.selectedManagerId = managerId
-                            }
-                            if !task.supportsInlineDetails {
-                                expandedTaskId = nil
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(core.activeTasks.indices), id: \.self) { index in
+                            let task = core.activeTasks[index]
+                            TaskRowView(
+                                task: task,
+                                onCancel: task.isRunning ? { core.cancelTask(task) } : nil,
+                                canExpandDetails: task.supportsInlineDetails,
+                                isExpanded: expandedTaskId == task.id,
+                                isSelected: context.selectedTaskId == task.id,
+                                onToggleDetails: {
+                                    if expandedTaskId == task.id {
+                                        expandedTaskId = nil
+                                    } else {
+                                        expandedTaskId = task.id
+                                    }
+                                },
+                                onSelect: {
+                                    context.selectedTaskId = task.id
+                                    context.selectedPackageId = nil
+                                    context.selectedUpgradePlanStepId = nil
+                                    if let managerId = task.managerId {
+                                        context.selectedManagerId = managerId
+                                    }
+                                    if !task.supportsInlineDetails {
+                                        expandedTaskId = nil
+                                    }
+                                }
+                            )
+                            if index < core.activeTasks.count - 1 {
+                                Divider()
                             }
                         }
-                    )
+                    }
+                    .padding(.vertical, 4)
                 }
-                .listStyle(.inset)
+                .helmCardSurface(cornerRadius: 12)
             }
         }
         .padding(20)

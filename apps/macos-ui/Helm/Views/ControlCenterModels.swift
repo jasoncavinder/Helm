@@ -115,6 +115,11 @@ enum OperationalHealth {
     }
 }
 
+enum UpgradeSheetHost {
+    case popover
+    case controlCenter
+}
+
 final class ControlCenterContext: ObservableObject {
     @Published var selectedSection: ControlCenterSection? = .overview
     @Published var selectedManagerId: String?
@@ -124,12 +129,22 @@ final class ControlCenterContext: ObservableObject {
     @Published var searchQuery: String = ""
     @Published var managerFilterId: String?
     @Published var showUpgradeSheet: Bool = false
+    @Published var upgradeSheetHost: UpgradeSheetHost = .controlCenter
     @Published var popoverOverlayRequest: PopoverOverlayRoute?
     @Published var popoverOverlayDismissToken: Int = 0
     @Published var popoverSearchFocusToken: Int = 0
     @Published var controlCenterSearchFocusToken: Int = 0
     @Published var isPopoverOverlayVisible: Bool = false
     @Published var suppressWindowBackgroundDragging: Bool = false
+
+    func presentUpgradeSheet(in host: UpgradeSheetHost) {
+        upgradeSheetHost = host
+        showUpgradeSheet = true
+    }
+
+    func dismissUpgradeSheet() {
+        showUpgradeSheet = false
+    }
 
     func clearInspectorSelection() {
         selectedManagerId = nil

@@ -239,7 +239,10 @@ mod tests {
             record(task_id, None, b"ok\n", b"");
         }
 
-        assert!(get(TaskId(10_000)).is_none(), "oldest record should be pruned");
+        assert!(
+            get(TaskId(10_000)).is_none(),
+            "oldest record should be pruned"
+        );
         assert!(
             get(TaskId((10_000 + MAX_TASK_OUTPUT_RECORDS) as u64)).is_some(),
             "newest record should be retained"

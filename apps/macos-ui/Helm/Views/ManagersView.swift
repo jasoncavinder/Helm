@@ -197,13 +197,13 @@ private struct ManagerSectionRow: View {
                     }
                     .helmPointer()
                 }
-                if manager.canUpdate && detected {
+                if manager.canUpdate && detected && enabled {
                     Button(L10n.Common.update.localized) {
                         confirmAction = .update
                     }
                     .helmPointer()
                 }
-                if manager.canUninstall && detected {
+                if manager.canUninstall && detected && enabled {
                     Button(L10n.Common.uninstall.localized) {
                         confirmAction = .uninstall
                     }
@@ -212,7 +212,7 @@ private struct ManagerSectionRow: View {
 
                 Spacer()
 
-                if outdatedCount > 0 {
+                if enabled && outdatedCount > 0 {
                     Button(L10n.App.Settings.Action.upgradeAll.localized) {
                         core.upgradeAllPackages(forManagerId: manager.id)
                     }
@@ -222,8 +222,8 @@ private struct ManagerSectionRow: View {
                 Button(L10n.App.Managers.Action.viewPackages.localized) {
                     onViewPackages()
                 }
-                .disabled(packageCount == 0)
-                .helmPointer(enabled: packageCount > 0)
+                .disabled(packageCount == 0 || !enabled)
+                .helmPointer(enabled: packageCount > 0 && enabled)
             }
             .font(.caption)
         }

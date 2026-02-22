@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use tracing::instrument;
 
@@ -20,6 +20,7 @@ use crate::persistence::{DetectionStore, PackageStore, SearchCacheStore, TaskSto
 
 const TASK_PERSIST_RETRY_ATTEMPTS: usize = 3;
 const TASK_PERSIST_RETRY_DELAY_MS: u64 = 15;
+const DETECTION_SLOW_WARN_THRESHOLD_MS: u128 = 3_000;
 
 #[derive(Clone)]
 pub struct AdapterRuntime {
@@ -138,9 +139,9 @@ impl AdapterRuntime {
         if let Some(ds) = &self.detection_store {
             match ds.list_manager_preferences() {
                 Ok(prefs) => {
-                    for (m, enabled) in prefs {
-                        if m == manager {
-                            return enabled;
+                    for pref in prefs {
+                        if pref.manager == manager {
+                            return pref.enabled;
                         }
                     }
                     true // default: enabled
@@ -158,6 +159,72 @@ impl AdapterRuntime {
         } else {
             false
         }
+    }
+
+    #[instrument(skip(self))]
+    pub async fn detect_all_ordered(&self) -> Vec<(ManagerId, OrchestrationResult<()>)> {
+        let adapter_refs: Vec<&dyn ManagerAdapter> =
+            self.adapters.values().map(|a| a.as_ref()).collect();
+        let phases = crate::orchestration::authority_order::detection_phases(&adapter_refs);
+
+        let mut all_results = Vec::new();
+
+        for phase in phases {
+            let mut handles = Vec::new();
+
+            for manager_id in &phase {
+                let manager = *manager_id;
+
+                if !self.is_manager_enabled(manager) {
+                    all_results.push((manager, Ok(())));
+                    continue;
+                }
+
+                let Some(adapter) = self.adapters.get(&manager) else {
+                    all_results.push((
+                        manager,
+                        Err(CoreError {
+                            manager: Some(manager),
+                            task: None,
+                            action: None,
+                            kind: CoreErrorKind::InvalidInput,
+                            message: format!(
+                                "manager '{manager:?}' is in execution phase but has no registered adapter"
+                            ),
+                        }),
+                    ));
+                    continue;
+                };
+
+                if !adapter.descriptor().supports(Capability::Detect) {
+                    all_results.push((manager, Ok(())));
+                    continue;
+                }
+
+                let runtime = self.clone();
+                handles.push(tokio::spawn(async move {
+                    match runtime
+                        .submit_refresh_request_response(
+                            manager,
+                            AdapterRequest::Detect(DetectRequest),
+                        )
+                        .await
+                    {
+                        Ok(AdapterResponse::Detection(_)) | Ok(_) => vec![(manager, Ok(()))],
+                        Err(e) => vec![(manager, Err(e))],
+                    }
+                }));
+            }
+
+            for handle in handles {
+                match handle.await {
+                    Ok(results) => all_results.extend(results),
+                    Err(_join_error) => {}
+                }
+            }
+        }
+
+        all_results
     }
 
     #[instrument(skip(self))]
@@ -283,6 +350,7 @@ impl AdapterRuntime {
     ) -> OrchestrationResult<AdapterResponse> {
         let action = request.action();
         let task_type = task_type_for_action(action);
+        let started_at = Instant::now();
 
         let task_id = self
             .submit(manager, request)
@@ -292,6 +360,11 @@ impl AdapterRuntime {
             .wait_for_terminal(task_id, Some(Duration::from_secs(60)))
             .await
             .map_err(|error| attribute_error(error, manager, task_type, action))?;
+
+        if task_type == TaskType::Detection {
+            log_detection_timing(manager, task_id, started_at.elapsed(), &snapshot);
+        }
+
         match snapshot.terminal_state {
             Some(AdapterTaskTerminalState::Succeeded(response)) => Ok(response),
             Some(AdapterTaskTerminalState::Failed(e)) => {
@@ -322,6 +395,16 @@ impl AdapterRuntime {
     ) -> OrchestrationResult<TaskId> {
         let action = request.action();
         let task_type = task_type_for_action(action);
+
+        if !self.is_manager_enabled(manager) {
+            return Err(CoreError {
+                manager: Some(manager),
+                task: Some(task_type),
+                action: Some(action),
+                kind: CoreErrorKind::InvalidInput,
+                message: format!("manager '{manager:?}' is disabled"),
+            });
+        }
 
         if manager == ManagerId::SoftwareUpdate
             && action == ManagerAction::Upgrade
@@ -887,6 +970,89 @@ fn attribute_error(
         action: error.action.or(Some(action)),
         kind: error.kind,
         message: error.message,
+    }
+}
+
+fn log_detection_timing(
+    manager: ManagerId,
+    task_id: TaskId,
+    elapsed: Duration,
+    snapshot: &AdapterTaskSnapshot,
+) {
+    let elapsed_ms = elapsed.as_millis();
+    match &snapshot.terminal_state {
+        Some(AdapterTaskTerminalState::Succeeded(AdapterResponse::Detection(info))) => {
+            if elapsed_ms >= DETECTION_SLOW_WARN_THRESHOLD_MS {
+                tracing::warn!(
+                    manager = ?manager,
+                    task_id = task_id.0,
+                    elapsed_ms,
+                    installed = info.installed,
+                    version = ?info.version,
+                    status = ?snapshot.runtime.status,
+                    "manager detection completed slowly"
+                );
+            } else {
+                tracing::info!(
+                    manager = ?manager,
+                    task_id = task_id.0,
+                    elapsed_ms,
+                    installed = info.installed,
+                    version = ?info.version,
+                    status = ?snapshot.runtime.status,
+                    "manager detection completed"
+                );
+            }
+        }
+        Some(AdapterTaskTerminalState::Succeeded(_)) => {
+            tracing::info!(
+                manager = ?manager,
+                task_id = task_id.0,
+                elapsed_ms,
+                status = ?snapshot.runtime.status,
+                "manager detection completed with non-detection payload"
+            );
+        }
+        Some(AdapterTaskTerminalState::Failed(error)) => {
+            tracing::error!(
+                manager = ?manager,
+                task_id = task_id.0,
+                elapsed_ms,
+                kind = ?error.kind,
+                message = %error.message,
+                status = ?snapshot.runtime.status,
+                "manager detection failed"
+            );
+        }
+        Some(AdapterTaskTerminalState::Cancelled(Some(error))) => {
+            tracing::warn!(
+                manager = ?manager,
+                task_id = task_id.0,
+                elapsed_ms,
+                kind = ?error.kind,
+                message = %error.message,
+                status = ?snapshot.runtime.status,
+                "manager detection cancelled"
+            );
+        }
+        Some(AdapterTaskTerminalState::Cancelled(None)) => {
+            tracing::warn!(
+                manager = ?manager,
+                task_id = task_id.0,
+                elapsed_ms,
+                status = ?snapshot.runtime.status,
+                "manager detection cancelled"
+            );
+        }
+        None => {
+            tracing::warn!(
+                manager = ?manager,
+                task_id = task_id.0,
+                elapsed_ms,
+                status = ?snapshot.runtime.status,
+                "manager detection reached terminal state with no payload"
+            );
+        }
     }
 }
 

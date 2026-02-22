@@ -426,6 +426,35 @@ Expected Postgres primitives:
 
 ---
 
+## Decision 027 — Per-Manager Executable and Install-Method Selection
+
+**Decision:**
+Add persisted per-manager selection for:
+
+- selected executable path
+- selected install method
+
+Behavioral model:
+
+- Default executable is the first discovered candidate in the user's active command resolution order.
+- UI exposes explicit executable/install-method selection with recommended/default indicators.
+- Core execution applies an alias-aware executable override before spawn so manager commands run against the selected installation rather than whichever binary appears first at runtime.
+- Manager install/update/uninstall routing consults selected install method where implemented.
+
+Persistence/API changes:
+
+- `manager_preferences` schema extended with `selected_executable_path` and `selected_install_method` (migration v7).
+- XPC and FFI surfaces extended with setter APIs and expanded manager-status payloads so UI and runtime stay in sync.
+
+**Rationale:**
+
+- Prevents PATH-order ambiguity when multiple installations of the same manager coexist.
+- Reduces environment-specific failures caused by invoking the wrong toolchain copy.
+- Makes manager control explicit and user-auditable instead of implicit/path-dependent.
+- Preserves deterministic execution behavior across different host setups.
+
+---
+
 ## Summary
 
 Helm prioritizes:

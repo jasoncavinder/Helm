@@ -148,7 +148,8 @@ struct RedesignUpdatesSectionView: View {
 
     private var managerScopeOptions: [String] {
         let managers = Set(core.upgradePlanSteps.map(\.managerId))
-        return [HelmCore.allManagersScopeId] + managers.sorted()
+        let enabledManagers = managers.filter { core.isManagerEnabled($0) }
+        return [HelmCore.allManagersScopeId] + enabledManagers.sorted()
     }
 
     private var scopedPlanSteps: [CoreUpgradePlanStep] {
@@ -514,17 +515,14 @@ struct RedesignUpgradeSheetView: View {
 
             HStack {
                 Button(L10n.Common.cancel.localized) {
-                    context.showUpgradeSheet = false
+                    context.dismissUpgradeSheet()
                     presentationMode.wrappedValue.dismiss()
                 }
                 .buttonStyle(HelmSecondaryButtonStyle())
                 Spacer()
-                Button(L10n.App.Action.dryRun.localized) {}
-                    .buttonStyle(HelmSecondaryButtonStyle())
-                    .disabled(true)
                 Button(L10n.App.Action.runPlan.localized) {
                     core.upgradeAll(includePinned: false, allowOsUpdates: includeOsUpdates)
-                    context.showUpgradeSheet = false
+                    context.dismissUpgradeSheet()
                     presentationMode.wrappedValue.dismiss()
                 }
                 .buttonStyle(HelmPrimaryButtonStyle())
