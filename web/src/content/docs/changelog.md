@@ -11,8 +11,6 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ---
 
-## Unreleased
-
 ## 0.17.2 — 2026-02-22
 
 Patch `0.17.2` ships post-`0.17.x` manager-control, onboarding/detection, and Control Center execution-plan fixes as a stable incremental release.
