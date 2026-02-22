@@ -176,10 +176,7 @@ fn validate_askpass_path(
                 manager,
                 task_type,
                 action,
-                format!(
-                    "sudo askpass helper '{}' is not executable",
-                    path.display()
-                ),
+                format!("sudo askpass helper '{}' is not executable", path.display()),
             ));
         }
     }
@@ -500,7 +497,9 @@ mod tests {
             ManagerId::SoftwareUpdate,
             TaskType::Upgrade,
             ManagerAction::Upgrade,
-            CommandSpec::new("/usr/sbin/softwareupdate").arg("--install").arg("--all"),
+            CommandSpec::new("/usr/sbin/softwareupdate")
+                .arg("--install")
+                .arg("--all"),
         )
     }
 

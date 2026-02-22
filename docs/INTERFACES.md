@@ -62,6 +62,7 @@ The XPC layer must support, at minimum:
 - Upgrade package
 - Upgrade all (pin-aware, authority-ordered, guarded actions require confirmation)
 - Pin / unpin
+- Set manager executable selection and install-method preferences
 - Manager self-update (where supported)
 - Cancel task (best-effort + process-level where possible)
 
@@ -269,7 +270,7 @@ When a contract changes:
 
 ## 10. Concrete Interface Inventories
 
-### 10.1 XPC Protocol Methods (26 methods)
+### 10.1 XPC Protocol Methods (29 methods)
 
 Source: `apps/macos-ui/Helm/Shared/HelmServiceProtocol.swift`
 
@@ -281,6 +282,7 @@ All methods use asynchronous `withReply` closures. Connection security is enforc
 | `listOutdatedPackages` | Package queries | `String?` (JSON) |
 | `listTasks` | Task management | `String?` (JSON) |
 | `triggerRefresh` | Task management | `Bool` |
+| `triggerDetection` | Task management | `Bool` |
 | `cancelTask(taskId:)` | Task management | `Bool` |
 | `searchLocal(query:)` | Search | `String?` (JSON) |
 | `triggerRemoteSearch(query:)` | Search | `Int64` (task ID) |
@@ -289,6 +291,8 @@ All methods use asynchronous `withReply` closures. Connection security is enforc
 | `unpinPackage(managerId:packageName:)` | Pinning | `Bool` |
 | `listManagerStatus` | Manager control | `String?` (JSON) |
 | `setManagerEnabled(managerId:enabled:)` | Manager control | `Bool` |
+| `setManagerSelectedExecutablePath(managerId:selectedPath:)` | Manager control | `Bool` |
+| `setManagerInstallMethod(managerId:installMethod:)` | Manager control | `Bool` |
 | `installManager(managerId:)` | Manager control | `Int64` (task ID) |
 | `updateManager(managerId:)` | Manager control | `Int64` (task ID) |
 | `uninstallManager(managerId:)` | Manager control | `Int64` (task ID) |
@@ -306,13 +310,13 @@ All methods use asynchronous `withReply` closures. Connection security is enforc
 
 Client-side timeout enforcement: 30s for data fetch calls, 300s for mutation calls. Exponential backoff reconnection on invalidation/interruption (2s base, doubling to 60s cap).
 
-### 10.2 FFI Exports (28 functions)
+### 10.2 FFI Exports (31 functions)
 
 Source: `core/rust/crates/helm-ffi/src/lib.rs`
 
 See the module-level documentation in `lib.rs` for the full export table with categories. All data exchange uses JSON-encoded UTF-8 `*mut c_char` strings, freed via `helm_free_string`. The FFI layer has no explicit shutdown; runtime state spans the XPC service process lifetime.
 
-### 10.3 SQLite Schema Summary (9 tables, 5 migrations)
+### 10.3 SQLite Schema Summary (9 tables, 7 migrations)
 
 Source: `core/rust/crates/helm-core/src/sqlite/migrations.rs`
 
@@ -324,7 +328,7 @@ Source: `core/rust/crates/helm-core/src/sqlite/migrations.rs`
 | `search_cache` | v1 | none (indexed on `originating_query` + `cached_at_unix`) | Remote search result cache |
 | `task_records` | v1 | `task_id INTEGER` | Task execution history |
 | `manager_detection` | v2 | `manager_id` | Manager install detection state |
-| `manager_preferences` | v2 | `manager_id` | Per-manager enable/disable preferences |
+| `manager_preferences` | v2 (+v7 adds `selected_executable_path` and `selected_install_method`) | `manager_id` | Per-manager enablement and manager-selection preferences |
 | `app_settings` | v4 | `key` | App-level key-value settings |
 | `package_keg_policies` | v5 | `(manager_id, package_name)` | Homebrew keg cleanup policy overrides |
 

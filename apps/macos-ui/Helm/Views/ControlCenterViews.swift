@@ -52,7 +52,16 @@ struct ControlCenterWindowView: View {
                 endPoint: .bottom
             )
         )
-        .sheet(isPresented: $context.showUpgradeSheet) {
+        .sheet(
+            isPresented: Binding(
+                get: { context.showUpgradeSheet && context.upgradeSheetHost == .controlCenter },
+                set: { isPresented in
+                    if !isPresented {
+                        context.dismissUpgradeSheet()
+                    }
+                }
+            )
+        ) {
             RedesignUpgradeSheetView()
                 .environmentObject(context)
         }
@@ -158,7 +167,7 @@ private struct ControlCenterTopBar: View {
             .accessibilityLabel(L10n.App.Settings.Action.refreshNow.localized)
 
             Button(L10n.App.ControlCenter.upgradeAll.localized) {
-                context.showUpgradeSheet = true
+                context.presentUpgradeSheet(in: .controlCenter)
                 context.selectedSection = .updates
             }
             .buttonStyle(HelmPrimaryButtonStyle())

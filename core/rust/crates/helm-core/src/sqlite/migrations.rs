@@ -174,13 +174,34 @@ DROP TABLE IF EXISTS task_log_records;
 "#,
 };
 
-const MIGRATIONS: [SqliteMigration; 6] = [
+const MIGRATION_0007: SqliteMigration = SqliteMigration {
+    version: 7,
+    name: "add_manager_selection_preferences",
+    up_sql: r#"
+ALTER TABLE manager_preferences ADD COLUMN selected_executable_path TEXT;
+ALTER TABLE manager_preferences ADD COLUMN selected_install_method TEXT;
+"#,
+    down_sql: r#"
+CREATE TABLE manager_preferences_backup (
+    manager_id TEXT PRIMARY KEY,
+    enabled INTEGER NOT NULL DEFAULT 1
+);
+INSERT INTO manager_preferences_backup
+    SELECT manager_id, enabled
+    FROM manager_preferences;
+DROP TABLE manager_preferences;
+ALTER TABLE manager_preferences_backup RENAME TO manager_preferences;
+"#,
+};
+
+const MIGRATIONS: [SqliteMigration; 7] = [
     MIGRATION_0001,
     MIGRATION_0002,
     MIGRATION_0003,
     MIGRATION_0004,
     MIGRATION_0005,
     MIGRATION_0006,
+    MIGRATION_0007,
 ];
 
 pub fn migrations() -> &'static [SqliteMigration] {
