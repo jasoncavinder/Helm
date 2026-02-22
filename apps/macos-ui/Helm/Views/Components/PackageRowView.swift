@@ -8,16 +8,16 @@ enum KegPolicyMenuSelection {
 
 struct PackageRowView: View {
     let package: PackageItem
-    var managerDisplayNames: [String]? = nil
+    var managerDisplayNames: [String]?
     var isSelected: Bool = false
     var isPinActionInFlight: Bool = false
     var isUpgradeActionInFlight: Bool = false
     var isInstallActionInFlight: Bool = false
-    var kegPolicySelection: KegPolicyMenuSelection? = nil
-    var onSelectKegPolicy: ((KegPolicyMenuSelection) -> Void)? = nil
-    var onUpgrade: (() -> Void)? = nil
-    var onInstall: (() -> Void)? = nil
-    var onTogglePin: (() -> Void)? = nil
+    var kegPolicySelection: KegPolicyMenuSelection?
+    var onSelectKegPolicy: ((KegPolicyMenuSelection) -> Void)?
+    var onUpgrade: (() -> Void)?
+    var onInstall: (() -> Void)?
+    var onTogglePin: (() -> Void)?
 
     private var accessibilityDescription: String {
         let managerList = displayedManagerNames.joined(separator: ", ")

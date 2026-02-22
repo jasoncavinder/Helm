@@ -21,7 +21,6 @@ disabled_rules:
   - nesting
   - trailing_comma
   - implicit_return
-  - implicit_optional_initialization
   - multiple_closures_with_trailing_closure
   - for_where
   - large_tuple

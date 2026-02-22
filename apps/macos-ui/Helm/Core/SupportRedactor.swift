@@ -55,10 +55,10 @@ struct SupportRedactor {
         replacement: String
     ) -> String {
         guard !target.isEmpty else { return value }
-        let count = value.components(separatedBy: target).count - 1
-        guard count > 0 else { return value }
+        guard value.contains(target) else { return value }
+        let replacements = value.components(separatedBy: target).count - 1
         appliedRules.insert(rule)
-        replacementCount += count
+        replacementCount += replacements
         return value.replacingOccurrences(of: target, with: replacement)
     }
 

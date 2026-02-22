@@ -34,13 +34,13 @@ struct PackageItem: Identifiable {
     let id: String
     let name: String
     let version: String
-    var latestVersion: String? = nil
+    var latestVersion: String?
     let managerId: String
     let manager: String
-    var summary: String? = nil
+    var summary: String?
     var pinned: Bool = false
     var restartRequired: Bool = false
-    private var statusOverride: PackageStatus? = nil
+    private var statusOverride: PackageStatus?
 
     var status: PackageStatus {
         if let override_ = statusOverride { return override_ }

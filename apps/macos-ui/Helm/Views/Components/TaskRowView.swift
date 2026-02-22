@@ -7,13 +7,13 @@ enum TaskOutputSurface {
 
 struct TaskRowView: View {
     let task: TaskItem
-    var onCancel: (() -> Void)? = nil
+    var onCancel: (() -> Void)?
     var canExpandDetails = false
     var isExpanded = false
     var isSelected = false
     var outputSurface: TaskOutputSurface = .controlCenter
-    var onToggleDetails: (() -> Void)? = nil
-    var onSelect: (() -> Void)? = nil
+    var onToggleDetails: (() -> Void)?
+    var onSelect: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: isExpanded ? 8 : 0) {
