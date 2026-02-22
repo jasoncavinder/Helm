@@ -6,17 +6,30 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-02-22
+
+Stable `0.17.0` consolidates all `rc.1` through `rc.5` delivery slices plus final release-readiness hardening across diagnostics, updater reliability, UI responsiveness, and website release surfaces.
+
+### Added
+- Diagnostics/logging delivery is now fully shipped in stable: per-task log persistence, Inspector log viewing filters/pagination, structured support export redaction, service-health diagnostics, and manager detection diagnostics.
+- Packages now include a localized `Pinned` filter (with upgradable exclusion), and popover package search rows now include quick icon actions for install/uninstall/update/pin.
+- Failed tasks now support inline command/output expansion with single-expanded-task behavior; managers in error state expose `View Diagnostics`.
+- Privileged manager operations now prompt for administrator authentication through managed `sudo -A` askpass handling.
+- Website now includes a blog section with RSS feed support, social-share actions on blog posts, and right-aligned landing navigation links for `Blog` and `Docs`.
+
 ### Changed
-- Manager display-name localization now resolves through a single shared helper used by Core and SwiftUI surfaces, reducing mapping drift risk.
-- Localization loading/missing-key diagnostics now emit structured `os.Logger` events instead of console `print` output.
-- Control Center/popover polling now uses state-aware cadence (faster during in-flight work, slower at idle) for smoother low-end performance.
-- Task auto-pruning now treats `cancelled` as terminal for timeout cleanup, aligned with terminal timestamp retention behavior.
-- Rust build script now fingerprints Rust/script/build-input state and reuses generated artifacts when unchanged to reduce repetitive Xcode build overhead.
-- Release checklist now includes a dedicated `v0.17.0` stable gate section and explicit archive guidance for historical checklist blocks.
+- Pre-stable hardening now centralizes manager display-name localization through a shared helper, emits localization diagnostics via structured logging, adds lower-frequency idle polling cadence, and applies default SQLite pragmas (`WAL`, `NORMAL`, `busy_timeout`, foreign keys).
+- Rust build script now fingerprints Rust/script/build inputs and skips redundant artifact regeneration when unchanged.
+- Release automation now publishes website-hosted Sparkle release notes and appcast `releaseNotesLink` targets those hosted pages.
+- Developer ID onboarding now requires license-terms acceptance (tracked by version/timestamp) with About-surface license review access.
+- Popover and Control Center behavior is mutually exclusive, with deep links from status/metric cards to target Control Center sections.
 
 ### Fixed
-- Updated SwiftLint configuration to remove obsolete rule identifiers and keep lint output current.
-- Cleared low-risk Swift lint debt in package/task row models and support redaction helper (`redundant_optional_initialization`, `empty_count`).
+- Software Update manager symbol mapping now uses valid SF Symbol naming (`applelogo`).
+- Manager-priority drag interactions now take precedence over window drag-to-move in Managers.
+- Inflight task deduplication now prefers running/newer rows so command/output details populate when backend process output exists.
+- Task terminal retention now starts at completion/failure transition time and includes `cancelled` terminal-state pruning.
+- SwiftLint configuration/rule usage has been normalized for current rule IDs, clearing low-risk lint debt in touched surfaces.
 
 ## [0.17.0-rc.5] - 2026-02-22
 

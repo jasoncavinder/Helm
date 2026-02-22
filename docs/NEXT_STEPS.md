@@ -11,15 +11,15 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-0.17.x
+0.18.x kickoff preparation
 ```
 
 Focus:
-- run operator testing on `v0.17.0-rc.5` toward stable `v0.17.0`
-- prepare stable `v0.17.0` release cut once `rc.5` validation feedback is clear
+- monitor post-release feedback on stable `v0.17.0`
+- begin planning and branch setup for `0.18.x` local security groundwork
 
 Current checkpoint:
-- `v0.17.0-rc.5` is released from `dev` (tag + GitHub pre-release published); post-`rc.4` remediation/hardening is now bundled into the active RC for final validation:
+- `v0.17.0` is released on `main`; the full `rc.1` through `rc.5` hardening lineage is consolidated in stable:
   - `#93` `feat/v0.17-log-foundation`
   - `#95` `feat/v0.17-structured-error-export`
   - `#96` `feat/v0.17-service-health-panel`
@@ -92,8 +92,13 @@ Current checkpoint:
     - terminal-task pruning now includes `cancelled` status with terminal-time retention behavior
     - Rust build script now fingerprints Rust/script inputs and skips rebuild work when generated artifacts are unchanged
     - release checklist now includes a dedicated `v0.17.0` stable gate and archival guidance for historical checklist sections
-- latest stable release on `main`: `v0.16.2`
-- validation gates are green for `v0.17.0-rc.5` (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke across `v0.17.0-rc.1` through `v0.17.0-rc.5`)
+  - website release-readiness follow-up delivered on `dev`:
+    - Starlight now runs a local blog plugin that inserts `/blog/` navigation and an RSS social link
+    - website now renders a global beta-tester announcement banner with a refined brand-consistent visual treatment
+    - blog pages now include social-share actions (X, LinkedIn, Reddit, Email)
+    - landing navigation now includes right-aligned `Blog` and `Docs` links for faster access
+- latest stable release on `main`: `v0.17.0`
+- validation gates are green through the stable cut (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke across `v0.17.0-rc.1` through `v0.17.0-rc.5`)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
 - `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)
@@ -110,11 +115,10 @@ Current checkpoint:
 - `v0.14.0` distribution/licensing architecture planning docs aligned (future-state, no implementation changes)
 
 Next release targets:
-- `v0.17.x` — Diagnostics & Logging
 - `v0.18.x` — Local security groundwork (internal-only)
 - `v0.19.x` — Stability & Pre-1.0 hardening
 
-## v0.17.x Delivery Tracker (Target: next `0.17.0` RC)
+## v0.17.x Delivery Tracker (Stable `0.17.0` Complete)
 
 - [x] `feat/v0.17-log-foundation` — task log event model, SQLite persistence migration, FFI/XPC retrieval surface.
 - [x] `feat/v0.17-task-log-viewer` — per-task log viewer UI with filters and pagination.
@@ -981,4 +985,4 @@ Implement:
 - 0.14 stable release alignment for `v0.14.0` is complete (README/website + version artifacts).
 - Distribution/licensing future-state planning documentation is aligned for 0.14 release notes and roadmap planning (no implementation yet).
 - 0.14.x and 0.15.x release execution are complete on `main` (`v0.14.1` and `v0.15.0`).
-- 0.16.2 release execution is complete on `main`; 0.17.x diagnostics/logging delivery is complete with `v0.17.0-rc.1` through `v0.17.0-rc.5` cut from `dev` for final stabilization toward `0.17.0`.
+- 0.17.0 release execution is complete on `main`; 0.17.x diagnostics/logging delivery is now closed with `v0.17.0-rc.1` through `v0.17.0-rc.5` as the completed stabilization lineage.

@@ -8,16 +8,16 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.17.0-rc.5** on `dev`, and **0.17.0-rc.5** is now the latest released RC.
+Current documentation baseline: **0.17.0** on `main` (stable), with `dev` aligned for post-`0.17.x` planning.
 
-Implementation baseline: **0.17.0-rc.5** with post-`rc.4` issue-remediation, UX/task-diagnostics hardening, privileged-auth execution flow, and responsiveness improvements delivered.
+Implementation baseline: **0.17.0** with diagnostics/logging delivery, updater hardening, task/inspector quality improvements, privileged-auth execution flow, and responsiveness hardening shipped.
 
 See:
 - CHANGELOG.md
 
 Active milestone:
-- latest shipped release on `main`: **0.16.2** (Sparkle connectivity hardening + macOS 11 deployment-target alignment)
-- 0.17.x — Diagnostics & Logging (**delivery merged on `dev`**, `v0.17.0-rc.1` + `v0.17.0-rc.2` + `v0.17.0-rc.3` + `v0.17.0-rc.4` + `v0.17.0-rc.5` released)
+- latest shipped release on `main`: **0.17.0** (Diagnostics & Logging stable + RC hardening consolidation)
+- 0.17.x — Diagnostics & Logging (**stable released on `main`**, RC lineage `v0.17.0-rc.1` through `v0.17.0-rc.5`)
   - delivered: `feat/v0.17-log-foundation` (SQLite-backed task lifecycle logs + retrieval plumbing)
   - delivered: `feat/v0.17-task-log-viewer` (inspector diagnostics logs tab with level/status filters + load-more pagination)
   - delivered: `feat/v0.17-structured-error-export` (structured JSON diagnostics export with redaction for support workflows)
@@ -39,7 +39,8 @@ Active milestone:
   - delivered: post-`rc.4` privileged-auth follow-up: process execution now enforces elevated operations through a structured `sudo -A` wrapper when adapters flag `requires_elevation`, with a managed askpass helper script and explicit command/output capture so privileged install/update flows prompt for administrator authentication instead of failing silently.
   - delivered: post-`rc.4` responsiveness follow-up: Control Center/Popover overview + managers surfaces now consume section-scoped derived state snapshots (precomputed manager counts/health/task slices); snapshot polling cadence is adaptive to interactive-surface visibility and now tracks popover/control-center visibility from app lifecycle events; package-description rich/plain rendering now uses bounded LRU caching in core; scroll-heavy managers/overview/updates/settings/search stacks now use lazy container variants where applicable.
   - delivered: pre-stable `rc.5 -> 0.17.0` hardening follow-up: manager display-name localization mapping is now centralized in one shared helper across Core/UI surfaces; localization diagnostics now use structured logger output; polling cadence now introduces a lower-frequency idle-visible mode for no-inflight states; SQLite connections now enforce `WAL`/`NORMAL`/`busy_timeout`/foreign-key pragmas by default; terminal-task pruning now includes `cancelled`; Rust build script now fingerprints Rust/script inputs and skips rebuilds when generated artifacts are unchanged.
-  - `v0.17.0-rc.5` pre-release execution status: complete (validation green + tag + GitHub pre-release published)
+  - delivered: website release-readiness follow-up: Starlight now uses a local blog plugin to register a `/blog/` section and RSS social link, the site includes a global beta-tester announcement banner (visual treatment refined), blog pages expose social-share actions, and the landing navigation now includes right-aligned `Blog` and `Docs` links for faster access.
+  - `v0.17.0` stable release execution status: complete (validation green + stable tag + GitHub release published)
 
 Security rollout staging status:
 - Stage 0 (`<=0.16.x`): planning/docs only (active in `0.16.1`)
@@ -71,6 +72,8 @@ Third-party licensing compliance status:
 - 0.13.x — UI/UX analysis & redesign (stable checkpoint)
 - 0.14.x — Platform, detection & optional managers (stable checkpoint)
 - 0.15.x — Upgrade preview & execution transparency (stable checkpoint)
+- 0.16.x — Self-update & installer hardening (stable checkpoint)
+- 0.17.x — Diagnostics & logging + release-readiness hardening (stable checkpoint)
 
 ---
 
@@ -881,4 +884,4 @@ Helm is a **functional control plane for 28 implemented managers** with:
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-0.13.x through 0.16.2 stable checkpoints are complete on `main`; `v0.17.0-rc.1` through `v0.17.0-rc.5` are now cut from `dev` for final 0.17 stabilization.
+0.13.x through 0.17.0 stable checkpoints are complete on `main`; `v0.17.0-rc.1` through `v0.17.0-rc.5` served as the completed RC validation path into stable `0.17.0`.

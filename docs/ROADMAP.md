@@ -526,7 +526,7 @@ Delivered (`v0.16.0` checkpoint):
 
 ---
 
-## 0.17.x — Diagnostics & Logging (rc)
+## 0.17.x — Diagnostics & Logging (stable) - Completed
 
 Goal:
 

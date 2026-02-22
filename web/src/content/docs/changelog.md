@@ -12,7 +12,31 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 ---
 
 ## Unreleased
-- No unreleased changes.
+
+## 0.17.0 — 2026-02-22
+
+Stable `0.17.0` consolidates all `rc.1` through `rc.5` deliveries and includes final release-readiness hardening across diagnostics, updater reliability, responsiveness, and website release surfaces.
+
+### Added
+- Diagnostics/logging capabilities are now fully shipped in stable (task lifecycle log persistence, Inspector log filtering/pagination, structured support export redaction, service health diagnostics, and manager detection diagnostics).
+- Packages include localized `Pinned` filtering (with Upgradable exclusion), and popover search now supports quick icon actions for install/uninstall/update/pin.
+- Failed-task inline command/output expansion and manager-error `View Diagnostics` entry points are now available for operator troubleshooting.
+- Privileged manager operations now trigger administrator authentication via managed `sudo -A` askpass handling.
+- Website now includes a blog section with RSS feed support, blog social-share actions, and right-aligned landing nav links for `Blog` and `Docs`.
+
+### Changed
+- Pre-stable hardening centralized manager-display-name localization mapping, moved localization diagnostics to structured logger output, introduced lower-frequency idle polling cadence, and enforced default SQLite pragmas for resilience.
+- Rust build generation now fingerprints Rust/script/build inputs and skips redundant artifact rewrites when unchanged.
+- Sparkle appcast release notes now point to website-hosted release notes pages generated from the changelog.
+- Developer ID onboarding now requires license-terms acceptance tracked by version/timestamp with About-surface re-review access.
+- Popover and Control Center are now mutually exclusive with deep links from popover health/metric cards into target Control Center sections.
+
+### Fixed
+- Software Update manager now maps to valid SF Symbol `applelogo`.
+- Manager-priority drag now takes precedence over window drag-to-move in Managers.
+- Inflight task dedupe now favors running/newest rows so command/live output remains populated when backend output exists.
+- Terminal task retention now starts from completion/failure transition time and includes `cancelled` cleanup behavior.
+- Swift lint rule config/usage is now aligned with current rule identifiers to avoid stale lint noise.
 
 ## 0.17.0-rc.5 — 2026-02-22
 
