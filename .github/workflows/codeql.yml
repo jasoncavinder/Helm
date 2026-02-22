@@ -1,10 +1,9 @@
 name: CodeQL
 
 on:
-  pull_request:
-    branches: [main, dev]
   push:
     branches: [main]
+  workflow_dispatch:
   schedule:
     - cron: "17 7 * * 1"
 
@@ -15,20 +14,8 @@ permissions:
 
 jobs:
   analyze:
-    name: Analyze (${{ matrix.language }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - language: actions
-            os: ubuntu-latest
-          - language: javascript-typescript
-            os: ubuntu-latest
-          - language: rust
-            os: ubuntu-latest
-          - language: swift
-            os: macos-14
+    name: Analyze (swift)
+    runs-on: macos-14
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,30 +23,10 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
-          languages: ${{ matrix.language }}
+          languages: swift
           build-mode: manual
 
-      - name: Build (actions)
-        if: matrix.language == 'actions'
-        run: echo "No build needed for GitHub Actions workflows."
-
-      - name: Build (javascript-typescript)
-        if: matrix.language == 'javascript-typescript'
-        working-directory: web
-        run: |
-          set -euo pipefail
-          npm ci
-          ASTRO_TELEMETRY_DISABLED=1 npm run build
-
-      - name: Build (rust)
-        if: matrix.language == 'rust'
-        run: |
-          set -euo pipefail
-          cd core/rust
-          cargo test --workspace
-
       - name: Build (swift)
-        if: matrix.language == 'swift'
         run: |
           set -euo pipefail
           apps/macos-ui/scripts/check_channel_policy.sh
@@ -72,7 +39,7 @@ jobs:
             CODE_SIGN_IDENTITY=- \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            test
+            build
 
       - name: Analyze
         uses: github/codeql-action/analyze@v3

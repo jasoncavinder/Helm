@@ -1,0 +1,3 @@
+# Generated static release-note pages (build artifacts committed for Sparkle hosting).
+# These files are generated from CHANGELOG content and can trigger generic HTML integrity rules.
+web/public/updates/release-notes/*.html

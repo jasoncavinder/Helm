@@ -14,17 +14,27 @@ This checklist is required before creating a release tag on `main`.
 - [x] Confirm `.github/workflows/deploy-web.yml` is absent (Cloudflare Pages is the production website host).
 - [x] Confirm website hosting/operations docs still point to Cloudflare Pages and not GitHub Pages.
 
-## v0.17.0 (Stable Release Gate)
+## GitHub Governance Integrity (All Releases)
+
+- [ ] Confirm branch rulesets are active for `main`, `dev`, `docs`, and `web`.
+- [ ] Confirm required checks match current policy:
+  - `main`/`dev`: `Policy Gate`, `Rust Core Tests`, `Xcode Build Check`, `hardcoded-ui-strings`, `Semgrep scan`, `Lint Swift`
+  - `docs`: `Policy Gate`, `Docs Checks`
+  - `web`: `Policy Gate`, `Web Build`
+- [ ] Confirm repo merge settings remain enabled/configured: auto-merge on, update-branch on, and delete-branch-on-merge off.
+- [ ] Confirm release metadata publication remains PR-based (no direct-push fallback path in `.github/workflows/release-macos-dmg.yml`).
+
+## v0.17.1 (Stable Patch Release Gate)
 
 ### Scope and Documentation
-- [ ] `CHANGELOG.md` includes finalized `0.17.0` stable notes with RC consolidation context.
-- [ ] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect stable release-cut status from `v0.17.0-rc.5`.
-- [ ] Website changelog includes `0.17.0` stable entry and release-order alignment.
+- [ ] `CHANGELOG.md` includes finalized `0.17.1` patch notes for the stable artifact rebuild cut.
+- [ ] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect `v0.17.1` stable release-cut status.
+- [ ] Website changelog includes `0.17.1` patch entry and release-order alignment.
 
 ### Versioning
-- [ ] Workspace version bumped to `0.17.0` in `core/rust/Cargo.toml`.
-- [ ] Rust lockfile local package versions aligned to `0.17.0` in `core/rust/Cargo.lock`.
-- [ ] Generated app version artifacts aligned to `0.17.0` (`apps/macos-ui/Generated/HelmVersion.swift`, `apps/macos-ui/Generated/HelmVersion.xcconfig`).
+- [ ] Workspace version bumped to `0.17.1` in `core/rust/Cargo.toml`.
+- [ ] Rust lockfile local package versions aligned to `0.17.1` in `core/rust/Cargo.lock`.
+- [ ] Generated app version artifacts aligned to `0.17.1` (`apps/macos-ui/Generated/HelmVersion.swift`, `apps/macos-ui/Generated/HelmVersion.xcconfig`).
 
 ### Validation
 - [ ] Rust tests pass (`cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`).
@@ -36,9 +46,13 @@ This checklist is required before creating a release tag on `main`.
 ### Branch and Tag
 - [ ] Release-prep PR merged to `dev`.
 - [ ] `dev` merged into `main` for stable cut.
-- [ ] Create annotated stable tag from `main`: `git tag -a v0.17.0 -m "Helm v0.17.0"`.
-- [ ] Push stable tag: `git push origin v0.17.0`.
-- [ ] Publish GitHub release for `v0.17.0` (mark as latest, non-prerelease).
+- [ ] If release-critical docs updates were developed on `docs`, merge `docs` into `main`.
+- [ ] If release-critical website updates were developed on `web`, merge `web` into `main`.
+- [ ] Create annotated stable tag from `main`: `git tag -a v0.17.1 -m "Helm v0.17.1"`.
+- [ ] Push stable tag: `git push origin v0.17.1`.
+- [ ] Publish GitHub release for `v0.17.1` (mark as latest, non-prerelease).
+- [ ] Confirm release-generated publish PR (`chore/publish-updates-v0.17.1`) merged to `main`.
+- [ ] Confirm `Appcast Drift Guard` is green after publication.
 
 ## Historical RC and Prior-Release Checklists (Archive)
 
