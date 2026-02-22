@@ -115,7 +115,7 @@ Operational settings:
 
 - auto-merge enabled
 - update-branch enabled
-- auto-delete merged branches enabled
+- auto-delete merged branches disabled (to protect `main`/`dev`/`docs`/`web`)
 
 `Policy Gate` is the authoritative branch-target/scope guardrail for PRs.
 

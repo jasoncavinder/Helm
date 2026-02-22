@@ -304,7 +304,7 @@ GitHub branch rulesets enforce the branch model. Agents must assume these are ac
 Operational repo settings:
 - Auto-merge is enabled.
 - Update-branch is enabled.
-- Delete branch on merge is enabled.
+- Delete branch on merge is disabled (protects primary branches from accidental deletion during promotion PRs).
 
 Agent expectations:
 - Treat `Policy Gate` as authoritative for branch/PR target policy.
