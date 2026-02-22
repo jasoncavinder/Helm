@@ -21,7 +21,7 @@ This checklist is required before creating a release tag on `main`.
   - `main`/`dev`: `Policy Gate`, `Rust Core Tests`, `Xcode Build Check`, `hardcoded-ui-strings`, `Semgrep scan`, `Lint Swift`
   - `docs`: `Policy Gate`, `Docs Checks`
   - `web`: `Policy Gate`, `Web Build`
-- [ ] Confirm repo merge settings remain enabled: auto-merge, update-branch, and auto-delete merged branches.
+- [ ] Confirm repo merge settings remain enabled/configured: auto-merge on, update-branch on, and delete-branch-on-merge off.
 - [ ] Confirm release metadata publication remains PR-based (no direct-push fallback path in `.github/workflows/release-macos-dmg.yml`).
 
 ## v0.17.1 (Stable Patch Release Gate)
