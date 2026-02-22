@@ -18,21 +18,21 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 Patch `0.17.2` ships post-`0.17.x` manager-control, onboarding/detection, and Control Center execution-plan fixes as a stable incremental release.
 
 ### Added
-- Manager Inspector executable/install-method selection is now actionable and persisted, including explicit PATH-default executable mode.
-- Failed-task diagnostics panes now support selectable text and `Copy All` controls for `diagnostics`, `stderr`, `stdout`, and `logs`.
-- Runtime detection now emits structured per-manager timing telemetry with slow-detection warnings at `>=3000ms`.
+- Manager selection controls are now operational in the Manager Inspector: users can choose a manager executable path (including PATH-default mode) and preferred install method, with preferences persisted and surfaced through XPC/FFI manager status payloads.
+- Diagnostics views for failed tasks now include selectable text and per-pane `Copy All` controls for `diagnostics`, `stderr`, `stdout`, and `logs`.
+- Runtime detection telemetry now emits structured per-manager timing events (including slow-detection warnings at `>= 3000ms`) for operator troubleshooting.
 
 ### Changed
-- Core manager execution now uses selected executable overrides instead of implicit PATH dependency, and manager install/update/uninstall flows honor selected install method where implemented (`mise`, `mas`, `rustup`).
-- Onboarding detection now runs detection-only (no immediate refresh list work), pre-seeds manager presence immediately, and shows localized `Loading` placeholders until version probes finish.
-- License acceptance now appears as onboarding step 2 and no longer loops onboarding after acceptance.
-- Execution-plan modal presentation is now host-scoped to the initiating surface (Control Center vs popover), preventing duplicate modal presentation.
+- Core execution now routes manager commands through selected executable overrides instead of implicit PATH resolution, and manager install/update/uninstall flows honor selected install method where implemented (`mise`, `mas`, `rustup`).
+- Onboarding detection now runs a detection-only pipeline (without automatic refresh list work), pre-seeds manager presence immediately from executable-path discovery, and shows localized `Loading` version placeholders until version probes complete.
+- Onboarding flow now places license acceptance as step 2 (after welcome) and completes onboarding without a second-pass loop.
+- Execution-plan modal presentation is now scoped to the initiating surface (Control Center vs popover), preventing dual-modal presentation.
 
 ### Fixed
-- Disabled managers are now enforced across refresh/search/package/task behavior, centralized task submission, and in-flight cancellation.
-- Manager executable discovery now falls back to direct filesystem probing when `which` lookup fails.
-- Packages and Tasks list dark-mode backgrounds now align with app branding.
-- Removed deprecated execution-plan `Dry Run` action.
+- Disabled managers are now fully enforced across runtime behavior: excluded from refresh/search/package/task surfaces, rejected at centralized task submission, removed from manager-scope pickers, and canceled when disabled mid-flight.
+- Manager executable discovery now falls back to direct filesystem probing across known bin locations when `which` lookup fails.
+- Packages and Tasks list background surfaces now align with dark-mode branding in the redesigned Control Center.
+- The deprecated execution-plan `Dry Run` footer action has been removed.
 
 ## 0.17.1 — 2026-02-22
 
