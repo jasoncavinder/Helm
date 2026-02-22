@@ -101,6 +101,11 @@ Current checkpoint:
     - release workflow now treats fallback appcast-publish PR-creation failures as blocking errors (no soft-success path)
     - release workflow now verifies `web/public/updates/appcast.xml` on `main` matches the release tag before marking release success
     - new scheduled/manual `Appcast Drift Guard` workflow now fails when latest stable GitHub release and top appcast version diverge
+  - GitHub governance hardening delivered on `dev`:
+    - branch rulesets now explicitly enforce `main`/`dev`/`docs`/`web` with branch-specific required checks
+    - `Policy Gate` now validates PR base/head/scope policy for all protected branches
+    - `Docs Checks` and `Web Build` workflows now gate `docs` and `web` branches respectively
+    - CodeQL now runs on `main` push + schedule/manual (non-PR gate) to reduce merge friction while retaining scanning coverage
 - latest stable release on `main`: `v0.17.0`
 - validation gates are green through the stable cut (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke across `v0.17.0-rc.1` through `v0.17.0-rc.5`)
 - `v0.15.0` released on `main` (tag `v0.15.0`)

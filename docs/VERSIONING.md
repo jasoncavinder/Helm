@@ -100,6 +100,27 @@ Only app releases are version-tagged by default; standalone docs/website publica
 
 ---
 
+## GitHub Guardrails
+
+Helm uses GitHub rulesets and workflow checks to enforce branch policy.
+
+Required checks by protected branch:
+
+- `main`: `Policy Gate`, `Rust Core Tests`, `Xcode Build Check`, `hardcoded-ui-strings`, `Semgrep scan`, `Lint Swift`
+- `dev`: `Policy Gate`, `Rust Core Tests`, `Xcode Build Check`, `hardcoded-ui-strings`, `Semgrep scan`, `Lint Swift`
+- `docs`: `Policy Gate`, `Docs Checks`
+- `web`: `Policy Gate`, `Web Build`
+
+Operational settings:
+
+- auto-merge enabled
+- update-branch enabled
+- auto-delete merged branches enabled
+
+`Policy Gate` is the authoritative branch-target/scope guardrail for PRs.
+
+---
+
 ## Release Flow
 
 1. Complete milestone work on `dev`.
@@ -107,11 +128,13 @@ Only app releases are version-tagged by default; standalone docs/website publica
    - `core/rust/Cargo.toml` (workspace version)
    - Generated files: `apps/macos-ui/Generated/HelmVersion.swift` and `apps/macos-ui/Generated/HelmVersion.xcconfig` (auto-generated from build script)
 3. Update changelog and release checklist.
-4. Merge `dev` -> `main`.
+4. Open and merge PR `dev` -> `main` (auto-merge is preferred once required checks are green).
 5. If release-critical docs/website deltas were developed on `docs` or `web`, merge those branches into `main` via PR before tagging.
 6. Create annotated tag.
 7. Push tag to GitHub.
-8. Generate release notes.
+8. Publish GitHub release notes.
+9. Let `release-macos-dmg.yml` publish appcast/release notes via PR branch `chore/publish-updates-<tag>` and wait for merge (no direct-push fallback).
+10. Confirm drift checks remain green (`Appcast Drift Guard`).
 
 Release checklist document:
 - `docs/RELEASE_CHECKLIST.md`
