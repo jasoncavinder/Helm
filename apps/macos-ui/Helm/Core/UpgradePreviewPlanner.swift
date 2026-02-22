@@ -220,10 +220,18 @@ struct PackageConsolidationPolicy {
 
     static func sortedManagerIds(
         _ managerIds: [String],
-        localizedManagerName: (String) -> String
+        localizedManagerName: (String) -> String,
+        priorityRank: ((String) -> Int)? = nil
     ) -> [String] {
         Array(Set(managerIds)).sorted { lhs, rhs in
-            localizedManagerName(lhs).localizedCaseInsensitiveCompare(localizedManagerName(rhs)) == .orderedAscending
+            if let priorityRank {
+                let lhsPriority = priorityRank(lhs)
+                let rhsPriority = priorityRank(rhs)
+                if lhsPriority != rhsPriority {
+                    return lhsPriority < rhsPriority
+                }
+            }
+            return localizedManagerName(lhs).localizedCaseInsensitiveCompare(localizedManagerName(rhs)) == .orderedAscending
         }
     }
 
@@ -234,8 +242,10 @@ struct PackageConsolidationPolicy {
         rhsPinned: Bool,
         lhsRestartRequired: Bool,
         rhsRestartRequired: Bool,
-        lhsManagerName: String,
-        rhsManagerName: String
+        lhsManagerId: String,
+        rhsManagerId: String,
+        localizedManagerName: (String) -> String,
+        priorityRank: ((String) -> Int)? = nil
     ) -> Bool {
         let lhsRank = statusRank(lhsStatus)
         let rhsRank = statusRank(rhsStatus)
@@ -248,6 +258,14 @@ struct PackageConsolidationPolicy {
         if lhsRestartRequired != rhsRestartRequired {
             return lhsRestartRequired
         }
-        return lhsManagerName.localizedCaseInsensitiveCompare(rhsManagerName) == .orderedAscending
+        if let priorityRank {
+            let lhsPriority = priorityRank(lhsManagerId)
+            let rhsPriority = priorityRank(rhsManagerId)
+            if lhsPriority != rhsPriority {
+                return lhsPriority < rhsPriority
+            }
+        }
+        return localizedManagerName(lhsManagerId)
+            .localizedCaseInsensitiveCompare(localizedManagerName(rhsManagerId)) == .orderedAscending
     }
 }

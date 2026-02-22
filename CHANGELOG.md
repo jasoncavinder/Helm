@@ -5,7 +5,29 @@ All notable changes to this project are documented in this file.
 The format is based on Keep a Changelog and follows SemVer-compatible Helm versioning.
 
 ## [Unreleased]
-- No unreleased changes.
+
+## [0.17.0-rc.4] - 2026-02-22
+
+### Added
+- Settings now include a `Launch Helm at login` toggle (macOS 13+), with localized guidance when unsupported on older systems.
+- Manager inspector now lists all discovered executable paths and emphasizes the active executable path.
+- Manager inspector now exposes install-method metadata via a disabled dropdown with localized recommended/preferred tags.
+- Manager cards are now drag-reorderable within authority groups, with a new `Restore Manager Priority` action in advanced settings.
+
+### Changed
+- Release automation now generates and publishes a website-hosted Sparkle release-notes page per tag at `web/public/updates/release-notes/<tag>.html`, and appcast entries now point `sparkle:releaseNotesLink` to that hosted page (instead of the GitHub release page URL).
+- Developer ID channel builds now require first-run acceptance of current Helm license terms before onboarding can proceed, with acceptance persisted by license version + timestamp and automatic re-prompting when the tracked license version changes.
+- About overlay now includes a direct `View License Terms` action so users can reopen current license terms after onboarding.
+- Popover and Control Center interaction flow is now mutually exclusive: opening/focusing Control Center suppresses the popover, and popover status/metric cards deep-link to their corresponding Control Center sections.
+- Control Center workflow polish includes full-row running-task expand/collapse toggles, full-window drag-to-move background behavior (while preserving interactive control handling), clickable settings metric cards, and explicit selected-row/card highlighting for inspected entities.
+- Manager/package consolidation ordering now uses explicit authority-aware priority ranking (authoritative -> standard -> guarded) to keep default manager preference deterministic when names overlap across managers.
+- About overlay now shows build number, distribution channel, update authority, and last update-check timestamp.
+
+### Fixed
+- Popover outside-click monitoring now only reacts to click events (not pointer-move/drag events), preventing accidental panel dismissal while moving the cursor.
+- Popover hover cursor behavior no longer forces arrow cursor rects across the entire floating panel, restoring expected hover affordances for interactive controls.
+- Executable-path discovery performance is improved by skipping deep-path discovery for undetected managers and caching discovery results for detected managers.
+- Reset local data now clears persisted license-acceptance state in addition to onboarding completion and cached runtime state.
 
 ## [0.17.0-rc.3] - 2026-02-21
 

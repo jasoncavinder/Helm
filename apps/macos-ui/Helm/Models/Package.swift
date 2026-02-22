@@ -98,7 +98,8 @@ struct ConsolidatedPackageItem: Identifiable {
 
             let managerIds = PackageConsolidationPolicy.sortedManagerIds(
                 sortedMembers.map(\.managerId),
-                localizedManagerName: localizedManagerName
+                localizedManagerName: localizedManagerName,
+                priorityRank: { HelmCore.shared.managerPriorityRank(for: $0) }
             )
             let managerDisplayNames = managerIds.map(localizedManagerName)
 
@@ -126,8 +127,10 @@ struct ConsolidatedPackageItem: Identifiable {
             rhsPinned: rhs.pinned,
             lhsRestartRequired: lhs.restartRequired,
             rhsRestartRequired: rhs.restartRequired,
-            lhsManagerName: lhs.manager,
-            rhsManagerName: rhs.manager
+            lhsManagerId: lhs.managerId,
+            rhsManagerId: rhs.managerId,
+            localizedManagerName: localizedManagerDisplayName,
+            priorityRank: { HelmCore.shared.managerPriorityRank(for: $0) }
         )
     }
 

@@ -65,6 +65,38 @@ This checklist is required before creating a release tag on `main`.
 - [x] Create annotated RC tag from `dev` lineage: `git tag -a v0.17.0-rc.2 -m "Helm v0.17.0-rc.2"`.
 - [x] Push RC tag: `git push origin v0.17.0-rc.2`.
 
+## v0.17.0-rc.4 (Post-rc.3 Interaction/Priority Stabilization RC)
+
+### Scope and Documentation
+- [x] `CHANGELOG.md` includes `0.17.0-rc.4` release-candidate notes for post-`rc.3` interaction/prioritization stabilization.
+- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect `rc.4` release execution status.
+- [x] Website changelog includes `0.17.0-rc.4` notes.
+
+### Versioning
+- [x] Workspace version bumped to `0.17.0-rc.4` in `core/rust/Cargo.toml`.
+- [x] Rust lockfile local package versions aligned to `0.17.0-rc.4` in `core/rust/Cargo.lock`.
+- [x] Generated app version artifacts aligned to `0.17.0-rc.4` (`apps/macos-ui/Generated/HelmVersion.swift`, `apps/macos-ui/Generated/HelmVersion.xcconfig`).
+
+### Stabilization Scope
+- [x] Launch-at-login setting is available with platform-aware behavior messaging.
+- [x] Popover/control-center interaction exclusivity is enforced, with control-center deep links from health/summary cards.
+- [x] Manager inspector shows full executable-path discovery and install-method metadata tags.
+- [x] Manager priority ordering is authority-aware with drag reorder + restore defaults.
+- [x] Popover outside-click dismissal ignores pointer movement and responds to click events only.
+- [x] Cursor handling preserves hover affordances for interactive controls.
+- [x] Manager status discovery avoids undetected-manager deep scans and caches detected-manager path discovery.
+
+### Validation
+- [x] Rust tests pass (`cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`).
+- [x] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`).
+- [x] Locale checks pass (`apps/macos-ui/scripts/check_locale_integrity.sh` and `apps/macos-ui/scripts/check_locale_lengths.sh`).
+
+### Branch and Tag
+- [x] Open release-prep PR into `dev` and complete CI checks.
+- [x] Merge release-prep PR into `dev`.
+- [x] Create annotated RC tag from `dev` lineage: `git tag -a v0.17.0-rc.4 -m "Helm v0.17.0-rc.4"`.
+- [x] Push RC tag: `git push origin v0.17.0-rc.4`.
+
 ## v0.17.0-rc.3 (Post-rc.2 Stabilization RC)
 
 ### Scope and Documentation
@@ -138,6 +170,8 @@ This checklist is required before creating a release tag on `main`.
 - [x] Sparkle feed endpoint is published at `web/public/updates/appcast.xml` (or `HELM_SPARKLE_FEED_URL` points to the hosted equivalent).
 - [x] Release workflow generates and uploads `appcast.xml` alongside DMG artifacts.
 - [x] Release workflow publishes generated `appcast.xml` into `web/public/updates/appcast.xml` on `main` (or auto-opens fallback PR if direct push is blocked).
+- [x] Release workflow generates and uploads per-tag website release notes HTML from `CHANGELOG.md` at `build/release-assets/release-notes/<tag>.html`.
+- [x] Release workflow publishes per-tag website release notes to `web/public/updates/release-notes/<tag>.html` and appcast `sparkle:releaseNotesLink` points to the hosted URL.
 - [x] Runtime self-update is blocked for package-manager-managed installs (Homebrew Cask receipt detection + Homebrew/MacPorts path heuristics) and enabled for eligible direct-channel DMG installs.
 - [x] Generated `CURRENT_PROJECT_VERSION` is monotonic for Sparkle version ordering (semver-derived numeric build number).
 - [x] Sparkle package reference remains pinned to `2.8.1` in `apps/macos-ui/Helm.xcodeproj/project.pbxproj` for macOS 11+ compatibility.

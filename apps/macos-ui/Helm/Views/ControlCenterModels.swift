@@ -129,6 +129,41 @@ final class ControlCenterContext: ObservableObject {
     @Published var popoverSearchFocusToken: Int = 0
     @Published var controlCenterSearchFocusToken: Int = 0
     @Published var isPopoverOverlayVisible: Bool = false
+
+    func clearInspectorSelection() {
+        selectedManagerId = nil
+        selectedPackageId = nil
+        selectedTaskId = nil
+        selectedUpgradePlanStepId = nil
+    }
+
+    func alignInspectorSelection(for section: ControlCenterSection?) {
+        guard let section else {
+            clearInspectorSelection()
+            return
+        }
+
+        switch section {
+        case .overview, .settings:
+            clearInspectorSelection()
+        case .updates:
+            let retainedStepId = selectedUpgradePlanStepId
+            clearInspectorSelection()
+            selectedUpgradePlanStepId = retainedStepId
+        case .packages:
+            let retainedPackageId = selectedPackageId
+            clearInspectorSelection()
+            selectedPackageId = retainedPackageId
+        case .tasks:
+            let retainedTaskId = selectedTaskId
+            clearInspectorSelection()
+            selectedTaskId = retainedTaskId
+        case .managers:
+            let retainedManagerId = selectedManagerId
+            clearInspectorSelection()
+            selectedManagerId = retainedManagerId
+        }
+    }
 }
 
 enum PopoverOverlayRoute: String, Identifiable {

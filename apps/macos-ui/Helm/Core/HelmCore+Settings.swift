@@ -2,11 +2,69 @@ import AppKit
 import Foundation
 import os.log
 import Darwin
+import ServiceManagement
 
 private let logger = Logger(subsystem: "com.jasoncavinder.Helm", category: "core.settings")
 
 extension HelmCore {
     static let allManagersScopeId = UpgradePreviewPlanner.allManagersScopeId
+
+    // MARK: - App Lifecycle
+
+    var launchAtLoginSupported: Bool {
+        if #available(macOS 13.0, *) {
+            return true
+        }
+        return false
+    }
+
+    func refreshLaunchAtLogin() {
+        guard launchAtLoginSupported else {
+            DispatchQueue.main.async {
+                UserDefaults.standard.removeObject(forKey: Self.launchAtLoginEnabledKey)
+                self.launchAtLoginEnabled = false
+            }
+            return
+        }
+
+        if #available(macOS 13.0, *) {
+            let enabled = SMAppService.mainApp.status == .enabled
+            DispatchQueue.main.async {
+                UserDefaults.standard.set(enabled, forKey: Self.launchAtLoginEnabledKey)
+                self.launchAtLoginEnabled = enabled
+            }
+        }
+    }
+
+    func setLaunchAtLogin(_ enabled: Bool) {
+        guard launchAtLoginSupported else {
+            recordLastError(
+                source: "core.settings",
+                action: "setLaunchAtLogin.unsupported",
+                taskType: "settings"
+            )
+            return
+        }
+
+        if #available(macOS 13.0, *) {
+            do {
+                if enabled {
+                    try SMAppService.mainApp.register()
+                } else {
+                    try SMAppService.mainApp.unregister()
+                }
+            } catch {
+                logger.error("setLaunchAtLogin(\(enabled)) failed: \(error.localizedDescription)")
+                recordLastError(
+                    source: "core.settings",
+                    action: "setLaunchAtLogin",
+                    taskType: "settings"
+                )
+            }
+        }
+
+        refreshLaunchAtLogin()
+    }
 
     // MARK: - Safe Mode
 

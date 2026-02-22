@@ -202,6 +202,55 @@ struct PopoverAboutOverlayContent: View {
     @State private var showSupportOptionsModal = false
     let onClose: () -> Void
 
+    private var buildVersion: String {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? "-"
+    }
+
+    private var channelLabel: String {
+        switch appUpdate.distributionChannel {
+        case .developerID:
+            return L10n.App.Overlay.About.Channel.developerID.localized
+        case .appStore:
+            return L10n.App.Overlay.About.Channel.appStore.localized
+        case .setapp:
+            return L10n.App.Overlay.About.Channel.setapp.localized
+        case .fleet:
+            return L10n.App.Overlay.About.Channel.fleet.localized
+        case .unknown:
+            return L10n.App.Overlay.About.Channel.unknown.localized
+        }
+    }
+
+    private var updateAuthorityLabel: String {
+        switch appUpdate.updateAuthority {
+        case .sparkle:
+            return L10n.App.Overlay.About.UpdateAuthority.sparkle.localized
+        case .appStore:
+            return L10n.App.Overlay.About.UpdateAuthority.appStore.localized
+        case .setapp:
+            return L10n.App.Overlay.About.UpdateAuthority.setapp.localized
+        case .adminControlled:
+            return L10n.App.Overlay.About.UpdateAuthority.adminControlled.localized
+        case .unavailable:
+            return L10n.App.Overlay.About.UpdateAuthority.unavailable.localized
+        }
+    }
+
+    private var lastCheckedLabel: String {
+        guard let lastCheckDate = appUpdate.lastCheckDate else {
+            return L10n.App.Overlay.About.never.localized
+        }
+        return Self.lastCheckFormatter.string(from: lastCheckDate)
+    }
+
+    private static let lastCheckFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
@@ -221,8 +270,13 @@ struct PopoverAboutOverlayContent: View {
                 Spacer()
             }
 
-            Text(L10n.App.Overlay.About.version.localized(with: ["version": helmVersion]))
-                .font(.caption)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(L10n.App.Overlay.About.version.localized(with: ["version": helmVersion]))
+                    .font(.caption)
+                Text(L10n.App.Overlay.About.build.localized(with: ["build": buildVersion]))
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
 
             Text(L10n.App.Overlay.About.summary.localized(with: [
                 "managers": core.visibleManagers.count,
@@ -230,6 +284,22 @@ struct PopoverAboutOverlayContent: View {
             ]))
             .font(.caption)
             .foregroundColor(.secondary)
+
+            VStack(alignment: .leading, spacing: 4) {
+                overlayDetailRow(
+                    label: L10n.App.Overlay.About.channel.localized,
+                    value: channelLabel
+                )
+                overlayDetailRow(
+                    label: L10n.App.Overlay.About.updateAuthority.localized,
+                    value: updateAuthorityLabel
+                )
+                overlayDetailRow(
+                    label: L10n.App.Overlay.About.lastChecked.localized,
+                    value: lastCheckedLabel
+                )
+            }
+            .padding(.vertical, 2)
 
             if let unavailableKey = appUpdate.unavailableReasonLocalizationKey, !appUpdate.canCheckForUpdates {
                 Text(unavailableKey.localized)
@@ -281,6 +351,19 @@ struct PopoverAboutOverlayContent: View {
             } onClose: {
                 showSupportOptionsModal = false
             }
+        }
+    }
+
+    @ViewBuilder
+    private func overlayDetailRow(label: String, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(label)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            Spacer()
+            Text(value)
+                .font(.caption2)
+                .multilineTextAlignment(.trailing)
         }
     }
 }

@@ -8,16 +8,16 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.17.0-rc.3** (release prep on `dev`) with **0.17.0-rc.2** as the latest released RC.
+Current documentation baseline: **0.17.0-rc.4** on `dev`, with **0.17.0-rc.3** as the prior released RC.
 
-Implementation baseline: **0.17.0-rc.3** release-prep candidate with post-`rc.2` updater/task/package stabilization delivered.
+Implementation baseline: **0.17.0-rc.4** with post-`rc.3` release-notes/onboarding/workflow follow-up delivered plus pre-`rc.4` stabilization hardening.
 
 See:
 - CHANGELOG.md
 
 Active milestone:
 - latest shipped release on `main`: **0.16.2** (Sparkle connectivity hardening + macOS 11 deployment-target alignment)
-- 0.17.x — Diagnostics & Logging (**delivery merged on `dev`**, `v0.17.0-rc.1` + `v0.17.0-rc.2` released, post-`rc.2` follow-up delivered, `v0.17.0-rc.3` prep in progress)
+- 0.17.x — Diagnostics & Logging (**delivery merged on `dev`**, `v0.17.0-rc.1` + `v0.17.0-rc.2` + `v0.17.0-rc.3` released, post-`rc.3` follow-up and pre-`rc.4` stabilization delivered in `v0.17.0-rc.4`)
   - delivered: `feat/v0.17-log-foundation` (SQLite-backed task lifecycle logs + retrieval plumbing)
   - delivered: `feat/v0.17-task-log-viewer` (inspector diagnostics logs tab with level/status filters + load-more pagination)
   - delivered: `feat/v0.17-structured-error-export` (structured JSON diagnostics export with redaction for support workflows)
@@ -26,6 +26,14 @@ Active milestone:
   - delivered: `feat/v0.17-diagnostics-hardening` (attributed last-error capture across fetch/action/settings failures + diagnostics export parity)
   - delivered: `v0.17.0-rc.2` updater hardening (Sparkle sandbox installer entitlements + launcher service metadata + prerelease appcast short-version preservation)
   - delivered: post-`rc.2` updater/task/package UX follow-up (`v0.17.0-rc.3` candidate): prerelease short-version alignment in Sparkle "up to date" messaging; running-task inline expand/collapse with command + live output panel; same-name package consolidation across managers in package/search surfaces; inspector HTML description rendering/link hardening; inspector detail full-width text layout; package consolidation policy hardening; task-output buffer capping.
+  - delivered: post-`rc.3` Sparkle release-notes hosting follow-up: release workflow now generates per-tag website HTML release notes from `CHANGELOG.md`, publishes them under `web/public/updates/release-notes/`, and points appcast `sparkle:releaseNotesLink` entries to the hosted notes page.
+  - delivered: post-`rc.3` onboarding/legal follow-up: Developer ID builds now gate onboarding behind first-run license-terms acceptance tracked by license-version + acceptance timestamp; About overlay now exposes a direct license-terms link for re-review.
+  - delivered: post-`rc.3` control-center/popover interaction hardening: status-item popover is now suppressed whenever the Control Center is open, status-item clicks focus the Control Center while it is visible, and popover header/metric cards now deep-link into Control Center sections.
+  - delivered: post-`rc.3` manager inspection/prioritization follow-up: manager inspector now surfaces prioritized install-method metadata via disabled dropdown + recommended/preferred tags, displays all discovered executable paths with active-path emphasis, and managers are now priority-ordered with intra-authority drag reordering plus restore-default support in advanced settings.
+  - delivered: post-`rc.3` about-overlay metadata expansion: About now includes build number, distribution channel, update authority, and last update-check timestamp to support pre-release operator validation.
+  - delivered: post-`rc.3` control-center polish follow-up: reset-local-data now clears stored license acceptance; running-task expansion now toggles from full-row taps; Control Center drag region now spans the full window background; settings metrics now deep-link to Managers/Updates/Tasks; inspector selection state now clears on section switches and selected rows/cards are visually highlighted.
+  - delivered: post-`rc.3` operator ergonomics/perf follow-up: launch-at-login setting added (macOS 13+ via `SMAppService.mainApp`), popover hover cursor forcing relaxed to restore clickable hover affordance, and manager/popover count rendering now uses precomputed dictionaries to reduce repeated per-row filtering during scroll/drag interactions.
+  - delivered: pre-`rc.4` stabilization follow-up: popover outside-click monitoring now ignores pointer-move/drag events; floating-panel cursor forcing removed to restore interactive hover affordances; manager-priority ranking now enforces authority ordering for consolidated package selection; executable-path discovery now avoids undetected-manager scans and caches detected-manager discovery results.
   - release-prep validation status: green (`cargo test`, macOS `xcodebuild` suite, locale integrity + locale length audits)
 
 Security rollout staging status:
@@ -868,4 +876,4 @@ Helm is a **functional control plane for 28 implemented managers** with:
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-0.13.x through 0.16.2 stable checkpoints are complete on `main`; `v0.17.0-rc.1` and `v0.17.0-rc.2` are released, and `v0.17.0-rc.3` stabilization/release prep is in progress on `dev`.
+0.13.x through 0.16.2 stable checkpoints are complete on `main`; `v0.17.0-rc.1` through `v0.17.0-rc.4` are now cut from `dev` for final 0.17 stabilization.

@@ -276,6 +276,23 @@ final class PackageConsolidationPolicyTests: XCTestCase {
         XCTAssertEqual(sorted, ["brew", "npm", "pnpm"])
     }
 
+    func testSortedManagerIdsUsesPriorityRankBeforeLocalizedName() {
+        let sorted = PackageConsolidationPolicy.sortedManagerIds(
+            ["guarded", "authoritative", "standard"],
+            localizedManagerName: { _ in "zzz" },
+            priorityRank: { managerId in
+                switch managerId {
+                case "authoritative": return 0
+                case "standard": return 1
+                case "guarded": return 2
+                default: return Int.max
+                }
+            }
+        )
+
+        XCTAssertEqual(sorted, ["authoritative", "standard", "guarded"])
+    }
+
     func testShouldPreferFavorsPinnedAndRestartRequiredAfterStatusRank() {
         XCTAssertTrue(
             PackageConsolidationPolicy.shouldPrefer(
@@ -285,8 +302,9 @@ final class PackageConsolidationPolicyTests: XCTestCase {
                 rhsPinned: false,
                 lhsRestartRequired: false,
                 rhsRestartRequired: false,
-                lhsManagerName: "a",
-                rhsManagerName: "b"
+                lhsManagerId: "a",
+                rhsManagerId: "b",
+                localizedManagerName: { $0 }
             )
         )
 
@@ -298,8 +316,26 @@ final class PackageConsolidationPolicyTests: XCTestCase {
                 rhsPinned: false,
                 lhsRestartRequired: true,
                 rhsRestartRequired: false,
-                lhsManagerName: "a",
-                rhsManagerName: "b"
+                lhsManagerId: "a",
+                rhsManagerId: "b",
+                localizedManagerName: { $0 }
+            )
+        )
+    }
+
+    func testShouldPreferUsesPriorityRankWhenStatusPinnedAndRestartAreEqual() {
+        XCTAssertTrue(
+            PackageConsolidationPolicy.shouldPrefer(
+                lhsStatus: "installed",
+                rhsStatus: "installed",
+                lhsPinned: false,
+                rhsPinned: false,
+                lhsRestartRequired: false,
+                rhsRestartRequired: false,
+                lhsManagerId: "authoritative",
+                rhsManagerId: "guarded",
+                localizedManagerName: { _ in "zzz" },
+                priorityRank: { managerId in managerId == "authoritative" ? 0 : 2 }
             )
         )
     }

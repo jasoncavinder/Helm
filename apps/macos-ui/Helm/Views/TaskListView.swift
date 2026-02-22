@@ -30,16 +30,15 @@ struct TasksSectionView: View {
                         onCancel: task.isRunning ? { core.cancelTask(task) } : nil,
                         canExpandDetails: task.isRunning,
                         isExpanded: expandedRunningTaskId == task.id,
+                        isSelected: context.selectedTaskId == task.id,
                         onToggleDetails: {
                             if expandedRunningTaskId == task.id {
                                 expandedRunningTaskId = nil
                             } else {
                                 expandedRunningTaskId = task.id
                             }
-                        }
-                    )
-                        .contentShape(Rectangle())
-                        .onTapGesture {
+                        },
+                        onSelect: {
                             context.selectedTaskId = task.id
                             context.selectedPackageId = nil
                             context.selectedUpgradePlanStepId = nil
@@ -47,7 +46,7 @@ struct TasksSectionView: View {
                                 context.selectedManagerId = managerId
                             }
                         }
-                        .helmPointer()
+                    )
                 }
                 .listStyle(.inset)
             }

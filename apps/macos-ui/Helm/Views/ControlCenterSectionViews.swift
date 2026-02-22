@@ -5,6 +5,11 @@ struct RedesignOverviewSectionView: View {
     @EnvironmentObject private var context: ControlCenterContext
     @State private var expandedRunningTaskId: String?
 
+    private var outdatedCountByManager: [String: Int] {
+        Dictionary(grouping: core.outdatedPackages, by: \.managerId)
+            .mapValues(\.count)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -16,18 +21,38 @@ struct RedesignOverviewSectionView: View {
                 }
 
                 HStack(spacing: 14) {
-                    MetricCardView(
-                        title: L10n.App.Popover.pendingUpdates.localized,
-                        value: core.outdatedPackages.count
-                    )
-                    MetricCardView(
-                        title: L10n.App.Popover.failures.localized,
-                        value: core.failedTaskCount
-                    )
-                    MetricCardView(
-                        title: L10n.App.Popover.runningTasks.localized,
-                        value: core.runningTaskCount
-                    )
+                    Button {
+                        context.selectedSection = .updates
+                    } label: {
+                        MetricCardView(
+                            title: L10n.App.Popover.pendingUpdates.localized,
+                            value: core.outdatedPackages.count
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .helmPointer()
+
+                    Button {
+                        context.selectedSection = .overview
+                    } label: {
+                        MetricCardView(
+                            title: L10n.App.Popover.failures.localized,
+                            value: core.failedTaskCount
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .helmPointer()
+
+                    Button {
+                        context.selectedSection = .tasks
+                    } label: {
+                        MetricCardView(
+                            title: L10n.App.Popover.runningTasks.localized,
+                            value: core.runningTaskCount
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .helmPointer()
                 }
 
                 Text(L10n.App.Overview.managerHealth.localized)
@@ -39,7 +64,8 @@ struct RedesignOverviewSectionView: View {
                             title: localizedManagerDisplayName(manager.id),
                             authority: manager.authority,
                             status: core.health(forManagerId: manager.id),
-                            outdatedCount: core.outdatedCount(forManagerId: manager.id)
+                            outdatedCount: outdatedCountByManager[manager.id, default: 0],
+                            isSelected: context.selectedManagerId == manager.id
                         )
                         .onTapGesture {
                             context.selectedManagerId = manager.id
@@ -66,22 +92,21 @@ struct RedesignOverviewSectionView: View {
                                 onCancel: task.isRunning ? { core.cancelTask(task) } : nil,
                                 canExpandDetails: task.isRunning,
                                 isExpanded: expandedRunningTaskId == task.id,
+                                isSelected: context.selectedTaskId == task.id,
                                 onToggleDetails: {
                                     if expandedRunningTaskId == task.id {
                                         expandedRunningTaskId = nil
                                     } else {
                                         expandedRunningTaskId = task.id
                                     }
-                                }
-                            )
-                                .contentShape(Rectangle())
-                                .onTapGesture {
+                                },
+                                onSelect: {
                                     context.selectedTaskId = task.id
                                     context.selectedPackageId = nil
                                     context.selectedManagerId = task.managerId
                                     context.selectedUpgradePlanStepId = nil
                                 }
-                                .helmPointer()
+                            )
                             Divider()
                         }
                     }
@@ -533,6 +558,7 @@ struct ManagerHealthCardView: View {
     let authority: ManagerAuthority
     let status: OperationalHealth
     let outdatedCount: Int
+    let isSelected: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -560,6 +586,14 @@ struct ManagerHealthCardView: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .helmCardSurface(cornerRadius: 12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isSelected ? HelmTheme.selectionFill : Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(isSelected ? HelmTheme.selectionStroke : Color.clear, lineWidth: 0.9)
+                )
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title), \(authority.key.localized)")
         .accessibilityValue("\(status.key.localized), \(outdatedCount) \(L10n.App.Packages.Filter.upgradable.localized)")

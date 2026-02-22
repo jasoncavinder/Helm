@@ -56,6 +56,7 @@
 		D20000000000000000000008 /* WalkthroughState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000008 /* WalkthroughState.swift */; };
 		D20000000000000000000009 /* SpotlightOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000009 /* SpotlightOverlay.swift */; };
 		E20000000000000000000001 /* InspectorViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000000000000000000001 /* InspectorViews.swift */; };
+		D20000000000000000000011 /* HelmCore+ManagerPriority.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000011 /* HelmCore+ManagerPriority.swift */; };
 		F20000000000000000000001 /* PopoverHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000001 /* PopoverHelpers.swift */; };
 		F20000000000000000000002 /* PopoverOverlayViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000002 /* PopoverOverlayViews.swift */; };
 		F20000000000000000000003 /* ControlCenterSectionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000003 /* ControlCenterSectionViews.swift */; };
@@ -152,6 +153,7 @@
 		D10000000000000000000007 /* HelmCore+Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HelmCore+Settings.swift"; sourceTree = "<group>"; };
 		D10000000000000000000008 /* WalkthroughState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughState.swift; sourceTree = "<group>"; };
 		D10000000000000000000009 /* SpotlightOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotlightOverlay.swift; sourceTree = "<group>"; };
+		D10000000000000000000011 /* HelmCore+ManagerPriority.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HelmCore+ManagerPriority.swift"; sourceTree = "<group>"; };
 		E10000000000000000000001 /* InspectorViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorViews.swift; sourceTree = "<group>"; };
 		F10000000000000000000001 /* PopoverHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverHelpers.swift; sourceTree = "<group>"; };
 		F10000000000000000000002 /* PopoverOverlayViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverOverlayViews.swift; sourceTree = "<group>"; };
@@ -245,6 +247,7 @@
 				D10000000000000000000004 /* HelmCore+Dashboard.swift */,
 				D10000000000000000000005 /* HelmCore+Fetching.swift */,
 				D10000000000000000000007 /* HelmCore+Settings.swift */,
+				D10000000000000000000011 /* HelmCore+ManagerPriority.swift */,
 				C10000000000000000000003 /* UpgradePreviewPlanner.swift */,
 				B10000000000000000000015 /* LocalizationManager.swift */,
 				B10000000000000000000016 /* String+Localization.swift */,
@@ -619,6 +622,7 @@
 				D20000000000000000000005 /* HelmCore+Fetching.swift in Sources */,
 				D20000000000000000000006 /* HelmCore+Actions.swift in Sources */,
 				D20000000000000000000007 /* HelmCore+Settings.swift in Sources */,
+				D20000000000000000000011 /* HelmCore+ManagerPriority.swift in Sources */,
 				D20000000000000000000008 /* WalkthroughState.swift in Sources */,
 				D20000000000000000000009 /* SpotlightOverlay.swift in Sources */,
 				E20000000000000000000001 /* InspectorViews.swift in Sources */,

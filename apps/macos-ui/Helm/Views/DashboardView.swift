@@ -12,11 +12,16 @@ struct RedesignPopoverView: View {
     @State private var activeOverlay: PopoverOverlayRoute?
     let onOpenControlCenter: () -> Void
 
+    private var outdatedCountByManager: [String: Int] {
+        Dictionary(grouping: core.outdatedPackages, by: \.managerId)
+            .mapValues(\.count)
+    }
+
     private var managerRows: [ManagerInfo] {
         core.visibleManagers
             .sorted { lhs, rhs in
-                let leftOutdated = core.outdatedCount(forManagerId: lhs.id)
-                let rightOutdated = core.outdatedCount(forManagerId: rhs.id)
+                let leftOutdated = outdatedCountByManager[lhs.id, default: 0]
+                let rightOutdated = outdatedCountByManager[rhs.id, default: 0]
                 if leftOutdated == rightOutdated {
                     return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
                 }
@@ -147,33 +152,64 @@ struct RedesignPopoverView: View {
                 )
                 .spotlightAnchor("searchField")
 
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(L10n.App.Dashboard.title.localized)
-                            .font(.headline.weight(.semibold))
-                        Text(L10n.App.Popover.systemHealth.localized)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                Button {
+                    context.selectedSection = preferredSectionForHealthBadge
+                    onOpenControlCenter()
+                } label: {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(L10n.App.Dashboard.title.localized)
+                                .font(.headline.weight(.semibold))
+                            Text(L10n.App.Popover.systemHealth.localized)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        HealthBadgeView(status: core.aggregateHealth)
                     }
-                    Spacer()
-                    HealthBadgeView(status: core.aggregateHealth)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .helmPointer()
                 .spotlightAnchor("healthBadge")
                 .padding(.top, 4)
 
                 HStack(spacing: 8) {
-                    MetricChipView(
-                        label: L10n.App.Popover.pendingUpdates.localized,
-                        value: core.outdatedPackages.count
-                    )
-                    MetricChipView(
-                        label: L10n.App.Popover.failures.localized,
-                        value: core.failedTaskCount
-                    )
-                    MetricChipView(
-                        label: L10n.App.Popover.runningTasks.localized,
-                        value: core.runningTaskCount
-                    )
+                    Button {
+                        context.selectedSection = .updates
+                        onOpenControlCenter()
+                    } label: {
+                        MetricChipView(
+                            label: L10n.App.Popover.pendingUpdates.localized,
+                            value: core.outdatedPackages.count
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .helmPointer()
+
+                    Button {
+                        context.selectedSection = .overview
+                        onOpenControlCenter()
+                    } label: {
+                        MetricChipView(
+                            label: L10n.App.Popover.failures.localized,
+                            value: core.failedTaskCount
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .helmPointer()
+
+                    Button {
+                        context.selectedSection = .tasks
+                        onOpenControlCenter()
+                    } label: {
+                        MetricChipView(
+                            label: L10n.App.Popover.runningTasks.localized,
+                            value: core.runningTaskCount
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .helmPointer()
                 }
 
                 managerSnapshotCard
@@ -243,7 +279,7 @@ struct RedesignPopoverView: View {
                                 .font(.caption)
                                 .lineLimit(1)
                             Spacer()
-                            Text("\(core.outdatedCount(forManagerId: manager.id))")
+                            Text("\(outdatedCountByManager[manager.id, default: 0])")
                                 .font(.caption.monospacedDigit())
                                 .foregroundColor(.secondary)
                             HealthBadgeView(status: core.health(forManagerId: manager.id))
@@ -254,7 +290,7 @@ struct RedesignPopoverView: View {
                     .helmPointer()
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel(localizedManagerDisplayName(manager.id))
-                    .accessibilityValue("\(core.outdatedCount(forManagerId: manager.id)) \(L10n.App.Packages.Filter.upgradable.localized)")
+                    .accessibilityValue("\(outdatedCountByManager[manager.id, default: 0]) \(L10n.App.Packages.Filter.upgradable.localized)")
                 }
             }
         }
@@ -406,6 +442,19 @@ struct RedesignPopoverView: View {
         } else if activeOverlay == nil || activeOverlay == .search {
             activeOverlay = .search
         }
+    }
+
+    private var preferredSectionForHealthBadge: ControlCenterSection {
+        if core.failedTaskCount > 0 {
+            return .tasks
+        }
+        if !core.outdatedPackages.isEmpty {
+            return .updates
+        }
+        if core.runningTaskCount > 0 || core.isRefreshing {
+            return .tasks
+        }
+        return .overview
     }
 
     @ViewBuilder

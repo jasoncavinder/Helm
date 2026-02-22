@@ -874,6 +874,7 @@ private final class InspectorLinkTextView: NSTextView {
 // MARK: - Manager Inspector
 
 private struct InspectorManagerDetailView: View {
+    @ObservedObject private var core = HelmCore.shared
     let manager: ManagerInfo
     let status: ManagerStatus?
     let detectionDiagnostics: ManagerDetectionDiagnostics
@@ -886,8 +887,30 @@ private struct InspectorManagerDetailView: View {
         status?.detected ?? false
     }
 
-    private var enabled: Bool {
-        status?.enabled ?? true
+    private var activeExecutablePath: String? {
+        status?.executablePath?.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var executablePaths: [String] {
+        var paths: [String] = []
+        let discoveredPaths = status?.executablePaths ?? []
+        for path in discoveredPaths {
+            let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty, !paths.contains(trimmed) {
+                paths.append(trimmed)
+            }
+        }
+        if let activeExecutablePath, !activeExecutablePath.isEmpty, !paths.contains(activeExecutablePath) {
+            paths.insert(activeExecutablePath, at: 0)
+        }
+        return paths
+    }
+
+    private var selectedInstallMethodOption: ManagerInstallMethodOption {
+        manager.selectedInstallMethodOption(
+            executablePath: activeExecutablePath,
+            installedPackages: core.installedPackages
+        )
     }
 
     var body: some View {
@@ -895,8 +918,15 @@ private struct InspectorManagerDetailView: View {
             HStack(spacing: 8) {
                 Image(systemName: manager.symbolName)
                     .foregroundColor(.secondary)
-                Text(localizedManagerDisplayName(manager.id))
-                    .font(.title3.weight(.semibold))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(localizedManagerDisplayName(manager.id))
+                        .font(.title3.weight(.semibold))
+                    if let version = status?.version {
+                        Text(version)
+                            .font(.caption.monospacedDigit())
+                            .foregroundColor(.secondary)
+                    }
+                }
                 Spacer()
                 HealthBadgeView(status: health)
             }
@@ -923,23 +953,18 @@ private struct InspectorManagerDetailView: View {
                 .foregroundColor(.secondary)
 
             Group {
-                // Detection status
-                HStack(spacing: 6) {
-                    Image(systemName: detected ? "checkmark.circle.fill" : "xmark.circle")
-                        .foregroundColor(detected ? HelmTheme.stateHealthy : HelmTheme.stateError)
-                    Text(detected
+                InspectorField(label: L10n.App.Inspector.detectionDiagnostics.localized) {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: detected ? "checkmark.circle.fill" : "xmark.circle")
+                            .foregroundColor(detected ? HelmTheme.stateHealthy : HelmTheme.stateError)
+                            .padding(.top, 1)
+                        Text(localizedDetectionReason(detectionDiagnostics.reason))
+                            .font(.callout)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityValue(detected
                         ? L10n.App.Inspector.detected.localized
                         : L10n.App.Inspector.notDetected.localized)
-                        .font(.callout)
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityValue(detected
-                    ? L10n.App.Inspector.detected.localized
-                    : L10n.App.Inspector.notDetected.localized)
-
-                InspectorField(label: L10n.App.Inspector.detectionDiagnostics.localized) {
-                    Text(localizedDetectionReason(detectionDiagnostics.reason))
-                        .font(.callout)
                 }
 
                 if let lastStatus = detectionDiagnostics.latestTaskStatus {
@@ -956,41 +981,50 @@ private struct InspectorManagerDetailView: View {
                     }
                 }
 
-                if let version = status?.version {
-                    InspectorField(label: L10n.App.Inspector.version.localized) {
-                        Text(version)
-                            .font(.caption.monospacedDigit())
+                if !executablePaths.isEmpty {
+                    InspectorField(label: L10n.App.Inspector.executablePaths.localized) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(executablePaths, id: \.self) { path in
+                                Text(path)
+                                    .font(
+                                        path == activeExecutablePath
+                                            ? .caption.monospacedDigit().weight(.semibold)
+                                            : .caption.monospacedDigit()
+                                    )
+                                    .lineLimit(2)
+                            }
+                        }
+                        .accessibilityLabel(L10n.App.Inspector.executablePaths.localized)
+                        .accessibilityValue(executablePaths.joined(separator: ", "))
                     }
                 }
 
-                if let path = status?.executablePath {
-                    InspectorField(label: L10n.App.Inspector.executablePath.localized) {
-                        Text(path)
-                            .font(.caption.monospacedDigit())
-                            .lineLimit(2)
-                            .accessibilityLabel(L10n.App.Inspector.executablePath.localized)
-                            .accessibilityValue(path)
-                    }
-                }
-
-                // Enabled/Disabled
-                HStack(spacing: 6) {
-                    Image(systemName: enabled ? "checkmark.circle.fill" : "minus.circle.fill")
-                        .foregroundColor(enabled ? HelmTheme.stateHealthy : HelmTheme.textSecondary)
-                    Text(enabled
-                        ? L10n.App.Inspector.enabled.localized
-                        : L10n.App.Inspector.disabled.localized)
-                        .font(.callout)
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityValue(enabled
-                    ? L10n.App.Inspector.enabled.localized
-                    : L10n.App.Inspector.disabled.localized)
             }
 
             InspectorField(label: L10n.App.Inspector.installMethod.localized) {
-                Text(localizedInstallMethod(manager.installMethod))
-                    .font(.callout)
+                Menu {
+                    ForEach(manager.installMethodOptions) { option in
+                        Button {} label: {
+                            HStack(spacing: 8) {
+                                Text(installMethodLabel(option, includeTag: true))
+                                if option.method == selectedInstallMethodOption.method {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                        .disabled(true)
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(installMethodLabel(selectedInstallMethodOption, includeTag: true))
+                            .font(.callout)
+                        Image(systemName: "chevron.down")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .menuStyle(.borderlessButton)
             }
 
             InspectorField(label: L10n.App.Inspector.capabilities.localized) {
@@ -1023,14 +1057,39 @@ private struct InspectorManagerDetailView: View {
         }
     }
 
-    private func localizedInstallMethod(_ method: ManagerInstallMethod) -> String {
+    private func localizedInstallMethod(_ method: ManagerDistributionMethod) -> String {
         switch method {
-        case .automatable: return L10n.App.Inspector.InstallMethod.automatable.localized
-        case .updateAndUninstall: return L10n.App.Inspector.InstallMethod.updateAndUninstall.localized
-        case .updateOnly: return L10n.App.Inspector.InstallMethod.updateOnly.localized
-        case .systemBinary: return L10n.App.Inspector.InstallMethod.systemBinary.localized
+        case .homebrew: return L10n.App.Inspector.InstallMethod.homebrew.localized
+        case .macports: return L10n.App.Inspector.InstallMethod.macports.localized
+        case .appStore: return L10n.App.Inspector.InstallMethod.appStore.localized
+        case .setapp: return L10n.App.Inspector.InstallMethod.setapp.localized
+        case .officialInstaller: return L10n.App.Inspector.InstallMethod.officialInstaller.localized
+        case .scriptInstaller: return L10n.App.Inspector.InstallMethod.scriptInstaller.localized
+        case .corepack: return L10n.App.Inspector.InstallMethod.corepack.localized
+        case .rustupInstaller: return L10n.App.Inspector.InstallMethod.rustupInstaller.localized
+        case .xcodeSelect: return L10n.App.Inspector.InstallMethod.xcodeSelect.localized
+        case .softwareUpdate: return L10n.App.Inspector.InstallMethod.softwareUpdate.localized
+        case .systemProvided: return L10n.App.Inspector.InstallMethod.systemProvided.localized
+        case .npm: return L10n.App.Inspector.InstallMethod.npm.localized
+        case .pip: return L10n.App.Inspector.InstallMethod.pip.localized
+        case .pipx: return L10n.App.Inspector.InstallMethod.pipx.localized
+        case .gem: return L10n.App.Inspector.InstallMethod.gem.localized
+        case .cargoInstall: return L10n.App.Inspector.InstallMethod.cargoInstall.localized
+        case .asdf: return L10n.App.Inspector.InstallMethod.asdf.localized
+        case .mise: return L10n.App.Inspector.InstallMethod.mise.localized
         case .notManageable: return L10n.App.Inspector.InstallMethod.notManageable.localized
         }
+    }
+
+    private func installMethodLabel(_ option: ManagerInstallMethodOption, includeTag: Bool) -> String {
+        var value = localizedInstallMethod(option.method)
+        guard includeTag else { return value }
+        if option.isRecommended {
+            value += " (\(L10n.App.Inspector.installMethodTagRecommended.localized))"
+        } else if option.isPreferred {
+            value += " (\(L10n.App.Inspector.installMethodTagPreferred.localized))"
+        }
+        return value
     }
 
     private func localizedDetectionReason(_ reason: ManagerDetectionDiagnosticReason) -> String {

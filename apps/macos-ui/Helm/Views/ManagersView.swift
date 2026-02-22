@@ -1,8 +1,20 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ManagersSectionView: View {
     @ObservedObject private var core = HelmCore.shared
     @EnvironmentObject private var context: ControlCenterContext
+    @State private var draggedManagerId: String?
+
+    private var packageCountByManager: [String: Int] {
+        Dictionary(grouping: core.installedPackages, by: \.managerId)
+            .mapValues(\.count)
+    }
+
+    private var outdatedCountByManager: [String: Int] {
+        Dictionary(grouping: core.outdatedPackages, by: \.managerId)
+            .mapValues(\.count)
+    }
 
     private var implementedManagers: [ManagerInfo] {
         ManagerInfo.all.filter { manager in
@@ -12,9 +24,9 @@ struct ManagersSectionView: View {
 
     private var groupedManagers: [(authority: ManagerAuthority, managers: [ManagerInfo])] {
         ManagerAuthority.allCases.map { authorityLevel in
-            let managers = implementedManagers
-                .filter { $0.authority == authorityLevel }
-                .sorted { localizedManagerDisplayName($0.id).localizedCaseInsensitiveCompare(localizedManagerDisplayName($1.id)) == .orderedAscending }
+            let managers = core.sortedManagersByPriority(
+                implementedManagers.filter { $0.authority == authorityLevel }
+            )
             return (authority: authorityLevel, managers: managers)
         }
     }
@@ -40,9 +52,10 @@ struct ManagersSectionView: View {
                                 ManagerSectionRow(
                                     manager: manager,
                                     status: core.managerStatuses[manager.id],
-                                    outdatedCount: core.outdatedCount(forManagerId: manager.id),
-                                    packageCount: core.installedPackages.filter { $0.managerId == manager.id }.count,
+                                    outdatedCount: outdatedCountByManager[manager.id, default: 0],
+                                    packageCount: packageCountByManager[manager.id, default: 0],
                                     operationStatus: core.managerOperations[manager.id],
+                                    isSelected: context.selectedManagerId == manager.id,
                                     onSelect: {
                                         context.selectedManagerId = manager.id
                                         context.selectedPackageId = nil
@@ -56,6 +69,19 @@ struct ManagersSectionView: View {
                                         context.selectedUpgradePlanStepId = nil
                                         context.selectedSection = .packages
                                     }
+                                )
+                                .onDrag {
+                                    draggedManagerId = manager.id
+                                    return NSItemProvider(object: manager.id as NSString)
+                                }
+                                .onDrop(
+                                    of: [UTType.text.identifier],
+                                    delegate: ManagerPriorityDropDelegate(
+                                        core: core,
+                                        authority: group.authority,
+                                        targetManagerId: manager.id,
+                                        draggedManagerId: $draggedManagerId
+                                    )
                                 )
                             }
                         }
@@ -82,6 +108,7 @@ private struct ManagerSectionRow: View {
     let outdatedCount: Int
     let packageCount: Int
     let operationStatus: String?
+    let isSelected: Bool
     let onSelect: () -> Void
     let onViewPackages: () -> Void
 
@@ -205,6 +232,14 @@ private struct ManagerSectionRow: View {
         }
         .padding(12)
         .helmCardSurface(cornerRadius: 12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isSelected ? HelmTheme.selectionFill : Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(isSelected ? HelmTheme.selectionStroke : Color.clear, lineWidth: 0.9)
+                )
+        )
         .padding(.horizontal, 20)
         .contentShape(Rectangle())
         .onTapGesture {
@@ -252,5 +287,29 @@ struct ManagersView: View {
 
     var body: some View {
         ManagersSectionView()
+    }
+}
+
+private struct ManagerPriorityDropDelegate: DropDelegate {
+    let core: HelmCore
+    let authority: ManagerAuthority
+    let targetManagerId: String
+    @Binding var draggedManagerId: String?
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard let draggedManagerId else { return false }
+        core.moveManagerPriority(
+            authority: authority,
+            draggedManagerId: draggedManagerId,
+            targetManagerId: targetManagerId
+        )
+        self.draggedManagerId = nil
+        return true
+    }
+
+    func dropExited(info: DropInfo) {
+        if !info.hasItemsConforming(to: [UTType.text.identifier]) {
+            draggedManagerId = nil
+        }
     }
 }

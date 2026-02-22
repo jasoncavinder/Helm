@@ -59,7 +59,7 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::process::Command;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::Duration;
 use std::time::UNIX_EPOCH;
 
@@ -273,6 +273,7 @@ struct FfiManagerStatus {
     detected: bool,
     version: Option<String>,
     executable_path: Option<String>,
+    executable_paths: Vec<String>,
     enabled: bool,
     is_implemented: bool,
     is_optional: bool,
@@ -281,6 +282,224 @@ struct FfiManagerStatus {
     supports_package_install: bool,
     supports_package_uninstall: bool,
     supports_package_upgrade: bool,
+}
+
+static EXECUTABLE_DISCOVERY_CACHE: OnceLock<Mutex<std::collections::HashMap<ManagerId, Vec<String>>>> =
+    OnceLock::new();
+
+fn manager_executable_candidates(id: ManagerId) -> &'static [&'static str] {
+    match id {
+        ManagerId::HomebrewFormula | ManagerId::HomebrewCask => {
+            &["/opt/homebrew/bin/brew", "/usr/local/bin/brew", "brew"]
+        }
+        ManagerId::Asdf => &["asdf"],
+        ManagerId::Mise => &["mise"],
+        ManagerId::Rustup => &["rustup"],
+        ManagerId::Npm => &["npm"],
+        ManagerId::Pnpm => &["pnpm"],
+        ManagerId::Yarn => &["yarn"],
+        ManagerId::Pip => &["pip3", "pip", "python3"],
+        ManagerId::Pipx => &["pipx"],
+        ManagerId::Poetry => &["poetry"],
+        ManagerId::RubyGems => &["gem"],
+        ManagerId::Bundler => &["bundle"],
+        ManagerId::Cargo => &["cargo"],
+        ManagerId::CargoBinstall => &["cargo-binstall"],
+        ManagerId::MacPorts => &["/opt/local/bin/port", "port"],
+        ManagerId::NixDarwin => &["darwin-rebuild", "nix"],
+        ManagerId::Mas => &["mas"],
+        ManagerId::DockerDesktop => &["docker"],
+        ManagerId::Podman => &["podman"],
+        ManagerId::Colima => &["colima"],
+        ManagerId::XcodeCommandLineTools => &["xcode-select"],
+        ManagerId::SoftwareUpdate => &["/usr/sbin/softwareupdate"],
+        _ => &[],
+    }
+}
+
+fn normalize_path_string(path: &std::path::Path) -> Option<String> {
+    let rendered = path.to_string_lossy().trim().to_string();
+    if rendered.is_empty() {
+        None
+    } else {
+        Some(rendered)
+    }
+}
+
+fn manager_additional_bin_roots() -> Vec<std::path::PathBuf> {
+    let mut roots = vec![
+        std::path::PathBuf::from("/opt/homebrew/bin"),
+        std::path::PathBuf::from("/usr/local/bin"),
+        std::path::PathBuf::from("/opt/local/bin"),
+    ];
+
+    if let Some(home) = std::env::var_os("HOME").map(std::path::PathBuf::from) {
+        roots.push(home.join(".local/bin"));
+        roots.push(home.join(".cargo/bin"));
+        roots.push(home.join(".asdf/bin"));
+        roots.push(home.join(".asdf/shims"));
+    }
+
+    roots
+}
+
+fn manager_versioned_install_roots(id: ManagerId) -> Vec<std::path::PathBuf> {
+    let mut roots = Vec::new();
+
+    if matches!(
+        id,
+        ManagerId::HomebrewFormula
+            | ManagerId::HomebrewCask
+            | ManagerId::Mise
+            | ManagerId::Asdf
+            | ManagerId::Rustup
+            | ManagerId::Npm
+            | ManagerId::Pnpm
+            | ManagerId::Yarn
+            | ManagerId::Pip
+            | ManagerId::Pipx
+            | ManagerId::Poetry
+            | ManagerId::RubyGems
+            | ManagerId::Bundler
+            | ManagerId::Cargo
+            | ManagerId::CargoBinstall
+            | ManagerId::Mas
+            | ManagerId::DockerDesktop
+            | ManagerId::Podman
+            | ManagerId::Colima
+    ) {
+        roots.push(std::path::PathBuf::from("/opt/homebrew/Cellar"));
+        roots.push(std::path::PathBuf::from("/usr/local/Cellar"));
+    }
+
+    if matches!(
+        id,
+        ManagerId::Npm
+            | ManagerId::Pnpm
+            | ManagerId::Yarn
+            | ManagerId::Pip
+            | ManagerId::Pipx
+            | ManagerId::Poetry
+            | ManagerId::RubyGems
+            | ManagerId::Bundler
+            | ManagerId::Cargo
+            | ManagerId::CargoBinstall
+    ) && let Some(home) = std::env::var_os("HOME").map(std::path::PathBuf::from)
+    {
+        roots.push(home.join(".asdf/installs"));
+        roots.push(home.join(".local/share/mise/installs"));
+    }
+
+    roots
+}
+
+fn push_discovered_path(
+    candidate_path: &std::path::Path,
+    discovered: &mut Vec<String>,
+    seen: &mut std::collections::HashSet<String>,
+) {
+    if candidate_path.is_file()
+        && let Some(rendered) = normalize_path_string(candidate_path)
+        && seen.insert(rendered.clone())
+    {
+        discovered.push(rendered);
+    }
+}
+
+fn discover_executable_paths(id: ManagerId, candidates: &[&str]) -> Vec<String> {
+    let mut discovered = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let additional_bin_roots = manager_additional_bin_roots();
+    let versioned_roots = manager_versioned_install_roots(id);
+
+    let path_dirs: Vec<std::path::PathBuf> = std::env::var_os("PATH")
+        .as_deref()
+        .map(std::env::split_paths)
+        .map(|iter| iter.collect::<Vec<_>>())
+        .unwrap_or_default();
+
+    for candidate in candidates {
+        if candidate.contains('/') {
+            let absolute = std::path::PathBuf::from(candidate);
+            push_discovered_path(absolute.as_path(), &mut discovered, &mut seen);
+            continue;
+        }
+
+        for path_dir in &path_dirs {
+            let full = path_dir.join(candidate);
+            push_discovered_path(full.as_path(), &mut discovered, &mut seen);
+        }
+
+        for path_dir in &additional_bin_roots {
+            let full = path_dir.join(candidate);
+            push_discovered_path(full.as_path(), &mut discovered, &mut seen);
+        }
+
+        for root in &versioned_roots {
+            let Ok(tool_dirs) = std::fs::read_dir(root) else {
+                continue;
+            };
+            for tool_dir in tool_dirs.flatten() {
+                let tool_path = tool_dir.path();
+                if !tool_path.is_dir() {
+                    continue;
+                }
+
+                let Ok(version_dirs) = std::fs::read_dir(&tool_path) else {
+                    continue;
+                };
+                for version_dir in version_dirs.flatten() {
+                    let version_path = version_dir.path();
+                    if !version_path.is_dir() {
+                        continue;
+                    }
+                    let full = version_path.join("bin").join(candidate);
+                    push_discovered_path(full.as_path(), &mut discovered, &mut seen);
+                }
+            }
+        }
+    }
+
+    discovered
+}
+
+fn cached_discovered_executable_paths(id: ManagerId, candidates: &[&str]) -> Vec<String> {
+    let cache = EXECUTABLE_DISCOVERY_CACHE
+        .get_or_init(|| Mutex::new(std::collections::HashMap::new()));
+
+    if let Ok(guard) = cache.lock()
+        && let Some(cached) = guard.get(&id)
+    {
+        return cached.clone();
+    }
+
+    let discovered = discover_executable_paths(id, candidates);
+
+    if let Ok(mut guard) = cache.lock() {
+        guard.insert(id, discovered.clone());
+    }
+
+    discovered
+}
+
+fn collect_manager_executable_paths(id: ManagerId, active_path: Option<&std::path::Path>) -> Vec<String> {
+    let mut resolved = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    if let Some(active_path) = active_path
+        && let Some(rendered) = normalize_path_string(active_path)
+    {
+        seen.insert(rendered.clone());
+        resolved.push(rendered);
+    }
+
+    for discovered in cached_discovered_executable_paths(id, manager_executable_candidates(id)) {
+        if seen.insert(discovered.clone()) {
+            resolved.push(discovered);
+        }
+    }
+
+    resolved
 }
 
 fn build_manager_statuses(
@@ -307,6 +526,11 @@ fn build_manager_statuses(
                         .map(|p| p.to_string_lossy().to_string()),
                 )
             });
+            let executable_paths = if detected {
+                collect_manager_executable_paths(id, detection.and_then(|d| d.executable_path.as_deref()))
+            } else {
+                Vec::new()
+            };
             let version = detection.and_then(|d| normalize_nonempty(d.version.clone()));
             let supports_remote_search = runtime
                 .map(|runtime| can_submit_remote_search(runtime, id))
@@ -330,6 +554,7 @@ fn build_manager_statuses(
                 detected,
                 version,
                 executable_path,
+                executable_paths,
                 enabled,
                 is_implemented,
                 is_optional,
@@ -3647,7 +3872,8 @@ mod tests {
         upgrade_task_label_for,
     };
     use helm_core::models::{
-        ManagerId, OutdatedPackage, PackageRef, TaskId, TaskRecord, TaskStatus, TaskType,
+        DetectionInfo, ManagerId, OutdatedPackage, PackageRef, TaskId, TaskRecord, TaskStatus,
+        TaskType,
     };
     use std::collections::HashMap;
     use std::path::Path;
@@ -3836,6 +4062,31 @@ mod tests {
                 "manager {manager_id:?} expected implemented in 0.14 baseline"
             );
         }
+    }
+
+    #[test]
+    fn manager_status_skips_executable_path_discovery_for_missing_managers() {
+        let statuses = build_manager_statuses(None, &HashMap::new(), &HashMap::new());
+        assert!(status_for(&statuses, ManagerId::Npm).executable_paths.is_empty());
+    }
+
+    #[test]
+    fn manager_status_includes_active_executable_path_when_detected() {
+        let detection_map = HashMap::from([(
+            ManagerId::Npm,
+            DetectionInfo {
+                installed: true,
+                executable_path: Some(std::path::PathBuf::from("/tmp/helm-test-npm")),
+                version: Some("1.0.0".to_string()),
+            },
+        )]);
+        let statuses = build_manager_statuses(None, &detection_map, &HashMap::new());
+        let npm_status = status_for(&statuses, ManagerId::Npm);
+        assert!(
+            npm_status
+                .executable_paths
+                .contains(&"/tmp/helm-test-npm".to_string())
+        );
     }
 
     #[test]

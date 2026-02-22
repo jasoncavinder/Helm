@@ -15,11 +15,11 @@ Helm is in:
 ```
 
 Focus:
-- finalize `v0.17.0-rc.3` release prep on `dev`
-- execute next 0.17 RC cut workflow (release-prep PR, merge, tag, publish)
+- complete `v0.17.0-rc.4` release execution on `dev` (tag + GitHub pre-release)
+- run final validation and operator testing toward stable `v0.17.0`
 
 Current checkpoint:
-- `v0.17.0-rc.2` is released; post-rc.2 follow-up has been delivered on `dev` for the `v0.17.0-rc.3` candidate after merged diagnostics/logging slices and updater hotfix delivery:
+- `v0.17.0-rc.4` is ready on `dev`; post-`rc.3` follow-up has been delivered after merged diagnostics/logging slices and updater hotfix delivery:
   - `#93` `feat/v0.17-log-foundation`
   - `#95` `feat/v0.17-structured-error-export`
   - `#96` `feat/v0.17-service-health-panel`
@@ -35,6 +35,35 @@ Current checkpoint:
     - keep inspector detail text containers full-width with leading alignment in the side panel
     - harden package-consolidation row selection policy and task-output buffer caps
     - add prerelease updater bundle-metadata sanity checks and Hungarian translation follow-through for new UI strings
+  - post-rc.3 release automation follow-up delivered on `dev`:
+    - generate and publish website-hosted Sparkle release-notes pages from `CHANGELOG.md` under `web/public/updates/release-notes/<tag>.html`
+    - point appcast `sparkle:releaseNotesLink` to hosted website release notes instead of GitHub release pages
+  - post-rc.3 onboarding/legal follow-up delivered on `dev`:
+    - require first-run license-terms acceptance for `developer_id` channel before onboarding can proceed
+    - persist accepted license version + timestamp and re-prompt automatically when tracked license version changes
+    - expose `View License Terms` in About overlay for post-onboarding re-review
+  - post-rc.3 control-center/popover workflow follow-up delivered on `dev`:
+    - suppress popover while Control Center is open and focus Control Center on status-item clicks during that state
+    - make popover health + metric cards and overview metric cards route directly to their Control Center sections
+    - extend top-bar drag surface to match the full visible top bar
+  - post-rc.3 manager-priority/inspector follow-up delivered on `dev`:
+    - replace alphabetical manager ordering with priority ordering (installed first), add intra-authority drag reordering, and expose restore-default-priority action in advanced settings
+    - expand manager inspector to show full executable-path discovery set with active-path emphasis and install-method dropdown metadata (recommended/preferred tagging, selection disabled for future gated flow)
+    - expand manager install-method catalog coverage across implemented managers and improve About overlay diagnostics metadata (build/channel/update authority/last-check)
+  - post-rc.3 control-center polish follow-up delivered on `dev`:
+    - reset-local-data now clears onboarding license-acceptance state in addition to cached runtime data
+    - running-task rows now toggle expand/collapse from whole-row taps (not only indicator affordances)
+    - Control Center drag-to-move now applies across the full window background (interactive controls still take precedence)
+    - settings top metric cards now deep-link to Managers/Updates/Tasks
+    - inspector selection now clears when sections change and selected rows/cards are visually highlighted
+    - launch-at-login setting added for supported systems (macOS 13+), with localized unsupported messaging on older systems
+    - manager/popover count rendering paths precompute per-manager counts to reduce repeated filtering work in hot UI update loops
+  - pre-rc.4 stabilization follow-up delivered on `dev`:
+    - popover outside-click close handling now only reacts to click events (not hover/drag movement)
+    - floating-panel cursor forcing removed so interactive controls retain expected hover affordances
+    - consolidated package default-manager ordering now respects authority-aware manager priority
+    - executable-path discovery now skips undetected managers and caches detected-manager discovery results
+    - targeted regression coverage added for priority-ranked consolidation behavior and manager-status executable-path behavior
 - latest stable release on `main`: `v0.16.2`
 - validation gates currently green for RC prep (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke from `v0.17.0-rc.1`)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
@@ -74,6 +103,15 @@ Next release targets:
 - [x] post-`rc.2` inspector layout hardening — inspector detail containers now stay full-width with leading alignment to avoid centered narrow text content.
 - [x] post-`rc.2` updater prerelease guardrails — updater eligibility now rejects bundle marketing/build metadata mismatches that would blur prerelease vs stable version semantics.
 - [x] post-`rc.2` diagnostics/runtime hardening — task-output store now enforces bounded command/output buffering for long-running tasks, and Hungarian locale coverage includes the new task/inspector strings.
+- [x] post-`rc.3` updater release-notes hosting — release workflow now generates a per-tag website release-notes HTML page from `CHANGELOG.md`, publishes it with appcast updates, and links Sparkle release-notes URLs to the hosted page.
+- [x] post-`rc.3` onboarding/legal acceptance — Developer ID onboarding now requires explicit license-terms acceptance tracked by version + timestamp, with re-prompting on license-version changes and a persistent About link to review terms.
+- [x] post-`rc.3` popover/control-center interaction hardening — status-item popover no longer coexists with Control Center; status-item clicks focus Control Center while open; popover/overview health and metrics now deep-link to the appropriate Control Center section.
+- [x] post-`rc.3` manager-priority workflow — manager cards are priority-ordered by authority with installed-first enforcement, drag-reorder support, and advanced-settings restore-default-priority action.
+- [x] post-`rc.3` manager inspector install-metadata expansion — inspector now shows all discovered executable paths (active path emphasized), install-method dropdown metadata with recommended/preferred tags, and expanded per-manager install-method catalogs.
+- [x] post-`rc.3` About diagnostics metadata enhancement — About overlay now surfaces build number, distribution channel, update authority, and last update-check timestamp.
+- [x] post-`rc.3` control-center workflow polish — reset-local-data clears license-acceptance state; running-task row taps toggle details; settings metrics deep-link to managers/updates/tasks; inspector selection clears on section changes and selected entities are highlighted.
+- [x] post-`rc.3` startup/interaction polish — launch-at-login setting added (macOS 13+), popover cursor handling restored for hover affordance clarity, full-window Control Center drag support enabled, and count-heavy UI lists now use precomputed manager count maps for smoother drag/scroll behavior on lower-spec Macs.
+- [x] pre-`rc.4` stabilization — popover outside-click behavior hardened to click-only event handling; floating-panel cursor forcing removed; consolidated package manager preference now authority-aware; executable-path discovery cost reduced via undetected-manager skip + discovery caching; targeted policy/manager-status regression tests added.
 
 RC-3 release gate for `v0.17.x`:
 - Logs are accessible in UI.
@@ -910,4 +948,4 @@ Implement:
 - 0.14 stable release alignment for `v0.14.0` is complete (README/website + version artifacts).
 - Distribution/licensing future-state planning documentation is aligned for 0.14 release notes and roadmap planning (no implementation yet).
 - 0.14.x and 0.15.x release execution are complete on `main` (`v0.14.1` and `v0.15.0`).
-- 0.16.2 release execution is complete on `main`; 0.17.x diagnostics/logging delivery is complete with `v0.17.0-rc.1` and `v0.17.0-rc.2` released, and `v0.17.0-rc.3` stabilization/release prep now active on `dev`.
+- 0.16.2 release execution is complete on `main`; 0.17.x diagnostics/logging delivery is complete with `v0.17.0-rc.1` through `v0.17.0-rc.4` cut from `dev` for final stabilization toward `0.17.0`.

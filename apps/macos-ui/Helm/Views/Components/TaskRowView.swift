@@ -5,7 +5,9 @@ struct TaskRowView: View {
     var onCancel: (() -> Void)? = nil
     var canExpandDetails = false
     var isExpanded = false
+    var isSelected = false
     var onToggleDetails: (() -> Void)? = nil
+    var onSelect: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: isExpanded ? 8 : 0) {
@@ -55,6 +57,17 @@ struct TaskRowView: View {
                     .accessibilityLabel(L10n.App.Tasks.Action.cancel.localized)
                 }
             }
+            .contentShape(Rectangle())
+            .gesture(
+                TapGesture().onEnded {
+                    if canExpandDetails {
+                        onToggleDetails?()
+                    }
+                    onSelect?()
+                },
+                including: .gesture
+            )
+            .helmPointer(enabled: canExpandDetails || onSelect != nil)
 
             if canExpandDetails && isExpanded {
                 TaskRowLiveOutputView(task: task)
@@ -62,6 +75,14 @@ struct TaskRowView: View {
         }
         .padding(.vertical, 3)
         .padding(.horizontal, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isSelected ? HelmTheme.selectionFill : Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(isSelected ? HelmTheme.selectionStroke : Color.clear, lineWidth: 0.8)
+                )
+        )
     }
 }
 

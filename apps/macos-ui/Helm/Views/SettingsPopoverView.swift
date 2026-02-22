@@ -5,6 +5,7 @@ struct SettingsSectionView: View {
     @ObservedObject private var appUpdate = AppUpdateCoordinator.shared
     @ObservedObject private var localization = LocalizationManager.shared
     @ObservedObject private var walkthrough = WalkthroughManager.shared
+    @EnvironmentObject private var context: ControlCenterContext
 
     @State private var checkFrequency = 60
     @State private var showResetConfirmation = false
@@ -111,18 +112,38 @@ struct SettingsSectionView: View {
                 }
 
                 HStack(spacing: 8) {
-                    SettingsMetricPill(
-                        title: L10n.App.Settings.Metric.managers.localized,
-                        value: core.visibleManagers.count
-                    )
-                    SettingsMetricPill(
-                        title: L10n.App.Settings.Metric.updates.localized,
-                        value: core.outdatedPackages.count
-                    )
-                    SettingsMetricPill(
-                        title: L10n.App.Settings.Metric.tasks.localized,
-                        value: core.runningTaskCount
-                    )
+                    Button {
+                        context.selectedSection = .managers
+                    } label: {
+                        SettingsMetricPill(
+                            title: L10n.App.Settings.Metric.managers.localized,
+                            value: core.visibleManagers.count
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .helmPointer()
+
+                    Button {
+                        context.selectedSection = .updates
+                    } label: {
+                        SettingsMetricPill(
+                            title: L10n.App.Settings.Metric.updates.localized,
+                            value: core.outdatedPackages.count
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .helmPointer()
+
+                    Button {
+                        context.selectedSection = .tasks
+                    } label: {
+                        SettingsMetricPill(
+                            title: L10n.App.Settings.Metric.tasks.localized,
+                            value: core.runningTaskCount
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .helmPointer()
                 }
 
                 SettingsCard(title: L10n.App.Settings.Section.general.localized, icon: "globe", fill: cardFill) {
@@ -140,6 +161,21 @@ struct SettingsSectionView: View {
                         }
                         .labelsHidden()
                         .frame(width: 220)
+                    }
+
+                    Divider()
+
+                    Toggle(L10n.App.Settings.Label.launchAtLogin.localized, isOn: Binding(
+                        get: { core.launchAtLoginEnabled },
+                        set: { core.setLaunchAtLogin($0) }
+                    ))
+                    .toggleStyle(.switch)
+                    .disabled(!core.launchAtLoginSupported)
+
+                    if !core.launchAtLoginSupported {
+                        Text(L10n.App.Settings.Label.launchAtLoginRequiresMacOS13.localized)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
 
                     Divider()
@@ -216,6 +252,15 @@ struct SettingsSectionView: View {
                         ) {
                             walkthrough.resetWalkthroughs()
                             walkthrough.startPopoverWalkthrough()
+                        }
+
+                        SettingsActionButton(
+                            title: L10n.App.Settings.Action.restoreManagerPriority.localized,
+                            badges: [],
+                            isProminent: false,
+                            useSystemStyle: true
+                        ) {
+                            core.restoreDefaultManagerPriorities()
                         }
                     }
                 }
@@ -448,6 +493,9 @@ struct SettingsSectionView: View {
             } onClose: {
                 showSupportOptionsModal = false
             }
+        }
+        .onAppear {
+            core.refreshLaunchAtLogin()
         }
     }
 }
@@ -847,5 +895,6 @@ struct SettingsPopoverView: View {
     var body: some View {
         SettingsSectionView()
             .frame(width: 440)
+            .environmentObject(ControlCenterContext())
     }
 }

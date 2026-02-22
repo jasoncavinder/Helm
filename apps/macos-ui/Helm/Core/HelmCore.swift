@@ -354,6 +354,7 @@ struct ManagerStatus: Codable {
     let detected: Bool
     let version: String?
     let executablePath: String?
+    let executablePaths: [String]?
     let enabled: Bool
     let isImplemented: Bool
     let isOptional: Bool
@@ -371,6 +372,8 @@ final class HelmCore: ObservableObject {
     private static let onboardingCompletedKey = "hasCompletedOnboarding"
     private static let acceptedLicenseTermsVersionKey = "acceptedLicenseTermsVersion"
     private static let acceptedLicenseTermsAcceptedAtUnixKey = "acceptedLicenseTermsAcceptedAtUnix"
+    static let launchAtLoginEnabledKey = "launchAtLoginEnabled"
+    static let managerPriorityOverridesKey = "managerPriorityOverrides"
 
     @Published var isInitialized = false
     @Published var isConnected = false
@@ -392,6 +395,7 @@ final class HelmCore: ObservableObject {
     @Published var scopedUpgradePlanRunInProgress: Bool = false
     @Published var detectedManagers: Set<String> = []
     @Published var managerStatuses: [String: ManagerStatus] = [:]
+    @Published var managerPriorityOverrides: [String: Int] = HelmCore.loadManagerPriorityOverrides()
     @Published var managerOperations: [String: String] = [:]
     @Published var pinActionPackageIds: Set<String> = []
     @Published var upgradeActionPackageIds: Set<String> = []
@@ -418,6 +422,9 @@ final class HelmCore: ObservableObject {
         }
         return value.int64Value
     }()
+    @Published var launchAtLoginEnabled: Bool = UserDefaults.standard.bool(
+        forKey: HelmCore.launchAtLoginEnabledKey
+    )
 
     var timer: Timer?
     var connection: NSXPCConnection?
@@ -443,6 +450,16 @@ final class HelmCore: ObservableObject {
 
     private init() {
         setupConnection()
+    }
+
+    private static func loadManagerPriorityOverrides() -> [String: Int] {
+        guard let data = UserDefaults.standard.data(forKey: managerPriorityOverridesKey) else {
+            return [:]
+        }
+        guard let decoded = try? JSONDecoder().decode([String: Int].self, from: data) else {
+            return [:]
+        }
+        return decoded
     }
 
     static func requiresLicenseTermsAcceptance(
@@ -752,7 +769,11 @@ final class HelmCore: ObservableObject {
                     self?.onboardingDetectionStartedAt = nil
                     self?.lastRefreshTrigger = nil
                     UserDefaults.standard.removeObject(forKey: Self.onboardingCompletedKey)
+                    UserDefaults.standard.removeObject(forKey: Self.acceptedLicenseTermsVersionKey)
+                    UserDefaults.standard.removeObject(forKey: Self.acceptedLicenseTermsAcceptedAtUnixKey)
                     self?.hasCompletedOnboarding = false
+                    self?.acceptedLicenseTermsVersion = nil
+                    self?.acceptedLicenseTermsAcceptedAtUnix = nil
                 }
                 // Resume polling after reset
                 self?.startPolling()
