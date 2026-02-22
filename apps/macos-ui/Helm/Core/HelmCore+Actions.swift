@@ -545,16 +545,156 @@ extension HelmCore {
     }
 
     func setManagerEnabled(_ managerId: String, enabled: Bool) {
-        service()?.setManagerEnabled(managerId: managerId, enabled: enabled) { success in
+        guard let service = service() else {
+            recordLastError(
+                source: "core.actions",
+                action: "setManagerEnabled.service_unavailable",
+                managerId: managerId,
+                taskType: "settings"
+            )
+            return
+        }
+
+        service.setManagerEnabled(managerId: managerId, enabled: enabled) { [weak self] success in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if !success {
+                    logger.error("setManagerEnabled(\(managerId), \(enabled)) failed")
+                    self.recordLastError(
+                        source: "core.actions",
+                        action: "setManagerEnabled",
+                        managerId: managerId,
+                        taskType: "settings"
+                    )
+                    return
+                }
+
+                if !enabled {
+                    self.cancelInFlightTasks(for: managerId)
+                    self.pruneDisabledManagerState(managerId: managerId)
+                }
+
+                self.fetchManagerStatus()
+                self.fetchTasks()
+                self.fetchPackages()
+                self.fetchOutdatedPackages()
+                self.refreshCachedAvailablePackages()
+                self.refreshUpgradePlan(
+                    includePinned: self.upgradePlanIncludePinned,
+                    allowOsUpdates: self.upgradePlanAllowOsUpdates
+                )
+            }
+        }
+    }
+
+    private func cancelInFlightTasks(for managerId: String) {
+        let taskIds = Set(
+            activeTasks.compactMap { task -> Int64? in
+                guard task.managerId == managerId, task.isRunning else { return nil }
+                return Int64(task.id)
+            }
+        )
+        guard !taskIds.isEmpty else { return }
+
+        for taskId in taskIds {
+            service()?.cancelTask(taskId: taskId) { [weak self] success in
+                guard success else {
+                    logger.warning("cancelTask(\(taskId)) returned false while disabling \(managerId)")
+                    self?.recordLastError(
+                        source: "core.actions",
+                        action: "cancelTask",
+                        managerId: managerId,
+                        taskType: "settings"
+                    )
+                    return
+                }
+            }
+        }
+    }
+
+    private func pruneDisabledManagerState(managerId: String) {
+        let packageIdPrefix = "\(managerId):"
+        let removedStepIds = Set(
+            upgradePlanSteps
+                .filter { $0.managerId == managerId }
+                .map(\.id)
+        )
+
+        installedPackages.removeAll { $0.managerId == managerId }
+        outdatedPackages.removeAll { $0.managerId == managerId }
+        searchResults.removeAll { $0.managerId == managerId }
+        cachedAvailablePackages.removeAll { $0.managerId == managerId }
+        activeTasks.removeAll { $0.managerId == managerId }
+
+        managerOperations.removeValue(forKey: managerId)
+        if let taskId = managerActionTaskByManager.removeValue(forKey: managerId) {
+            managerActionTaskDescriptions.removeValue(forKey: taskId)
+        }
+
+        upgradeActionTaskByPackage = upgradeActionTaskByPackage.filter { !$0.key.hasPrefix(packageIdPrefix) }
+        installActionTaskByPackage = installActionTaskByPackage.filter { !$0.key.hasPrefix(packageIdPrefix) }
+        uninstallActionTaskByPackage = uninstallActionTaskByPackage.filter { !$0.key.hasPrefix(packageIdPrefix) }
+
+        upgradeActionPackageIds = Set(upgradeActionPackageIds.filter { !$0.hasPrefix(packageIdPrefix) })
+        installActionPackageIds = Set(installActionPackageIds.filter { !$0.hasPrefix(packageIdPrefix) })
+        uninstallActionPackageIds = Set(uninstallActionPackageIds.filter { !$0.hasPrefix(packageIdPrefix) })
+        pinActionPackageIds = Set(pinActionPackageIds.filter { !$0.hasPrefix(packageIdPrefix) })
+
+        packageDescriptionLoadingIds = Set(packageDescriptionLoadingIds.filter { !$0.hasPrefix(packageIdPrefix) })
+        packageDescriptionUnavailableIds = Set(
+            packageDescriptionUnavailableIds.filter { !$0.hasPrefix(packageIdPrefix) }
+        )
+        descriptionLookupTaskIdsByPackage = descriptionLookupTaskIdsByPackage.filter {
+            !$0.key.hasPrefix(packageIdPrefix)
+        }
+        descriptionLookupLastAttemptByPackage = descriptionLookupLastAttemptByPackage.filter {
+            !$0.key.hasPrefix(packageIdPrefix)
+        }
+
+        if selectedManagerFilter == managerId {
+            selectedManagerFilter = nil
+        }
+
+        if !removedStepIds.isEmpty {
+            upgradePlanSteps.removeAll { $0.managerId == managerId }
+            for stepId in removedStepIds {
+                upgradePlanTaskProjectionByStepId.removeValue(forKey: stepId)
+            }
+            rebuildUpgradePlanFailureGroups()
+        }
+    }
+
+    func setManagerSelectedExecutablePath(_ managerId: String, selectedPath: String?) {
+        service()?.setManagerSelectedExecutablePath(managerId: managerId, selectedPath: selectedPath) { [weak self] success in
+            guard let self else { return }
             if !success {
-                logger.error("setManagerEnabled(\(managerId), \(enabled)) failed")
+                logger.error("setManagerSelectedExecutablePath(\(managerId), \(selectedPath ?? "nil")) failed")
                 self.recordLastError(
                     source: "core.actions",
-                    action: "setManagerEnabled",
+                    action: "setManagerSelectedExecutablePath",
                     managerId: managerId,
                     taskType: "settings"
                 )
+                return
             }
+            self.fetchManagerStatus()
+        }
+    }
+
+    func setManagerInstallMethod(_ managerId: String, installMethod: String?) {
+        service()?.setManagerInstallMethod(managerId: managerId, installMethod: installMethod) { [weak self] success in
+            guard let self else { return }
+            if !success {
+                logger.error("setManagerInstallMethod(\(managerId), \(installMethod ?? "nil")) failed")
+                self.recordLastError(
+                    source: "core.actions",
+                    action: "setManagerInstallMethod",
+                    managerId: managerId,
+                    taskType: "settings"
+                )
+                return
+            }
+            self.fetchManagerStatus()
         }
     }
 

@@ -37,6 +37,8 @@ char *helm_list_task_logs(int64_t task_id, int64_t limit);
 
 bool helm_trigger_refresh(void);
 
+bool helm_trigger_detection(void);
+
 /**
  * Query the local search cache synchronously and return JSON results.
  *
@@ -211,6 +213,26 @@ bool helm_unpin_package(const char *manager_id, const char *package_name);
  * `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
  */
 bool helm_set_manager_enabled(const char *manager_id, bool enabled);
+
+/**
+ * Set (or clear) the selected executable path for a manager.
+ *
+ * # Safety
+ *
+ * `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ * `selected_path` may be null (to clear override).
+ */
+bool helm_set_manager_selected_executable_path(const char *manager_id, const char *selected_path);
+
+/**
+ * Set (or clear) the selected install method for a manager.
+ *
+ * # Safety
+ *
+ * `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ * `install_method` may be null (to clear override).
+ */
+bool helm_set_manager_install_method(const char *manager_id, const char *install_method);
 
 /**
  * Install a manager tool via Homebrew. Returns the task ID, or -1 on error.

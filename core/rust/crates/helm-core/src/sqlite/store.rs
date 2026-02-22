@@ -11,8 +11,8 @@ use crate::models::{
     TaskRecord, TaskStatus, TaskType,
 };
 use crate::persistence::{
-    DetectionStore, MigrationStore, PackageStore, PersistenceResult, PinStore, SearchCacheStore,
-    TaskStore,
+    DetectionStore, ManagerPreference, MigrationStore, PackageStore, PersistenceResult, PinStore,
+    SearchCacheStore, TaskStore,
 };
 use crate::sqlite::migrations::{SqliteMigration, current_schema_version, migration, migrations};
 
@@ -914,12 +914,60 @@ ON CONFLICT(manager_id) DO UPDATE SET
         })
     }
 
-    fn list_manager_preferences(&self) -> PersistenceResult<Vec<(ManagerId, bool)>> {
+    fn set_manager_selected_executable_path(
+        &self,
+        manager: ManagerId,
+        path: Option<&str>,
+    ) -> PersistenceResult<()> {
+        self.with_connection("set_manager_selected_executable_path", |connection| {
+            ensure_schema_ready(connection)?;
+            connection.execute(
+                "
+INSERT INTO manager_preferences (manager_id, enabled, selected_executable_path)
+VALUES (
+    ?1,
+    COALESCE((SELECT enabled FROM manager_preferences WHERE manager_id = ?1), 1),
+    NULLIF(?2, '')
+)
+ON CONFLICT(manager_id) DO UPDATE SET
+    selected_executable_path = NULLIF(excluded.selected_executable_path, '')
+",
+                params![manager.as_str(), path],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn set_manager_selected_install_method(
+        &self,
+        manager: ManagerId,
+        method: Option<&str>,
+    ) -> PersistenceResult<()> {
+        self.with_connection("set_manager_selected_install_method", |connection| {
+            ensure_schema_ready(connection)?;
+            connection.execute(
+                "
+INSERT INTO manager_preferences (manager_id, enabled, selected_install_method)
+VALUES (
+    ?1,
+    COALESCE((SELECT enabled FROM manager_preferences WHERE manager_id = ?1), 1),
+    NULLIF(?2, '')
+)
+ON CONFLICT(manager_id) DO UPDATE SET
+    selected_install_method = NULLIF(excluded.selected_install_method, '')
+",
+                params![manager.as_str(), method],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn list_manager_preferences(&self) -> PersistenceResult<Vec<ManagerPreference>> {
         self.with_connection("list_manager_preferences", |connection| {
             ensure_schema_ready(connection)?;
             let mut statement = connection.prepare(
                 "
-SELECT manager_id, enabled
+SELECT manager_id, enabled, selected_executable_path, selected_install_method
 FROM manager_preferences
 ORDER BY manager_id
 ",
@@ -928,9 +976,16 @@ ORDER BY manager_id
             let rows = statement.query_map([], |row| {
                 let manager_raw: String = row.get(0)?;
                 let enabled_int: i64 = row.get(1)?;
+                let selected_executable_path: Option<String> = row.get(2)?;
+                let selected_install_method: Option<String> = row.get(3)?;
 
                 let manager = parse_manager_id(&manager_raw)?;
-                Ok((manager, sqlite_to_bool(enabled_int)))
+                Ok(ManagerPreference {
+                    manager,
+                    enabled: sqlite_to_bool(enabled_int),
+                    selected_executable_path,
+                    selected_install_method,
+                })
             })?;
 
             rows.collect()

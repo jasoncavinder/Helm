@@ -34,6 +34,42 @@ pub fn authority_phases(adapters: &[&dyn ManagerAdapter]) -> Vec<Vec<ManagerId>>
     phases
 }
 
+/// Groups registered adapters into detection phases by authority level.
+///
+/// Returns phases in order: [Authoritative], [Standard], [Guarded], [DetectionOnly].
+/// Empty phases are omitted. Within each phase, managers execute in parallel.
+pub fn detection_phases(adapters: &[&dyn ManagerAdapter]) -> Vec<Vec<ManagerId>> {
+    let mut authoritative = Vec::new();
+    let mut standard = Vec::new();
+    let mut guarded = Vec::new();
+    let mut detection_only = Vec::new();
+
+    for adapter in adapters {
+        let descriptor = adapter.descriptor();
+        match descriptor.authority {
+            ManagerAuthority::Authoritative => authoritative.push(descriptor.id),
+            ManagerAuthority::Standard => standard.push(descriptor.id),
+            ManagerAuthority::Guarded => guarded.push(descriptor.id),
+            ManagerAuthority::DetectionOnly => detection_only.push(descriptor.id),
+        }
+    }
+
+    let mut phases = Vec::new();
+    if !authoritative.is_empty() {
+        phases.push(authoritative);
+    }
+    if !standard.is_empty() {
+        phases.push(standard);
+    }
+    if !guarded.is_empty() {
+        phases.push(guarded);
+    }
+    if !detection_only.is_empty() {
+        phases.push(detection_only);
+    }
+    phases
+}
+
 #[cfg(test)]
 mod tests {
     use crate::adapters::manager::{
@@ -44,7 +80,7 @@ mod tests {
         ManagerDescriptor, ManagerId,
     };
 
-    use super::authority_phases;
+    use super::{authority_phases, detection_phases};
 
     struct StubAdapter {
         descriptor: ManagerDescriptor,
@@ -123,6 +159,21 @@ mod tests {
         let adapters: Vec<&dyn ManagerAdapter> = vec![];
         let phases = authority_phases(&adapters);
         assert!(phases.is_empty());
+    }
+
+    #[test]
+    fn detection_phases_include_detection_only_managers_last() {
+        let sparkle = StubAdapter::new(ManagerId::Sparkle, ManagerAuthority::DetectionOnly);
+        let mise = StubAdapter::new(ManagerId::Mise, ManagerAuthority::Authoritative);
+        let brew = StubAdapter::new(ManagerId::HomebrewFormula, ManagerAuthority::Guarded);
+
+        let adapters: Vec<&dyn ManagerAdapter> = vec![&sparkle, &mise, &brew];
+        let phases = detection_phases(&adapters);
+
+        assert_eq!(phases.len(), 3);
+        assert_eq!(phases[0], vec![ManagerId::Mise]);
+        assert_eq!(phases[1], vec![ManagerId::HomebrewFormula]);
+        assert_eq!(phases[2], vec![ManagerId::Sparkle]);
     }
 
     #[test]

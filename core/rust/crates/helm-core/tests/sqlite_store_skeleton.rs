@@ -521,6 +521,54 @@ fn upsert_detection_treats_empty_version_as_missing() {
 }
 
 #[test]
+fn manager_preferences_selection_fields_roundtrip() {
+    let path = test_db_path("manager-preferences-selection-roundtrip");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    store.set_manager_enabled(ManagerId::Pip, false).unwrap();
+    store
+        .set_manager_selected_executable_path(ManagerId::Pip, Some("/tmp/custom-python3"))
+        .unwrap();
+    store
+        .set_manager_selected_install_method(ManagerId::Pip, Some("homebrew"))
+        .unwrap();
+
+    let prefs = store.list_manager_preferences().unwrap();
+    let pip_pref = prefs
+        .into_iter()
+        .find(|pref| pref.manager == ManagerId::Pip)
+        .expect("pip manager preference should exist");
+    assert!(!pip_pref.enabled);
+    assert_eq!(
+        pip_pref.selected_executable_path.as_deref(),
+        Some("/tmp/custom-python3")
+    );
+    assert_eq!(
+        pip_pref.selected_install_method.as_deref(),
+        Some("homebrew")
+    );
+
+    store
+        .set_manager_selected_executable_path(ManagerId::Pip, None)
+        .unwrap();
+    store
+        .set_manager_selected_install_method(ManagerId::Pip, None)
+        .unwrap();
+
+    let prefs = store.list_manager_preferences().unwrap();
+    let pip_pref = prefs
+        .into_iter()
+        .find(|pref| pref.manager == ManagerId::Pip)
+        .expect("pip manager preference should exist");
+    assert_eq!(pip_pref.selected_executable_path, None);
+    assert_eq!(pip_pref.selected_install_method, None);
+    assert!(!pip_pref.enabled);
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn upsert_and_query_search_cache_roundtrip() {
     let path = test_db_path("search-roundtrip");
     let store = SqliteStore::new(&path);

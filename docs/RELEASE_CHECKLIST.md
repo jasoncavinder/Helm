@@ -24,17 +24,17 @@ This checklist is required before creating a release tag on `main`.
 - [ ] Confirm repo merge settings remain enabled/configured: auto-merge on, update-branch on, and delete-branch-on-merge off.
 - [ ] Confirm release metadata publication remains PR-based (no direct-push fallback path in `.github/workflows/release-macos-dmg.yml`).
 
-## v0.17.1 (Stable Patch Release Gate)
+## v0.17.2 (Stable Patch Release Gate)
 
 ### Scope and Documentation
-- [ ] `CHANGELOG.md` includes finalized `0.17.1` patch notes for the stable artifact rebuild cut.
-- [ ] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect `v0.17.1` stable release-cut status.
-- [ ] Website changelog includes `0.17.1` patch entry and release-order alignment.
+- [ ] `CHANGELOG.md` includes finalized `0.17.2` patch notes for the stable incremental cut.
+- [ ] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect `v0.17.2` stable release-cut status.
+- [ ] Website changelog includes `0.17.2` patch entry and release-order alignment.
 
 ### Versioning
-- [ ] Workspace version bumped to `0.17.1` in `core/rust/Cargo.toml`.
-- [ ] Rust lockfile local package versions aligned to `0.17.1` in `core/rust/Cargo.lock`.
-- [ ] Generated app version artifacts aligned to `0.17.1` (`apps/macos-ui/Generated/HelmVersion.swift`, `apps/macos-ui/Generated/HelmVersion.xcconfig`).
+- [ ] Workspace version bumped to `0.17.2` in `core/rust/Cargo.toml`.
+- [ ] Rust lockfile local package versions aligned to `0.17.2` in `core/rust/Cargo.lock`.
+- [ ] Generated app version artifacts aligned to `0.17.2` (`apps/macos-ui/Generated/HelmVersion.swift`, `apps/macos-ui/Generated/HelmVersion.xcconfig`).
 
 ### Validation
 - [ ] Rust tests pass (`cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`).
@@ -48,10 +48,10 @@ This checklist is required before creating a release tag on `main`.
 - [ ] `dev` merged into `main` for stable cut.
 - [ ] If release-critical docs updates were developed on `docs`, merge `docs` into `main`.
 - [ ] If release-critical website updates were developed on `web`, merge `web` into `main`.
-- [ ] Create annotated stable tag from `main`: `git tag -a v0.17.1 -m "Helm v0.17.1"`.
-- [ ] Push stable tag: `git push origin v0.17.1`.
-- [ ] Publish GitHub release for `v0.17.1` (mark as latest, non-prerelease).
-- [ ] Confirm release-generated publish PR (`chore/publish-updates-v0.17.1`) merged to `main`.
+- [ ] Create annotated stable tag from `main`: `git tag -a v0.17.2 -m "Helm v0.17.2"`.
+- [ ] Push stable tag: `git push origin v0.17.2`.
+- [ ] Publish GitHub release for `v0.17.2` (mark as latest, non-prerelease).
+- [ ] Confirm release-generated publish PR (`chore/publish-updates-v0.17.2`) merged to `main`.
 - [ ] Confirm `Appcast Drift Guard` is green after publication.
 
 ## Historical RC and Prior-Release Checklists (Archive)

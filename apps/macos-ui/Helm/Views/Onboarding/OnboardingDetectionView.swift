@@ -51,7 +51,12 @@ struct OnboardingDetectionView: View {
                     VStack(spacing: 0) {
                         ForEach(foundManagers) { manager in
                             let status = core.managerStatuses[manager.id]
-                            FoundManagerRow(manager: manager, status: status)
+                            let latestDetectionStatus = core.latestDetectionTask(for: manager.id)?.status.lowercased()
+                            FoundManagerRow(
+                                manager: manager,
+                                status: status,
+                                latestDetectionStatus: latestDetectionStatus
+                            )
                             if manager.id != foundManagers.last?.id {
                                 Divider()
                                     .padding(.leading, 44)
@@ -86,10 +91,23 @@ struct OnboardingDetectionView: View {
 private struct FoundManagerRow: View {
     let manager: ManagerInfo
     let status: ManagerStatus?
+    let latestDetectionStatus: String?
+
+    private var shouldShowVersionLoading: Bool {
+        guard status?.detected == true else { return false }
+        let terminalStatuses = Set(["completed", "failed", "cancelled"])
+        if let latestDetectionStatus, terminalStatuses.contains(latestDetectionStatus) {
+            return false
+        }
+        return true
+    }
 
     private var managerVersionLabel: String {
         if let version = status?.version, !version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return L10n.Common.version.localized(with: ["version": version])
+        }
+        if shouldShowVersionLoading {
+            return L10n.Common.loading.localized
         }
         return L10n.Common.detected.localized
     }

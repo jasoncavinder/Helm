@@ -76,6 +76,12 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(result)
     }
 
+    func triggerDetection(withReply reply: @escaping (Bool) -> Void) {
+        let result = helm_trigger_detection()
+        logger.info("helm_trigger_detection result: \(result)")
+        reply(result)
+    }
+
     func searchLocal(query: String, withReply reply: @escaping (String?) -> Void) {
         guard let cString = query.withCString({ helm_search_local($0) }) else {
             logger.warning("helm_search_local returned nil")
@@ -250,6 +256,40 @@ class HelmService: NSObject, HelmServiceProtocol {
     func setManagerEnabled(managerId: String, enabled: Bool, withReply reply: @escaping (Bool) -> Void) {
         let result = managerId.withCString { helm_set_manager_enabled($0, enabled) }
         logger.info("helm_set_manager_enabled(\(managerId), \(enabled)) result: \(result)")
+        reply(result)
+    }
+
+    func setManagerSelectedExecutablePath(managerId: String, selectedPath: String?, withReply reply: @escaping (Bool) -> Void) {
+        let result: Bool
+        if let selectedPath {
+            result = managerId.withCString { manager in
+                selectedPath.withCString { selected in
+                    helm_set_manager_selected_executable_path(manager, selected)
+                }
+            }
+        } else {
+            result = managerId.withCString { manager in
+                helm_set_manager_selected_executable_path(manager, nil)
+            }
+        }
+        logger.info("helm_set_manager_selected_executable_path(\(managerId), \(selectedPath ?? "nil")) result: \(result)")
+        reply(result)
+    }
+
+    func setManagerInstallMethod(managerId: String, installMethod: String?, withReply reply: @escaping (Bool) -> Void) {
+        let result: Bool
+        if let installMethod {
+            result = managerId.withCString { manager in
+                installMethod.withCString { method in
+                    helm_set_manager_install_method(manager, method)
+                }
+            }
+        } else {
+            result = managerId.withCString { manager in
+                helm_set_manager_install_method(manager, nil)
+            }
+        }
+        logger.info("helm_set_manager_install_method(\(managerId), \(installMethod ?? "nil")) result: \(result)")
         reply(result)
     }
 

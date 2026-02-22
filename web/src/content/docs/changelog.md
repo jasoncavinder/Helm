@@ -13,6 +13,27 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ## Unreleased
 
+## 0.17.2 — 2026-02-22
+
+Patch `0.17.2` ships post-`0.17.x` manager-control, onboarding/detection, and Control Center execution-plan fixes as a stable incremental release.
+
+### Added
+- Manager Inspector executable/install-method selection is now actionable and persisted, including explicit PATH-default executable mode.
+- Failed-task diagnostics panes now support selectable text and `Copy All` controls for `diagnostics`, `stderr`, `stdout`, and `logs`.
+- Runtime detection now emits structured per-manager timing telemetry with slow-detection warnings at `>=3000ms`.
+
+### Changed
+- Core manager execution now uses selected executable overrides instead of implicit PATH dependency, and manager install/update/uninstall flows honor selected install method where implemented (`mise`, `mas`, `rustup`).
+- Onboarding detection now runs detection-only (no immediate refresh list work), pre-seeds manager presence immediately, and shows localized `Loading` placeholders until version probes finish.
+- License acceptance now appears as onboarding step 2 and no longer loops onboarding after acceptance.
+- Execution-plan modal presentation is now host-scoped to the initiating surface (Control Center vs popover), preventing duplicate modal presentation.
+
+### Fixed
+- Disabled managers are now enforced across refresh/search/package/task behavior, centralized task submission, and in-flight cancellation.
+- Manager executable discovery now falls back to direct filesystem probing when `which` lookup fails.
+- Packages and Tasks list dark-mode backgrounds now align with app branding.
+- Removed deprecated execution-plan `Dry Run` action.
+
 ## 0.17.1 — 2026-02-22
 
 Patch `0.17.1` supersedes the failed `v0.17.0` artifact build attempt and ships stable signed artifacts from the corrected release source.

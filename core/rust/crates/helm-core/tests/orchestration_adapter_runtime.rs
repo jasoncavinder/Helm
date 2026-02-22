@@ -1,7 +1,8 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use helm_core::adapters::{
     AdapterRequest, AdapterResponse, AdapterResult, ManagerAdapter, RefreshRequest, SearchRequest,
@@ -12,9 +13,18 @@ use helm_core::models::{
     TaskType,
 };
 use helm_core::orchestration::{AdapterRuntime, AdapterTaskTerminalState};
-use helm_core::persistence::{PersistenceResult, TaskStore};
+use helm_core::persistence::{DetectionStore, PersistenceResult, TaskStore};
+use helm_core::sqlite::SqliteStore;
 
 const TEST_CAPABILITIES: &[Capability] = &[Capability::Refresh, Capability::Search];
+
+fn test_db_path(test_name: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock before unix epoch")
+        .as_nanos();
+    std::env::temp_dir().join(format!("helm-{test_name}-{nanos}.sqlite3"))
+}
 
 #[derive(Clone)]
 enum AdapterBehavior {
@@ -233,6 +243,37 @@ async fn submit_returns_structured_error_for_unregistered_manager() {
     assert_eq!(error.manager, Some(ManagerId::Pip));
     assert_eq!(error.task, Some(TaskType::Search));
     assert_eq!(error.action, Some(ManagerAction::Search));
+}
+
+#[tokio::test]
+async fn submit_returns_structured_error_for_disabled_manager() {
+    let path = test_db_path("orchestration-runtime-disabled-manager");
+    let store = Arc::new(SqliteStore::new(&path));
+    store.migrate_to_latest().unwrap();
+    store.set_manager_enabled(ManagerId::Npm, false).unwrap();
+
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(TestAdapter::new(
+        ManagerId::Npm,
+        AdapterBehavior::Succeeds(AdapterResponse::Refreshed),
+    ));
+    let runtime = AdapterRuntime::with_all_stores(
+        [adapter],
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+    )
+    .unwrap();
+
+    let error = runtime
+        .submit(ManagerId::Npm, AdapterRequest::Refresh(RefreshRequest))
+        .await
+        .expect_err("expected disabled manager error");
+
+    assert_eq!(error.kind, CoreErrorKind::InvalidInput);
+    assert_eq!(error.manager, Some(ManagerId::Npm));
+    assert_eq!(error.task, Some(TaskType::Refresh));
+    assert_eq!(error.action, Some(ManagerAction::Refresh));
 }
 
 #[tokio::test]

@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct ControlCenterInspectorView: View {
     @ObservedObject private var core = HelmCore.shared
@@ -450,19 +451,34 @@ private struct TaskOutputTextView: View {
         return text
     }
 
+    private var copyText: String? {
+        normalizedText
+    }
+
     var body: some View {
-        Group {
-            if let normalizedText {
-                ScrollView([.horizontal, .vertical]) {
-                    Text(normalizedText)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .font(.caption.monospacedDigit())
-                        .padding(8)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Spacer()
+                Button {
+                    if let copyText {
+                        copyTextToClipboard(copyText)
+                    }
+                } label: {
+                    Label(L10n.App.Inspector.copyAll.localized, systemImage: "doc.on.doc")
                 }
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color(NSColor.textBackgroundColor))
-                )
+                .buttonStyle(HelmSecondaryButtonStyle(cornerRadius: 8, horizontalPadding: 8, verticalPadding: 4))
+                .font(.caption)
+                .disabled(copyText == nil)
+                .helmPointer(enabled: copyText != nil)
+            }
+
+            if let normalizedText {
+                SelectableMonospacedTextArea(text: normalizedText)
+                    .frame(minHeight: 180)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color(NSColor.textBackgroundColor))
+                    )
             } else {
                 Text(unavailableText)
                     .foregroundColor(.secondary)
@@ -487,6 +503,27 @@ private struct TaskLogListView: View {
         }
     }
 
+    private static let timestampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .medium
+        return formatter
+    }()
+
+    private var filteredLogsText: String? {
+        guard !filteredLogs.isEmpty else { return nil }
+        return filteredLogs
+            .map { entry in
+                let timestamp = Self.timestampFormatter.string(from: entry.createdAtDate)
+                let level = entry.level.uppercased()
+                let rawStatus = entry.status?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let status = (rawStatus.isEmpty ? "-" : rawStatus).uppercased()
+                let manager = localizedManagerDisplayName(entry.manager)
+                return "[\(timestamp)] [\(level)] [\(status)] [\(manager)]\n\(entry.message)"
+            }
+            .joined(separator: "\n\n")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
@@ -505,6 +542,18 @@ private struct TaskLogListView: View {
                 .frame(maxWidth: 220)
 
                 Spacer()
+
+                Button {
+                    if let filteredLogsText {
+                        copyTextToClipboard(filteredLogsText)
+                    }
+                } label: {
+                    Label(L10n.App.Inspector.copyAll.localized, systemImage: "doc.on.doc")
+                }
+                .buttonStyle(HelmSecondaryButtonStyle(cornerRadius: 8, horizontalPadding: 8, verticalPadding: 4))
+                .font(.caption)
+                .disabled(filteredLogsText == nil)
+                .helmPointer(enabled: filteredLogsText != nil)
             }
 
             Group {
@@ -521,13 +570,12 @@ private struct TaskLogListView: View {
                     Text(L10n.App.Inspector.taskLogsEmptyFiltered.localized)
                         .foregroundColor(.secondary)
                 } else {
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 8) {
-                            ForEach(filteredLogs) { entry in
-                                TaskLogRowView(entry: entry)
-                            }
-                        }
-                    }
+                    SelectableMonospacedTextArea(text: filteredLogsText ?? "")
+                        .frame(minHeight: 220)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color(NSColor.textBackgroundColor))
+                        )
                 }
             }
 
@@ -543,96 +591,54 @@ private struct TaskLogListView: View {
     }
 }
 
-private struct TaskLogRowView: View {
-    let entry: CoreTaskLogRecord
+private struct SelectableMonospacedTextArea: NSViewRepresentable {
+    let text: String
 
-    private static let timestampFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .none
-        formatter.timeStyle = .medium
-        return formatter
-    }()
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.borderType = .noBorder
+        scrollView.drawsBackground = false
 
-    private var levelColor: Color {
-        switch entry.level.lowercased() {
-        case "error":
-            return .red
-        case "warn":
-            return .orange
-        default:
-            return .secondary
-        }
-    }
-
-    private var statusText: String {
-        switch entry.status?.lowercased() {
-        case "queued":
-            return L10n.Service.Task.Status.pending.localized
-        case "running":
-            return L10n.Service.Task.Status.running.localized
-        case "completed":
-            return L10n.Service.Task.Status.completed.localized
-        case "cancelled":
-            return L10n.Service.Task.Status.cancelled.localized
-        case "failed":
-            return L10n.Service.Task.Status.failed.localized
-        default:
-            return "-"
-        }
-    }
-
-    private var levelText: String {
-        switch entry.level.lowercased() {
-        case "info":
-            return L10n.App.Inspector.taskLogsLevelInfo.localized
-        case "warn":
-            return L10n.Common.warning.localized
-        case "error":
-            return L10n.Common.error.localized
-        default:
-            return entry.level.capitalized
-        }
-    }
-
-    private var timestampText: String {
-        Self.timestampFormatter.string(from: entry.createdAtDate)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Text(timestampText)
-                    .font(.caption2.monospacedDigit())
-                    .foregroundColor(.secondary)
-                    .frame(width: 80, alignment: .leading)
-
-                Text(levelText)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundColor(levelColor)
-                    .frame(width: 70, alignment: .leading)
-
-                Text(statusText)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                    .frame(width: 80, alignment: .leading)
-
-                Text(localizedManagerDisplayName(entry.manager))
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-
-                Spacer()
-            }
-
-            Text(entry.message)
-                .font(.caption.monospacedDigit())
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(8)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color(NSColor.textBackgroundColor))
+        let textView = NSTextView()
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.drawsBackground = false
+        textView.isRichText = false
+        textView.usesFindBar = true
+        textView.font = NSFont.monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+        textView.textColor = NSColor.labelColor
+        textView.textContainerInset = NSSize(width: 8, height: 8)
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.isHorizontallyResizable = true
+        textView.isVerticallyResizable = true
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.textContainer?.containerSize = NSSize(
+            width: CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
         )
+        textView.textContainer?.widthTracksTextView = false
+        textView.textContainer?.heightTracksTextView = false
+        textView.string = text
+
+        scrollView.documentView = textView
+        return scrollView
     }
+
+    func updateNSView(_ nsView: NSScrollView, context: Context) {
+        guard let textView = nsView.documentView as? NSTextView else { return }
+        if textView.string != text {
+            textView.string = text
+        }
+    }
+}
+
+private func copyTextToClipboard(_ text: String) {
+    let pasteboard = NSPasteboard.general
+    pasteboard.clearContents()
+    pasteboard.setString(text, forType: .string)
 }
 
 // MARK: - Package Inspector
@@ -917,6 +923,22 @@ private struct InspectorManagerDetailView: View {
         status?.executablePath?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private var defaultExecutablePath: String? {
+        let fromStatus = status?.defaultExecutablePath?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let fromStatus, !fromStatus.isEmpty {
+            return fromStatus
+        }
+        return executablePaths.first
+    }
+
+    private var selectedExecutablePath: String? {
+        let fromStatus = status?.selectedExecutablePath?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let fromStatus, !fromStatus.isEmpty {
+            return fromStatus
+        }
+        return defaultExecutablePath ?? activeExecutablePath
+    }
+
     private var executablePaths: [String] {
         var paths: [String] = []
         let discoveredPaths = status?.executablePaths ?? []
@@ -932,9 +954,14 @@ private struct InspectorManagerDetailView: View {
         return paths
     }
 
+    private var recommendedExecutablePath: String? {
+        manager.recommendedExecutablePath(from: executablePaths) ?? defaultExecutablePath
+    }
+
     private var selectedInstallMethodOption: ManagerInstallMethodOption {
         manager.selectedInstallMethodOption(
-            executablePath: activeExecutablePath,
+            selectedMethodRawValue: status?.selectedInstallMethod,
+            executablePath: selectedExecutablePath ?? activeExecutablePath,
             installedPackages: core.installedPackages
         )
     }
@@ -1013,6 +1040,50 @@ private struct InspectorManagerDetailView: View {
                     }
                 }
 
+                InspectorField(label: L10n.App.Inspector.executablePath.localized) {
+                    Menu {
+                        Button {
+                            core.setManagerSelectedExecutablePath(manager.id, selectedPath: nil)
+                        } label: {
+                            HStack(spacing: 8) {
+                                Text(L10n.App.Inspector.executablePathUseDefault.localized)
+                                if selectedExecutablePath == defaultExecutablePath {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                        .disabled(defaultExecutablePath == nil)
+
+                        if !executablePaths.isEmpty {
+                            Divider()
+                        }
+
+                        ForEach(executablePaths, id: \.self) { path in
+                            Button {
+                                core.setManagerSelectedExecutablePath(manager.id, selectedPath: path)
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Text(executablePathLabel(path))
+                                    if path == selectedExecutablePath {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(selectedExecutablePath ?? L10n.App.Inspector.notDetected.localized)
+                                .font(.callout.monospacedDigit())
+                                .lineLimit(2)
+                            Image(systemName: "chevron.down")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .menuStyle(.borderlessButton)
+                }
+
                 if !executablePaths.isEmpty {
                     InspectorField(label: L10n.App.Inspector.executablePaths.localized) {
                         Group {
@@ -1022,7 +1093,7 @@ private struct InspectorManagerDetailView: View {
                                         ForEach(executablePaths, id: \.self) { path in
                                             Text(path)
                                                 .font(
-                                                    path == activeExecutablePath
+                                                    path == selectedExecutablePath
                                                         ? .caption.monospacedDigit().weight(.semibold)
                                                         : .caption.monospacedDigit()
                                                 )
@@ -1037,7 +1108,7 @@ private struct InspectorManagerDetailView: View {
                                     ForEach(executablePaths, id: \.self) { path in
                                         Text(path)
                                             .font(
-                                                path == activeExecutablePath
+                                                path == selectedExecutablePath
                                                     ? .caption.monospacedDigit().weight(.semibold)
                                                     : .caption.monospacedDigit()
                                             )
@@ -1057,7 +1128,9 @@ private struct InspectorManagerDetailView: View {
             InspectorField(label: L10n.App.Inspector.installMethod.localized) {
                 Menu {
                     ForEach(manager.installMethodOptions) { option in
-                        Button {} label: {
+                        Button {
+                            core.setManagerInstallMethod(manager.id, installMethod: option.method.rawValue)
+                        } label: {
                             HStack(spacing: 8) {
                                 Text(installMethodLabel(option, includeTag: true))
                                 if option.method == selectedInstallMethodOption.method {
@@ -1065,7 +1138,6 @@ private struct InspectorManagerDetailView: View {
                                 }
                             }
                         }
-                        .disabled(true)
                     }
                 } label: {
                     HStack(spacing: 6) {
@@ -1152,6 +1224,17 @@ private struct InspectorManagerDetailView: View {
             value += " (\(L10n.App.Inspector.installMethodTagRecommended.localized))"
         } else if option.isPreferred {
             value += " (\(L10n.App.Inspector.installMethodTagPreferred.localized))"
+        }
+        return value
+    }
+
+    private func executablePathLabel(_ path: String) -> String {
+        var value = path
+        if path == defaultExecutablePath {
+            value += " (\(L10n.App.Inspector.executablePathTagDefault.localized))"
+        }
+        if path == recommendedExecutablePath {
+            value += " (\(L10n.App.Inspector.installMethodTagRecommended.localized))"
         }
         return value
     }

@@ -5,11 +5,16 @@ private let taskSyncLogger = Logger(subsystem: "com.jasoncavinder.Helm", categor
 
 extension HelmCore {
     var allKnownPackages: [PackageItem] {
-        let outdatedIds = Set(outdatedPackages.map(\.id))
-        let installedOnly = installedPackages.filter { !outdatedIds.contains($0.id) }
-        var combined = outdatedPackages + installedOnly
+        let enabledOutdated = outdatedPackages.filter { isManagerEnabled($0.managerId) }
+        let outdatedIds = Set(enabledOutdated.map(\.id))
+        let installedOnly = installedPackages.filter {
+            isManagerEnabled($0.managerId) && !outdatedIds.contains($0.id)
+        }
+        var combined = enabledOutdated + installedOnly
 
-        let cachedById = cachedAvailablePackages.reduce(into: [String: PackageItem]()) { partial, package in
+        let cachedById = cachedAvailablePackages
+            .filter { isManagerEnabled($0.managerId) }
+            .reduce(into: [String: PackageItem]()) { partial, package in
             if var existing = partial[package.id] {
                 mergeSummary(into: &existing, from: package.summary)
                 partial[package.id] = existing
@@ -84,7 +89,7 @@ extension HelmCore {
                     || ($0.summary?.lowercased().contains(trimmed) ?? false)
             }
             var mergedById = Dictionary(uniqueKeysWithValues: localMatches.map { ($0.id, $0) })
-            for remote in searchResults {
+            for remote in searchResults where isManagerEnabled(remote.managerId) {
                 if var existing = mergedById[remote.id] {
                     mergeSummary(into: &existing, from: remote.summary)
                     if existing.latestVersion == nil {
@@ -189,7 +194,9 @@ extension HelmCore {
     }
 
     func canPinPackage(_ package: PackageItem) -> Bool {
-        package.status != .available && package.managerId == "homebrew_formula"
+        package.status != .available
+            && package.managerId == "homebrew_formula"
+            && isManagerEnabled(package.managerId)
     }
 
     func supportsRemoteSearch(managerId: String) -> Bool {

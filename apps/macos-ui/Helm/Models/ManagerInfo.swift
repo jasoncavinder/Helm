@@ -210,9 +210,15 @@ struct ManagerInfo: Identifiable {
     }
 
     func selectedInstallMethodOption(
+        selectedMethodRawValue: String?,
         executablePath: String?,
         installedPackages: [PackageItem]
     ) -> ManagerInstallMethodOption {
+        if let selectedMethodRawValue,
+           let explicit = installMethodOptions.first(where: { $0.method.rawValue == selectedMethodRawValue }) {
+            return explicit
+        }
+
         if let executablePath {
             let normalizedPath = executablePath.lowercased()
             if let pathMatch = installMethodOptions.first(where: { option in
@@ -238,6 +244,31 @@ struct ManagerInfo: Identifiable {
             return preferred
         }
         return installMethodOptions.first ?? methodOption(.notManageable)
+    }
+
+    func recommendedExecutablePath(from executablePaths: [String]) -> String? {
+        let normalizedPaths = executablePaths
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !normalizedPaths.isEmpty else { return nil }
+
+        let recommendedOption =
+            installMethodOptions.first(where: { $0.isRecommended })
+            ?? installMethodOptions.first(where: { $0.isPreferred })
+            ?? installMethodOptions.first
+
+        if let recommendedOption {
+            for path in normalizedPaths {
+                let normalizedPath = path.lowercased()
+                if recommendedOption.executablePathHints.contains(where: { hint in
+                    normalizedPath.contains(hint.lowercased())
+                }) {
+                    return path
+                }
+            }
+        }
+
+        return normalizedPaths.first
     }
 
     static let all: [ManagerInfo] = [
