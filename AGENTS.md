@@ -265,8 +265,8 @@ Helm is infrastructure. Treat it like one.
 - `web`: website integration branch; protected; website work under `web/` merges here first.
 - Feature branches:
   - code work: branch from `dev`, open PRs to `dev` (`feat/...`, `fix/...`, `chore/...`, `test/...`, `refactor/...`)
-  - docs work: branch from `docs`, open PRs to `docs` (`docs/...`)
-  - website work: branch from `web`, open PRs to `web` (`web/...`)
+  - docs work: branch from `docs`, open PRs to `docs` (`docs-*`)
+  - website work: branch from `web`, open PRs to `web` (`web-*`)
 - Hotfixes: branch from `main` as `hotfix/...`, merge to `main`, then back-merge/cherry-pick to each impacted integration branch (`dev`, `docs`, `web` as applicable).
 
 ### Rules
@@ -328,12 +328,12 @@ Helm uses different integration branches depending on change type.
 - Open PRs targeting `dev`
 
 #### Documentation-Only Changes
-- Use `docs/...` branches
+- Use `docs-*` branches
 - Branch from `docs`
 - Open PRs targeting `docs`
 
 #### Website-Only Changes
-- Use `web/...` branches
+- Use `web-*` branches
 - Branch from `web`
 - Open PRs targeting `web`
 

@@ -93,8 +93,8 @@ jobs:
               fi
               ;;
             docs)
-              if [[ "$HEAD_REF" != "main" ]] && [[ ! "$HEAD_REF" =~ ^docs/ ]]; then
-                report_error "PRs into docs must come from docs/* (or main for sync PRs)."
+              if [[ "$HEAD_REF" != "main" ]] && [[ ! "$HEAD_REF" =~ ^docs- ]]; then
+                report_error "PRs into docs must come from docs-* branches (or main for sync PRs)."
               fi
 
               if [[ "$HEAD_REF" != "main" ]] && [[ "$docs_only" != "true" ]]; then
@@ -102,8 +102,8 @@ jobs:
               fi
               ;;
             web)
-              if [[ "$HEAD_REF" != "main" ]] && [[ ! "$HEAD_REF" =~ ^web/ ]]; then
-                report_error "PRs into web must come from web/* (or main for sync PRs)."
+              if [[ "$HEAD_REF" != "main" ]] && [[ ! "$HEAD_REF" =~ ^web- ]]; then
+                report_error "PRs into web must come from web-* branches (or main for sync PRs)."
               fi
 
               if [[ "$HEAD_REF" != "main" ]] && [[ "$web_only" != "true" ]]; then
