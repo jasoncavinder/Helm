@@ -17,7 +17,7 @@ Helm is planned as two product lifecycles: **Helm (Consumer)** and **Helm Busine
 
 ## What it does today
 
-Helm `v0.16.x` supports twenty-eight managers:
+Helm `v0.17.2` supports twenty-eight managers:
 
 | Category | Managers |
 |---------|----------|
@@ -45,7 +45,7 @@ Key features:
 - **Localization** — `en`, `es`, `de`, `fr`, `pt-BR`, and `ja` with locale override in Settings
 - **Upgrade transparency** — dedicated upgrade preview surface with scoped execution and failure-attribution visibility
 
-> **Current Track:** `v0.16.0` release finalization is in progress for pre-1.0 testing. Please report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Current Track:** `v0.17.2` is the latest stable release on `main`; `0.18.x` planning is in progress. Please report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
 ## How it works
 
