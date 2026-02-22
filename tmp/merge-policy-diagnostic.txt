@@ -1,0 +1,1 @@
+temporary diagnostic artifact for protected-branch merge policy reproduction
