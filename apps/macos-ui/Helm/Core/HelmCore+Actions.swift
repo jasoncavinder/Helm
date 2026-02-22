@@ -28,12 +28,6 @@ extension HelmCore {
                     )
                 } else {
                     logger.warning("cancelTask(\(taskId)) returned false")
-                    self?.recordLastError(
-                        source: "core.actions",
-                        action: "cancelTask",
-                        managerId: task.managerId,
-                        taskType: task.taskType
-                    )
                 }
             }
         }
@@ -48,25 +42,13 @@ extension HelmCore {
 
         guard let service = service() else {
             logger.error("upgradePackage(\(package.managerId):\(package.name)) failed: service unavailable")
-            recordLastError(
-                source: "core.actions",
-                action: "upgradePackage.service_unavailable",
-                managerId: package.managerId,
-                taskType: "upgrade"
-            )
             DispatchQueue.main.async {
                 self.upgradeActionPackageIds.remove(package.id)
             }
             return
         }
 
-        withTimeout(
-            300,
-            source: "core.actions",
-            action: "upgradePackage",
-            managerId: package.managerId,
-            taskType: "upgrade",
-            operation: { completion in
+        withTimeout(300, operation: { completion in
             service.upgradePackage(managerId: package.managerId, packageName: package.name) { completion($0) }
         }, fallback: Int64(-1)) { [weak self] taskId in
             DispatchQueue.main.async {
@@ -75,12 +57,6 @@ extension HelmCore {
                     self.upgradeActionTaskByPackage.removeValue(forKey: package.id)
                     self.upgradeActionPackageIds.remove(package.id)
                     logger.error("upgradePackage(\(package.managerId):\(package.name)) failed")
-                    self.recordLastError(
-                        source: "core.actions",
-                        action: "upgradePackage.queue_failed",
-                        managerId: package.managerId,
-                        taskType: "upgrade"
-                    )
                     return
                 }
 
@@ -197,11 +173,6 @@ extension HelmCore {
             service()?.cancelTask(taskId: taskId) { success in
                 if !success {
                     logger.warning("cancelTask(\(taskId)) returned false")
-                    self.recordLastError(
-                        source: "core.actions",
-                        action: "cancelTask",
-                        taskType: "upgrade"
-                    )
                 }
             }
         }
@@ -274,11 +245,6 @@ extension HelmCore {
                 logger.warning(
                     "Scoped upgrade phase timed out after \(Self.scopedUpgradePlanPhaseTimeoutSeconds)s; cancelling scoped run token"
                 )
-                self.recordLastError(
-                    source: "core.actions",
-                    action: "runUpgradePlanScoped.phase_timeout",
-                    taskType: "upgrade"
-                )
                 self.finishScopedUpgradePlanRun(runToken: runToken, invalidateToken: true)
                 return
             }
@@ -317,23 +283,11 @@ extension HelmCore {
     private func retryUpgradePlanStep(_ step: CoreUpgradePlanStep, completion: ((Bool) -> Void)? = nil) {
         guard let service = service() else {
             logger.error("retryUpgradePlanStep(\(step.id)) failed: service unavailable")
-            recordLastError(
-                source: "core.actions",
-                action: "retryUpgradePlanStep.service_unavailable",
-                managerId: step.managerId,
-                taskType: "upgrade"
-            )
             completion?(false)
             return
         }
 
-        withTimeout(
-            300,
-            source: "core.actions",
-            action: "retryUpgradePlanStep",
-            managerId: step.managerId,
-            taskType: "upgrade",
-            operation: { completion in
+        withTimeout(300, operation: { completion in
             service.upgradePackage(managerId: step.managerId, packageName: step.packageName) { completion($0) }
         }, fallback: Int64(-1)) { [weak self] taskId in
             DispatchQueue.main.async {
@@ -343,12 +297,6 @@ extension HelmCore {
                 }
                 guard taskId >= 0 else {
                     logger.error("retryUpgradePlanStep(\(step.id)) failed: upgradePackage returned \(taskId)")
-                    self.recordLastError(
-                        source: "core.actions",
-                        action: "retryUpgradePlanStep.queue_failed",
-                        managerId: step.managerId,
-                        taskType: "upgrade"
-                    )
                     completion?(false)
                     return
                 }
@@ -378,25 +326,13 @@ extension HelmCore {
 
         guard let service = service() else {
             logger.error("installPackage(\(package.managerId):\(package.name)) failed: service unavailable")
-            recordLastError(
-                source: "core.actions",
-                action: "installPackage.service_unavailable",
-                managerId: package.managerId,
-                taskType: "install"
-            )
             DispatchQueue.main.async {
                 self.installActionPackageIds.remove(package.id)
             }
             return
         }
 
-        withTimeout(
-            300,
-            source: "core.actions",
-            action: "installPackage",
-            managerId: package.managerId,
-            taskType: "install",
-            operation: { completion in
+        withTimeout(300, operation: { completion in
             service.installPackage(managerId: package.managerId, packageName: package.name) { completion($0) }
         }, fallback: Int64(-1)) { [weak self] taskId in
             DispatchQueue.main.async {
@@ -405,12 +341,6 @@ extension HelmCore {
                     self.installActionTaskByPackage.removeValue(forKey: package.id)
                     self.installActionPackageIds.remove(package.id)
                     logger.error("installPackage(\(package.managerId):\(package.name)) failed")
-                    self.recordLastError(
-                        source: "core.actions",
-                        action: "installPackage.queue_failed",
-                        managerId: package.managerId,
-                        taskType: "install"
-                    )
                     return
                 }
 
@@ -428,25 +358,13 @@ extension HelmCore {
 
         guard let service = service() else {
             logger.error("uninstallPackage(\(package.managerId):\(package.name)) failed: service unavailable")
-            recordLastError(
-                source: "core.actions",
-                action: "uninstallPackage.service_unavailable",
-                managerId: package.managerId,
-                taskType: "uninstall"
-            )
             DispatchQueue.main.async {
                 self.uninstallActionPackageIds.remove(package.id)
             }
             return
         }
 
-        withTimeout(
-            300,
-            source: "core.actions",
-            action: "uninstallPackage",
-            managerId: package.managerId,
-            taskType: "uninstall",
-            operation: { completion in
+        withTimeout(300, operation: { completion in
             service.uninstallPackage(managerId: package.managerId, packageName: package.name) { completion($0) }
         }, fallback: Int64(-1)) { [weak self] taskId in
             DispatchQueue.main.async {
@@ -455,12 +373,6 @@ extension HelmCore {
                     self.uninstallActionTaskByPackage.removeValue(forKey: package.id)
                     self.uninstallActionPackageIds.remove(package.id)
                     logger.error("uninstallPackage(\(package.managerId):\(package.name)) failed")
-                    self.recordLastError(
-                        source: "core.actions",
-                        action: "uninstallPackage.queue_failed",
-                        managerId: package.managerId,
-                        taskType: "uninstall"
-                    )
                     return
                 }
 
@@ -475,12 +387,6 @@ extension HelmCore {
         }
         guard let service = service() else {
             logger.error("pinPackage(\(package.managerId):\(package.name)) failed: service unavailable")
-            recordLastError(
-                source: "core.actions",
-                action: "pinPackage.service_unavailable",
-                managerId: package.managerId,
-                taskType: "pin"
-            )
             DispatchQueue.main.async {
                 self.pinActionPackageIds.remove(package.id)
             }
@@ -496,12 +402,6 @@ extension HelmCore {
                     self?.fetchOutdatedPackages()
                 } else {
                     logger.error("pinPackage(\(package.managerId):\(package.name)) failed")
-                    self?.recordLastError(
-                        source: "core.actions",
-                        action: "pinPackage",
-                        managerId: package.managerId,
-                        taskType: "pin"
-                    )
                 }
             }
         }
@@ -513,12 +413,6 @@ extension HelmCore {
         }
         guard let service = service() else {
             logger.error("unpinPackage(\(package.managerId):\(package.name)) failed: service unavailable")
-            recordLastError(
-                source: "core.actions",
-                action: "unpinPackage.service_unavailable",
-                managerId: package.managerId,
-                taskType: "unpin"
-            )
             DispatchQueue.main.async {
                 self.pinActionPackageIds.remove(package.id)
             }
@@ -533,12 +427,6 @@ extension HelmCore {
                     self?.fetchOutdatedPackages()
                 } else {
                     logger.error("unpinPackage(\(package.managerId):\(package.name)) failed")
-                    self?.recordLastError(
-                        source: "core.actions",
-                        action: "unpinPackage",
-                        managerId: package.managerId,
-                        taskType: "unpin"
-                    )
                 }
             }
         }
@@ -548,12 +436,6 @@ extension HelmCore {
         service()?.setManagerEnabled(managerId: managerId, enabled: enabled) { success in
             if !success {
                 logger.error("setManagerEnabled(\(managerId), \(enabled)) failed")
-                self.recordLastError(
-                    source: "core.actions",
-                    action: "setManagerEnabled",
-                    managerId: managerId,
-                    taskType: "settings"
-                )
             }
         }
     }
@@ -562,34 +444,14 @@ extension HelmCore {
         DispatchQueue.main.async {
             self.managerOperations[managerId] = L10n.App.Managers.Operation.startingInstall.localized
         }
-        guard let svc = service() else {
-            recordLastError(
-                source: "core.actions",
-                action: "installManager.service_unavailable",
-                managerId: managerId,
-                taskType: "install"
-            )
-            return
-        }
-        withTimeout(
-            300,
-            source: "core.actions",
-            action: "installManager",
-            managerId: managerId,
-            taskType: "install",
-            operation: { completion in
+        guard let svc = service() else { return }
+        withTimeout(300, operation: { completion in
             svc.installManager(managerId: managerId) { completion($0) }
         }, fallback: Int64(-1)) { [weak self] taskId in
             DispatchQueue.main.async {
                 guard let self = self, let taskId = taskId else { return }
                 if taskId < 0 {
                     logger.error("installManager(\(managerId)) failed")
-                    self.recordLastError(
-                        source: "core.actions",
-                        action: "installManager.queue_failed",
-                        managerId: managerId,
-                        taskType: "install"
-                    )
                     self.consumeLastServiceErrorKey { serviceErrorKey in
                         self.managerOperations[managerId] =
                             serviceErrorKey?.localized ?? L10n.App.Managers.Operation.installFailed.localized
@@ -610,34 +472,14 @@ extension HelmCore {
         DispatchQueue.main.async {
             self.managerOperations[managerId] = L10n.App.Managers.Operation.startingUpdate.localized
         }
-        guard let svc = service() else {
-            recordLastError(
-                source: "core.actions",
-                action: "updateManager.service_unavailable",
-                managerId: managerId,
-                taskType: "upgrade"
-            )
-            return
-        }
-        withTimeout(
-            300,
-            source: "core.actions",
-            action: "updateManager",
-            managerId: managerId,
-            taskType: "upgrade",
-            operation: { completion in
+        guard let svc = service() else { return }
+        withTimeout(300, operation: { completion in
             svc.updateManager(managerId: managerId) { completion($0) }
         }, fallback: Int64(-1)) { [weak self] taskId in
             DispatchQueue.main.async {
                 guard let self = self, let taskId = taskId else { return }
                 if taskId < 0 {
                     logger.error("updateManager(\(managerId)) failed")
-                    self.recordLastError(
-                        source: "core.actions",
-                        action: "updateManager.queue_failed",
-                        managerId: managerId,
-                        taskType: "upgrade"
-                    )
                     self.consumeLastServiceErrorKey { serviceErrorKey in
                         self.managerOperations[managerId] =
                             serviceErrorKey?.localized ?? L10n.App.Managers.Operation.updateFailed.localized
@@ -658,34 +500,14 @@ extension HelmCore {
         DispatchQueue.main.async {
             self.managerOperations[managerId] = L10n.App.Managers.Operation.startingUninstall.localized
         }
-        guard let svc = service() else {
-            recordLastError(
-                source: "core.actions",
-                action: "uninstallManager.service_unavailable",
-                managerId: managerId,
-                taskType: "uninstall"
-            )
-            return
-        }
-        withTimeout(
-            300,
-            source: "core.actions",
-            action: "uninstallManager",
-            managerId: managerId,
-            taskType: "uninstall",
-            operation: { completion in
+        guard let svc = service() else { return }
+        withTimeout(300, operation: { completion in
             svc.uninstallManager(managerId: managerId) { completion($0) }
         }, fallback: Int64(-1)) { [weak self] taskId in
             DispatchQueue.main.async {
                 guard let self = self, let taskId = taskId else { return }
                 if taskId < 0 {
                     logger.error("uninstallManager(\(managerId)) failed")
-                    self.recordLastError(
-                        source: "core.actions",
-                        action: "uninstallManager.queue_failed",
-                        managerId: managerId,
-                        taskType: "uninstall"
-                    )
                     self.consumeLastServiceErrorKey { serviceErrorKey in
                         self.managerOperations[managerId] =
                             serviceErrorKey?.localized ?? L10n.App.Managers.Operation.uninstallFailed.localized
@@ -790,12 +612,6 @@ extension HelmCore {
                         self.activeRemoteSearchTaskIds.insert(taskId)
                     } else {
                         logger.warning("triggerRemoteSearchForManager(\(managerId)) returned error")
-                        self.recordLastError(
-                            source: "core.actions",
-                            action: "triggerRemoteSearchForManager",
-                            managerId: managerId,
-                            taskType: "search"
-                        )
                     }
                 }
             }
@@ -829,11 +645,6 @@ extension HelmCore {
             service()?.cancelTask(taskId: taskId) { success in
                 if !success {
                     logger.warning("cancelTask(\(taskId)) returned false")
-                    self.recordLastError(
-                        source: "core.actions",
-                        action: "cancelTask",
-                        taskType: "search"
-                    )
                 }
             }
         }
@@ -881,12 +692,6 @@ extension HelmCore {
                     if !hasCachedSummary {
                         self.packageDescriptionUnavailableIds.insert(package.id)
                     }
-                    self.recordLastError(
-                        source: "core.actions",
-                        action: "ensurePackageDescription.triggerRemoteSearchForManager",
-                        managerId: package.managerId,
-                        taskType: "search"
-                    )
                     return
                 }
 

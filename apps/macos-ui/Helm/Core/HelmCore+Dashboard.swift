@@ -34,45 +34,43 @@ extension HelmCore {
     }
 
     var visibleManagers: [ManagerInfo] {
-        overviewState.visibleManagers
+        ManagerInfo.all.filter { manager in
+            let status = managerStatuses[manager.id]
+            let isImplemented = status?.isImplemented ?? manager.isImplemented
+            let enabled = status?.enabled ?? true
+            let detected = status?.detected ?? false
+            return isImplemented && enabled && detected
+        }
     }
 
     var failedTaskCount: Int {
-        overviewState.failedTaskCount
+        activeTasks.filter { $0.status.lowercased() == "failed" }.count
     }
 
     var runningTaskCount: Int {
-        overviewState.runningTaskCount
+        activeTasks.filter(\.isRunning).count
     }
 
     var aggregateHealth: OperationalHealth {
-        overviewState.aggregateHealth
+        if failedTaskCount > 0 {
+            return .error
+        }
+        if runningTaskCount > 0 || isRefreshing {
+            return .running
+        }
+        if !outdatedPackages.isEmpty {
+            return .attention
+        }
+        return .healthy
     }
 
-    /// Returns a filtered package list grouped by package name.
-    /// Merges local matches with remote search results, then applies manager/status filters.
+    /// Returns a filtered and deduplicated package list.
+    /// Merges local matches with remote search results (deduped by ID),
+    /// then applies optional manager and status filters.
     func filteredPackages(
         query: String,
         managerId: String?,
-        statusFilter: PackageStatus?,
-        pinnedOnly: Bool = false
-    ) -> [ConsolidatedPackageItem] {
-        consolidatePackages(
-            filteredPackagesRaw(
-                query: query,
-                managerId: managerId,
-                statusFilter: statusFilter,
-                pinnedOnly: pinnedOnly
-            )
-        )
-    }
-
-    /// Returns manager-scoped package rows used as canonical action targets.
-    private func filteredPackagesRaw(
-        query: String,
-        managerId: String?,
-        statusFilter: PackageStatus?,
-        pinnedOnly: Bool
+        statusFilter: PackageStatus?
     ) -> [PackageItem] {
         var base = allKnownPackages
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -105,15 +103,8 @@ extension HelmCore {
             base = base.filter { $0.managerId == managerId }
         }
 
-        if pinnedOnly {
-            base = base.filter(\.pinned)
-        }
-
         if let statusFilter {
             base = base.filter { package in
-                if statusFilter == .upgradable, package.pinned {
-                    return false
-                }
                 if package.status == statusFilter {
                     return true
                 }
@@ -128,7 +119,7 @@ extension HelmCore {
     }
 
     func outdatedCount(forManagerId managerId: String) -> Int {
-        managersState.outdatedCountByManager[managerId, default: 0]
+        outdatedPackages.filter { $0.managerId == managerId }.count
     }
 
     func upgradeAllPackages(forManagerId managerId: String) {
@@ -141,9 +132,6 @@ extension HelmCore {
     }
 
     func health(forManagerId managerId: String) -> OperationalHealth {
-        if let precomputed = overviewState.managerHealthById[managerId] {
-            return precomputed
-        }
         if let status = managerStatuses[managerId], status.detected == false {
             return .notInstalled
         }
@@ -423,47 +411,6 @@ extension HelmCore {
         }
     }
 
-    func latestDetectionTask(for managerId: String) -> CoreTaskRecord? {
-        latestCoreTasksSnapshot
-            .filter { task in
-                task.manager == managerId && task.taskType.lowercased() == "detection"
-            }
-            .max { lhs, rhs in lhs.id < rhs.id }
-    }
-
-    func managerDetectionDiagnostics(for managerId: String) -> ManagerDetectionDiagnostics {
-        let managerInfo = ManagerInfo.find(byId: managerId)
-        let status = managerStatuses[managerId]
-        let isImplemented = status?.isImplemented ?? managerInfo?.isImplemented ?? true
-        let isEnabled = status?.enabled ?? true
-        let isDetected = status?.detected ?? false
-        let latestTask = latestDetectionTask(for: managerId)
-        let latestStatus = latestTask?.status.lowercased()
-
-        let reason: ManagerDetectionDiagnosticReason
-        if !isImplemented {
-            reason = .notImplemented
-        } else if !isEnabled {
-            reason = .disabled
-        } else if latestStatus == "queued" || latestStatus == "running" {
-            reason = .inProgress
-        } else if latestStatus == "failed" || latestStatus == "cancelled" {
-            reason = .failed
-        } else if isDetected {
-            reason = .detected
-        } else if latestStatus == "completed" {
-            reason = .notDetected
-        } else {
-            reason = .neverChecked
-        }
-
-        return ManagerDetectionDiagnostics(
-            reason: reason,
-            latestTaskId: latestTask?.id,
-            latestTaskStatus: latestStatus
-        )
-    }
-
     private func mergeSummary(into package: inout PackageItem, from candidate: String?) {
         let existingSummary = package.summary?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard existingSummary?.isEmpty != false else { return }
@@ -471,15 +418,6 @@ extension HelmCore {
         let trimmedCandidate = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedCandidate.isEmpty else { return }
         package.summary = trimmedCandidate
-    }
-
-    private func consolidatePackages(_ packages: [PackageItem]) -> [ConsolidatedPackageItem] {
-        ConsolidatedPackageItem.consolidate(
-            packages,
-            localizedManagerName: { managerId in
-                normalizedManagerName(managerId)
-            }
-        )
     }
 
     private func upgradePlanStepId(for task: CoreTaskRecord) -> String? {

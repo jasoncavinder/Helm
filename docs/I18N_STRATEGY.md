@@ -58,7 +58,6 @@ High ROI, low complexity:
 ### 3.3 Tier 3 (Expansion)
 Added after initial stability:
 
-- `hu` (Hungarian)
 - `zh-Hans` (Chinese Simplified)
 - `ko` (Korean)
 - `it` (Italian)

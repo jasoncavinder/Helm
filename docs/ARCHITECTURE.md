@@ -400,17 +400,14 @@ Stage 2 (`1.3.x`) - Security Advisory System (Helm Pro):
 
 Stage 3 (`1.4.x`) - Shared Brain:
 - Centralized fingerprint and known-fix lookup services
-- Postgres-backed system-of-record for shared advisory/fix intelligence
-- Optional edge/serverless API entry points (Cloudflare Workers is one possible implementation, not a hard dependency)
+- Managed Postgres backend with edge/serverless API entry points
 - Anonymous per-install auth via Apple App Attest
 - Signed requests, nonce/replay protection, per-install rate limiting, and abuse controls
-- Provider-portability requirement: Cloudflare-specific state stores (for example Durable Objects / D1) are not the core data architecture
 
 ### 6.3 System Boundary
 
 - The Security Advisory System (`1.3.x`) is independent of Shared Brain and remains functional without Helm-hosted services.
 - Shared Brain (`1.4.x`) is additive infrastructure that can enrich advisory outcomes but is not a prerequisite for local advisory evaluation.
-- Current releases (`<=0.17.x`) do not send package/fingerprint telemetry to a shared backend.
 
 ---
 
@@ -509,20 +506,6 @@ Channel-to-licensing-to-update mapping must remain explicit:
 4. Deliver MAS and Setapp channels as separate distribution tracks with channel-owned update/licensing behavior.
 5. Deliver Helm Business as a separate fleet binary with PKG + MDM deployment workflows.
 6. Add offline organizational license-file handling for Helm Business and keep admin-controlled update workflows independent.
-
-### 10.3 Planned Shared Brain Backend Architecture (Future State)
-
-This is planning guidance for `1.4.x+`, not implemented behavior.
-
-- System-of-record: Postgres
-- Core data operations are expected to rely on standard Postgres primitives:
-  - dedupe/idempotency via constraints and UPSERT
-  - ranking/selection materialization (for example best-fix selection)
-  - search/aggregation via materialized views and FTS/trigram indexing
-  - optional RLS and advisory locks when multi-tenant isolation or stronger coordination is needed
-- Cloudflare Workers can be used as a stateless edge/API layer, but Shared Brain must remain provider-portable.
-- Cloudflare Durable Objects / D1 are explicitly out-of-scope as core persistence for Shared Brain.
-- Large artifact payloads (if needed later) should use S3-compatible object storage; Postgres stores references and metadata.
 
 ---
 

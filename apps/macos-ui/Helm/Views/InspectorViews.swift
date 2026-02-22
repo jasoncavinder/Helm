@@ -52,7 +52,6 @@ struct ControlCenterInspectorView: View {
                     InspectorManagerDetailView(
                         manager: manager,
                         status: core.managerStatuses[manager.id],
-                        detectionDiagnostics: core.managerDetectionDiagnostics(for: manager.id),
                         health: core.health(forManagerId: manager.id),
                         packageCount: core.installedPackages.filter { $0.managerId == manager.id }.count,
                         outdatedCount: core.outdatedCount(forManagerId: manager.id),
@@ -70,7 +69,6 @@ struct ControlCenterInspectorView: View {
 
                 Spacer()
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
         }
     }
@@ -84,11 +82,6 @@ private struct InspectorTaskDetailView: View {
     @State private var isLoadingTaskOutput = false
     @State private var taskOutputLoadFailed = false
     @State private var taskOutputRecord: CoreTaskOutputRecord?
-    @State private var isLoadingTaskLogs = false
-    @State private var taskLogsLoadFailed = false
-    @State private var taskLogRecords: [CoreTaskLogRecord] = []
-    @State private var taskLogFetchLimit = Self.taskLogPageSize
-    private static let taskLogPageSize = 50
     let task: TaskItem
 
     var body: some View {
@@ -175,7 +168,6 @@ private struct InspectorTaskDetailView: View {
                             Button(L10n.App.Inspector.viewDiagnostics.localized) {
                                 showDiagnosticsSheet = true
                                 loadTaskOutput(force: true)
-                                loadTaskLogs(force: true, resetPagination: true)
                             }
                             .buttonStyle(HelmSecondaryButtonStyle())
                             .font(.caption)
@@ -185,7 +177,6 @@ private struct InspectorTaskDetailView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .popover(isPresented: $showDiagnosticsSheet, arrowEdge: .leading) {
             TaskDiagnosticsSheetView(
                 taskDescription: task.description,
@@ -195,12 +186,7 @@ private struct InspectorTaskDetailView: View {
                 ),
                 output: taskOutputRecord,
                 isLoading: isLoadingTaskOutput,
-                loadFailed: taskOutputLoadFailed,
-                logs: taskLogRecords,
-                isLoadingLogs: isLoadingTaskLogs,
-                logsLoadFailed: taskLogsLoadFailed,
-                canLoadMoreLogs: taskLogRecords.count >= taskLogFetchLimit,
-                onLoadMoreLogs: loadMoreTaskLogs
+                loadFailed: taskOutputLoadFailed
             )
             .frame(minWidth: 700, minHeight: 420)
         }
@@ -263,42 +249,6 @@ private struct InspectorTaskDetailView: View {
             }
         }
     }
-
-    private func loadTaskLogs(force: Bool, resetPagination: Bool = false) {
-        guard hasNumericTaskId else { return }
-        if resetPagination {
-            taskLogFetchLimit = Self.taskLogPageSize
-        }
-        if isLoadingTaskLogs {
-            return
-        }
-        if !force && !taskLogRecords.isEmpty {
-            return
-        }
-
-        isLoadingTaskLogs = true
-        taskLogsLoadFailed = false
-        core.fetchTaskLogs(taskId: task.id, limit: taskLogFetchLimit) { logs in
-            DispatchQueue.main.async {
-                self.isLoadingTaskLogs = false
-                if let logs {
-                    self.taskLogRecords = logs
-                    self.taskLogsLoadFailed = false
-                } else {
-                    if resetPagination {
-                        self.taskLogRecords = []
-                    }
-                    self.taskLogsLoadFailed = true
-                }
-            }
-        }
-    }
-
-    private func loadMoreTaskLogs() {
-        guard !isLoadingTaskLogs else { return }
-        taskLogFetchLimit += Self.taskLogPageSize
-        loadTaskLogs(force: true)
-    }
 }
 
 private struct TaskDiagnosticsSheetView: View {
@@ -307,13 +257,6 @@ private struct TaskDiagnosticsSheetView: View {
     let output: CoreTaskOutputRecord?
     let isLoading: Bool
     let loadFailed: Bool
-    let logs: [CoreTaskLogRecord]
-    let isLoadingLogs: Bool
-    let logsLoadFailed: Bool
-    let canLoadMoreLogs: Bool
-    let onLoadMoreLogs: () -> Void
-    @State private var levelFilter: TaskLogLevelFilter = .all
-    @State private var statusFilter: TaskLogStatusFilter = .all
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -343,17 +286,6 @@ private struct TaskDiagnosticsSheetView: View {
                     unavailableText: streamUnavailableText()
                 )
                 .tabItem { Text(L10n.App.Inspector.taskOutputStdout.localized) }
-
-                TaskLogListView(
-                    logs: logs,
-                    levelFilter: $levelFilter,
-                    statusFilter: $statusFilter,
-                    isLoading: isLoadingLogs,
-                    loadFailed: logsLoadFailed,
-                    canLoadMore: canLoadMoreLogs,
-                    onLoadMore: onLoadMoreLogs
-                )
-                .tabItem { Text(L10n.App.Inspector.taskOutputLogs.localized) }
             }
         }
         .padding(16)
@@ -367,74 +299,6 @@ private struct TaskDiagnosticsSheetView: View {
             return L10n.App.Inspector.taskOutputLoadFailed.localized
         }
         return L10n.App.Inspector.taskOutputUnavailable.localized
-    }
-}
-
-private enum TaskLogLevelFilter: String, CaseIterable, Identifiable {
-    case all
-    case info
-    case warn
-    case error
-
-    var id: String { rawValue }
-
-    var localizedTitle: String {
-        switch self {
-        case .all:
-            return L10n.App.Inspector.taskLogsLevelAll.localized
-        case .info:
-            return L10n.App.Inspector.taskLogsLevelInfo.localized
-        case .warn:
-            return L10n.Common.warning.localized
-        case .error:
-            return L10n.Common.error.localized
-        }
-    }
-
-    func matches(level: String) -> Bool {
-        switch self {
-        case .all:
-            return true
-        default:
-            return level.lowercased() == rawValue
-        }
-    }
-}
-
-private enum TaskLogStatusFilter: String, CaseIterable, Identifiable {
-    case all
-    case queued
-    case running
-    case completed
-    case cancelled
-    case failed
-
-    var id: String { rawValue }
-
-    var localizedTitle: String {
-        switch self {
-        case .all:
-            return L10n.App.Inspector.taskLogsStatusAll.localized
-        case .queued:
-            return L10n.Service.Task.Status.pending.localized
-        case .running:
-            return L10n.Service.Task.Status.running.localized
-        case .completed:
-            return L10n.Service.Task.Status.completed.localized
-        case .cancelled:
-            return L10n.Service.Task.Status.cancelled.localized
-        case .failed:
-            return L10n.Service.Task.Status.failed.localized
-        }
-    }
-
-    func matches(status: String?) -> Bool {
-        switch self {
-        case .all:
-            return true
-        default:
-            return status?.lowercased() == rawValue
-        }
     }
 }
 
@@ -471,177 +335,20 @@ private struct TaskOutputTextView: View {
     }
 }
 
-private struct TaskLogListView: View {
-    let logs: [CoreTaskLogRecord]
-    @Binding var levelFilter: TaskLogLevelFilter
-    @Binding var statusFilter: TaskLogStatusFilter
-    let isLoading: Bool
-    let loadFailed: Bool
-    let canLoadMore: Bool
-    let onLoadMore: () -> Void
-
-    private var filteredLogs: [CoreTaskLogRecord] {
-        logs.filter { entry in
-            levelFilter.matches(level: entry.level)
-            && statusFilter.matches(status: entry.status)
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                Picker(L10n.App.Inspector.taskLogsLevelFilter.localized, selection: $levelFilter) {
-                    ForEach(TaskLogLevelFilter.allCases) { filter in
-                        Text(filter.localizedTitle).tag(filter)
-                    }
-                }
-                .frame(maxWidth: 220)
-
-                Picker(L10n.App.Inspector.taskLogsStatusFilter.localized, selection: $statusFilter) {
-                    ForEach(TaskLogStatusFilter.allCases) { filter in
-                        Text(filter.localizedTitle).tag(filter)
-                    }
-                }
-                .frame(maxWidth: 220)
-
-                Spacer()
-            }
-
-            Group {
-                if isLoading && logs.isEmpty {
-                    Text(L10n.App.Inspector.taskOutputLoading.localized)
-                        .foregroundColor(.secondary)
-                } else if loadFailed && logs.isEmpty {
-                    Text(L10n.App.Inspector.taskOutputLoadFailed.localized)
-                        .foregroundColor(.secondary)
-                } else if logs.isEmpty {
-                    Text(L10n.App.Inspector.taskLogsEmpty.localized)
-                        .foregroundColor(.secondary)
-                } else if filteredLogs.isEmpty {
-                    Text(L10n.App.Inspector.taskLogsEmptyFiltered.localized)
-                        .foregroundColor(.secondary)
-                } else {
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 8) {
-                            ForEach(filteredLogs) { entry in
-                                TaskLogRowView(entry: entry)
-                            }
-                        }
-                    }
-                }
-            }
-
-            if canLoadMore && !isLoading {
-                Button(L10n.App.Inspector.taskLogsLoadMore.localized) {
-                    onLoadMore()
-                }
-                .buttonStyle(HelmSecondaryButtonStyle())
-                .font(.caption)
-                .helmPointer()
-            }
-        }
-    }
-}
-
-private struct TaskLogRowView: View {
-    let entry: CoreTaskLogRecord
-
-    private static let timestampFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .none
-        formatter.timeStyle = .medium
-        return formatter
-    }()
-
-    private var levelColor: Color {
-        switch entry.level.lowercased() {
-        case "error":
-            return .red
-        case "warn":
-            return .orange
-        default:
-            return .secondary
-        }
-    }
-
-    private var statusText: String {
-        switch entry.status?.lowercased() {
-        case "queued":
-            return L10n.Service.Task.Status.pending.localized
-        case "running":
-            return L10n.Service.Task.Status.running.localized
-        case "completed":
-            return L10n.Service.Task.Status.completed.localized
-        case "cancelled":
-            return L10n.Service.Task.Status.cancelled.localized
-        case "failed":
-            return L10n.Service.Task.Status.failed.localized
-        default:
-            return "-"
-        }
-    }
-
-    private var levelText: String {
-        switch entry.level.lowercased() {
-        case "info":
-            return L10n.App.Inspector.taskLogsLevelInfo.localized
-        case "warn":
-            return L10n.Common.warning.localized
-        case "error":
-            return L10n.Common.error.localized
-        default:
-            return entry.level.capitalized
-        }
-    }
-
-    private var timestampText: String {
-        Self.timestampFormatter.string(from: entry.createdAtDate)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Text(timestampText)
-                    .font(.caption2.monospacedDigit())
-                    .foregroundColor(.secondary)
-                    .frame(width: 80, alignment: .leading)
-
-                Text(levelText)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundColor(levelColor)
-                    .frame(width: 70, alignment: .leading)
-
-                Text(statusText)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                    .frame(width: 80, alignment: .leading)
-
-                Text(localizedManagerDisplayName(entry.manager))
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-
-                Spacer()
-            }
-
-            Text(entry.message)
-                .font(.caption.monospacedDigit())
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(8)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color(NSColor.textBackgroundColor))
-        )
-    }
-}
-
 // MARK: - Package Inspector
 
 private struct InspectorPackageDetailView: View {
     @ObservedObject private var core = HelmCore.shared
     @EnvironmentObject private var context: ControlCenterContext
-    @State private var renderedPackageDescription: PackageDescriptionRenderer.RenderedDescription?
     let package: PackageItem
+
+    private var packageDescriptionText: String? {
+        guard let summary = package.summary?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !summary.isEmpty else {
+            return nil
+        }
+        return summary
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -702,15 +409,9 @@ private struct InspectorPackageDetailView: View {
             }
 
             InspectorField(label: L10n.App.Inspector.description.localized) {
-                if let renderedPackageDescription {
-                    switch renderedPackageDescription {
-                    case .plain(let text):
-                        Text(text)
-                            .font(.caption)
-                    case .rich(let attributed):
-                        InspectorAttributedText(attributedText: attributed)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
+                if let packageDescriptionText {
+                    Text(packageDescriptionText)
+                        .font(.caption)
                 } else if core.packageDescriptionLoadingIds.contains(package.id) {
                     Text(L10n.App.Inspector.descriptionLoading.localized)
                         .font(.caption)
@@ -726,67 +427,58 @@ private struct InspectorPackageDetailView: View {
                 }
             }
 
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 if core.canInstallPackage(package) {
-                    packageActionButton(
-                        symbol: "arrow.down.circle",
-                        tooltip: L10n.App.Packages.Action.install.localized,
-                        enabled: !core.installActionPackageIds.contains(package.id)
-                    ) {
+                    Button(L10n.App.Packages.Action.install.localized) {
                         core.installPackage(package)
                     }
+                    .buttonStyle(HelmSecondaryButtonStyle())
+                    .disabled(core.installActionPackageIds.contains(package.id))
+                    .helmPointer(enabled: !core.installActionPackageIds.contains(package.id))
                 }
 
                 if core.canUninstallPackage(package) {
-                    packageActionButton(
-                        symbol: "trash",
-                        tooltip: L10n.App.Packages.Action.uninstall.localized,
-                        enabled: !core.uninstallActionPackageIds.contains(package.id)
-                    ) {
+                    Button(L10n.App.Packages.Action.uninstall.localized) {
                         core.uninstallPackage(package)
                     }
+                    .buttonStyle(HelmSecondaryButtonStyle())
+                    .disabled(core.uninstallActionPackageIds.contains(package.id))
+                    .helmPointer(enabled: !core.uninstallActionPackageIds.contains(package.id))
                 }
 
                 if core.canUpgradeIndividually(package) {
-                    packageActionButton(
-                        symbol: "arrow.up.circle",
-                        tooltip: L10n.Common.update.localized,
-                        enabled: !core.upgradeActionPackageIds.contains(package.id)
-                    ) {
+                    Button(L10n.Common.update.localized) {
                         core.upgradePackage(package)
                     }
+                    .buttonStyle(HelmSecondaryButtonStyle())
+                    .disabled(core.upgradeActionPackageIds.contains(package.id))
+                    .helmPointer(enabled: !core.upgradeActionPackageIds.contains(package.id))
                 }
 
                 if core.canPinPackage(package) {
-                    packageActionButton(
-                        symbol: package.pinned ? "pin.slash" : "pin",
-                        tooltip: package.pinned
-                            ? L10n.App.Packages.Action.unpin.localized
-                            : L10n.App.Packages.Action.pin.localized,
-                        enabled: !core.pinActionPackageIds.contains(package.id)
-                    ) {
+                    Button(package.pinned ? L10n.App.Packages.Action.unpin.localized : L10n.App.Packages.Action.pin.localized) {
                         if package.pinned {
                             core.unpinPackage(package)
                         } else {
                             core.pinPackage(package)
                         }
                     }
+                    .buttonStyle(HelmSecondaryButtonStyle())
+                    .disabled(core.pinActionPackageIds.contains(package.id))
+                    .helmPointer(enabled: !core.pinActionPackageIds.contains(package.id))
                 }
 
-                packageActionButton(
-                    symbol: "slider.horizontal.3",
-                    tooltip: L10n.App.Inspector.viewManager.localized,
-                    enabled: true
-                ) {
+                Button(L10n.App.Inspector.viewManager.localized) {
                     context.selectedManagerId = package.managerId
                     context.selectedPackageId = nil
                     context.selectedTaskId = nil
                     context.selectedUpgradePlanStepId = nil
                     context.selectedSection = .managers
                 }
-
-                Spacer(minLength: 0)
+                .buttonStyle(HelmSecondaryButtonStyle())
+                .helmPointer()
             }
+            .font(.caption)
 
             InspectorField(label: L10n.App.Inspector.packageId.localized) {
                 Text(package.id)
@@ -796,114 +488,23 @@ private struct InspectorPackageDetailView: View {
                     .accessibilityValue(package.id)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear {
             core.ensurePackageDescription(for: package)
-            refreshRenderedPackageDescription()
         }
         .onChange(of: package.id) { _ in
             core.ensurePackageDescription(for: package)
-            refreshRenderedPackageDescription()
         }
         .onChange(of: package.summary) { _ in
             core.ensurePackageDescription(for: package)
-            refreshRenderedPackageDescription()
         }
-    }
-
-    private func refreshRenderedPackageDescription() {
-        renderedPackageDescription = core.renderedPackageDescription(for: package)
-    }
-
-    private func packageActionButton(
-        symbol: String,
-        tooltip: String,
-        enabled: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-        }
-        .buttonStyle(HelmIconButtonStyle())
-        .help(tooltip)
-        .accessibilityLabel(tooltip)
-        .disabled(!enabled)
-        .helmPointer(enabled: enabled)
-    }
-}
-
-private struct InspectorAttributedText: NSViewRepresentable {
-    let attributedText: NSAttributedString
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    func makeNSView(context: Context) -> InspectorLinkTextView {
-        let textView = InspectorLinkTextView()
-        textView.delegate = context.coordinator
-        textView.isEditable = false
-        textView.isSelectable = true
-        textView.drawsBackground = false
-        textView.isRichText = true
-        textView.isHorizontallyResizable = false
-        textView.isVerticallyResizable = true
-        textView.textContainerInset = .zero
-        textView.textContainer?.lineFragmentPadding = 0
-        textView.textContainer?.widthTracksTextView = true
-        textView.textContainer?.heightTracksTextView = false
-        textView.linkTextAttributes = [
-            .foregroundColor: NSColor.linkColor,
-            .underlineStyle: NSUnderlineStyle.single.rawValue
-        ]
-        return textView
-    }
-
-    func updateNSView(_ nsView: InspectorLinkTextView, context: Context) {
-        nsView.textStorage?.setAttributedString(attributedText)
-        nsView.invalidateIntrinsicContentSize()
-    }
-
-    final class Coordinator: NSObject, NSTextViewDelegate {
-        func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
-            guard let url = InspectorLinkPolicy.safeURL(from: link) else { return false }
-            NSWorkspace.shared.open(url)
-            return true
-        }
-    }
-}
-
-private final class InspectorLinkTextView: NSTextView {
-    override var intrinsicContentSize: NSSize {
-        guard let textContainer, let layoutManager else {
-            return NSSize(width: NSView.noIntrinsicMetric, height: 0)
-        }
-
-        let fittingWidth = bounds.width > 0 ? bounds.width : 320
-        if textContainer.containerSize.width != fittingWidth {
-            textContainer.containerSize = NSSize(width: fittingWidth, height: .greatestFiniteMagnitude)
-        }
-
-        layoutManager.ensureLayout(for: textContainer)
-        let usedRect = layoutManager.usedRect(for: textContainer)
-        let height = ceil(usedRect.height + (textContainerInset.height * 2))
-        return NSSize(width: NSView.noIntrinsicMetric, height: max(height, 14))
-    }
-
-    override func layout() {
-        super.layout()
-        invalidateIntrinsicContentSize()
     }
 }
 
 // MARK: - Manager Inspector
 
 private struct InspectorManagerDetailView: View {
-    @ObservedObject private var core = HelmCore.shared
-    @EnvironmentObject private var context: ControlCenterContext
     let manager: ManagerInfo
     let status: ManagerStatus?
-    let detectionDiagnostics: ManagerDetectionDiagnostics
     let health: OperationalHealth
     let packageCount: Int
     let outdatedCount: Int
@@ -913,36 +514,8 @@ private struct InspectorManagerDetailView: View {
         status?.detected ?? false
     }
 
-    private var activeExecutablePath: String? {
-        status?.executablePath?.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var executablePaths: [String] {
-        var paths: [String] = []
-        let discoveredPaths = status?.executablePaths ?? []
-        for path in discoveredPaths {
-            let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty, !paths.contains(trimmed) {
-                paths.append(trimmed)
-            }
-        }
-        if let activeExecutablePath, !activeExecutablePath.isEmpty, !paths.contains(activeExecutablePath) {
-            paths.insert(activeExecutablePath, at: 0)
-        }
-        return paths
-    }
-
-    private var selectedInstallMethodOption: ManagerInstallMethodOption {
-        manager.selectedInstallMethodOption(
-            executablePath: activeExecutablePath,
-            installedPackages: core.installedPackages
-        )
-    }
-
-    private var latestFailedTask: TaskItem? {
-        core.activeTasks.first { task in
-            task.status.lowercased() == "failed" && task.managerId == manager.id
-        }
+    private var enabled: Bool {
+        status?.enabled ?? true
     }
 
     var body: some View {
@@ -950,15 +523,8 @@ private struct InspectorManagerDetailView: View {
             HStack(spacing: 8) {
                 Image(systemName: manager.symbolName)
                     .foregroundColor(.secondary)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(localizedManagerDisplayName(manager.id))
-                        .font(.title3.weight(.semibold))
-                    if let version = status?.version {
-                        Text(version)
-                            .font(.caption.monospacedDigit())
-                            .foregroundColor(.secondary)
-                    }
-                }
+                Text(localizedManagerDisplayName(manager.id))
+                    .font(.title3.weight(.semibold))
                 Spacer()
                 HealthBadgeView(status: health)
             }
@@ -985,99 +551,55 @@ private struct InspectorManagerDetailView: View {
                 .foregroundColor(.secondary)
 
             Group {
-                InspectorField(label: L10n.App.Inspector.detectionDiagnostics.localized) {
-                    HStack(alignment: .top, spacing: 6) {
-                        Image(systemName: detected ? "checkmark.circle.fill" : "xmark.circle")
-                            .foregroundColor(detected ? HelmTheme.stateHealthy : HelmTheme.stateError)
-                            .padding(.top, 1)
-                        Text(localizedDetectionReason(detectionDiagnostics.reason))
-                            .font(.callout)
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityValue(detected
+                // Detection status
+                HStack(spacing: 6) {
+                    Image(systemName: detected ? "checkmark.circle.fill" : "xmark.circle")
+                        .foregroundColor(detected ? HelmTheme.stateHealthy : HelmTheme.stateError)
+                    Text(detected
                         ? L10n.App.Inspector.detected.localized
                         : L10n.App.Inspector.notDetected.localized)
+                        .font(.callout)
                 }
+                .accessibilityElement(children: .combine)
+                .accessibilityValue(detected
+                    ? L10n.App.Inspector.detected.localized
+                    : L10n.App.Inspector.notDetected.localized)
 
-                if let lastStatus = detectionDiagnostics.latestTaskStatus {
-                    InspectorField(label: L10n.App.Inspector.detectionLastTaskStatus.localized) {
-                        Text(localizedTaskStatus(lastStatus))
-                            .font(.callout)
-                    }
-                }
-
-                if let lastTaskId = detectionDiagnostics.latestTaskId {
-                    InspectorField(label: L10n.App.Inspector.detectionLastTaskId.localized) {
-                        Text(String(lastTaskId))
+                if let version = status?.version {
+                    InspectorField(label: L10n.App.Inspector.version.localized) {
+                        Text(version)
                             .font(.caption.monospacedDigit())
                     }
                 }
 
-                if !executablePaths.isEmpty {
-                    InspectorField(label: L10n.App.Inspector.executablePaths.localized) {
-                        Group {
-                            if executablePaths.count > 5 {
-                                ScrollView {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        ForEach(executablePaths, id: \.self) { path in
-                                            Text(path)
-                                                .font(
-                                                    path == activeExecutablePath
-                                                        ? .caption.monospacedDigit().weight(.semibold)
-                                                        : .caption.monospacedDigit()
-                                                )
-                                                .lineLimit(2)
-                                        }
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                                .frame(maxHeight: 96)
-                            } else {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    ForEach(executablePaths, id: \.self) { path in
-                                        Text(path)
-                                            .font(
-                                                path == activeExecutablePath
-                                                    ? .caption.monospacedDigit().weight(.semibold)
-                                                    : .caption.monospacedDigit()
-                                            )
-                                            .lineLimit(2)
-                                    }
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        }
-                        .accessibilityLabel(L10n.App.Inspector.executablePaths.localized)
-                        .accessibilityValue(executablePaths.joined(separator: ", "))
+                if let path = status?.executablePath {
+                    InspectorField(label: L10n.App.Inspector.executablePath.localized) {
+                        Text(path)
+                            .font(.caption.monospacedDigit())
+                            .lineLimit(2)
+                            .accessibilityLabel(L10n.App.Inspector.executablePath.localized)
+                            .accessibilityValue(path)
                     }
                 }
 
+                // Enabled/Disabled
+                HStack(spacing: 6) {
+                    Image(systemName: enabled ? "checkmark.circle.fill" : "minus.circle.fill")
+                        .foregroundColor(enabled ? HelmTheme.stateHealthy : HelmTheme.textSecondary)
+                    Text(enabled
+                        ? L10n.App.Inspector.enabled.localized
+                        : L10n.App.Inspector.disabled.localized)
+                        .font(.callout)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityValue(enabled
+                    ? L10n.App.Inspector.enabled.localized
+                    : L10n.App.Inspector.disabled.localized)
             }
 
             InspectorField(label: L10n.App.Inspector.installMethod.localized) {
-                Menu {
-                    ForEach(manager.installMethodOptions) { option in
-                        Button {} label: {
-                            HStack(spacing: 8) {
-                                Text(installMethodLabel(option, includeTag: true))
-                                if option.method == selectedInstallMethodOption.method {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
-                        .disabled(true)
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Text(installMethodLabel(selectedInstallMethodOption, includeTag: true))
-                            .font(.callout)
-                        Image(systemName: "chevron.down")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .menuStyle(.borderlessButton)
+                Text(localizedInstallMethod(manager.installMethod))
+                    .font(.callout)
             }
 
             InspectorField(label: L10n.App.Inspector.capabilities.localized) {
@@ -1096,19 +618,7 @@ private struct InspectorManagerDetailView: View {
                 .font(.caption)
                 .helmPointer()
             }
-
-            if health == .error, let failedTask = latestFailedTask {
-                Button(L10n.App.Inspector.viewDiagnostics.localized) {
-                    context.selectedTaskId = failedTask.id
-                    context.selectedPackageId = nil
-                    context.selectedUpgradePlanStepId = nil
-                }
-                .font(.caption)
-                .buttonStyle(HelmSecondaryButtonStyle())
-                .helmPointer()
-            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func localizedCategoryName(_ category: String) -> String {
@@ -1121,61 +631,13 @@ private struct InspectorManagerDetailView: View {
         }
     }
 
-    private func localizedInstallMethod(_ method: ManagerDistributionMethod) -> String {
+    private func localizedInstallMethod(_ method: ManagerInstallMethod) -> String {
         switch method {
-        case .homebrew: return L10n.App.Inspector.InstallMethod.homebrew.localized
-        case .macports: return L10n.App.Inspector.InstallMethod.macports.localized
-        case .appStore: return L10n.App.Inspector.InstallMethod.appStore.localized
-        case .setapp: return L10n.App.Inspector.InstallMethod.setapp.localized
-        case .officialInstaller: return L10n.App.Inspector.InstallMethod.officialInstaller.localized
-        case .scriptInstaller: return L10n.App.Inspector.InstallMethod.scriptInstaller.localized
-        case .corepack: return L10n.App.Inspector.InstallMethod.corepack.localized
-        case .rustupInstaller: return L10n.App.Inspector.InstallMethod.rustupInstaller.localized
-        case .xcodeSelect: return L10n.App.Inspector.InstallMethod.xcodeSelect.localized
-        case .softwareUpdate: return L10n.App.Inspector.InstallMethod.softwareUpdate.localized
-        case .systemProvided: return L10n.App.Inspector.InstallMethod.systemProvided.localized
-        case .npm: return L10n.App.Inspector.InstallMethod.npm.localized
-        case .pip: return L10n.App.Inspector.InstallMethod.pip.localized
-        case .pipx: return L10n.App.Inspector.InstallMethod.pipx.localized
-        case .gem: return L10n.App.Inspector.InstallMethod.gem.localized
-        case .cargoInstall: return L10n.App.Inspector.InstallMethod.cargoInstall.localized
-        case .asdf: return L10n.App.Inspector.InstallMethod.asdf.localized
-        case .mise: return L10n.App.Inspector.InstallMethod.mise.localized
+        case .automatable: return L10n.App.Inspector.InstallMethod.automatable.localized
+        case .updateAndUninstall: return L10n.App.Inspector.InstallMethod.updateAndUninstall.localized
+        case .updateOnly: return L10n.App.Inspector.InstallMethod.updateOnly.localized
+        case .systemBinary: return L10n.App.Inspector.InstallMethod.systemBinary.localized
         case .notManageable: return L10n.App.Inspector.InstallMethod.notManageable.localized
-        }
-    }
-
-    private func installMethodLabel(_ option: ManagerInstallMethodOption, includeTag: Bool) -> String {
-        var value = localizedInstallMethod(option.method)
-        guard includeTag else { return value }
-        if option.isRecommended {
-            value += " (\(L10n.App.Inspector.installMethodTagRecommended.localized))"
-        } else if option.isPreferred {
-            value += " (\(L10n.App.Inspector.installMethodTagPreferred.localized))"
-        }
-        return value
-    }
-
-    private func localizedDetectionReason(_ reason: ManagerDetectionDiagnosticReason) -> String {
-        switch reason {
-        case .detected: return L10n.App.Inspector.detectionReasonDetected.localized
-        case .notDetected: return L10n.App.Inspector.detectionReasonNotDetected.localized
-        case .inProgress: return L10n.App.Inspector.detectionReasonInProgress.localized
-        case .failed: return L10n.App.Inspector.detectionReasonFailed.localized
-        case .disabled: return L10n.App.Inspector.detectionReasonDisabled.localized
-        case .notImplemented: return L10n.App.Inspector.detectionReasonNotImplemented.localized
-        case .neverChecked: return L10n.App.Inspector.detectionReasonNeverChecked.localized
-        }
-    }
-
-    private func localizedTaskStatus(_ status: String) -> String {
-        switch status.lowercased() {
-        case "queued": return L10n.Service.Task.Status.pending.localized
-        case "running": return L10n.Service.Task.Status.running.localized
-        case "completed": return L10n.Service.Task.Status.completed.localized
-        case "failed": return L10n.Service.Task.Status.failed.localized
-        case "cancelled": return L10n.Service.Task.Status.cancelled.localized
-        default: return status
         }
     }
 }
@@ -1193,7 +655,6 @@ private struct InspectorField<Content: View>: View {
                 .foregroundColor(.secondary)
             content
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
     }
 }

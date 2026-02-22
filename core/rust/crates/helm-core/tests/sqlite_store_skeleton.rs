@@ -652,7 +652,7 @@ fn create_update_and_list_recent_tasks_roundtrip() {
 }
 
 #[test]
-fn prune_completed_tasks_removes_cancelled_and_keeps_running_records() {
+fn prune_completed_tasks_keeps_cancelled_and_running_records() {
     let path = test_db_path("tasks-prune-filter");
     let store = SqliteStore::new(&path);
     store.migrate_to_latest().unwrap();
@@ -694,11 +694,20 @@ fn prune_completed_tasks_removes_cancelled_and_keeps_running_records() {
     }
 
     let deleted = store.prune_completed_tasks(1).unwrap();
-    assert_eq!(deleted, 3);
+    assert_eq!(deleted, 2);
 
     let remaining = store.list_recent_tasks(10).unwrap();
-    assert_eq!(remaining.len(), 1);
-    assert_eq!(remaining[0].status, TaskStatus::Running);
+    assert_eq!(remaining.len(), 2);
+    assert!(
+        remaining
+            .iter()
+            .any(|task| task.status == TaskStatus::Cancelled)
+    );
+    assert!(
+        remaining
+            .iter()
+            .any(|task| task.status == TaskStatus::Running)
+    );
 
     let _ = std::fs::remove_file(path);
 }
@@ -742,11 +751,11 @@ fn append_and_list_task_logs_roundtrip() {
 
     let logs = store.list_task_logs(task.id, 10).unwrap();
     assert_eq!(logs.len(), 2);
-    assert_eq!(logs[0].status, Some(TaskStatus::Failed));
-    assert_eq!(logs[0].level, TaskLogLevel::Error);
-    assert!(logs[0].message.contains("simulated error"));
-    assert_eq!(logs[1].status, Some(TaskStatus::Queued));
-    assert_eq!(logs[1].level, TaskLogLevel::Info);
+    assert_eq!(logs[0].status, Some(TaskStatus::Queued));
+    assert_eq!(logs[0].level, TaskLogLevel::Info);
+    assert_eq!(logs[1].status, Some(TaskStatus::Failed));
+    assert_eq!(logs[1].level, TaskLogLevel::Error);
+    assert!(logs[1].message.contains("simulated error"));
 
     let _ = std::fs::remove_file(path);
 }

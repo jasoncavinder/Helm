@@ -1,7 +1,6 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
-import { helmStarlightBlogPlugin } from './src/plugins/starlight-blog-plugin.mjs';
 
 // https://astro.build/config
 export default defineConfig({
@@ -12,13 +11,8 @@ export default defineConfig({
 			tagline: 'Take the helm.',
 			favicon: '/favicon.ico',
 			customCss: ['./src/styles/helm-theme.css'],
-			plugins: [helmStarlightBlogPlugin()],
 			logo: {
 				src: './src/assets/helm-icon.png',
-			},
-			components: {
-				Banner: './src/components/starlight/Banner.astro',
-				Footer: './src/components/starlight/Footer.astro',
 			},
 			social: [
 				{ label: 'GitHub', href: 'https://github.com/jasoncavinder/Helm', icon: 'github' },

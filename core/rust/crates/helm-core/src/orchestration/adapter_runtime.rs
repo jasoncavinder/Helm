@@ -586,9 +586,7 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
             manager: snapshot.runtime.manager,
             task_type: snapshot.runtime.task_type,
             status: snapshot.runtime.status,
-            // Use terminal timestamp so retention windows for completed/failed tasks
-            // are measured from completion/failure, not from original queue time.
-            created_at: SystemTime::now(),
+            created_at: snapshot.runtime.created_at,
         };
 
         if let Err(error) = persist_update_task(

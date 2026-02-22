@@ -51,7 +51,6 @@ plist_value() {
 }
 
 ATTACH_PLIST="$(mktemp "${TMPDIR:-/tmp}/helm-dmg-attach.XXXXXX.plist")"
-HELM_ENTITLEMENTS_PLIST="$(mktemp "${TMPDIR:-/tmp}/helm-entitlements.XXXXXX.plist")"
 DEVICE=""
 MOUNT_PATH=""
 
@@ -59,7 +58,7 @@ cleanup() {
   if [[ -n "$DEVICE" ]]; then
     hdiutil detach "$DEVICE" >/dev/null 2>&1 || hdiutil detach -force "$DEVICE" >/dev/null 2>&1 || true
   fi
-  rm -f "$ATTACH_PLIST" "$HELM_ENTITLEMENTS_PLIST"
+  rm -f "$ATTACH_PLIST"
 }
 trap cleanup EXIT
 
@@ -124,11 +123,9 @@ fi
 
 CHANNEL="$(plist_value "HelmDistributionChannel" "$APP_INFO_PLIST")"
 SPARKLE_ENABLED="$(plist_value "HelmSparkleEnabled" "$APP_INFO_PLIST")"
-SPARKLE_INSTALLER_LAUNCHER_SERVICE_ENABLED="$(plist_value "SUEnableInstallerLauncherService" "$APP_INFO_PLIST")"
 SPARKLE_ALLOWS_DOWNGRADES="$(plist_value "SUAllowsDowngrades" "$APP_INFO_PLIST")"
 SPARKLE_FEED_URL="$(plist_value "SUFeedURL" "$APP_INFO_PLIST")"
 SPARKLE_PUBLIC_ED_KEY="$(plist_value "SUPublicEDKey" "$APP_INFO_PLIST")"
-BUNDLE_IDENTIFIER="$(plist_value "CFBundleIdentifier" "$APP_INFO_PLIST")"
 
 if [[ "$CHANNEL" != "developer_id" ]]; then
   echo "error: HelmDistributionChannel must be developer_id in release DMG, found: $CHANNEL" >&2
@@ -137,11 +134,6 @@ fi
 
 if ! is_truthy "$SPARKLE_ENABLED"; then
   echo "error: HelmSparkleEnabled must be true in release DMG, found: $SPARKLE_ENABLED" >&2
-  exit 1
-fi
-
-if ! is_truthy "$SPARKLE_INSTALLER_LAUNCHER_SERVICE_ENABLED"; then
-  echo "error: SUEnableInstallerLauncherService must be true in release DMG, found: $SPARKLE_INSTALLER_LAUNCHER_SERVICE_ENABLED" >&2
   exit 1
 fi
 
@@ -172,33 +164,6 @@ fi
 
 if ! otool -L "$HELM_BIN" | grep -q "Sparkle.framework"; then
   echo "error: Helm binary in DMG is not linked against Sparkle.framework" >&2
-  exit 1
-fi
-
-if [[ -z "$BUNDLE_IDENTIFIER" ]]; then
-  echo "error: CFBundleIdentifier missing from release DMG app Info.plist" >&2
-  exit 1
-fi
-
-if ! codesign -d --entitlements :- "$HELM_BIN" > "$HELM_ENTITLEMENTS_PLIST" 2>/dev/null; then
-  echo "error: failed to extract Helm entitlements for release DMG verification" >&2
-  exit 1
-fi
-
-EXPECTED_SPKS="${BUNDLE_IDENTIFIER}-spks"
-EXPECTED_SPKI="${BUNDLE_IDENTIFIER}-spki"
-if ! /usr/libexec/PlistBuddy -c "Print :com.apple.security.temporary-exception.mach-lookup.global-name" "$HELM_ENTITLEMENTS_PLIST" 2>/dev/null | grep -q "$EXPECTED_SPKS"; then
-  echo "error: missing Sparkle status mach-lookup entitlement ($EXPECTED_SPKS) in Helm binary" >&2
-  exit 1
-fi
-
-if ! /usr/libexec/PlistBuddy -c "Print :com.apple.security.temporary-exception.mach-lookup.global-name" "$HELM_ENTITLEMENTS_PLIST" 2>/dev/null | grep -q "$EXPECTED_SPKI"; then
-  echo "error: missing Sparkle installer mach-lookup entitlement ($EXPECTED_SPKI) in Helm binary" >&2
-  exit 1
-fi
-
-if ! /usr/libexec/PlistBuddy -c "Print :com.apple.security.temporary-exception.shared-preference.read-write" "$HELM_ENTITLEMENTS_PLIST" 2>/dev/null | grep -q "$BUNDLE_IDENTIFIER"; then
-  echo "error: missing Sparkle shared-preference entitlement ($BUNDLE_IDENTIFIER) in Helm binary" >&2
   exit 1
 fi
 

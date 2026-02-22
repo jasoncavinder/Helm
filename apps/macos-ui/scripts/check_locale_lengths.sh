@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 BASE_LOCALE="en"
-LOCALES=(es de fr pt-BR ja hu)
+LOCALES=(es de fr pt-BR ja)
 FILES=(common app service)
 RATIO_THRESHOLD="1.35"
 ABS_THRESHOLD=24

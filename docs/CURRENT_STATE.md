@@ -8,49 +8,26 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.17.0** on `main` (stable), with `dev` aligned for post-`0.17.x` planning.
+Current documentation baseline: **0.16.2** (Sparkle connectivity and platform-baseline alignment patch).
 
-Implementation baseline: **0.17.0** with diagnostics/logging delivery, updater hardening, task/inspector quality improvements, privileged-auth execution flow, and responsiveness hardening shipped.
+Implementation baseline: **0.16.2** (latest shipped patch release target).
 
 See:
 - CHANGELOG.md
 
 Active milestone:
-- latest shipped release on `main`: **0.17.0** (Diagnostics & Logging stable + RC hardening consolidation)
-- 0.17.x — Diagnostics & Logging (**stable released on `main`**, RC lineage `v0.17.0-rc.1` through `v0.17.0-rc.5`)
-  - delivered: `feat/v0.17-log-foundation` (SQLite-backed task lifecycle logs + retrieval plumbing)
-  - delivered: `feat/v0.17-task-log-viewer` (inspector diagnostics logs tab with level/status filters + load-more pagination)
-  - delivered: `feat/v0.17-structured-error-export` (structured JSON diagnostics export with redaction for support workflows)
-  - delivered: `feat/v0.17-service-health-panel` (settings diagnostics panel for service/runtime health + copyable service snapshot)
-  - delivered: `feat/v0.17-manager-detection-diagnostics` (manager inspector detection reason diagnostics + latest detection task metadata visibility)
-  - delivered: `feat/v0.17-diagnostics-hardening` (attributed last-error capture across fetch/action/settings failures + diagnostics export parity)
-  - delivered: `v0.17.0-rc.2` updater hardening (Sparkle sandbox installer entitlements + launcher service metadata + prerelease appcast short-version preservation)
-  - delivered: post-`rc.2` updater/task/package UX follow-up (`v0.17.0-rc.3` candidate): prerelease short-version alignment in Sparkle "up to date" messaging; running-task inline expand/collapse with command + live output panel; same-name package consolidation across managers in package/search surfaces; inspector HTML description rendering/link hardening; inspector detail full-width text layout; package consolidation policy hardening; task-output buffer capping.
-  - delivered: post-`rc.3` Sparkle release-notes hosting follow-up: release workflow now generates per-tag website HTML release notes from `CHANGELOG.md`, publishes them under `web/public/updates/release-notes/`, and points appcast `sparkle:releaseNotesLink` entries to the hosted notes page.
-  - delivered: post-`rc.3` onboarding/legal follow-up: Developer ID builds now gate onboarding behind first-run license-terms acceptance tracked by license-version + acceptance timestamp; About overlay now exposes a direct license-terms link for re-review.
-  - delivered: post-`rc.3` control-center/popover interaction hardening: status-item popover is now suppressed whenever the Control Center is open, status-item clicks focus the Control Center while it is visible, and popover header/metric cards now deep-link into Control Center sections.
-  - delivered: post-`rc.3` manager inspection/prioritization follow-up: manager inspector now surfaces prioritized install-method metadata via disabled dropdown + recommended/preferred tags, displays all discovered executable paths with active-path emphasis, and managers are now priority-ordered with intra-authority drag reordering plus restore-default support in advanced settings.
-  - delivered: post-`rc.3` about-overlay metadata expansion: About now includes build number, distribution channel, update authority, and last update-check timestamp to support pre-release operator validation.
-  - delivered: post-`rc.3` control-center polish follow-up: reset-local-data now clears stored license acceptance; running-task expansion now toggles from full-row taps; Control Center drag region now spans the full window background; settings metrics now deep-link to Managers/Updates/Tasks; inspector selection state now clears on section switches and selected rows/cards are visually highlighted.
-  - delivered: post-`rc.3` operator ergonomics/perf follow-up: launch-at-login setting added (macOS 13+ via `SMAppService.mainApp`), popover hover cursor forcing relaxed to restore clickable hover affordance, and manager/popover count rendering now uses precomputed dictionaries to reduce repeated per-row filtering during scroll/drag interactions.
-  - delivered: pre-`rc.4` stabilization follow-up: popover outside-click monitoring now ignores pointer-move/drag events; floating-panel cursor forcing removed to restore interactive hover affordances; manager-priority ranking now enforces authority ordering for consolidated package selection; executable-path discovery now avoids undetected-manager scans and caches detected-manager discovery results.
-  - delivered: post-`rc.4` issue-remediation follow-up: softwareupdate manager symbol mapping now uses valid SF Symbol naming (`applelogo`); manager-priority drag interactions now take precedence over full-window drag-to-move in Managers; inflight task dedupe now prefers running/newest task IDs so command/live-output details populate when backend process output exists; Packages adds localized `Pinned` filter support and excludes pinned entries from `Upgradable`, with horizontal chip scrolling to preserve localization fit.
-  - delivered: post-`rc.4` UX/task-diagnostics follow-up: popover package search rows now include icon quick actions (install/uninstall/update/pin); package inspector actions moved to icon+tooltip buttons; manager inspector executable-path lists now scroll when long and managers in error state expose `View Diagnostics`; failed tasks now support inline command/output expansion with single-selected expansion behavior; task terminal retention now starts at completion/failure timestamp.
-  - delivered: post-`rc.4` privileged-auth follow-up: process execution now enforces elevated operations through a structured `sudo -A` wrapper when adapters flag `requires_elevation`, with a managed askpass helper script and explicit command/output capture so privileged install/update flows prompt for administrator authentication instead of failing silently.
-  - delivered: post-`rc.4` responsiveness follow-up: Control Center/Popover overview + managers surfaces now consume section-scoped derived state snapshots (precomputed manager counts/health/task slices); snapshot polling cadence is adaptive to interactive-surface visibility and now tracks popover/control-center visibility from app lifecycle events; package-description rich/plain rendering now uses bounded LRU caching in core; scroll-heavy managers/overview/updates/settings/search stacks now use lazy container variants where applicable.
-  - delivered: pre-stable `rc.5 -> 0.17.0` hardening follow-up: manager display-name localization mapping is now centralized in one shared helper across Core/UI surfaces; localization diagnostics now use structured logger output; polling cadence now introduces a lower-frequency idle-visible mode for no-inflight states; SQLite connections now enforce `WAL`/`NORMAL`/`busy_timeout`/foreign-key pragmas by default; terminal-task pruning now includes `cancelled`; Rust build script now fingerprints Rust/script inputs and skips rebuilds when generated artifacts are unchanged.
-  - delivered: website release-readiness follow-up: Starlight now uses a local blog plugin to register a `/blog/` section and RSS social link, the site includes a global beta-tester announcement banner (visual treatment refined), blog pages expose social-share actions, and the landing navigation now includes right-aligned `Blog` and `Docs` links for faster access.
-  - `v0.17.0` stable release execution status: complete (validation green + stable tag + GitHub release published)
+- 0.16.2 — Sparkle connectivity hardening + macOS 11 deployment-target alignment
+- 0.17.x — Diagnostics & Logging (next implementation milestone)
+  - in progress: `feat/v0.17-log-foundation` (SQLite-backed task lifecycle logs + retrieval plumbing)
 
 Security rollout staging status:
 - Stage 0 (`<=0.16.x`): planning/docs only (active in `0.16.1`)
 - Stage 1 (`0.18.x`): local security groundwork (planned)
 - Stage 2 (`1.3.x`): Security Advisory System (Pro, planned)
 - Stage 3 (`1.4.x`): Shared Brain infrastructure (planned)
-- Current release behavior (`<=0.17.x`): no package/fingerprint data is sent to any Helm-operated shared backend; security/advisory value remains local-first.
 
 Third-party licensing compliance status:
-- Dependency-license inventory and obligations baseline documented at `docs/legal/THIRD_PARTY_LICENSES.md` (audited 2026-02-22).
+- Dependency-license inventory and obligations baseline documented at `docs/legal/THIRD_PARTY_LICENSES.md` (audited 2026-02-21).
 - Release process now includes explicit third-party license checks in `docs/RELEASE_CHECKLIST.md`.
 
 ---
@@ -72,8 +49,6 @@ Third-party licensing compliance status:
 - 0.13.x — UI/UX analysis & redesign (stable checkpoint)
 - 0.14.x — Platform, detection & optional managers (stable checkpoint)
 - 0.15.x — Upgrade preview & execution transparency (stable checkpoint)
-- 0.16.x — Self-update & installer hardening (stable checkpoint)
-- 0.17.x — Diagnostics & logging + release-readiness hardening (stable checkpoint)
 
 ---
 
@@ -115,14 +90,14 @@ Fully functional:
 
 Localization coverage:
 
-- All 7 locales (en, es, de, fr, pt-BR, ja, hu) have full key parity across app/common/service files
+- All 6 locales (en, es, de, fr, pt-BR, ja) have full key parity across app/common/service files
 - Locale length audit script added at `apps/macos-ui/scripts/check_locale_lengths.sh` for overflow-risk preflight
 - Locale key/placeholder integrity audit script added at `apps/macos-ui/scripts/check_locale_integrity.sh`
 - `v0.11.0-beta.2` heuristic overflow audit captured at `docs/validation/v0.11.0-beta.2-l10n-overflow.md` (no high-risk candidates flagged)
 - `v0.12.0-beta.1` on-device overflow validation captured at `docs/validation/v0.12.0-beta.1-visual-overflow.md` (Settings surface checks passing)
 - Expanded on-device overflow validation coverage for onboarding/navigation/packages/managers captured at `docs/validation/v0.12.0-beta.2-visual-overflow-expansion.md`
-- Manager display-name localization keys now cover all implemented manager IDs while preserving manager-brand naming where transcreation is not required.
-- Legacy non-English locale set walkthrough keys (es/de/fr/pt-BR/ja) remain translated and validated; `hu` remains a staged locale rollout and now includes onboarding/service/error coverage plus post-`rc.2` task/inspector UX additions.
+- Manager display-name localization keys now cover upgrade-preview/task-fallback manager labels (including software update/app store naming)
+- All walkthrough keys (31 keys) translated and validated across all 6 locales
 
 Validation snapshot for `v0.11.0-beta.1` expansion:
 
@@ -150,12 +125,6 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 ## Website Status
 
 - Astro + Starlight website uses a Helm-brand custom theme layer via `web/src/styles/helm-theme.css` with tokenized color/motion/shape rules aligned to brand docs.
-- Website production hosting is Cloudflare Pages (GitHub Pages is not the production host).
-  - Root directory: `web/`
-  - Build command: `npm ci && npm run build`
-  - Output directory: `dist`
-  - Framework: Astro (Starlight)
-  - Deploy model: Cloudflare GitHub integration builds/deploys from `main`; PRs/branches get preview deployments.
 - Landing page (`web/src/content/docs/index.mdx`) has been redesigned with a calmer dual-audience narrative and command-bridge structure:
   - Hero
   - Problem
@@ -188,26 +157,6 @@ Validation snapshot for `v0.11.0-beta.1` expansion:
 - Website redesign planning artifacts added:
   - `docs/website/WEBSITE_REDESIGN_PLAN.md`
   - `docs/website/DESIGN_TOKENS.md`
-
-### Website Hosting Verification (Operations)
-
-Use the production docs domain (currently `helmapp.dev`) and verify Cloudflare headers/routing:
-
-```bash
-dig +short helmapp.dev A
-dig +short helmapp.dev AAAA
-curl -sI https://helmapp.dev | egrep -i 'cf-ray|server: cloudflare|cf-cache-status'
-```
-
-Operational references:
-
-- Production/preview deployment status: Cloudflare Pages dashboard for the Helm project
-- Preview behavior: each PR/branch deploys to an isolated preview URL managed by Cloudflare Pages
-- Minimal rollback concept: temporarily point DNS to a fallback static host, then restore Cloudflare Pages as primary after remediation
-
-Follow-up cleanup item:
-
-- Legacy GitHub Pages workflow file (`.github/workflows/deploy-web.yml`) has already been removed from `main`; if it appears on non-main branches, treat it as legacy branch residue rather than active production deployment state.
 
 ---
 
@@ -340,13 +289,13 @@ Released in `v0.14.1` (follow-up stabilization slice):
 - Onboarding manager rows now keep manager name + version on a single line in both detection and configure steps
 - Task list now deduplicates in-flight rows by `(manager, task_type)` while keeping bounded terminal history
 - Task list fetches a wider recent-task window so long-running queued/running entries are less likely to drop out under queue churn
-- Task pruning now expires completed/failed/cancelled tasks using terminal-status timestamps
+- Task pruning now expires only completed/failed tasks (cancelled tasks are retained)
 - Duplicate submission guards now reuse existing queued/running task IDs for identical manager install/update/uninstall and package upgrade actions
 - Refresh trigger now skips launching a new sweep while refresh/detection tasks are already in flight
 - RubyGems is now included in per-package upgrade eligibility for control-center package actions
 - Added regression coverage:
   - FFI unit tests for in-flight deduplication and bounded terminal history behavior
-  - SQLite store test validating prune policy prunes terminal statuses and retains running rows
+  - SQLite store test validating prune policy keeps cancelled/running rows
 
 Released in `v0.14.1` (adapter behavior slice):
 
@@ -534,7 +483,7 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
 
 ### Localization
 
-- All 7 locales pass key parity, placeholder consistency, and ICU format checks
+- All 6 locales pass key parity, placeholder consistency, and ICU format checks
 - `check_locale_lengths.sh` included in CI workflow
 - Spanish accent typo in "Actualización" has been corrected
 
@@ -859,7 +808,7 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
   - `asdf` support currently assumes plugin already exists; Helm currently manages install/uninstall/upgrade of tool versions, not plugin bootstrap/removal
   - `nix_darwin` support currently operates through `nix-env` compatibility flows and does not edit declarative nix-darwin configuration files
 - Self-update is intentionally limited to eligible direct Developer ID installs; package-manager-managed installs remain blocked by policy.
-- Diagnostics UI is available in the Inspector (`diagnostics`/`stderr`/`stdout`), including the v0.17 task-log viewer (`logs` tab with level/status filters and pagination).
+- Diagnostics UI is available in the Inspector (`diagnostics`/`stderr`/`stdout`) but a broader log-viewer workflow remains pending.
 - No CLI interface
 
 ---
@@ -879,9 +828,9 @@ Helm is a **functional control plane for 28 implemented managers** with:
 - Working orchestration
 - Task system
 - Pinning and policy
-- Localization foundation (7 locales at full key parity)
+- Localization foundation (6 locales at full key parity)
 - 0.14 platform/detection/optional manager rollout implemented
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-0.13.x through 0.17.0 stable checkpoints are complete on `main`; `v0.17.0-rc.1` through `v0.17.0-rc.5` served as the completed RC validation path into stable `0.17.0`.
+0.13.x through 0.15.x stable checkpoints are complete, and 0.16.0 release finalization is in progress. Next delivery focus after `v0.16.0` is 0.17.x diagnostics/logging hardening.

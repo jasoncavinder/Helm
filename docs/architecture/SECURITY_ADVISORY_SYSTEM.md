@@ -136,10 +136,4 @@ Shared Brain is additive:
 
 - augments local advisory context with shared signals
 - requires new backend/auth/security infrastructure
-- is planned as a Postgres-first, provider-portable backend architecture
-- may use Cloudflare Workers as a stateless API edge, but does not require Cloudflare-specific data stores (Durable Objects / D1) for core persistence
 - must not be a hard dependency for local advisory evaluation
-
-Current-state reminder:
-
-- Releases through `0.17.x` do not send package/fingerprint data to any shared Helm backend.

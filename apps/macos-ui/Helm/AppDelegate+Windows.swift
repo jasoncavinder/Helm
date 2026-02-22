@@ -98,17 +98,11 @@ final class EventMonitor {
     private var localMonitor: Any?
     private var globalMonitor: Any?
     private let mask: NSEvent.EventTypeMask
-    private let localHandler: (NSEvent) -> NSEvent?
-    private let globalHandler: (NSEvent?) -> Void
+    private let handler: (NSEvent?) -> Void
 
-    init(
-        mask: NSEvent.EventTypeMask,
-        localHandler: @escaping (NSEvent) -> NSEvent?,
-        globalHandler: @escaping (NSEvent?) -> Void
-    ) {
+    init(mask: NSEvent.EventTypeMask, handler: @escaping (NSEvent?) -> Void) {
         self.mask = mask
-        self.localHandler = localHandler
-        self.globalHandler = globalHandler
+        self.handler = handler
     }
 
     deinit { stop() }
@@ -116,15 +110,12 @@ final class EventMonitor {
     func start() {
         if localMonitor == nil {
             localMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
-                guard let self else { return event }
-                return self.localHandler(event)
+                self?.handler(event)
+                return event
             }
         }
         if globalMonitor == nil {
-            globalMonitor = NSEvent.addGlobalMonitorForEvents(
-                matching: mask,
-                handler: globalHandler
-            )
+            globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: handler)
         }
     }
 

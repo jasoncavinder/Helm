@@ -56,7 +56,6 @@
 		D20000000000000000000008 /* WalkthroughState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000008 /* WalkthroughState.swift */; };
 		D20000000000000000000009 /* SpotlightOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000009 /* SpotlightOverlay.swift */; };
 		E20000000000000000000001 /* InspectorViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000000000000000000001 /* InspectorViews.swift */; };
-		D20000000000000000000011 /* HelmCore+ManagerPriority.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000011 /* HelmCore+ManagerPriority.swift */; };
 		F20000000000000000000001 /* PopoverHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000001 /* PopoverHelpers.swift */; };
 		F20000000000000000000002 /* PopoverOverlayViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000002 /* PopoverOverlayViews.swift */; };
 		F20000000000000000000003 /* ControlCenterSectionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000003 /* ControlCenterSectionViews.swift */; };
@@ -67,9 +66,6 @@
 		H200000000000000000000001 /* AppUpdateConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = H100000000000000000000001 /* AppUpdateConfigurationTests.swift */; };
 		J200000000000000000000001 /* AppUpdateConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = J100000000000000000000001 /* AppUpdateConfiguration.swift */; };
 		J200000000000000000000002 /* AppUpdateConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = J100000000000000000000001 /* AppUpdateConfiguration.swift */; };
-		K200000000000000000000001 /* SupportRedactor.swift in Sources */ = {isa = PBXBuildFile; fileRef = K100000000000000000000001 /* SupportRedactor.swift */; };
-		K200000000000000000000002 /* SupportRedactor.swift in Sources */ = {isa = PBXBuildFile; fileRef = K100000000000000000000001 /* SupportRedactor.swift */; };
-		K200000000000000000000003 /* SupportRedactorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K100000000000000000000002 /* SupportRedactorTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -153,7 +149,6 @@
 		D10000000000000000000007 /* HelmCore+Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HelmCore+Settings.swift"; sourceTree = "<group>"; };
 		D10000000000000000000008 /* WalkthroughState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughState.swift; sourceTree = "<group>"; };
 		D10000000000000000000009 /* SpotlightOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotlightOverlay.swift; sourceTree = "<group>"; };
-		D10000000000000000000011 /* HelmCore+ManagerPriority.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HelmCore+ManagerPriority.swift"; sourceTree = "<group>"; };
 		E10000000000000000000001 /* InspectorViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorViews.swift; sourceTree = "<group>"; };
 		F10000000000000000000001 /* PopoverHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverHelpers.swift; sourceTree = "<group>"; };
 		F10000000000000000000002 /* PopoverOverlayViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverOverlayViews.swift; sourceTree = "<group>"; };
@@ -163,8 +158,6 @@
 		G10000000000000000000003 /* AppDelegate+StatusBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppDelegate+StatusBadge.swift"; sourceTree = "<group>"; };
 		H100000000000000000000001 /* AppUpdateConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateConfigurationTests.swift; sourceTree = "<group>"; };
 		J100000000000000000000001 /* AppUpdateConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateConfiguration.swift; sourceTree = "<group>"; };
-		K100000000000000000000001 /* SupportRedactor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportRedactor.swift; sourceTree = "<group>"; };
-		K100000000000000000000002 /* SupportRedactorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportRedactorTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -247,11 +240,9 @@
 				D10000000000000000000004 /* HelmCore+Dashboard.swift */,
 				D10000000000000000000005 /* HelmCore+Fetching.swift */,
 				D10000000000000000000007 /* HelmCore+Settings.swift */,
-				D10000000000000000000011 /* HelmCore+ManagerPriority.swift */,
 				C10000000000000000000003 /* UpgradePreviewPlanner.swift */,
 				B10000000000000000000015 /* LocalizationManager.swift */,
 				B10000000000000000000016 /* String+Localization.swift */,
-				K100000000000000000000001 /* SupportRedactor.swift */,
 				B10000000000000000000017 /* L10n.swift */,
 				G10000000000000000000001 /* L10n+App.swift */,
 			);
@@ -406,7 +397,6 @@
 			children = (
 				H100000000000000000000001 /* AppUpdateConfigurationTests.swift */,
 				C1000000000000000000001A /* LocalizationOverflowValidationTests.swift */,
-				K100000000000000000000002 /* SupportRedactorTests.swift */,
 				C10000000000000000000005 /* UpgradePreviewPlannerTests.swift */,
 			);
 			path = HelmTests;
@@ -589,7 +579,6 @@
 				J200000000000000000000001 /* AppUpdateConfiguration.swift in Sources */,
 				8CFB6D572F3D1D1D002372B8 /* HelmCore.swift in Sources */,
 				C10000000000000000000001 /* UpgradePreviewPlanner.swift in Sources */,
-				K200000000000000000000001 /* SupportRedactor.swift in Sources */,
 				B20000000000000000000015 /* LocalizationManager.swift in Sources */,
 				B20000000000000000000016 /* String+Localization.swift in Sources */,
 				B20000000000000000000017 /* L10n.swift in Sources */,
@@ -622,7 +611,6 @@
 				D20000000000000000000005 /* HelmCore+Fetching.swift in Sources */,
 				D20000000000000000000006 /* HelmCore+Actions.swift in Sources */,
 				D20000000000000000000007 /* HelmCore+Settings.swift in Sources */,
-				D20000000000000000000011 /* HelmCore+ManagerPriority.swift in Sources */,
 				D20000000000000000000008 /* WalkthroughState.swift in Sources */,
 				D20000000000000000000009 /* SpotlightOverlay.swift in Sources */,
 				E20000000000000000000001 /* InspectorViews.swift in Sources */,
@@ -643,8 +631,6 @@
 				H200000000000000000000001 /* AppUpdateConfigurationTests.swift in Sources */,
 				C10000000000000000000019 /* LocalizationOverflowValidationTests.swift in Sources */,
 				C10000000000000000000018 /* UpgradePreviewPlanner.swift in Sources */,
-				K200000000000000000000002 /* SupportRedactor.swift in Sources */,
-				K200000000000000000000003 /* SupportRedactorTests.swift in Sources */,
 				C10000000000000000000002 /* UpgradePreviewPlannerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

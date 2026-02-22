@@ -38,7 +38,7 @@ run "$ROOT_DIR/apps/macos-ui/scripts/check_locale_integrity.sh"
 echo
 run /bin/bash -lc '
 set -euo pipefail
-for l in en es de fr pt-BR ja hu; do
+for l in en es de fr pt-BR ja; do
   diff -ru "$0/locales/$l" "$0/apps/macos-ui/Helm/Resources/locales/$l" >/dev/null
   echo "locale mirror parity OK: $l"
 done

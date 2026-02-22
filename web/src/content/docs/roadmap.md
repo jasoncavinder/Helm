@@ -50,7 +50,7 @@ Helm follows feature-driven milestones. Dates are intentionally omitted — mile
 | 1.1.x | Globalization Expansion — additional locales (zh-Hans, ko, it, nl), website localization |
 | 1.2.x | Editions and Entitlement Foundations — channel-aware build matrix and entitlement boundaries for consumer and fleet products |
 | 1.3.x | Security Advisory System (Pro) — local-first CVE scanning, optional public advisory API queries, local TTL cache |
-| 1.4.x | Shared Brain — fingerprint sharing, known-fix lookup, Postgres system-of-record, provider-portable API layer (Cloudflare Workers optional), App Attest auth |
+| 1.4.x | Shared Brain — fingerprint sharing, known-fix lookup, centralized Postgres services, App Attest auth |
 | 1.5.x | Business Policy and Drift Management — scoped policy, baseline enforcement, compliance reporting |
 | 1.6.x | Enterprise Rollout, Approvals, and Audit — ring-based rollout, approval workflows, audit export |
 | 1.7.x | Mac App Store Distribution Channel — consumer MAS lifecycle and App Store authority alignment |

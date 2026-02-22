@@ -9,7 +9,7 @@
   <br>
   A native macOS menu bar app for unified package manager control.
   <br>
-  <strong>Pre-1.0 &middot; v0.17.0</strong>
+  <strong>Pre-1.0 &middot; v0.16.2</strong>
 </p>
 
 <p align="center">
@@ -23,9 +23,9 @@
 
 Helm manages software across multiple package managers (Homebrew, npm, pip, Cargo, etc.) and runtime tools (mise, rustup) from a single menu bar interface. It is designed as infrastructure software: deterministic, safety-first, and explicit about authority, orchestration, and error handling.
 
-> **Status:** Active pre-1.0 development with stable `v0.17.0` on `main` and post-`0.17.x` planning on `dev`.
+> **Status:** Active pre-1.0 development at `v0.16.2` (Sparkle connectivity hardening + macOS 11 deployment baseline enforcement).
 >
-> **Testing:** Please test `v0.17.0` and report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Testing:** Please test `v0.16.2` and report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
 ## Editions (Beta)
 
@@ -129,7 +129,7 @@ Or open `apps/macos-ui/Helm.xcodeproj` in Xcode and run the **Helm** scheme. The
 | 0.16.x | Self-Update & Installer Hardening — Sparkle integration, signed verification | Completed (`v0.16.0`) |
 | 0.16.1 | Documentation, Milestone Restructure & Security Staging Clarification | Completed (documentation-only) |
 | 0.16.2 | Sparkle Connectivity + Platform Baseline Alignment — network-client entitlement, feed diagnostics, macOS 11 deployment target enforcement | Completed |
-| 0.17.x | Diagnostics & Logging — log viewer, structured error export, health panel | Completed (`v0.17.0`) |
+| 0.17.x | Diagnostics & Logging — log viewer, structured error export, health panel | Planned |
 | 0.18.x | Local Security Groundwork — local vulnerability abstractions and cache plumbing (no public feature surface) | Planned |
 | 0.19.x | Stability & Pre-1.0 Hardening — stress tests, crash recovery, memory audit | Planned |
 | 1.0.0 | Stable Control Plane Release — production-safe execution, full feature set | Planned |
@@ -143,52 +143,6 @@ See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full roadmap through 1.x.
 - **Phase 3 (`1.4.x`)**: **Shared Brain**. Fingerprint sharing, known-fix lookup, centralized Postgres-backed services, and App Attest-based request authentication.
 
 Security Advisory System and Shared Brain are separate systems. Shared Brain is additive and depends on additional infrastructure not required for Phase 2.
-
-## Website Hosting (Current)
-
-Helm documentation/marketing website hosting is on **Cloudflare Pages** (not GitHub Pages).
-
-- Framework: Astro (Starlight)
-- Root directory: `web/`
-- Build command: `npm ci && npm run build`
-- Output directory: `dist`
-- Deploy trigger: GitHub-connected auto-deploys from pushes to `main` (plus preview deployments for PRs/branches)
-
-Operational notes:
-
-- GitHub Pages is no longer the production host for Helm docs.
-- The legacy GitHub Pages deployment workflow (`.github/workflows/deploy-web.yml`) has been removed from `main`; any appearance on older/non-main branches should be treated as historical residue, not active production deployment.
-- Cloudflare Pages deployments are visible in the Cloudflare dashboard under the Helm Pages project.
-
-How to verify Cloudflare hosting:
-
-```bash
-dig +short helmapp.dev A
-dig +short helmapp.dev AAAA
-curl -sI https://helmapp.dev | egrep -i 'cf-ray|server: cloudflare|cf-cache-status'
-```
-
-Rollback concept (minimal):
-
-- Re-point DNS to a fallback host if needed.
-- Re-enable a fallback static host path (for example GitHub Pages) only as an emergency bridge.
-- Restore Cloudflare Pages as primary once the incident is resolved.
-
-## Shared Brain Backend Direction (Planned)
-
-The `1.4.x` Shared Brain milestone is planned as **Postgres-first** and **provider-portable**:
-
-- System-of-record: Postgres
-- Core capabilities expected from standard Postgres features:
-  - dedupe and idempotency via constraints/UPSERT
-  - ranking/selection materialization (for example "best fix")
-  - search/aggregation via FTS/trigram/materialized views
-  - optional RLS/advisory locks if multi-tenant or stronger coordination is needed
-- Cloudflare Workers may be used as a stateless edge/API layer, but Cloudflare-specific data stores are not the core architecture.
-- Durable Objects / D1 are not the Shared Brain system-of-record.
-- Large artifacts (if introduced later) should live in S3-compatible object storage; Postgres stores references/metadata.
-
-Current releases (`<=0.17.x`) do **not** send package/fingerprint data to a shared backend. Security-advisory value remains local-first until the `1.4.x` Shared Brain milestone.
 
 ## Repository Layout
 

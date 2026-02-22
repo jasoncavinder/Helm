@@ -1,8 +1,5 @@
 import Foundation
 import Combine
-import os.log
-
-private let localizationLogger = Logger(subsystem: "com.jasoncavinder.Helm", category: "localization")
 
 class LocalizationManager: ObservableObject {
     static let shared = LocalizationManager()
@@ -87,16 +84,12 @@ class LocalizationManager: ObservableObject {
                         break
                     }
                 } catch {
-                    localizationLogger.error(
-                        "Failed loading \(file, privacy: .public).json for locale \(locale, privacy: .public): \(error.localizedDescription, privacy: .public)"
-                    )
+                    print("LocalizationManager: Failed to load \(file).json for locale \(locale): \(error)")
                 }
             }
 
             if !loaded {
-                localizationLogger.warning(
-                    "Missing localization file \(file, privacy: .public).json for locale \(locale, privacy: .public)"
-                )
+                print("LocalizationManager: Could not find \(file).json for locale \(locale) in bundle.")
             }
         }
 
@@ -197,9 +190,7 @@ class LocalizationManager: ObservableObject {
             #if DEBUG
             return "⟦\(key)⟧"
             #else
-            localizationLogger.warning(
-                "Missing localization key \(key, privacy: .public) for locale \(currentLocale, privacy: .public)"
-            )
+            print("LocalizationManager: Missing key \(key) for locale \(currentLocale)")
             return key
             #endif
         }

@@ -39,7 +39,6 @@ struct PopoverOverlayCard<Content: View>: View {
 
 struct PopoverAttentionBanner: View {
     @ObservedObject private var core = HelmCore.shared
-    @ObservedObject private var overviewState = HelmCore.shared.overviewState
     @EnvironmentObject private var context: ControlCenterContext
     @Environment(\.colorScheme) private var colorScheme
     let onOpenControlCenter: () -> Void
@@ -48,14 +47,14 @@ struct PopoverAttentionBanner: View {
         if !core.isConnected {
             return "bolt.horizontal.circle.fill"
         }
-        if overviewState.failedTaskCount > 0 {
+        if core.failedTaskCount > 0 {
             return "exclamationmark.octagon.fill"
         }
         return "arrow.up.circle.fill"
     }
 
     private var bannerTint: Color {
-        if !core.isConnected || overviewState.failedTaskCount > 0 {
+        if !core.isConnected || core.failedTaskCount > 0 {
             return colorScheme == .dark
                 ? Color(red: 1.0, green: 120.0 / 255.0, blue: 120.0 / 255.0)
                 : Color(red: 224.0 / 255.0, green: 58.0 / 255.0, blue: 58.0 / 255.0)
@@ -66,14 +65,14 @@ struct PopoverAttentionBanner: View {
     }
 
     private var bannerBackgroundOpacity: Double {
-        if !core.isConnected || overviewState.failedTaskCount > 0 {
+        if !core.isConnected || core.failedTaskCount > 0 {
             return 0.16
         }
         return 0.14
     }
 
     private var bannerBorderOpacity: Double {
-        if !core.isConnected || overviewState.failedTaskCount > 0 {
+        if !core.isConnected || core.failedTaskCount > 0 {
             return 0.38
         }
         return 0.32
@@ -83,17 +82,17 @@ struct PopoverAttentionBanner: View {
         if !core.isConnected {
             return L10n.App.Popover.Banner.disconnectedTitle.localized
         }
-        if overviewState.failedTaskCount > 0 {
-            return L10n.App.Popover.Banner.failedTitle.localized(with: ["count": overviewState.failedTaskCount])
+        if core.failedTaskCount > 0 {
+            return L10n.App.Popover.Banner.failedTitle.localized(with: ["count": core.failedTaskCount])
         }
-        return L10n.App.Popover.Banner.updatesTitle.localized(with: ["count": overviewState.outdatedPackagesCount])
+        return L10n.App.Popover.Banner.updatesTitle.localized(with: ["count": core.outdatedPackages.count])
     }
 
     private var bannerMessage: String {
         if !core.isConnected {
             return L10n.App.Popover.Banner.disconnectedMessage.localized
         }
-        if overviewState.failedTaskCount > 0 {
+        if core.failedTaskCount > 0 {
             return L10n.App.Popover.Banner.failedMessage.localized
         }
         return L10n.App.Popover.Banner.updatesMessage.localized
@@ -115,7 +114,7 @@ struct PopoverAttentionBanner: View {
 
             Spacer(minLength: 10)
 
-            if overviewState.failedTaskCount > 0 {
+            if core.failedTaskCount > 0 {
                 Button(L10n.App.Popover.Banner.review.localized) {
                     context.selectedSection = .tasks
                     context.selectedTaskId = firstFailedTaskId
@@ -126,7 +125,7 @@ struct PopoverAttentionBanner: View {
                 }
                 .buttonStyle(UpdateAllPillButtonStyle())
                 .helmPointer()
-            } else if overviewState.outdatedPackagesCount > 0 {
+            } else if !core.outdatedPackages.isEmpty {
                 Button(L10n.App.Settings.Action.upgradeAll.localized) {
                     context.showUpgradeSheet = true
                 }

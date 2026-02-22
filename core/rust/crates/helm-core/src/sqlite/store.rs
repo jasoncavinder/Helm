@@ -699,7 +699,7 @@ DELETE FROM task_log_records
 WHERE task_id IN (
     SELECT task_id
     FROM task_records
-    WHERE status IN ('completed', 'failed', 'cancelled')
+    WHERE status IN ('completed', 'failed')
       AND created_at_unix < ?1
 )
 ",
@@ -708,7 +708,7 @@ WHERE task_id IN (
             let deleted = transaction.execute(
                 "
 DELETE FROM task_records
-WHERE status IN ('completed', 'failed', 'cancelled')
+WHERE status IN ('completed', 'failed')
   AND created_at_unix < ?1
 ",
                 params![cutoff],
@@ -776,7 +776,7 @@ SELECT
     created_at_unix
 FROM task_log_records
 WHERE task_id = ?1
-ORDER BY created_at_unix DESC, log_id DESC
+ORDER BY created_at_unix ASC, log_id ASC
 LIMIT ?2
 ",
             )?;
@@ -1095,16 +1095,7 @@ fn open_connection(database_path: &Path) -> rusqlite::Result<Connection> {
         fs::create_dir_all(parent)
             .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
     }
-    let connection = Connection::open(database_path)?;
-    connection.execute_batch(
-        "
-PRAGMA foreign_keys = ON;
-PRAGMA journal_mode = WAL;
-PRAGMA synchronous = NORMAL;
-PRAGMA busy_timeout = 5000;
-",
-    )?;
-    Ok(connection)
+    Connection::open(database_path)
 }
 
 fn ensure_migrations_table(connection: &Connection) -> rusqlite::Result<()> {
