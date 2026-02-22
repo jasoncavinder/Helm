@@ -105,6 +105,7 @@ Current checkpoint:
     - branch rulesets now explicitly enforce `main`/`dev`/`docs`/`web` with branch-specific required checks
     - `Policy Gate` now validates PR base/head/scope policy for all protected branches
     - `Docs Checks` and `Web Build` workflows now gate `docs` and `web` branches respectively
+    - blocking ruleset `update` enforcement was removed after protected-ref merge-block diagnostics so normal PR merges can complete
     - CodeQL now runs on `main` push + schedule/manual (non-PR gate) to reduce merge friction while retaining scanning coverage
 - latest stable release on `main`: `v0.17.0`
 - validation gates are green through the stable cut (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke across `v0.17.0-rc.1` through `v0.17.0-rc.5`)
