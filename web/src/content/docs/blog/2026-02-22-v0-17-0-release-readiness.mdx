@@ -1,30 +1,31 @@
 ---
-title: "Toward v0.17.0: Release Readiness and Final Validation"
-description: "What changed through the v0.17.0 RC cycle and what we are validating before the stable cut."
-summary: "A concise update on RC hardening, updater reliability, diagnostics improvements, and the final validation gate for v0.17.0."
+title: "v0.17.x Stable: Current Status at v0.17.2"
+description: "v0.17.0 shipped stable and v0.17.2 is now the current patch release on main."
+summary: "A short recap of what shipped in 0.17.x and where Helm is headed next."
 publishDate: 2026-02-22
 author: Helm Team
 sidebar:
-  label: "v0.17.0 readiness"
+  label: "v0.17.2 status"
 ---
 
-Helm `v0.17.0` is moving from release-candidate hardening toward the stable cut.
+Helm `v0.17.x` has completed release-candidate hardening and shipped stable. The latest release on `main` is `v0.17.2`.
 
-## What landed during the RC cycle
+## What shipped in 0.17.x
 
-- Self-update reliability fixes for Sparkle prerelease semantics and installer launch behavior.
-- Expanded diagnostics coverage across task lifecycle logging, manager detection details, and support export workflows.
-- Inspector and task-surface quality improvements for command/output visibility and troubleshooting flow.
-- Privileged-action authentication support using managed `sudo -A` handling for elevated manager operations.
-- Responsiveness work in Control Center and popover surfaces, including adaptive polling and lazy list rendering.
+- Stable diagnostics/logging delivery: task log viewing, structured support export, service health visibility, and manager detection diagnostics.
+- Onboarding and detection hardening: detection-only first-run flow, immediate presence signals, and version-loading states while probes finish.
+- Manager execution-control improvements: explicit executable-path and install-method selection with persistence and runtime command routing.
+- Manager enablement enforcement: disabled managers are now excluded from task/search/refresh flows and their in-flight tasks are canceled.
+- Control Center and inspector polish: execution-plan presentation scoping, diagnostics usability improvements, and dark-mode list-surface fixes.
 
-## Stable-release gate
+## Release status
 
-Before the stable `v0.17.0` release, we are validating:
+- `v0.17.0`: stable cut from the full RC lineage (`rc.1` through `rc.5`).
+- `v0.17.1`: stable patch correcting artifact-release lineage after the failed `v0.17.0` build attempt.
+- `v0.17.2`: current stable patch with manager-selection execution routing, onboarding fixes, diagnostics UX improvements, and release-flow guardrail follow-up.
 
-- Core Rust and macOS test suites.
-- Localization integrity and length safety.
-- Updater feed behavior and direct-channel update checks.
-- Release-process artifacts and website/changelog synchronization.
+## What’s next
 
-If you are testing `v0.17.0-rc.5`, please file any reproducible issue details in GitHub with environment, expected behavior, and observed behavior.
+Current planning focus is `0.18.x` local security groundwork while monitoring post-release feedback from `v0.17.2`.
+
+If you hit reproducible issues, please file details in GitHub with environment, expected behavior, and observed behavior.
