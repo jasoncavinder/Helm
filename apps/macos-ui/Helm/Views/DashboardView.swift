@@ -110,7 +110,16 @@ struct RedesignPopoverView: View {
                 }
             }
         }
-        .sheet(isPresented: $context.showUpgradeSheet) {
+        .sheet(
+            isPresented: Binding(
+                get: { context.showUpgradeSheet && context.upgradeSheetHost == .popover },
+                set: { isPresented in
+                    if !isPresented {
+                        context.dismissUpgradeSheet()
+                    }
+                }
+            )
+        ) {
             RedesignUpgradeSheetView()
                 .environmentObject(context)
         }

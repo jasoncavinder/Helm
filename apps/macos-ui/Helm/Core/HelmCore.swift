@@ -355,6 +355,9 @@ struct ManagerStatus: Codable {
     let version: String?
     let executablePath: String?
     let executablePaths: [String]?
+    let defaultExecutablePath: String?
+    let selectedExecutablePath: String?
+    let selectedInstallMethod: String?
     let enabled: Bool
     let isImplemented: Bool
     let isOptional: Bool
@@ -803,6 +806,30 @@ final class HelmCore: ObservableObject {
         }
     }
 
+    func triggerDetection() {
+        logger.info("triggerDetection called")
+        self.lastTaskSnapshotRefreshAt = .distantPast
+        self.lastFullSnapshotRefreshAt = .distantPast
+
+        service()?.triggerDetection { success in
+            if !success {
+                logger.error("triggerDetection failed")
+                self.recordLastError(
+                    source: "core",
+                    action: "triggerDetection",
+                    taskType: "detection"
+                )
+                DispatchQueue.main.async {
+                    self.completeOnboardingDetectionProgress()
+                }
+            } else {
+                DispatchQueue.main.async {
+                    self.triggerFullSnapshotRefresh()
+                }
+            }
+        }
+    }
+
     func setInteractiveSurfaceVisibility(
         popoverVisible: Bool,
         controlCenterVisible: Bool
@@ -837,7 +864,7 @@ final class HelmCore: ObservableObject {
         onboardingDetectionStartedAt = Date()
         onboardingDetectionInProgress = !enabledImplementedManagers.isEmpty
 
-        triggerRefresh()
+        triggerDetection()
     }
 
     func normalizedManagerName(_ raw: String) -> String {

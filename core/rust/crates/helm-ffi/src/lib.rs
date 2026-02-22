@@ -18,7 +18,7 @@
 //!   accessing the engine. Poisoned-lock recovery is implemented via
 //!   [`lock_or_recover`] to prevent lock-poison panics at the FFI boundary.
 //!
-//! ## FFI Exports (30 functions)
+//! ## FFI Exports (31 functions)
 //!
 //! | Function | Category |
 //! |----------|----------|
@@ -29,6 +29,7 @@
 //! | `helm_get_task_output` | Task management |
 //! | `helm_list_task_logs` | Task management |
 //! | `helm_trigger_refresh` | Task management |
+//! | `helm_trigger_detection` | Task management |
 //! | `helm_cancel_task` | Task management |
 //! | `helm_search_local` | Search |
 //! | `helm_trigger_remote_search` | Search |
@@ -124,6 +125,7 @@ use helm_core::adapters::{
     UpgradeRequest,
 };
 use helm_core::execution::tokio_process::TokioProcessExecutor;
+use helm_core::execution::{clear_manager_selected_executables, set_manager_selected_executable};
 use helm_core::models::{
     Capability, DetectionInfo, HomebrewKegPolicy, ManagerAuthority, ManagerId, OutdatedPackage,
     PackageRef, PinKind, PinRecord, SearchQuery, TaskId, TaskLogLevel, TaskStatus, TaskType,
@@ -131,7 +133,8 @@ use helm_core::models::{
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
 use helm_core::orchestration::{AdapterTaskTerminalState, CancellationMode};
 use helm_core::persistence::{
-    DetectionStore, MigrationStore, PackageStore, PinStore, SearchCacheStore, TaskStore,
+    DetectionStore, ManagerPreference, MigrationStore, PackageStore, PinStore, SearchCacheStore,
+    TaskStore,
 };
 use helm_core::sqlite::SqliteStore;
 use lazy_static::lazy_static;
@@ -274,6 +277,9 @@ struct FfiManagerStatus {
     version: Option<String>,
     executable_path: Option<String>,
     executable_paths: Vec<String>,
+    default_executable_path: Option<String>,
+    selected_executable_path: Option<String>,
+    selected_install_method: Option<String>,
     enabled: bool,
     is_implemented: bool,
     is_optional: bool,
@@ -284,13 +290,14 @@ struct FfiManagerStatus {
     supports_package_upgrade: bool,
 }
 
-static EXECUTABLE_DISCOVERY_CACHE: OnceLock<Mutex<std::collections::HashMap<ManagerId, Vec<String>>>> =
-    OnceLock::new();
+static EXECUTABLE_DISCOVERY_CACHE: OnceLock<
+    Mutex<std::collections::HashMap<ManagerId, Vec<String>>>,
+> = OnceLock::new();
 
 fn manager_executable_candidates(id: ManagerId) -> &'static [&'static str] {
     match id {
         ManagerId::HomebrewFormula | ManagerId::HomebrewCask => {
-            &["/opt/homebrew/bin/brew", "/usr/local/bin/brew", "brew"]
+            &["brew", "/opt/homebrew/bin/brew", "/usr/local/bin/brew"]
         }
         ManagerId::Asdf => &["asdf"],
         ManagerId::Mise => &["mise"],
@@ -298,14 +305,14 @@ fn manager_executable_candidates(id: ManagerId) -> &'static [&'static str] {
         ManagerId::Npm => &["npm"],
         ManagerId::Pnpm => &["pnpm"],
         ManagerId::Yarn => &["yarn"],
-        ManagerId::Pip => &["pip3", "pip", "python3"],
+        ManagerId::Pip => &["python3", "pip3", "pip"],
         ManagerId::Pipx => &["pipx"],
         ManagerId::Poetry => &["poetry"],
         ManagerId::RubyGems => &["gem"],
         ManagerId::Bundler => &["bundle"],
         ManagerId::Cargo => &["cargo"],
         ManagerId::CargoBinstall => &["cargo-binstall"],
-        ManagerId::MacPorts => &["/opt/local/bin/port", "port"],
+        ManagerId::MacPorts => &["port", "/opt/local/bin/port"],
         ManagerId::NixDarwin => &["darwin-rebuild", "nix"],
         ManagerId::Mas => &["mas"],
         ManagerId::DockerDesktop => &["docker"],
@@ -464,8 +471,8 @@ fn discover_executable_paths(id: ManagerId, candidates: &[&str]) -> Vec<String> 
 }
 
 fn cached_discovered_executable_paths(id: ManagerId, candidates: &[&str]) -> Vec<String> {
-    let cache = EXECUTABLE_DISCOVERY_CACHE
-        .get_or_init(|| Mutex::new(std::collections::HashMap::new()));
+    let cache =
+        EXECUTABLE_DISCOVERY_CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()));
 
     if let Ok(guard) = cache.lock()
         && let Some(cached) = guard.get(&id)
@@ -482,7 +489,10 @@ fn cached_discovered_executable_paths(id: ManagerId, candidates: &[&str]) -> Vec
     discovered
 }
 
-fn collect_manager_executable_paths(id: ManagerId, active_path: Option<&std::path::Path>) -> Vec<String> {
+fn collect_manager_executable_paths(
+    id: ManagerId,
+    active_path: Option<&std::path::Path>,
+) -> Vec<String> {
     let mut resolved = Vec::new();
     let mut seen = std::collections::HashSet::new();
 
@@ -502,10 +512,96 @@ fn collect_manager_executable_paths(id: ManagerId, active_path: Option<&std::pat
     resolved
 }
 
+fn default_manager_executable_path(id: ManagerId, executable_paths: &[String]) -> Option<String> {
+    if let Some(first) = executable_paths.first() {
+        return Some(first.clone());
+    }
+    for discovered in cached_discovered_executable_paths(id, manager_executable_candidates(id)) {
+        return Some(discovered);
+    }
+    None
+}
+
+fn manager_install_method_candidates(id: ManagerId) -> &'static [&'static str] {
+    match id {
+        ManagerId::Mise => &["homebrew", "scriptInstaller", "macports", "cargoInstall"],
+        ManagerId::Asdf => &["scriptInstaller", "homebrew"],
+        ManagerId::Rustup => &["rustupInstaller", "homebrew"],
+        ManagerId::HomebrewFormula => &["homebrew", "scriptInstaller"],
+        ManagerId::SoftwareUpdate => &["softwareUpdate"],
+        ManagerId::MacPorts => &["macports", "officialInstaller"],
+        ManagerId::NixDarwin => &["scriptInstaller", "homebrew"],
+        ManagerId::Npm => &["mise", "asdf", "homebrew", "officialInstaller"],
+        ManagerId::Pnpm => &["corepack", "homebrew", "npm", "scriptInstaller"],
+        ManagerId::Yarn => &["corepack", "homebrew", "npm", "scriptInstaller"],
+        ManagerId::Poetry => &["pipx", "homebrew", "pip", "officialInstaller"],
+        ManagerId::RubyGems => &["systemProvided", "homebrew", "asdf", "mise"],
+        ManagerId::Bundler => &["gem", "systemProvided", "homebrew", "asdf", "mise"],
+        ManagerId::Pip => &["systemProvided", "homebrew", "asdf", "mise"],
+        ManagerId::Pipx => &["homebrew", "pip"],
+        ManagerId::Cargo => &["rustupInstaller", "homebrew"],
+        ManagerId::CargoBinstall => &["scriptInstaller", "cargoInstall", "homebrew"],
+        ManagerId::Mas => &["homebrew", "macports", "appStore", "officialInstaller"],
+        ManagerId::Sparkle => &["notManageable"],
+        ManagerId::Setapp => &["setapp", "notManageable"],
+        ManagerId::HomebrewCask => &["homebrew"],
+        ManagerId::DockerDesktop => &["officialInstaller", "homebrew", "setapp"],
+        ManagerId::Podman => &["officialInstaller", "homebrew", "macports"],
+        ManagerId::Colima => &["homebrew", "macports", "mise"],
+        ManagerId::ParallelsDesktop => &["officialInstaller", "setapp", "notManageable"],
+        ManagerId::XcodeCommandLineTools => &["xcodeSelect", "appStore"],
+        ManagerId::Rosetta2 => &["softwareUpdate"],
+        ManagerId::FirmwareUpdates => &["systemProvided"],
+    }
+}
+
+fn normalize_install_method(id: ManagerId, method: Option<String>) -> Option<String> {
+    let Some(method) = normalize_nonempty(method) else {
+        return None;
+    };
+    if manager_install_method_candidates(id)
+        .iter()
+        .any(|candidate| *candidate == method)
+    {
+        return Some(method);
+    }
+    None
+}
+
+fn resolve_selected_executable_path(
+    preferred: Option<String>,
+    default_path: Option<String>,
+) -> Option<String> {
+    if let Some(preferred) = preferred
+        && std::path::Path::new(preferred.as_str()).is_file()
+    {
+        return Some(preferred);
+    }
+    default_path
+}
+
+fn sync_manager_executable_overrides(
+    detection_map: &std::collections::HashMap<ManagerId, DetectionInfo>,
+    pref_map: &std::collections::HashMap<ManagerId, ManagerPreference>,
+) {
+    clear_manager_selected_executables();
+    for manager in ManagerId::ALL {
+        let detection = detection_map.get(&manager);
+        let active_path = detection.and_then(|d| d.executable_path.as_deref());
+        let executable_paths = collect_manager_executable_paths(manager, active_path);
+        let default_path = default_manager_executable_path(manager, &executable_paths);
+        let preferred_path = pref_map
+            .get(&manager)
+            .and_then(|pref| normalize_nonempty(pref.selected_executable_path.clone()));
+        let selected = resolve_selected_executable_path(preferred_path, default_path);
+        set_manager_selected_executable(manager, selected.map(std::path::PathBuf::from));
+    }
+}
+
 fn build_manager_statuses(
     runtime: Option<&AdapterRuntime>,
     detection_map: &std::collections::HashMap<ManagerId, DetectionInfo>,
-    pref_map: &std::collections::HashMap<ManagerId, bool>,
+    pref_map: &std::collections::HashMap<ManagerId, ManagerPreference>,
 ) -> Vec<FfiManagerStatus> {
     ManagerId::ALL
         .iter()
@@ -513,8 +609,14 @@ fn build_manager_statuses(
             let detection = detection_map.get(&id);
             let enabled = pref_map
                 .get(&id)
-                .copied()
+                .map(|pref| pref.enabled)
                 .unwrap_or_else(|| default_enabled_for_manager(id));
+            let selected_install_method = normalize_install_method(
+                id,
+                pref_map
+                    .get(&id)
+                    .and_then(|pref| pref.selected_install_method.clone()),
+            );
             let is_implemented = is_implemented_manager(id);
             let is_optional = is_optional_manager(id);
             let is_detection_only = is_detection_only_manager(id);
@@ -527,10 +629,20 @@ fn build_manager_statuses(
                 )
             });
             let executable_paths = if detected {
-                collect_manager_executable_paths(id, detection.and_then(|d| d.executable_path.as_deref()))
+                collect_manager_executable_paths(
+                    id,
+                    detection.and_then(|d| d.executable_path.as_deref()),
+                )
             } else {
                 Vec::new()
             };
+            let default_executable_path = default_manager_executable_path(id, &executable_paths);
+            let selected_executable_path = resolve_selected_executable_path(
+                pref_map
+                    .get(&id)
+                    .and_then(|pref| normalize_nonempty(pref.selected_executable_path.clone())),
+                default_executable_path.clone(),
+            );
             let version = detection.and_then(|d| normalize_nonempty(d.version.clone()));
             let supports_remote_search = runtime
                 .map(|runtime| can_submit_remote_search(runtime, id))
@@ -555,6 +667,9 @@ fn build_manager_statuses(
                 version,
                 executable_path,
                 executable_paths,
+                default_executable_path,
+                selected_executable_path,
+                selected_install_method,
                 enabled,
                 is_implemented,
                 is_optional,
@@ -617,7 +732,8 @@ fn build_visible_tasks(
     labels: &std::collections::HashMap<u64, TaskLabel>,
 ) -> Vec<helm_core::models::TaskRecord> {
     let mut visible = Vec::with_capacity(tasks.len());
-    let mut seen_inflight: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut seen_inflight: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
     let mut terminal_count = 0usize;
 
     for task in tasks {
@@ -695,6 +811,84 @@ fn find_matching_inflight_task(
 
         if args_match { Some(task.id) } else { None }
     })
+}
+
+fn cancel_inflight_tasks_for_manager(
+    store: &SqliteStore,
+    runtime: &AdapterRuntime,
+    rt_handle: &tokio::runtime::Handle,
+    manager: ManagerId,
+) {
+    let task_ids: Vec<TaskId> = store
+        .list_recent_tasks(TASK_RECENT_FETCH_LIMIT)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|task| task.manager == manager && is_inflight_status(task.status))
+        .map(|task| task.id)
+        .collect();
+
+    if task_ids.is_empty() {
+        return;
+    }
+
+    rt_handle.block_on(async {
+        for task_id in task_ids.iter().copied() {
+            if let Err(error) = runtime.cancel(task_id, CancellationMode::Immediate).await {
+                eprintln!(
+                    "set_manager_enabled: failed to cancel task {} for {}: {}",
+                    task_id.0,
+                    manager.as_str(),
+                    error
+                );
+            }
+        }
+    });
+
+    let mut labels = lock_or_recover(&TASK_LABELS, "task_labels");
+    for task_id in task_ids {
+        labels.remove(&task_id.0);
+    }
+}
+
+fn manager_enabled_map(store: &SqliteStore) -> std::collections::HashMap<ManagerId, bool> {
+    store
+        .list_manager_preferences()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|pref| (pref.manager, pref.enabled))
+        .collect()
+}
+
+fn manager_is_enabled(
+    enabled_by_manager: &std::collections::HashMap<ManagerId, bool>,
+    manager: ManagerId,
+) -> bool {
+    enabled_by_manager.get(&manager).copied().unwrap_or(true)
+}
+
+fn preseed_presence_detections(
+    store: &SqliteStore,
+    runtime: &AdapterRuntime,
+    enabled_by_manager: &std::collections::HashMap<ManagerId, bool>,
+) {
+    for manager in ManagerId::ALL {
+        if !manager_is_enabled(enabled_by_manager, manager) {
+            continue;
+        }
+        if !is_implemented_manager(manager) || !runtime.has_manager(manager) {
+            continue;
+        }
+
+        let discovered_paths = collect_manager_executable_paths(manager, None);
+        if let Some(executable_path) = discovered_paths.first().map(std::path::PathBuf::from) {
+            let info = DetectionInfo {
+                installed: true,
+                executable_path: Some(executable_path),
+                version: None,
+            };
+            let _ = store.upsert_detection(manager, &info);
+        }
+    }
 }
 
 fn search_label_key_for_query(query: &str) -> &'static str {
@@ -1223,6 +1417,14 @@ fn homebrew_dependency_available(store: &SqliteStore) -> bool {
     probe_homebrew_version(detected_path.as_deref()).is_some()
 }
 
+fn manager_selected_install_method(store: &SqliteStore, manager: ManagerId) -> Option<String> {
+    let preferences = store.list_manager_preferences().ok()?;
+    let preference = preferences
+        .into_iter()
+        .find(|pref| pref.manager == manager)?;
+    normalize_install_method(manager, preference.selected_install_method)
+}
+
 /// Initialize the Helm core engine with the given SQLite database path.
 ///
 /// # Safety
@@ -1385,6 +1587,19 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
 
     let rt_handle = rt.handle().clone();
 
+    let detection_map: std::collections::HashMap<_, _> = store
+        .list_detections()
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+    let pref_map: std::collections::HashMap<_, _> = store
+        .list_manager_preferences()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|pref| (pref.manager, pref))
+        .collect();
+    sync_manager_executable_overrides(&detection_map, &pref_map);
+
     let state = HelmState {
         store,
         runtime,
@@ -1405,13 +1620,18 @@ pub extern "C" fn helm_list_installed_packages() -> *mut c_char {
         None => return std::ptr::null_mut(),
     };
 
+    let enabled_by_manager = manager_enabled_map(state.store.as_ref());
+
     let packages = match state.store.list_installed() {
         Ok(pkgs) => pkgs,
         Err(e) => {
             eprintln!("Failed to list installed packages: {}", e);
             return std::ptr::null_mut();
         }
-    };
+    }
+    .into_iter()
+    .filter(|package| manager_is_enabled(&enabled_by_manager, package.package.manager))
+    .collect::<Vec<_>>();
 
     let json = match serde_json::to_string(&packages) {
         Ok(j) => j,
@@ -1432,13 +1652,18 @@ pub extern "C" fn helm_list_outdated_packages() -> *mut c_char {
         None => return std::ptr::null_mut(),
     };
 
+    let enabled_by_manager = manager_enabled_map(state.store.as_ref());
+
     let packages = match state.store.list_outdated() {
         Ok(pkgs) => pkgs,
         Err(e) => {
             eprintln!("Failed to list outdated packages: {}", e);
             return std::ptr::null_mut();
         }
-    };
+    }
+    .into_iter()
+    .filter(|package| manager_is_enabled(&enabled_by_manager, package.package.manager))
+    .collect::<Vec<_>>();
 
     let json = match serde_json::to_string(&packages) {
         Ok(j) => j,
@@ -1462,6 +1687,8 @@ pub extern "C" fn helm_list_tasks() -> *mut c_char {
     // Auto-prune terminal tasks older than 5 minutes.
     let _ = state.store.prune_completed_tasks(TASK_PRUNE_MAX_AGE_SECS);
 
+    let enabled_by_manager = manager_enabled_map(state.store.as_ref());
+
     // Fetch a wider snapshot so long-running queued/running tasks do not disappear
     // behind a tight recent-task limit.
     let raw_tasks = match state.store.list_recent_tasks(TASK_RECENT_FETCH_LIMIT) {
@@ -1470,7 +1697,10 @@ pub extern "C" fn helm_list_tasks() -> *mut c_char {
             eprintln!("Failed to list tasks: {}", e);
             return std::ptr::null_mut();
         }
-    };
+    }
+    .into_iter()
+    .filter(|task| manager_is_enabled(&enabled_by_manager, task.manager))
+    .collect::<Vec<_>>();
     #[derive(serde::Serialize)]
     struct FfiTaskRecord {
         id: helm_core::models::TaskId,
@@ -1653,13 +1883,15 @@ pub extern "C" fn helm_trigger_refresh() -> bool {
 
     let runtime = state.runtime.clone();
     let store = state.store.clone();
+    let enabled_by_manager = manager_enabled_map(store.as_ref());
 
     let has_refresh_or_detection = store
         .list_recent_tasks(TASK_RECENT_FETCH_LIMIT)
         .ok()
         .map(|tasks| {
             tasks.into_iter().any(|task| {
-                is_inflight_status(task.status)
+                manager_is_enabled(&enabled_by_manager, task.manager)
+                    && is_inflight_status(task.status)
                     && is_recent_inflight_task(&task)
                     && matches!(task.task_type, TaskType::Refresh | TaskType::Detection)
             })
@@ -1674,6 +1906,49 @@ pub extern "C" fn helm_trigger_refresh() -> bool {
         for (manager, result) in results {
             if let Err(e) = result {
                 eprintln!("Refresh failed for {manager:?}: {e}");
+            }
+        }
+    });
+
+    true
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_trigger_detection() -> bool {
+    clear_last_error_key();
+    let guard = lock_or_recover(&STATE, "state");
+    let state = match guard.as_ref() {
+        Some(s) => s,
+        None => return return_error_bool("service.error.internal"),
+    };
+
+    let runtime = state.runtime.clone();
+    let store = state.store.clone();
+    let enabled_by_manager = manager_enabled_map(store.as_ref());
+
+    let has_refresh_or_detection = store
+        .list_recent_tasks(TASK_RECENT_FETCH_LIMIT)
+        .ok()
+        .map(|tasks| {
+            tasks.into_iter().any(|task| {
+                manager_is_enabled(&enabled_by_manager, task.manager)
+                    && is_inflight_status(task.status)
+                    && is_recent_inflight_task(&task)
+                    && matches!(task.task_type, TaskType::Refresh | TaskType::Detection)
+            })
+        })
+        .unwrap_or(false);
+    if has_refresh_or_detection {
+        return true;
+    }
+
+    preseed_presence_detections(store.as_ref(), runtime.as_ref(), &enabled_by_manager);
+
+    state._tokio_rt.spawn(async move {
+        let results = runtime.detect_all_ordered().await;
+        for (manager, result) in results {
+            if let Err(e) = result {
+                eprintln!("Detection failed for {manager:?}: {e}");
             }
         }
     });
@@ -1704,13 +1979,21 @@ pub unsafe extern "C" fn helm_search_local(query: *const c_char) -> *mut c_char 
         None => return std::ptr::null_mut(),
     };
 
+    let enabled_by_manager = manager_enabled_map(state.store.as_ref());
+
     let results = match state.store.query_local(query_str, 500) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("Failed to query local search cache: {}", e);
             return std::ptr::null_mut();
         }
-    };
+    }
+    .into_iter()
+    .filter(|result| {
+        manager_is_enabled(&enabled_by_manager, result.result.package.manager)
+            && manager_is_enabled(&enabled_by_manager, result.source_manager)
+    })
+    .collect::<Vec<_>>();
 
     #[derive(serde::Serialize)]
     struct FfiSearchResult {
@@ -1899,8 +2182,13 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
     let detections = state.store.list_detections().unwrap_or_default();
     let preferences = state.store.list_manager_preferences().unwrap_or_default();
 
-    let detection_map: std::collections::HashMap<_, _> = detections.into_iter().collect();
-    let pref_map: std::collections::HashMap<_, _> = preferences.into_iter().collect();
+    let mut detection_map: std::collections::HashMap<_, _> = detections.into_iter().collect();
+    let pref_map: std::collections::HashMap<_, _> = preferences
+        .into_iter()
+        .map(|pref| (pref.manager, pref))
+        .collect();
+
+    sync_manager_executable_overrides(&detection_map, &pref_map);
 
     let mut statuses =
         build_manager_statuses(Some(state.runtime.as_ref()), &detection_map, &pref_map);
@@ -1936,7 +2224,10 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
         let _ = state
             .store
             .upsert_detection(ManagerId::HomebrewFormula, &refreshed);
+        detection_map.insert(ManagerId::HomebrewFormula, refreshed);
     }
+
+    sync_manager_executable_overrides(&detection_map, &pref_map);
 
     let json = match serde_json::to_string(&statuses) {
         Ok(j) => j,
@@ -2997,6 +3288,12 @@ pub unsafe extern "C" fn helm_upgrade_package(
         )
     };
 
+    if !runtime.is_manager_enabled(target_manager)
+        || !runtime.supports_capability(target_manager, Capability::Upgrade)
+    {
+        return return_error_i64("service.error.unsupported_capability");
+    }
+
     if let Some(existing) = find_matching_inflight_task(
         store.as_ref(),
         target_manager,
@@ -3482,6 +3779,160 @@ pub unsafe extern "C" fn helm_set_manager_enabled(
         Err(_) => return return_error_bool("service.error.invalid_input"),
     };
 
+    let (store, runtime, rt_handle) = {
+        let guard = lock_or_recover(&STATE, "state");
+        let state = match guard.as_ref() {
+            Some(s) => s,
+            None => return return_error_bool("service.error.internal"),
+        };
+        (
+            state.store.clone(),
+            state.runtime.clone(),
+            state.rt_handle.clone(),
+        )
+    };
+
+    if store
+        .set_manager_enabled(manager, enabled)
+        .map_err(|_| set_last_error_key("service.error.storage_failure"))
+        .is_err()
+    {
+        return false;
+    }
+
+    if !enabled {
+        cancel_inflight_tasks_for_manager(store.as_ref(), runtime.as_ref(), &rt_handle, manager);
+    }
+
+    true
+}
+
+/// Set (or clear) the selected executable path for a manager.
+///
+/// # Safety
+///
+/// `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+/// `selected_path` may be null (to clear override).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_set_manager_selected_executable_path(
+    manager_id: *const c_char,
+    selected_path: *const c_char,
+) -> bool {
+    clear_last_error_key();
+    if manager_id.is_null() {
+        return return_error_bool("service.error.invalid_input");
+    }
+
+    let c_str = unsafe { CStr::from_ptr(manager_id) };
+    let id_str = match c_str.to_str() {
+        Ok(s) => s,
+        Err(_) => return return_error_bool("service.error.invalid_input"),
+    };
+
+    let manager = match id_str.parse::<ManagerId>() {
+        Ok(m) => m,
+        Err(_) => return return_error_bool("service.error.invalid_input"),
+    };
+
+    let selected_path = if selected_path.is_null() {
+        None
+    } else {
+        let selected_cstr = unsafe { CStr::from_ptr(selected_path) };
+        let selected = match selected_cstr.to_str() {
+            Ok(s) => s.trim(),
+            Err(_) => return return_error_bool("service.error.invalid_input"),
+        };
+        if selected.is_empty() {
+            None
+        } else {
+            if !std::path::Path::new(selected).is_absolute() {
+                return return_error_bool("service.error.invalid_input");
+            }
+            if !std::path::Path::new(selected).is_file() {
+                return return_error_bool("service.error.invalid_input");
+            }
+            Some(selected.to_string())
+        }
+    };
+
+    let guard = lock_or_recover(&STATE, "state");
+    let state = match guard.as_ref() {
+        Some(s) => s,
+        None => return return_error_bool("service.error.internal"),
+    };
+
+    if let Err(_error) = state
+        .store
+        .set_manager_selected_executable_path(manager, selected_path.as_deref())
+    {
+        return return_error_bool("service.error.storage_failure");
+    }
+
+    let detection_map: std::collections::HashMap<_, _> = state
+        .store
+        .list_detections()
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+    let pref_map: std::collections::HashMap<_, _> = state
+        .store
+        .list_manager_preferences()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|pref| (pref.manager, pref))
+        .collect();
+    sync_manager_executable_overrides(&detection_map, &pref_map);
+
+    true
+}
+
+/// Set (or clear) the selected install method for a manager.
+///
+/// # Safety
+///
+/// `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+/// `install_method` may be null (to clear override).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_set_manager_install_method(
+    manager_id: *const c_char,
+    install_method: *const c_char,
+) -> bool {
+    clear_last_error_key();
+    if manager_id.is_null() {
+        return return_error_bool("service.error.invalid_input");
+    }
+
+    let c_str = unsafe { CStr::from_ptr(manager_id) };
+    let id_str = match c_str.to_str() {
+        Ok(s) => s,
+        Err(_) => return return_error_bool("service.error.invalid_input"),
+    };
+
+    let manager = match id_str.parse::<ManagerId>() {
+        Ok(m) => m,
+        Err(_) => return return_error_bool("service.error.invalid_input"),
+    };
+
+    let install_method = if install_method.is_null() {
+        None
+    } else {
+        let method_cstr = unsafe { CStr::from_ptr(install_method) };
+        let method = match method_cstr.to_str() {
+            Ok(s) => s.trim(),
+            Err(_) => return return_error_bool("service.error.invalid_input"),
+        };
+        if method.is_empty() {
+            None
+        } else if manager_install_method_candidates(manager)
+            .iter()
+            .any(|candidate| *candidate == method)
+        {
+            Some(method.to_string())
+        } else {
+            return return_error_bool("service.error.invalid_input");
+        }
+    };
+
     let guard = lock_or_recover(&STATE, "state");
     let state = match guard.as_ref() {
         Some(s) => s,
@@ -3490,7 +3941,7 @@ pub unsafe extern "C" fn helm_set_manager_enabled(
 
     state
         .store
-        .set_manager_enabled(manager, enabled)
+        .set_manager_selected_install_method(manager, install_method.as_deref())
         .map_err(|_| set_last_error_key("service.error.storage_failure"))
         .is_ok()
 }
@@ -3515,11 +3966,9 @@ pub unsafe extern "C" fn helm_install_manager(manager_id: *const c_char) -> i64 
         Err(_) => return return_error_i64("service.error.invalid_input"),
     };
 
-    // Map manager IDs to the formula name to install via Homebrew
-    let formula_name = match id_str {
-        "mise" => "mise",
-        "mas" => "mas",
-        _ => return return_error_i64("service.error.unsupported_capability"),
+    let manager = match id_str.parse::<ManagerId>() {
+        Ok(manager) => manager,
+        Err(_) => return return_error_i64("service.error.invalid_input"),
     };
 
     let (store, runtime, rt_handle) = {
@@ -3533,6 +3982,14 @@ pub unsafe extern "C" fn helm_install_manager(manager_id: *const c_char) -> i64 
             state.runtime.clone(),
             state.rt_handle.clone(),
         )
+    };
+
+    let selected_method = manager_selected_install_method(store.as_ref(), manager);
+
+    let formula_name = match (manager, selected_method.as_deref()) {
+        (ManagerId::Mise, Some("homebrew")) | (ManagerId::Mise, None) => "mise",
+        (ManagerId::Mas, Some("homebrew")) | (ManagerId::Mas, None) => "mas",
+        _ => return return_error_i64("service.error.unsupported_capability"),
     };
 
     // `mise` and `mas` manager installation flows run via Homebrew formula install.
@@ -3599,93 +4056,9 @@ pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
         Err(_) => return return_error_i64("service.error.invalid_input"),
     };
 
-    let (target_manager, request, label_key, label_args): (
-        ManagerId,
-        AdapterRequest,
-        &str,
-        Vec<(&str, String)>,
-    ) = match id_str {
-        "homebrew_formula" => (
-            ManagerId::HomebrewFormula,
-            AdapterRequest::Upgrade(UpgradeRequest {
-                package: Some(PackageRef {
-                    manager: ManagerId::HomebrewFormula,
-                    name: "__self__".to_string(),
-                }),
-            }),
-            "service.task.label.update.homebrew_self",
-            Vec::new(),
-        ),
-        "mise" => {
-            let (target_name, label_key) = {
-                let guard = lock_or_recover(&STATE, "state");
-                let state = match guard.as_ref() {
-                    Some(s) => s,
-                    None => return return_error_i64("service.error.internal"),
-                };
-                let policy = effective_homebrew_keg_policy(&state.store, "mise");
-                let cleanup_old_kegs = policy == HomebrewKegPolicy::Cleanup;
-                let target_name = encode_homebrew_upgrade_target("mise", cleanup_old_kegs);
-                let label_key = if cleanup_old_kegs {
-                    "service.task.label.update.homebrew_formula_cleanup"
-                } else {
-                    "service.task.label.update.homebrew_formula"
-                };
-                (target_name, label_key)
-            };
-            (
-                ManagerId::HomebrewFormula,
-                AdapterRequest::Upgrade(UpgradeRequest {
-                    package: Some(PackageRef {
-                        manager: ManagerId::HomebrewFormula,
-                        name: target_name,
-                    }),
-                }),
-                label_key,
-                vec![("package", "mise".to_string())],
-            )
-        }
-        "mas" => {
-            let (target_name, label_key) = {
-                let guard = lock_or_recover(&STATE, "state");
-                let state = match guard.as_ref() {
-                    Some(s) => s,
-                    None => return return_error_i64("service.error.internal"),
-                };
-                let policy = effective_homebrew_keg_policy(&state.store, "mas");
-                let cleanup_old_kegs = policy == HomebrewKegPolicy::Cleanup;
-                let target_name = encode_homebrew_upgrade_target("mas", cleanup_old_kegs);
-                let label_key = if cleanup_old_kegs {
-                    "service.task.label.update.homebrew_formula_cleanup"
-                } else {
-                    "service.task.label.update.homebrew_formula"
-                };
-                (target_name, label_key)
-            };
-            (
-                ManagerId::HomebrewFormula,
-                AdapterRequest::Upgrade(UpgradeRequest {
-                    package: Some(PackageRef {
-                        manager: ManagerId::HomebrewFormula,
-                        name: target_name,
-                    }),
-                }),
-                label_key,
-                vec![("package", "mas".to_string())],
-            )
-        }
-        "rustup" => (
-            ManagerId::Rustup,
-            AdapterRequest::Upgrade(UpgradeRequest {
-                package: Some(PackageRef {
-                    manager: ManagerId::Rustup,
-                    name: "__self__".to_string(),
-                }),
-            }),
-            "service.task.label.update.rustup_self",
-            Vec::new(),
-        ),
-        _ => return return_error_i64("service.error.unsupported_capability"),
+    let manager = match id_str.parse::<ManagerId>() {
+        Ok(manager) => manager,
+        Err(_) => return return_error_i64("service.error.invalid_input"),
     };
 
     let (store, runtime, rt_handle) = {
@@ -3699,6 +4072,101 @@ pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
             state.runtime.clone(),
             state.rt_handle.clone(),
         )
+    };
+
+    let selected_method = manager_selected_install_method(store.as_ref(), manager);
+    let homebrew_upgrade_target = |package_name: &str| {
+        let policy = effective_homebrew_keg_policy(store.as_ref(), package_name);
+        let cleanup_old_kegs = policy == HomebrewKegPolicy::Cleanup;
+        let target_name = encode_homebrew_upgrade_target(package_name, cleanup_old_kegs);
+        let label_key = if cleanup_old_kegs {
+            "service.task.label.update.homebrew_formula_cleanup"
+        } else {
+            "service.task.label.update.homebrew_formula"
+        };
+        (target_name, label_key)
+    };
+
+    let (target_manager, request, label_key, label_args): (
+        ManagerId,
+        AdapterRequest,
+        &str,
+        Vec<(&str, String)>,
+    ) = match manager {
+        ManagerId::HomebrewFormula => (
+            ManagerId::HomebrewFormula,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::HomebrewFormula,
+                    name: "__self__".to_string(),
+                }),
+            }),
+            "service.task.label.update.homebrew_self",
+            Vec::new(),
+        ),
+        ManagerId::Mise => match selected_method.as_deref() {
+            Some("homebrew") | None => {
+                let (target_name, label_key) = homebrew_upgrade_target("mise");
+                (
+                    ManagerId::HomebrewFormula,
+                    AdapterRequest::Upgrade(UpgradeRequest {
+                        package: Some(PackageRef {
+                            manager: ManagerId::HomebrewFormula,
+                            name: target_name,
+                        }),
+                    }),
+                    label_key,
+                    vec![("package", "mise".to_string())],
+                )
+            }
+            _ => return return_error_i64("service.error.unsupported_capability"),
+        },
+        ManagerId::Mas => match selected_method.as_deref() {
+            Some("homebrew") | None => {
+                let (target_name, label_key) = homebrew_upgrade_target("mas");
+                (
+                    ManagerId::HomebrewFormula,
+                    AdapterRequest::Upgrade(UpgradeRequest {
+                        package: Some(PackageRef {
+                            manager: ManagerId::HomebrewFormula,
+                            name: target_name,
+                        }),
+                    }),
+                    label_key,
+                    vec![("package", "mas".to_string())],
+                )
+            }
+            _ => return return_error_i64("service.error.unsupported_capability"),
+        },
+        ManagerId::Rustup => match selected_method.as_deref() {
+            Some("homebrew") => {
+                let (target_name, label_key) = homebrew_upgrade_target("rustup");
+                (
+                    ManagerId::HomebrewFormula,
+                    AdapterRequest::Upgrade(UpgradeRequest {
+                        package: Some(PackageRef {
+                            manager: ManagerId::HomebrewFormula,
+                            name: target_name,
+                        }),
+                    }),
+                    label_key,
+                    vec![("package", "rustup".to_string())],
+                )
+            }
+            Some("rustupInstaller") | None => (
+                ManagerId::Rustup,
+                AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::Rustup,
+                        name: "__self__".to_string(),
+                    }),
+                }),
+                "service.task.label.update.rustup_self",
+                Vec::new(),
+            ),
+            _ => return return_error_i64("service.error.unsupported_capability"),
+        },
+        _ => return return_error_i64("service.error.unsupported_capability"),
     };
 
     if let Some(existing) = find_matching_inflight_task(
@@ -3743,6 +4211,11 @@ pub unsafe extern "C" fn helm_uninstall_manager(manager_id: *const c_char) -> i6
         Err(_) => return return_error_i64("service.error.invalid_input"),
     };
 
+    let manager = match id_str.parse::<ManagerId>() {
+        Ok(manager) => manager,
+        Err(_) => return return_error_i64("service.error.invalid_input"),
+    };
+
     let (store, runtime, rt_handle) = {
         let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
@@ -3756,48 +4229,67 @@ pub unsafe extern "C" fn helm_uninstall_manager(manager_id: *const c_char) -> i6
         )
     };
 
-    let (target_manager, request) = match id_str {
-        "mise" => (
-            ManagerId::HomebrewFormula,
-            AdapterRequest::Uninstall(UninstallRequest {
-                package: PackageRef {
-                    manager: ManagerId::HomebrewFormula,
-                    name: "mise".to_string(),
-                },
-            }),
-        ),
-        "mas" => (
-            ManagerId::HomebrewFormula,
-            AdapterRequest::Uninstall(UninstallRequest {
-                package: PackageRef {
-                    manager: ManagerId::HomebrewFormula,
-                    name: "mas".to_string(),
-                },
-            }),
-        ),
-        "rustup" => (
-            ManagerId::Rustup,
-            AdapterRequest::Uninstall(UninstallRequest {
-                package: PackageRef {
-                    manager: ManagerId::Rustup,
-                    name: "__self__".to_string(),
-                },
-            }),
-        ),
+    let selected_method = manager_selected_install_method(store.as_ref(), manager);
+    let (target_manager, request, label_key, label_args): (
+        ManagerId,
+        AdapterRequest,
+        &str,
+        Vec<(&str, String)>,
+    ) = match manager {
+        ManagerId::Mise => match selected_method.as_deref() {
+            Some("homebrew") | None => (
+                ManagerId::HomebrewFormula,
+                AdapterRequest::Uninstall(UninstallRequest {
+                    package: PackageRef {
+                        manager: ManagerId::HomebrewFormula,
+                        name: "mise".to_string(),
+                    },
+                }),
+                "service.task.label.uninstall.homebrew_formula",
+                vec![("package", "mise".to_string())],
+            ),
+            _ => return return_error_i64("service.error.unsupported_capability"),
+        },
+        ManagerId::Mas => match selected_method.as_deref() {
+            Some("homebrew") | None => (
+                ManagerId::HomebrewFormula,
+                AdapterRequest::Uninstall(UninstallRequest {
+                    package: PackageRef {
+                        manager: ManagerId::HomebrewFormula,
+                        name: "mas".to_string(),
+                    },
+                }),
+                "service.task.label.uninstall.homebrew_formula",
+                vec![("package", "mas".to_string())],
+            ),
+            _ => return return_error_i64("service.error.unsupported_capability"),
+        },
+        ManagerId::Rustup => match selected_method.as_deref() {
+            Some("homebrew") => (
+                ManagerId::HomebrewFormula,
+                AdapterRequest::Uninstall(UninstallRequest {
+                    package: PackageRef {
+                        manager: ManagerId::HomebrewFormula,
+                        name: "rustup".to_string(),
+                    },
+                }),
+                "service.task.label.uninstall.homebrew_formula",
+                vec![("package", "rustup".to_string())],
+            ),
+            Some("rustupInstaller") | None => (
+                ManagerId::Rustup,
+                AdapterRequest::Uninstall(UninstallRequest {
+                    package: PackageRef {
+                        manager: ManagerId::Rustup,
+                        name: "__self__".to_string(),
+                    },
+                }),
+                "service.task.label.uninstall.rustup_self",
+                Vec::new(),
+            ),
+            _ => return return_error_i64("service.error.unsupported_capability"),
+        },
         _ => return return_error_i64("service.error.unsupported_capability"),
-    };
-
-    let (label_key, label_args): (&str, Vec<(&str, String)>) = match id_str {
-        "mise" => (
-            "service.task.label.uninstall.homebrew_formula",
-            vec![("package", "mise".to_string())],
-        ),
-        "mas" => (
-            "service.task.label.uninstall.homebrew_formula",
-            vec![("package", "mas".to_string())],
-        ),
-        "rustup" => ("service.task.label.uninstall.rustup_self", Vec::new()),
-        _ => ("service.task.label.uninstall.homebrew_formula", Vec::new()),
     };
 
     if let Some(existing) = find_matching_inflight_task(
@@ -3848,6 +4340,7 @@ pub extern "C" fn helm_reset_database() -> bool {
     // Final cleanup: delete any task records that in-flight persistence
     // watchers may have re-inserted during the brief reset window.
     let _ = state.store.delete_all_tasks();
+    clear_manager_selected_executables();
 
     true
 }
@@ -3895,6 +4388,7 @@ mod tests {
         DetectionInfo, ManagerId, OutdatedPackage, PackageRef, TaskId, TaskRecord, TaskStatus,
         TaskType,
     };
+    use helm_core::persistence::ManagerPreference;
     use std::collections::HashMap;
     use std::path::Path;
 
@@ -4031,9 +4525,33 @@ mod tests {
     #[test]
     fn manager_status_preferences_override_default_enabled_policy() {
         let pref_map = HashMap::from([
-            (ManagerId::Asdf, true),
-            (ManagerId::MacPorts, true),
-            (ManagerId::Mise, false),
+            (
+                ManagerId::Asdf,
+                ManagerPreference {
+                    manager: ManagerId::Asdf,
+                    enabled: true,
+                    selected_executable_path: None,
+                    selected_install_method: None,
+                },
+            ),
+            (
+                ManagerId::MacPorts,
+                ManagerPreference {
+                    manager: ManagerId::MacPorts,
+                    enabled: true,
+                    selected_executable_path: None,
+                    selected_install_method: None,
+                },
+            ),
+            (
+                ManagerId::Mise,
+                ManagerPreference {
+                    manager: ManagerId::Mise,
+                    enabled: false,
+                    selected_executable_path: None,
+                    selected_install_method: None,
+                },
+            ),
         ]);
         let statuses = build_manager_statuses(None, &HashMap::new(), &pref_map);
 
@@ -4087,7 +4605,11 @@ mod tests {
     #[test]
     fn manager_status_skips_executable_path_discovery_for_missing_managers() {
         let statuses = build_manager_statuses(None, &HashMap::new(), &HashMap::new());
-        assert!(status_for(&statuses, ManagerId::Npm).executable_paths.is_empty());
+        assert!(
+            status_for(&statuses, ManagerId::Npm)
+                .executable_paths
+                .is_empty()
+        );
     }
 
     #[test]

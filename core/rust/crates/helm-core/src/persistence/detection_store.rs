@@ -1,6 +1,14 @@
 use crate::models::{DetectionInfo, HomebrewKegPolicy, ManagerId, PackageKegPolicy, PackageRef};
 use crate::persistence::PersistenceResult;
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ManagerPreference {
+    pub manager: ManagerId,
+    pub enabled: bool,
+    pub selected_executable_path: Option<String>,
+    pub selected_install_method: Option<String>,
+}
+
 pub trait DetectionStore: Send + Sync {
     fn upsert_detection(&self, manager: ManagerId, info: &DetectionInfo) -> PersistenceResult<()>;
 
@@ -8,7 +16,19 @@ pub trait DetectionStore: Send + Sync {
 
     fn set_manager_enabled(&self, manager: ManagerId, enabled: bool) -> PersistenceResult<()>;
 
-    fn list_manager_preferences(&self) -> PersistenceResult<Vec<(ManagerId, bool)>>;
+    fn set_manager_selected_executable_path(
+        &self,
+        manager: ManagerId,
+        path: Option<&str>,
+    ) -> PersistenceResult<()>;
+
+    fn set_manager_selected_install_method(
+        &self,
+        manager: ManagerId,
+        method: Option<&str>,
+    ) -> PersistenceResult<()>;
+
+    fn list_manager_preferences(&self) -> PersistenceResult<Vec<ManagerPreference>>;
 
     fn set_safe_mode(&self, enabled: bool) -> PersistenceResult<()>;
 

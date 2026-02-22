@@ -1,8 +1,8 @@
 import SwiftUI
 
 enum OnboardingStep: String, CaseIterable {
-    case license
     case welcome
+    case license
     case detection
     case configure
     case settings
@@ -17,9 +17,12 @@ struct OnboardingContainerView: View {
     private var stepSequence: [OnboardingStep] {
         var steps: [OnboardingStep] = []
         if !core.hasCompletedOnboarding {
-            steps.append(contentsOf: [.welcome, .detection, .configure, .settings])
-        }
-        if core.requiresLicenseTermsAcceptance {
+            steps.append(.welcome)
+            if core.requiresLicenseTermsAcceptance {
+                steps.append(.license)
+            }
+            steps.append(contentsOf: [.detection, .configure, .settings])
+        } else if core.requiresLicenseTermsAcceptance {
             steps.append(.license)
         }
         return steps
@@ -51,8 +54,9 @@ struct OnboardingContainerView: View {
                             HelmSupport.openURL(HelmSupport.licenseTermsURL)
                         },
                         onAccept: {
+                            let sequenceBeforeAcceptance = stepSequence
                             core.acceptCurrentLicenseTerms()
-                            advanceFromCurrentStep()
+                            advance(from: .license, in: sequenceBeforeAcceptance)
                         }
                     )
                 case .welcome:
@@ -69,11 +73,7 @@ struct OnboardingContainerView: View {
                     }
                 case .settings:
                     OnboardingSettingsView(onFinish: {
-                        if core.requiresLicenseTermsAcceptance, stepSequence.contains(.license) {
-                            currentStep = .license
-                        } else {
-                            onComplete()
-                        }
+                        advanceFromCurrentStep()
                     })
                 }
             }
@@ -91,17 +91,21 @@ struct OnboardingContainerView: View {
     }
 
     private func advanceFromCurrentStep() {
-        guard let currentIndex = stepSequence.firstIndex(of: currentStep) else {
+        advance(from: currentStep, in: stepSequence)
+    }
+
+    private func advance(from step: OnboardingStep, in sequence: [OnboardingStep]) {
+        guard let currentIndex = sequence.firstIndex(of: step) else {
             alignCurrentStepToAvailableSequence()
             return
         }
 
         let nextIndex = currentIndex + 1
-        guard stepSequence.indices.contains(nextIndex) else {
+        guard sequence.indices.contains(nextIndex) else {
             onComplete()
             return
         }
-        currentStep = stepSequence[nextIndex]
+        currentStep = sequence[nextIndex]
     }
 
     private func alignCurrentStepToAvailableSequence() {

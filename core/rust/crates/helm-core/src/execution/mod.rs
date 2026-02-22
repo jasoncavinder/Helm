@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
+use std::sync::{OnceLock, RwLock};
 use std::time::{Duration, SystemTime};
 
 use crate::models::{CoreError, CoreErrorKind, ManagerAction, ManagerId, TaskId, TaskType};
@@ -199,6 +200,114 @@ pub trait ProcessExecutor: Send + Sync {
     fn spawn(&self, request: ProcessSpawnRequest) -> ExecutionResult<Box<dyn RunningProcess>>;
 }
 
+static MANAGER_EXECUTABLE_OVERRIDES: OnceLock<
+    RwLock<std::collections::HashMap<ManagerId, PathBuf>>,
+> = OnceLock::new();
+
+fn manager_executable_overrides() -> &'static RwLock<std::collections::HashMap<ManagerId, PathBuf>>
+{
+    MANAGER_EXECUTABLE_OVERRIDES.get_or_init(|| RwLock::new(std::collections::HashMap::new()))
+}
+
+fn manager_command_aliases(manager: ManagerId) -> &'static [&'static str] {
+    match manager {
+        ManagerId::HomebrewFormula | ManagerId::HomebrewCask => &["brew"],
+        ManagerId::Mise => &["mise"],
+        ManagerId::Asdf => &["asdf"],
+        ManagerId::Rustup => &["rustup"],
+        ManagerId::Npm => &["npm"],
+        ManagerId::Pnpm => &["pnpm"],
+        ManagerId::Yarn => &["yarn"],
+        ManagerId::Cargo => &["cargo"],
+        ManagerId::CargoBinstall => &["cargo-binstall", "cargo"],
+        ManagerId::Pip => &["python3", "pip3", "pip"],
+        ManagerId::Pipx => &["pipx"],
+        ManagerId::Poetry => &["poetry"],
+        ManagerId::RubyGems => &["gem"],
+        ManagerId::Bundler => &["bundle", "gem"],
+        ManagerId::MacPorts => &["port"],
+        ManagerId::NixDarwin => &["darwin-rebuild", "nix-env", "nix"],
+        ManagerId::Mas => &["mas"],
+        ManagerId::DockerDesktop => &["docker"],
+        ManagerId::Podman => &["podman"],
+        ManagerId::Colima => &["colima"],
+        ManagerId::XcodeCommandLineTools => &["xcode-select"],
+        ManagerId::SoftwareUpdate => &["softwareupdate"],
+        _ => &[],
+    }
+}
+
+fn command_basename(path: &std::path::Path) -> Option<&str> {
+    path.file_name().and_then(|name| name.to_str())
+}
+
+fn apply_manager_executable_override(request: &mut ProcessSpawnRequest) {
+    let selected = manager_executable_overrides()
+        .read()
+        .ok()
+        .and_then(|guard| guard.get(&request.manager).cloned());
+    let Some(selected_path) = selected else {
+        return;
+    };
+
+    let aliases = manager_command_aliases(request.manager);
+    if aliases.is_empty() {
+        return;
+    }
+
+    let Some(current_name) = command_basename(request.command.program.as_path()) else {
+        return;
+    };
+    if !aliases.contains(&current_name) {
+        return;
+    }
+
+    let Some(selected_name) = command_basename(selected_path.as_path()) else {
+        return;
+    };
+    if !aliases.contains(&selected_name) {
+        return;
+    }
+
+    if selected_name == current_name {
+        if selected_path.is_file() {
+            request.command.program = selected_path;
+        }
+        return;
+    }
+
+    if let Some(parent) = selected_path.parent() {
+        let sibling = parent.join(current_name);
+        if sibling.is_file() {
+            request.command.program = sibling;
+        }
+    }
+}
+
+pub fn set_manager_selected_executable(manager: ManagerId, path: Option<PathBuf>) {
+    let Ok(mut guard) = manager_executable_overrides().write() else {
+        return;
+    };
+    if let Some(path) = path {
+        guard.insert(manager, path);
+    } else {
+        guard.remove(&manager);
+    }
+}
+
+pub fn clear_manager_selected_executables() {
+    if let Ok(mut guard) = manager_executable_overrides().write() {
+        guard.clear();
+    }
+}
+
+pub fn manager_selected_executable(manager: ManagerId) -> Option<PathBuf> {
+    manager_executable_overrides()
+        .read()
+        .ok()
+        .and_then(|guard| guard.get(&manager).cloned())
+}
+
 pub fn spawn_validated(
     executor: &dyn ProcessExecutor,
     mut request: ProcessSpawnRequest,
@@ -206,6 +315,7 @@ pub fn spawn_validated(
     if request.task_id.is_none() {
         request.task_id = crate::task_context::current_task_id();
     }
+    apply_manager_executable_override(&mut request);
     request.validate()?;
     executor.spawn(request)
 }
@@ -226,5 +336,129 @@ fn invalid_input(
         action: Some(action),
         kind: CoreErrorKind::InvalidInput,
         message: message.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::sync::Mutex;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[derive(Default)]
+    struct CapturingExecutor {
+        request: Mutex<Option<ProcessSpawnRequest>>,
+    }
+
+    impl CapturingExecutor {
+        fn captured_program(&self) -> PathBuf {
+            self.request
+                .lock()
+                .expect("capture lock poisoned")
+                .as_ref()
+                .expect("expected captured request")
+                .command
+                .program
+                .clone()
+        }
+    }
+
+    impl ProcessExecutor for CapturingExecutor {
+        fn spawn(&self, request: ProcessSpawnRequest) -> ExecutionResult<Box<dyn RunningProcess>> {
+            *self.request.lock().expect("capture lock poisoned") = Some(request);
+            Ok(Box::new(NoopRunningProcess))
+        }
+    }
+
+    struct NoopRunningProcess;
+
+    impl RunningProcess for NoopRunningProcess {
+        fn pid(&self) -> Option<u32> {
+            None
+        }
+
+        fn terminate(&self, _mode: ProcessTerminationMode) -> ExecutionResult<()> {
+            Ok(())
+        }
+
+        fn wait(self: Box<Self>) -> ProcessWaitFuture {
+            Box::pin(async move {
+                let now = SystemTime::now();
+                Ok(ProcessOutput {
+                    status: ProcessExitStatus::ExitCode(0),
+                    stdout: Vec::new(),
+                    stderr: Vec::new(),
+                    started_at: now,
+                    finished_at: now,
+                })
+            })
+        }
+    }
+
+    fn test_temp_dir(test_name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock before unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("helm-exec-{test_name}-{nanos}"))
+    }
+
+    fn create_placeholder_binary(path: &Path) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("failed to create temp test directory");
+        }
+        fs::write(path, b"#!/bin/sh\nexit 0\n").expect("failed to write placeholder executable");
+    }
+
+    #[test]
+    fn spawn_validated_uses_selected_executable_for_matching_alias() {
+        clear_manager_selected_executables();
+        let temp_dir = test_temp_dir("selected-brew");
+        let selected_program = temp_dir.join("brew");
+        create_placeholder_binary(&selected_program);
+
+        set_manager_selected_executable(ManagerId::HomebrewFormula, Some(selected_program.clone()));
+
+        let executor = CapturingExecutor::default();
+        let request = ProcessSpawnRequest::new(
+            ManagerId::HomebrewFormula,
+            TaskType::Refresh,
+            ManagerAction::ListInstalled,
+            CommandSpec::new("brew"),
+        );
+
+        let _ = spawn_validated(&executor, request).expect("spawn should succeed");
+        assert_eq!(executor.captured_program(), selected_program);
+
+        clear_manager_selected_executables();
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn spawn_validated_resolves_sibling_alias_when_selected_binary_name_differs() {
+        clear_manager_selected_executables();
+        let temp_dir = test_temp_dir("pip-sibling");
+        let selected_pip3 = temp_dir.join("pip3");
+        let sibling_python3 = temp_dir.join("python3");
+        create_placeholder_binary(&selected_pip3);
+        create_placeholder_binary(&sibling_python3);
+
+        set_manager_selected_executable(ManagerId::Pip, Some(selected_pip3));
+
+        let executor = CapturingExecutor::default();
+        let request = ProcessSpawnRequest::new(
+            ManagerId::Pip,
+            TaskType::Refresh,
+            ManagerAction::ListInstalled,
+            CommandSpec::new("python3"),
+        );
+
+        let _ = spawn_validated(&executor, request).expect("spawn should succeed");
+        assert_eq!(executor.captured_program(), sibling_python3);
+
+        clear_manager_selected_executables();
+        let _ = fs::remove_dir_all(temp_dir);
     }
 }

@@ -125,6 +125,7 @@ impl ManagerAdapter for FailingAdapter {
 struct CapabilitySparseAdapter {
     descriptor: ManagerDescriptor,
     detect_installed: bool,
+    detect_calls: Arc<AtomicU64>,
     list_outdated_calls: Arc<AtomicU64>,
 }
 
@@ -134,6 +135,7 @@ impl CapabilitySparseAdapter {
         authority: ManagerAuthority,
         capabilities: &'static [Capability],
         detect_installed: bool,
+        detect_calls: Arc<AtomicU64>,
         list_outdated_calls: Arc<AtomicU64>,
     ) -> Self {
         Self {
@@ -145,6 +147,7 @@ impl CapabilitySparseAdapter {
                 capabilities,
             },
             detect_installed,
+            detect_calls,
             list_outdated_calls,
         }
     }
@@ -161,15 +164,18 @@ impl ManagerAdapter for CapabilitySparseAdapter {
 
     fn execute(&self, request: AdapterRequest) -> AdapterResult<AdapterResponse> {
         match request {
-            AdapterRequest::Detect(_) => Ok(AdapterResponse::Detection(DetectionInfo {
-                installed: self.detect_installed,
-                executable_path: None,
-                version: if self.detect_installed {
-                    Some("1.0.0".to_string())
-                } else {
-                    None
-                },
-            })),
+            AdapterRequest::Detect(_) => {
+                self.detect_calls.fetch_add(1, Ordering::SeqCst);
+                Ok(AdapterResponse::Detection(DetectionInfo {
+                    installed: self.detect_installed,
+                    executable_path: None,
+                    version: if self.detect_installed {
+                        Some("1.0.0".to_string())
+                    } else {
+                        None
+                    },
+                }))
+            }
             AdapterRequest::ListOutdated(_) => {
                 self.list_outdated_calls.fetch_add(1, Ordering::SeqCst);
                 Ok(AdapterResponse::OutdatedPackages(Vec::new()))
@@ -292,12 +298,14 @@ async fn refresh_all_ordered_skips_missing_list_installed_capability() {
         Capability::Refresh,
         Capability::ListOutdated,
     ];
+    let detect_calls = Arc::new(AtomicU64::new(0));
     let list_outdated_calls = Arc::new(AtomicU64::new(0));
     let swupd: Arc<dyn ManagerAdapter> = Arc::new(CapabilitySparseAdapter::new(
         ManagerId::SoftwareUpdate,
         ManagerAuthority::Guarded,
         SWUPD_CAPS,
         true,
+        detect_calls,
         list_outdated_calls.clone(),
     ));
 
@@ -316,12 +324,14 @@ async fn refresh_all_ordered_skips_list_actions_for_not_installed_manager() {
         Capability::Refresh,
         Capability::ListOutdated,
     ];
+    let detect_calls = Arc::new(AtomicU64::new(0));
     let list_outdated_calls = Arc::new(AtomicU64::new(0));
     let swupd: Arc<dyn ManagerAdapter> = Arc::new(CapabilitySparseAdapter::new(
         ManagerId::SoftwareUpdate,
         ManagerAuthority::Guarded,
         SWUPD_CAPS,
         false,
+        detect_calls,
         list_outdated_calls.clone(),
     ));
 
@@ -330,5 +340,55 @@ async fn refresh_all_ordered_skips_list_actions_for_not_installed_manager() {
 
     assert_eq!(results.len(), 1);
     assert!(results[0].1.is_ok());
+    assert_eq!(list_outdated_calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn detect_all_ordered_runs_detect_without_refresh_actions() {
+    const SWUPD_CAPS: &[Capability] = &[
+        Capability::Detect,
+        Capability::Refresh,
+        Capability::ListOutdated,
+    ];
+    let detect_calls = Arc::new(AtomicU64::new(0));
+    let list_outdated_calls = Arc::new(AtomicU64::new(0));
+    let swupd: Arc<dyn ManagerAdapter> = Arc::new(CapabilitySparseAdapter::new(
+        ManagerId::SoftwareUpdate,
+        ManagerAuthority::Guarded,
+        SWUPD_CAPS,
+        true,
+        detect_calls.clone(),
+        list_outdated_calls.clone(),
+    ));
+
+    let runtime = AdapterRuntime::new([swupd]).unwrap();
+    let results = runtime.detect_all_ordered().await;
+
+    assert_eq!(results.len(), 1);
+    assert!(results[0].1.is_ok());
+    assert_eq!(detect_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(list_outdated_calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn detect_all_ordered_includes_detection_only_authority() {
+    const DETECT_ONLY_CAPS: &[Capability] = &[Capability::Detect];
+    let detect_calls = Arc::new(AtomicU64::new(0));
+    let list_outdated_calls = Arc::new(AtomicU64::new(0));
+    let sparkle: Arc<dyn ManagerAdapter> = Arc::new(CapabilitySparseAdapter::new(
+        ManagerId::Sparkle,
+        ManagerAuthority::DetectionOnly,
+        DETECT_ONLY_CAPS,
+        false,
+        detect_calls.clone(),
+        list_outdated_calls.clone(),
+    ));
+
+    let runtime = AdapterRuntime::new([sparkle]).unwrap();
+    let results = runtime.detect_all_ordered().await;
+
+    assert_eq!(results.len(), 1);
+    assert!(results[0].1.is_ok());
+    assert_eq!(detect_calls.load(Ordering::SeqCst), 1);
     assert_eq!(list_outdated_calls.load(Ordering::SeqCst), 0);
 }

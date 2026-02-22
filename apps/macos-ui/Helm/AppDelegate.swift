@@ -548,7 +548,7 @@ private extension AppDelegate {
     @objc func openUpgradeAllFromMenu() {
         controlCenterContext.selectedSection = .updates
         openControlCenter()
-        controlCenterContext.showUpgradeSheet = true
+        controlCenterContext.presentUpgradeSheet(in: .controlCenter)
     }
 
     @objc func refreshFromMenu() {

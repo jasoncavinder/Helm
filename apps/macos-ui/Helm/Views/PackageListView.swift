@@ -129,51 +129,60 @@ struct PackagesSectionView: View {
                     .foregroundColor(.secondary)
                 Spacer()
             } else {
-                List(displayedPackages) { packageRow in
-                    let package = packageRow.package
-                    PackageRowView(
-                        package: package,
-                        managerDisplayNames: packageRow.managerDisplayNames,
-                        isSelected: packageRow.containsPackageId(context.selectedPackageId),
-                        isPinActionInFlight: core.pinActionPackageIds.contains(package.id),
-                        isUpgradeActionInFlight: core.upgradeActionPackageIds.contains(package.id),
-                        kegPolicySelection: kegPolicyMenuSelection(for: package),
-                        onSelectKegPolicy: package.managerId == "homebrew_formula"
-                            ? { selection in
-                                switch selection {
-                                case .useGlobal:
-                                    core.setKegPolicySelection(for: package, selection: .useGlobal)
-                                case .keep:
-                                    core.setKegPolicySelection(for: package, selection: .keep)
-                                case .cleanup:
-                                    core.setKegPolicySelection(for: package, selection: .cleanup)
-                                }
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(displayedPackages.indices), id: \.self) { index in
+                            let packageRow = displayedPackages[index]
+                            let package = packageRow.package
+                            PackageRowView(
+                                package: package,
+                                managerDisplayNames: packageRow.managerDisplayNames,
+                                isSelected: packageRow.containsPackageId(context.selectedPackageId),
+                                isPinActionInFlight: core.pinActionPackageIds.contains(package.id),
+                                isUpgradeActionInFlight: core.upgradeActionPackageIds.contains(package.id),
+                                kegPolicySelection: kegPolicyMenuSelection(for: package),
+                                onSelectKegPolicy: package.managerId == "homebrew_formula"
+                                    ? { selection in
+                                        switch selection {
+                                        case .useGlobal:
+                                            core.setKegPolicySelection(for: package, selection: .useGlobal)
+                                        case .keep:
+                                            core.setKegPolicySelection(for: package, selection: .keep)
+                                        case .cleanup:
+                                            core.setKegPolicySelection(for: package, selection: .cleanup)
+                                        }
+                                    }
+                                    : nil,
+                                onUpgrade: core.canUpgradeIndividually(package)
+                                    ? { core.upgradePackage(package) }
+                                    : nil,
+                                onTogglePin: package.status == .available
+                                    ? nil
+                                    : {
+                                        if package.pinned {
+                                            core.unpinPackage(package)
+                                        } else {
+                                            core.pinPackage(package)
+                                        }
+                                    }
+                            )
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                context.selectedPackageId = package.id
+                                context.selectedManagerId = package.managerId
+                                context.selectedTaskId = nil
+                                context.selectedUpgradePlanStepId = nil
                             }
-                            : nil,
-                        onUpgrade: core.canUpgradeIndividually(package)
-                            ? { core.upgradePackage(package) }
-                            : nil,
-                        onTogglePin: package.status == .available
-                            ? nil
-                            : {
-                                if package.pinned {
-                                    core.unpinPackage(package)
-                                } else {
-                                    core.pinPackage(package)
-                                }
+                            .helmPointer()
+
+                            if index < displayedPackages.count - 1 {
+                                Divider()
                             }
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        context.selectedPackageId = package.id
-                        context.selectedManagerId = package.managerId
-                        context.selectedTaskId = nil
-                        context.selectedUpgradePlanStepId = nil
+                        }
                     }
-                    .listRowBackground(Color.clear)
-                    .helmPointer()
+                    .padding(.vertical, 4)
                 }
-                .listStyle(.inset)
+                .helmCardSurface(cornerRadius: 12)
             }
         }
         .padding(20)
@@ -185,6 +194,10 @@ struct PackagesSectionView: View {
             if context.searchQuery != core.searchText {
                 context.searchQuery = core.searchText
             }
+            normalizeManagerSelection()
+        }
+        .onChange(of: core.managerStatuses.mapValues(\.enabled)) { _ in
+            normalizeManagerSelection()
         }
     }
 
@@ -196,6 +209,15 @@ struct PackagesSectionView: View {
             return localizedManagerDisplayName(managerFilterId)
         }
         return L10n.App.Packages.Filter.allManagers.localized
+    }
+
+    private func normalizeManagerSelection() {
+        if let selectedManagerId, !availableManagerIds.contains(selectedManagerId) {
+            self.selectedManagerId = nil
+        }
+        if let managerFilterId = context.managerFilterId, !availableManagerIds.contains(managerFilterId) {
+            context.managerFilterId = nil
+        }
     }
 }
 

@@ -128,7 +128,7 @@ struct PopoverAttentionBanner: View {
                 .helmPointer()
             } else if overviewState.outdatedPackagesCount > 0 {
                 Button(L10n.App.Settings.Action.upgradeAll.localized) {
-                    context.showUpgradeSheet = true
+                    context.presentUpgradeSheet(in: .popover)
                 }
                 .buttonStyle(UpdateAllPillButtonStyle())
                 .helmPointer()
