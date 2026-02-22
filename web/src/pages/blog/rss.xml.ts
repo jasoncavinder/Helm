@@ -4,14 +4,16 @@ import { getCollection } from 'astro:content';
 const SITE_URL = 'https://helmapp.dev';
 const BLOG_TITLE = 'Helm Blog';
 const BLOG_DESCRIPTION = 'Product updates, release highlights, and operator guidance from the Helm team.';
+const XML_ESCAPE_MAP: Record<string, string> = {
+	'&': '&amp;',
+	'<': '&lt;',
+	'>': '&gt;',
+	'"': '&quot;',
+	"'": '&apos;',
+};
 
 function escapeXml(value: string): string {
-	return value
-		.replaceAll('&', '&amp;')
-		.replaceAll('<', '&lt;')
-		.replaceAll('>', '&gt;')
-		.replaceAll('"', '&quot;')
-		.replaceAll("'", '&apos;');
+	return value.replace(/[&<>"']/g, (character) => XML_ESCAPE_MAP[character] ?? character);
 }
 
 function docsPathFromId(id: string): string {

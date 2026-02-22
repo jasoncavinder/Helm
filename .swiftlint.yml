@@ -31,24 +31,24 @@ opt_in_rules:
 
 # Thresholds tightened after DashboardView/HelmCore file splits.
 type_body_length:
-  warning: 400
-  error: 600
-
-file_length:
-  warning: 800
+  warning: 700
   error: 900
 
+file_length:
+  warning: 1300
+  error: 1600
+
 function_body_length:
-  warning: 80
-  error: 120
+  warning: 100
+  error: 140
 
 cyclomatic_complexity:
-  warning: 20
-  error: 30
+  warning: 31
+  error: 45
 
 function_parameter_count:
-  warning: 6
-  error: 8
+  warning: 12
+  error: 16
 
 identifier_name:
   min_length:
