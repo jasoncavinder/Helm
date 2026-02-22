@@ -298,7 +298,7 @@ Implemented on `feat/v0.16.0-kickoff`:
 - Added web feed path scaffold at `web/public/updates/appcast.xml` for direct-channel Sparkle feed hosting.
 - Appcast signing now uses Sparkle's packaged `sign_update` binary from Xcode SPM artifacts (with fallback discovery), removing reliance on `swift run` against Sparkle checkouts.
 - Release workflow now attempts to publish generated appcast content directly to `web/public/updates/appcast.xml` on `main`, and falls back to auto-opening a PR when direct pushes are blocked.
-- Release workflow fallback publication is now non-fatal when GitHub Actions token permissions prevent auto PR creation; workflow emits a manual compare URL for operator completion.
+- Release workflow fallback publication now fails closed when GitHub Actions token permissions prevent auto PR creation; workflow emits a manual compare URL and exits with error so publication gaps cannot be missed.
 - Release workflow now enforces Sparkle appcast policy checks (full-installer-only DMG feed, no delta payloads) via `apps/macos-ui/scripts/verify_sparkle_appcast_policy.sh`.
 - Release workflow now validates that the configured `HELM_SPARKLE_FEED_URL` hostname resolves in CI before build/signing work begins.
 - Release workflow now pre-renders channel overrides and passes explicit Sparkle/channel build settings to `xcodebuild`, ensuring release artifacts always embed the intended updater metadata on the same build invocation.

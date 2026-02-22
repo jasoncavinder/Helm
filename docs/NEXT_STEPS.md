@@ -243,7 +243,7 @@ Delivered:
 - Release workflow now lets appcast generation auto-discover Sparkle `sign_update` from available DerivedData artifact paths instead of forcing a single fixed location.
 - Sparkle appcast generation now falls back to downloading Sparkle's official SPM artifact bundle and using its `sign_update` binary if local discovery paths are empty.
 - Appcast publication now checks `git status --porcelain` for the feed path so newly added files are published instead of being misdetected as unchanged.
-- Appcast publication fallback now remains non-fatal when Actions cannot auto-create PRs (`createPullRequest` denied), and emits a manual compare URL so operators can complete publication without rerunning the release.
+- Appcast publication fallback now fails closed when Actions cannot auto-create PRs (`createPullRequest` denied), and emits a manual compare URL so operators can complete publication without silent release success.
 - Status-menu `Support Helm` submenu now includes all six support destinations configured in settings (GitHub Sponsors, Patreon, Buy Me a Coffee, Ko-fi, PayPal, Venmo).
 - About overlay now includes a `Support Helm` button that opens the same six-option support picker.
 - Added interruption/recovery validation runbook for release operators:
