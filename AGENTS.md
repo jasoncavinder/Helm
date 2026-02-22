@@ -276,6 +276,41 @@ Helm is infrastructure. Treat it like one.
 - Do not rewrite published history (no force-push) unless explicitly instructed.
 - Prefer small, coherent commits.
 
+### GitHub Enforcement Model (Rulesets + Checks)
+
+GitHub branch rulesets enforce the branch model. Agents must assume these are active and design PRs accordingly.
+
+- `main` required checks:
+  - `Policy Gate`
+  - `Rust Core Tests`
+  - `Xcode Build Check`
+  - `hardcoded-ui-strings`
+  - `Semgrep scan`
+  - `Lint Swift`
+- `dev` required checks:
+  - `Policy Gate`
+  - `Rust Core Tests`
+  - `Xcode Build Check`
+  - `hardcoded-ui-strings`
+  - `Semgrep scan`
+  - `Lint Swift`
+- `docs` required checks:
+  - `Policy Gate`
+  - `Docs Checks`
+- `web` required checks:
+  - `Policy Gate`
+  - `Web Build`
+
+Operational repo settings:
+- Auto-merge is enabled.
+- Update-branch is enabled.
+- Delete branch on merge is enabled.
+
+Agent expectations:
+- Treat `Policy Gate` as authoritative for branch/PR target policy.
+- Do not rely on direct-push fallback behavior for release metadata publication.
+- Release metadata publication to `main` is PR-based via `chore/publish-updates-<tag>`.
+
 ### Commit messages
 Use prefixes:
 - `feat:`, `fix:`, `chore:`, `docs:`, `test:`, `refactor:`
@@ -418,6 +453,29 @@ Before starting work, agents MUST:
 
 2. Update their branch:
 
+   Preferred default for published/shared branches (no history rewrite):
+   ```bash
+   # code branches
+   git merge origin/dev
+   ```
+
+   ```bash
+   # documentation branches
+   git merge origin/docs
+   ```
+
+   ```bash
+   # website branches
+   git merge origin/web
+   ```
+
+   ```bash
+   # hotfix/release branches based on stable
+   git merge origin/main
+   ```
+
+   Rebase is allowed only when safe (typically before first push):
+
    ```bash
    # code branches
    git rebase origin/dev
@@ -439,6 +497,7 @@ Before starting work, agents MUST:
    ```
 
 Agents must ensure their branch is up-to-date before making changes.
+Agents must not force-push rebased history unless explicitly instructed by the repo owner in the current session.
 
 ---
 

@@ -219,7 +219,20 @@ Implement guided onboarding as a spotlight/coach marks system using SwiftUI pref
 
 ---
 
-## Decision 017 — Universal Binary Distribution
+## Decision 017 — Ruleset-Enforced Four-Branch Governance
+
+**Decision:**
+Enforce the `main`/`dev`/`docs`/`web` branch model with GitHub rulesets and required status checks, and require PR-based publication of release appcast metadata.
+
+**Rationale:**
+
+- Keeps AI agents within explicit branch/scope policy (`Policy Gate` + branch-specific checks)
+- Reduces release risk by removing direct-push fallback paths for appcast publication
+- Preserves fast release flow via auto-merge/update-branch while keeping auditable PR history
+
+---
+
+## Decision 018 — Universal Binary Distribution
 
 **Decision:**
 Build universal (arm64 + x86_64) binaries using `lipo` and distribute via signed DMG.
@@ -232,7 +245,7 @@ Build universal (arm64 + x86_64) binaries using `lipo` and distribute via signed
 
 ---
 
-## Decision 018 — XPC Timeout and Reconnection Policy
+## Decision 019 — XPC Timeout and Reconnection Policy
 
 **Decision:**
 Enforce timeouts on all XPC calls (30s data fetches, 300s mutations) and use exponential backoff for reconnection (2s base, doubling to 60s cap).
@@ -245,7 +258,7 @@ Enforce timeouts on all XPC calls (30s data fetches, 300s mutations) and use exp
 
 ---
 
-## Decision 019 — Homebrew Casks Deferred
+## Decision 020 — Homebrew Casks Deferred
 
 **Decision:**
 Defer Homebrew Casks adapter to 0.14.x. Originally planned for 0.10.x but dropped from that milestone.
@@ -258,7 +271,7 @@ Defer Homebrew Casks adapter to 0.14.x. Originally planned for 0.10.x but droppe
 
 ---
 
-## Decision 020 — Multi-Channel Distribution and Product Split
+## Decision 021 — Multi-Channel Distribution and Product Split
 
 **Decision:**
 Adopt a multi-channel distribution strategy with two products:
@@ -290,7 +303,7 @@ Channel rules:
 
 ---
 
-## Decision 021 — Sparkle Delta Policy for 0.16.x
+## Decision 022 — Sparkle Delta Policy for 0.16.x
 
 **Decision:**
 For `0.16.x`, direct-channel Sparkle updates ship full signed DMG payloads only. Delta updates are explicitly disabled until a later milestone.
@@ -310,7 +323,7 @@ Policy guardrails:
 
 ---
 
-## Decision 022 — Security Rollout Staging and Platform Baseline
+## Decision 023 — Security Rollout Staging and Platform Baseline
 
 **Decision:**
 Adopt a staged security rollout with explicit milestone separation and set platform baseline to macOS 11+ (Big Sur).
@@ -335,7 +348,7 @@ Version restructuring:
 
 ---
 
-## Decision 023 — Third-Party License Compliance Baseline
+## Decision 024 — Third-Party License Compliance Baseline
 
 **Decision:**
 Maintain an explicit dependency-license inventory and release-gate checklist for third-party components.
@@ -360,7 +373,7 @@ Scope clarifications:
 
 ---
 
-## Decision 024 — Website Hosting on Cloudflare Pages
+## Decision 025 — Website Hosting on Cloudflare Pages
 
 **Decision:**
 Helm website hosting is standardized on Cloudflare Pages as the production path.
@@ -385,7 +398,7 @@ Repository cleanup follow-up:
 
 ---
 
-## Decision 025 — Shared Brain Backend: Postgres-First and Provider-Portable
+## Decision 026 — Shared Brain Backend: Postgres-First and Provider-Portable
 
 **Decision:**
 For `1.4.x` Shared Brain planning, use a Postgres-backed system-of-record with provider-portable API architecture.

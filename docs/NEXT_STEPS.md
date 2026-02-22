@@ -97,6 +97,15 @@ Current checkpoint:
     - website now renders a global beta-tester announcement banner with a refined brand-consistent visual treatment
     - blog pages now include social-share actions (X, LinkedIn, Reddit, Email)
     - landing navigation now includes right-aligned `Blog` and `Docs` links for faster access
+  - post-`v0.17.1` release-automation guardrails delivered on `dev`:
+    - release workflow now treats fallback appcast-publish PR-creation failures as blocking errors (no soft-success path)
+    - release workflow now verifies `web/public/updates/appcast.xml` on `main` matches the release tag before marking release success
+    - new scheduled/manual `Appcast Drift Guard` workflow now fails when latest stable GitHub release and top appcast version diverge
+  - GitHub governance hardening delivered on `dev`:
+    - branch rulesets now explicitly enforce `main`/`dev`/`docs`/`web` with branch-specific required checks
+    - `Policy Gate` now validates PR base/head/scope policy for all protected branches
+    - `Docs Checks` and `Web Build` workflows now gate `docs` and `web` branches respectively
+    - CodeQL now runs on `main` push + schedule/manual (non-PR gate) to reduce merge friction while retaining scanning coverage
 - latest stable release on `main`: `v0.17.0`
 - validation gates are green through the stable cut (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke across `v0.17.0-rc.1` through `v0.17.0-rc.5`)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
@@ -239,7 +248,7 @@ Delivered:
 - Release workflow now lets appcast generation auto-discover Sparkle `sign_update` from available DerivedData artifact paths instead of forcing a single fixed location.
 - Sparkle appcast generation now falls back to downloading Sparkle's official SPM artifact bundle and using its `sign_update` binary if local discovery paths are empty.
 - Appcast publication now checks `git status --porcelain` for the feed path so newly added files are published instead of being misdetected as unchanged.
-- Appcast publication fallback now remains non-fatal when Actions cannot auto-create PRs (`createPullRequest` denied), and emits a manual compare URL so operators can complete publication without rerunning the release.
+- Appcast publication fallback now fails closed when Actions cannot auto-create PRs (`createPullRequest` denied), and emits a manual compare URL so operators can complete publication without silent release success.
 - Status-menu `Support Helm` submenu now includes all six support destinations configured in settings (GitHub Sponsors, Patreon, Buy Me a Coffee, Ko-fi, PayPal, Venmo).
 - About overlay now includes a `Support Helm` button that opens the same six-option support picker.
 - Added interruption/recovery validation runbook for release operators:

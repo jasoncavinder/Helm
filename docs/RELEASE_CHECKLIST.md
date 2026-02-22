@@ -14,6 +14,16 @@ This checklist is required before creating a release tag on `main`.
 - [x] Confirm `.github/workflows/deploy-web.yml` is absent (Cloudflare Pages is the production website host).
 - [x] Confirm website hosting/operations docs still point to Cloudflare Pages and not GitHub Pages.
 
+## GitHub Governance Integrity (All Releases)
+
+- [ ] Confirm branch rulesets are active for `main`, `dev`, `docs`, and `web`.
+- [ ] Confirm required checks match current policy:
+  - `main`/`dev`: `Policy Gate`, `Rust Core Tests`, `Xcode Build Check`, `hardcoded-ui-strings`, `Semgrep scan`, `Lint Swift`
+  - `docs`: `Policy Gate`, `Docs Checks`
+  - `web`: `Policy Gate`, `Web Build`
+- [ ] Confirm repo merge settings remain enabled: auto-merge, update-branch, and auto-delete merged branches.
+- [ ] Confirm release metadata publication remains PR-based (no direct-push fallback path in `.github/workflows/release-macos-dmg.yml`).
+
 ## v0.17.1 (Stable Patch Release Gate)
 
 ### Scope and Documentation
@@ -41,6 +51,8 @@ This checklist is required before creating a release tag on `main`.
 - [ ] Create annotated stable tag from `main`: `git tag -a v0.17.1 -m "Helm v0.17.1"`.
 - [ ] Push stable tag: `git push origin v0.17.1`.
 - [ ] Publish GitHub release for `v0.17.1` (mark as latest, non-prerelease).
+- [ ] Confirm release-generated publish PR (`chore/publish-updates-v0.17.1`) merged to `main`.
+- [ ] Confirm `Appcast Drift Guard` is green after publication.
 
 ## Historical RC and Prior-Release Checklists (Archive)
 
