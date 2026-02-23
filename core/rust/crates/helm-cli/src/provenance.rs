@@ -408,10 +408,7 @@ mod tests {
         let detected = detect_channel_from_path(
             &path,
             Some(Path::new("/Users/tester")),
-            &[
-                PathBuf::from("/opt/homebrew"),
-                PathBuf::from("/usr/local"),
-            ],
+            &[PathBuf::from("/opt/homebrew"), PathBuf::from("/usr/local")],
         );
         assert_eq!(detected, InstallChannel::Brew);
     }

@@ -1,7 +1,9 @@
 use std::collections::{HashMap, hash_map::DefaultHasher};
 use std::env;
+use std::fs::{self, OpenOptions};
 use std::hash::{Hash, Hasher};
-use std::io::IsTerminal;
+use std::io::{IsTerminal, Read};
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::{ExitCode, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -39,15 +41,20 @@ use helm_core::orchestration::{AdapterRuntime, AdapterTaskTerminalState, Cancell
 use helm_core::persistence::{DetectionStore, PackageStore, PinStore, SearchCacheStore, TaskStore};
 use helm_core::registry;
 use helm_core::sqlite::SqliteStore;
+use semver::Version;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 
 mod provenance;
 
 use provenance::{
-    can_self_update as provenance_can_self_update, detect_install_provenance,
-    recommended_action as provenance_recommended_action,
+    InstallChannel, InstallMarker, UpdatePolicy, can_self_update as provenance_can_self_update,
+    detect_install_provenance, install_marker_path,
+    recommended_action as provenance_recommended_action, write_install_marker,
 };
 
 const TASK_FETCH_LIMIT: usize = 400;
@@ -2654,122 +2661,338 @@ fn cmd_settings(
     }
 }
 
+const DEFAULT_CLI_UPDATE_ENDPOINT: &str = "https://helmapp.dev/updates/cli/latest.json";
+
+#[derive(Debug, Clone, Default)]
+struct ParsedSelfUpdateArgs {
+    check_only: bool,
+    force: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct CliUpdateManifest {
+    version: String,
+    #[serde(default)]
+    published_at: Option<String>,
+    #[serde(default)]
+    downloads: CliUpdateDownloads,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct CliUpdateDownloads {
+    #[serde(default)]
+    universal: Option<CliUpdateAsset>,
+    #[serde(default)]
+    arm64: Option<CliUpdateAsset>,
+    #[serde(default, rename = "x86_64")]
+    x86_64: Option<CliUpdateAsset>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct CliUpdateAsset {
+    url: String,
+    sha256: String,
+}
+
 #[derive(Debug, Clone)]
-struct SelfUpdateTarget {
-    method: String,
-    formula: Option<String>,
-    supported: bool,
+struct SelfUpdateCheckStatus {
+    checked: bool,
+    update_available: Option<bool>,
+    latest_version: Option<String>,
+    published_at: Option<String>,
+    source: String,
     reason: Option<String>,
 }
 
 #[derive(Debug, Clone)]
-struct SelfUpdateSnapshotStatus {
-    update_available: bool,
+struct SelfUpdateApplyResult {
+    updated: bool,
     latest_version: Option<String>,
+    published_at: Option<String>,
+    source: String,
 }
 
-fn detect_self_update_target(_store: &SqliteStore) -> SelfUpdateTarget {
-    if let Ok(formula) = env::var("HELM_SELF_UPDATE_FORMULA")
-        && !formula.trim().is_empty()
-    {
-        return SelfUpdateTarget {
-            method: "homebrew_formula".to_string(),
-            formula: Some(formula.trim().to_string()),
-            supported: true,
-            reason: None,
-        };
-    }
+fn current_cli_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
 
-    let executable = env::current_exe()
+fn self_update_endpoint() -> String {
+    env::var("HELM_CLI_UPDATE_ENDPOINT")
         .ok()
-        .and_then(|path| path.canonicalize().ok().or(Some(path)))
-        .map(|path| path.to_string_lossy().to_string());
-    if let Some(path) = executable.as_deref()
-        && let Some(formula) = detect_homebrew_formula_from_path(path)
-    {
-        return SelfUpdateTarget {
-            method: "homebrew_formula".to_string(),
-            formula: Some(formula),
-            supported: true,
-            reason: None,
-        };
-    }
-
-    SelfUpdateTarget {
-        method: "manual".to_string(),
-        formula: None,
-        supported: false,
-        reason: executable.map(|path| {
-            format!(
-                "unsupported install path '{}' (set HELM_SELF_UPDATE_FORMULA to override)",
-                path
-            )
-        }),
-    }
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_CLI_UPDATE_ENDPOINT.to_string())
 }
 
-fn detect_homebrew_formula_from_path(path: &str) -> Option<String> {
-    let components = PathBuf::from(path)
-        .components()
-        .map(|component| component.as_os_str().to_string_lossy().to_string())
-        .collect::<Vec<_>>();
-    let cellar_index = components.iter().position(|part| part == "Cellar")?;
-    let formula = components.get(cellar_index + 1)?.trim();
-    if formula.is_empty() {
+fn parse_self_update_args(command_args: &[String]) -> Result<ParsedSelfUpdateArgs, String> {
+    let mut parsed = ParsedSelfUpdateArgs::default();
+    for arg in command_args {
+        match arg.as_str() {
+            "--check" => parsed.check_only = true,
+            "--force" => parsed.force = true,
+            other => {
+                return Err(format!(
+                    "unsupported self update argument '{}' (supported: --check, --force)",
+                    other
+                ));
+            }
+        }
+    }
+    Ok(parsed)
+}
+
+fn fetch_cli_update_manifest(endpoint: &str) -> Result<CliUpdateManifest, String> {
+    let response = match ureq::get(endpoint).call() {
+        Ok(response) => response,
+        Err(ureq::Error::Status(code, response)) => {
+            let body = response.into_string().unwrap_or_default();
+            let body = body.replace('\n', " ");
+            let summary = if body.len() > 200 {
+                format!("{}...", &body[..200])
+            } else {
+                body
+            };
+            return Err(format!(
+                "self-update endpoint returned HTTP {} for '{}': {}",
+                code, endpoint, summary
+            ));
+        }
+        Err(error) => {
+            return Err(format!(
+                "failed to reach self-update endpoint '{}': {error}",
+                endpoint
+            ));
+        }
+    };
+
+    let body = response
+        .into_string()
+        .map_err(|error| format!("failed to read self-update endpoint payload: {error}"))?;
+    let manifest: CliUpdateManifest = serde_json::from_str(&body).map_err(|error| {
+        format!(
+            "failed to parse self-update endpoint payload for '{}': {error}",
+            endpoint
+        )
+    })?;
+    if manifest.version.trim().is_empty() {
+        return Err("self-update endpoint payload is missing non-empty 'version'".to_string());
+    }
+    Ok(manifest)
+}
+
+fn parse_semver_lossy(raw: &str) -> Option<Version> {
+    let trimmed = raw.trim().trim_start_matches('v');
+    if trimmed.is_empty() {
         return None;
     }
-    Some(formula.to_string())
+    Version::parse(trimmed).ok()
 }
 
-fn refresh_self_update_snapshot(store: Arc<SqliteStore>, formula: &str) -> Result<(), String> {
-    if formula.trim().is_empty() {
-        return Err("self check failed: empty update formula".to_string());
+fn update_available(current_version: &str, latest_version: &str) -> bool {
+    match (
+        parse_semver_lossy(current_version),
+        parse_semver_lossy(latest_version),
+    ) {
+        (Some(current), Some(latest)) => latest > current,
+        _ => latest_version.trim() != current_version.trim(),
     }
-    let runtime = build_adapter_runtime(store)?;
-    let tokio_runtime = cli_tokio_runtime()?;
-    let manager = ManagerId::HomebrewFormula;
-    verbose_log(format!(
-        "running self check refresh via manager '{}' formula '{}'",
-        manager.as_str(),
-        formula
-    ));
-    tokio_runtime.block_on(refresh_single_manager(&runtime, manager))
 }
 
-fn self_update_snapshot_status(
-    store: &SqliteStore,
-    formula: &str,
-) -> Result<Option<SelfUpdateSnapshotStatus>, String> {
-    let formula = formula.trim();
-    if formula.is_empty() {
-        return Ok(None);
+fn select_update_asset(manifest: &CliUpdateManifest) -> Result<&CliUpdateAsset, String> {
+    if let Some(universal) = manifest.downloads.universal.as_ref() {
+        return Ok(universal);
     }
 
-    let outdated = store
-        .list_outdated()
-        .map_err(|error| format!("failed to list outdated packages for self status: {error}"))?;
-    if let Some(package) = outdated.iter().find(|package| {
-        package.package.manager == ManagerId::HomebrewFormula && package.package.name == formula
-    }) {
-        return Ok(Some(SelfUpdateSnapshotStatus {
-            update_available: true,
-            latest_version: Some(package.candidate_version.clone()),
-        }));
+    match env::consts::ARCH {
+        "aarch64" => manifest.downloads.arm64.as_ref().ok_or_else(|| {
+            "self-update endpoint payload is missing an arm64 download entry".to_string()
+        }),
+        "x86_64" => manifest.downloads.x86_64.as_ref().ok_or_else(|| {
+            "self-update endpoint payload is missing an x86_64 download entry".to_string()
+        }),
+        other => Err(format!(
+            "unsupported architecture for self-update: {}",
+            other
+        )),
+    }
+}
+
+fn download_update_bytes(url: &str) -> Result<Vec<u8>, String> {
+    let response = match ureq::get(url).call() {
+        Ok(response) => response,
+        Err(ureq::Error::Status(code, _)) => {
+            return Err(format!("failed to download update binary (HTTP {})", code));
+        }
+        Err(error) => {
+            return Err(format!("failed to download update binary: {error}"));
+        }
+    };
+
+    let mut reader = response.into_reader();
+    let mut bytes = Vec::new();
+    reader
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("failed to read downloaded update binary: {error}"))?;
+    if bytes.is_empty() {
+        return Err("downloaded update binary is empty".to_string());
+    }
+    Ok(bytes)
+}
+
+fn normalize_sha256(raw: &str) -> String {
+    raw.trim()
+        .trim_start_matches("sha256:")
+        .trim()
+        .to_ascii_lowercase()
+}
+
+fn verify_sha256(bytes: &[u8], expected_sha256: &str) -> Result<(), String> {
+    let expected = normalize_sha256(expected_sha256);
+    if expected.is_empty() {
+        return Err("self-update checksum is empty".to_string());
     }
 
-    let installed = store
-        .list_installed()
-        .map_err(|error| format!("failed to list installed packages for self status: {error}"))?;
-    if installed.iter().any(|package| {
-        package.package.manager == ManagerId::HomebrewFormula && package.package.name == formula
-    }) {
-        return Ok(Some(SelfUpdateSnapshotStatus {
-            update_available: false,
-            latest_version: None,
-        }));
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let digest = format!("{:x}", hasher.finalize());
+    if digest != expected {
+        return Err(format!(
+            "self-update checksum mismatch (expected {}, got {})",
+            expected, digest
+        ));
+    }
+    Ok(())
+}
+
+fn update_temp_path(executable_path: &PathBuf) -> PathBuf {
+    let suffix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let name = executable_path
+        .file_name()
+        .map(|value| value.to_string_lossy().to_string())
+        .unwrap_or_else(|| "helm".to_string());
+    executable_path.with_file_name(format!("{name}.tmp-update-{suffix}"))
+}
+
+fn apply_update_bytes(executable_path: &PathBuf, bytes: &[u8]) -> Result<(), String> {
+    let temp_path = update_temp_path(executable_path);
+    let mut temp_file = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&temp_path)
+        .map_err(|error| {
+            format!(
+                "failed to create temporary update file '{}': {error}",
+                temp_path.display()
+            )
+        })?;
+
+    use std::io::Write;
+    temp_file
+        .write_all(bytes)
+        .map_err(|error| format!("failed to write temporary update file: {error}"))?;
+    temp_file
+        .sync_all()
+        .map_err(|error| format!("failed to flush temporary update file: {error}"))?;
+
+    let mut permissions = fs::metadata(executable_path)
+        .map_err(|error| {
+            format!(
+                "failed to read executable metadata '{}': {error}",
+                executable_path.display()
+            )
+        })?
+        .permissions();
+    permissions.set_mode(permissions.mode() | 0o111);
+    fs::set_permissions(&temp_path, permissions).map_err(|error| {
+        format!(
+            "failed to set permissions on temporary update file '{}': {error}",
+            temp_path.display()
+        )
+    })?;
+
+    if let Err(error) = fs::rename(&temp_path, executable_path) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(format!(
+            "failed to replace '{}' with updated binary: {}. \
+If this path is not writable, reinstall with a user-writable direct install path.",
+            executable_path.display(),
+            error
+        ));
     }
 
-    Ok(None)
+    Ok(())
+}
+
+fn persist_direct_update_marker(version: &str) -> Result<(), String> {
+    let installed_at = OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string());
+    let marker = InstallMarker {
+        channel: "direct-script".to_string(),
+        artifact: "helm-cli".to_string(),
+        installed_at,
+        update_policy: "self".to_string(),
+        version: Some(version.to_string()),
+    };
+    let marker_path = install_marker_path()?;
+    write_install_marker(&marker_path, &marker)
+}
+
+fn direct_update_check_status(current_version: &str) -> Result<SelfUpdateCheckStatus, String> {
+    let endpoint = self_update_endpoint();
+    let manifest = fetch_cli_update_manifest(&endpoint)?;
+    let available = update_available(current_version, &manifest.version);
+    Ok(SelfUpdateCheckStatus {
+        checked: true,
+        update_available: Some(available),
+        latest_version: Some(manifest.version),
+        published_at: manifest.published_at,
+        source: endpoint,
+        reason: None,
+    })
+}
+
+fn direct_update_apply(
+    current_version: &str,
+    executable_path: &PathBuf,
+) -> Result<SelfUpdateApplyResult, String> {
+    let endpoint = self_update_endpoint();
+    let manifest = fetch_cli_update_manifest(&endpoint)?;
+    let available = update_available(current_version, &manifest.version);
+    if !available {
+        return Ok(SelfUpdateApplyResult {
+            updated: false,
+            latest_version: Some(manifest.version),
+            published_at: manifest.published_at,
+            source: endpoint,
+        });
+    }
+
+    let asset = select_update_asset(&manifest)?;
+    let bytes = download_update_bytes(&asset.url)?;
+    verify_sha256(&bytes, &asset.sha256)?;
+    apply_update_bytes(executable_path, &bytes)?;
+    let _ = persist_direct_update_marker(&manifest.version);
+
+    Ok(SelfUpdateApplyResult {
+        updated: true,
+        latest_version: Some(manifest.version),
+        published_at: manifest.published_at,
+        source: endpoint,
+    })
+}
+
+fn channel_managed_check_status(reason: String) -> SelfUpdateCheckStatus {
+    SelfUpdateCheckStatus {
+        checked: false,
+        update_available: None,
+        latest_version: None,
+        published_at: None,
+        source: "channel".to_string(),
+        reason: Some(reason),
+    }
 }
 
 fn cmd_self(
@@ -2782,10 +3005,18 @@ fn cmd_self(
         return Ok(());
     }
 
-    let target = detect_self_update_target(store.as_ref());
+    let executable_path = env::current_exe()
+        .map_err(|error| format!("failed to resolve current executable path: {error}"))?;
+    let provenance = detect_install_provenance(&executable_path);
+    let recommended_action = provenance_recommended_action(provenance.channel).to_string();
+    let current_version = current_cli_version();
+    let can_self_update = provenance_can_self_update(provenance.update_policy);
     verbose_log(format!(
-        "self command target method={} formula={:?} reason={:?}",
-        target.method, target.formula, target.reason
+        "self command provenance channel={} policy={} source={} executable={}",
+        provenance.channel.as_str(),
+        provenance.update_policy.as_str(),
+        provenance.source.as_str(),
+        provenance.executable_path.display()
     ));
 
     match command_args[0].as_str() {
@@ -2796,205 +3027,281 @@ fn cmd_self(
             let auto_check_frequency_minutes =
                 read_setting(store.as_ref(), "auto_check_frequency_minutes")
                     .unwrap_or_else(|_| "1440".to_string());
-            let update_snapshot = match target.formula.as_ref() {
-                Some(formula) if target.method == "homebrew_formula" => {
-                    self_update_snapshot_status(store.as_ref(), formula)
-                }
-                _ => Ok(None),
-            }?;
             if options.json {
                 emit_json_payload(
                     "helm.cli.v1.self.status",
                     json!({
-                        "current_version": env!("CARGO_PKG_VERSION"),
-                        "channel": "stable",
+                        "current_version": current_version,
+                        "channel": provenance.channel.as_str(),
+                        "update_policy": provenance.update_policy.as_str(),
+                        "source": provenance.source.as_str(),
+                        "executable_path": provenance.executable_path.to_string_lossy().to_string(),
+                        "marker_path": provenance.marker_path.to_string_lossy().to_string(),
+                        "artifact": provenance.artifact,
                         "auto_check_for_updates": auto_check_for_updates,
                         "auto_check_frequency_minutes": auto_check_frequency_minutes,
-                        "update_method": target.method,
-                        "target_formula": target.formula,
-                        "can_self_update": target.supported,
-                        "reason": target.reason,
-                        "update_available": update_snapshot.as_ref().map(|status| status.update_available),
-                        "latest_version": update_snapshot.and_then(|status| status.latest_version)
+                        "can_self_update": can_self_update,
+                        "recommended_action": recommended_action,
+                        "latest_version": serde_json::Value::Null,
+                        "update_available": serde_json::Value::Null
                     }),
                 );
             } else {
                 println!("Helm Self Status");
-                println!("  current_version: {}", env!("CARGO_PKG_VERSION"));
-                println!("  channel: stable");
+                println!("  current_version: {}", current_version);
+                println!("  channel: {}", provenance.channel.as_str());
+                println!("  update_policy: {}", provenance.update_policy.as_str());
+                println!("  source: {}", provenance.source.as_str());
+                println!(
+                    "  executable_path: {}",
+                    provenance.executable_path.display()
+                );
+                println!("  marker_path: {}", provenance.marker_path.display());
                 println!("  auto_check_for_updates: {auto_check_for_updates}");
                 println!("  auto_check_frequency_minutes: {auto_check_frequency_minutes}");
-                println!("  update_method: {}", target.method);
-                println!(
-                    "  target_formula: {}",
-                    target.formula.as_deref().unwrap_or("-")
-                );
-                println!("  can_self_update: {}", target.supported);
-                println!("  reason: {}", target.reason.as_deref().unwrap_or("-"));
-                if let Some(snapshot) = update_snapshot {
-                    println!("  update_available: {}", snapshot.update_available);
-                    println!(
-                        "  latest_version: {}",
-                        snapshot.latest_version.as_deref().unwrap_or("-")
-                    );
-                } else {
-                    println!("  update_available: unknown");
-                }
+                println!("  can_self_update: {}", can_self_update);
+                println!("  recommended_action: {}", recommended_action);
             }
             Ok(())
         }
         "check" => {
             let checked_at = json_generated_at_unix();
-            if !target.supported {
-                if options.json {
-                    emit_json_payload(
-                        "helm.cli.v1.self.check",
-                        json!({
-                            "checked": false,
-                            "checked_at": checked_at,
-                            "update_available": null,
-                            "latest_version": null,
-                            "update_method": target.method,
-                            "target_formula": target.formula,
-                            "reason": target.reason.unwrap_or_else(|| "self-update check is unavailable for this installation".to_string())
-                        }),
-                    );
-                } else {
-                    println!("Self-update check unavailable for this installation.");
-                    if let Some(reason) = target.reason {
-                        println!("  reason: {reason}");
-                    }
-                    println!("  checked_at: {checked_at}");
-                }
-                return Ok(());
-            }
-
-            refresh_self_update_snapshot(
-                store.clone(),
-                target.formula.as_deref().unwrap_or("helm"),
-            )?;
-            let snapshot = self_update_snapshot_status(
-                store.as_ref(),
-                target.formula.as_deref().unwrap_or("helm"),
-            )?;
+            let status = if can_self_update {
+                direct_update_check_status(&current_version)?
+            } else {
+                channel_managed_check_status(format!(
+                    "self-update check is channel-managed for '{}' installs; {}",
+                    provenance.channel.as_str(),
+                    recommended_action
+                ))
+            };
             if options.json {
                 emit_json_payload(
                     "helm.cli.v1.self.check",
                     json!({
-                        "checked": true,
+                        "checked": status.checked,
                         "checked_at": checked_at,
-                        "update_method": target.method,
-                        "target_formula": target.formula,
-                        "update_available": snapshot.as_ref().map(|status| status.update_available),
-                        "latest_version": snapshot.and_then(|status| status.latest_version),
-                        "reason": null
+                        "channel": provenance.channel.as_str(),
+                        "update_policy": provenance.update_policy.as_str(),
+                        "can_self_update": can_self_update,
+                        "recommended_action": recommended_action,
+                        "current_version": current_version,
+                        "update_available": status.update_available,
+                        "latest_version": status.latest_version,
+                        "published_at": status.published_at,
+                        "source": status.source,
+                        "reason": status.reason
                     }),
                 );
             } else {
                 println!("Self-update check completed.");
                 println!("  checked_at: {checked_at}");
+                println!("  channel: {}", provenance.channel.as_str());
+                println!("  update_policy: {}", provenance.update_policy.as_str());
+                println!("  can_self_update: {}", can_self_update);
+                println!("  recommended_action: {}", recommended_action);
                 println!(
                     "  update_available: {}",
-                    snapshot
-                        .as_ref()
-                        .map(|status| status.update_available.to_string())
+                    status
+                        .update_available
+                        .map(|value| value.to_string())
                         .unwrap_or_else(|| "unknown".to_string())
                 );
                 println!(
                     "  latest_version: {}",
-                    snapshot
-                        .and_then(|status| status.latest_version)
-                        .unwrap_or_else(|| "-".to_string())
+                    status.latest_version.unwrap_or_else(|| "-".to_string())
                 );
+                if let Some(reason) = status.reason {
+                    println!("  reason: {reason}");
+                }
             }
             Ok(())
         }
         "update" => {
-            if !target.supported {
-                let reason = target.reason.unwrap_or_else(|| {
-                    "self-update is unavailable for this installation".to_string()
-                });
+            let parsed = parse_self_update_args(&command_args[1..])?;
+            if parsed.check_only {
+                let checked_at = json_generated_at_unix();
+                let status = if provenance.channel == InstallChannel::Managed {
+                    channel_managed_check_status(
+                        "self-update checks are blocked by managed policy".to_string(),
+                    )
+                } else if provenance.channel == InstallChannel::AppBundleShim {
+                    channel_managed_check_status(
+                        "app-bundled CLI cannot self-update; update the Helm GUI through its channel"
+                            .to_string(),
+                    )
+                } else if can_self_update || parsed.force {
+                    direct_update_check_status(&current_version)?
+                } else {
+                    channel_managed_check_status(format!(
+                        "self-update is channel-managed for '{}' installs; {}",
+                        provenance.channel.as_str(),
+                        recommended_action
+                    ))
+                };
+
+                if options.json {
+                    emit_json_payload(
+                        "helm.cli.v1.self.update.check",
+                        json!({
+                            "checked": status.checked,
+                            "checked_at": checked_at,
+                            "channel": provenance.channel.as_str(),
+                            "update_policy": provenance.update_policy.as_str(),
+                            "force": parsed.force,
+                            "can_self_update": can_self_update,
+                            "recommended_action": recommended_action,
+                            "current_version": current_version,
+                            "update_available": status.update_available,
+                            "latest_version": status.latest_version,
+                            "published_at": status.published_at,
+                            "source": status.source,
+                            "reason": status.reason
+                        }),
+                    );
+                } else {
+                    println!("Self-update check completed.");
+                    println!("  checked_at: {checked_at}");
+                    println!("  channel: {}", provenance.channel.as_str());
+                    println!("  update_policy: {}", provenance.update_policy.as_str());
+                    println!("  force: {}", parsed.force);
+                    println!("  can_self_update: {}", can_self_update);
+                    println!("  recommended_action: {}", recommended_action);
+                    println!(
+                        "  update_available: {}",
+                        status
+                            .update_available
+                            .map(|value| value.to_string())
+                            .unwrap_or_else(|| "unknown".to_string())
+                    );
+                    println!(
+                        "  latest_version: {}",
+                        status.latest_version.unwrap_or_else(|| "-".to_string())
+                    );
+                    if let Some(reason) = status.reason {
+                        println!("  reason: {reason}");
+                    }
+                }
+                return Ok(());
+            }
+
+            if options.execution_mode == ExecutionMode::Detach {
+                return Err(
+                    "self update does not support --detach for direct binary replacement"
+                        .to_string(),
+                );
+            }
+
+            if provenance.channel == InstallChannel::AppBundleShim {
+                let reason =
+                    "app-bundled CLI cannot self-update; update Helm GUI through its channel"
+                        .to_string();
                 if options.json {
                     emit_json_payload(
                         "helm.cli.v1.self.update",
                         json!({
                             "accepted": false,
-                            "update_method": target.method,
-                            "target_formula": target.formula,
+                            "channel": provenance.channel.as_str(),
+                            "update_policy": provenance.update_policy.as_str(),
+                            "force": parsed.force,
+                            "can_self_update": false,
+                            "recommended_action": recommended_action,
+                            "current_version": current_version,
+                            "latest_version": serde_json::Value::Null,
                             "reason": reason
                         }),
                     );
                 }
-                return Err(format!("self update unavailable: {}", reason));
+                return Err(
+                    "self update unavailable: app-bundled CLI is channel-managed".to_string(),
+                );
             }
-            let formula = target.formula.ok_or_else(|| {
-                "self update unavailable: missing formula mapping for this installation".to_string()
-            })?;
-            let response = coordinator_submit_request(
-                ManagerId::HomebrewFormula,
-                CoordinatorSubmitRequest::Upgrade {
-                    package_name: Some(formula.clone()),
-                },
-                options.execution_mode,
-            )?;
-            let task_id = response
-                .task_id
-                .ok_or_else(|| "coordinator response missing task id".to_string())?;
 
-            if options.execution_mode == ExecutionMode::Detach {
+            if provenance.update_policy == UpdatePolicy::Managed {
+                let reason = "self-update blocked by managed policy".to_string();
                 if options.json {
                     emit_json_payload(
                         "helm.cli.v1.self.update",
                         json!({
-                            "accepted": true,
-                            "mode": "detach",
-                            "task_id": task_id,
-                            "update_method": target.method,
-                            "target_formula": formula
+                            "accepted": false,
+                            "channel": provenance.channel.as_str(),
+                            "update_policy": provenance.update_policy.as_str(),
+                            "force": parsed.force,
+                            "can_self_update": false,
+                            "recommended_action": recommended_action,
+                            "current_version": current_version,
+                            "latest_version": serde_json::Value::Null,
+                            "reason": reason
                         }),
                     );
-                } else {
-                    println!("Self-update submitted (task #{}).", task_id);
                 }
-                return Ok(());
+                return Err(
+                    "self update unavailable: managed policy denies direct self-update".to_string(),
+                );
             }
 
-            match response.payload {
-                Some(CoordinatorPayload::Mutation {
-                    manager_id,
-                    package_name,
-                    action,
-                    before_version,
-                    after_version,
-                }) => {
-                    if options.json {
-                        emit_json_payload(
-                            "helm.cli.v1.self.update",
-                            json!({
-                                "accepted": true,
-                                "mode": "wait",
-                                "task_id": task_id,
-                                "update_method": target.method,
-                                "target_formula": formula,
-                                "manager_id": manager_id,
-                                "package_name": package_name,
-                                "action": action,
-                                "before_version": before_version,
-                                "after_version": after_version
-                            }),
-                        );
-                    } else {
-                        println!("Self-update completed (task #{}).", task_id);
-                        println!("  method: {}", target.method);
-                        println!("  target_formula: {}", formula);
-                    }
-                    Ok(())
+            if !can_self_update && !parsed.force {
+                let reason = format!(
+                    "self-update is channel-managed for '{}' installs; {}",
+                    provenance.channel.as_str(),
+                    recommended_action
+                );
+                if options.json {
+                    emit_json_payload(
+                        "helm.cli.v1.self.update",
+                        json!({
+                            "accepted": false,
+                            "channel": provenance.channel.as_str(),
+                            "update_policy": provenance.update_policy.as_str(),
+                            "force": false,
+                            "can_self_update": can_self_update,
+                            "recommended_action": recommended_action,
+                            "current_version": current_version,
+                            "latest_version": serde_json::Value::Null,
+                            "reason": reason
+                        }),
+                    );
                 }
-                _ => Err(format!(
-                    "self update task {} completed with unexpected coordinator payload",
-                    task_id
-                )),
+                return Err("self update unavailable: installation is channel-managed".to_string());
             }
+
+            let applied = direct_update_apply(&current_version, &provenance.executable_path)?;
+            if options.json {
+                emit_json_payload(
+                    "helm.cli.v1.self.update",
+                    json!({
+                        "accepted": true,
+                        "updated": applied.updated,
+                        "channel": provenance.channel.as_str(),
+                        "update_policy": if parsed.force { "self" } else { provenance.update_policy.as_str() },
+                        "force": parsed.force,
+                        "can_self_update": true,
+                        "recommended_action": recommended_action,
+                        "current_version": current_version,
+                        "latest_version": applied.latest_version,
+                        "published_at": applied.published_at,
+                        "source": applied.source
+                    }),
+                );
+            } else {
+                if parsed.force {
+                    println!(
+                        "Self-update force mode enabled; proceeding with direct update endpoint."
+                    );
+                }
+                if applied.updated {
+                    println!("Self-update completed.");
+                } else {
+                    println!("Already up to date.");
+                }
+                println!("  channel: {}", provenance.channel.as_str());
+                println!("  source: {}", applied.source);
+                println!(
+                    "  latest_version: {}",
+                    applied.latest_version.unwrap_or_else(|| "-".to_string())
+                );
+            }
+            Ok(())
         }
         _ => Err(format!(
             "unsupported self subcommand '{}'; currently supported: status, check, update, auto-check",
@@ -7605,7 +7912,7 @@ fn print_self_help() {
     println!("USAGE:");
     println!("  helm self status");
     println!("  helm self check");
-    println!("  helm self update");
+    println!("  helm self update [--check] [--force]");
     println!("  helm self auto-check status");
     println!("  helm self auto-check enable");
     println!("  helm self auto-check disable");
@@ -7613,9 +7920,8 @@ fn print_self_help() {
     println!();
     println!("DESCRIPTION:");
     println!("  Self-update namespace for Helm.");
-    println!(
-        "  Homebrew-formula installs are supported for check/update; other install paths return guidance."
-    );
+    println!("  Self-update behavior is driven by install provenance and update policy.");
+    println!("  Channel-managed installs print recommended channel upgrade commands.");
 }
 
 fn print_self_status_help() {
@@ -7636,10 +7942,12 @@ fn print_self_check_help() {
 
 fn print_self_update_help() {
     println!("USAGE:");
-    println!("  helm self update");
+    println!("  helm self update [--check] [--force]");
     println!();
     println!("DESCRIPTION:");
-    println!("  Apply Helm self-update for supported install methods.");
+    println!("  Apply direct CLI self-update when provenance policy allows it.");
+    println!("  --check performs a non-mutating availability check.");
+    println!("  --force bypasses channel-managed policy except managed or app-bundled installs.");
 }
 
 fn print_self_auto_check_help() {
