@@ -153,7 +153,58 @@ Default policy when marker missing:
 
 ---
 
-## 8. CI Ownership Boundaries (High-Level)
+## 8. Local Build Process (Per-Variant + Build-All)
+
+Primary helper script:
+
+- `scripts/build.sh`
+
+Prerequisites:
+
+- Xcode + Command Line Tools (`xcodebuild`, `hdiutil`)
+- Rust toolchain (`cargo`)
+- macOS host
+
+Per-variant commands:
+
+- Direct profile:
+  - `scripts/build.sh direct`
+- MAS profile:
+  - `scripts/build.sh mas`
+- Setapp profile:
+  - `scripts/build.sh setapp`
+- Business profile:
+  - `scripts/build.sh business`
+
+Build-everything command:
+
+- `scripts/build.sh all`
+
+Behavior and outputs:
+
+- All commands build the release CLI binary (`helm`) and copy it to `build/variants/cli/helm`.
+- Direct profile:
+  - Builds unsigned app at `build/variants/direct/Helm.app`
+  - Builds unsigned DMG at `build/variants/direct/Helm-unsigned.dmg`
+- MAS profile:
+  - Builds unsigned app at `build/variants/mas/Helm.app`
+  - Writes placeholder packaging notes at `build/variants/mas/ARTIFACT_NOTES.md`
+- Setapp profile:
+  - Builds unsigned app at `build/variants/setapp/Helm.app`
+  - Writes placeholder packaging notes at `build/variants/setapp/ARTIFACT_NOTES.md`
+- Business profile:
+  - Builds unsigned app at `build/variants/business/Helm.app`
+  - Writes placeholder packaging notes at `build/variants/business/ARTIFACT_NOTES.md`
+- `all` mode is best-effort for variant GUI packaging: it continues through all variants and reports optional failures at the end.
+
+Scope note:
+
+- This script is for local validation and artifact shape checks.
+- Signed, notarized, and store/vendor submissions remain release-pipeline responsibilities.
+
+---
+
+## 9. CI Ownership Boundaries (High-Level)
 
 - GUI direct DMG + Sparkle feed publication remains existing release workflow responsibility.
 - CLI direct installer publication must publish:
