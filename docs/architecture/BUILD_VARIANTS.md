@@ -212,3 +212,35 @@ Scope note:
   - checksums
   - website `latest.json` contract payload
 - Future channel CI (MAS, Setapp, business PKG) remains roadmap-scoped until credentials/process are ready.
+
+---
+
+## 10. CLI Update Endpoint Contract
+
+Endpoint:
+
+- `https://helmapp.dev/updates/cli/latest.json`
+- repository path: `web/public/updates/cli/latest.json`
+
+Payload requirements:
+
+- `version` (semver-compatible text)
+- `published_at` (ISO-8601 UTC timestamp)
+- `downloads.universal|arm64|x86_64` entries with:
+  - `url`
+  - `sha256`
+
+Compatibility rule:
+
+- existing fields above are stable for current CLI self-update and `install.sh`.
+- additive fields are allowed.
+- field removal/renaming requires coordinated CLI contract/version update.
+
+---
+
+## 11. Operational References
+
+- Maintainer workflow and manual action guide:
+  - `docs/operations/CLI_RELEASE_AND_CI.md`
+- Future CI milestone tracking:
+  - `docs/roadmap/CLI_DISTRIBUTION_CI_MILESTONES.md`
