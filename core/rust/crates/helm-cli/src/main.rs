@@ -4,7 +4,7 @@ use std::fs::{self, OpenOptions};
 use std::hash::{Hash, Hasher};
 use std::io::{IsTerminal, Read};
 use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{ExitCode, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -2989,7 +2989,7 @@ fn verify_sha256(bytes: &[u8], expected_sha256: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn update_temp_path(executable_path: &PathBuf) -> PathBuf {
+fn update_temp_path(executable_path: &Path) -> PathBuf {
     let suffix = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_nanos())
@@ -3001,7 +3001,7 @@ fn update_temp_path(executable_path: &PathBuf) -> PathBuf {
     executable_path.with_file_name(format!("{name}.tmp-update-{suffix}"))
 }
 
-fn apply_update_bytes(executable_path: &PathBuf, bytes: &[u8]) -> Result<(), String> {
+fn apply_update_bytes(executable_path: &Path, bytes: &[u8]) -> Result<(), String> {
     let temp_path = update_temp_path(executable_path);
     let mut temp_file = OpenOptions::new()
         .create_new(true)
@@ -3135,7 +3135,7 @@ fn run_due_auto_check(store: &SqliteStore) -> Result<(), String> {
 
 fn direct_update_apply(
     current_version: &str,
-    executable_path: &PathBuf,
+    executable_path: &Path,
 ) -> Result<SelfUpdateApplyResult, String> {
     let endpoint = self_update_endpoint();
     let manifest = fetch_cli_update_manifest(&endpoint)?;
