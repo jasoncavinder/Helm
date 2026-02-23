@@ -479,6 +479,7 @@ These must not violate:
 Canonical contract:
 
 - `docs/architecture/BUILD_VARIANTS.md`
+- machine-readable profile contract: `docs/contracts/distribution-profiles.json`
 
 This includes:
 

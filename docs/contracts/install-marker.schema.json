@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://helmapp.dev/schemas/install-marker.schema.json",
+  "title": "Helm CLI Install Marker",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "channel",
+    "artifact",
+    "installed_at",
+    "update_policy"
+  ],
+  "properties": {
+    "channel": {
+      "type": "string",
+      "enum": [
+        "direct-script",
+        "app-bundle-shim",
+        "brew",
+        "macports",
+        "cargo",
+        "unknown",
+        "managed"
+      ]
+    },
+    "artifact": {
+      "type": "string",
+      "minLength": 1
+    },
+    "installed_at": {
+      "type": "string",
+      "minLength": 1,
+      "description": "ISO-8601 UTC timestamp"
+    },
+    "update_policy": {
+      "type": "string",
+      "enum": [
+        "self",
+        "channel",
+        "managed",
+        "none"
+      ]
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

@@ -69,6 +69,20 @@ Expected outputs:
 - notarization/stapling verification
 - managed-policy artifact contract checks
 
+### M5. Detached Signatures for CLI Update Trust Chain
+
+Goal:
+
+- extend CLI direct-update authenticity beyond SHA256 to detached signatures for manifest and binaries
+- support key-rotation without breaking existing installed clients
+- surface signature verification failures with actionable operator guidance
+
+Expected outputs:
+
+- signature artifact publication contract (stable + prerelease channels)
+- verification path in `helm self update` and `install.sh`
+- documented signing-key lifecycle and rotation runbook
+
 ---
 
 ## Acceptance Guardrails
