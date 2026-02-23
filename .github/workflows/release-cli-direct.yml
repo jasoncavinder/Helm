@@ -319,14 +319,14 @@ jobs:
           fi
 
           ACTUAL_VERSION="$(
-            python3 - "$MAIN_JSON" <<'PY'
-            import json
-            import sys
+          python3 - "$MAIN_JSON" <<'PY'
+          import json
+          import sys
 
-            with open(sys.argv[1], "r", encoding="utf-8") as f:
-                payload = json.load(f)
-            print(str(payload.get("version", "")).strip())
-            PY
+          with open(sys.argv[1], "r", encoding="utf-8") as f:
+              payload = json.load(f)
+          print(str(payload.get("version", "")).strip())
+          PY
           )"
 
           if [ -z "$ACTUAL_VERSION" ]; then
