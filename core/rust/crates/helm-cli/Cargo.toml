@@ -1,0 +1,15 @@
+[package]
+name = "helm-cli"
+version.workspace = true
+edition = "2024"
+license = "UNLICENSED"
+
+[[bin]]
+name = "helm"
+path = "src/main.rs"
+
+[dependencies]
+helm-core = { path = "../helm-core" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.48", features = ["rt-multi-thread", "time"] }

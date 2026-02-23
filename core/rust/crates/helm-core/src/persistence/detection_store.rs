@@ -38,6 +38,21 @@ pub trait DetectionStore: Send + Sync {
 
     fn homebrew_keg_policy(&self) -> PersistenceResult<HomebrewKegPolicy>;
 
+    fn set_auto_check_for_updates(&self, enabled: bool) -> PersistenceResult<()>;
+
+    fn auto_check_for_updates(&self) -> PersistenceResult<bool>;
+
+    fn set_auto_check_frequency_minutes(&self, minutes: u32) -> PersistenceResult<()>;
+
+    fn auto_check_frequency_minutes(&self) -> PersistenceResult<u32>;
+
+    fn set_manager_priority_overrides_json(
+        &self,
+        overrides_json: Option<&str>,
+    ) -> PersistenceResult<()>;
+
+    fn manager_priority_overrides_json(&self) -> PersistenceResult<Option<String>>;
+
     fn set_package_keg_policy(
         &self,
         package: &PackageRef,

@@ -238,6 +238,30 @@ fn safe_mode_defaults_false_and_roundtrips() {
 }
 
 #[test]
+fn auto_check_settings_roundtrip() {
+    let path = test_db_path("auto-check-settings-roundtrip");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    assert!(!store.auto_check_for_updates().unwrap());
+    assert_eq!(store.auto_check_frequency_minutes().unwrap(), 1_440);
+
+    store.set_auto_check_for_updates(true).unwrap();
+    store.set_auto_check_frequency_minutes(60).unwrap();
+
+    assert!(store.auto_check_for_updates().unwrap());
+    assert_eq!(store.auto_check_frequency_minutes().unwrap(), 60);
+
+    store.set_auto_check_for_updates(false).unwrap();
+    store.set_auto_check_frequency_minutes(1_440).unwrap();
+
+    assert!(!store.auto_check_for_updates().unwrap());
+    assert_eq!(store.auto_check_frequency_minutes().unwrap(), 1_440);
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn homebrew_keg_policy_defaults_keep_and_roundtrips() {
     let path = test_db_path("keg-policy-roundtrip");
     let store = SqliteStore::new(&path);
