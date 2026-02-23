@@ -60,16 +60,19 @@ use provenance::{
 const TASK_FETCH_LIMIT: usize = 400;
 const TASK_FOLLOW_MAX_WAIT_MS: u64 = 30_000;
 const JSON_SCHEMA_VERSION: u32 = 1;
+const JSON_ERROR_EMITTED_PREFIX: &str = "__HELM_JSON_ERROR_EMITTED__:";
+const EXIT_CODE_MARKER_PREFIX: &str = "__HELM_EXIT_CODE__:";
 static CLI_TOKIO_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
 static EXECUTABLE_DISCOVERY_CACHE: OnceLock<Mutex<HashMap<ManagerId, Vec<String>>>> =
     OnceLock::new();
 static COORDINATOR_REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
 static CLI_VERBOSE: AtomicBool = AtomicBool::new(false);
 static CLI_REQUEST_TIMEOUT_SECONDS: AtomicU64 = AtomicU64::new(30);
+static CLI_NDJSON: AtomicBool = AtomicBool::new(false);
 const BASH_COMPLETION_SCRIPT: &str = r#"_helm_complete() {
     local cur
     cur="${COMP_WORDS[COMP_CWORD]}"
-    local commands="status refresh search ls packages updates tasks managers settings diagnostics self completion help"
+    local commands="status refresh search ls packages updates tasks managers settings diagnostics doctor self completion help"
     if [[ ${COMP_CWORD} -eq 1 ]]; then
         COMPREPLY=( $(compgen -W "${commands}" -- "${cur}") )
         return 0
@@ -92,6 +95,9 @@ const BASH_COMPLETION_SCRIPT: &str = r#"_helm_complete() {
             COMPREPLY=( $(compgen -W "list get set reset help" -- "${cur}") )
             ;;
         diagnostics)
+            COMPREPLY=( $(compgen -W "summary task manager provenance export help" -- "${cur}") )
+            ;;
+        doctor)
             COMPREPLY=( $(compgen -W "summary task manager provenance export help" -- "${cur}") )
             ;;
         self)
@@ -122,6 +128,7 @@ commands=(
   managers
   settings
   diagnostics
+  doctor
   self
   completion
   help
@@ -151,6 +158,9 @@ case $words[2] in
   diagnostics)
     _values 'subcommand' summary task manager provenance export help
     ;;
+  doctor)
+    _values 'subcommand' summary task manager provenance export help
+    ;;
   self)
     if [[ "$words[3]" == "auto-check" ]]; then
       _values 'subcommand' status enable disable frequency help
@@ -164,13 +174,14 @@ case $words[2] in
 esac
 "#;
 const FISH_COMPLETION_SCRIPT: &str = r#"complete -c helm -f
-complete -c helm -n "__fish_use_subcommand" -a "status refresh search ls packages updates tasks managers settings diagnostics self completion help"
+complete -c helm -n "__fish_use_subcommand" -a "status refresh search ls packages updates tasks managers settings diagnostics doctor self completion help"
 complete -c helm -n "__fish_seen_subcommand_from packages" -a "list search show install uninstall upgrade pin unpin help"
 complete -c helm -n "__fish_seen_subcommand_from updates" -a "list summary preview run help"
 complete -c helm -n "__fish_seen_subcommand_from tasks" -a "list show logs output follow cancel help"
 complete -c helm -n "__fish_seen_subcommand_from managers" -a "list show detect enable disable install update uninstall executables install-methods priority help"
 complete -c helm -n "__fish_seen_subcommand_from settings" -a "list get set reset help"
 complete -c helm -n "__fish_seen_subcommand_from diagnostics" -a "summary task manager provenance export help"
+complete -c helm -n "__fish_seen_subcommand_from doctor" -a "summary task manager provenance export help"
 complete -c helm -n "__fish_seen_subcommand_from self" -a "status check update auto-check help"
 complete -c helm -n "__fish_seen_subcommand_from auto-check" -a "status enable disable frequency help"
 complete -c helm -n "__fish_seen_subcommand_from completion" -a "bash zsh fish help"
@@ -209,6 +220,7 @@ enum Command {
     Managers,
     Settings,
     Diagnostics,
+    Doctor,
     SelfCmd,
     Completion,
     InternalCoordinator,
@@ -430,6 +442,8 @@ struct CoordinatorResponse {
     task_id: Option<u64>,
     job_id: Option<String>,
     payload: Option<CoordinatorPayload>,
+    #[serde(default)]
+    exit_code: Option<u8>,
     error: Option<String>,
 }
 
@@ -479,15 +493,24 @@ fn coordinator_workflow_kind(workflow: &CoordinatorWorkflowRequest) -> &'static 
 }
 
 fn main() -> ExitCode {
-    let (options, command, command_args) = match parse_args(env::args().skip(1).collect()) {
+    let raw_args: Vec<String> = env::args().skip(1).collect();
+    set_ndjson_enabled(raw_args_request_ndjson(&raw_args));
+    let (options, command, command_args) = match parse_args(raw_args.clone()) {
         Ok(parsed) => parsed,
         Err(error) => {
-            eprintln!("helm: {error}");
-            return ExitCode::from(1);
+            let exit_code = exit_code_for_error(error.as_str());
+            if raw_args_request_json(&raw_args) {
+                emit_cli_error_json("helm.cli.v1.error", error.as_str(), exit_code);
+            } else {
+                eprintln!("helm: {error}");
+            }
+            return ExitCode::from(exit_code);
         }
     };
     set_cli_request_timeout_seconds(options.timeout_seconds);
     set_verbose_enabled(options.verbose);
+    set_ndjson_enabled(options.ndjson);
+    emit_version_metadata_if_verbose();
     verbose_log(format!(
         "parsed invocation: command={:?}, args={:?}, json={}, ndjson={}, execution_mode={:?}, verbose={}, quiet={}, no_color={}, locale={:?}, timeout_seconds={:?}",
         command,
@@ -503,40 +526,76 @@ fn main() -> ExitCode {
     ));
 
     if matches!(command, Command::Help) {
-        if !print_help_topic(&command_args) {
+        if options.json {
+            if command_args.is_empty() {
+                emit_help_json_payload(None, &[], true);
+            } else if let Some(topic_command) = parse_top_level_command(command_args[0].as_str()) {
+                let topic_path = &command_args[1..];
+                let resolved = command_help_topic_exists(topic_command, topic_path);
+                emit_help_json_payload(Some(topic_command), topic_path, resolved);
+            } else {
+                emit_help_json_payload(None, &command_args, false);
+            }
+        } else if !print_help_topic(&command_args) {
             print_help();
         }
         return ExitCode::SUCCESS;
     }
 
     if matches!(command, Command::Version) {
-        println!("{}", env!("CARGO_PKG_VERSION"));
+        if options.json {
+            emit_json_payload("helm.cli.v1.version", build_version_payload());
+        } else {
+            println!("{}", env!("CARGO_PKG_VERSION"));
+        }
         return ExitCode::SUCCESS;
     }
 
     if matches!(command, Command::Completion) {
-        return cmd_completion(&command_args)
+        return cmd_completion(options.clone(), &command_args)
             .map(|_| ExitCode::SUCCESS)
             .unwrap_or_else(|error| {
-                eprintln!("helm: {error}");
-                ExitCode::from(1)
+                let (json_emitted, normalized_error) = strip_json_error_marker(error.as_str());
+                let (marked_exit_code, normalized_error) = strip_exit_code_marker(normalized_error);
+                let exit_code =
+                    marked_exit_code.unwrap_or_else(|| exit_code_for_error(normalized_error));
+                if options.json {
+                    if !json_emitted {
+                        emit_cli_error_json("helm.cli.v1.error", normalized_error, exit_code);
+                    }
+                } else if !json_emitted {
+                    eprintln!("helm: {normalized_error}");
+                }
+                ExitCode::from(exit_code)
             });
     }
 
-    if let Some(help_path) = extract_help_path(&command_args)
-        && print_command_help_topic(command, &help_path)
-    {
-        return ExitCode::SUCCESS;
+    if let Some(help_path) = extract_help_path(&command_args) {
+        if options.json {
+            if command_help_topic_exists(command, &help_path) {
+                emit_help_json_payload(Some(command), &help_path, true);
+                return ExitCode::SUCCESS;
+            }
+        } else if print_command_help_topic(command, &help_path) {
+            return ExitCode::SUCCESS;
+        }
     }
 
     let store = match open_store() {
         Ok(store) => store,
         Err(error) => {
-            eprintln!("helm: failed to open state store: {error}");
-            return ExitCode::from(1);
+            let rendered = format!("failed to open state store: {error}");
+            let exit_code = exit_code_for_error(rendered.as_str());
+            if options.json {
+                emit_cli_error_json("helm.cli.v1.error", rendered.as_str(), exit_code);
+            } else {
+                eprintln!("helm: {rendered}");
+            }
+            return ExitCode::from(exit_code);
         }
     };
 
+    let options_for_error = options.clone();
     match command {
         Command::Status => cmd_status(store.as_ref(), options),
         Command::Refresh => cmd_refresh(store.clone(), options, &command_args),
@@ -548,14 +607,24 @@ fn main() -> ExitCode {
         Command::Managers => cmd_managers(store.clone(), options, &command_args),
         Command::Settings => cmd_settings(store.as_ref(), options, &command_args),
         Command::Diagnostics => cmd_diagnostics(store.as_ref(), options, &command_args),
+        Command::Doctor => cmd_doctor(store.as_ref(), options, &command_args),
         Command::SelfCmd => cmd_self(store.clone(), options, &command_args),
         Command::InternalCoordinator => cmd_internal_coordinator(store.clone(), &command_args),
         Command::Completion | Command::Help | Command::Version => Ok(()),
     }
     .map(|_| ExitCode::SUCCESS)
     .unwrap_or_else(|error| {
-        eprintln!("helm: {error}");
-        ExitCode::from(exit_code_for_error(error.as_str()))
+        let (json_emitted, normalized_error) = strip_json_error_marker(error.as_str());
+        let (marked_exit_code, normalized_error) = strip_exit_code_marker(normalized_error);
+        let exit_code = marked_exit_code.unwrap_or_else(|| exit_code_for_error(normalized_error));
+        if options_for_error.json {
+            if !json_emitted {
+                emit_cli_error_json("helm.cli.v1.error", normalized_error, exit_code);
+            }
+        } else if !json_emitted {
+            eprintln!("helm: {normalized_error}");
+        }
+        ExitCode::from(exit_code)
     })
 }
 
@@ -726,33 +795,50 @@ fn set_cli_request_timeout_seconds(value: Option<u64>) {
     CLI_REQUEST_TIMEOUT_SECONDS.store(value.unwrap_or(30), Ordering::Relaxed);
 }
 
+fn set_ndjson_enabled(enabled: bool) {
+    CLI_NDJSON.store(enabled, Ordering::Relaxed);
+}
+
+fn ndjson_enabled() -> bool {
+    CLI_NDJSON.load(Ordering::Relaxed)
+}
+
 fn coordinator_request_timeout() -> Duration {
     Duration::from_secs(CLI_REQUEST_TIMEOUT_SECONDS.load(Ordering::Relaxed).max(1))
 }
 
 fn exit_code_for_error(error: &str) -> u8 {
-    let normalized = error.trim().to_ascii_lowercase();
-    if normalized.contains("cancelled") || normalized.contains("canceled") {
-        return 4;
-    }
-    if normalized.contains("partial failure") {
-        return 3;
-    }
-    if let Some(count) = parse_manager_failure_count(normalized.as_str()) {
-        return if count > 1 { 3 } else { 2 };
-    }
-    if normalized.contains("task failed") {
-        return 2;
-    }
-    1
+    let (marked_exit_code, _) = strip_exit_code_marker(error);
+    marked_exit_code.unwrap_or(1)
 }
 
-fn parse_manager_failure_count(error: &str) -> Option<usize> {
-    if !error.contains("manager") || !error.contains("operations failed") {
-        return None;
+fn mark_json_error_emitted(error: impl AsRef<str>) -> String {
+    format!("{JSON_ERROR_EMITTED_PREFIX}{}", error.as_ref())
+}
+
+fn strip_json_error_marker(error: &str) -> (bool, &str) {
+    if let Some(stripped) = error.strip_prefix(JSON_ERROR_EMITTED_PREFIX) {
+        (true, stripped)
+    } else {
+        (false, error)
     }
-    let first = error.split_whitespace().next()?;
-    first.parse::<usize>().ok()
+}
+
+fn mark_exit_code(error: impl AsRef<str>, exit_code: u8) -> String {
+    format!("{EXIT_CODE_MARKER_PREFIX}{exit_code}:{}", error.as_ref())
+}
+
+fn strip_exit_code_marker(error: &str) -> (Option<u8>, &str) {
+    let Some(stripped) = error.strip_prefix(EXIT_CODE_MARKER_PREFIX) else {
+        return (None, error);
+    };
+    let Some((raw_code, remainder)) = stripped.split_once(':') else {
+        return (None, error);
+    };
+    match raw_code.parse::<u8>() {
+        Ok(code) => (Some(code), remainder),
+        Err(_) => (None, error),
+    }
 }
 
 fn parse_top_level_command(raw: &str) -> Option<Command> {
@@ -767,6 +853,7 @@ fn parse_top_level_command(raw: &str) -> Option<Command> {
         "mgr" | "managers" => Some(Command::Managers),
         "config" | "settings" => Some(Command::Settings),
         "diagnostics" => Some(Command::Diagnostics),
+        "doctor" => Some(Command::Doctor),
         "self" => Some(Command::SelfCmd),
         "completion" => Some(Command::Completion),
         "__coordinator__" => Some(Command::InternalCoordinator),
@@ -791,6 +878,215 @@ fn extract_help_path(command_args: &[String]) -> Option<Vec<String>> {
     }
 
     None
+}
+
+fn raw_args_request_json(args: &[String]) -> bool {
+    args.iter()
+        .any(|arg| matches!(arg.as_str(), "--json" | "--ndjson"))
+}
+
+fn raw_args_request_ndjson(args: &[String]) -> bool {
+    args.iter().any(|arg| arg == "--ndjson")
+}
+
+fn emit_cli_error_json(schema: &str, message: &str, exit_code: u8) {
+    emit_json_payload(
+        schema,
+        json!({
+            "message": message,
+            "exit_code": exit_code
+        }),
+    );
+}
+
+fn build_version_payload() -> serde_json::Value {
+    json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "build_profile": if cfg!(debug_assertions) { "debug" } else { "release" },
+        "build_channel": option_env!("HELM_BUILD_CHANNEL")
+    })
+}
+
+fn emit_version_metadata_if_verbose() {
+    if !verbose_enabled() {
+        return;
+    }
+    let profile = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    };
+    let channel = option_env!("HELM_BUILD_CHANNEL").unwrap_or("unknown");
+    verbose_log(format!(
+        "build metadata: version={}, profile={}, channel={}",
+        env!("CARGO_PKG_VERSION"),
+        profile,
+        channel
+    ));
+}
+
+fn command_label(command: Command) -> &'static str {
+    match command {
+        Command::Help => "help",
+        Command::Version => "version",
+        Command::Status => "status",
+        Command::Refresh => "refresh",
+        Command::Ls => "ls",
+        Command::Search => "search",
+        Command::Packages => "packages",
+        Command::Updates => "updates",
+        Command::Tasks => "tasks",
+        Command::Managers => "managers",
+        Command::Settings => "settings",
+        Command::Diagnostics => "diagnostics",
+        Command::Doctor => "doctor",
+        Command::SelfCmd => "self",
+        Command::Completion => "completion",
+        Command::InternalCoordinator => "__coordinator__",
+    }
+}
+
+fn emit_help_json_payload(command: Option<Command>, path: &[String], resolved: bool) {
+    let available_commands = [
+        "status",
+        "refresh",
+        "search",
+        "ls",
+        "packages",
+        "updates",
+        "tasks",
+        "managers",
+        "settings",
+        "diagnostics",
+        "doctor",
+        "self",
+        "completion",
+        "help",
+    ];
+    let topic = path
+        .iter()
+        .map(|segment| segment.as_str())
+        .collect::<Vec<_>>();
+    emit_json_payload(
+        "helm.cli.v1.help",
+        json!({
+            "command": command.map(command_label),
+            "topic": topic,
+            "resolved": resolved,
+            "available_commands": available_commands,
+            "hint": "Run help without --json/--ndjson for formatted text output."
+        }),
+    );
+}
+
+fn command_help_topic_exists(command: Command, path: &[String]) -> bool {
+    fn first(path: &[String]) -> Option<&str> {
+        path.first().map(|value| value.as_str())
+    }
+
+    match command {
+        Command::Status | Command::Refresh | Command::Search | Command::Ls => path.is_empty(),
+        Command::Packages => {
+            path.is_empty()
+                || (path.len() == 1
+                    && matches!(
+                        first(path),
+                        Some(
+                            "list"
+                                | "search"
+                                | "show"
+                                | "install"
+                                | "uninstall"
+                                | "upgrade"
+                                | "pin"
+                                | "unpin"
+                        )
+                    ))
+        }
+        Command::Updates => {
+            path.is_empty()
+                || (path.len() == 1
+                    && matches!(first(path), Some("list" | "summary" | "preview" | "run")))
+        }
+        Command::Tasks => {
+            path.is_empty()
+                || (path.len() == 1
+                    && matches!(
+                        first(path),
+                        Some("list" | "show" | "logs" | "output" | "follow" | "cancel")
+                    ))
+        }
+        Command::Managers => {
+            if path.is_empty() {
+                return true;
+            }
+            if path.len() == 1 {
+                return matches!(
+                    first(path),
+                    Some(
+                        "list"
+                            | "show"
+                            | "detect"
+                            | "enable"
+                            | "disable"
+                            | "install"
+                            | "update"
+                            | "uninstall"
+                            | "executables"
+                            | "install-methods"
+                            | "priority"
+                    )
+                );
+            }
+            if path.len() == 2 {
+                return matches!(
+                    (path[0].as_str(), path[1].as_str()),
+                    ("executables", "list")
+                        | ("executables", "set")
+                        | ("install-methods", "list")
+                        | ("install-methods", "set")
+                        | ("priority", "list")
+                        | ("priority", "set")
+                        | ("priority", "reset")
+                );
+            }
+            false
+        }
+        Command::Settings => {
+            path.is_empty()
+                || (path.len() == 1
+                    && matches!(first(path), Some("list" | "get" | "set" | "reset")))
+        }
+        Command::Diagnostics | Command::Doctor => {
+            path.is_empty()
+                || (path.len() == 1
+                    && matches!(
+                        first(path),
+                        Some("summary" | "task" | "manager" | "provenance" | "export")
+                    ))
+        }
+        Command::SelfCmd => {
+            if path.is_empty() {
+                return true;
+            }
+            if path.len() == 1 {
+                return matches!(
+                    first(path),
+                    Some("status" | "check" | "update" | "auto-check")
+                );
+            }
+            if path.len() == 2 {
+                return path[0] == "auto-check"
+                    && matches!(
+                        path[1].as_str(),
+                        "status" | "enable" | "disable" | "frequency"
+                    );
+            }
+            false
+        }
+        Command::Completion => path.is_empty(),
+        Command::Help | Command::Version | Command::InternalCoordinator => false,
+    }
 }
 
 fn open_store() -> Result<Arc<SqliteStore>, String> {
@@ -906,7 +1202,11 @@ fn cmd_refresh(
                 rows,
             );
             if failures > 0 {
-                return Err(format!("{failures} manager refresh operations failed"));
+                let exit_code = if failures > 1 { 3 } else { 2 };
+                return Err(mark_exit_code(
+                    format!("{failures} manager refresh operations failed"),
+                    exit_code,
+                ));
             }
             Ok(())
         }
@@ -954,7 +1254,10 @@ fn cmd_refresh(
                 rows,
             );
             if failures > 0 {
-                return Err(failure.unwrap_or_else(|| "refresh failed".to_string()));
+                return Err(mark_exit_code(
+                    failure.unwrap_or_else(|| "refresh failed".to_string()),
+                    2,
+                ));
             }
             Ok(())
         }
@@ -1752,7 +2055,11 @@ fn cmd_updates_run(
     }
 
     if failures > 0 {
-        return Err(format!("{failures} upgrade steps failed"));
+        let exit_code = if failures > 1 { 3 } else { 2 };
+        return Err(mark_exit_code(
+            format!("{failures} upgrade steps failed"),
+            exit_code,
+        ));
     }
 
     Ok(())
@@ -2305,7 +2612,11 @@ fn cmd_managers_detect(
                 rows,
             );
             if failures > 0 {
-                return Err(format!("{failures} manager detection operations failed"));
+                let exit_code = if failures > 1 { 3 } else { 2 };
+                return Err(mark_exit_code(
+                    format!("{failures} manager detection operations failed"),
+                    exit_code,
+                ));
             }
             Ok(())
         }
@@ -2788,6 +3099,20 @@ fn cmd_settings(
 }
 
 const DEFAULT_CLI_UPDATE_ENDPOINT: &str = "https://helmapp.dev/updates/cli/latest.json";
+const SELF_UPDATE_ALLOW_INSECURE_ENV: &str = "HELM_CLI_ALLOW_INSECURE_UPDATE_URLS";
+const SELF_UPDATE_ALLOW_ROOT_ENV: &str = "HELM_ALLOW_ROOT_SELF_UPDATE";
+const SELF_UPDATE_MAX_DOWNLOAD_BYTES_ENV: &str = "HELM_CLI_SELF_UPDATE_MAX_DOWNLOAD_BYTES";
+const SELF_UPDATE_HTTP_CONNECT_TIMEOUT_SECS: u64 = 10;
+const SELF_UPDATE_HTTP_READ_TIMEOUT_SECS: u64 = 30;
+const SELF_UPDATE_HTTP_WRITE_TIMEOUT_SECS: u64 = 30;
+const SELF_UPDATE_MAX_DOWNLOAD_BYTES_DEFAULT: usize = 64 * 1024 * 1024;
+const SELF_UPDATE_ALLOWED_HOSTS: [&str; 5] = [
+    "helmapp.dev",
+    "github.com",
+    "objects.githubusercontent.com",
+    "github-releases.githubusercontent.com",
+    "release-assets.githubusercontent.com",
+];
 
 #[derive(Debug, Clone, Default)]
 struct ParsedSelfUpdateArgs {
@@ -2838,6 +3163,117 @@ struct SelfUpdateApplyResult {
     source: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SelfUpdateErrorKind {
+    UrlPolicy,
+    ManifestHttp,
+    ManifestTransport,
+    ManifestRead,
+    ManifestParse,
+    ManifestContract,
+    AssetHttp,
+    AssetTransport,
+    AssetRead,
+    AssetContract,
+    Replace,
+    Other,
+}
+
+impl SelfUpdateErrorKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::UrlPolicy => "url_policy",
+            Self::ManifestHttp => "manifest_http",
+            Self::ManifestTransport => "manifest_transport",
+            Self::ManifestRead => "manifest_read",
+            Self::ManifestParse => "manifest_parse",
+            Self::ManifestContract => "manifest_contract",
+            Self::AssetHttp => "asset_http",
+            Self::AssetTransport => "asset_transport",
+            Self::AssetRead => "asset_read",
+            Self::AssetContract => "asset_contract",
+            Self::Replace => "replace",
+            Self::Other => "other",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct SelfUpdateCommandError {
+    kind: SelfUpdateErrorKind,
+    message: String,
+    endpoint: Option<String>,
+    asset_url: Option<String>,
+    http_status: Option<u16>,
+}
+
+impl SelfUpdateCommandError {
+    fn new(kind: SelfUpdateErrorKind, message: impl Into<String>) -> Self {
+        Self {
+            kind,
+            message: message.into(),
+            endpoint: None,
+            asset_url: None,
+            http_status: None,
+        }
+    }
+
+    fn with_endpoint(mut self, endpoint: impl Into<String>) -> Self {
+        self.endpoint = Some(endpoint.into());
+        self
+    }
+
+    fn with_asset_url(mut self, url: impl Into<String>) -> Self {
+        self.asset_url = Some(url.into());
+        self
+    }
+
+    fn with_http_status(mut self, status: u16) -> Self {
+        self.http_status = Some(status);
+        self
+    }
+
+    fn actionable_guidance(&self, recommended_action: &str) -> String {
+        match self.kind {
+            SelfUpdateErrorKind::UrlPolicy => {
+                "use the official Helm update endpoint and allowlisted release hosts".to_string()
+            }
+            SelfUpdateErrorKind::ManifestHttp
+            | SelfUpdateErrorKind::ManifestTransport
+            | SelfUpdateErrorKind::ManifestRead
+            | SelfUpdateErrorKind::ManifestParse
+            | SelfUpdateErrorKind::ManifestContract => format!(
+                "verify CLI update endpoint availability and metadata integrity, then retry; if this persists, {}",
+                recommended_action
+            ),
+            SelfUpdateErrorKind::AssetHttp
+            | SelfUpdateErrorKind::AssetTransport
+            | SelfUpdateErrorKind::AssetRead
+            | SelfUpdateErrorKind::AssetContract => format!(
+                "verify download URL/reachability and checksum metadata, then retry; if this persists, {}",
+                recommended_action
+            ),
+            SelfUpdateErrorKind::Replace => {
+                "re-run from a user-writable install path or reinstall Helm CLI directly"
+                    .to_string()
+            }
+            SelfUpdateErrorKind::Other => recommended_action.to_string(),
+        }
+    }
+}
+
+impl std::fmt::Display for SelfUpdateCommandError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl From<String> for SelfUpdateCommandError {
+    fn from(value: String) -> Self {
+        Self::new(SelfUpdateErrorKind::Other, value)
+    }
+}
+
 fn current_cli_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
@@ -2847,6 +3283,169 @@ fn self_update_endpoint() -> String {
         .ok()
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| DEFAULT_CLI_UPDATE_ENDPOINT.to_string())
+}
+
+fn self_update_allow_insecure_urls() -> bool {
+    env_flag_enabled(SELF_UPDATE_ALLOW_INSECURE_ENV)
+}
+
+fn self_update_http_agent() -> ureq::Agent {
+    ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_secs(SELF_UPDATE_HTTP_CONNECT_TIMEOUT_SECS))
+        .timeout_read(Duration::from_secs(SELF_UPDATE_HTTP_READ_TIMEOUT_SECS))
+        .timeout_write(Duration::from_secs(SELF_UPDATE_HTTP_WRITE_TIMEOUT_SECS))
+        .build()
+}
+
+fn self_update_max_download_bytes() -> usize {
+    let Ok(raw) = env::var(SELF_UPDATE_MAX_DOWNLOAD_BYTES_ENV) else {
+        return SELF_UPDATE_MAX_DOWNLOAD_BYTES_DEFAULT;
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return SELF_UPDATE_MAX_DOWNLOAD_BYTES_DEFAULT;
+    }
+    match trimmed.parse::<u64>() {
+        Ok(0) => {
+            verbose_log(format!(
+                "{SELF_UPDATE_MAX_DOWNLOAD_BYTES_ENV} ignored: value must be greater than 0"
+            ));
+            SELF_UPDATE_MAX_DOWNLOAD_BYTES_DEFAULT
+        }
+        Ok(value) if value as u128 > usize::MAX as u128 => {
+            verbose_log(format!(
+                "{SELF_UPDATE_MAX_DOWNLOAD_BYTES_ENV} ignored: value {value} exceeds platform maximum"
+            ));
+            SELF_UPDATE_MAX_DOWNLOAD_BYTES_DEFAULT
+        }
+        Ok(value) => value as usize,
+        Err(_) => {
+            verbose_log(format!(
+                "{SELF_UPDATE_MAX_DOWNLOAD_BYTES_ENV} ignored: invalid integer '{}'",
+                trimmed
+            ));
+            SELF_UPDATE_MAX_DOWNLOAD_BYTES_DEFAULT
+        }
+    }
+}
+
+fn is_running_as_root() -> bool {
+    if let Ok(euid) = env::var("EUID")
+        && euid.trim() == "0"
+    {
+        return true;
+    }
+
+    if let Ok(output) = std::process::Command::new("id").arg("-u").output()
+        && output.status.success()
+    {
+        let rendered = String::from_utf8_lossy(&output.stdout);
+        if rendered.trim() == "0" {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn parse_url_scheme_host(raw: &str) -> Option<(String, String)> {
+    let trimmed = raw.trim();
+    let (scheme, remainder) = trimmed.split_once("://")?;
+    if scheme.is_empty() || remainder.is_empty() {
+        return None;
+    }
+    let authority = remainder.split('/').next()?;
+    if authority.is_empty() || authority.contains('@') {
+        return None;
+    }
+    let host = authority.split(':').next()?.trim();
+    if host.is_empty() {
+        return None;
+    }
+    Some((scheme.to_ascii_lowercase(), host.to_ascii_lowercase()))
+}
+
+fn file_url_path(url: &str) -> Option<PathBuf> {
+    let trimmed = url.trim();
+    let raw = trimmed.strip_prefix("file://")?;
+    if raw.is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(raw))
+}
+
+fn is_allowed_update_host(host: &str) -> bool {
+    SELF_UPDATE_ALLOWED_HOSTS
+        .iter()
+        .any(|candidate| host.eq_ignore_ascii_case(candidate))
+}
+
+fn validate_update_url(
+    url: &str,
+    field_name: &'static str,
+    endpoint: Option<&str>,
+) -> Result<(), SelfUpdateCommandError> {
+    let trimmed = url.trim();
+    if trimmed.starts_with("file://") {
+        if self_update_allow_insecure_urls() {
+            return Ok(());
+        }
+        let mut error = SelfUpdateCommandError::new(
+            SelfUpdateErrorKind::UrlPolicy,
+            format!(
+                "self-update {field_name} URL uses file:// but {SELF_UPDATE_ALLOW_INSECURE_ENV}=1 is not set"
+            ),
+        )
+        .with_asset_url(url.to_string());
+        if let Some(endpoint) = endpoint {
+            error = error.with_endpoint(endpoint.to_string());
+        }
+        return Err(error);
+    }
+
+    let Some((scheme, host)) = parse_url_scheme_host(url) else {
+        let mut error = SelfUpdateCommandError::new(
+            SelfUpdateErrorKind::UrlPolicy,
+            format!("self-update {field_name} URL is invalid: '{url}'"),
+        )
+        .with_asset_url(url.to_string());
+        if let Some(endpoint) = endpoint {
+            error = error.with_endpoint(endpoint.to_string());
+        }
+        return Err(error);
+    };
+
+    if scheme != "https" {
+        let mut error = SelfUpdateCommandError::new(
+            SelfUpdateErrorKind::UrlPolicy,
+            format!(
+                "self-update {field_name} URL must use https (or file when {SELF_UPDATE_ALLOW_INSECURE_ENV}=1): '{}'",
+                url
+            ),
+        )
+        .with_asset_url(url.to_string());
+        if let Some(endpoint) = endpoint {
+            error = error.with_endpoint(endpoint.to_string());
+        }
+        return Err(error);
+    }
+
+    if !is_allowed_update_host(&host) {
+        let mut error = SelfUpdateCommandError::new(
+            SelfUpdateErrorKind::UrlPolicy,
+            format!(
+                "self-update {field_name} URL host '{}' is not allowlisted",
+                host
+            ),
+        )
+        .with_asset_url(url.to_string());
+        if let Some(endpoint) = endpoint {
+            error = error.with_endpoint(endpoint.to_string());
+        }
+        return Err(error);
+    }
+
+    Ok(())
 }
 
 fn parse_self_update_args(command_args: &[String]) -> Result<ParsedSelfUpdateArgs, String> {
@@ -2866,8 +3465,40 @@ fn parse_self_update_args(command_args: &[String]) -> Result<ParsedSelfUpdateArg
     Ok(parsed)
 }
 
-fn fetch_cli_update_manifest(endpoint: &str) -> Result<CliUpdateManifest, String> {
-    let response = match ureq::get(endpoint).call() {
+fn fetch_cli_update_manifest(endpoint: &str) -> Result<CliUpdateManifest, SelfUpdateCommandError> {
+    validate_update_url(endpoint, "endpoint", Some(endpoint))?;
+    if let Some(path) = file_url_path(endpoint) {
+        let body = fs::read_to_string(path.as_path()).map_err(|error| {
+            SelfUpdateCommandError::new(
+                SelfUpdateErrorKind::ManifestRead,
+                format!(
+                    "failed to read self-update endpoint payload from '{}': {error}",
+                    path.display()
+                ),
+            )
+            .with_endpoint(endpoint.to_string())
+        })?;
+        let manifest: CliUpdateManifest = serde_json::from_str(&body).map_err(|error| {
+            SelfUpdateCommandError::new(
+                SelfUpdateErrorKind::ManifestParse,
+                format!(
+                    "failed to parse self-update endpoint payload for '{}': {error}",
+                    endpoint
+                ),
+            )
+            .with_endpoint(endpoint.to_string())
+        })?;
+        if manifest.version.trim().is_empty() {
+            return Err(SelfUpdateCommandError::new(
+                SelfUpdateErrorKind::ManifestContract,
+                "self-update endpoint payload is missing non-empty 'version'",
+            )
+            .with_endpoint(endpoint.to_string()));
+        }
+        return Ok(manifest);
+    }
+
+    let response = match self_update_http_agent().get(endpoint).call() {
         Ok(response) => response,
         Err(ureq::Error::Status(code, response)) => {
             let body = response.into_string().unwrap_or_default();
@@ -2877,30 +3508,51 @@ fn fetch_cli_update_manifest(endpoint: &str) -> Result<CliUpdateManifest, String
             } else {
                 body
             };
-            return Err(format!(
-                "self-update endpoint returned HTTP {} for '{}': {}",
-                code, endpoint, summary
-            ));
+            return Err(SelfUpdateCommandError::new(
+                SelfUpdateErrorKind::ManifestHttp,
+                format!(
+                    "self-update endpoint returned HTTP {} for '{}': {}",
+                    code, endpoint, summary
+                ),
+            )
+            .with_endpoint(endpoint.to_string())
+            .with_http_status(code));
         }
         Err(error) => {
-            return Err(format!(
-                "failed to reach self-update endpoint '{}': {error}",
-                endpoint
-            ));
+            return Err(SelfUpdateCommandError::new(
+                SelfUpdateErrorKind::ManifestTransport,
+                format!(
+                    "failed to reach self-update endpoint '{}': {error}",
+                    endpoint
+                ),
+            )
+            .with_endpoint(endpoint.to_string()));
         }
     };
 
-    let body = response
-        .into_string()
-        .map_err(|error| format!("failed to read self-update endpoint payload: {error}"))?;
-    let manifest: CliUpdateManifest = serde_json::from_str(&body).map_err(|error| {
-        format!(
-            "failed to parse self-update endpoint payload for '{}': {error}",
-            endpoint
+    let body = response.into_string().map_err(|error| {
+        SelfUpdateCommandError::new(
+            SelfUpdateErrorKind::ManifestRead,
+            format!("failed to read self-update endpoint payload: {error}"),
         )
+        .with_endpoint(endpoint.to_string())
+    })?;
+    let manifest: CliUpdateManifest = serde_json::from_str(&body).map_err(|error| {
+        SelfUpdateCommandError::new(
+            SelfUpdateErrorKind::ManifestParse,
+            format!(
+                "failed to parse self-update endpoint payload for '{}': {error}",
+                endpoint
+            ),
+        )
+        .with_endpoint(endpoint.to_string())
     })?;
     if manifest.version.trim().is_empty() {
-        return Err("self-update endpoint payload is missing non-empty 'version'".to_string());
+        return Err(SelfUpdateCommandError::new(
+            SelfUpdateErrorKind::ManifestContract,
+            "self-update endpoint payload is missing non-empty 'version'",
+        )
+        .with_endpoint(endpoint.to_string()));
     }
     Ok(manifest)
 }
@@ -2942,24 +3594,96 @@ fn select_update_asset(manifest: &CliUpdateManifest) -> Result<&CliUpdateAsset, 
     }
 }
 
-fn download_update_bytes(url: &str) -> Result<Vec<u8>, String> {
-    let response = match ureq::get(url).call() {
+fn download_update_bytes(url: &str) -> Result<Vec<u8>, SelfUpdateCommandError> {
+    validate_update_url(url, "download", None)?;
+    let max_bytes = self_update_max_download_bytes();
+    if let Some(path) = file_url_path(url) {
+        let metadata = fs::metadata(path.as_path()).map_err(|error| {
+            SelfUpdateCommandError::new(
+                SelfUpdateErrorKind::AssetRead,
+                format!(
+                    "failed to inspect update binary from '{}': {error}",
+                    path.display()
+                ),
+            )
+            .with_asset_url(url.to_string())
+        })?;
+        if metadata.len() > max_bytes as u64 {
+            return Err(SelfUpdateCommandError::new(
+                SelfUpdateErrorKind::AssetContract,
+                format!(
+                    "downloaded update binary exceeds maximum allowed size ({} bytes)",
+                    max_bytes
+                ),
+            )
+            .with_asset_url(url.to_string()));
+        }
+        let file = fs::File::open(path.as_path()).map_err(|error| {
+            SelfUpdateCommandError::new(
+                SelfUpdateErrorKind::AssetRead,
+                format!(
+                    "failed to open update binary from '{}': {error}",
+                    path.display()
+                ),
+            )
+            .with_asset_url(url.to_string())
+        })?;
+        return read_update_bytes_with_limit(file, max_bytes, url);
+    }
+
+    let response = match self_update_http_agent().get(url).call() {
         Ok(response) => response,
         Err(ureq::Error::Status(code, _)) => {
-            return Err(format!("failed to download update binary (HTTP {})", code));
+            return Err(SelfUpdateCommandError::new(
+                SelfUpdateErrorKind::AssetHttp,
+                format!("failed to download update binary (HTTP {})", code),
+            )
+            .with_asset_url(url.to_string())
+            .with_http_status(code));
         }
         Err(error) => {
-            return Err(format!("failed to download update binary: {error}"));
+            return Err(SelfUpdateCommandError::new(
+                SelfUpdateErrorKind::AssetTransport,
+                format!("failed to download update binary: {error}"),
+            )
+            .with_asset_url(url.to_string()));
         }
     };
 
     let mut reader = response.into_reader();
+    read_update_bytes_with_limit(&mut reader, max_bytes, url)
+}
+
+fn read_update_bytes_with_limit<R: Read>(
+    reader: R,
+    max_bytes: usize,
+    url: &str,
+) -> Result<Vec<u8>, SelfUpdateCommandError> {
+    let mut limited = reader.take((max_bytes as u64).saturating_add(1));
     let mut bytes = Vec::new();
-    reader
-        .read_to_end(&mut bytes)
-        .map_err(|error| format!("failed to read downloaded update binary: {error}"))?;
+    limited.read_to_end(&mut bytes).map_err(|error| {
+        SelfUpdateCommandError::new(
+            SelfUpdateErrorKind::AssetRead,
+            format!("failed to read downloaded update binary: {error}"),
+        )
+        .with_asset_url(url.to_string())
+    })?;
     if bytes.is_empty() {
-        return Err("downloaded update binary is empty".to_string());
+        return Err(SelfUpdateCommandError::new(
+            SelfUpdateErrorKind::AssetContract,
+            "downloaded update binary is empty",
+        )
+        .with_asset_url(url.to_string()));
+    }
+    if bytes.len() > max_bytes {
+        return Err(SelfUpdateCommandError::new(
+            SelfUpdateErrorKind::AssetContract,
+            format!(
+                "downloaded update binary exceeds maximum allowed size ({} bytes)",
+                max_bytes
+            ),
+        )
+        .with_asset_url(url.to_string()));
     }
     Ok(bytes)
 }
@@ -3002,6 +3726,25 @@ fn update_temp_path(executable_path: &Path) -> PathBuf {
 }
 
 fn apply_update_bytes(executable_path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let metadata = fs::symlink_metadata(executable_path).map_err(|error| {
+        format!(
+            "failed to inspect executable metadata '{}': {error}",
+            executable_path.display()
+        )
+    })?;
+    if metadata.file_type().is_symlink() {
+        return Err(format!(
+            "refusing to replace symlink executable path '{}'; reinstall to a real file path",
+            executable_path.display()
+        ));
+    }
+    if !metadata.file_type().is_file() {
+        return Err(format!(
+            "refusing to replace non-file executable path '{}'",
+            executable_path.display()
+        ));
+    }
+
     let temp_path = update_temp_path(executable_path);
     let mut temp_file = OpenOptions::new()
         .create_new(true)
@@ -3022,14 +3765,7 @@ fn apply_update_bytes(executable_path: &Path, bytes: &[u8]) -> Result<(), String
         .sync_all()
         .map_err(|error| format!("failed to flush temporary update file: {error}"))?;
 
-    let mut permissions = fs::metadata(executable_path)
-        .map_err(|error| {
-            format!(
-                "failed to read executable metadata '{}': {error}",
-                executable_path.display()
-            )
-        })?
-        .permissions();
+    let mut permissions = metadata.permissions();
     permissions.set_mode(permissions.mode() | 0o111);
     fs::set_permissions(&temp_path, permissions).map_err(|error| {
         format!(
@@ -3048,7 +3784,27 @@ If this path is not writable, reinstall with a user-writable direct install path
         ));
     }
 
+    sync_parent_directory(executable_path)?;
     Ok(())
+}
+
+fn sync_parent_directory(path: &Path) -> Result<(), String> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let directory = OpenOptions::new()
+        .read(true)
+        .open(parent)
+        .map_err(|error| {
+            format!(
+                "failed to open parent directory '{}': {error}",
+                parent.display()
+            )
+        })?;
+    directory.sync_all().map_err(|error| {
+        format!(
+            "failed to sync parent directory '{}': {error}",
+            parent.display()
+        )
+    })
 }
 
 fn persist_direct_update_marker(version: &str) -> Result<(), String> {
@@ -3066,7 +3822,9 @@ fn persist_direct_update_marker(version: &str) -> Result<(), String> {
     write_install_marker(&marker_path, &marker)
 }
 
-fn direct_update_check_status(current_version: &str) -> Result<SelfUpdateCheckStatus, String> {
+fn direct_update_check_status(
+    current_version: &str,
+) -> Result<SelfUpdateCheckStatus, SelfUpdateCommandError> {
     let endpoint = self_update_endpoint();
     let manifest = fetch_cli_update_manifest(&endpoint)?;
     let available = update_available(current_version, &manifest.version);
@@ -3108,7 +3866,9 @@ fn run_due_auto_check(store: &SqliteStore) -> Result<(), String> {
     let executable_path = env::current_exe()
         .map_err(|error| format!("failed to resolve current executable path: {error}"))?;
     let provenance = detect_install_provenance(&executable_path);
+    let mut attempted_check = false;
     if provenance_can_self_update(provenance.update_policy) {
+        attempted_check = true;
         match direct_update_check_status(&current_version) {
             Ok(status) => {
                 verbose_log(format!(
@@ -3127,16 +3887,20 @@ fn run_due_auto_check(store: &SqliteStore) -> Result<(), String> {
         ));
     }
 
-    store
-        .set_auto_check_last_checked_unix(now_unix)
-        .map_err(|error| format!("failed to persist auto-check timestamp: {error}"))?;
+    if attempted_check {
+        store
+            .set_auto_check_last_checked_unix(now_unix)
+            .map_err(|error| format!("failed to persist auto-check timestamp: {error}"))?;
+    } else {
+        verbose_log("auto-check timestamp unchanged (no direct self-managed check attempted)");
+    }
     Ok(())
 }
 
 fn direct_update_apply(
     current_version: &str,
     executable_path: &Path,
-) -> Result<SelfUpdateApplyResult, String> {
+) -> Result<SelfUpdateApplyResult, SelfUpdateCommandError> {
     let endpoint = self_update_endpoint();
     let manifest = fetch_cli_update_manifest(&endpoint)?;
     let available = update_available(current_version, &manifest.version);
@@ -3149,10 +3913,12 @@ fn direct_update_apply(
         });
     }
 
-    let asset = select_update_asset(&manifest)?;
+    let asset = select_update_asset(&manifest).map_err(SelfUpdateCommandError::from)?;
+    validate_update_url(&asset.url, "download", Some(&endpoint))?;
     let bytes = download_update_bytes(&asset.url)?;
-    verify_sha256(&bytes, &asset.sha256)?;
-    apply_update_bytes(executable_path, &bytes)?;
+    verify_sha256(&bytes, &asset.sha256).map_err(SelfUpdateCommandError::from)?;
+    apply_update_bytes(executable_path, &bytes)
+        .map_err(|error| SelfUpdateCommandError::new(SelfUpdateErrorKind::Replace, error))?;
     let _ = persist_direct_update_marker(&manifest.version);
 
     Ok(SelfUpdateApplyResult {
@@ -3174,13 +3940,82 @@ fn channel_managed_check_status(reason: String) -> SelfUpdateCheckStatus {
     }
 }
 
+fn emit_self_check_error_json(
+    schema: &str,
+    checked_at: i64,
+    provenance: &provenance::InstallProvenance,
+    can_self_update: bool,
+    recommended_action: &str,
+    current_version: &str,
+    error: &SelfUpdateCommandError,
+) {
+    emit_json_payload(
+        schema,
+        json!({
+            "checked": false,
+            "checked_at": checked_at,
+            "channel": provenance.channel.as_str(),
+            "update_policy": provenance.update_policy.as_str(),
+            "can_self_update": can_self_update,
+            "recommended_action": recommended_action,
+            "current_version": current_version,
+            "update_available": serde_json::Value::Null,
+            "latest_version": serde_json::Value::Null,
+            "published_at": serde_json::Value::Null,
+            "source": error.endpoint.as_deref().unwrap_or("self-update"),
+            "reason": error.message.clone(),
+            "error_kind": error.kind.as_str(),
+            "error_http_status": error.http_status,
+            "error_endpoint": error.endpoint.clone(),
+            "error_asset_url": error.asset_url.clone(),
+            "actionable_guidance": error.actionable_guidance(recommended_action)
+        }),
+    );
+}
+
+fn emit_self_update_apply_error_json(
+    provenance: &provenance::InstallProvenance,
+    parsed: &ParsedSelfUpdateArgs,
+    can_self_update: bool,
+    recommended_action: &str,
+    current_version: &str,
+    error: &SelfUpdateCommandError,
+) {
+    emit_json_payload(
+        "helm.cli.v1.self.update",
+        json!({
+            "accepted": false,
+            "updated": false,
+            "channel": provenance.channel.as_str(),
+            "update_policy": provenance.update_policy.as_str(),
+            "force": parsed.force,
+            "can_self_update": can_self_update,
+            "recommended_action": recommended_action,
+            "current_version": current_version,
+            "latest_version": serde_json::Value::Null,
+            "published_at": serde_json::Value::Null,
+            "source": error.endpoint.as_deref().unwrap_or("self-update"),
+            "reason": error.message.clone(),
+            "error_kind": error.kind.as_str(),
+            "error_http_status": error.http_status,
+            "error_endpoint": error.endpoint.clone(),
+            "error_asset_url": error.asset_url.clone(),
+            "actionable_guidance": error.actionable_guidance(recommended_action)
+        }),
+    );
+}
+
 fn cmd_self(
     store: Arc<SqliteStore>,
     options: GlobalOptions,
     command_args: &[String],
 ) -> Result<(), String> {
     if command_args.is_empty() || is_help_token(&command_args[0]) {
-        print_self_help();
+        if options.json {
+            emit_help_json_payload(Some(Command::SelfCmd), &[], true);
+        } else {
+            print_self_help();
+        }
         return Ok(());
     }
 
@@ -3190,6 +4025,8 @@ fn cmd_self(
     let recommended_action = provenance_recommended_action(provenance.channel).to_string();
     let current_version = current_cli_version();
     let can_self_update = provenance_can_self_update(provenance.update_policy);
+    let force_direct_override =
+        |force: bool| force && provenance.channel == InstallChannel::DirectScript;
     verbose_log(format!(
         "self command provenance channel={} policy={} source={} executable={}",
         provenance.channel.as_str(),
@@ -3258,7 +4095,24 @@ fn cmd_self(
         "check" => {
             let checked_at = json_generated_at_unix();
             let status = if can_self_update {
-                direct_update_check_status(&current_version)?
+                match direct_update_check_status(&current_version) {
+                    Ok(status) => status,
+                    Err(error) => {
+                        if options.json {
+                            emit_self_check_error_json(
+                                "helm.cli.v1.self.check",
+                                checked_at,
+                                &provenance,
+                                can_self_update,
+                                &recommended_action,
+                                &current_version,
+                                &error,
+                            );
+                            return Err(mark_json_error_emitted(error.to_string()));
+                        }
+                        return Err(error.to_string());
+                    }
+                }
             } else {
                 channel_managed_check_status(format!(
                     "self-update check is channel-managed for '{}' installs; {}",
@@ -3321,13 +4175,35 @@ fn cmd_self(
                         "app-bundled CLI cannot self-update; update the Helm GUI through its channel"
                             .to_string(),
                     )
-                } else if can_self_update || parsed.force {
-                    direct_update_check_status(&current_version)?
+                } else if can_self_update || force_direct_override(parsed.force) {
+                    match direct_update_check_status(&current_version) {
+                        Ok(status) => status,
+                        Err(error) => {
+                            if options.json {
+                                emit_self_check_error_json(
+                                    "helm.cli.v1.self.update.check",
+                                    checked_at,
+                                    &provenance,
+                                    can_self_update,
+                                    &recommended_action,
+                                    &current_version,
+                                    &error,
+                                );
+                                return Err(mark_json_error_emitted(error.to_string()));
+                            }
+                            return Err(error.to_string());
+                        }
+                    }
                 } else {
                     channel_managed_check_status(format!(
-                        "self-update is channel-managed for '{}' installs; {}",
+                        "self-update is channel-managed for '{}' installs; {}{}",
                         provenance.channel.as_str(),
-                        recommended_action
+                        recommended_action,
+                        if parsed.force {
+                            " (force override is only allowed for direct-script installs)"
+                        } else {
+                            ""
+                        }
                     ))
                 };
 
@@ -3383,6 +4259,31 @@ fn cmd_self(
                 );
             }
 
+            if is_running_as_root() && !env_flag_enabled(SELF_UPDATE_ALLOW_ROOT_ENV) {
+                let reason = format!(
+                    "self update blocked while running as root; set {SELF_UPDATE_ALLOW_ROOT_ENV}=1 for explicit override"
+                );
+                if options.json {
+                    emit_json_payload(
+                        "helm.cli.v1.self.update",
+                        json!({
+                            "accepted": false,
+                            "channel": provenance.channel.as_str(),
+                            "update_policy": provenance.update_policy.as_str(),
+                            "force": parsed.force,
+                            "can_self_update": false,
+                            "recommended_action": recommended_action,
+                            "current_version": current_version,
+                            "latest_version": serde_json::Value::Null,
+                            "reason": reason
+                        }),
+                    );
+                }
+                return Err(mark_json_error_emitted(format!(
+                    "self update unavailable: running as root is blocked by default (set {SELF_UPDATE_ALLOW_ROOT_ENV}=1 to override)"
+                )));
+            }
+
             if provenance.channel == InstallChannel::AppBundleShim {
                 let reason =
                     "app-bundled CLI cannot self-update; update Helm GUI through its channel"
@@ -3403,9 +4304,9 @@ fn cmd_self(
                         }),
                     );
                 }
-                return Err(
-                    "self update unavailable: app-bundled CLI is channel-managed".to_string(),
-                );
+                return Err(mark_json_error_emitted(
+                    "self update unavailable: app-bundled CLI is channel-managed",
+                ));
             }
 
             if provenance.update_policy == UpdatePolicy::Managed {
@@ -3426,16 +4327,21 @@ fn cmd_self(
                         }),
                     );
                 }
-                return Err(
-                    "self update unavailable: managed policy denies direct self-update".to_string(),
-                );
+                return Err(mark_json_error_emitted(
+                    "self update unavailable: managed policy denies direct self-update",
+                ));
             }
 
-            if !can_self_update && !parsed.force {
+            if !can_self_update && !force_direct_override(parsed.force) {
                 let reason = format!(
-                    "self-update is channel-managed for '{}' installs; {}",
+                    "self-update is channel-managed for '{}' installs; {}{}",
                     provenance.channel.as_str(),
-                    recommended_action
+                    recommended_action,
+                    if parsed.force {
+                        " (force override is only allowed for direct-script installs)"
+                    } else {
+                        ""
+                    }
                 );
                 if options.json {
                     emit_json_payload(
@@ -3444,7 +4350,7 @@ fn cmd_self(
                             "accepted": false,
                             "channel": provenance.channel.as_str(),
                             "update_policy": provenance.update_policy.as_str(),
-                            "force": false,
+                            "force": parsed.force,
                             "can_self_update": can_self_update,
                             "recommended_action": recommended_action,
                             "current_version": current_version,
@@ -3453,10 +4359,28 @@ fn cmd_self(
                         }),
                     );
                 }
-                return Err("self update unavailable: installation is channel-managed".to_string());
+                return Err(mark_json_error_emitted(
+                    "self update unavailable: installation is channel-managed",
+                ));
             }
 
-            let applied = direct_update_apply(&current_version, &provenance.executable_path)?;
+            let applied = match direct_update_apply(&current_version, &provenance.executable_path) {
+                Ok(applied) => applied,
+                Err(error) => {
+                    if options.json {
+                        emit_self_update_apply_error_json(
+                            &provenance,
+                            &parsed,
+                            can_self_update,
+                            &recommended_action,
+                            &current_version,
+                            &error,
+                        );
+                        return Err(mark_json_error_emitted(error.to_string()));
+                    }
+                    return Err(error.to_string());
+                }
+            };
             if options.json {
                 emit_json_payload(
                     "helm.cli.v1.self.update",
@@ -3623,7 +4547,11 @@ fn cmd_diagnostics(
     command_args: &[String],
 ) -> Result<(), String> {
     if command_args.is_empty() || is_help_token(&command_args[0]) {
-        print_diagnostics_help();
+        if options.json {
+            emit_help_json_payload(Some(Command::Diagnostics), &[], true);
+        } else {
+            print_diagnostics_help();
+        }
         return Ok(());
     }
 
@@ -3640,9 +4568,32 @@ fn cmd_diagnostics(
     }
 }
 
-fn cmd_completion(command_args: &[String]) -> Result<(), String> {
+fn cmd_doctor(
+    store: &SqliteStore,
+    options: GlobalOptions,
+    command_args: &[String],
+) -> Result<(), String> {
+    if command_args.is_empty() {
+        return cmd_diagnostics_provenance(options);
+    }
+    if is_help_token(&command_args[0]) {
+        if options.json {
+            emit_help_json_payload(Some(Command::Doctor), &[], true);
+        } else {
+            print_doctor_help();
+        }
+        return Ok(());
+    }
+    cmd_diagnostics(store, options, command_args)
+}
+
+fn cmd_completion(options: GlobalOptions, command_args: &[String]) -> Result<(), String> {
     if command_args.is_empty() || is_help_token(&command_args[0]) {
-        print_completion_help();
+        if options.json {
+            emit_help_json_payload(Some(Command::Completion), &[], true);
+        } else {
+            print_completion_help();
+        }
         return Ok(());
     }
 
@@ -3654,15 +4605,45 @@ fn cmd_completion(command_args: &[String]) -> Result<(), String> {
 
     match command_args[0].as_str() {
         "bash" => {
-            print!("{BASH_COMPLETION_SCRIPT}");
+            if options.json {
+                emit_json_payload(
+                    "helm.cli.v1.completion",
+                    json!({
+                        "shell": "bash",
+                        "script": BASH_COMPLETION_SCRIPT
+                    }),
+                );
+            } else {
+                print!("{BASH_COMPLETION_SCRIPT}");
+            }
             Ok(())
         }
         "zsh" => {
-            print!("{ZSH_COMPLETION_SCRIPT}");
+            if options.json {
+                emit_json_payload(
+                    "helm.cli.v1.completion",
+                    json!({
+                        "shell": "zsh",
+                        "script": ZSH_COMPLETION_SCRIPT
+                    }),
+                );
+            } else {
+                print!("{ZSH_COMPLETION_SCRIPT}");
+            }
             Ok(())
         }
         "fish" => {
-            print!("{FISH_COMPLETION_SCRIPT}");
+            if options.json {
+                emit_json_payload(
+                    "helm.cli.v1.completion",
+                    json!({
+                        "shell": "fish",
+                        "script": FISH_COMPLETION_SCRIPT
+                    }),
+                );
+            } else {
+                print!("{FISH_COMPLETION_SCRIPT}");
+            }
             Ok(())
         }
         other => Err(format!(
@@ -3959,9 +4940,13 @@ fn coordinator_submit_request(
         return Ok(response);
     }
 
-    Err(response
+    let message = response
         .error
-        .unwrap_or_else(|| "coordinator submit request failed".to_string()))
+        .unwrap_or_else(|| "coordinator submit request failed".to_string());
+    if let Some(exit_code) = response.exit_code {
+        return Err(mark_exit_code(message, exit_code));
+    }
+    Err(message)
 }
 
 fn coordinator_cancel_task(task_id: u64) -> Result<(), String> {
@@ -3969,9 +4954,13 @@ fn coordinator_cancel_task(task_id: u64) -> Result<(), String> {
     if response.ok {
         return Ok(());
     }
-    Err(response
+    let message = response
         .error
-        .unwrap_or_else(|| format!("failed to cancel task '{}'", task_id)))
+        .unwrap_or_else(|| format!("failed to cancel task '{}'", task_id));
+    if let Some(exit_code) = response.exit_code {
+        return Err(mark_exit_code(message, exit_code));
+    }
+    Err(message)
 }
 
 fn coordinator_start_workflow(
@@ -3981,9 +4970,13 @@ fn coordinator_start_workflow(
     if response.ok {
         return Ok(response);
     }
-    Err(response
+    let message = response
         .error
-        .unwrap_or_else(|| "coordinator workflow request failed".to_string()))
+        .unwrap_or_else(|| "coordinator workflow request failed".to_string());
+    if let Some(exit_code) = response.exit_code {
+        return Err(mark_exit_code(message, exit_code));
+    }
+    Err(message)
 }
 
 fn run_coordinator_server(store: Arc<SqliteStore>, socket_path: PathBuf) -> Result<(), String> {
@@ -4084,6 +5077,7 @@ fn run_coordinator_server(store: Arc<SqliteStore>, socket_path: PathBuf) -> Resu
                     task_id: None,
                     job_id: None,
                     payload: None,
+                    exit_code: Some(1),
                     error: Some(error),
                 },
             };
@@ -4105,6 +5099,7 @@ fn handle_coordinator_request(
             task_id: None,
             job_id: None,
             payload: None,
+            exit_code: None,
             error: None,
         },
         CoordinatorRequest::Cancel { task_id } => {
@@ -4116,6 +5111,7 @@ fn handle_coordinator_request(
                         task_id: Some(task_id),
                         job_id: None,
                         payload: None,
+                        exit_code: Some(1),
                         error: Some(error),
                     };
                 }
@@ -4128,6 +5124,7 @@ fn handle_coordinator_request(
                     task_id: Some(task_id),
                     job_id: None,
                     payload: None,
+                    exit_code: None,
                     error: None,
                 },
                 Err(error) => CoordinatorResponse {
@@ -4135,6 +5132,7 @@ fn handle_coordinator_request(
                     task_id: Some(task_id),
                     job_id: None,
                     payload: None,
+                    exit_code: Some(1),
                     error: Some(format_core_error(error)),
                 },
             }
@@ -4152,6 +5150,7 @@ fn handle_coordinator_request(
                         task_id: None,
                         job_id: None,
                         payload: None,
+                        exit_code: Some(1),
                         error: Some(error),
                     };
                 }
@@ -4163,6 +5162,7 @@ fn handle_coordinator_request(
                     task_id: None,
                     job_id: None,
                     payload: None,
+                    exit_code: Some(1),
                     error: Some(error),
                 };
             }
@@ -4174,6 +5174,7 @@ fn handle_coordinator_request(
                         task_id: None,
                         job_id: None,
                         payload: None,
+                        exit_code: Some(1),
                         error: Some(error),
                     };
                 }
@@ -4188,6 +5189,7 @@ fn handle_coordinator_request(
                         task_id: None,
                         job_id: None,
                         payload: None,
+                        exit_code: Some(1),
                         error: Some(format_core_error(error)),
                     };
                 }
@@ -4199,6 +5201,7 @@ fn handle_coordinator_request(
                     task_id: Some(task_id.0),
                     job_id: None,
                     payload: None,
+                    exit_code: None,
                     error: None,
                 };
             }
@@ -4211,6 +5214,7 @@ fn handle_coordinator_request(
                         task_id: Some(task_id.0),
                         job_id: None,
                         payload: Some(adapter_response_to_coordinator_payload(response)),
+                        exit_code: None,
                         error: None,
                     },
                     Some(AdapterTaskTerminalState::Failed(error)) => CoordinatorResponse {
@@ -4218,6 +5222,7 @@ fn handle_coordinator_request(
                         task_id: Some(task_id.0),
                         job_id: None,
                         payload: None,
+                        exit_code: Some(2),
                         error: Some(format_core_error(error)),
                     },
                     Some(AdapterTaskTerminalState::Cancelled(Some(error))) => CoordinatorResponse {
@@ -4225,6 +5230,7 @@ fn handle_coordinator_request(
                         task_id: Some(task_id.0),
                         job_id: None,
                         payload: None,
+                        exit_code: Some(4),
                         error: Some(format_core_error(error)),
                     },
                     Some(AdapterTaskTerminalState::Cancelled(None)) => CoordinatorResponse {
@@ -4232,6 +5238,7 @@ fn handle_coordinator_request(
                         task_id: Some(task_id.0),
                         job_id: None,
                         payload: None,
+                        exit_code: Some(4),
                         error: Some(format!("task {} was cancelled", task_id.0)),
                     },
                     None => CoordinatorResponse {
@@ -4239,6 +5246,7 @@ fn handle_coordinator_request(
                         task_id: Some(task_id.0),
                         job_id: None,
                         payload: None,
+                        exit_code: Some(2),
                         error: Some(format!(
                             "task {} reached terminal state without outcome payload",
                             task_id.0
@@ -4250,6 +5258,7 @@ fn handle_coordinator_request(
                     task_id: Some(task_id.0),
                     job_id: None,
                     payload: None,
+                    exit_code: Some(1),
                     error: Some(format_core_error(error)),
                 },
             }
@@ -4264,6 +5273,7 @@ fn handle_coordinator_request(
                     task_id: None,
                     job_id: Some(job_id),
                     payload: None,
+                    exit_code: Some(1),
                     error: Some(format!(
                         "failed to initialize coordinator workflow store: {error}"
                     )),
@@ -4279,6 +5289,7 @@ fn handle_coordinator_request(
                 task_id: None,
                 job_id: Some(job_id),
                 payload: None,
+                exit_code: None,
                 error: None,
             }
         }
@@ -4298,7 +5309,11 @@ fn run_coordinator_workflow(
             let rows = tokio_runtime.block_on(refresh_all_no_timeout(&runtime));
             let failures = rows.iter().filter(|row| !row.success).count();
             if failures > 0 {
-                return Err(format!("{failures} manager refresh operations failed"));
+                let exit_code = if failures > 1 { 3 } else { 2 };
+                return Err(mark_exit_code(
+                    format!("{failures} manager refresh operations failed"),
+                    exit_code,
+                ));
             }
             Ok(())
         }
@@ -4310,7 +5325,11 @@ fn run_coordinator_workflow(
             let rows = tokio_runtime.block_on(detect_all_no_timeout(&runtime));
             let failures = rows.iter().filter(|row| !row.success).count();
             if failures > 0 {
-                return Err(format!("{failures} manager detection operations failed"));
+                let exit_code = if failures > 1 { 3 } else { 2 };
+                return Err(mark_exit_code(
+                    format!("{failures} manager detection operations failed"),
+                    exit_code,
+                ));
             }
             Ok(())
         }
@@ -5402,14 +6421,22 @@ async fn submit_request_wait(
 
     match snapshot.terminal_state {
         Some(AdapterTaskTerminalState::Succeeded(response)) => Ok((task_id, response)),
-        Some(AdapterTaskTerminalState::Failed(error)) => Err(format_core_error(error)),
-        Some(AdapterTaskTerminalState::Cancelled(Some(error))) => Err(format_core_error(error)),
-        Some(AdapterTaskTerminalState::Cancelled(None)) => {
-            Err(format!("task {} was cancelled", task_id.0))
+        Some(AdapterTaskTerminalState::Failed(error)) => {
+            Err(mark_exit_code(format_core_error(error), 2))
         }
-        None => Err(format!(
-            "task {} reached terminal state without outcome payload",
-            task_id.0
+        Some(AdapterTaskTerminalState::Cancelled(Some(error))) => {
+            Err(mark_exit_code(format_core_error(error), 4))
+        }
+        Some(AdapterTaskTerminalState::Cancelled(None)) => Err(mark_exit_code(
+            format!("task {} was cancelled", task_id.0),
+            4,
+        )),
+        None => Err(mark_exit_code(
+            format!(
+                "task {} reached terminal state without outcome payload",
+                task_id.0
+            ),
+            2,
         )),
     }
 }
@@ -5579,13 +6606,36 @@ fn json_generated_at_unix() -> i64 {
 }
 
 fn emit_json_payload(schema: &str, data: serde_json::Value) {
-    let payload = json!({
-        "schema": schema,
-        "schema_version": JSON_SCHEMA_VERSION,
-        "generated_at": json_generated_at_unix(),
-        "data": data
-    });
-    println!("{payload}");
+    let payloads =
+        build_json_payload_lines(schema, data, ndjson_enabled(), json_generated_at_unix());
+    for payload in payloads {
+        println!("{payload}");
+    }
+}
+
+fn build_json_payload_lines(
+    schema: &str,
+    data: serde_json::Value,
+    ndjson_mode: bool,
+    generated_at: i64,
+) -> Vec<serde_json::Value> {
+    let build = |item_data: serde_json::Value| {
+        json!({
+            "schema": schema,
+            "schema_version": JSON_SCHEMA_VERSION,
+            "generated_at": generated_at,
+            "data": item_data
+        })
+    };
+
+    if ndjson_mode && let serde_json::Value::Array(items) = data {
+        if items.is_empty() {
+            return vec![build(serde_json::Value::Array(Vec::new()))];
+        }
+        return items.into_iter().map(build).collect();
+    }
+
+    vec![build(data)]
 }
 
 async fn refresh_single_manager(
@@ -7258,6 +8308,7 @@ fn print_command_help_topic(command: Command, path: &[String]) -> bool {
         Command::Managers => print_managers_help_topic(path),
         Command::Settings => print_settings_help_topic(path),
         Command::Diagnostics => print_diagnostics_help_topic(path),
+        Command::Doctor => print_doctor_help_topic(path),
         Command::SelfCmd => print_self_help_topic(path),
         Command::Completion => print_completion_help_topic(path),
         Command::InternalCoordinator | Command::Help | Command::Version => false,
@@ -7590,6 +8641,14 @@ fn print_completion_help_topic(path: &[String]) -> bool {
     false
 }
 
+fn print_doctor_help_topic(path: &[String]) -> bool {
+    if path.is_empty() {
+        print_doctor_help();
+        return true;
+    }
+    print_diagnostics_help_topic(path)
+}
+
 fn print_help() {
     println!("Helm CLI");
     println!();
@@ -7621,6 +8680,8 @@ fn print_help() {
     println!("                         Read and update selected settings");
     println!("  diagnostics [summary|task|manager|provenance|export]");
     println!("                         Read diagnostics snapshots and export support data");
+    println!("  doctor [summary|task|manager|provenance|export]");
+    println!("                         Diagnostics alias; default shows provenance");
     println!("  self [status|check|update|auto-check]");
     println!("                         Helm self-update status/check/update namespace");
     println!("  completion [bash|zsh|fish]");
@@ -8102,6 +9163,17 @@ fn print_diagnostics_help() {
     println!("  Inspect diagnostics snapshots and export support payloads.");
 }
 
+fn print_doctor_help() {
+    println!("USAGE:");
+    println!("  helm doctor");
+    println!("  helm doctor provenance");
+    println!("  helm doctor <summary|task|manager|provenance|export> [args]");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Alias for the diagnostics namespace.");
+    println!("  Without subcommands, doctor defaults to install provenance output.");
+}
+
 fn print_diagnostics_summary_help() {
     println!("USAGE:");
     println!("  helm diagnostics summary");
@@ -8183,7 +9255,7 @@ fn print_self_update_help() {
     println!("DESCRIPTION:");
     println!("  Apply direct CLI self-update when provenance policy allows it.");
     println!("  --check performs a non-mutating availability check.");
-    println!("  --force bypasses channel-managed policy except managed or app-bundled installs.");
+    println!("  --force is only honored for direct-script installs.");
 }
 
 fn print_self_auto_check_help() {
@@ -8241,33 +9313,47 @@ fn print_completion_help() {
 #[cfg(test)]
 mod tests {
     use super::{
-        Command, ExecutionMode, exit_code_for_error, parse_args, parse_manager_failure_count,
+        Command, ExecutionMode, build_json_payload_lines, command_help_topic_exists,
+        exit_code_for_error, mark_exit_code, parse_args, raw_args_request_json,
+        raw_args_request_ndjson, strip_exit_code_marker,
     };
+    use serde_json::json;
 
     #[test]
-    fn exit_code_mapping_distinguishes_single_and_partial_failures() {
+    fn exit_code_mapping_defaults_to_runtime_error_without_marker() {
+        assert_eq!(exit_code_for_error("refresh failed"), 1);
+        assert_eq!(exit_code_for_error("task 42 was cancelled"), 1);
+    }
+
+    #[test]
+    fn exit_code_mapping_uses_explicit_marker() {
         assert_eq!(
-            parse_manager_failure_count("1 manager refresh operations failed"),
-            Some(1)
-        );
-        assert_eq!(
-            parse_manager_failure_count("3 manager detection operations failed"),
-            Some(3)
-        );
-        assert_eq!(
-            exit_code_for_error("1 manager refresh operations failed"),
+            exit_code_for_error(mark_exit_code("task failed", 2).as_str()),
             2
         );
         assert_eq!(
-            exit_code_for_error("3 manager detection operations failed"),
+            exit_code_for_error(mark_exit_code("partial failure", 3).as_str()),
             3
+        );
+        assert_eq!(
+            exit_code_for_error(mark_exit_code("cancelled", 4).as_str()),
+            4
         );
     }
 
     #[test]
-    fn exit_code_mapping_returns_cancelled_for_cancellation_errors() {
-        assert_eq!(exit_code_for_error("task 42 was cancelled"), 4);
-        assert_eq!(exit_code_for_error("task 42 was canceled"), 4);
+    fn exit_code_marker_round_trip() {
+        let marked = mark_exit_code("refresh failed", 3);
+        let (code, message) = strip_exit_code_marker(marked.as_str());
+        assert_eq!(code, Some(3));
+        assert_eq!(message, "refresh failed");
+    }
+
+    #[test]
+    fn invalid_exit_code_marker_falls_back_to_unmarked_error() {
+        let (code, message) = strip_exit_code_marker("__HELM_EXIT_CODE__:abc:bad");
+        assert_eq!(code, None);
+        assert_eq!(message, "__HELM_EXIT_CODE__:abc:bad");
     }
 
     #[test]
@@ -8314,5 +9400,89 @@ mod tests {
         .expect_err("conflicting execution mode flags must fail");
         assert!(error.contains("--wait"));
         assert!(error.contains("--detach"));
+    }
+
+    #[test]
+    fn parse_args_maps_doctor_alias() {
+        let (_, command, args) = parse_args(vec!["doctor".to_string(), "provenance".to_string()])
+            .expect("doctor alias should parse");
+        assert_eq!(command, Command::Doctor);
+        assert_eq!(args, vec!["provenance".to_string()]);
+    }
+
+    #[test]
+    fn raw_args_json_detection_supports_json_and_ndjson_flags() {
+        assert!(raw_args_request_json(&[
+            "--json".to_string(),
+            "status".to_string()
+        ]));
+        assert!(raw_args_request_json(&[
+            "--ndjson".to_string(),
+            "status".to_string()
+        ]));
+        assert!(!raw_args_request_json(&["status".to_string()]));
+    }
+
+    #[test]
+    fn raw_args_ndjson_detection_only_matches_ndjson_flag() {
+        assert!(raw_args_request_ndjson(&[
+            "--ndjson".to_string(),
+            "status".to_string()
+        ]));
+        assert!(!raw_args_request_ndjson(&[
+            "--json".to_string(),
+            "status".to_string()
+        ]));
+        assert!(!raw_args_request_ndjson(&["status".to_string()]));
+    }
+
+    #[test]
+    fn build_json_payload_lines_splits_array_data_in_ndjson_mode() {
+        let payloads =
+            build_json_payload_lines("helm.cli.v1.test", json!([{"id": 1}, {"id": 2}]), true, 123);
+        assert_eq!(payloads.len(), 2);
+        assert_eq!(payloads[0]["schema"], "helm.cli.v1.test");
+        assert_eq!(payloads[0]["generated_at"], 123);
+        assert_eq!(payloads[0]["data"]["id"], 1);
+        assert_eq!(payloads[1]["data"]["id"], 2);
+    }
+
+    #[test]
+    fn build_json_payload_lines_keeps_single_record_for_empty_array_ndjson() {
+        let payloads = build_json_payload_lines("helm.cli.v1.test", json!([]), true, 123);
+        assert_eq!(payloads.len(), 1);
+        assert_eq!(payloads[0]["data"], json!([]));
+    }
+
+    #[test]
+    fn build_json_payload_lines_keeps_array_data_in_json_mode() {
+        let payloads = build_json_payload_lines(
+            "helm.cli.v1.test",
+            json!([{"id": 1}, {"id": 2}]),
+            false,
+            123,
+        );
+        assert_eq!(payloads.len(), 1);
+        assert_eq!(payloads[0]["data"], json!([{"id": 1}, {"id": 2}]));
+    }
+
+    #[test]
+    fn command_help_topic_validation_covers_nested_paths() {
+        assert!(command_help_topic_exists(
+            Command::Packages,
+            &["list".to_string()]
+        ));
+        assert!(command_help_topic_exists(
+            Command::Managers,
+            &["executables".to_string(), "set".to_string()]
+        ));
+        assert!(command_help_topic_exists(
+            Command::SelfCmd,
+            &["auto-check".to_string(), "frequency".to_string()]
+        ));
+        assert!(!command_help_topic_exists(
+            Command::Updates,
+            &["unknown".to_string()]
+        ));
     }
 }

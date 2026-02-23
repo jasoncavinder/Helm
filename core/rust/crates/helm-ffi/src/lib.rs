@@ -303,6 +303,24 @@ const COORDINATOR_REQUEST_TIMEOUT_SECS: u64 = 30;
 const COORDINATOR_POLL_SLEEP_MS: u64 = 25;
 const AUTO_CHECK_TICK_SECS: u64 = 30;
 const DEFAULT_CLI_UPDATE_ENDPOINT: &str = "https://helmapp.dev/updates/cli/latest.json";
+const DEFAULT_INSTALL_MARKER_RELATIVE_PATH: &str = ".config/helm/install.json";
+const AUTO_CHECK_ALLOW_INSECURE_ENV: &str = "HELM_CLI_ALLOW_INSECURE_UPDATE_URLS";
+const AUTO_CHECK_HTTP_CONNECT_TIMEOUT_SECS: u64 = 10;
+const AUTO_CHECK_HTTP_READ_TIMEOUT_SECS: u64 = 30;
+const AUTO_CHECK_HTTP_WRITE_TIMEOUT_SECS: u64 = 30;
+const AUTO_CHECK_ALLOWED_HOSTS: [&str; 5] = [
+    "helmapp.dev",
+    "github.com",
+    "objects.githubusercontent.com",
+    "github-releases.githubusercontent.com",
+    "release-assets.githubusercontent.com",
+];
+
+#[derive(Debug, serde::Deserialize)]
+struct AutoCheckInstallMarker {
+    channel: String,
+    update_policy: String,
+}
 
 #[derive(Clone, Debug)]
 enum CoordinatorBridge {
@@ -1767,6 +1785,85 @@ fn coordinator_start_workflow_external(
     }
 }
 
+fn auto_check_install_marker_path() -> Option<PathBuf> {
+    if let Ok(explicit) = std::env::var("HELM_INSTALL_MARKER_PATH")
+        && !explicit.trim().is_empty()
+    {
+        return Some(PathBuf::from(explicit));
+    }
+
+    let home = std::env::var("HOME").ok()?;
+    if home.trim().is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(home).join(DEFAULT_INSTALL_MARKER_RELATIVE_PATH))
+}
+
+fn auto_check_marker_allows_cli_endpoint() -> bool {
+    let Some(marker_path) = auto_check_install_marker_path() else {
+        return false;
+    };
+    let Ok(raw) = std::fs::read_to_string(marker_path) else {
+        return false;
+    };
+    let Ok(marker) = serde_json::from_str::<AutoCheckInstallMarker>(&raw) else {
+        return false;
+    };
+    marker.channel.trim() == "direct-script" && marker.update_policy.trim() == "self"
+}
+
+fn auto_check_allow_insecure_urls() -> bool {
+    matches!(
+        std::env::var(AUTO_CHECK_ALLOW_INSECURE_ENV)
+            .ok()
+            .map(|value| value.trim().to_ascii_lowercase()),
+        Some(value) if matches!(value.as_str(), "1" | "true" | "yes" | "on")
+    )
+}
+
+fn auto_check_parse_url_scheme_host(raw: &str) -> Option<(String, String)> {
+    let trimmed = raw.trim();
+    if trimmed.starts_with("file://") {
+        return Some(("file".to_string(), String::new()));
+    }
+    let (scheme, remainder) = trimmed.split_once("://")?;
+    if scheme.is_empty() || remainder.is_empty() {
+        return None;
+    }
+    let authority = remainder.split('/').next()?;
+    if authority.is_empty() || authority.contains('@') {
+        return None;
+    }
+    let host = authority.split(':').next()?.trim();
+    if host.is_empty() {
+        return None;
+    }
+    Some((scheme.to_ascii_lowercase(), host.to_ascii_lowercase()))
+}
+
+fn auto_check_endpoint_allowed(endpoint: &str) -> bool {
+    let Some((scheme, host)) = auto_check_parse_url_scheme_host(endpoint) else {
+        return false;
+    };
+    if scheme == "file" {
+        return auto_check_allow_insecure_urls();
+    }
+    if scheme != "https" {
+        return false;
+    }
+    AUTO_CHECK_ALLOWED_HOSTS
+        .iter()
+        .any(|candidate| host.eq_ignore_ascii_case(candidate))
+}
+
+fn auto_check_http_agent() -> ureq::Agent {
+    ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_secs(AUTO_CHECK_HTTP_CONNECT_TIMEOUT_SECS))
+        .timeout_read(Duration::from_secs(AUTO_CHECK_HTTP_READ_TIMEOUT_SECS))
+        .timeout_write(Duration::from_secs(AUTO_CHECK_HTTP_WRITE_TIMEOUT_SECS))
+        .build()
+}
+
 fn run_due_auto_check_tick(store: &SqliteStore) {
     let enabled = match store.auto_check_for_updates() {
         Ok(enabled) => enabled,
@@ -1805,11 +1902,26 @@ fn run_due_auto_check_tick(store: &SqliteStore) {
         }
     }
 
+    if !auto_check_marker_allows_cli_endpoint() {
+        eprintln!(
+            "coordinator auto-check skipped: install provenance does not allow direct CLI checks"
+        );
+        return;
+    }
+
     let endpoint = std::env::var("HELM_CLI_UPDATE_ENDPOINT")
         .ok()
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| DEFAULT_CLI_UPDATE_ENDPOINT.to_string());
-    match ureq::get(endpoint.as_str()).call() {
+    if !auto_check_endpoint_allowed(endpoint.as_str()) {
+        eprintln!(
+            "coordinator auto-check rejected endpoint URL '{}': not allowlisted",
+            endpoint
+        );
+        return;
+    }
+
+    match auto_check_http_agent().get(endpoint.as_str()).call() {
         Ok(response) => {
             let _ = response.into_string();
         }

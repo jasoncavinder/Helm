@@ -8,14 +8,6 @@ import Sparkle
 private let logger = Logger(subsystem: "com.jasoncavinder.Helm", category: "core")
 private let updateLogger = Logger(subsystem: "com.jasoncavinder.Helm", category: "app_update")
 
-enum HelmUpdateAuthority: String {
-    case sparkle = "sparkle"
-    case appStore = "app_store"
-    case setapp = "setapp"
-    case adminControlled = "admin_controlled"
-    case unavailable = "unavailable"
-}
-
 enum AppUpdateUnavailableReason: String {
     case channelNotSupported = "channel_not_supported"
     case sparkleDisabled = "sparkle_disabled"
@@ -115,7 +107,7 @@ final class AppUpdateCoordinator: ObservableObject {
     private init() {
         let configuration = AppUpdateConfiguration.from()
         self.configuration = configuration
-        self.updateAuthority = AppUpdateCoordinator.resolveAuthority(for: configuration.channel)
+        self.updateAuthority = configuration.updateAuthority
         let selection = AppUpdateCoordinator.makeDriver(for: configuration)
         self.driver = selection.driver
         if selection.driver.canCheckForUpdates {
@@ -152,21 +144,6 @@ final class AppUpdateCoordinator: ObservableObject {
         defer { isCheckingForUpdates = false }
         driver.checkForUpdates()
         lastCheckDate = Date()
-    }
-
-    private static func resolveAuthority(for channel: HelmDistributionChannel) -> HelmUpdateAuthority {
-        switch channel {
-        case .developerID:
-            return .sparkle
-        case .appStore:
-            return .appStore
-        case .setapp:
-            return .setapp
-        case .fleet:
-            return .adminControlled
-        case .unknown:
-            return .unavailable
-        }
     }
 
     private struct AppUpdateDriverSelection {

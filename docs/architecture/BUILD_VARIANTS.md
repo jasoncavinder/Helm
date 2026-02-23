@@ -10,6 +10,17 @@ Last Updated: 2026-02-23
 
 This document is the source of truth for Helm distribution profiles, channel wrappers, and CLI install provenance/update policy.
 
+Machine-readable contract:
+
+- `docs/contracts/distribution-profiles.json`
+
+Build/release consumers of that contract:
+
+- `scripts/distribution_profile.py`
+- `scripts/build.sh`
+- `scripts/release/build_unsigned_variant.sh`
+- `.github/workflows/release-all-variants.yml`
+
 Terminology:
 
 - `variant`: top-level distribution profile (`direct`, `mas`, `setapp`, `business`).
@@ -28,10 +39,10 @@ Internal channel-key mapping used in app build settings:
 
 | Variant | Update Mechanism | `helm self update` | Licensing / Gating Assumption | Primary Artifacts |
 |---|---|---|---|---|
-| `direct` | GUI: Sparkle (Developer ID DMG). CLI direct installer: Helm CLI self-update endpoint. | Allowed only for CLI installs with `update_policy=self` (direct script) or explicit `--force` override on non-managed channels. | Consumer channel (Free + Pro entitlement model, post-1.0). | `Helm.app`, `Helm.dmg`, `helm` CLI binaries, install script |
+| `direct` | GUI: Sparkle (Developer ID DMG). CLI direct installer: Helm CLI self-update endpoint. | Allowed for CLI installs with `channel=direct-script` and `update_policy=self`; `--force` is only honored for `direct-script`. | Consumer channel (Free + Pro entitlement model, post-1.0). | `Helm.app`, `Helm.dmg`, `helm` CLI binaries, install script |
 | `mas` | Mac App Store-managed | Not allowed (channel-managed). | Consumer MAS commerce/receipt authority. | MAS app package (`Helm.app` via App Store pipeline) |
 | `setapp` | Setapp-managed | Not allowed (channel-managed). | Consumer Setapp subscription authority (Pro-equivalent channel behavior). | Setapp app artifact (`Helm.app` for Setapp ingestion) |
-| `business` | Admin-controlled rollout (PKG/MDM managed) | Blocked by default (`update_policy=managed`). | Separate Helm Business lifecycle with managed policy defaults. | Signed `Helm Business` PKG (`.pkg`) and managed app payload |
+| `business` | Admin-controlled rollout (PKG/MDM managed) | Blocked by default (`update_policy=managed`). | Separate Helm Business lifecycle with managed policy defaults. | Current-state (`0.17.3`): unsigned placeholder app/pkg artifacts in orchestration flow. Target-state: signed/notarized `Helm Business` PKG (`.pkg`) + managed app payload |
 
 Rules:
 
@@ -81,7 +92,11 @@ Marker path:
 
 - `~/.config/helm/install.json`
 
-Marker schema:
+Canonical schema source:
+
+- `docs/contracts/install-marker.schema.json`
+
+Example marker payload:
 
 ```json
 {
@@ -89,7 +104,7 @@ Marker schema:
   "artifact": "helm-cli",
   "installed_at": "2026-02-23T12:34:56Z",
   "update_policy": "self",
-  "version": "0.17.2"
+  "version": "0.17.3"
 }
 ```
 
@@ -126,10 +141,10 @@ Managed placeholder policy (minimal enterprise scope):
 
 Executable realpath rules:
 
-1. under `/opt/local` -> `macports`
-2. under Homebrew prefix (`/opt/homebrew`, `/usr/local`, or discovered `brew --prefix`) -> `brew`
-3. under `~/.cargo/bin` -> `cargo`
-4. inside `*.app/Contents/` -> `app-bundle-shim`
+1. inside `*.app/Contents/` -> `app-bundle-shim`
+2. under `/opt/local` -> `macports`
+3. under Homebrew prefix (`/opt/homebrew`, `/usr/local`, or discovered `brew --prefix`) -> `brew`
+4. under `~/.cargo/bin` -> `cargo`
 5. otherwise -> `unknown`
 
 Default policy when marker missing:
@@ -210,7 +225,7 @@ Scope note:
 - CLI direct installer publication must publish:
   - release binaries
   - checksums
-  - website `latest.json` contract payload
+  - website channel contract payloads (`latest.json` stable, `latest-rc.json` prerelease)
 - Future channel CI (MAS, Setapp, business PKG) remains roadmap-scoped until credentials/process are ready.
 
 ---
@@ -221,10 +236,17 @@ Endpoint:
 
 - `https://helmapp.dev/updates/cli/latest.json`
 - repository path: `web/public/updates/cli/latest.json`
+- prerelease endpoint: `https://helmapp.dev/updates/cli/latest-rc.json`
+- prerelease repository path: `web/public/updates/cli/latest-rc.json`
+
+Availability caveat:
+
+- `latest-rc.json` is only expected after the first prerelease publication. Until then, stable metadata (`latest.json`) remains the only required endpoint.
 
 Payload requirements:
 
 - `version` (semver-compatible text)
+- `channel` (`stable` for `latest.json`, `rc` for `latest-rc.json`)
 - `published_at` (ISO-8601 UTC timestamp)
 - `downloads.universal|arm64|x86_64` entries with:
   - `url`
@@ -235,6 +257,7 @@ Compatibility rule:
 - existing fields above are stable for current CLI self-update and `install.sh`.
 - additive fields are allowed.
 - field removal/renaming requires coordinated CLI contract/version update.
+- update transport policy is HTTPS-only with allowlisted hosts by default (`helmapp.dev` + GitHub release hosts); local `file://` testing requires explicit insecure override env vars.
 
 ---
 
@@ -246,3 +269,16 @@ Compatibility rule:
   - `docs/roadmap/CLI_DISTRIBUTION_CI_MILESTONES.md`
 - All-variant release orchestration workflow:
   - `.github/workflows/release-all-variants.yml`
+
+## 12. GUI Artifact Checksum Publication Symmetry
+
+Current policy:
+
+- CLI direct-update metadata publishes explicit SHA256 checksums in website JSON endpoints.
+- GUI direct-update integrity remains anchored on Sparkle appcast/signature verification for DMG/app payloads.
+
+Rationale:
+
+- Sparkle is already the GUI update trust authority for direct Developer ID builds.
+- Publishing duplicate GUI checksum manifests outside appcast is optional hardening, not required for current trust guarantees.
+- Keep one canonical GUI integrity path (Sparkle feed + signatures) in this milestone to avoid dual-source drift.

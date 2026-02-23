@@ -17,8 +17,7 @@ on:
         type: string
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: release-dmg-${{ inputs.tag || github.event.release.tag_name || github.event.inputs.tag }}
@@ -27,6 +26,9 @@ concurrency:
 jobs:
   build-and-upload-dmg:
     runs-on: macos-14
+    permissions:
+      contents: write
+      pull-requests: write
     env:
       APP_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       SIGNING_CERT_BASE64: ${{ secrets.MACOS_DEVELOPER_ID_APP_CERT_BASE64 }}
@@ -72,12 +74,12 @@ jobs:
           PY
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ env.TAG_NAME }}
 
       - name: Install Rust toolchain (universal targets)
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
@@ -468,7 +470,7 @@ jobs:
           apps/macos-ui/scripts/verify_sparkle_appcast_policy.sh "$PWD/build/release-assets/appcast.xml"
 
       - name: Upload build artifacts to workflow run
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: helm-macos-dmg-${{ env.TAG_NAME }}
           path: |

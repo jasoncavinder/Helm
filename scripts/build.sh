@@ -42,6 +42,12 @@ require_tool() {
   fi
 }
 
+variant_field() {
+  local variant="$1"
+  local field="$2"
+  python3 "$ROOT_DIR/scripts/distribution_profile.py" variant "$variant" "$field"
+}
+
 prepare_output_dir() {
   mkdir -p "$OUTPUT_ROOT"
 }
@@ -80,7 +86,8 @@ render_channel_config() {
 
 build_gui_variant() {
   local variant="$1"
-  local profile="$2"
+  local profile
+  profile="$(variant_field "$variant" channel_profile)"
 
   require_tool xcodebuild
   prepare_output_dir
@@ -182,7 +189,7 @@ run_optional() {
 
 build_direct() {
   local status=0
-  if ! build_gui_variant "direct" "developer_id"; then
+  if ! build_gui_variant "direct"; then
     status=1
   else
     if ! build_direct_dmg; then
@@ -194,7 +201,7 @@ build_direct() {
 
 build_mas() {
   local status=0
-  if ! build_gui_variant "mas" "app_store"; then
+  if ! build_gui_variant "mas"; then
     status=1
   fi
   write_variant_placeholder \
@@ -205,7 +212,7 @@ build_mas() {
 
 build_setapp() {
   local status=0
-  if ! build_gui_variant "setapp" "setapp"; then
+  if ! build_gui_variant "setapp"; then
     status=1
   fi
   write_variant_placeholder \
@@ -216,7 +223,7 @@ build_setapp() {
 
 build_business() {
   local status=0
-  if ! build_gui_variant "business" "fleet"; then
+  if ! build_gui_variant "business"; then
     status=1
   fi
   write_variant_placeholder \
@@ -241,6 +248,7 @@ build_all() {
 
 main() {
   local target="${1:-}"
+  require_tool python3
   case "$target" in
   direct)
     build_cli_release

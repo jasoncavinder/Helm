@@ -5,14 +5,20 @@ on:
     branches: [main, dev]
     paths:
       - "install.sh"
+      - "scripts/validate_install_marker_schema.py"
+      - "docs/contracts/install-marker.schema.json"
       - ".github/workflows/cli-installer-checks.yml"
       - "web/public/updates/cli/latest.json"
+      - "web/public/updates/cli/latest-rc.json"
   push:
     branches: [main, dev]
     paths:
       - "install.sh"
+      - "scripts/validate_install_marker_schema.py"
+      - "docs/contracts/install-marker.schema.json"
       - ".github/workflows/cli-installer-checks.yml"
       - "web/public/updates/cli/latest.json"
+      - "web/public/updates/cli/latest-rc.json"
   workflow_dispatch:
 
 permissions:
@@ -77,6 +83,7 @@ jobs:
 
           INSTALL_OUTPUT="$(
             HELM_CLI_UPDATE_ENDPOINT="file://$SERVER_DIR/latest.json" \
+            HELM_INSTALL_ALLOW_INSECURE_URLS="1" \
             HELM_INSTALL_BIN_DIR="$BIN_DIR" \
             HELM_INSTALL_MARKER_PATH="$MARKER_PATH" \
             ./install.sh
@@ -87,6 +94,8 @@ jobs:
           test -x "$BIN_DIR/helm"
           test -f "$MARKER_PATH"
 
+          python3 scripts/validate_install_marker_schema.py docs/contracts/install-marker.schema.json "$MARKER_PATH"
+
           python3 - "$MARKER_PATH" <<'PY'
           import json
           import sys
@@ -95,7 +104,6 @@ jobs:
               payload = json.load(f)
 
           assert payload.get("channel") == "direct-script"
-          assert payload.get("artifact") == "helm-cli"
           assert payload.get("update_policy") == "self"
           assert payload.get("version") == "9.9.9"
           PY

@@ -6,6 +6,28 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.17.3] - 2026-02-23
+
+Patch `0.17.3` finalizes CLI parity-hardening and release-channel safety guardrails delivered after `0.17.2`, while keeping GUI Sparkle flows intact for direct DMG installs.
+
+### Added
+- `helm doctor` is now a first-class top-level diagnostics alias (defaulting to provenance output while preserving full diagnostics subcommands).
+- Install provenance and distribution-profile contracts are now centralized as machine-readable schemas:
+  - `docs/contracts/install-marker.schema.json`
+  - `docs/contracts/distribution-profiles.json`
+- Dedicated CLI update-metadata drift detection workflow has been added for stable/prerelease metadata contract monitoring.
+
+### Changed
+- CLI self-update is now policy-driven across install channels, including deterministic channel-managed guidance and direct-script-only force behavior.
+- GUI and CLI now share one coordinator authority path for mutation/cancellation flows, reducing split-brain execution risk between clients.
+- CLI machine-output behavior is now consistently enforced for top-level help/version/completion/error paths in both `--json` and `--ndjson` modes.
+- Release/build orchestration now consumes a centralized distribution-profile contract across local scripts and release workflows.
+
+### Fixed
+- Self-update/install safety hardening now rejects symlink targets for install marker writes and executable replacement, and enforces bounded update payload size.
+- Direct install/update fetch paths now enforce allowlisted HTTPS hosts with explicit timeout policy (with opt-in `file://` override for local testing).
+- Exit-code classification now uses explicit markers for task-failure/partial/cancelled semantics; untyped runtime errors now deterministically resolve to exit code `1`.
+
 ## [0.17.2] - 2026-02-22
 
 Patch `0.17.2` ships post-`0.17.x` manager-control, onboarding/detection, and Control Center execution-plan fixes as a stable incremental release.

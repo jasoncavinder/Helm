@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
 
@@ -42,7 +42,14 @@ jobs:
 
           is_release_publish_path() {
             case "$1" in
-              web/public/updates/appcast.xml|web/public/updates/release-notes/*|web/public/updates/cli/latest.json) return 0 ;;
+              web/public/updates/appcast.xml|web/public/updates/release-notes/*|web/public/updates/cli/latest.json|web/public/updates/cli/latest-rc.json) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          is_cli_update_metadata_path() {
+            case "$1" in
+              web/public/updates/cli/latest.json|web/public/updates/cli/latest-rc.json) return 0 ;;
               *) return 1 ;;
             esac
           }
@@ -58,10 +65,14 @@ jobs:
           docs_only=true
           web_only=true
           release_publish_only=true
+          cli_update_metadata_touched=false
           for path in "${changed_files[@]}"; do
             is_docs_path "$path" || docs_only=false
             is_web_path "$path" || web_only=false
             is_release_publish_path "$path" || release_publish_only=false
+            if is_cli_update_metadata_path "$path"; then
+              cli_update_metadata_touched=true
+            fi
           done
 
           case "$BASE_REF" in
@@ -70,16 +81,27 @@ jobs:
                 && [[ ! "$HEAD_REF" =~ ^hotfix/ ]] \
                 && [[ ! "$HEAD_REF" =~ ^release/ ]] \
                 && [[ ! "$HEAD_REF" =~ ^chore/publish-updates- ]] \
-                && [[ ! "$HEAD_REF" =~ ^chore/publish-cli-updates- ]]; then
-                report_error "PRs into main must come from dev, docs, web, hotfix/*, release/*, chore/publish-updates-*, or chore/publish-cli-updates-*."
+                && [[ ! "$HEAD_REF" =~ ^chore/publish-cli-updates- ]] \
+                && [[ ! "$HEAD_REF" =~ ^hotfix/cli-updates-emergency- ]]; then
+                report_error "PRs into main must come from dev, docs, web, hotfix/*, release/*, chore/publish-updates-*, chore/publish-cli-updates-*, or hotfix/cli-updates-emergency-*."
               fi
 
               if [[ "$HEAD_REF" =~ ^chore/publish-updates- ]] && [[ "$release_publish_only" != "true" ]]; then
-                report_error "chore/publish-updates-* branches may only change web/public/updates/appcast.xml, web/public/updates/release-notes/*, and web/public/updates/cli/latest.json."
+                report_error "chore/publish-updates-* branches may only change web/public/updates/appcast.xml, web/public/updates/release-notes/*, and web/public/updates/cli/latest*.json."
               fi
 
               if [[ "$HEAD_REF" =~ ^chore/publish-cli-updates- ]] && [[ "$release_publish_only" != "true" ]]; then
-                report_error "chore/publish-cli-updates-* branches may only change web/public/updates/cli/latest.json (plus release publish paths)."
+                report_error "chore/publish-cli-updates-* branches may only change web/public/updates/cli/latest*.json (plus release publish paths)."
+              fi
+
+              if [[ "$HEAD_REF" =~ ^hotfix/cli-updates-emergency- ]] && [[ "$release_publish_only" != "true" ]]; then
+                report_error "hotfix/cli-updates-emergency-* branches may only change web/public/updates release publish paths."
+              fi
+
+              if [[ "$cli_update_metadata_touched" == "true" ]] \
+                && [[ ! "$HEAD_REF" =~ ^chore/publish-cli-updates- ]] \
+                && [[ ! "$HEAD_REF" =~ ^hotfix/cli-updates-emergency- ]]; then
+                report_error "CLI update metadata files may only be changed via chore/publish-cli-updates-* or hotfix/cli-updates-emergency-* branches."
               fi
               ;;
             dev)

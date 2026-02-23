@@ -1,6 +1,14 @@
 import XCTest
 
 final class AppUpdateConfigurationTests: XCTestCase {
+    func testDistributionChannelMapsToSingleUpdateAuthoritySource() {
+        XCTAssertEqual(HelmDistributionChannel.developerID.updateAuthority, .sparkle)
+        XCTAssertEqual(HelmDistributionChannel.appStore.updateAuthority, .appStore)
+        XCTAssertEqual(HelmDistributionChannel.setapp.updateAuthority, .setapp)
+        XCTAssertEqual(HelmDistributionChannel.fleet.updateAuthority, .adminControlled)
+        XCTAssertEqual(HelmDistributionChannel.unknown.updateAuthority, .unavailable)
+    }
+
     func testCanUseSparkleRequiresDeveloperIdSecureFeedAndKey() {
         let fullyConfigured = AppUpdateConfiguration(
             channel: .developerID,
