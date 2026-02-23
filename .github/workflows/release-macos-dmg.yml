@@ -618,31 +618,31 @@ jobs:
           fi
 
           ACTUAL_VERSION="$(
-            MAIN_FEED="$MAIN_FEED" python3 - <<'PY'
-            import os
-            import xml.etree.ElementTree as ET
+          MAIN_FEED="$MAIN_FEED" python3 - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
 
-            sparkle_ns = "http://www.andymatuschak.org/xml-namespaces/sparkle"
-            feed_path = os.environ["MAIN_FEED"]
+          sparkle_ns = "http://www.andymatuschak.org/xml-namespaces/sparkle"
+          feed_path = os.environ["MAIN_FEED"]
 
-            root = ET.parse(feed_path).getroot()
-            item = root.find("./channel/item")
-            if item is None:
-                print("")
-                raise SystemExit(0)
+          root = ET.parse(feed_path).getroot()
+          item = root.find("./channel/item")
+          if item is None:
+              print("")
+              raise SystemExit(0)
 
-            enclosure = item.find("enclosure")
-            version = ""
-            if enclosure is not None:
-                version = enclosure.attrib.get(f"{{{sparkle_ns}}}shortVersionString", "").strip()
+          enclosure = item.find("enclosure")
+          version = ""
+          if enclosure is not None:
+              version = enclosure.attrib.get(f"{{{sparkle_ns}}}shortVersionString", "").strip()
 
-            if not version:
-                title = (item.findtext("title") or "").strip()
-                if title.lower().startswith("helm "):
-                    version = title[5:].strip()
+          if not version:
+              title = (item.findtext("title") or "").strip()
+              if title.lower().startswith("helm "):
+                  version = title[5:].strip()
 
-            print(version)
-            PY
+          print(version)
+          PY
           )"
 
           if [ -z "$ACTUAL_VERSION" ]; then
