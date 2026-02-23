@@ -245,18 +245,23 @@ fn auto_check_settings_roundtrip() {
 
     assert!(!store.auto_check_for_updates().unwrap());
     assert_eq!(store.auto_check_frequency_minutes().unwrap(), 1_440);
+    assert_eq!(store.auto_check_last_checked_unix().unwrap(), None);
 
     store.set_auto_check_for_updates(true).unwrap();
     store.set_auto_check_frequency_minutes(60).unwrap();
+    store.set_auto_check_last_checked_unix(12345).unwrap();
 
     assert!(store.auto_check_for_updates().unwrap());
     assert_eq!(store.auto_check_frequency_minutes().unwrap(), 60);
+    assert_eq!(store.auto_check_last_checked_unix().unwrap(), Some(12345));
 
     store.set_auto_check_for_updates(false).unwrap();
     store.set_auto_check_frequency_minutes(1_440).unwrap();
+    store.set_auto_check_last_checked_unix(0).unwrap();
 
     assert!(!store.auto_check_for_updates().unwrap());
     assert_eq!(store.auto_check_frequency_minutes().unwrap(), 1_440);
+    assert_eq!(store.auto_check_last_checked_unix().unwrap(), Some(0));
 
     let _ = std::fs::remove_file(path);
 }

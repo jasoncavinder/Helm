@@ -65,6 +65,7 @@ static EXECUTABLE_DISCOVERY_CACHE: OnceLock<Mutex<HashMap<ManagerId, Vec<String>
     OnceLock::new();
 static COORDINATOR_REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
 static CLI_VERBOSE: AtomicBool = AtomicBool::new(false);
+static CLI_REQUEST_TIMEOUT_SECONDS: AtomicU64 = AtomicU64::new(30);
 const BASH_COMPLETION_SCRIPT: &str = r#"_helm_complete() {
     local cur
     cur="${COMP_WORDS[COMP_CWORD]}"
@@ -175,10 +176,15 @@ complete -c helm -n "__fish_seen_subcommand_from auto-check" -a "status enable d
 complete -c helm -n "__fish_seen_subcommand_from completion" -a "bash zsh fish help"
 "#;
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone)]
 struct GlobalOptions {
     json: bool,
+    ndjson: bool,
     verbose: bool,
+    quiet: bool,
+    no_color: bool,
+    locale: Option<String>,
+    timeout_seconds: Option<u64>,
     execution_mode: ExecutionMode,
 }
 
@@ -480,10 +486,20 @@ fn main() -> ExitCode {
             return ExitCode::from(1);
         }
     };
+    set_cli_request_timeout_seconds(options.timeout_seconds);
     set_verbose_enabled(options.verbose);
     verbose_log(format!(
-        "parsed invocation: command={:?}, args={:?}, json={}, execution_mode={:?}, verbose={}",
-        command, command_args, options.json, options.execution_mode, options.verbose
+        "parsed invocation: command={:?}, args={:?}, json={}, ndjson={}, execution_mode={:?}, verbose={}, quiet={}, no_color={}, locale={:?}, timeout_seconds={:?}",
+        command,
+        command_args,
+        options.json,
+        options.ndjson,
+        options.execution_mode,
+        options.verbose,
+        options.quiet,
+        options.no_color,
+        options.locale,
+        options.timeout_seconds
     ));
 
     if matches!(command, Command::Help) {
@@ -539,7 +555,7 @@ fn main() -> ExitCode {
     .map(|_| ExitCode::SUCCESS)
     .unwrap_or_else(|error| {
         eprintln!("helm: {error}");
-        ExitCode::from(1)
+        ExitCode::from(exit_code_for_error(error.as_str()))
     })
 }
 
@@ -558,33 +574,110 @@ fn parse_args(args: Vec<String>) -> Result<(GlobalOptions, Command, Vec<String>)
     let mut filtered = Vec::new();
     let mut wait_flag = false;
     let mut detach_flag = false;
-    for arg in args {
-        match arg.as_str() {
+    let mut index = 0usize;
+    while index < args.len() {
+        let arg = args[index].as_str();
+        match arg {
             "--json" => {
                 options.json = true;
+                index += 1;
+                continue;
+            }
+            "--ndjson" => {
+                options.ndjson = true;
+                options.json = true;
+                index += 1;
                 continue;
             }
             "-v" | "--verbose" => {
                 options.verbose = true;
+                index += 1;
+                continue;
+            }
+            "-q" | "--quiet" => {
+                options.quiet = true;
+                index += 1;
+                continue;
+            }
+            "--no-color" => {
+                options.no_color = true;
+                index += 1;
                 continue;
             }
             "--wait" => {
                 wait_flag = true;
                 options.execution_mode = ExecutionMode::Wait;
+                index += 1;
                 continue;
             }
             "--detach" => {
                 detach_flag = true;
                 options.execution_mode = ExecutionMode::Detach;
+                index += 1;
                 continue;
             }
             _ => {}
         }
-        filtered.push(arg);
+        if let Some((key, value)) = arg.split_once('=')
+            && key == "--locale"
+        {
+            if value.trim().is_empty() {
+                return Err("--locale requires a non-empty value".to_string());
+            }
+            options.locale = Some(value.trim().to_string());
+            index += 1;
+            continue;
+        }
+        if arg == "--locale" {
+            if index + 1 >= args.len() {
+                return Err("--locale requires a value".to_string());
+            }
+            let value = args[index + 1].trim();
+            if value.is_empty() {
+                return Err("--locale requires a non-empty value".to_string());
+            }
+            options.locale = Some(value.to_string());
+            index += 2;
+            continue;
+        }
+        if let Some((key, value)) = arg.split_once('=')
+            && key == "--timeout"
+        {
+            let seconds = value
+                .trim()
+                .parse::<u64>()
+                .map_err(|_| format!("invalid --timeout value '{}'", value.trim()))?;
+            if seconds == 0 {
+                return Err("--timeout must be greater than 0".to_string());
+            }
+            options.timeout_seconds = Some(seconds);
+            index += 1;
+            continue;
+        }
+        if arg == "--timeout" {
+            if index + 1 >= args.len() {
+                return Err("--timeout requires a value".to_string());
+            }
+            let seconds = args[index + 1]
+                .trim()
+                .parse::<u64>()
+                .map_err(|_| format!("invalid --timeout value '{}'", args[index + 1].trim()))?;
+            if seconds == 0 {
+                return Err("--timeout must be greater than 0".to_string());
+            }
+            options.timeout_seconds = Some(seconds);
+            index += 2;
+            continue;
+        }
+        filtered.push(args[index].clone());
+        index += 1;
     }
 
     if wait_flag && detach_flag {
         return Err("flags --wait and --detach are mutually exclusive".to_string());
+    }
+    if options.verbose && options.quiet {
+        return Err("flags --verbose and --quiet are mutually exclusive".to_string());
     }
 
     if filtered.is_empty() {
@@ -627,6 +720,39 @@ fn verbose_log(message: impl AsRef<str>) {
     if verbose_enabled() {
         eprintln!("helm[verbose]: {}", message.as_ref());
     }
+}
+
+fn set_cli_request_timeout_seconds(value: Option<u64>) {
+    CLI_REQUEST_TIMEOUT_SECONDS.store(value.unwrap_or(30), Ordering::Relaxed);
+}
+
+fn coordinator_request_timeout() -> Duration {
+    Duration::from_secs(CLI_REQUEST_TIMEOUT_SECONDS.load(Ordering::Relaxed).max(1))
+}
+
+fn exit_code_for_error(error: &str) -> u8 {
+    let normalized = error.trim().to_ascii_lowercase();
+    if normalized.contains("cancelled") || normalized.contains("canceled") {
+        return 4;
+    }
+    if normalized.contains("partial failure") {
+        return 3;
+    }
+    if let Some(count) = parse_manager_failure_count(normalized.as_str()) {
+        return if count > 1 { 3 } else { 2 };
+    }
+    if normalized.contains("task failed") {
+        return 2;
+    }
+    1
+}
+
+fn parse_manager_failure_count(error: &str) -> Option<usize> {
+    if !error.contains("manager") || !error.contains("operations failed") {
+        return None;
+    }
+    let first = error.split_whitespace().next()?;
+    first.parse::<usize>().ok()
 }
 
 fn parse_top_level_command(raw: &str) -> Option<Command> {
@@ -2954,6 +3080,59 @@ fn direct_update_check_status(current_version: &str) -> Result<SelfUpdateCheckSt
     })
 }
 
+fn run_due_auto_check(store: &SqliteStore) -> Result<(), String> {
+    if !store
+        .auto_check_for_updates()
+        .map_err(|error| format!("failed to read auto-check setting: {error}"))?
+    {
+        return Ok(());
+    }
+
+    let frequency_minutes = store
+        .auto_check_frequency_minutes()
+        .map_err(|error| format!("failed to read auto-check frequency: {error}"))?
+        .max(1);
+    let now_unix = json_generated_at_unix();
+    let last_checked = store
+        .auto_check_last_checked_unix()
+        .map_err(|error| format!("failed to read auto-check last-run timestamp: {error}"))?;
+    if let Some(last_checked) = last_checked {
+        let elapsed = now_unix.saturating_sub(last_checked);
+        let required = (frequency_minutes as i64).saturating_mul(60);
+        if elapsed < required {
+            return Ok(());
+        }
+    }
+
+    let current_version = current_cli_version();
+    let executable_path = env::current_exe()
+        .map_err(|error| format!("failed to resolve current executable path: {error}"))?;
+    let provenance = detect_install_provenance(&executable_path);
+    if provenance_can_self_update(provenance.update_policy) {
+        match direct_update_check_status(&current_version) {
+            Ok(status) => {
+                verbose_log(format!(
+                    "auto-check completed: update_available={:?}, latest_version={:?}, source={}",
+                    status.update_available, status.latest_version, status.source
+                ));
+            }
+            Err(error) => {
+                verbose_log(format!("auto-check failed: {}", error));
+            }
+        }
+    } else {
+        verbose_log(format!(
+            "auto-check skipped for channel-managed install '{}'",
+            provenance.channel.as_str()
+        ));
+    }
+
+    store
+        .set_auto_check_last_checked_unix(now_unix)
+        .map_err(|error| format!("failed to persist auto-check timestamp: {error}"))?;
+    Ok(())
+}
+
 fn direct_update_apply(
     current_version: &str,
     executable_path: &PathBuf,
@@ -3022,11 +3201,16 @@ fn cmd_self(
     match command_args[0].as_str() {
         "auto-check" => cmd_self_auto_check(store.as_ref(), options, &command_args[1..]),
         "status" => {
-            let auto_check_for_updates = read_setting(store.as_ref(), "auto_check_for_updates")
-                .unwrap_or_else(|_| "false".to_string());
-            let auto_check_frequency_minutes =
-                read_setting(store.as_ref(), "auto_check_frequency_minutes")
-                    .unwrap_or_else(|_| "1440".to_string());
+            let auto_check_for_updates = store
+                .auto_check_for_updates()
+                .map_err(|error| format!("failed to read auto-check setting: {error}"))?;
+            let auto_check_frequency_minutes = store
+                .auto_check_frequency_minutes()
+                .map_err(|error| format!("failed to read auto-check frequency: {error}"))?;
+            let auto_check_last_checked_unix =
+                store.auto_check_last_checked_unix().map_err(|error| {
+                    format!("failed to read auto-check last-run timestamp: {error}")
+                })?;
             if options.json {
                 emit_json_payload(
                     "helm.cli.v1.self.status",
@@ -3040,6 +3224,7 @@ fn cmd_self(
                         "artifact": provenance.artifact,
                         "auto_check_for_updates": auto_check_for_updates,
                         "auto_check_frequency_minutes": auto_check_frequency_minutes,
+                        "auto_check_last_checked_unix": auto_check_last_checked_unix,
                         "can_self_update": can_self_update,
                         "recommended_action": recommended_action,
                         "latest_version": serde_json::Value::Null,
@@ -3059,6 +3244,12 @@ fn cmd_self(
                 println!("  marker_path: {}", provenance.marker_path.display());
                 println!("  auto_check_for_updates: {auto_check_for_updates}");
                 println!("  auto_check_frequency_minutes: {auto_check_frequency_minutes}");
+                println!(
+                    "  auto_check_last_checked_unix: {}",
+                    auto_check_last_checked_unix
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "null".to_string())
+                );
                 println!("  can_self_update: {}", can_self_update);
                 println!("  recommended_action: {}", recommended_action);
             }
@@ -3322,18 +3513,28 @@ fn cmd_self_auto_check(
         let frequency_minutes = store
             .auto_check_frequency_minutes()
             .map_err(|error| format!("failed to read auto-check frequency: {error}"))?;
+        let last_checked_unix = store
+            .auto_check_last_checked_unix()
+            .map_err(|error| format!("failed to read auto-check last-run timestamp: {error}"))?;
         if options.json {
             emit_json_payload(
                 "helm.cli.v1.self.auto_check.status",
                 json!({
                     "enabled": enabled,
-                    "frequency_minutes": frequency_minutes
+                    "frequency_minutes": frequency_minutes,
+                    "last_checked_unix": last_checked_unix
                 }),
             );
         } else {
             println!("Self auto-check status");
             println!("  enabled: {}", enabled);
             println!("  frequency_minutes: {}", frequency_minutes);
+            println!(
+                "  last_checked_unix: {}",
+                last_checked_unix
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "null".to_string())
+            );
         }
         Ok(())
     };
@@ -3721,7 +3922,7 @@ fn send_coordinator_request_once(
 
     write_json_file(request_file.as_path(), request)?;
 
-    let timeout = Duration::from_secs(30);
+    let timeout = coordinator_request_timeout();
     let started = Instant::now();
     while started.elapsed() < timeout {
         if response_file.exists() {
@@ -3832,7 +4033,15 @@ fn run_coordinator_server(store: Arc<SqliteStore>, socket_path: PathBuf) -> Resu
         }),
     )?;
     verbose_log("coordinator ready and processing requests");
+    let mut next_auto_check_tick = Instant::now();
     loop {
+        if Instant::now() >= next_auto_check_tick {
+            if let Err(error) = run_due_auto_check(store.as_ref()) {
+                verbose_log(format!("auto-check tick failed: {}", error));
+            }
+            next_auto_check_tick = Instant::now() + Duration::from_secs(30);
+        }
+
         let mut entries: Vec<_> = std::fs::read_dir(requests_dir.as_path())
             .map_err(|error| {
                 format!(
@@ -4654,10 +4863,15 @@ fn cmd_settings_list(store: &SqliteStore, options: GlobalOptions) -> Result<(), 
         .map_err(|error| format!("failed to read homebrew_keg_policy: {error}"))?;
     let homebrew_auto_cleanup = matches!(homebrew_policy, HomebrewKegPolicy::Cleanup);
     let db_path = database_path()?;
-    let auto_check_for_updates =
-        read_setting(store, "auto_check_for_updates").unwrap_or_else(|_| "false".to_string());
-    let auto_check_frequency_minutes =
-        read_setting(store, "auto_check_frequency_minutes").unwrap_or_else(|_| "1440".to_string());
+    let auto_check_for_updates = store
+        .auto_check_for_updates()
+        .map_err(|error| format!("failed to read auto_check_for_updates: {error}"))?;
+    let auto_check_frequency_minutes = store
+        .auto_check_frequency_minutes()
+        .map_err(|error| format!("failed to read auto_check_frequency_minutes: {error}"))?;
+    let auto_check_last_checked_unix = store
+        .auto_check_last_checked_unix()
+        .map_err(|error| format!("failed to read auto_check_last_checked_unix: {error}"))?;
     if options.json {
         emit_json_payload(
             "helm.cli.v1.settings.list",
@@ -4666,7 +4880,8 @@ fn cmd_settings_list(store: &SqliteStore, options: GlobalOptions) -> Result<(), 
                 "homebrew_keg_auto_cleanup": homebrew_auto_cleanup,
                 "database_path": db_path,
                 "auto_check_for_updates": auto_check_for_updates,
-                "auto_check_frequency_minutes": auto_check_frequency_minutes
+                "auto_check_frequency_minutes": auto_check_frequency_minutes,
+                "auto_check_last_checked_unix": auto_check_last_checked_unix
             }),
         );
         return Ok(());
@@ -4678,6 +4893,12 @@ fn cmd_settings_list(store: &SqliteStore, options: GlobalOptions) -> Result<(), 
     println!("  database_path: {db_path}");
     println!("  auto_check_for_updates: {auto_check_for_updates}");
     println!("  auto_check_frequency_minutes: {auto_check_frequency_minutes}");
+    println!(
+        "  auto_check_last_checked_unix: {}",
+        auto_check_last_checked_unix
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "null".to_string())
+    );
     Ok(())
 }
 
@@ -6567,6 +6788,14 @@ fn read_setting(store: &SqliteStore, key: &str) -> Result<String, String> {
             .auto_check_frequency_minutes()
             .map(|value| value.to_string())
             .map_err(|error| format!("failed to read setting '{key}': {error}")),
+        "auto_check_last_checked_unix" => store
+            .auto_check_last_checked_unix()
+            .map(|value| {
+                value
+                    .map(|unix| unix.to_string())
+                    .unwrap_or_else(|| "null".to_string())
+            })
+            .map_err(|error| format!("failed to read setting '{key}': {error}")),
         _ => Err(format!("unsupported setting key '{key}'")),
     }
 }
@@ -7365,7 +7594,9 @@ fn print_help() {
     println!("Helm CLI");
     println!();
     println!("USAGE:");
-    println!("  helm [--json] [-v|--verbose] [--wait|--detach] <command> [subcommand]");
+    println!(
+        "  helm [--json|--ndjson] [-v|--verbose|-q|--quiet] [--no-color] [--locale <id>] [--timeout <seconds>] [--wait|--detach] <command> [subcommand]"
+    );
     println!("  helm -V | --version");
     println!("  helm help");
     println!("  helm <command> help");
@@ -7398,7 +7629,12 @@ fn print_help() {
     println!();
     println!("GLOBAL FLAGS:");
     println!("  --json                 Emit JSON output");
+    println!("  --ndjson               Emit newline-delimited JSON output");
     println!("  -v, --verbose          Emit verbose diagnostics to stderr");
+    println!("  -q, --quiet            Suppress non-error output in supported commands");
+    println!("  --no-color             Disable ANSI color output (human mode)");
+    println!("  --locale <id>          Override locale identifier for this invocation");
+    println!("  --timeout <seconds>    Override coordinator request timeout");
     println!("  --wait                 Wait for task completion (default)");
     println!("  --detach               Return after task submission");
     println!("  -V, --version          Show version");
@@ -7818,7 +8054,7 @@ fn print_settings_help() {
     println!("DESCRIPTION:");
     println!("  Read and mutate CLI-visible settings.");
     println!(
-        "  Implemented keys: safe_mode, homebrew_keg_auto_cleanup, auto_check_for_updates, auto_check_frequency_minutes."
+        "  Implemented keys: safe_mode, homebrew_keg_auto_cleanup, auto_check_for_updates, auto_check_frequency_minutes, auto_check_last_checked_unix (read-only)."
     );
 }
 
@@ -8000,4 +8236,83 @@ fn print_completion_help() {
     println!();
     println!("DESCRIPTION:");
     println!("  Print shell completion script to stdout for the selected shell.");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        Command, ExecutionMode, exit_code_for_error, parse_args, parse_manager_failure_count,
+    };
+
+    #[test]
+    fn exit_code_mapping_distinguishes_single_and_partial_failures() {
+        assert_eq!(
+            parse_manager_failure_count("1 manager refresh operations failed"),
+            Some(1)
+        );
+        assert_eq!(
+            parse_manager_failure_count("3 manager detection operations failed"),
+            Some(3)
+        );
+        assert_eq!(
+            exit_code_for_error("1 manager refresh operations failed"),
+            2
+        );
+        assert_eq!(
+            exit_code_for_error("3 manager detection operations failed"),
+            3
+        );
+    }
+
+    #[test]
+    fn exit_code_mapping_returns_cancelled_for_cancellation_errors() {
+        assert_eq!(exit_code_for_error("task 42 was cancelled"), 4);
+        assert_eq!(exit_code_for_error("task 42 was canceled"), 4);
+    }
+
+    #[test]
+    fn parse_args_supports_new_global_flag_surface() {
+        let (options, command, args) = parse_args(vec![
+            "--ndjson".to_string(),
+            "-q".to_string(),
+            "--locale".to_string(),
+            "en-US".to_string(),
+            "--timeout=45".to_string(),
+            "--detach".to_string(),
+            "status".to_string(),
+        ])
+        .expect("args should parse");
+        assert!(options.json);
+        assert!(options.ndjson);
+        assert!(options.quiet);
+        assert_eq!(options.locale.as_deref(), Some("en-US"));
+        assert_eq!(options.timeout_seconds, Some(45));
+        assert_eq!(options.execution_mode, ExecutionMode::Detach);
+        assert_eq!(command, Command::Status);
+        assert!(args.is_empty());
+    }
+
+    #[test]
+    fn parse_args_rejects_verbose_and_quiet_together() {
+        let error = parse_args(vec![
+            "--verbose".to_string(),
+            "--quiet".to_string(),
+            "status".to_string(),
+        ])
+        .expect_err("conflicting verbosity flags must fail");
+        assert!(error.contains("--verbose"));
+        assert!(error.contains("--quiet"));
+    }
+
+    #[test]
+    fn parse_args_rejects_wait_and_detach_together() {
+        let error = parse_args(vec![
+            "--wait".to_string(),
+            "--detach".to_string(),
+            "status".to_string(),
+        ])
+        .expect_err("conflicting execution mode flags must fail");
+        assert!(error.contains("--wait"));
+        assert!(error.contains("--detach"));
+    }
 }

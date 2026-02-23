@@ -46,6 +46,10 @@ pub trait DetectionStore: Send + Sync {
 
     fn auto_check_frequency_minutes(&self) -> PersistenceResult<u32>;
 
+    fn set_auto_check_last_checked_unix(&self, value: i64) -> PersistenceResult<()>;
+
+    fn auto_check_last_checked_unix(&self) -> PersistenceResult<Option<i64>>;
+
     fn set_manager_priority_overrides_json(
         &self,
         overrides_json: Option<&str>,

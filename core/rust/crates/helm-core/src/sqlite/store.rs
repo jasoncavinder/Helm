@@ -1117,6 +1117,38 @@ ON CONFLICT(key) DO UPDATE SET
         })
     }
 
+    fn set_auto_check_last_checked_unix(&self, value: i64) -> PersistenceResult<()> {
+        self.with_connection("set_auto_check_last_checked_unix", |connection| {
+            ensure_schema_ready(connection)?;
+            connection.execute(
+                "
+INSERT INTO app_settings (key, value)
+VALUES ('auto_check_last_checked_unix', ?1)
+ON CONFLICT(key) DO UPDATE SET
+    value = excluded.value
+",
+                params![value.to_string()],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn auto_check_last_checked_unix(&self) -> PersistenceResult<Option<i64>> {
+        self.with_connection("auto_check_last_checked_unix", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection.prepare(
+                "SELECT value FROM app_settings WHERE key = 'auto_check_last_checked_unix'",
+            )?;
+            let mut rows = statement.query([])?;
+            let Some(row) = rows.next()? else {
+                return Ok(None);
+            };
+            let value: String = row.get(0)?;
+            let parsed = value.trim().parse::<i64>().ok();
+            Ok(parsed)
+        })
+    }
+
     fn set_manager_priority_overrides_json(
         &self,
         overrides_json: Option<&str>,
