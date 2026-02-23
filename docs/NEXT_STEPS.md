@@ -15,11 +15,16 @@ Helm is in:
 ```
 
 Focus:
-- monitor post-release feedback on stable `v0.17.0`
+- monitor post-release feedback on stable `v0.17.3`
 - begin planning and branch setup for `0.18.x` local security groundwork
+- close confirmed non-TUI GUI↔CLI parity gaps:
+  - progressive remote-search orchestration parity
+  - launch-at-login settings parity
+  - per-package Homebrew keg-policy parity
+  - manager-scoped bulk-upgrade parity
 
 Current checkpoint:
-- `v0.17.0` is released on `main`; the full `rc.1` through `rc.5` hardening lineage is consolidated in stable:
+- `v0.17.3` is released on `main`; the full `rc.1` through `rc.5` hardening lineage is consolidated in stable, with follow-up stable patch cuts (`v0.17.1`, `v0.17.2`, `v0.17.3`) now published:
   - `#93` `feat/v0.17-log-foundation`
   - `#95` `feat/v0.17-structured-error-export`
   - `#96` `feat/v0.17-service-health-panel`
@@ -48,7 +53,7 @@ Current checkpoint:
     - extend top-bar drag surface to match the full visible top bar
   - post-rc.3 manager-priority/inspector follow-up delivered on `dev`:
     - replace alphabetical manager ordering with priority ordering (installed first), add intra-authority drag reordering, and expose restore-default-priority action in advanced settings
-    - expand manager inspector to show full executable-path discovery set with active-path emphasis and install-method dropdown metadata (recommended/preferred tagging, selection disabled for future gated flow)
+    - expand manager inspector to show full executable-path discovery set with active-path emphasis and install-method metadata (recommended/preferred tagging)
     - expand manager install-method catalog coverage across implemented managers and improve About overlay diagnostics metadata (build/channel/update authority/last-check)
   - post-rc.3 control-center polish follow-up delivered on `dev`:
     - reset-local-data now clears onboarding license-acceptance state in addition to cached runtime data
@@ -84,6 +89,26 @@ Current checkpoint:
     - polling cadence now adapts to interactive surface visibility (popover/control-center visible vs background), with lifecycle visibility hooks in `AppDelegate`
     - inspector package-description rendering now goes through a bounded core-level LRU render cache
     - scroll-heavy managers/overview/updates/settings/popover-search sections now use lazy stack containers where applicable
+  - post-`0.17.x` manager-selection execution follow-up delivered on `dev`:
+    - manager inspector executable-path and install-method menus are now actionable and persist explicit selections
+    - executable selection now supports an explicit PATH-default mode and recommended/default tagging for discovered paths
+    - selected executable/install-method preferences are persisted in SQLite (`manager_preferences` migration v7) and exposed through XPC/FFI manager-status payloads
+    - core process execution now routes commands through selected manager executables; manager install/update/uninstall flows honor selected install method where implemented (`mise`, `mas`, `rustup`)
+  - post-`0.17.x` manager-enablement enforcement follow-up delivered on `dev`:
+    - disabled managers are now excluded from installed/outdated/search/task snapshot surfaces and package/dropdown filters
+    - runtime task submission now rejects disabled managers centrally; disabling a manager now cancels in-flight tasks for that manager
+    - package/update manager-scope selections now normalize away disabled manager IDs to prevent stale disabled-manager targeting
+  - post-`0.17.x` detection/onboarding follow-up delivered on `dev`:
+    - onboarding detection now calls a detection-only trigger instead of full refresh, avoiding immediate list-installed/list-outdated work during first-run detection
+    - detection trigger pre-seeds manager presence from executable-path discovery so detected managers render immediately while version probing continues
+    - onboarding detected-manager rows now show localized `Loading` for version text until per-manager detection tasks reach terminal status
+    - onboarding license acceptance is now step 2 (after welcome) and no longer re-enters the onboarding sequence after license acceptance
+    - core executable lookup now falls back to direct filesystem probing across known bin locations when `which` lookup fails
+    - core runtime now logs per-manager detection timing with structured fields and emits a slow-detection warning threshold at 3000ms
+  - post-`0.17.x` upgrade-plan modal follow-up delivered on `dev`:
+    - execution-plan sheet state now records the initiating host surface so only that UI (popover or Control Center) presents the modal
+    - `Upgrade All` from Control Center/menu now targets Control Center-hosted modal presentation without surfacing the popover
+    - execution-plan footer removed the deprecated `Dry Run` action and keeps only cancel/run controls
   - pre-stable `rc.5 -> 0.17.0` hardening follow-up delivered on `dev`:
     - manager display-name localization now resolves through one shared helper across Core + UI surfaces
     - localization file/missing-key diagnostics now emit structured logger events instead of direct `print` output
@@ -134,7 +159,14 @@ Current checkpoint:
     - detach coverage expanded: multi-step workflows (`refresh`, `updates run`, `managers detect --all`) now support coordinator-backed detach mode with workflow job IDs; `packages pin|unpin --detach` is accepted
     - parity hardening delivered: GUI+CLI now share coordinator transport authority (FFI bridge + local coordinator host with external-coordinator routing for mutation/cancel flows), self-update policy is now provenance-aware beyond Homebrew-only installs (`direct-script` direct updates + channel-managed guidance), and coordinator hosts now run scheduled due-based auto-check ticks with persisted `auto_check_last_checked_unix`
     - CLI contract hardening delivered: granular task-oriented exit-code mapping (`2` task failure, `3` partial failure, `4` cancellation) and global-flag support for `--json|--ndjson`, `-q|--quiet`, `--no-color`, `--locale <id>`, and `--timeout <seconds>`
-- latest stable release on `main`: `v0.17.2`
+    - audit-remediation slice delivered: direct self-update transport failures now emit structured JSON error payloads with actionable guidance in `--json` mode; install provenance marker schema is now centralized at `docs/contracts/install-marker.schema.json` with Rust + installer CI validation; residual CLI recon/dead-code artifacts were removed
+    - audit-remediation follow-up delivered: `helm doctor` top-level alias now routes to diagnostics (defaulting to provenance output), self-update force mode is now restricted to `direct-script` installs only, coordinator auto-check ticks now require direct-script marker policy before endpoint fetches, and direct install/update network paths now enforce allowlisted HTTPS hosts with explicit timeout policy (with opt-in `file://` testing override)
+    - audit-remediation follow-up delivered: top-level machine-mode parity now covers help/version/completion/error flows for `--json`/`--ndjson`, NDJSON list payloads now emit one envelope per item (with explicit empty-list envelope behavior), string-based exit-code heuristics are removed in favor of explicit marker-based classification with deterministic runtime fallback (`1`) for untyped errors, CLI release metadata publication now separates stable (`latest.json`) vs prerelease (`latest-rc.json`) pointers; policy-gate now locks CLI metadata mutation to publish/emergency lanes; and scheduled/manual CLI metadata drift guard validation is now added
+    - audit-remediation follow-up delivered: Rust-side install-marker writes now use symlink-safe atomic replacement; direct self-update binary replacement now rejects symlink/non-file target paths and enforces bounded payload size (`HELM_CLI_SELF_UPDATE_MAX_DOWNLOAD_BYTES`, default 64 MiB); and release workflows now extend immutable action pinning + per-job token scopes with CLI tag/version verification before publication
+    - audit-remediation follow-up delivered: stable CLI update metadata now points to published `v0.17.2` CLI release assets with real checksums (no placeholder zeros), and auto-check last-checked timestamps now update only after eligible direct self-managed check attempts instead of policy-gated skips
+    - audit-remediation follow-up delivered: distribution profile contract is now centralized in `docs/contracts/distribution-profiles.json` and consumed by shared build orchestration (`scripts/build.sh`, `scripts/release/build_unsigned_variant.sh`, matrix-based `release-all-variants.yml` auxiliary jobs); Swift update-authority mapping now has one source (`AppUpdateConfiguration`), targeted updater policy tests pass on macOS, and GUI checksum-publication symmetry is explicitly documented as deferred while Sparkle remains canonical GUI integrity authority
+    - trust-chain future work is now explicitly tracked: detached signatures + signing-key rotation for CLI update artifacts (`docs/roadmap/CLI_DISTRIBUTION_CI_MILESTONES.md`, milestone M5)
+- latest stable release on `main`: `v0.17.3`
 - validation gates are green through the stable cut (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke across `v0.17.0-rc.1` through `v0.17.0-rc.5`)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
@@ -155,7 +187,7 @@ Next release targets:
 - `v0.18.x` — Local security groundwork (internal-only)
 - `v0.19.x` — Stability & Pre-1.0 hardening
 
-## v0.17.x Delivery Tracker (Stable `0.17.0` Complete)
+## v0.17.x Delivery Tracker (Stable `0.17.3` Complete)
 
 - [x] `feat/v0.17-log-foundation` — task log event model, SQLite persistence migration, FFI/XPC retrieval surface.
 - [x] `feat/v0.17-task-log-viewer` — per-task log viewer UI with filters and pagination.
@@ -176,7 +208,7 @@ Next release targets:
 - [x] post-`rc.3` onboarding/legal acceptance — Developer ID onboarding now requires explicit license-terms acceptance tracked by version + timestamp, with re-prompting on license-version changes and a persistent About link to review terms.
 - [x] post-`rc.3` popover/control-center interaction hardening — status-item popover no longer coexists with Control Center; status-item clicks focus Control Center while open; popover/overview health and metrics now deep-link to the appropriate Control Center section.
 - [x] post-`rc.3` manager-priority workflow — manager cards are priority-ordered by authority with installed-first enforcement, drag-reorder support, and advanced-settings restore-default-priority action.
-- [x] post-`rc.3` manager inspector install-metadata expansion — inspector now shows all discovered executable paths (active path emphasized), install-method dropdown metadata with recommended/preferred tags, and expanded per-manager install-method catalogs.
+- [x] post-`rc.3` manager inspector install-metadata expansion — inspector now shows all discovered executable paths (active path emphasized), install-method metadata with recommended/preferred tags, and expanded per-manager install-method catalogs.
 - [x] post-`rc.3` About diagnostics metadata enhancement — About overlay now surfaces build number, distribution channel, update authority, and last update-check timestamp.
 - [x] post-`rc.3` control-center workflow polish — reset-local-data clears license-acceptance state; running-task row taps toggle details; settings metrics deep-link to managers/updates/tasks; inspector selection clears on section changes and selected entities are highlighted.
 - [x] post-`rc.3` startup/interaction polish — launch-at-login setting added (macOS 13+), popover cursor handling restored for hover affordance clarity, full-window Control Center drag support enabled, and count-heavy UI lists now use precomputed manager count maps for smoother drag/scroll behavior on lower-spec Macs.
@@ -1033,4 +1065,4 @@ Implement:
 - 0.14 stable release alignment for `v0.14.0` is complete (README/website + version artifacts).
 - Distribution/licensing future-state planning documentation is aligned for 0.14 release notes and roadmap planning (no implementation yet).
 - 0.14.x and 0.15.x release execution are complete on `main` (`v0.14.1` and `v0.15.0`).
-- 0.17.0 release execution is complete on `main`; 0.17.x diagnostics/logging delivery is now closed with `v0.17.0-rc.1` through `v0.17.0-rc.5` as the completed stabilization lineage.
+- 0.17.3 release execution is complete on `main`; 0.17.x diagnostics/logging delivery and post-`0.17.x` follow-up stabilization are now closed with stable lineage `v0.17.0`, `v0.17.1`, `v0.17.2`, and `v0.17.3`.

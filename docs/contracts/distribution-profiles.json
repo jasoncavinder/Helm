@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "variants": {
+    "direct": {
+      "channel_profile": "developer_id",
+      "distribution_channel": "developer_id",
+      "update_mechanism": "sparkle_gui_and_cli_endpoint",
+      "cli_self_update_policy": "self",
+      "artifact_state": {
+        "current": [
+          "Helm.app",
+          "Helm.dmg",
+          "helm"
+        ],
+        "target": [
+          "signed_notarized_Helm.app",
+          "signed_notarized_Helm.dmg",
+          "helm_release_assets"
+        ]
+      }
+    },
+    "mas": {
+      "channel_profile": "app_store",
+      "distribution_channel": "app_store",
+      "update_mechanism": "app_store_managed",
+      "cli_self_update_policy": "channel",
+      "artifact_state": {
+        "current": [
+          "unsigned_placeholder_Helm.app"
+        ],
+        "target": [
+          "app_store_export_Helm.app"
+        ]
+      }
+    },
+    "setapp": {
+      "channel_profile": "setapp",
+      "distribution_channel": "setapp",
+      "update_mechanism": "setapp_managed",
+      "cli_self_update_policy": "channel",
+      "artifact_state": {
+        "current": [
+          "unsigned_placeholder_Helm.app"
+        ],
+        "target": [
+          "setapp_ingestion_Helm.app"
+        ]
+      }
+    },
+    "business": {
+      "channel_profile": "fleet",
+      "distribution_channel": "fleet",
+      "update_mechanism": "managed_rollout",
+      "cli_self_update_policy": "managed",
+      "artifact_state": {
+        "current": [
+          "unsigned_placeholder_Helm.app",
+          "unsigned_placeholder_Helm.pkg"
+        ],
+        "target": [
+          "signed_notarized_Helm_Business.pkg",
+          "managed_app_payload"
+        ]
+      }
+    }
+  },
+  "channel_wrappers": {
+    "homebrew_cask": {
+      "variant": "direct",
+      "artifact": "Helm.app",
+      "update_authority": "homebrew",
+      "cli_provenance_channel": "brew"
+    },
+    "homebrew_formula": {
+      "variant": "direct",
+      "artifact": "helm",
+      "update_authority": "homebrew",
+      "cli_provenance_channel": "brew"
+    },
+    "cargo": {
+      "variant": "direct",
+      "artifact": "helm",
+      "update_authority": "cargo",
+      "cli_provenance_channel": "cargo"
+    },
+    "cargo_binstall": {
+      "variant": "direct",
+      "artifact": "helm",
+      "update_authority": "binstall_source",
+      "cli_provenance_channel": "cargo"
+    },
+    "macports": {
+      "variant": "direct",
+      "artifact": "helm",
+      "update_authority": "macports",
+      "cli_provenance_channel": "macports"
+    },
+    "direct_script": {
+      "variant": "direct",
+      "artifact": "helm",
+      "update_authority": "helm_endpoint",
+      "cli_provenance_channel": "direct-script"
+    }
+  }
+}

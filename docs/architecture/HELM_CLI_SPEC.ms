@@ -43,6 +43,7 @@ This document is a contract-first specification. It clarifies identifiers, JSON 
 - User-facing invocation remains `helm`.
 - Distribution profile and provenance source of truth:
   - `docs/architecture/BUILD_VARIANTS.md`
+  - machine-readable contract: `docs/contracts/distribution-profiles.json`
 
 ---
 
@@ -66,6 +67,10 @@ This document is a contract-first specification. It clarifies identifiers, JSON 
 
 - `--json` is valid in both TTY and non-TTY contexts.
 - JSON mode emits machine-oriented payloads only (no table formatting, no prose status text in `data`).
+- `--ndjson` emits newline-delimited JSON envelopes:
+  - scalar/object payloads emit one line.
+  - list payloads emit one line per list item.
+  - empty list payloads emit one line with `data: []` (never zero lines).
 - Future mutation commands that require confirmation must be explicit in non-interactive mode:
   - fail fast without required confirmation flags (for example `--yes`) rather than prompting.
 
@@ -309,6 +314,7 @@ Current implementation note (no behavior change in this pass):
   - partial multi-manager failure => `3`
   - cancelled task => `4`
   - usage/runtime errors remain `1`
+- key mutation/workflow failure paths now attach explicit exit-code markers internally; string-based exit-code heuristics are removed and untyped errors deterministically resolve to `1`.
 
 ---
 
@@ -475,6 +481,8 @@ Current implementation note:
 
 - Implemented now: `--json`, `--ndjson`, `-v|--verbose`, `-q|--quiet`, `--no-color`, `--locale <id>`, `--timeout <seconds>`, `--wait`, `--detach`.
 - `--timeout` drives coordinator request timeouts.
+- `--version` human output remains semver-only (`D9`); build profile/channel are exposed via JSON (`helm --json --version`) and verbose diagnostics.
+- `--no-color` is contract-stable but currently a no-op for most commands because default human output is plain text without ANSI styling.
 
 Flag conflicts:
 
@@ -662,6 +670,12 @@ Phase 5:
 - Confirm exact default for `updates run` confirmation behavior in non-interactive contexts.
 - Confirm final `refresh` intent naming and behavior once shared coordinator routing is in place.
 - Confirm packaging/signing policy for standalone CLI artifacts that must interact with coordinator under code-signing enforcement.
+- GUI↔CLI non-TUI parity gaps pending:
+  - progressive remote search orchestration parity (GUI currently debounces/cancels remote search; CLI search is local-cache only)
+  - launch-at-login setting parity (GUI supports toggle; CLI settings surface does not yet expose it)
+  - per-package Homebrew keg-policy parity (GUI supports package-level override; CLI currently exposes only global cleanup policy)
+  - manager-scoped bulk-upgrade parity (`Upgrade All` per manager exists in GUI; CLI bulk run is global plan execution)
+  - GUI-only onboarding/walkthrough/support flows remain intentionally GUI-scoped unless explicit CLI parity is requested
 
 ---
 
