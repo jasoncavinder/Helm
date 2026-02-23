@@ -474,32 +474,27 @@ These must not violate:
 - Safety guarantees
 - Deterministic behavior
 
-### 10.1 Planned Distribution and Licensing Architecture (Future State)
+### 10.1 Build Variants / Distribution Profiles
 
-This is architectural direction only. It is not implemented yet.
+Canonical contract:
 
-#### Build Matrix
+- `docs/architecture/BUILD_VARIANTS.md`
 
-| Artifact | Product | Channel | Licensing Authority | Update Authority | Sparkle |
-|---|---|---|---|---|---|
-| Helm (MAS build) | Helm (Consumer) | Mac App Store | App Store commerce/receipt model | Mac App Store | No |
-| Helm (Developer ID build) | Helm (Consumer) | Direct DMG, Homebrew, MacPorts | Helm consumer entitlement model | Sparkle (direct channel only) | Yes |
-| Helm (Setapp build) | Helm (Consumer) | Setapp | Setapp subscription/license model | Setapp | No |
-| Helm Business (Fleet build) | Helm Business | Enterprise PKG deployment | Offline organizational license files | Admin-controlled PKG/MDM rollout | No |
+This includes:
 
-Channel-to-licensing-to-update mapping must remain explicit:
+- variant matrix (`direct`, `mas`, `setapp`, `business`)
+- internal channel-key mapping (`developer_id`, `app_store`, `setapp`, `fleet`)
+- update-authority vs licensing-authority boundaries
+- wrapper channels (Homebrew, Cargo, cargo-binstall, MacPorts)
+- CLI provenance marker schema and fallback detection rules
 
-- Update system and licensing system are decoupled.
-- Homebrew and MacPorts distribute the same Developer ID consumer binary.
-- Helm Business release lifecycle is separate from consumer channel lifecycle.
-- Sparkle is excluded from MAS, Setapp, and Helm Business fleet builds.
+Architectural invariants for distribution remain:
 
-#### Build Configuration and CI/CD Implications (High-Level)
-
-- Shared core codebase remains single-source.
-- Build configurations must differentiate MAS, Developer ID, Setapp, and Fleet packaging paths.
-- CI/CD must keep shared test gates common, then run channel-specific packaging/signing/notarization/publishing steps.
-- Business PKG release flow is managed separately from consumer DMG/App Store/Setapp release flow.
+- shared core codebase remains single-source
+- update authority stays decoupled from licensing authority
+- Sparkle is direct-channel GUI only
+- Sparkle is excluded from MAS, Setapp, and business/fleet builds
+- business PKG lifecycle remains separately managed from consumer channels
 
 ### 10.2 Implementation Phasing Strategy
 

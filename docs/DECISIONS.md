@@ -455,6 +455,26 @@ Persistence/API changes:
 
 ---
 
+## Decision 028 — Shared GUI + CLI Coordinator
+
+**Decision:**
+The upcoming CLI and existing GUI must share a single per-user coordinator/task authority rather than running independent orchestration runtimes.
+
+**Rationale:**
+
+- Prevents split-brain task state and conflicting manager mutations
+- Preserves one source of truth for queueing, cancellation, diagnostics, and task history
+- Keeps parity behavior between GUI and CLI without duplicating orchestration policy
+- Simplifies enforcement of manager serialization, authority ordering, and enablement rules
+
+**Implementation note (`dev`, post-`v0.17.2`):**
+
+- `helm-ffi` now initializes a coordinator-compatible bridge/host using the same per-user state-dir protocol as `helm-cli`.
+- If an external coordinator already exists, GUI mutation/cancellation requests route through that external authority.
+- If no coordinator exists, GUI host starts a local coordinator endpoint and CLI launch-on-demand requests connect to it.
+
+---
+
 ## Summary
 
 Helm prioritizes:

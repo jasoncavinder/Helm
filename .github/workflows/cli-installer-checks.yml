@@ -1,0 +1,101 @@
+name: CLI Installer Checks
+
+on:
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - "install.sh"
+      - ".github/workflows/cli-installer-checks.yml"
+      - "web/public/updates/cli/latest.json"
+  push:
+    branches: [main, dev]
+    paths:
+      - "install.sh"
+      - ".github/workflows/cli-installer-checks.yml"
+      - "web/public/updates/cli/latest.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-smoke-test:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install shellcheck if needed
+        run: |
+          set -euo pipefail
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            brew install shellcheck
+          fi
+
+      - name: Shellcheck installer and build helper
+        run: |
+          set -euo pipefail
+          shellcheck install.sh scripts/build.sh
+
+      - name: Smoke test install.sh with local file manifest
+        run: |
+          set -euo pipefail
+
+          TEST_ROOT="$RUNNER_TEMP/helm-install-test"
+          SERVER_DIR="$TEST_ROOT/files"
+          BIN_DIR="$TEST_ROOT/bin"
+          MARKER_PATH="$TEST_ROOT/config/install.json"
+          mkdir -p "$SERVER_DIR" "$BIN_DIR"
+
+          cat > "$SERVER_DIR/helm-test" <<'EOF'
+          #!/usr/bin/env bash
+          echo "helm-test-binary"
+          EOF
+          chmod +x "$SERVER_DIR/helm-test"
+          SHA="$(shasum -a 256 "$SERVER_DIR/helm-test" | awk '{print $1}')"
+
+          cat > "$SERVER_DIR/latest.json" <<EOF
+          {
+            "version": "9.9.9",
+            "published_at": "2026-01-01T00:00:00Z",
+            "downloads": {
+              "universal": {
+                "url": "file://$SERVER_DIR/helm-test",
+                "sha256": "${SHA}"
+              },
+              "arm64": {
+                "url": "file://$SERVER_DIR/helm-test",
+                "sha256": "${SHA}"
+              },
+              "x86_64": {
+                "url": "file://$SERVER_DIR/helm-test",
+                "sha256": "${SHA}"
+              }
+            }
+          }
+          EOF
+
+          INSTALL_OUTPUT="$(
+            HELM_CLI_UPDATE_ENDPOINT="file://$SERVER_DIR/latest.json" \
+            HELM_INSTALL_BIN_DIR="$BIN_DIR" \
+            HELM_INSTALL_MARKER_PATH="$MARKER_PATH" \
+            ./install.sh
+          )"
+          echo "$INSTALL_OUTPUT"
+
+          echo "$INSTALL_OUTPUT" | grep -q "Provenance marker written to"
+          test -x "$BIN_DIR/helm"
+          test -f "$MARKER_PATH"
+
+          python3 - "$MARKER_PATH" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], "r", encoding="utf-8") as f:
+              payload = json.load(f)
+
+          assert payload.get("channel") == "direct-script"
+          assert payload.get("artifact") == "helm-cli"
+          assert payload.get("update_policy") == "self"
+          assert payload.get("version") == "9.9.9"
+          PY
