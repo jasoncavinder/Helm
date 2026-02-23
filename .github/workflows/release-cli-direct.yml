@@ -1,6 +1,12 @@
 name: Release CLI Direct Installer
 
 on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Git tag to build and publish CLI assets for (e.g. v0.17.2)"
+        required: true
+        type: string
   release:
     types: [published]
   workflow_dispatch:
@@ -15,14 +21,14 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: release-cli-${{ github.event.release.tag_name || github.event.inputs.tag }}
+  group: release-cli-${{ inputs.tag || github.event.release.tag_name || github.event.inputs.tag }}
   cancel-in-progress: true
 
 jobs:
   build-and-publish-cli:
     runs-on: macos-14
     env:
-      TAG_NAME: ${{ github.event.release.tag_name || github.event.inputs.tag }}
+      TAG_NAME: ${{ inputs.tag || github.event.release.tag_name || github.event.inputs.tag }}
 
     steps:
       - name: Checkout tag

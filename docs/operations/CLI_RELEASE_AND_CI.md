@@ -13,12 +13,14 @@ This guide covers:
 - CLI direct-release automation (`release-cli-direct.yml`)
 - website metadata publication for CLI self-update (`/updates/cli/latest.json`)
 - `install.sh` validation and maintainer actions outside CI
+- all-variant release orchestration (`release-all-variants.yml`)
 
 Reference contracts:
 
 - `docs/architecture/BUILD_VARIANTS.md`
 - `.github/workflows/release-cli-direct.yml`
 - `.github/workflows/cli-installer-checks.yml`
+- `.github/workflows/release-all-variants.yml`
 
 ---
 
@@ -165,6 +167,31 @@ gh workflow run release-cli-direct.yml -f tag=v0.17.2
 gh run list --workflow "Release CLI Direct Installer" --limit 5
 gh run view <run-id> --log
 ```
+
+### 5.5 Trigger All-Variant Build/Release Orchestration
+
+This workflow runs:
+
+- direct GUI DMG release flow
+- direct CLI release flow
+- MAS profile unsigned build artifact
+- Setapp profile unsigned build artifact
+- business profile unsigned `.app` zip + unsigned `.pkg` artifact
+
+Command:
+
+```bash
+gh workflow run release-all-variants.yml -f tag=v0.17.2 -f upload_auxiliary_assets=true
+gh run list --workflow "Release All Variants" --limit 5
+gh run view <run-id> --log
+```
+
+Notes:
+
+- `release-all-variants.yml` ensures a release exists for the tag (creates draft if missing).
+- direct channel jobs keep existing release workflows unchanged.
+- MAS/Setapp/business outputs are intentionally unsigned in the baseline orchestration workflow.
+- signed store/vendor pipelines remain a separate follow-up.
 
 ---
 

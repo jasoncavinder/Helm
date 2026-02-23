@@ -14,6 +14,7 @@ Current delivered baseline:
 
 - direct CLI release workflow with website metadata publication (`release-cli-direct.yml`)
 - installer validation workflow (`cli-installer-checks.yml`)
+- all-variant orchestration workflow (`release-all-variants.yml`) producing unsigned MAS/Setapp/business artifacts
 
 ---
 

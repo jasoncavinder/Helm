@@ -1,6 +1,12 @@
 name: Release macOS DMG
 
 on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Git tag to build and upload (e.g. v0.13.0-beta.2)"
+        required: true
+        type: string
   release:
     types: [published]
   workflow_dispatch:
@@ -15,7 +21,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: release-dmg-${{ github.event.release.tag_name || github.event.inputs.tag }}
+  group: release-dmg-${{ inputs.tag || github.event.release.tag_name || github.event.inputs.tag }}
   cancel-in-progress: true
 
 jobs:
@@ -29,7 +35,7 @@ jobs:
       HELM_SPARKLE_FEED_URL: ${{ secrets.HELM_SPARKLE_FEED_URL }}
       HELM_SPARKLE_PUBLIC_ED_KEY: ${{ secrets.HELM_SPARKLE_PUBLIC_ED_KEY }}
       HELM_SPARKLE_PRIVATE_ED_KEY: ${{ secrets.HELM_SPARKLE_PRIVATE_ED_KEY }}
-      TAG_NAME: ${{ github.event.release.tag_name || github.event.inputs.tag }}
+      TAG_NAME: ${{ inputs.tag || github.event.release.tag_name || github.event.inputs.tag }}
 
     steps:
       - name: Validate required secrets

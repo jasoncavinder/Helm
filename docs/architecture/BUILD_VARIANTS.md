@@ -244,3 +244,5 @@ Compatibility rule:
   - `docs/operations/CLI_RELEASE_AND_CI.md`
 - Future CI milestone tracking:
   - `docs/roadmap/CLI_DISTRIBUTION_CI_MILESTONES.md`
+- All-variant release orchestration workflow:
+  - `.github/workflows/release-all-variants.yml`
