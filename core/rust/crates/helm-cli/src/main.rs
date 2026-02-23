@@ -6628,13 +6628,11 @@ fn build_json_payload_lines(
         })
     };
 
-    if ndjson_mode {
-        if let serde_json::Value::Array(items) = data {
-            if items.is_empty() {
-                return vec![build(serde_json::Value::Array(Vec::new()))];
-            }
-            return items.into_iter().map(build).collect();
+    if ndjson_mode && let serde_json::Value::Array(items) = data {
+        if items.is_empty() {
+            return vec![build(serde_json::Value::Array(Vec::new()))];
         }
+        return items.into_iter().map(build).collect();
     }
 
     vec![build(data)]
