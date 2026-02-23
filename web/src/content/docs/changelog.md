@@ -11,6 +11,27 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ---
 
+## Unreleased
+
+## 0.17.3 — 2026-02-23
+
+Patch `0.17.3` finalizes post-`0.17.2` CLI parity hardening and release-channel safety guardrails.
+
+### Added
+- `helm doctor` is now a first-class top-level diagnostics alias (defaulting to provenance output).
+- Install-provenance and distribution-profile contracts are now centralized as machine-readable schema files.
+- Dedicated CLI update-metadata drift checks were added to release automation workflows.
+
+### Changed
+- CLI self-update behavior is now policy-driven across install channels, with deterministic direct-script force handling and explicit channel-managed guidance.
+- GUI and CLI now converge on a shared coordinator authority path for mutation/cancellation flow consistency.
+- Top-level machine output behavior is now consistently enforced for `--json` and `--ndjson` help/version/completion/error paths.
+
+### Fixed
+- Self-update/install safety now rejects symlink targets for marker writes and binary replacement, and enforces bounded update payload size.
+- Direct install/update fetch paths now enforce allowlisted HTTPS hosts with explicit timeout policy (with opt-in `file://` testing override).
+- Exit-code mapping now uses explicit markers for task failure/partial/cancelled semantics, with deterministic runtime fallback to `1`.
+
 ## 0.17.2 — 2026-02-22
 
 Patch `0.17.2` ships post-`0.17.x` manager-control, onboarding/detection, and Control Center execution-plan fixes as a stable incremental release.
