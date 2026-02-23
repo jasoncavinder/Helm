@@ -58,11 +58,14 @@
 //! must free returned strings via [`helm_free_string`].
 
 use std::ffi::{CStr, CString};
+use std::hash::{Hash, Hasher};
 use std::os::raw::c_char;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
-use std::time::Duration;
-use std::time::UNIX_EPOCH;
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use helm_core::adapters::asdf::AsdfAdapter;
 use helm_core::adapters::asdf_process::ProcessAsdfSource;
@@ -293,6 +296,254 @@ struct FfiManagerStatus {
 static EXECUTABLE_DISCOVERY_CACHE: OnceLock<
     Mutex<std::collections::HashMap<ManagerId, Vec<String>>>,
 > = OnceLock::new();
+static COORDINATOR_REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
+static COORDINATOR_SERVER_STARTED: AtomicBool = AtomicBool::new(false);
+
+const COORDINATOR_REQUEST_TIMEOUT_SECS: u64 = 30;
+const COORDINATOR_POLL_SLEEP_MS: u64 = 25;
+const AUTO_CHECK_TICK_SECS: u64 = 30;
+const DEFAULT_CLI_UPDATE_ENDPOINT: &str = "https://helmapp.dev/updates/cli/latest.json";
+const DEFAULT_INSTALL_MARKER_RELATIVE_PATH: &str = ".config/helm/install.json";
+const AUTO_CHECK_ALLOW_INSECURE_ENV: &str = "HELM_CLI_ALLOW_INSECURE_UPDATE_URLS";
+const AUTO_CHECK_HTTP_CONNECT_TIMEOUT_SECS: u64 = 10;
+const AUTO_CHECK_HTTP_READ_TIMEOUT_SECS: u64 = 30;
+const AUTO_CHECK_HTTP_WRITE_TIMEOUT_SECS: u64 = 30;
+const AUTO_CHECK_ALLOWED_HOSTS: [&str; 5] = [
+    "helmapp.dev",
+    "github.com",
+    "objects.githubusercontent.com",
+    "github-releases.githubusercontent.com",
+    "release-assets.githubusercontent.com",
+];
+
+#[derive(Debug, serde::Deserialize)]
+struct AutoCheckInstallMarker {
+    channel: String,
+    update_policy: String,
+}
+
+#[derive(Clone, Debug)]
+enum CoordinatorBridge {
+    Disabled,
+    Local,
+    External(PathBuf),
+}
+
+lazy_static! {
+    static ref COORDINATOR_BRIDGE: Mutex<CoordinatorBridge> =
+        Mutex::new(CoordinatorBridge::Disabled);
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum CoordinatorRequest {
+    Ping,
+    Submit {
+        manager_id: String,
+        request: CoordinatorSubmitRequest,
+        wait: bool,
+    },
+    Cancel {
+        task_id: u64,
+    },
+    StartWorkflow {
+        workflow: CoordinatorWorkflowRequest,
+    },
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum CoordinatorSubmitRequest {
+    Detect,
+    Install {
+        package_name: String,
+        version: Option<String>,
+    },
+    Uninstall {
+        package_name: String,
+    },
+    Upgrade {
+        package_name: Option<String>,
+    },
+    Pin {
+        package_name: String,
+        version: Option<String>,
+    },
+    Unpin {
+        package_name: String,
+    },
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum CoordinatorWorkflowRequest {
+    RefreshAll,
+    RefreshManager {
+        manager_id: String,
+    },
+    DetectAll,
+    UpdatesRun {
+        include_pinned: bool,
+        allow_os_updates: bool,
+    },
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct CoordinatorResponse {
+    ok: bool,
+    task_id: Option<u64>,
+    job_id: Option<String>,
+    payload: Option<CoordinatorPayload>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum CoordinatorPayload {
+    Detection {
+        installed: bool,
+        version: Option<String>,
+        executable_path: Option<String>,
+    },
+    Mutation {
+        manager_id: String,
+        package_name: String,
+        action: String,
+        before_version: Option<String>,
+        after_version: Option<String>,
+    },
+    Refreshed,
+    InstalledPackages {
+        count: usize,
+    },
+    OutdatedPackages {
+        count: usize,
+    },
+    SearchResults {
+        count: usize,
+    },
+}
+
+fn coordinator_socket_path_for_store(store: &SqliteStore) -> PathBuf {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    store.database_path().to_string_lossy().hash(&mut hasher);
+    let suffix = format!("{:x}", hasher.finish());
+    let root = std::env::var("TMPDIR")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/tmp"));
+    root.join(format!("helm-cli-coordinator-{suffix}"))
+}
+
+fn coordinator_ready_file(state_dir: &Path) -> PathBuf {
+    state_dir.join("ready.json")
+}
+
+fn coordinator_requests_dir(state_dir: &Path) -> PathBuf {
+    state_dir.join("requests")
+}
+
+fn coordinator_responses_dir(state_dir: &Path) -> PathBuf {
+    state_dir.join("responses")
+}
+
+fn coordinator_request_file(state_dir: &Path, request_id: &str) -> PathBuf {
+    coordinator_requests_dir(state_dir).join(format!("{request_id}.json"))
+}
+
+fn coordinator_response_file(state_dir: &Path, request_id: &str) -> PathBuf {
+    coordinator_responses_dir(state_dir).join(format!("{request_id}.json"))
+}
+
+fn next_coordinator_request_id() -> String {
+    let counter = COORDINATOR_REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    format!("{}-{nanos}-{counter}", std::process::id())
+}
+
+fn write_json_file<T: serde::Serialize>(path: &Path, value: &T) -> Result<(), String> {
+    let rendered = serde_json::to_vec(value)
+        .map_err(|error| format!("failed to encode json file '{}': {error}", path.display()))?;
+    let temp_name = format!(
+        "{}.tmp-{}-{}",
+        path.file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("payload"),
+        std::process::id(),
+        COORDINATOR_REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed)
+    );
+    let temp_path = path.with_file_name(temp_name);
+    std::fs::write(&temp_path, rendered).map_err(|error| {
+        format!(
+            "failed to write temp json file '{}': {error}",
+            temp_path.display()
+        )
+    })?;
+    std::fs::rename(&temp_path, path).map_err(|error| {
+        format!(
+            "failed to move temp json file '{}' into '{}': {error}",
+            temp_path.display(),
+            path.display()
+        )
+    })?;
+    Ok(())
+}
+
+fn read_json_file<T: for<'de> serde::Deserialize<'de>>(path: &Path) -> Result<T, String> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|error| format!("failed to read json file '{}': {error}", path.display()))?;
+    serde_json::from_str::<T>(&content)
+        .map_err(|error| format!("failed to decode json file '{}': {error}", path.display()))
+}
+
+fn coordinator_ready(state_dir: &Path) -> bool {
+    let ready_file = coordinator_ready_file(state_dir);
+    if !ready_file.exists() {
+        return false;
+    }
+    send_coordinator_request_once(state_dir, &CoordinatorRequest::Ping)
+        .map(|response| response.ok)
+        .unwrap_or(false)
+}
+
+fn send_coordinator_request_once(
+    state_dir: &Path,
+    request: &CoordinatorRequest,
+) -> Result<CoordinatorResponse, String> {
+    let ready_file = coordinator_ready_file(state_dir);
+    if !ready_file.exists() {
+        return Err(format!(
+            "failed to connect to coordinator at '{}': coordinator not ready",
+            state_dir.display()
+        ));
+    }
+
+    let request_id = next_coordinator_request_id();
+    let request_path = coordinator_request_file(state_dir, &request_id);
+    let response_path = coordinator_response_file(state_dir, &request_id);
+    write_json_file(request_path.as_path(), request)?;
+
+    let timeout = Duration::from_secs(COORDINATOR_REQUEST_TIMEOUT_SECS);
+    let started = Instant::now();
+    while started.elapsed() < timeout {
+        if response_path.exists() {
+            let response = read_json_file::<CoordinatorResponse>(response_path.as_path())?;
+            let _ = std::fs::remove_file(response_path.as_path());
+            return Ok(response);
+        }
+        thread::sleep(Duration::from_millis(COORDINATOR_POLL_SLEEP_MS));
+    }
+
+    let _ = std::fs::remove_file(request_path.as_path());
+    Err(format!(
+        "timed out waiting for coordinator response in '{}'",
+        state_dir.display()
+    ))
+}
 
 fn manager_executable_candidates(id: ManagerId) -> &'static [&'static str] {
     match id {
@@ -516,12 +767,10 @@ fn default_manager_executable_path(id: ManagerId, executable_paths: &[String]) -
     if let Some(first) = executable_paths.first() {
         return Some(first.clone());
     }
-    if let Some(discovered) = cached_discovered_executable_paths(
-        id,
-        manager_executable_candidates(id),
-    )
-    .into_iter()
-    .next()
+    if let Some(discovered) =
+        cached_discovered_executable_paths(id, manager_executable_candidates(id))
+            .into_iter()
+            .next()
     {
         return Some(discovered);
     }
@@ -829,6 +1078,24 @@ fn cancel_inflight_tasks_for_manager(
         .collect();
 
     if task_ids.is_empty() {
+        return;
+    }
+
+    if external_coordinator_state_dir().is_some() {
+        for task_id in task_ids.iter().copied() {
+            if let Err(error) = coordinator_cancel_external(task_id.0) {
+                eprintln!(
+                    "set_manager_enabled: failed to cancel task {} for {} via coordinator: {}",
+                    task_id.0,
+                    manager.as_str(),
+                    error
+                );
+            }
+        }
+        let mut labels = lock_or_recover(&TASK_LABELS, "task_labels");
+        for task_id in task_ids {
+            labels.remove(&task_id.0);
+        }
         return;
     }
 
@@ -1426,6 +1693,884 @@ fn manager_selected_install_method(store: &SqliteStore, manager: ManagerId) -> O
     normalize_install_method(manager, preference.selected_install_method)
 }
 
+fn initialize_coordinator_bridge(
+    store: Arc<SqliteStore>,
+    runtime: Arc<AdapterRuntime>,
+    rt_handle: tokio::runtime::Handle,
+) {
+    let state_dir = coordinator_socket_path_for_store(store.as_ref());
+    if coordinator_ready(state_dir.as_path()) {
+        *lock_or_recover(&COORDINATOR_BRIDGE, "coordinator_bridge") =
+            CoordinatorBridge::External(state_dir);
+        return;
+    }
+
+    if COORDINATOR_SERVER_STARTED
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
+    {
+        start_local_coordinator_server(
+            state_dir.clone(),
+            store.clone(),
+            runtime.clone(),
+            rt_handle.clone(),
+        );
+    }
+    *lock_or_recover(&COORDINATOR_BRIDGE, "coordinator_bridge") = CoordinatorBridge::Local;
+}
+
+fn external_coordinator_state_dir() -> Option<PathBuf> {
+    let current = lock_or_recover(&COORDINATOR_BRIDGE, "coordinator_bridge").clone();
+    match current {
+        CoordinatorBridge::External(state_dir) => Some(state_dir),
+        CoordinatorBridge::Local | CoordinatorBridge::Disabled => None,
+    }
+}
+
+fn coordinator_submit_external(
+    manager: ManagerId,
+    request: CoordinatorSubmitRequest,
+    wait: bool,
+) -> Result<CoordinatorResponse, String> {
+    let state_dir = external_coordinator_state_dir()
+        .ok_or_else(|| "external coordinator transport is unavailable".to_string())?;
+    let response = send_coordinator_request_once(
+        state_dir.as_path(),
+        &CoordinatorRequest::Submit {
+            manager_id: manager.as_str().to_string(),
+            request,
+            wait,
+        },
+    )?;
+    if response.ok {
+        Ok(response)
+    } else {
+        Err(response
+            .error
+            .unwrap_or_else(|| "coordinator submit request failed".to_string()))
+    }
+}
+
+fn coordinator_cancel_external(task_id: u64) -> Result<(), String> {
+    let state_dir = external_coordinator_state_dir()
+        .ok_or_else(|| "external coordinator transport is unavailable".to_string())?;
+    let response = send_coordinator_request_once(
+        state_dir.as_path(),
+        &CoordinatorRequest::Cancel { task_id },
+    )?;
+    if response.ok {
+        Ok(())
+    } else {
+        Err(response
+            .error
+            .unwrap_or_else(|| format!("failed to cancel task '{}'", task_id)))
+    }
+}
+
+fn coordinator_start_workflow_external(
+    workflow: CoordinatorWorkflowRequest,
+) -> Result<CoordinatorResponse, String> {
+    let state_dir = external_coordinator_state_dir()
+        .ok_or_else(|| "external coordinator transport is unavailable".to_string())?;
+    let response = send_coordinator_request_once(
+        state_dir.as_path(),
+        &CoordinatorRequest::StartWorkflow { workflow },
+    )?;
+    if response.ok {
+        Ok(response)
+    } else {
+        Err(response
+            .error
+            .unwrap_or_else(|| "coordinator workflow request failed".to_string()))
+    }
+}
+
+fn auto_check_install_marker_path() -> Option<PathBuf> {
+    if let Ok(explicit) = std::env::var("HELM_INSTALL_MARKER_PATH")
+        && !explicit.trim().is_empty()
+    {
+        return Some(PathBuf::from(explicit));
+    }
+
+    let home = std::env::var("HOME").ok()?;
+    if home.trim().is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(home).join(DEFAULT_INSTALL_MARKER_RELATIVE_PATH))
+}
+
+fn auto_check_marker_allows_cli_endpoint() -> bool {
+    let Some(marker_path) = auto_check_install_marker_path() else {
+        return false;
+    };
+    let Ok(raw) = std::fs::read_to_string(marker_path) else {
+        return false;
+    };
+    let Ok(marker) = serde_json::from_str::<AutoCheckInstallMarker>(&raw) else {
+        return false;
+    };
+    marker.channel.trim() == "direct-script" && marker.update_policy.trim() == "self"
+}
+
+fn auto_check_allow_insecure_urls() -> bool {
+    matches!(
+        std::env::var(AUTO_CHECK_ALLOW_INSECURE_ENV)
+            .ok()
+            .map(|value| value.trim().to_ascii_lowercase()),
+        Some(value) if matches!(value.as_str(), "1" | "true" | "yes" | "on")
+    )
+}
+
+fn auto_check_parse_url_scheme_host(raw: &str) -> Option<(String, String)> {
+    let trimmed = raw.trim();
+    if trimmed.starts_with("file://") {
+        return Some(("file".to_string(), String::new()));
+    }
+    let (scheme, remainder) = trimmed.split_once("://")?;
+    if scheme.is_empty() || remainder.is_empty() {
+        return None;
+    }
+    let authority = remainder.split('/').next()?;
+    if authority.is_empty() || authority.contains('@') {
+        return None;
+    }
+    let host = authority.split(':').next()?.trim();
+    if host.is_empty() {
+        return None;
+    }
+    Some((scheme.to_ascii_lowercase(), host.to_ascii_lowercase()))
+}
+
+fn auto_check_endpoint_allowed(endpoint: &str) -> bool {
+    let Some((scheme, host)) = auto_check_parse_url_scheme_host(endpoint) else {
+        return false;
+    };
+    if scheme == "file" {
+        return auto_check_allow_insecure_urls();
+    }
+    if scheme != "https" {
+        return false;
+    }
+    AUTO_CHECK_ALLOWED_HOSTS
+        .iter()
+        .any(|candidate| host.eq_ignore_ascii_case(candidate))
+}
+
+fn auto_check_http_agent() -> ureq::Agent {
+    ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_secs(AUTO_CHECK_HTTP_CONNECT_TIMEOUT_SECS))
+        .timeout_read(Duration::from_secs(AUTO_CHECK_HTTP_READ_TIMEOUT_SECS))
+        .timeout_write(Duration::from_secs(AUTO_CHECK_HTTP_WRITE_TIMEOUT_SECS))
+        .build()
+}
+
+fn run_due_auto_check_tick(store: &SqliteStore) {
+    let enabled = match store.auto_check_for_updates() {
+        Ok(enabled) => enabled,
+        Err(error) => {
+            eprintln!("coordinator auto-check tick failed to read enabled setting: {error}");
+            return;
+        }
+    };
+    if !enabled {
+        return;
+    }
+
+    let frequency_minutes = match store.auto_check_frequency_minutes() {
+        Ok(value) => value.max(1),
+        Err(error) => {
+            eprintln!("coordinator auto-check tick failed to read frequency setting: {error}");
+            return;
+        }
+    };
+    let now_unix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or(0);
+    let last_checked = match store.auto_check_last_checked_unix() {
+        Ok(value) => value,
+        Err(error) => {
+            eprintln!("coordinator auto-check tick failed to read last-run timestamp: {error}");
+            return;
+        }
+    };
+    if let Some(last_checked) = last_checked {
+        let elapsed = now_unix.saturating_sub(last_checked);
+        let required = (frequency_minutes as i64).saturating_mul(60);
+        if elapsed < required {
+            return;
+        }
+    }
+
+    if !auto_check_marker_allows_cli_endpoint() {
+        eprintln!(
+            "coordinator auto-check skipped: install provenance does not allow direct CLI checks"
+        );
+        return;
+    }
+
+    let endpoint = std::env::var("HELM_CLI_UPDATE_ENDPOINT")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_CLI_UPDATE_ENDPOINT.to_string());
+    if !auto_check_endpoint_allowed(endpoint.as_str()) {
+        eprintln!(
+            "coordinator auto-check rejected endpoint URL '{}': not allowlisted",
+            endpoint
+        );
+        return;
+    }
+
+    match auto_check_http_agent().get(endpoint.as_str()).call() {
+        Ok(response) => {
+            let _ = response.into_string();
+        }
+        Err(error) => {
+            eprintln!("coordinator auto-check request failed: {error}");
+        }
+    }
+
+    if let Err(error) = store.set_auto_check_last_checked_unix(now_unix) {
+        eprintln!("coordinator auto-check failed to persist last-run timestamp: {error}");
+    }
+}
+
+fn start_local_coordinator_server(
+    state_dir: PathBuf,
+    store: Arc<SqliteStore>,
+    runtime: Arc<AdapterRuntime>,
+    rt_handle: tokio::runtime::Handle,
+) {
+    thread::spawn(move || {
+        if reset_coordinator_state_dir(state_dir.as_path()).is_err() {
+            return;
+        }
+
+        if write_json_file(
+            coordinator_ready_file(state_dir.as_path()).as_path(),
+            &serde_json::json!({
+                "pid": std::process::id(),
+                "started_at": SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|duration| duration.as_secs() as i64)
+                    .unwrap_or(0)
+            }),
+        )
+        .is_err()
+        {
+            return;
+        }
+
+        let requests_dir = coordinator_requests_dir(state_dir.as_path());
+        let mut next_auto_check_tick = Instant::now();
+        loop {
+            if Instant::now() >= next_auto_check_tick {
+                run_due_auto_check_tick(store.as_ref());
+                next_auto_check_tick = Instant::now() + Duration::from_secs(AUTO_CHECK_TICK_SECS);
+            }
+
+            let mut entries: Vec<_> = match std::fs::read_dir(requests_dir.as_path()) {
+                Ok(entries) => entries.flatten().collect(),
+                Err(_) => {
+                    thread::sleep(Duration::from_millis(COORDINATOR_POLL_SLEEP_MS));
+                    continue;
+                }
+            };
+            entries.sort_by_key(|entry| entry.file_name());
+
+            if entries.is_empty() {
+                thread::sleep(Duration::from_millis(COORDINATOR_POLL_SLEEP_MS));
+                continue;
+            }
+
+            for entry in entries {
+                let request_path = entry.path();
+                if !request_path.is_file() {
+                    continue;
+                }
+
+                let request_id = request_path
+                    .file_stem()
+                    .and_then(|value| value.to_str())
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(next_coordinator_request_id);
+                let response_path = coordinator_response_file(state_dir.as_path(), &request_id);
+
+                let response = match read_json_file::<CoordinatorRequest>(request_path.as_path()) {
+                    Ok(request) => handle_local_coordinator_request(
+                        store.as_ref(),
+                        runtime.clone(),
+                        &rt_handle,
+                        request,
+                    ),
+                    Err(error) => CoordinatorResponse {
+                        ok: false,
+                        task_id: None,
+                        job_id: None,
+                        payload: None,
+                        error: Some(error),
+                    },
+                };
+
+                let _ = write_json_file(response_path.as_path(), &response);
+                let _ = std::fs::remove_file(request_path.as_path());
+            }
+        }
+    });
+}
+
+fn reset_coordinator_state_dir(state_dir: &Path) -> Result<(), String> {
+    if state_dir.exists() {
+        std::fs::remove_dir_all(state_dir).map_err(|error| {
+            format!(
+                "failed to reset coordinator state directory '{}': {error}",
+                state_dir.display()
+            )
+        })?;
+    }
+    std::fs::create_dir_all(coordinator_requests_dir(state_dir).as_path()).map_err(|error| {
+        format!(
+            "failed to create coordinator requests directory '{}': {error}",
+            coordinator_requests_dir(state_dir).display()
+        )
+    })?;
+    std::fs::create_dir_all(coordinator_responses_dir(state_dir).as_path()).map_err(|error| {
+        format!(
+            "failed to create coordinator responses directory '{}': {error}",
+            coordinator_responses_dir(state_dir).display()
+        )
+    })?;
+    Ok(())
+}
+
+fn handle_local_coordinator_request(
+    store: &SqliteStore,
+    runtime: Arc<AdapterRuntime>,
+    rt_handle: &tokio::runtime::Handle,
+    request: CoordinatorRequest,
+) -> CoordinatorResponse {
+    match request {
+        CoordinatorRequest::Ping => CoordinatorResponse {
+            ok: true,
+            task_id: None,
+            job_id: None,
+            payload: None,
+            error: None,
+        },
+        CoordinatorRequest::Cancel { task_id } => {
+            match rt_handle.block_on(
+                runtime
+                    .as_ref()
+                    .cancel(TaskId(task_id), CancellationMode::Immediate),
+            ) {
+                Ok(()) => CoordinatorResponse {
+                    ok: true,
+                    task_id: Some(task_id),
+                    job_id: None,
+                    payload: None,
+                    error: None,
+                },
+                Err(error) => CoordinatorResponse {
+                    ok: false,
+                    task_id: Some(task_id),
+                    job_id: None,
+                    payload: None,
+                    error: Some(format_core_error(error)),
+                },
+            }
+        }
+        CoordinatorRequest::Submit {
+            manager_id,
+            request,
+            wait,
+        } => {
+            let manager = match manager_id.parse::<ManagerId>() {
+                Ok(manager) => manager,
+                Err(_) => {
+                    return CoordinatorResponse {
+                        ok: false,
+                        task_id: None,
+                        job_id: None,
+                        payload: None,
+                        error: Some(format!("unknown manager id '{}'", manager_id)),
+                    };
+                }
+            };
+
+            let detection_map: std::collections::HashMap<_, _> = store
+                .list_detections()
+                .unwrap_or_default()
+                .into_iter()
+                .collect();
+            let pref_map: std::collections::HashMap<_, _> = store
+                .list_manager_preferences()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|pref| (pref.manager, pref))
+                .collect();
+            sync_manager_executable_overrides(&detection_map, &pref_map);
+
+            let adapter_request = coordinator_submit_to_adapter(manager, request);
+            let task_id =
+                match rt_handle.block_on(runtime.as_ref().submit(manager, adapter_request)) {
+                    Ok(task_id) => task_id,
+                    Err(error) => {
+                        return CoordinatorResponse {
+                            ok: false,
+                            task_id: None,
+                            job_id: None,
+                            payload: None,
+                            error: Some(format_core_error(error)),
+                        };
+                    }
+                };
+
+            if !wait {
+                return CoordinatorResponse {
+                    ok: true,
+                    task_id: Some(task_id.0),
+                    job_id: None,
+                    payload: None,
+                    error: None,
+                };
+            }
+
+            match rt_handle.block_on(runtime.as_ref().wait_for_terminal(task_id, None)) {
+                Ok(snapshot) => match snapshot.terminal_state {
+                    Some(AdapterTaskTerminalState::Succeeded(response)) => CoordinatorResponse {
+                        ok: true,
+                        task_id: Some(task_id.0),
+                        job_id: None,
+                        payload: Some(adapter_response_to_coordinator_payload(response)),
+                        error: None,
+                    },
+                    Some(AdapterTaskTerminalState::Failed(error)) => CoordinatorResponse {
+                        ok: false,
+                        task_id: Some(task_id.0),
+                        job_id: None,
+                        payload: None,
+                        error: Some(format_core_error(error)),
+                    },
+                    Some(AdapterTaskTerminalState::Cancelled(Some(error))) => CoordinatorResponse {
+                        ok: false,
+                        task_id: Some(task_id.0),
+                        job_id: None,
+                        payload: None,
+                        error: Some(format_core_error(error)),
+                    },
+                    Some(AdapterTaskTerminalState::Cancelled(None)) => CoordinatorResponse {
+                        ok: false,
+                        task_id: Some(task_id.0),
+                        job_id: None,
+                        payload: None,
+                        error: Some(format!("task {} was cancelled", task_id.0)),
+                    },
+                    None => CoordinatorResponse {
+                        ok: false,
+                        task_id: Some(task_id.0),
+                        job_id: None,
+                        payload: None,
+                        error: Some(format!(
+                            "task {} reached terminal state without outcome payload",
+                            task_id.0
+                        )),
+                    },
+                },
+                Err(error) => CoordinatorResponse {
+                    ok: false,
+                    task_id: Some(task_id.0),
+                    job_id: None,
+                    payload: None,
+                    error: Some(format_core_error(error)),
+                },
+            }
+        }
+        CoordinatorRequest::StartWorkflow { workflow } => {
+            let job_id = next_coordinator_request_id();
+            let workflow_runtime = runtime.clone();
+            let store = Arc::new(SqliteStore::new(store.database_path().to_path_buf()));
+            if let Err(error) = store.migrate_to_latest() {
+                return CoordinatorResponse {
+                    ok: false,
+                    task_id: None,
+                    job_id: Some(job_id),
+                    payload: None,
+                    error: Some(format!(
+                        "failed to initialize coordinator workflow store: {error}"
+                    )),
+                };
+            }
+            let rt_handle = rt_handle.clone();
+            thread::spawn(move || {
+                let _ = run_coordinator_workflow(
+                    workflow_runtime.as_ref(),
+                    store.as_ref(),
+                    &rt_handle,
+                    workflow,
+                );
+            });
+            CoordinatorResponse {
+                ok: true,
+                task_id: None,
+                job_id: Some(job_id),
+                payload: None,
+                error: None,
+            }
+        }
+    }
+}
+
+fn run_coordinator_workflow(
+    runtime: &AdapterRuntime,
+    store: &SqliteStore,
+    rt_handle: &tokio::runtime::Handle,
+    workflow: CoordinatorWorkflowRequest,
+) -> Result<(), String> {
+    match workflow {
+        CoordinatorWorkflowRequest::RefreshAll => {
+            let results = rt_handle.block_on(runtime.refresh_all_ordered());
+            let failures = results
+                .into_iter()
+                .filter(|(_, result)| result.is_err())
+                .count();
+            if failures > 0 {
+                return Err(format!("{failures} manager refresh operations failed"));
+            }
+            Ok(())
+        }
+        CoordinatorWorkflowRequest::RefreshManager { manager_id } => {
+            let manager = manager_id
+                .parse::<ManagerId>()
+                .map_err(|_| format!("unknown manager id '{}'", manager_id))?;
+            refresh_single_manager(runtime, rt_handle, manager)
+        }
+        CoordinatorWorkflowRequest::DetectAll => {
+            let results = rt_handle.block_on(runtime.detect_all_ordered());
+            let failures = results
+                .into_iter()
+                .filter(|(_, result)| result.is_err())
+                .count();
+            if failures > 0 {
+                return Err(format!("{failures} manager detection operations failed"));
+            }
+            Ok(())
+        }
+        CoordinatorWorkflowRequest::UpdatesRun {
+            include_pinned,
+            allow_os_updates,
+        } => run_updates_workflow(runtime, store, rt_handle, include_pinned, allow_os_updates),
+    }
+}
+
+fn refresh_single_manager(
+    runtime: &AdapterRuntime,
+    rt_handle: &tokio::runtime::Handle,
+    manager: ManagerId,
+) -> Result<(), String> {
+    if !runtime.has_manager(manager) {
+        return Err(format!(
+            "manager '{}' is not registered in runtime",
+            manager.as_str()
+        ));
+    }
+    if !runtime.is_manager_enabled(manager) {
+        return Ok(());
+    }
+
+    let mut detected_installed = None;
+    let mut ran_any_action = false;
+
+    if runtime.supports_capability(manager, Capability::Detect) {
+        let response = submit_request_wait(
+            runtime,
+            rt_handle,
+            manager,
+            AdapterRequest::Detect(helm_core::adapters::DetectRequest),
+        )?;
+        match response {
+            helm_core::adapters::AdapterResponse::Detection(info) => {
+                detected_installed = Some(info.installed);
+                if !info.installed {
+                    return Ok(());
+                }
+            }
+            _ => {
+                return Err(format!(
+                    "manager '{}' detect action returned unexpected payload",
+                    manager.as_str()
+                ));
+            }
+        }
+        ran_any_action = true;
+    }
+
+    if detected_installed != Some(false)
+        && runtime.supports_capability(manager, Capability::ListInstalled)
+    {
+        let _ = submit_request_wait(
+            runtime,
+            rt_handle,
+            manager,
+            AdapterRequest::ListInstalled(helm_core::adapters::ListInstalledRequest),
+        )?;
+        ran_any_action = true;
+    }
+
+    if detected_installed != Some(false)
+        && runtime.supports_capability(manager, Capability::ListOutdated)
+    {
+        let _ = submit_request_wait(
+            runtime,
+            rt_handle,
+            manager,
+            AdapterRequest::ListOutdated(helm_core::adapters::ListOutdatedRequest),
+        )?;
+        ran_any_action = true;
+    }
+
+    if !ran_any_action {
+        return Err(format!(
+            "manager '{}' has no detection or refresh capabilities",
+            manager.as_str()
+        ));
+    }
+    Ok(())
+}
+
+fn run_updates_workflow(
+    runtime: &AdapterRuntime,
+    store: &SqliteStore,
+    rt_handle: &tokio::runtime::Handle,
+    include_pinned: bool,
+    allow_os_updates: bool,
+) -> Result<(), String> {
+    let outdated = store
+        .list_outdated()
+        .map_err(|error| format!("failed to list outdated packages: {error}"))?;
+    let pinned_keys: std::collections::HashSet<String> = store
+        .list_pins()
+        .map(|pins| {
+            pins.into_iter()
+                .map(|pin| format!("{}:{}", pin.package.manager.as_str(), pin.package.name))
+                .collect()
+        })
+        .unwrap_or_default();
+    let targets = collect_upgrade_all_targets(&outdated, &pinned_keys, include_pinned);
+
+    if runtime.is_manager_enabled(ManagerId::HomebrewFormula) {
+        for package_name in targets.homebrew {
+            let policy = effective_homebrew_keg_policy(store, &package_name);
+            let cleanup_old_kegs = policy == HomebrewKegPolicy::Cleanup;
+            let target_name = encode_homebrew_upgrade_target(&package_name, cleanup_old_kegs);
+            let request = AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::HomebrewFormula,
+                    name: target_name,
+                }),
+            });
+            let _ = submit_request_wait(runtime, rt_handle, ManagerId::HomebrewFormula, request)?;
+        }
+    }
+
+    for (manager, packages) in [
+        (ManagerId::Mise, targets.mise),
+        (ManagerId::Npm, targets.npm),
+        (ManagerId::Pnpm, targets.pnpm),
+        (ManagerId::Yarn, targets.yarn),
+        (ManagerId::Cargo, targets.cargo),
+        (ManagerId::CargoBinstall, targets.cargo_binstall),
+        (ManagerId::Pip, targets.pip),
+        (ManagerId::Pipx, targets.pipx),
+        (ManagerId::Poetry, targets.poetry),
+        (ManagerId::RubyGems, targets.rubygems),
+        (ManagerId::Bundler, targets.bundler),
+        (ManagerId::Rustup, targets.rustup),
+    ] {
+        if !runtime.is_manager_enabled(manager) {
+            continue;
+        }
+        for package_name in packages {
+            let request = AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager,
+                    name: package_name,
+                }),
+            });
+            let _ = submit_request_wait(runtime, rt_handle, manager, request)?;
+        }
+    }
+
+    if allow_os_updates
+        && targets.softwareupdate_outdated
+        && runtime.is_manager_enabled(ManagerId::SoftwareUpdate)
+        && !runtime.is_safe_mode()
+    {
+        let request = AdapterRequest::Upgrade(UpgradeRequest {
+            package: Some(PackageRef {
+                manager: ManagerId::SoftwareUpdate,
+                name: "__confirm_os_updates__".to_string(),
+            }),
+        });
+        let _ = submit_request_wait(runtime, rt_handle, ManagerId::SoftwareUpdate, request)?;
+    }
+
+    Ok(())
+}
+
+fn submit_request_wait(
+    runtime: &AdapterRuntime,
+    rt_handle: &tokio::runtime::Handle,
+    manager: ManagerId,
+    request: AdapterRequest,
+) -> Result<helm_core::adapters::AdapterResponse, String> {
+    let task_id = rt_handle
+        .block_on(runtime.submit(manager, request))
+        .map_err(format_core_error)?;
+    let snapshot = rt_handle
+        .block_on(runtime.wait_for_terminal(task_id, None))
+        .map_err(format_core_error)?;
+    match snapshot.terminal_state {
+        Some(AdapterTaskTerminalState::Succeeded(response)) => Ok(response),
+        Some(AdapterTaskTerminalState::Failed(error)) => Err(format_core_error(error)),
+        Some(AdapterTaskTerminalState::Cancelled(Some(error))) => Err(format_core_error(error)),
+        Some(AdapterTaskTerminalState::Cancelled(None)) => {
+            Err(format!("task {} was cancelled", task_id.0))
+        }
+        None => Err(format!(
+            "task {} reached terminal state without outcome payload",
+            task_id.0
+        )),
+    }
+}
+
+fn format_core_error(error: helm_core::models::CoreError) -> String {
+    let manager = error
+        .manager
+        .map(|value| value.as_str().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    format!(
+        "{} (manager={}, task={:?}, action={:?}, kind={:?})",
+        error.message, manager, error.task, error.action, error.kind
+    )
+}
+
+fn coordinator_submit_to_adapter(
+    manager: ManagerId,
+    request: CoordinatorSubmitRequest,
+) -> AdapterRequest {
+    match request {
+        CoordinatorSubmitRequest::Detect => {
+            AdapterRequest::Detect(helm_core::adapters::DetectRequest)
+        }
+        CoordinatorSubmitRequest::Install {
+            package_name,
+            version,
+        } => AdapterRequest::Install(InstallRequest {
+            package: PackageRef {
+                manager,
+                name: package_name,
+            },
+            version,
+        }),
+        CoordinatorSubmitRequest::Uninstall { package_name } => {
+            AdapterRequest::Uninstall(UninstallRequest {
+                package: PackageRef {
+                    manager,
+                    name: package_name,
+                },
+            })
+        }
+        CoordinatorSubmitRequest::Upgrade { package_name } => {
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: package_name.map(|name| PackageRef { manager, name }),
+            })
+        }
+        CoordinatorSubmitRequest::Pin {
+            package_name,
+            version,
+        } => AdapterRequest::Pin(PinRequest {
+            package: PackageRef {
+                manager,
+                name: package_name,
+            },
+            version,
+        }),
+        CoordinatorSubmitRequest::Unpin { package_name } => AdapterRequest::Unpin(UnpinRequest {
+            package: PackageRef {
+                manager,
+                name: package_name,
+            },
+        }),
+    }
+}
+
+fn adapter_request_to_coordinator_submit(
+    request: AdapterRequest,
+) -> Result<CoordinatorSubmitRequest, String> {
+    match request {
+        AdapterRequest::Detect(_) => Ok(CoordinatorSubmitRequest::Detect),
+        AdapterRequest::Install(install) => Ok(CoordinatorSubmitRequest::Install {
+            package_name: install.package.name,
+            version: install.version,
+        }),
+        AdapterRequest::Uninstall(uninstall) => Ok(CoordinatorSubmitRequest::Uninstall {
+            package_name: uninstall.package.name,
+        }),
+        AdapterRequest::Upgrade(upgrade) => Ok(CoordinatorSubmitRequest::Upgrade {
+            package_name: upgrade.package.map(|package| package.name),
+        }),
+        AdapterRequest::Pin(pin) => Ok(CoordinatorSubmitRequest::Pin {
+            package_name: pin.package.name,
+            version: pin.version,
+        }),
+        AdapterRequest::Unpin(unpin) => Ok(CoordinatorSubmitRequest::Unpin {
+            package_name: unpin.package.name,
+        }),
+        unsupported => Err(format!(
+            "coordinator submit request does not support adapter action '{:?}'",
+            unsupported.action()
+        )),
+    }
+}
+
+fn adapter_response_to_coordinator_payload(
+    response: helm_core::adapters::AdapterResponse,
+) -> CoordinatorPayload {
+    match response {
+        helm_core::adapters::AdapterResponse::Detection(info) => CoordinatorPayload::Detection {
+            installed: info.installed,
+            version: info.version,
+            executable_path: info
+                .executable_path
+                .as_ref()
+                .map(|path| path.to_string_lossy().to_string()),
+        },
+        helm_core::adapters::AdapterResponse::Refreshed => CoordinatorPayload::Refreshed,
+        helm_core::adapters::AdapterResponse::InstalledPackages(packages) => {
+            CoordinatorPayload::InstalledPackages {
+                count: packages.len(),
+            }
+        }
+        helm_core::adapters::AdapterResponse::OutdatedPackages(packages) => {
+            CoordinatorPayload::OutdatedPackages {
+                count: packages.len(),
+            }
+        }
+        helm_core::adapters::AdapterResponse::SearchResults(results) => {
+            CoordinatorPayload::SearchResults {
+                count: results.len(),
+            }
+        }
+        helm_core::adapters::AdapterResponse::Mutation(mutation) => CoordinatorPayload::Mutation {
+            manager_id: mutation.package.manager.as_str().to_string(),
+            package_name: mutation.package.name,
+            action: format!("{:?}", mutation.action).to_lowercase(),
+            before_version: mutation.before_version,
+            after_version: mutation.after_version,
+        },
+    }
+}
+
 /// Initialize the Helm core engine with the given SQLite database path.
 ///
 /// # Safety
@@ -1601,14 +2746,17 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
         .collect();
     sync_manager_executable_overrides(&detection_map, &pref_map);
 
+    let coordinator_rt_handle = rt_handle.clone();
+
     let state = HelmState {
-        store,
-        runtime,
+        store: store.clone(),
+        runtime: runtime.clone(),
         rt_handle,
         _tokio_rt: rt,
     };
 
     *lock_or_recover(&STATE, "state") = Some(state);
+    initialize_coordinator_bridge(store, runtime, coordinator_rt_handle);
 
     true
 }
@@ -1876,6 +3024,9 @@ fn task_log_level_str(level: TaskLogLevel) -> &'static str {
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_trigger_refresh() -> bool {
     clear_last_error_key();
+    if external_coordinator_state_dir().is_some() {
+        return coordinator_start_workflow_external(CoordinatorWorkflowRequest::RefreshAll).is_ok();
+    }
     let guard = lock_or_recover(&STATE, "state");
     let state = match guard.as_ref() {
         Some(s) => s,
@@ -1917,6 +3068,9 @@ pub extern "C" fn helm_trigger_refresh() -> bool {
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_trigger_detection() -> bool {
     clear_last_error_key();
+    if external_coordinator_state_dir().is_some() {
+        return coordinator_start_workflow_external(CoordinatorWorkflowRequest::DetectAll).is_ok();
+    }
     let guard = lock_or_recover(&STATE, "state");
     let state = match guard.as_ref() {
         Some(s) => s,
@@ -2147,6 +3301,10 @@ pub unsafe extern "C" fn helm_trigger_remote_search_for_manager(
 pub extern "C" fn helm_cancel_task(task_id: i64) -> bool {
     if task_id < 0 {
         return false;
+    }
+
+    if external_coordinator_state_dir().is_some() {
+        return coordinator_cancel_external(task_id as u64).is_ok();
     }
 
     let (runtime, rt_handle) = {
@@ -2634,6 +3792,13 @@ pub extern "C" fn helm_preview_upgrade_plan(
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool) -> bool {
     clear_last_error_key();
+    if external_coordinator_state_dir().is_some() {
+        return coordinator_start_workflow_external(CoordinatorWorkflowRequest::UpdatesRun {
+            include_pinned,
+            allow_os_updates,
+        })
+        .is_ok();
+    }
     let (store, runtime, tokio_rt) = {
         let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
@@ -3276,6 +4441,20 @@ pub unsafe extern "C" fn helm_upgrade_package(
         ));
     }
 
+    if external_coordinator_state_dir().is_some() {
+        let submit_request = match adapter_request_to_coordinator_submit(request.clone()) {
+            Ok(request) => request,
+            Err(_) => return return_error_i64("service.error.unsupported_capability"),
+        };
+        return match coordinator_submit_external(target_manager, submit_request, false) {
+            Ok(response) => response
+                .task_id
+                .map(|task_id| task_id as i64)
+                .unwrap_or_else(|| return_error_i64("service.error.process_failure")),
+            Err(_) => return_error_i64("service.error.process_failure"),
+        };
+    }
+
     let (store, runtime, rt_handle) = {
         let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
@@ -3373,6 +4552,20 @@ pub unsafe extern "C" fn helm_install_package(
         version: None,
     });
 
+    if external_coordinator_state_dir().is_some() {
+        let submit_request = match adapter_request_to_coordinator_submit(request.clone()) {
+            Ok(request) => request,
+            Err(_) => return return_error_i64("service.error.unsupported_capability"),
+        };
+        return match coordinator_submit_external(manager, submit_request, false) {
+            Ok(response) => response
+                .task_id
+                .map(|task_id| task_id as i64)
+                .unwrap_or_else(|| return_error_i64("service.error.process_failure")),
+            Err(_) => return_error_i64("service.error.process_failure"),
+        };
+    }
+
     let (store, runtime, rt_handle) = {
         let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
@@ -3464,6 +4657,20 @@ pub unsafe extern "C" fn helm_uninstall_package(
             name: package_name,
         },
     });
+
+    if external_coordinator_state_dir().is_some() {
+        let submit_request = match adapter_request_to_coordinator_submit(request.clone()) {
+            Ok(request) => request,
+            Err(_) => return return_error_i64("service.error.unsupported_capability"),
+        };
+        return match coordinator_submit_external(manager, submit_request, false) {
+            Ok(response) => response
+                .task_id
+                .map(|task_id| task_id as i64)
+                .unwrap_or_else(|| return_error_i64("service.error.process_failure")),
+            Err(_) => return_error_i64("service.error.process_failure"),
+        };
+    }
 
     let (store, runtime, rt_handle) = {
         let guard = lock_or_recover(&STATE, "state");
@@ -3633,27 +4840,38 @@ pub unsafe extern "C" fn helm_pin_package(
             package: package.clone(),
             version: pinned_version.clone(),
         });
-        let task_id = match rt_handle.block_on(runtime.submit(manager, request)) {
-            Ok(task_id) => task_id,
-            Err(_) => return return_error_bool("service.error.process_failure"),
-        };
+        if external_coordinator_state_dir().is_some() {
+            let submit_request = match adapter_request_to_coordinator_submit(request.clone()) {
+                Ok(request) => request,
+                Err(_) => return return_error_bool("service.error.unsupported_capability"),
+            };
+            if coordinator_submit_external(manager, submit_request, true).is_err() {
+                return return_error_bool("service.error.process_failure");
+            }
+            PinKind::Native
+        } else {
+            let task_id = match rt_handle.block_on(runtime.submit(manager, request)) {
+                Ok(task_id) => task_id,
+                Err(_) => return return_error_bool("service.error.process_failure"),
+            };
 
-        set_task_label(
-            task_id,
-            "service.task.label.pin.homebrew",
-            &[("package", package.name.clone())],
-        );
+            set_task_label(
+                task_id,
+                "service.task.label.pin.homebrew",
+                &[("package", package.name.clone())],
+            );
 
-        let snapshot = match rt_handle.block_on(runtime.wait_for_terminal(task_id, None)) {
-            Ok(snapshot) => snapshot,
-            Err(_) => return return_error_bool("service.error.process_failure"),
-        };
+            let snapshot = match rt_handle.block_on(runtime.wait_for_terminal(task_id, None)) {
+                Ok(snapshot) => snapshot,
+                Err(_) => return return_error_bool("service.error.process_failure"),
+            };
 
-        match snapshot.terminal_state {
-            Some(AdapterTaskTerminalState::Succeeded(_)) => {}
-            _ => return return_error_bool("service.error.process_failure"),
+            match snapshot.terminal_state {
+                Some(AdapterTaskTerminalState::Succeeded(_)) => {}
+                _ => return return_error_bool("service.error.process_failure"),
+            }
+            PinKind::Native
         }
-        PinKind::Native
     } else {
         PinKind::Virtual
     };
@@ -3725,25 +4943,35 @@ pub unsafe extern "C" fn helm_unpin_package(
                 name: package_name.clone(),
             },
         });
-        let task_id = match rt_handle.block_on(runtime.submit(manager, request)) {
-            Ok(task_id) => task_id,
-            Err(_) => return return_error_bool("service.error.process_failure"),
-        };
+        if external_coordinator_state_dir().is_some() {
+            let submit_request = match adapter_request_to_coordinator_submit(request.clone()) {
+                Ok(request) => request,
+                Err(_) => return return_error_bool("service.error.unsupported_capability"),
+            };
+            if coordinator_submit_external(manager, submit_request, true).is_err() {
+                return return_error_bool("service.error.process_failure");
+            }
+        } else {
+            let task_id = match rt_handle.block_on(runtime.submit(manager, request)) {
+                Ok(task_id) => task_id,
+                Err(_) => return return_error_bool("service.error.process_failure"),
+            };
 
-        set_task_label(
-            task_id,
-            "service.task.label.unpin.homebrew",
-            &[("package", package_name.clone())],
-        );
+            set_task_label(
+                task_id,
+                "service.task.label.unpin.homebrew",
+                &[("package", package_name.clone())],
+            );
 
-        let snapshot = match rt_handle.block_on(runtime.wait_for_terminal(task_id, None)) {
-            Ok(snapshot) => snapshot,
-            Err(_) => return return_error_bool("service.error.process_failure"),
-        };
+            let snapshot = match rt_handle.block_on(runtime.wait_for_terminal(task_id, None)) {
+                Ok(snapshot) => snapshot,
+                Err(_) => return return_error_bool("service.error.process_failure"),
+            };
 
-        match snapshot.terminal_state {
-            Some(AdapterTaskTerminalState::Succeeded(_)) => {}
-            _ => return return_error_bool("service.error.process_failure"),
+            match snapshot.terminal_state {
+                Some(AdapterTaskTerminalState::Succeeded(_)) => {}
+                _ => return return_error_bool("service.error.process_failure"),
+            }
         }
     }
 
@@ -4004,6 +5232,22 @@ pub unsafe extern "C" fn helm_install_manager(manager_id: *const c_char) -> i64 
     });
 
     let label_args = [("package", formula_name.to_string())];
+
+    if external_coordinator_state_dir().is_some() {
+        let submit_request = match adapter_request_to_coordinator_submit(request.clone()) {
+            Ok(request) => request,
+            Err(_) => return return_error_i64("service.error.unsupported_capability"),
+        };
+        return match coordinator_submit_external(ManagerId::HomebrewFormula, submit_request, false)
+        {
+            Ok(response) => response
+                .task_id
+                .map(|task_id| task_id as i64)
+                .unwrap_or_else(|| return_error_i64("service.error.process_failure")),
+            Err(_) => return_error_i64("service.error.process_failure"),
+        };
+    }
+
     if let Some(existing) = find_matching_inflight_task(
         store.as_ref(),
         ManagerId::HomebrewFormula,
@@ -4167,6 +5411,20 @@ pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
         _ => return return_error_i64("service.error.unsupported_capability"),
     };
 
+    if external_coordinator_state_dir().is_some() {
+        let submit_request = match adapter_request_to_coordinator_submit(request.clone()) {
+            Ok(request) => request,
+            Err(_) => return return_error_i64("service.error.unsupported_capability"),
+        };
+        return match coordinator_submit_external(target_manager, submit_request, false) {
+            Ok(response) => response
+                .task_id
+                .map(|task_id| task_id as i64)
+                .unwrap_or_else(|| return_error_i64("service.error.process_failure")),
+            Err(_) => return_error_i64("service.error.process_failure"),
+        };
+    }
+
     if let Some(existing) = find_matching_inflight_task(
         store.as_ref(),
         target_manager,
@@ -4289,6 +5547,20 @@ pub unsafe extern "C" fn helm_uninstall_manager(manager_id: *const c_char) -> i6
         },
         _ => return return_error_i64("service.error.unsupported_capability"),
     };
+
+    if external_coordinator_state_dir().is_some() {
+        let submit_request = match adapter_request_to_coordinator_submit(request.clone()) {
+            Ok(request) => request,
+            Err(_) => return return_error_i64("service.error.unsupported_capability"),
+        };
+        return match coordinator_submit_external(target_manager, submit_request, false) {
+            Ok(response) => response
+                .task_id
+                .map(|task_id| task_id as i64)
+                .unwrap_or_else(|| return_error_i64("service.error.process_failure")),
+            Err(_) => return_error_i64("service.error.process_failure"),
+        };
+    }
 
     if let Some(existing) = find_matching_inflight_task(
         store.as_ref(),

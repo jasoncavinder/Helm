@@ -15,11 +15,16 @@ Helm is in:
 ```
 
 Focus:
-- monitor post-release feedback on stable `v0.17.2`
+- monitor post-release feedback on stable `v0.17.3`
 - begin planning and branch setup for `0.18.x` local security groundwork
+- close confirmed non-TUI GUI↔CLI parity gaps:
+  - progressive remote-search orchestration parity
+  - launch-at-login settings parity
+  - per-package Homebrew keg-policy parity
+  - manager-scoped bulk-upgrade parity
 
 Current checkpoint:
-- `v0.17.2` is released on `main`; the full `rc.1` through `rc.5` hardening lineage is consolidated in stable, with follow-up stable patch cuts (`v0.17.1`, `v0.17.2`) now published:
+- `v0.17.3` is released on `main`; the full `rc.1` through `rc.5` hardening lineage is consolidated in stable, with follow-up stable patch cuts (`v0.17.1`, `v0.17.2`, `v0.17.3`) now published:
   - `#93` `feat/v0.17-log-foundation`
   - `#95` `feat/v0.17-structured-error-export`
   - `#96` `feat/v0.17-service-health-panel`
@@ -127,7 +132,41 @@ Current checkpoint:
     - `Docs Checks` and `Web Build` workflows now gate `docs` and `web` branches respectively
     - blocking ruleset `update` enforcement was removed after protected-ref merge-block diagnostics so normal PR merges can complete
     - CodeQL now runs on `main` push + schedule/manual (non-PR gate) to reduce merge friction while retaining scanning coverage
-- latest stable release on `main`: `v0.17.2`
+  - CLI kickoff delivered on `dev`:
+    - draft CLI spec published at `docs/architecture/HELM_CLI_SPEC.ms` with command surface, output contract, and shared-coordinator target architecture
+    - new Rust CLI crate scaffolded at `core/rust/crates/helm-cli` (binary: `helm`) with read-only commands (`status`, `ls`/`packages`, `updates`, `tasks`, `managers`, `settings`) and `--json` output
+    - runtime-backed command slice added for `refresh` and `managers detect` using Helm core orchestration with process-adapter bootstrap + manager executable override sync
+    - `--wait` / `--detach` global flags are now parsed; shared CLI coordinator routing now supports true detach for coordinator-backed single-task mutations (`packages install|uninstall|upgrade`, `managers detect <id>`, `managers install|update|uninstall`)
+    - read-only contract pass delivered: identifier contracts and coordinator/read-only behavior clarified in spec; `tasks show` read command added; documented JSON contract surface now emits stable envelopes with `schema_version` + `generated_at` for `status`, `managers list`, `packages list`, `updates summary`, and `tasks show`
+    - manager-selection command slice delivered: `managers executables list|set` and `managers install-methods list|set` now persist per-manager selection preferences
+    - package mutation slice delivered: `packages install|uninstall|upgrade|pin|unpin` now supports explicit manager targeting (`--manager` / `name@manager`) with ambiguity-safe `packages show`
+    - manager lifecycle mutation slice delivered: `managers install|update|uninstall` now routes through method-aware targets for supported managers (`mise`, `mas`, `rustup`, `homebrew_formula`)
+    - updates orchestration slice delivered: `updates preview` and `updates run --yes` now execute cached-snapshot upgrade planning/runs with support for `--include-pinned` and `--allow-os-updates`
+    - task inspection slice delivered: `tasks logs`, `tasks output`, and `tasks follow` are now available in CLI (`follow` currently guarded by timeout to avoid indefinite non-terminal polling)
+    - task cancellation surface (`tasks cancel`) now routes through the shared CLI coordinator with process-level cancellation for coordinator-owned tasks
+    - settings mutation surface expanded with `settings reset <key>` for implemented keys (`safe_mode`, `homebrew_keg_auto_cleanup`)
+    - command-scoped help delivered across top-level and nested namespaces (for example `helm packages install help`, `helm managers executables help`, `helm help managers executables set`)
+    - read-only polish delivered: `helm updates` default dispatch now no longer panics without an explicit subcommand; JSON envelope consistency now applies to `search`, `managers show`, `settings list`, and `settings get`; `settings list --json` now includes `auto_check_for_updates`
+    - read-only list ergonomics delivered: `--limit` now applies to `packages list`/`ls`, `updates list` (including `helm updates --limit ...`), and `tasks list` (including `helm tasks --limit ...`)
+    - global diagnostics verbosity delivered: CLI now supports `-v` / `--verbose` and emits runtime/coordinator diagnostic traces to `stderr` for investigation workflows while preserving `stdout` output contracts
+    - settings persistence expanded: `auto_check_for_updates` and `auto_check_frequency_minutes` now support `settings get|set|reset` and are reflected by `settings list` + `self status`
+    - `self` namespace baseline delivered for Homebrew-formula installs: `self status|check|update` now provide method-aware status, live snapshot check, and task-backed update execution (wait/detach) with explicit guidance for unsupported install paths
+    - `self auto-check` command slice delivered: `self auto-check status|enable|disable|frequency <minutes>` now maps directly to persisted auto-check settings (`auto_check_for_updates`, `auto_check_frequency_minutes`) with nested help/completion coverage
+    - manager enablement parity hardening delivered: `managers disable` now performs best-effort cancellation of queued/running tasks for that manager through the CLI coordinator and reports cancellation diagnostics in JSON/human output
+    - mutation JSON envelope hardening delivered: manager enable/disable, settings set/reset, manager detection wait output, and shared manager-result payloads now consistently emit the standard envelope (`schema`, `schema_version`, `generated_at`, `data`)
+    - diagnostics/ergonomics slice delivered: `diagnostics summary|task|manager|export` now exposes structured CLI diagnostics inspection/export, and `completion bash|zsh|fish` now emits shell completion scripts
+    - manager-priority slice delivered: `managers priority list|set|reset` now persists override ordering in SQLite and is applied to manager/update ordering
+    - detach coverage expanded: multi-step workflows (`refresh`, `updates run`, `managers detect --all`) now support coordinator-backed detach mode with workflow job IDs; `packages pin|unpin --detach` is accepted
+    - parity hardening delivered: GUI+CLI now share coordinator transport authority (FFI bridge + local coordinator host with external-coordinator routing for mutation/cancel flows), self-update policy is now provenance-aware beyond Homebrew-only installs (`direct-script` direct updates + channel-managed guidance), and coordinator hosts now run scheduled due-based auto-check ticks with persisted `auto_check_last_checked_unix`
+    - CLI contract hardening delivered: granular task-oriented exit-code mapping (`2` task failure, `3` partial failure, `4` cancellation) and global-flag support for `--json|--ndjson`, `-q|--quiet`, `--no-color`, `--locale <id>`, and `--timeout <seconds>`
+    - audit-remediation slice delivered: direct self-update transport failures now emit structured JSON error payloads with actionable guidance in `--json` mode; install provenance marker schema is now centralized at `docs/contracts/install-marker.schema.json` with Rust + installer CI validation; residual CLI recon/dead-code artifacts were removed
+    - audit-remediation follow-up delivered: `helm doctor` top-level alias now routes to diagnostics (defaulting to provenance output), self-update force mode is now restricted to `direct-script` installs only, coordinator auto-check ticks now require direct-script marker policy before endpoint fetches, and direct install/update network paths now enforce allowlisted HTTPS hosts with explicit timeout policy (with opt-in `file://` testing override)
+    - audit-remediation follow-up delivered: top-level machine-mode parity now covers help/version/completion/error flows for `--json`/`--ndjson`, NDJSON list payloads now emit one envelope per item (with explicit empty-list envelope behavior), string-based exit-code heuristics are removed in favor of explicit marker-based classification with deterministic runtime fallback (`1`) for untyped errors, CLI release metadata publication now separates stable (`latest.json`) vs prerelease (`latest-rc.json`) pointers; policy-gate now locks CLI metadata mutation to publish/emergency lanes; and scheduled/manual CLI metadata drift guard validation is now added
+    - audit-remediation follow-up delivered: Rust-side install-marker writes now use symlink-safe atomic replacement; direct self-update binary replacement now rejects symlink/non-file target paths and enforces bounded payload size (`HELM_CLI_SELF_UPDATE_MAX_DOWNLOAD_BYTES`, default 64 MiB); and release workflows now extend immutable action pinning + per-job token scopes with CLI tag/version verification before publication
+    - audit-remediation follow-up delivered: stable CLI update metadata now points to published `v0.17.2` CLI release assets with real checksums (no placeholder zeros), and auto-check last-checked timestamps now update only after eligible direct self-managed check attempts instead of policy-gated skips
+    - audit-remediation follow-up delivered: distribution profile contract is now centralized in `docs/contracts/distribution-profiles.json` and consumed by shared build orchestration (`scripts/build.sh`, `scripts/release/build_unsigned_variant.sh`, matrix-based `release-all-variants.yml` auxiliary jobs); Swift update-authority mapping now has one source (`AppUpdateConfiguration`), targeted updater policy tests pass on macOS, and GUI checksum-publication symmetry is explicitly documented as deferred while Sparkle remains canonical GUI integrity authority
+    - trust-chain future work is now explicitly tracked: detached signatures + signing-key rotation for CLI update artifacts (`docs/roadmap/CLI_DISTRIBUTION_CI_MILESTONES.md`, milestone M5)
+- latest stable release on `main`: `v0.17.3`
 - validation gates are green through the stable cut (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke across `v0.17.0-rc.1` through `v0.17.0-rc.5`)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
@@ -148,7 +187,7 @@ Next release targets:
 - `v0.18.x` — Local security groundwork (internal-only)
 - `v0.19.x` — Stability & Pre-1.0 hardening
 
-## v0.17.x Delivery Tracker (Stable `0.17.2` Complete)
+## v0.17.x Delivery Tracker (Stable `0.17.3` Complete)
 
 - [x] `feat/v0.17-log-foundation` — task log event model, SQLite persistence migration, FFI/XPC retrieval surface.
 - [x] `feat/v0.17-task-log-viewer` — per-task log viewer UI with filters and pagination.
@@ -994,12 +1033,20 @@ Implement:
 - Memory audit
 - FFI stability under extended runtime
 
+### Priority 9 — CLI Companion (New Goal)
+
+Implement:
+
+- Approve and iterate CLI specification in `docs/architecture/HELM_CLI_SPEC.ms`
+- Keep GUI + CLI on one shared coordinator/runtime path (single task authority)
+- Scaffold `helm` binary with read-only command surface and stable `--json` output contracts
+- Add mutating command/task lifecycle coverage to match GUI capabilities incrementally
+
 ---
 
 ## Non-Goals (Pre-1.0)
 
 - Plugin system
-- CLI tool
 - Cloud sync
 - Enterprise control plane
 
@@ -1018,4 +1065,4 @@ Implement:
 - 0.14 stable release alignment for `v0.14.0` is complete (README/website + version artifacts).
 - Distribution/licensing future-state planning documentation is aligned for 0.14 release notes and roadmap planning (no implementation yet).
 - 0.14.x and 0.15.x release execution are complete on `main` (`v0.14.1` and `v0.15.0`).
-- 0.17.2 release execution is complete on `main`; 0.17.x diagnostics/logging delivery and post-`0.17.x` follow-up stabilization are now closed with stable lineage `v0.17.0`, `v0.17.1`, and `v0.17.2`.
+- 0.17.3 release execution is complete on `main`; 0.17.x diagnostics/logging delivery and post-`0.17.x` follow-up stabilization are now closed with stable lineage `v0.17.0`, `v0.17.1`, `v0.17.2`, and `v0.17.3`.

@@ -1055,6 +1055,149 @@ ON CONFLICT(key) DO UPDATE SET
         })
     }
 
+    fn set_auto_check_for_updates(&self, enabled: bool) -> PersistenceResult<()> {
+        self.with_connection("set_auto_check_for_updates", |connection| {
+            ensure_schema_ready(connection)?;
+            connection.execute(
+                "
+INSERT INTO app_settings (key, value)
+VALUES ('auto_check_for_updates', ?1)
+ON CONFLICT(key) DO UPDATE SET
+    value = excluded.value
+",
+                params![if enabled { "1" } else { "0" }],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn auto_check_for_updates(&self) -> PersistenceResult<bool> {
+        self.with_connection("auto_check_for_updates", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection
+                .prepare("SELECT value FROM app_settings WHERE key = 'auto_check_for_updates'")?;
+            let mut rows = statement.query([])?;
+            let Some(row) = rows.next()? else {
+                return Ok(false);
+            };
+            let value: String = row.get(0)?;
+            Ok(value.trim() == "1")
+        })
+    }
+
+    fn set_auto_check_frequency_minutes(&self, minutes: u32) -> PersistenceResult<()> {
+        self.with_connection("set_auto_check_frequency_minutes", |connection| {
+            ensure_schema_ready(connection)?;
+            connection.execute(
+                "
+INSERT INTO app_settings (key, value)
+VALUES ('auto_check_frequency_minutes', ?1)
+ON CONFLICT(key) DO UPDATE SET
+    value = excluded.value
+",
+                params![minutes.to_string()],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn auto_check_frequency_minutes(&self) -> PersistenceResult<u32> {
+        self.with_connection("auto_check_frequency_minutes", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection.prepare(
+                "SELECT value FROM app_settings WHERE key = 'auto_check_frequency_minutes'",
+            )?;
+            let mut rows = statement.query([])?;
+            let Some(row) = rows.next()? else {
+                return Ok(1_440);
+            };
+            let value: String = row.get(0)?;
+            let parsed = value.trim().parse::<u32>().unwrap_or(1_440);
+            if parsed == 0 { Ok(1_440) } else { Ok(parsed) }
+        })
+    }
+
+    fn set_auto_check_last_checked_unix(&self, value: i64) -> PersistenceResult<()> {
+        self.with_connection("set_auto_check_last_checked_unix", |connection| {
+            ensure_schema_ready(connection)?;
+            connection.execute(
+                "
+INSERT INTO app_settings (key, value)
+VALUES ('auto_check_last_checked_unix', ?1)
+ON CONFLICT(key) DO UPDATE SET
+    value = excluded.value
+",
+                params![value.to_string()],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn auto_check_last_checked_unix(&self) -> PersistenceResult<Option<i64>> {
+        self.with_connection("auto_check_last_checked_unix", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection.prepare(
+                "SELECT value FROM app_settings WHERE key = 'auto_check_last_checked_unix'",
+            )?;
+            let mut rows = statement.query([])?;
+            let Some(row) = rows.next()? else {
+                return Ok(None);
+            };
+            let value: String = row.get(0)?;
+            let parsed = value.trim().parse::<i64>().ok();
+            Ok(parsed)
+        })
+    }
+
+    fn set_manager_priority_overrides_json(
+        &self,
+        overrides_json: Option<&str>,
+    ) -> PersistenceResult<()> {
+        self.with_connection("set_manager_priority_overrides_json", |connection| {
+            ensure_schema_ready(connection)?;
+            match overrides_json {
+                Some(json) => {
+                    connection.execute(
+                        "
+INSERT INTO app_settings (key, value)
+VALUES ('manager_priority_overrides', ?1)
+ON CONFLICT(key) DO UPDATE SET
+    value = excluded.value
+",
+                        params![json],
+                    )?;
+                }
+                None => {
+                    connection.execute(
+                        "DELETE FROM app_settings WHERE key = 'manager_priority_overrides'",
+                        [],
+                    )?;
+                }
+            }
+            Ok(())
+        })
+    }
+
+    fn manager_priority_overrides_json(&self) -> PersistenceResult<Option<String>> {
+        self.with_connection("manager_priority_overrides_json", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection.prepare(
+                "SELECT value FROM app_settings WHERE key = 'manager_priority_overrides'",
+            )?;
+            let mut rows = statement.query([])?;
+            let Some(row) = rows.next()? else {
+                return Ok(None);
+            };
+            let value: String = row.get(0)?;
+            let trimmed = value.trim().to_string();
+            if trimmed.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(trimmed))
+            }
+        })
+    }
+
     fn set_package_keg_policy(
         &self,
         package: &PackageRef,

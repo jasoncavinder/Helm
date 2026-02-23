@@ -1,0 +1,340 @@
+name: Release CLI Direct Installer
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Git tag to build and publish CLI assets for (e.g. v0.17.2)"
+        required: true
+        type: string
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Git tag to build and publish CLI assets for (e.g. v0.17.2)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-cli-${{ inputs.tag || github.event.release.tag_name || github.event.inputs.tag }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-publish-cli:
+    runs-on: macos-14
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      TAG_NAME: ${{ inputs.tag || github.event.release.tag_name || github.event.inputs.tag }}
+      EVENT_NAME: ${{ github.event_name }}
+      EVENT_RELEASE_PRERELEASE: ${{ github.event.release.prerelease || '' }}
+
+    steps:
+      - name: Resolve release channel and publish target
+        run: |
+          set -euo pipefail
+
+          if [ -z "${TAG_NAME}" ]; then
+            echo "::error::TAG_NAME is empty."
+            exit 1
+          fi
+
+          if [[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            CHANNEL="stable"
+            TARGET_PATH="web/public/updates/cli/latest.json"
+          elif [[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+            CHANNEL="rc"
+            TARGET_PATH="web/public/updates/cli/latest-rc.json"
+          else
+            echo "::error::Unsupported tag format '${TAG_NAME}'. Expected vX.Y.Z or vX.Y.Z-rc.N"
+            exit 1
+          fi
+
+          if [ "$EVENT_NAME" = "release" ]; then
+            if [ "$CHANNEL" = "stable" ] && [ "${EVENT_RELEASE_PRERELEASE}" = "true" ]; then
+              echo "::error::Release event is marked prerelease, but tag '${TAG_NAME}' resolved to stable."
+              exit 1
+            fi
+            if [ "$CHANNEL" = "rc" ] && [ "${EVENT_RELEASE_PRERELEASE}" != "true" ]; then
+              echo "::error::RC tag '${TAG_NAME}' must be published from a prerelease GitHub release."
+              exit 1
+            fi
+          fi
+
+          echo "CLI_RELEASE_CHANNEL=${CHANNEL}" >> "$GITHUB_ENV"
+          echo "CLI_UPDATE_TARGET_PATH=${TARGET_PATH}" >> "$GITHUB_ENV"
+          echo "Resolved channel=${CHANNEL} target=${TARGET_PATH}"
+
+      - name: Checkout tag
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ env.TAG_NAME }}
+
+      - name: Install Rust toolchain (macOS targets)
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Build CLI binaries (arm64, x86_64, universal)
+        env:
+          ASSET_DIR: ${{ github.workspace }}/build/cli-release
+        run: |
+          set -euo pipefail
+
+          cd core/rust
+          cargo build -p helm-cli --release --target aarch64-apple-darwin
+          cargo build -p helm-cli --release --target x86_64-apple-darwin
+
+          mkdir -p "$ASSET_DIR"
+
+          ARM64_ASSET="$ASSET_DIR/helm-cli-${TAG_NAME}-darwin-arm64"
+          X64_ASSET="$ASSET_DIR/helm-cli-${TAG_NAME}-darwin-x86_64"
+          UNIVERSAL_ASSET="$ASSET_DIR/helm-cli-${TAG_NAME}-darwin-universal"
+
+          cp target/aarch64-apple-darwin/release/helm "$ARM64_ASSET"
+          cp target/x86_64-apple-darwin/release/helm "$X64_ASSET"
+          lipo -create "$ARM64_ASSET" "$X64_ASSET" -output "$UNIVERSAL_ASSET"
+          chmod +x "$ARM64_ASSET" "$X64_ASSET" "$UNIVERSAL_ASSET"
+
+          ARM64_SHA="$(shasum -a 256 "$ARM64_ASSET" | awk '{print $1}')"
+          X64_SHA="$(shasum -a 256 "$X64_ASSET" | awk '{print $1}')"
+          UNIVERSAL_SHA="$(shasum -a 256 "$UNIVERSAL_ASSET" | awk '{print $1}')"
+
+          {
+            echo "${ARM64_SHA}  $(basename "$ARM64_ASSET")"
+            echo "${X64_SHA}  $(basename "$X64_ASSET")"
+            echo "${UNIVERSAL_SHA}  $(basename "$UNIVERSAL_ASSET")"
+          } > "$ASSET_DIR/helm-cli-${TAG_NAME}-checksums.txt"
+
+          export ARM64_SHA X64_SHA UNIVERSAL_SHA
+          export ARM64_NAME="$(basename "$ARM64_ASSET")"
+          export X64_NAME="$(basename "$X64_ASSET")"
+          export UNIVERSAL_NAME="$(basename "$UNIVERSAL_ASSET")"
+
+          python3 - <<'PY'
+          import datetime
+          import json
+          import os
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          tag = os.environ["TAG_NAME"]
+          version = tag[1:] if tag.startswith("v") else tag
+          asset_dir = os.environ["ASSET_DIR"]
+
+          def entry(name_env: str, sha_env: str):
+              name = os.environ[name_env]
+              sha = os.environ[sha_env]
+              return {
+                  "url": f"https://github.com/{repo}/releases/download/{tag}/{name}",
+                  "sha256": sha,
+              }
+
+          payload = {
+              "version": version,
+              "channel": os.environ["CLI_RELEASE_CHANNEL"],
+              "published_at": datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+              "downloads": {
+                  "universal": entry("UNIVERSAL_NAME", "UNIVERSAL_SHA"),
+                  "arm64": entry("ARM64_NAME", "ARM64_SHA"),
+                  "x86_64": entry("X64_NAME", "X64_SHA"),
+              },
+          }
+
+          with open(os.path.join(asset_dir, "latest.json"), "w", encoding="utf-8") as f:
+              json.dump(payload, f, indent=2)
+              f.write("\n")
+          PY
+
+      - name: Verify CLI binary version matches tag
+        env:
+          ASSET_DIR: ${{ github.workspace }}/build/cli-release
+        run: |
+          set -euo pipefail
+          EXPECTED_VERSION="${TAG_NAME#v}"
+          ACTUAL_VERSION="$("$ASSET_DIR/helm-cli-${TAG_NAME}-darwin-universal" --json --version | python3 -c 'import json,sys; payload=json.load(sys.stdin); print((payload.get("data") or {}).get("version",""))')"
+          if [ -z "$ACTUAL_VERSION" ]; then
+            echo "::error::Unable to determine CLI version from built artifact."
+            exit 1
+          fi
+          if [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "::error::CLI version mismatch: expected ${EXPECTED_VERSION}, got ${ACTUAL_VERSION}"
+            exit 1
+          fi
+          echo "CLI version matches tag: ${ACTUAL_VERSION}"
+
+      - name: Upload CLI artifacts to workflow run
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: helm-cli-${{ env.TAG_NAME }}
+          path: |
+            build/cli-release/helm-cli-${{ env.TAG_NAME }}-darwin-arm64
+            build/cli-release/helm-cli-${{ env.TAG_NAME }}-darwin-x86_64
+            build/cli-release/helm-cli-${{ env.TAG_NAME }}-darwin-universal
+            build/cli-release/helm-cli-${{ env.TAG_NAME }}-checksums.txt
+            build/cli-release/latest.json
+
+      - name: Upload CLI binaries to GitHub release
+        if: ${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET_DIR: ${{ github.workspace }}/build/cli-release
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG_NAME" \
+            "$ASSET_DIR/helm-cli-${TAG_NAME}-darwin-arm64#helm-cli-${TAG_NAME}-darwin-arm64" \
+            "$ASSET_DIR/helm-cli-${TAG_NAME}-darwin-x86_64#helm-cli-${TAG_NAME}-darwin-x86_64" \
+            "$ASSET_DIR/helm-cli-${TAG_NAME}-darwin-universal#helm-cli-${TAG_NAME}-darwin-universal" \
+            "$ASSET_DIR/helm-cli-${TAG_NAME}-checksums.txt#helm-cli-${TAG_NAME}-checksums.txt" \
+            --clobber
+
+      - name: Publish website CLI latest metadata via PR
+        if: ${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET_DIR: ${{ github.workspace }}/build/cli-release
+        run: |
+          set -euo pipefail
+
+          SOURCE_JSON="$ASSET_DIR/latest.json"
+          TARGET_PATH="${CLI_UPDATE_TARGET_PATH}"
+          PUBLISH_DIR="$RUNNER_TEMP/cli-updates-publish"
+          PUBLISH_BRANCH="chore/publish-cli-updates-${TAG_NAME}-${CLI_RELEASE_CHANNEL}"
+          TARGET_ENDPOINT="https://helmapp.dev/updates/cli/$(basename "$TARGET_PATH")"
+
+          git clone --depth 1 --branch main "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$PUBLISH_DIR"
+          mkdir -p "$PUBLISH_DIR/$(dirname "$TARGET_PATH")"
+          cp "$SOURCE_JSON" "$PUBLISH_DIR/$TARGET_PATH"
+
+          cd "$PUBLISH_DIR"
+          if [ -z "$(git status --porcelain -- "$TARGET_PATH")" ]; then
+            echo "CLI latest metadata is already current on main."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$TARGET_PATH"
+          git commit -m "chore(release): publish CLI latest metadata for ${TAG_NAME}"
+
+          git checkout -B "$PUBLISH_BRANCH"
+          git push -u origin "$PUBLISH_BRANCH" --force-with-lease
+
+          EXISTING_PR="$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$PUBLISH_BRANCH" --state open --json number --jq '.[0].number // empty' || true)"
+          if [ -n "$EXISTING_PR" ]; then
+            PR_NUMBER="$EXISTING_PR"
+            echo "PR already exists for $PUBLISH_BRANCH (#$PR_NUMBER)."
+          else
+            PR_URL="$(gh pr create \
+              --repo "$GITHUB_REPOSITORY" \
+              --base main \
+              --head "$PUBLISH_BRANCH" \
+              --title "chore(release): publish CLI latest metadata for ${TAG_NAME}" \
+              --body "$(cat <<EOF
+          This PR was auto-generated by \`release-cli-direct.yml\`.
+
+          It publishes CLI direct-update metadata for \`${TAG_NAME}\`:
+          - \`${TARGET_PATH}\`
+          - channel: \`${CLI_RELEASE_CHANNEL}\`
+
+          Merge this PR to update:
+          - \`${TARGET_ENDPOINT}\`
+          EOF
+          )" 2>&1)" || {
+              echo "::error::Unable to create CLI publish PR via GitHub Actions token."
+              echo "::error::Fallback branch was pushed: ${PUBLISH_BRANCH}"
+              echo "::error::Open manual PR: https://github.com/${GITHUB_REPOSITORY}/compare/main...${PUBLISH_BRANCH}?expand=1"
+              echo "::error::gh output: ${PR_URL}"
+              exit 1
+            }
+
+            PR_NUMBER="$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$PUBLISH_BRANCH" --state open --json number --jq '.[0].number // empty' || true)"
+            if [ -z "$PR_NUMBER" ]; then
+              echo "::error::CLI publish PR was created but could not be resolved to an open PR number."
+              echo "::error::Open manual PR: https://github.com/${GITHUB_REPOSITORY}/compare/main...${PUBLISH_BRANCH}?expand=1"
+              exit 1
+            fi
+
+            echo "Created CLI publish PR #${PR_NUMBER}: ${PR_URL}"
+          fi
+
+          if gh pr merge --repo "$GITHUB_REPOSITORY" --squash --auto "$PR_NUMBER"; then
+            echo "Auto-merge enabled for CLI publish PR #${PR_NUMBER}."
+          else
+            echo "::warning::Unable to enable auto-merge for CLI publish PR #${PR_NUMBER}."
+            echo "::warning::Manual merge may be required."
+          fi
+
+          MERGED_AT=""
+          PR_URL=""
+          for i in {1..40}; do
+            read -r PR_STATE MERGED_AT PR_URL <<<"$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json state,mergedAt,url --jq '[.state, (.mergedAt // ""), .url] | @tsv')"
+            if [ -n "$MERGED_AT" ]; then
+              echo "CLI publish PR #${PR_NUMBER} merged at ${MERGED_AT}."
+              break
+            fi
+
+            if [ "$PR_STATE" != "OPEN" ]; then
+              echo "::error::CLI publish PR #${PR_NUMBER} is not open and was not merged."
+              echo "::error::PR URL: ${PR_URL}"
+              exit 1
+            fi
+
+            echo "Waiting for CLI publish PR #${PR_NUMBER} to merge (attempt ${i}/40)..."
+            sleep 30
+          done
+
+          if [ -z "$MERGED_AT" ]; then
+            echo "::error::CLI publish PR #${PR_NUMBER} was not merged within the workflow wait window."
+            echo "::error::PR URL: ${PR_URL}"
+            echo "::error::Merge the PR and rerun this workflow."
+            exit 1
+          fi
+
+      - name: Verify CLI latest metadata on main matches release tag
+        if: ${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          TARGET_PATH="${CLI_UPDATE_TARGET_PATH}"
+          VERIFY_DIR="$RUNNER_TEMP/cli-updates-verify-main"
+          EXPECTED_VERSION="${TAG_NAME#v}"
+
+          git clone --depth 1 --branch main "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$VERIFY_DIR"
+          MAIN_JSON="$VERIFY_DIR/$TARGET_PATH"
+
+          if [ ! -f "$MAIN_JSON" ]; then
+            echo "::error::Expected CLI latest metadata not found on main: ${TARGET_PATH}"
+            exit 1
+          fi
+
+          ACTUAL_VERSION="$(
+            python3 - "$MAIN_JSON" <<'PY'
+            import json
+            import sys
+
+            with open(sys.argv[1], "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            print(str(payload.get("version", "")).strip())
+            PY
+          )"
+
+          if [ -z "$ACTUAL_VERSION" ]; then
+            echo "::error::Unable to parse version from ${TARGET_PATH} on main."
+            exit 1
+          fi
+
+          if [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "::error::CLI latest metadata on main does not match release tag."
+            echo "::error::expected=${EXPECTED_VERSION} actual=${ACTUAL_VERSION} file=${TARGET_PATH}"
+            echo "::error::If fallback publishing was required, merge branch chore/publish-cli-updates-${TAG_NAME} and rerun this workflow."
+            exit 1
+          fi
+
+          echo "Verified CLI latest metadata on main matches release tag: ${ACTUAL_VERSION}"

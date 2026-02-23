@@ -581,6 +581,7 @@ Goal:
 - Manager-agnostic normalization contract for advisory records
 - Local cache schema groundwork (TTL-ready metadata)
 - Task/orchestration hooks for future advisory refresh/evaluation tasks
+- CLI companion planning/specification kickoff with shared GUI+CLI coordinator model
 - No UI exposure and no user-facing advisory feature gate yet
 - No Pro entitlement gating in this phase
 - No centralized Helm backend in this phase
@@ -589,6 +590,7 @@ Exit Criteria:
 
 - Core contracts for local advisory data handling are documented and testable
 - Advisory groundwork paths preserve deterministic task execution
+- CLI specification is published and aligned with architectural invariants
 - No user-facing Security Advisory UI shipped in this milestone
 - No backend dependency introduced
 

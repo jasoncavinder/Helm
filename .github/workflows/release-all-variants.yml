@@ -1,0 +1,142 @@
+name: Release All Variants
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Git tag to build and release (e.g. v0.17.2)"
+        required: true
+        type: string
+      upload_auxiliary_assets:
+        description: "Upload MAS/Setapp/Business artifacts to GitHub Release"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-all-variants-${{ inputs.tag }}
+  cancel-in-progress: true
+
+jobs:
+  ensure-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG_NAME: ${{ inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Ensure release exists
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Release exists for $TAG_NAME."
+            exit 0
+          fi
+
+          echo "Release for $TAG_NAME not found; creating draft release."
+          gh release create "$TAG_NAME" \
+            --title "$TAG_NAME" \
+            --notes "Automated release scaffold for ${TAG_NAME}."
+
+  direct-gui:
+    needs: ensure-release
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: ./.github/workflows/release-macos-dmg.yml
+    with:
+      tag: ${{ inputs.tag }}
+    secrets: inherit
+
+  direct-cli:
+    needs: ensure-release
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: ./.github/workflows/release-cli-direct.yml
+    with:
+      tag: ${{ inputs.tag }}
+    secrets: inherit
+
+  auxiliary-variants:
+    needs: ensure-release
+    runs-on: macos-14
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: mas
+            include_pkg: "0"
+            artifact_prefix: helm-mas
+          - variant: setapp
+            include_pkg: "0"
+            artifact_prefix: helm-setapp
+          - variant: business
+            include_pkg: "1"
+            artifact_prefix: helm-business
+    env:
+      TAG_NAME: ${{ inputs.tag }}
+      UPLOAD_AUXILIARY: ${{ inputs.upload_auxiliary_assets }}
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ env.TAG_NAME }}
+
+      - name: Install Rust toolchain (universal targets)
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Build ${{ matrix.variant }} profile app (unsigned)
+        id: build_variant
+        run: |
+          set -euo pipefail
+          OUTPUT_ROOT="$PWD/build/all-variants" \
+          VARIANT="${{ matrix.variant }}" \
+          TAG_NAME="$TAG_NAME" \
+          INCLUDE_PKG="${{ matrix.include_pkg }}" \
+          scripts/release/build_unsigned_variant.sh >> "$GITHUB_OUTPUT"
+
+      - name: Upload ${{ matrix.variant }} artifacts to workflow run
+        if: ${{ matrix.variant == 'business' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ matrix.artifact_prefix }}-${{ env.TAG_NAME }}
+          path: |
+            ${{ steps.build_variant.outputs.zip_path }}
+            ${{ steps.build_variant.outputs.pkg_path }}
+
+      - name: Upload ${{ matrix.variant }} artifact to workflow run
+        if: ${{ matrix.variant != 'business' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ matrix.artifact_prefix }}-${{ env.TAG_NAME }}
+          path: ${{ steps.build_variant.outputs.zip_path }}
+
+      - name: Upload ${{ matrix.variant }} artifacts to GitHub release
+        if: ${{ inputs.upload_auxiliary_assets && matrix.variant == 'business' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG_NAME" \
+            "${{ steps.build_variant.outputs.zip_path }}#Helm-${TAG_NAME}-${{ matrix.variant }}-unsigned.zip" \
+            "${{ steps.build_variant.outputs.pkg_path }}#Helm-${TAG_NAME}-${{ matrix.variant }}-unsigned.pkg" \
+            --clobber
+
+      - name: Upload ${{ matrix.variant }} artifact to GitHub release
+        if: ${{ inputs.upload_auxiliary_assets && matrix.variant != 'business' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG_NAME" \
+            "${{ steps.build_variant.outputs.zip_path }}#Helm-${TAG_NAME}-${{ matrix.variant }}-unsigned.zip" \
+            --clobber

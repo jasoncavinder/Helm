@@ -8,15 +8,15 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.17.2** on `main` (stable), with `dev` aligned for post-`0.17.x` planning.
+Current documentation baseline: **0.17.3** on `main` (stable), with `dev` aligned for post-`0.17.x` planning.
 
-Implementation baseline: **0.17.2** with diagnostics/logging delivery, manager-selection/enablement enforcement, onboarding/detection hardening, and control-center execution-plan fixes shipped.
+Implementation baseline: **0.17.3** with diagnostics/logging delivery, manager-selection/enablement enforcement, onboarding/detection hardening, and post-`0.17.2` CLI parity/supply-chain hardening shipped.
 
 See:
 - CHANGELOG.md
 
 Active milestone:
-- latest shipped release on `main`: **0.17.2** (post-`0.17.x` manager-control + onboarding/detection + execution-plan stabilization patch)
+- latest shipped release on `main`: **0.17.3** (post-`0.17.2` CLI parity, provenance, and release-channel hardening patch)
 - 0.17.x — Diagnostics & Logging (**stable released on `main`**, RC lineage `v0.17.0-rc.1` through `v0.17.0-rc.5`)
   - delivered: `feat/v0.17-log-foundation` (SQLite-backed task lifecycle logs + retrieval plumbing)
   - delivered: `feat/v0.17-task-log-viewer` (inspector diagnostics logs tab with level/status filters + load-more pagination)
@@ -46,7 +46,7 @@ Active milestone:
   - delivered: website release-readiness follow-up: Starlight now uses a local blog plugin to register a `/blog/` section and RSS social link, the site includes a global beta-tester announcement banner (visual treatment refined), blog pages expose social-share actions, and the landing navigation now includes right-aligned `Blog` and `Docs` links for faster access.
   - delivered: post-`v0.17.1` release-automation guardrails follow-up (on `dev`): release workflow appcast-publish fallback now hard-fails when automated PR creation is blocked, release workflow now verifies `main` appcast version matches the release tag before succeeding, and a dedicated `Appcast Drift Guard` workflow now checks latest stable release vs top appcast version on `main`.
   - delivered: GitHub governance hardening follow-up (on `dev`): per-branch rulesets are now explicit for `main`/`dev`/`docs`/`web` with branch-specific required checks; new `Policy Gate` + `Docs Checks` + `Web Build` workflows enforce branch targeting/scope policy; repository merge settings keep auto-merge/update-branch enabled while delete-branch-on-merge stays off to protect primary branches; blocking ruleset `update` enforcement was removed after protected-ref merge-block diagnostics; CodeQL is now main-focused (push/schedule/manual) to avoid PR gate friction.
-  - `v0.17.2` stable release execution status: complete (validation green + stable tag + GitHub release published)
+  - `v0.17.3` stable release execution status: complete (validation green + stable tag + GitHub release published)
 
 Security rollout staging status:
 - Stage 0 (`<=0.16.x`): planning/docs only (active in `0.16.1`)
@@ -868,7 +868,44 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
   - `nix_darwin` support currently operates through `nix-env` compatibility flows and does not edit declarative nix-darwin configuration files
 - Self-update is intentionally limited to eligible direct Developer ID installs; package-manager-managed installs remain blocked by policy.
 - Diagnostics UI is available in the Inspector (`diagnostics`/`stderr`/`stdout`), including the v0.17 task-log viewer (`logs` tab with level/status filters and pagination).
-- No CLI interface
+- CLI companion implementation is in progress on `dev`: draft spec published at `docs/architecture/HELM_CLI_SPEC.ms` and Rust `helm` binary exists (`core/rust/crates/helm-cli`) with read-only snapshot commands plus runtime-backed orchestration commands (`refresh`, `managers detect`) and `--wait`/`--detach` flag parsing.
+- CLI read-only contract hardening is in place for the documented schema-safety surface: `status`, `managers list`, `packages list`, `updates summary`, and `tasks show` JSON payloads now use a stable envelope (`schema`, `schema_version`, `generated_at`, `data`), and `tasks show` is implemented as a read-only command.
+- CLI manager-selection controls now include `managers executables list|set` and `managers install-methods list|set` with persisted preferences (`selected_executable_path`, `selected_install_method`) and explicit reset modes (`path-default` / `default`).
+- CLI package mutation coverage now includes `packages install|uninstall|upgrade|pin|unpin` with explicit manager targeting (`--manager` or `name@manager`) and ambiguity-safe `packages show`.
+- CLI manager lifecycle mutation coverage now includes `managers install|update|uninstall` with install-method-aware routing for currently supported manager targets (`mise`, `mas`, `rustup`, `homebrew_formula`) and Homebrew dependency guards where required.
+- CLI update orchestration now includes `updates preview` and `updates run --yes` with upgrade-step planning over the cached outdated snapshot, including pinned-filter and OS-update guard flags (`--include-pinned`, `--allow-os-updates`).
+- CLI task inspection surface now includes `tasks logs` and `tasks output` JSON/human views plus `tasks follow` (polling persisted task logs); `tasks follow` currently enforces a timeout guard to avoid indefinite hangs on non-terminal snapshots.
+- CLI task cancellation (`tasks cancel`) now routes through the shared CLI coordinator and supports process-level cancellation for coordinator-owned tasks.
+- CLI settings mutation now includes `settings reset <key>` for implemented keys (`safe_mode`, `homebrew_keg_auto_cleanup`, `auto_check_for_updates`, `auto_check_frequency_minutes`) in addition to existing `settings set`.
+- CLI command-scoped help now includes nested subcommand forms (for example `helm packages install help`, `helm managers executables help`, `helm help managers executables set`) in addition to top-level command help.
+- CLI read-only command polish now includes a panic fix for `helm updates`/`helm updates --json` with no explicit subcommand, and JSON envelope consistency (`schema`/`schema_version`/`generated_at`/`data`) for `search`, `managers show`, `settings list`, and `settings get`; `settings list --json` now includes `auto_check_for_updates` and `auto_check_frequency_minutes`.
+- CLI read-only list ergonomics now include `--limit` for `packages list`/`ls`, `updates list` (including top-level `updates` flag-form), and `tasks list` (including top-level `tasks` flag-form), plus `tasks list --status` filtering.
+- CLI global verbose diagnostics flags are now implemented (`-v`, `--verbose`), emitting additional execution/coordinator details to `stderr` while keeping `stdout` contract-safe for human and JSON payload modes.
+- CLI settings persistence now includes `auto_check_for_updates` and `auto_check_frequency_minutes` (`settings get|set|reset` and `settings list`/`self status` now reflect persisted values).
+- CLI `self` namespace is now provenance-aware across supported channels (`direct-script`, `brew`, `macports`, `cargo`, `app-bundle-shim`, `managed`, `unknown`): `self status`/`self check`/`self update` now enforce channel policy, provide channel-specific recommended actions, and perform direct binary self-update only when policy allows.
+- CLI `self auto-check` controls are now implemented with persisted settings (`self auto-check status|enable|disable|frequency <minutes>`), with nested help/completion coverage and `settings` parity via `auto_check_for_updates` + `auto_check_frequency_minutes`; scheduled coordinator ticks now persist `auto_check_last_checked_unix`.
+- CLI manager enable/disable now performs best-effort cancellation of manager-scoped queued/running tasks through the CLI coordinator when disabling a manager (with cancellation diagnostics in JSON/human output).
+- CLI mutation JSON output consistency now uses the standard envelope (`schema`, `schema_version`, `generated_at`, `data`) across manager enable/disable, settings set/reset, manager detection wait payloads, and shared manager-result emitters.
+- CLI diagnostics command namespace now includes `diagnostics summary`, `diagnostics task`, `diagnostics manager`, and `diagnostics export` with JSON/human output and structured export file writing (`--path`).
+- CLI completion command now includes `completion bash|zsh|fish` shell-script generation.
+- CLI coordinator routing is now active for single-task mutation flows (`packages install|uninstall|upgrade`, `managers detect <id>`, `managers install|update|uninstall`) with true `--detach` submission and task-id return.
+- CLI manager-priority commands are now implemented: `managers priority list|set|reset` with persisted override state in SQLite, and manager/update execution ordering now respects those overrides within authority groups.
+- CLI coordinator detach coverage now includes multi-step workflow commands (`refresh`, `updates run`, `managers detect --all`) via launch-on-demand coordinator workflow jobs (job-id response contract), and `packages pin|unpin --detach` is now accepted.
+- CLI non-TUI parity follow-up delivered: GUI+CLI now converge on shared coordinator transport authority, self-update parity now covers provenance-aware channel policies beyond Homebrew-only flows, scheduled auto-check execution now runs on coordinator cadence, and CLI exit/global-flag contract now includes granular task exit codes (`2/3/4`) plus `--json|--ndjson`, `-q|--quiet`, `--no-color`, `--locale`, and `--timeout`.
+- CLI audit-remediation slice delivered on `dev`: self-update direct transport failures now emit structured JSON error payloads with actionable guidance in `--json` mode, install-marker schema contract is now centralized at `docs/contracts/install-marker.schema.json` with Rust + installer CI validation, and residual CLI recon/dead-code artifacts were removed.
+- CLI audit-remediation follow-up delivered on `dev`: `helm doctor` top-level alias is now implemented (defaulting to provenance diagnostics while keeping `diagnostics` namespace), self-update `--force` is now constrained to `direct-script` installs (channel-managed installs remain blocked), coordinator auto-check ticks now require direct-script marker policy before network checks, and direct install/update URL fetch paths now enforce allowlisted HTTPS hosts with explicit timeout policy (plus opt-in local `file://` override for test workflows).
+- CLI audit-remediation follow-up delivered on `dev`: machine-mode output contracts are now enforced for top-level help/version/completion/error paths (`--json`/`--ndjson`), NDJSON list payloads now emit one envelope per item (empty lists still emit one envelope), string-based exit-code heuristics have been removed in favor of explicit marker-based classification with deterministic runtime fallback (`1`) for untyped errors, release CLI metadata publication is now channel-scoped (`latest.json` stable vs `latest-rc.json` prerelease), policy-gate now restricts CLI metadata mutations to release-publish/emergency branches, and a dedicated CLI metadata drift guard workflow is now in place.
+- CLI audit-remediation follow-up delivered on `dev`: install-marker writes in Rust now use symlink-rejecting atomic replace semantics, direct self-update binary replacement now rejects symlink/non-file executable targets and enforces bounded download size (`HELM_CLI_SELF_UPDATE_MAX_DOWNLOAD_BYTES`, default 64 MiB), and release workflows now extend immutable action pinning + explicit per-job token scopes with CLI tag/version artifact verification prior to publication.
+- CLI audit-remediation follow-up delivered on `dev`: stable CLI release metadata now references real published `v0.17.2` CLI assets/checksums (placeholder zero checksums removed), and auto-check timestamp semantics now only advance when an eligible direct self-managed endpoint check is actually attempted (policy-gated skips no longer update last-checked telemetry).
+- CLI audit-remediation follow-up delivered on `dev`: distribution profile policy is now centralized in `docs/contracts/distribution-profiles.json` and consumed by local/release build orchestration (`scripts/build.sh`, `scripts/release/build_unsigned_variant.sh`, `release-all-variants.yml` matrix job); Swift update-authority mapping now has one source (`AppUpdateConfiguration`), targeted updater policy tests revalidated cleanly on macOS, and GUI checksum-publication symmetry is explicitly documented as Sparkle-authority deferred scope.
+- CLI trust-chain follow-up planning now explicitly tracks detached-signature and key-rotation work under future CI milestones (`docs/roadmap/CLI_DISTRIBUTION_CI_MILESTONES.md`) per the staged authenticity decision.
+- Non-TUI GUI↔CLI parity gaps confirmed (tracked for post-`0.17.3` closure):
+  - GUI progressive remote search orchestration (debounced remote fan-out + cancellation) is not yet mirrored by CLI search flows.
+  - GUI launch-at-login toggle is not yet surfaced through CLI settings commands.
+  - GUI per-package Homebrew keg cleanup override UI is not yet mirrored in CLI command surface.
+  - GUI manager-scoped `Upgrade All` action has no direct manager-scoped CLI bulk-run equivalent.
+  - GUI onboarding/walkthrough/support-entry workflows remain GUI-only by design.
+- TUI remains pending by design.
 
 ---
 
@@ -892,4 +929,4 @@ Helm is a **functional control plane for 28 implemented managers** with:
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-0.13.x through 0.17.2 stable checkpoints are complete on `main`; `v0.17.0-rc.1` through `v0.17.0-rc.5` served as the completed RC validation path into stable `0.17.0`, followed by stable patch releases `v0.17.1` and `v0.17.2`.
+0.13.x through 0.17.3 stable checkpoints are complete on `main`; `v0.17.0-rc.1` through `v0.17.0-rc.5` served as the completed RC validation path into stable `0.17.0`, followed by stable patch releases `v0.17.1`, `v0.17.2`, and `v0.17.3`.

@@ -1,0 +1,101 @@
+name: CLI Update Metadata Drift Guard
+
+on:
+  schedule:
+    - cron: "0 13 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cli-update-drift:
+    name: CLI Update Drift Guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Validate stable + prerelease CLI metadata pointers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          STABLE_FILE="web/public/updates/cli/latest.json"
+          RC_FILE="web/public/updates/cli/latest-rc.json"
+
+          if [ ! -f "$STABLE_FILE" ]; then
+            echo "::error::Missing stable CLI metadata file: $STABLE_FILE"
+            exit 1
+          fi
+
+          LATEST_STABLE_TAG="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '[.[] | select((.draft|not) and (.prerelease|not))][0].tag_name')"
+          if [ -z "$LATEST_STABLE_TAG" ] || [ "$LATEST_STABLE_TAG" = "null" ]; then
+            echo "::error::Unable to determine latest stable release tag."
+            exit 1
+          fi
+          EXPECTED_STABLE_VERSION="${LATEST_STABLE_TAG#v}"
+          ACTUAL_STABLE_VERSION="$(python3 - "$STABLE_FILE" <<'PY'
+          import json, sys
+          with open(sys.argv[1], "r", encoding="utf-8") as f:
+              payload = json.load(f)
+          print(str(payload.get("version", "")).strip())
+          PY
+          )"
+          ACTUAL_STABLE_CHANNEL="$(python3 - "$STABLE_FILE" <<'PY'
+          import json, sys
+          with open(sys.argv[1], "r", encoding="utf-8") as f:
+              payload = json.load(f)
+          print(str(payload.get("channel", "stable")).strip())
+          PY
+          )"
+          if [ "$ACTUAL_STABLE_VERSION" != "$EXPECTED_STABLE_VERSION" ]; then
+            echo "::error::Stable CLI metadata drift detected."
+            echo "::error::expected=${EXPECTED_STABLE_VERSION} actual=${ACTUAL_STABLE_VERSION} file=${STABLE_FILE}"
+            exit 1
+          fi
+          if [ "$ACTUAL_STABLE_CHANNEL" != "stable" ]; then
+            echo "::error::Stable CLI metadata must declare channel=stable."
+            echo "::error::actual channel=${ACTUAL_STABLE_CHANNEL} file=${STABLE_FILE}"
+            exit 1
+          fi
+          echo "Stable CLI metadata is aligned with ${LATEST_STABLE_TAG}."
+
+          LATEST_RC_TAG="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '[.[] | select((.draft|not) and (.prerelease == true))][0].tag_name')"
+          if [ -z "$LATEST_RC_TAG" ] || [ "$LATEST_RC_TAG" = "null" ]; then
+            echo "No prerelease tag found; skipping RC metadata validation."
+            exit 0
+          fi
+
+          if [ ! -f "$RC_FILE" ]; then
+            echo "::error::Prerelease tag exists (${LATEST_RC_TAG}) but RC metadata file is missing: ${RC_FILE}"
+            exit 1
+          fi
+
+          EXPECTED_RC_VERSION="${LATEST_RC_TAG#v}"
+          ACTUAL_RC_VERSION="$(python3 - "$RC_FILE" <<'PY'
+          import json, sys
+          with open(sys.argv[1], "r", encoding="utf-8") as f:
+              payload = json.load(f)
+          print(str(payload.get("version", "")).strip())
+          PY
+          )"
+          ACTUAL_RC_CHANNEL="$(python3 - "$RC_FILE" <<'PY'
+          import json, sys
+          with open(sys.argv[1], "r", encoding="utf-8") as f:
+              payload = json.load(f)
+          print(str(payload.get("channel", "rc")).strip())
+          PY
+          )"
+          if [ "$ACTUAL_RC_VERSION" != "$EXPECTED_RC_VERSION" ]; then
+            echo "::error::RC CLI metadata drift detected."
+            echo "::error::expected=${EXPECTED_RC_VERSION} actual=${ACTUAL_RC_VERSION} file=${RC_FILE}"
+            exit 1
+          fi
+          if [ "$ACTUAL_RC_CHANNEL" != "rc" ]; then
+            echo "::error::RC CLI metadata must declare channel=rc."
+            echo "::error::actual channel=${ACTUAL_RC_CHANNEL} file=${RC_FILE}"
+            exit 1
+          fi
+          echo "RC CLI metadata is aligned with ${LATEST_RC_TAG}."
