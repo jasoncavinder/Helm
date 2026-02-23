@@ -14,8 +14,7 @@ on:
         type: boolean
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: release-all-variants-${{ inputs.tag }}
@@ -24,6 +23,8 @@ concurrency:
 jobs:
   ensure-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       TAG_NAME: ${{ inputs.tag }}
       GH_TOKEN: ${{ github.token }}
@@ -43,6 +44,9 @@ jobs:
 
   direct-gui:
     needs: ensure-release
+    permissions:
+      contents: write
+      pull-requests: write
     uses: ./.github/workflows/release-macos-dmg.yml
     with:
       tag: ${{ inputs.tag }}
@@ -50,202 +54,89 @@ jobs:
 
   direct-cli:
     needs: ensure-release
+    permissions:
+      contents: write
+      pull-requests: write
     uses: ./.github/workflows/release-cli-direct.yml
     with:
       tag: ${{ inputs.tag }}
     secrets: inherit
 
-  mas:
+  auxiliary-variants:
     needs: ensure-release
     runs-on: macos-14
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: mas
+            include_pkg: "0"
+            artifact_prefix: helm-mas
+          - variant: setapp
+            include_pkg: "0"
+            artifact_prefix: helm-setapp
+          - variant: business
+            include_pkg: "1"
+            artifact_prefix: helm-business
     env:
       TAG_NAME: ${{ inputs.tag }}
       UPLOAD_AUXILIARY: ${{ inputs.upload_auxiliary_assets }}
     steps:
       - name: Checkout tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ env.TAG_NAME }}
 
       - name: Install Rust toolchain (universal targets)
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
-      - name: Build MAS profile app (unsigned)
+      - name: Build ${{ matrix.variant }} profile app (unsigned)
+        id: build_variant
         run: |
           set -euo pipefail
-          OUT_DIR="$PWD/build/all-variants/mas"
-          DERIVED_DATA="$OUT_DIR/DerivedData"
-          APP_PATH="$DERIVED_DATA/Build/Products/Release/Helm.app"
-          ZIP_PATH="$OUT_DIR/Helm-${TAG_NAME}-mas-unsigned.zip"
+          OUTPUT_ROOT="$PWD/build/all-variants" \
+          VARIANT="${{ matrix.variant }}" \
+          TAG_NAME="$TAG_NAME" \
+          INCLUDE_PKG="${{ matrix.include_pkg }}" \
+          scripts/release/build_unsigned_variant.sh >> "$GITHUB_OUTPUT"
 
-          HELM_CHANNEL_PROFILE=app_store \
-          apps/macos-ui/scripts/render_channel_xcconfig.sh "$PWD/apps/macos-ui/Generated/HelmChannel.xcconfig"
-
-          HELM_CHANNEL_PROFILE=app_store \
-          xcodebuild \
-            -project apps/macos-ui/Helm.xcodeproj \
-            -scheme Helm \
-            -configuration Release \
-            -destination "generic/platform=macOS" \
-            -derivedDataPath "$DERIVED_DATA" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=- \
-            build
-
-          mkdir -p "$OUT_DIR"
-          /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"
-
-      - name: Upload MAS artifact to workflow run
-        uses: actions/upload-artifact@v4
+      - name: Upload ${{ matrix.variant }} artifacts to workflow run
+        if: ${{ matrix.variant == 'business' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: helm-mas-${{ env.TAG_NAME }}
+          name: ${{ matrix.artifact_prefix }}-${{ env.TAG_NAME }}
           path: |
-            build/all-variants/mas/Helm-${{ env.TAG_NAME }}-mas-unsigned.zip
+            ${{ steps.build_variant.outputs.zip_path }}
+            ${{ steps.build_variant.outputs.pkg_path }}
 
-      - name: Upload MAS artifact to GitHub release
-        if: ${{ inputs.upload_auxiliary_assets }}
+      - name: Upload ${{ matrix.variant }} artifact to workflow run
+        if: ${{ matrix.variant != 'business' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ matrix.artifact_prefix }}-${{ env.TAG_NAME }}
+          path: ${{ steps.build_variant.outputs.zip_path }}
+
+      - name: Upload ${{ matrix.variant }} artifacts to GitHub release
+        if: ${{ inputs.upload_auxiliary_assets && matrix.variant == 'business' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           gh release upload "$TAG_NAME" \
-            "build/all-variants/mas/Helm-${TAG_NAME}-mas-unsigned.zip#Helm-${TAG_NAME}-mas-unsigned.zip" \
+            "${{ steps.build_variant.outputs.zip_path }}#Helm-${TAG_NAME}-${{ matrix.variant }}-unsigned.zip" \
+            "${{ steps.build_variant.outputs.pkg_path }}#Helm-${TAG_NAME}-${{ matrix.variant }}-unsigned.pkg" \
             --clobber
 
-  setapp:
-    needs: ensure-release
-    runs-on: macos-14
-    env:
-      TAG_NAME: ${{ inputs.tag }}
-      UPLOAD_AUXILIARY: ${{ inputs.upload_auxiliary_assets }}
-    steps:
-      - name: Checkout tag
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ env.TAG_NAME }}
-
-      - name: Install Rust toolchain (universal targets)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
-
-      - name: Build Setapp profile app (unsigned)
-        run: |
-          set -euo pipefail
-          OUT_DIR="$PWD/build/all-variants/setapp"
-          DERIVED_DATA="$OUT_DIR/DerivedData"
-          APP_PATH="$DERIVED_DATA/Build/Products/Release/Helm.app"
-          ZIP_PATH="$OUT_DIR/Helm-${TAG_NAME}-setapp-unsigned.zip"
-
-          HELM_CHANNEL_PROFILE=setapp \
-          apps/macos-ui/scripts/render_channel_xcconfig.sh "$PWD/apps/macos-ui/Generated/HelmChannel.xcconfig"
-
-          HELM_CHANNEL_PROFILE=setapp \
-          xcodebuild \
-            -project apps/macos-ui/Helm.xcodeproj \
-            -scheme Helm \
-            -configuration Release \
-            -destination "generic/platform=macOS" \
-            -derivedDataPath "$DERIVED_DATA" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=- \
-            build
-
-          mkdir -p "$OUT_DIR"
-          /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"
-
-      - name: Upload Setapp artifact to workflow run
-        uses: actions/upload-artifact@v4
-        with:
-          name: helm-setapp-${{ env.TAG_NAME }}
-          path: |
-            build/all-variants/setapp/Helm-${{ env.TAG_NAME }}-setapp-unsigned.zip
-
-      - name: Upload Setapp artifact to GitHub release
-        if: ${{ inputs.upload_auxiliary_assets }}
+      - name: Upload ${{ matrix.variant }} artifact to GitHub release
+        if: ${{ inputs.upload_auxiliary_assets && matrix.variant != 'business' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           gh release upload "$TAG_NAME" \
-            "build/all-variants/setapp/Helm-${TAG_NAME}-setapp-unsigned.zip#Helm-${TAG_NAME}-setapp-unsigned.zip" \
-            --clobber
-
-  business:
-    needs: ensure-release
-    runs-on: macos-14
-    env:
-      TAG_NAME: ${{ inputs.tag }}
-      UPLOAD_AUXILIARY: ${{ inputs.upload_auxiliary_assets }}
-    steps:
-      - name: Checkout tag
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ env.TAG_NAME }}
-
-      - name: Install Rust toolchain (universal targets)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
-
-      - name: Build business profile app (unsigned)
-        run: |
-          set -euo pipefail
-          OUT_DIR="$PWD/build/all-variants/business"
-          DERIVED_DATA="$OUT_DIR/DerivedData"
-          APP_PATH="$DERIVED_DATA/Build/Products/Release/Helm.app"
-          ZIP_PATH="$OUT_DIR/Helm-${TAG_NAME}-business-unsigned.zip"
-          PKG_ROOT="$OUT_DIR/pkgroot"
-          PKG_PATH="$OUT_DIR/Helm-${TAG_NAME}-business-unsigned.pkg"
-          VERSION="${TAG_NAME#v}"
-
-          HELM_CHANNEL_PROFILE=fleet \
-          apps/macos-ui/scripts/render_channel_xcconfig.sh "$PWD/apps/macos-ui/Generated/HelmChannel.xcconfig"
-
-          HELM_CHANNEL_PROFILE=fleet \
-          xcodebuild \
-            -project apps/macos-ui/Helm.xcodeproj \
-            -scheme Helm \
-            -configuration Release \
-            -destination "generic/platform=macOS" \
-            -derivedDataPath "$DERIVED_DATA" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=- \
-            build
-
-          mkdir -p "$OUT_DIR"
-          /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"
-
-          rm -rf "$PKG_ROOT"
-          mkdir -p "$PKG_ROOT/Applications"
-          cp -R "$APP_PATH" "$PKG_ROOT/Applications/Helm.app"
-
-          pkgbuild \
-            --root "$PKG_ROOT" \
-            --identifier "dev.helmapp.helm.business" \
-            --version "$VERSION" \
-            "$PKG_PATH"
-
-      - name: Upload business artifacts to workflow run
-        uses: actions/upload-artifact@v4
-        with:
-          name: helm-business-${{ env.TAG_NAME }}
-          path: |
-            build/all-variants/business/Helm-${{ env.TAG_NAME }}-business-unsigned.zip
-            build/all-variants/business/Helm-${{ env.TAG_NAME }}-business-unsigned.pkg
-
-      - name: Upload business artifacts to GitHub release
-        if: ${{ inputs.upload_auxiliary_assets }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh release upload "$TAG_NAME" \
-            "build/all-variants/business/Helm-${TAG_NAME}-business-unsigned.zip#Helm-${TAG_NAME}-business-unsigned.zip" \
-            "build/all-variants/business/Helm-${TAG_NAME}-business-unsigned.pkg#Helm-${TAG_NAME}-business-unsigned.pkg" \
+            "${{ steps.build_variant.outputs.zip_path }}#Helm-${TAG_NAME}-${{ matrix.variant }}-unsigned.zip" \
             --clobber

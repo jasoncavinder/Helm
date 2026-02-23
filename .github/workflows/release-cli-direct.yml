@@ -17,8 +17,7 @@ on:
         type: string
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: release-cli-${{ inputs.tag || github.event.release.tag_name || github.event.inputs.tag }}
@@ -27,17 +26,57 @@ concurrency:
 jobs:
   build-and-publish-cli:
     runs-on: macos-14
+    permissions:
+      contents: write
+      pull-requests: write
     env:
       TAG_NAME: ${{ inputs.tag || github.event.release.tag_name || github.event.inputs.tag }}
+      EVENT_NAME: ${{ github.event_name }}
+      EVENT_RELEASE_PRERELEASE: ${{ github.event.release.prerelease || '' }}
 
     steps:
+      - name: Resolve release channel and publish target
+        run: |
+          set -euo pipefail
+
+          if [ -z "${TAG_NAME}" ]; then
+            echo "::error::TAG_NAME is empty."
+            exit 1
+          fi
+
+          if [[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            CHANNEL="stable"
+            TARGET_PATH="web/public/updates/cli/latest.json"
+          elif [[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+            CHANNEL="rc"
+            TARGET_PATH="web/public/updates/cli/latest-rc.json"
+          else
+            echo "::error::Unsupported tag format '${TAG_NAME}'. Expected vX.Y.Z or vX.Y.Z-rc.N"
+            exit 1
+          fi
+
+          if [ "$EVENT_NAME" = "release" ]; then
+            if [ "$CHANNEL" = "stable" ] && [ "${EVENT_RELEASE_PRERELEASE}" = "true" ]; then
+              echo "::error::Release event is marked prerelease, but tag '${TAG_NAME}' resolved to stable."
+              exit 1
+            fi
+            if [ "$CHANNEL" = "rc" ] && [ "${EVENT_RELEASE_PRERELEASE}" != "true" ]; then
+              echo "::error::RC tag '${TAG_NAME}' must be published from a prerelease GitHub release."
+              exit 1
+            fi
+          fi
+
+          echo "CLI_RELEASE_CHANNEL=${CHANNEL}" >> "$GITHUB_ENV"
+          echo "CLI_UPDATE_TARGET_PATH=${TARGET_PATH}" >> "$GITHUB_ENV"
+          echo "Resolved channel=${CHANNEL} target=${TARGET_PATH}"
+
       - name: Checkout tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ env.TAG_NAME }}
 
       - name: Install Rust toolchain (macOS targets)
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
@@ -97,6 +136,7 @@ jobs:
 
           payload = {
               "version": version,
+              "channel": os.environ["CLI_RELEASE_CHANNEL"],
               "published_at": datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
               "downloads": {
                   "universal": entry("UNIVERSAL_NAME", "UNIVERSAL_SHA"),
@@ -110,8 +150,25 @@ jobs:
               f.write("\n")
           PY
 
+      - name: Verify CLI binary version matches tag
+        env:
+          ASSET_DIR: ${{ github.workspace }}/build/cli-release
+        run: |
+          set -euo pipefail
+          EXPECTED_VERSION="${TAG_NAME#v}"
+          ACTUAL_VERSION="$("$ASSET_DIR/helm-cli-${TAG_NAME}-darwin-universal" --json --version | python3 -c 'import json,sys; payload=json.load(sys.stdin); print((payload.get("data") or {}).get("version",""))')"
+          if [ -z "$ACTUAL_VERSION" ]; then
+            echo "::error::Unable to determine CLI version from built artifact."
+            exit 1
+          fi
+          if [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "::error::CLI version mismatch: expected ${EXPECTED_VERSION}, got ${ACTUAL_VERSION}"
+            exit 1
+          fi
+          echo "CLI version matches tag: ${ACTUAL_VERSION}"
+
       - name: Upload CLI artifacts to workflow run
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: helm-cli-${{ env.TAG_NAME }}
           path: |
@@ -144,9 +201,10 @@ jobs:
           set -euo pipefail
 
           SOURCE_JSON="$ASSET_DIR/latest.json"
-          TARGET_PATH="web/public/updates/cli/latest.json"
+          TARGET_PATH="${CLI_UPDATE_TARGET_PATH}"
           PUBLISH_DIR="$RUNNER_TEMP/cli-updates-publish"
-          PUBLISH_BRANCH="chore/publish-cli-updates-${TAG_NAME}"
+          PUBLISH_BRANCH="chore/publish-cli-updates-${TAG_NAME}-${CLI_RELEASE_CHANNEL}"
+          TARGET_ENDPOINT="https://helmapp.dev/updates/cli/$(basename "$TARGET_PATH")"
 
           git clone --depth 1 --branch main "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$PUBLISH_DIR"
           mkdir -p "$PUBLISH_DIR/$(dirname "$TARGET_PATH")"
@@ -181,9 +239,10 @@ jobs:
 
           It publishes CLI direct-update metadata for \`${TAG_NAME}\`:
           - \`${TARGET_PATH}\`
+          - channel: \`${CLI_RELEASE_CHANNEL}\`
 
           Merge this PR to update:
-          - \`https://helmapp.dev/updates/cli/latest.json\`
+          - \`${TARGET_ENDPOINT}\`
           EOF
           )" 2>&1)" || {
               echo "::error::Unable to create CLI publish PR via GitHub Actions token."
@@ -243,7 +302,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          TARGET_PATH="web/public/updates/cli/latest.json"
+          TARGET_PATH="${CLI_UPDATE_TARGET_PATH}"
           VERIFY_DIR="$RUNNER_TEMP/cli-updates-verify-main"
           EXPECTED_VERSION="${TAG_NAME#v}"
 

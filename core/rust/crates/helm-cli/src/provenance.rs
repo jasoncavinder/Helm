@@ -1,14 +1,20 @@
 use std::env;
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 const DEFAULT_MARKER_RELATIVE_PATH: &str = ".config/helm/install.json";
 const DEFAULT_BREW_PREFIXES: [&str; 2] = ["/opt/homebrew", "/usr/local"];
 const MACPORTS_PREFIX: &str = "/opt/local";
 const APP_BUNDLE_SEGMENT: &str = ".app/Contents/";
+const INSTALL_MARKER_SCHEMA_JSON: &str =
+    include_str!("../../../../../docs/contracts/install-marker.schema.json");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstallChannel {
@@ -160,8 +166,9 @@ pub fn read_install_marker(path: &Path) -> Option<InstallMarker> {
     })
 }
 
-#[allow(dead_code)]
 pub fn write_install_marker(path: &Path, marker: &InstallMarker) -> Result<(), String> {
+    validate_install_marker(marker)?;
+    reject_symlink_marker_path(path)?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| {
             format!(
@@ -170,14 +177,185 @@ pub fn write_install_marker(path: &Path, marker: &InstallMarker) -> Result<(), S
             )
         })?;
     }
+    reject_symlink_marker_path(path)?;
+
     let payload = serde_json::to_string_pretty(marker)
         .map_err(|error| format!("failed to serialize install marker: {error}"))?;
-    fs::write(path, payload).map_err(|error| {
+    let temp_path = marker_temp_path(path);
+    let mut temp_file = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .mode(0o600)
+        .open(&temp_path)
+        .map_err(|error| {
+            format!(
+                "failed to create temporary install marker '{}': {error}",
+                temp_path.display()
+            )
+        })?;
+    temp_file.write_all(payload.as_bytes()).map_err(|error| {
         format!(
-            "failed to write install marker '{}': {error}",
+            "failed to write temporary install marker '{}': {error}",
+            temp_path.display()
+        )
+    })?;
+    temp_file.sync_all().map_err(|error| {
+        format!(
+            "failed to flush temporary install marker '{}': {error}",
+            temp_path.display()
+        )
+    })?;
+
+    if let Err(error) = fs::rename(&temp_path, path) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(format!(
+            "failed to atomically replace install marker '{}': {error}",
             path.display()
+        ));
+    }
+
+    sync_parent_directory(path)?;
+    Ok(())
+}
+
+fn marker_temp_path(path: &Path) -> PathBuf {
+    let suffix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|value| value.as_nanos())
+        .unwrap_or(0);
+    let file_name = path
+        .file_name()
+        .map(|value| value.to_string_lossy().to_string())
+        .unwrap_or_else(|| "install.json".to_string());
+    path.with_file_name(format!(".{file_name}.tmp-{suffix}"))
+}
+
+fn reject_symlink_marker_path(path: &Path) -> Result<(), String> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(format!(
+                "failed to read install marker metadata '{}': {error}",
+                path.display()
+            ));
+        }
+    };
+    if metadata.file_type().is_symlink() {
+        return Err(format!(
+            "refusing to write install marker to symlink path '{}'",
+            path.display()
+        ));
+    }
+    Ok(())
+}
+
+fn sync_parent_directory(path: &Path) -> Result<(), String> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let directory = OpenOptions::new()
+        .read(true)
+        .open(parent)
+        .map_err(|error| {
+            format!(
+                "failed to open install marker parent directory '{}': {error}",
+                parent.display()
+            )
+        })?;
+    directory.sync_all().map_err(|error| {
+        format!(
+            "failed to sync install marker parent directory '{}': {error}",
+            parent.display()
         )
     })
+}
+
+#[cfg(test)]
+pub fn install_marker_schema_json() -> &'static str {
+    INSTALL_MARKER_SCHEMA_JSON
+}
+
+pub fn validate_install_marker(marker: &InstallMarker) -> Result<(), String> {
+    let value = serde_json::to_value(marker)
+        .map_err(|error| format!("failed to encode install marker for validation: {error}"))?;
+    validate_install_marker_value(&value)
+}
+
+pub fn validate_install_marker_value(value: &Value) -> Result<(), String> {
+    let schema: Value = serde_json::from_str(INSTALL_MARKER_SCHEMA_JSON)
+        .map_err(|error| format!("invalid install marker schema JSON: {error}"))?;
+    let schema_object = schema
+        .as_object()
+        .ok_or_else(|| "install marker schema must be a JSON object".to_string())?;
+    let marker = value
+        .as_object()
+        .ok_or_else(|| "install marker payload must be a JSON object".to_string())?;
+    let properties = schema_object
+        .get("properties")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "install marker schema is missing object 'properties'".to_string())?;
+
+    let additional_properties = schema_object
+        .get("additionalProperties")
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    if !additional_properties {
+        for key in marker.keys() {
+            if !properties.contains_key(key) {
+                return Err(format!("install marker has unexpected property '{key}'"));
+            }
+        }
+    }
+
+    if let Some(required) = schema_object.get("required").and_then(Value::as_array) {
+        for key in required {
+            let Some(key) = key.as_str() else {
+                return Err("install marker schema has non-string required key".to_string());
+            };
+            if !marker.contains_key(key) {
+                return Err(format!(
+                    "install marker is missing required property '{key}'"
+                ));
+            }
+        }
+    }
+
+    for (name, property_schema) in properties {
+        let Some(property_schema) = property_schema.as_object() else {
+            continue;
+        };
+        let Some(value) = marker.get(name) else {
+            continue;
+        };
+        if value.is_null() {
+            continue;
+        }
+        let property_type = property_schema.get("type").and_then(Value::as_str);
+        if property_type == Some("string") {
+            let string_value = value
+                .as_str()
+                .ok_or_else(|| format!("install marker property '{name}' must be a string"))?;
+            if let Some(min_length) = property_schema.get("minLength").and_then(Value::as_u64)
+                && (string_value.chars().count() as u64) < min_length
+            {
+                return Err(format!(
+                    "install marker property '{name}' must be at least {min_length} characters"
+                ));
+            }
+            if let Some(enum_values) = property_schema.get("enum").and_then(Value::as_array)
+                && !enum_values
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .any(|candidate| candidate == string_value)
+            {
+                return Err(format!(
+                    "install marker property '{name}' has unsupported value '{}'",
+                    string_value
+                ));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 pub fn recommended_action(channel: InstallChannel) -> &'static str {
@@ -359,6 +537,20 @@ mod tests {
     }
 
     #[test]
+    fn install_marker_schema_is_valid_json() {
+        let schema: Value =
+            serde_json::from_str(install_marker_schema_json()).expect("schema json parses");
+        let required = schema
+            .get("required")
+            .and_then(Value::as_array)
+            .expect("schema required array");
+        assert!(required.iter().any(|value| value == "channel"));
+        assert!(required.iter().any(|value| value == "artifact"));
+        assert!(required.iter().any(|value| value == "installed_at"));
+        assert!(required.iter().any(|value| value == "update_policy"));
+    }
+
+    #[test]
     fn read_install_marker_accepts_valid_json() {
         let path = temp_file_path("provenance-valid");
         let payload = r#"{
@@ -393,6 +585,51 @@ mod tests {
         assert!(marker.is_none());
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn write_install_marker_persists_schema_compliant_payload() {
+        let path = temp_file_path("provenance-write-valid");
+        let marker = InstallMarker {
+            channel: "direct-script".to_string(),
+            artifact: "helm-cli".to_string(),
+            installed_at: "2026-02-23T00:00:00Z".to_string(),
+            update_policy: "self".to_string(),
+            version: Some("0.17.2".to_string()),
+        };
+
+        write_install_marker(&path, &marker).expect("writes schema-valid marker");
+        let payload = fs::read_to_string(&path).expect("reads marker");
+        let value: Value = serde_json::from_str(&payload).expect("marker json parses");
+        validate_install_marker_value(&value).expect("marker validates against schema");
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn write_install_marker_rejects_symlink_target() {
+        let dir = temp_file_path("provenance-symlink-dir");
+        fs::create_dir_all(&dir).expect("creates temp dir");
+        let target = dir.join("target-install.json");
+        fs::write(&target, "{}").expect("writes target marker");
+        let symlink_path = dir.join("install.json");
+        std::os::unix::fs::symlink(&target, &symlink_path).expect("creates symlink marker path");
+
+        let marker = InstallMarker {
+            channel: "direct-script".to_string(),
+            artifact: "helm-cli".to_string(),
+            installed_at: "2026-02-23T00:00:00Z".to_string(),
+            update_policy: "self".to_string(),
+            version: Some("0.17.2".to_string()),
+        };
+
+        let error = write_install_marker(&symlink_path, &marker)
+            .expect_err("symlink marker path must be rejected");
+        assert!(error.contains("symlink"));
+
+        let _ = fs::remove_file(symlink_path);
+        let _ = fs::remove_file(target);
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

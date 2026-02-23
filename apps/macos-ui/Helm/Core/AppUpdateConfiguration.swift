@@ -16,6 +16,31 @@ enum HelmDistributionChannel: String {
     }
 }
 
+enum HelmUpdateAuthority: String {
+    case sparkle = "sparkle"
+    case appStore = "app_store"
+    case setapp = "setapp"
+    case adminControlled = "admin_controlled"
+    case unavailable = "unavailable"
+}
+
+extension HelmDistributionChannel {
+    var updateAuthority: HelmUpdateAuthority {
+        switch self {
+        case .developerID:
+            return .sparkle
+        case .appStore:
+            return .appStore
+        case .setapp:
+            return .setapp
+        case .fleet:
+            return .adminControlled
+        case .unknown:
+            return .unavailable
+        }
+    }
+}
+
 enum AppUpdateEligibilityFailure: String {
     case channelNotSupported = "channel_not_supported"
     case sparkleDisabled = "sparkle_disabled"
@@ -166,6 +191,10 @@ struct AppUpdateConfiguration {
 
     var canUseSparkle: Bool {
         eligibilityFailureReason == nil
+    }
+
+    var updateAuthority: HelmUpdateAuthority {
+        channel.updateAuthority
     }
 
     private var hasConsistentBundleVersionMetadata: Bool {
