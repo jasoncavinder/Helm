@@ -165,7 +165,6 @@ Capabilities:
 
 - Dependency graph resolution
 - Plugin marketplace
-- CLI companion tool
 - Telemetry
 - Cloud sync
 - Centrally hosted enterprise policy control plane
