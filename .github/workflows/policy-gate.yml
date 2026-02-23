@@ -42,7 +42,7 @@ jobs:
 
           is_release_publish_path() {
             case "$1" in
-              web/public/updates/appcast.xml|web/public/updates/release-notes/*) return 0 ;;
+              web/public/updates/appcast.xml|web/public/updates/release-notes/*|web/public/updates/cli/latest.json) return 0 ;;
               *) return 1 ;;
             esac
           }
@@ -69,12 +69,17 @@ jobs:
               if [[ ! "$HEAD_REF" =~ ^(dev|docs|web)$ ]] \
                 && [[ ! "$HEAD_REF" =~ ^hotfix/ ]] \
                 && [[ ! "$HEAD_REF" =~ ^release/ ]] \
-                && [[ ! "$HEAD_REF" =~ ^chore/publish-updates- ]]; then
-                report_error "PRs into main must come from dev, docs, web, hotfix/*, release/*, or chore/publish-updates-*."
+                && [[ ! "$HEAD_REF" =~ ^chore/publish-updates- ]] \
+                && [[ ! "$HEAD_REF" =~ ^chore/publish-cli-updates- ]]; then
+                report_error "PRs into main must come from dev, docs, web, hotfix/*, release/*, chore/publish-updates-*, or chore/publish-cli-updates-*."
               fi
 
               if [[ "$HEAD_REF" =~ ^chore/publish-updates- ]] && [[ "$release_publish_only" != "true" ]]; then
-                report_error "chore/publish-updates-* branches may only change web/public/updates/appcast.xml and web/public/updates/release-notes/*."
+                report_error "chore/publish-updates-* branches may only change web/public/updates/appcast.xml, web/public/updates/release-notes/*, and web/public/updates/cli/latest.json."
+              fi
+
+              if [[ "$HEAD_REF" =~ ^chore/publish-cli-updates- ]] && [[ "$release_publish_only" != "true" ]]; then
+                report_error "chore/publish-cli-updates-* branches may only change web/public/updates/cli/latest.json (plus release publish paths)."
               fi
               ;;
             dev)
