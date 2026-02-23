@@ -1,0 +1,28 @@
+---
+title: "Helm v0.17.3 Released"
+description: "v0.17.3 is now live with CLI parity hardening, provenance/update safety guardrails, and release-channel reliability improvements."
+summary: "A quick release note for v0.17.3 and what changed in this stable patch."
+publishDate: 2026-02-23
+author: Helm Team
+sidebar:
+  label: "v0.17.3 release"
+---
+
+Helm `v0.17.3` is now released on `main`.
+
+This stable patch follows `v0.17.2` and focuses on CLI contract hardening, self-update safety, and release/distribution guardrails.
+
+## Highlights
+
+- `helm doctor` is now a first-class diagnostics alias with provenance-focused default output.
+- CLI self-update now consistently enforces channel policy and direct-script safety constraints.
+- Install marker and distribution profile contracts are now machine-readable and validated in CI.
+- Shared GUI+CLI coordinator authority paths were hardened for mutation and cancellation consistency.
+- Machine-mode behavior (`--json` / `--ndjson`) is now consistent across top-level help/version/completion/error flows.
+
+## Release links
+
+- [GitHub Release: v0.17.3](https://github.com/jasoncavinder/Helm/releases/tag/v0.17.3)
+- [Changelog](https://helmapp.dev/changelog/)
+
+If you run into issues, please file a report with environment details and reproduction steps in [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
