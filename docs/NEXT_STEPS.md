@@ -775,6 +775,7 @@ Delivered:
 
 - New "Support & Feedback" SettingsCard in control-center Settings surface
 - 5 action buttons: Support Helm, Send Feedback, Report a Bug, Request a Feature, Copy Diagnostics
+- Support Helm destinations include all six configured channels: GitHub Sponsors, Patreon, Buy Me a Coffee, Ko-fi, PayPal, Venmo
 - "Include Diagnostics" toggle (default OFF): copies diagnostics to clipboard before opening GitHub issue template
 - Transient "Copied!" confirmation with animated opacity transition
 - `HelmSupport` updated with template-specific URLs (`reportBug`, `requestFeature` methods)
@@ -790,7 +791,7 @@ Delivered:
 
 Delivered:
 
-- `.github/FUNDING.yml` created for GitHub Sponsors button
+- `.github/FUNDING.yml` created for GitHub Sponsors and Patreon support buttons (plus direct support links for Buy Me a Coffee, Ko-fi, PayPal, and Venmo)
 - README.md updated with working sponsor link and issue template links
 - CURRENT_STATE.md, NEXT_STEPS.md updated for rc.2
 

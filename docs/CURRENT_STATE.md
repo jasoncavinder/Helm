@@ -612,14 +612,14 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
 
 ### Support & Feedback Entry Points
 - New "Support & Feedback" card added to Settings surface with 5 actions:
-  - Support Helm (opens GitHub Sponsors)
+  - Support Helm (opens all six support channels: GitHub Sponsors, Patreon, Buy Me a Coffee, Ko-fi, PayPal, Venmo)
   - Report a Bug (opens GitHub issue template with optional diagnostics copy)
   - Request a Feature (opens GitHub issue template with optional diagnostics copy)
   - Send Feedback (opens mailto: with structured feedback form)
   - Copy Diagnostics (copies system info to clipboard with transient confirmation)
 - "Include Diagnostics" toggle: when enabled, Report a Bug and Request a Feature copy diagnostics to clipboard before opening the issue template
 - All 9 new L10n keys translated across all 6 locales (en, es, de, fr, pt-BR, ja)
-- `.github/FUNDING.yml` created for GitHub Sponsors integration
+- `.github/FUNDING.yml` created for GitHub Sponsors and Patreon integration (plus direct support links for Buy Me a Coffee, Ko-fi, PayPal, and Venmo)
 - README.md updated with working sponsor and issue template links
 
 ---

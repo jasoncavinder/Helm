@@ -264,11 +264,11 @@ Stable `0.17.0` consolidates all `rc.1` through `rc.5` deliveries and includes f
 ## 0.13.0-rc.2 — 2026-02-19
 
 ### Added
-- "Support & Feedback" card in control-center Settings with 5 action buttons: Support Helm (GitHub Sponsors), Report a Bug, Request a Feature, Send Feedback (mailto), Copy Diagnostics
+- "Support & Feedback" card in control-center Settings with 5 action buttons: Support Helm (GitHub Sponsors, Patreon, Buy Me a Coffee, Ko-fi, PayPal, Venmo), Report a Bug, Request a Feature, Send Feedback (mailto), Copy Diagnostics
 - "Include Diagnostics" toggle that copies diagnostics to clipboard before opening GitHub issue templates
 - Transient "Copied!" confirmation with animated opacity transition
-- "Support Helm" submenu in right-click status menu with GitHub Sponsors and Patreon items
-- `.github/FUNDING.yml` for GitHub Sponsors and Patreon integration
+- "Support Helm" destinations now include all six configured channels (GitHub Sponsors, Patreon, Buy Me a Coffee, Ko-fi, PayPal, Venmo)
+- `.github/FUNDING.yml` for GitHub Sponsors and Patreon integration, with direct support links for Buy Me a Coffee, Ko-fi, PayPal, and Venmo
 - 11 new L10n keys across all 6 locales
 
 ### Changed
