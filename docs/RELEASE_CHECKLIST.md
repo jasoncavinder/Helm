@@ -46,6 +46,7 @@ This checklist is required before creating a release tag on `main`.
   - `Release Publish Verify`
   - `Appcast Drift Guard`
   - `CLI Update Metadata Drift Guard`
+- [ ] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
 ## v0.17.3 (Stable Patch Release Gate)
 

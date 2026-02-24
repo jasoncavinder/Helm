@@ -33,6 +33,8 @@ jobs:
       TAG_NAME: ${{ inputs.tag || github.event.release.tag_name || github.event.inputs.tag }}
       EVENT_NAME: ${{ github.event_name }}
       EVENT_RELEASE_PRERELEASE: ${{ github.event.release.prerelease || '' }}
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
 
     steps:
       - name: Resolve release channel and publish target
@@ -68,7 +70,7 @@ jobs:
 
           echo "CLI_RELEASE_CHANNEL=${CHANNEL}" >> "$GITHUB_ENV"
           echo "CLI_UPDATE_TARGET_PATH=${TARGET_PATH}" >> "$GITHUB_ENV"
-          echo "Resolved channel=${CHANNEL} target=${TARGET_PATH}"
+          echo "[preflight] Resolved channel=${CHANNEL} target=${TARGET_PATH}"
 
       - name: Initialize release publication state
         run: |
@@ -98,6 +100,7 @@ jobs:
           ASSET_DIR: ${{ github.workspace }}/build/cli-release
         run: |
           set -euo pipefail
+          echo "[build] Building CLI binaries for ${TAG_NAME}"
 
           cd core/rust
           cargo build -p helm-cli --release --target aarch64-apple-darwin
@@ -178,7 +181,7 @@ jobs:
             echo "::error::CLI version mismatch: expected ${EXPECTED_VERSION}, got ${ACTUAL_VERSION}"
             exit 1
           fi
-          echo "CLI version matches tag: ${ACTUAL_VERSION}"
+          echo "[verify] CLI version matches tag: ${ACTUAL_VERSION}"
 
       - name: Upload CLI artifacts to workflow run
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -226,7 +229,7 @@ jobs:
 
           cd "$PUBLISH_DIR"
           if [ -z "$(git status --porcelain -- "$TARGET_PATH")" ]; then
-            echo "CLI latest metadata is already current on main."
+            echo "[publish] CLI latest metadata is already current on main."
             echo "MAIN_METADATA_SYNCED=yes" >> "$GITHUB_ENV"
             exit 0
           fi
@@ -245,7 +248,7 @@ jobs:
           EXISTING_PR="$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$PUBLISH_BRANCH" --state open --json number --jq '.[0].number // empty' || true)"
           if [ -n "$EXISTING_PR" ]; then
             PR_NUMBER="$EXISTING_PR"
-            echo "PR already exists for $PUBLISH_BRANCH (#$PR_NUMBER)."
+            echo "[publish] PR already exists for $PUBLISH_BRANCH (#$PR_NUMBER)."
           else
             PR_URL="$(gh pr create \
               --repo "$GITHUB_REPOSITORY" \
@@ -277,7 +280,7 @@ jobs:
               exit 1
             fi
 
-            echo "Created CLI publish PR #${PR_NUMBER}: ${PR_URL}"
+            echo "[publish] Created CLI publish PR #${PR_NUMBER}: ${PR_URL}"
           fi
 
           PR_URL="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json url --jq '.url')"
@@ -288,7 +291,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
           if gh pr merge --repo "$GITHUB_REPOSITORY" --squash --auto "$PR_NUMBER"; then
-            echo "Auto-merge enabled for CLI publish PR #${PR_NUMBER}."
+            echo "[publish] Auto-merge enabled for CLI publish PR #${PR_NUMBER}."
           else
             echo "::warning::Unable to enable auto-merge for CLI publish PR #${PR_NUMBER}."
             echo "::warning::Manual merge may be required."
@@ -299,7 +302,7 @@ jobs:
           for i in {1..40}; do
             read -r PR_STATE MERGED_AT PR_URL <<<"$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json state,mergedAt,url --jq '[.state, (.mergedAt // ""), .url] | @tsv')"
             if [ -n "$MERGED_AT" ]; then
-              echo "CLI publish PR #${PR_NUMBER} merged at ${MERGED_AT}."
+              echo "[publish] CLI publish PR #${PR_NUMBER} merged at ${MERGED_AT}."
               break
             fi
 
@@ -309,7 +312,7 @@ jobs:
               exit 1
             fi
 
-            echo "Waiting for CLI publish PR #${PR_NUMBER} to merge (attempt ${i}/40)..."
+            echo "[publish] Waiting for CLI publish PR #${PR_NUMBER} to merge (attempt ${i}/40)..."
             sleep 30
           done
 
@@ -383,7 +386,7 @@ jobs:
             echo "PUBLISH_FOLLOWUP_REQUIRED=no" >> "$GITHUB_ENV"
           fi
           echo "MAIN_METADATA_SYNCED=yes" >> "$GITHUB_ENV"
-          echo "Verified CLI latest metadata on main matches release tag: ${ACTUAL_VERSION}"
+          echo "[verify] Verified CLI latest metadata on main matches release tag: ${ACTUAL_VERSION}"
 
       - name: Release publication summary
         if: ${{ always() }}
@@ -414,5 +417,5 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "${publish_followup_required}" = "yes" ]; then
-            echo "::notice::Release artifacts published, publish PR is open, and follow-up merge+rerun is required."
+            echo "::notice::[verify] Release artifacts published, publish PR is open, and follow-up merge+rerun is required."
           fi

@@ -157,6 +157,13 @@ or the wrapper form:
 scripts/release/runbook.sh prepare --tag vX.Y.Z
 ```
 
+If your shell prints locale warnings, normalize locale env before release commands:
+
+```bash
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+```
+
 Expected outcome:
 
 - zero preflight errors
@@ -285,6 +292,11 @@ Outcome semantics:
 - hard failures are retained for build/signing/notarization/upload/PR-creation faults
 - if publication PR automation succeeds but PR merge is still pending, the run can complete with follow-up required (non-red terminal state)
 - when follow-up is required: merge the publish PR and rerun the workflow to confirm `Main metadata synced: yes`
+- release logs now use phase prefixes to simplify triage:
+  - `[preflight]` for auth/scope/policy setup checks
+  - `[build]` for compile/package/notarization execution
+  - `[publish]` for release asset and publish-PR operations
+  - `[verify]` for metadata consistency and final checkpoint output
 
 ### 5.6 Verify Publish-PR Merge Checkpoint
 
@@ -336,6 +348,19 @@ Notes:
 - MAS/Setapp/business orchestration shares one matrix-driven build path and one helper (`scripts/release/build_unsigned_variant.sh`) keyed by `docs/contracts/distribution-profiles.json`.
 - MAS/Setapp/business outputs are intentionally unsigned in the baseline orchestration workflow.
 - signed store/vendor pipelines remain a separate follow-up.
+
+### 5.8 Promote Recurring Release Friction Into Permanent Docs
+
+`TMP_RELEASE_FRICTION` is temporary capture only and should not be committed.
+
+Promotion path after each release:
+
+1. append concrete friction entries during execution (`symptom`, `root cause`, `workaround`, `date`, `run/pr reference`)
+2. mark entries as recurring when they repeat or cause release delay
+3. promote recurring items into durable docs:
+   - policy/process decisions -> `docs/DECISIONS.md`
+   - operator/runbook/checklist updates -> this file and `docs/RELEASE_CHECKLIST.md`
+4. link the fixing PR/commit in the promoted entry and close the temporary friction item
 
 ---
 

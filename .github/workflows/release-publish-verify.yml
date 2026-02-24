@@ -24,6 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       EXPECTED_TAG: ${{ github.event.inputs.tag || '' }}
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -149,7 +151,7 @@ jobs:
             echo "- Stable release notes file: ${RELEASE_NOTES_FILE}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          echo "Stable publish metadata is consistent for ${STABLE_TAG}."
+          echo "[verify] Stable publish metadata is consistent for ${STABLE_TAG}."
 
       - name: Verify prerelease CLI metadata maps to a prerelease release
         env:
@@ -159,7 +161,7 @@ jobs:
 
           RC_CLI_FILE="web/public/updates/cli/latest-rc.json"
           if [ ! -f "$RC_CLI_FILE" ]; then
-            echo "No rc metadata file found; skipping prerelease metadata verification."
+            echo "[verify] No rc metadata file found; skipping prerelease metadata verification."
             exit 0
           fi
 
@@ -214,4 +216,4 @@ jobs:
             echo "- RC metadata tag: ${RC_TAG}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          echo "Prerelease CLI metadata is consistent for ${RC_TAG}."
+          echo "[verify] Prerelease CLI metadata is consistent for ${RC_TAG}."
