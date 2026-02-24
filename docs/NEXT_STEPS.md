@@ -11,17 +11,17 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-0.17.4 release execution
+0.17.4 release publication
 ```
 
 Focus:
-- complete `v0.17.4` validation gates and promotion sequencing (`dev`/`docs`/`web` -> `main`)
-- monitor release-channel publication outputs (appcast, CLI metadata, website release content)
-- begin planning and branch setup for `0.18.x` local security groundwork after the stable cut
+- complete stable publication for `v0.17.4` (tag, release, appcast/CLI metadata publish PRs, drift checks)
+- verify website and installer endpoints after publication (`/cli/install.sh`, `/updates/cli/latest.json`, appcast/release notes)
+- begin planning and branch setup for `0.18.x` local security groundwork after stable publication
 - keep launch-at-login scoped to GUI only (no CLI/TUI parity target)
 
 Current checkpoint:
-- `v0.17.3` is released on `main`; `v0.17.4` release-prep is staged on integration branches with the full TUI/bundled-CLI/parity closure slices completed:
+- `v0.17.4` release content is promoted to `main` (app/core + docs + web), with stable publication/tag workflows in progress:
   - post-`0.17.3` `0.17.4` TUI planning slice delivered: detailed ratatui implementation plan documented at `docs/architecture/HELM_TUI_IMPLEMENTATION_PLAN.md` (keyboard model, parity matrix, branding constraints, and ASCII splash-screen contract).
   - post-`0.17.3` `0.17.4` TUI implementation slice delivered: no-arg TTY now launches the ratatui TUI with branded ASCII splash (`logo` + `Helm` + `Take the helm.`), keyboard navigation, command palette/help/confirm overlays, read-only parity panes (updates/packages/tasks/managers/settings/diagnostics), and direct mutation hooks for common manager/package/task actions.
   - post-`0.17.3` `0.17.4` TUI parity-expansion slice delivered: managers pane now supports selected-manager detect/executable/method/priority controls via keyboard, updates pane now supports include-pinned + allow-OS-updates toggles for upgrade workflows, diagnostics pane supports one-key export snapshot writes, task-log detail follows selection movement immediately, and settings pane now exposes integrated self-update status/check/apply controls honoring provenance/channel policy semantics.

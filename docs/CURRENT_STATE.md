@@ -8,16 +8,16 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.17.4 release preparation** on integration branches, with `main` currently at stable **0.17.3** pending stable-cut promotion.
+Current documentation baseline: **0.17.4 release publication** with promotion complete on `main` and stable-tag publication in progress.
 
-Implementation baseline: **0.17.4 candidate** with diagnostics/logging delivery, manager-selection/enablement enforcement, onboarding/detection hardening, post-`0.17.2` CLI parity/supply-chain hardening, in-app bundled-CLI shim install/remove support (for `~/.local/bin/helm`), and a ratatui-based no-arg TTY TUI baseline implemented in `helm-cli`.
+Implementation baseline: **0.17.4 promoted build** with diagnostics/logging delivery, manager-selection/enablement enforcement, onboarding/detection hardening, post-`0.17.2` CLI parity/supply-chain hardening, in-app bundled-CLI shim install/remove support (for `~/.local/bin/helm`), and a ratatui-based no-arg TTY TUI implemented in `helm-cli`.
 
 See:
 - CHANGELOG.md
 
 Active milestone:
-- latest shipped release on `main`: **0.17.3** (post-`0.17.2` CLI parity, provenance, and release-channel hardening patch)
-- current release-prep target on integration branches: **0.17.4** (TUI + bundled-CLI shim + parity closures + macOS 11+ launch-at-login support)
+- latest promoted release content on `main`: **0.17.4** (TUI + bundled-CLI shim + parity closures + macOS 11+ launch-at-login support)
+- stable publication cut in progress: tag/release automation and generated metadata publication for `v0.17.4`
 - 0.17.x — Diagnostics & Logging (**stable released on `main`**, RC lineage `v0.17.0-rc.1` through `v0.17.0-rc.5`)
   - delivered: `feat/v0.17-log-foundation` (SQLite-backed task lifecycle logs + retrieval plumbing)
   - delivered: `feat/v0.17-task-log-viewer` (inspector diagnostics logs tab with level/status filters + load-more pagination)

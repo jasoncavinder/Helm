@@ -6,6 +6,25 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.17.4] - 2026-02-24
+
+Patch `0.17.4` delivers the first ratatui-based Helm TUI, bundled-app CLI shim install/remove flows, and post-`0.17.3` GUI/CLI parity closures.
+
+### Added
+- New no-arg TTY TUI for `helm` with a branded splash screen, keyboard-first navigation, section views (`updates`, `packages`, `tasks`, `managers`, `settings`, `diagnostics`), and inline help/command overlays.
+- GUI Settings now supports managed installation/removal of a `~/.local/bin/helm` shim that targets the app-bundled CLI.
+- CLI and TUI now expose progressive remote package search, manager-scoped bulk-upgrade controls, and per-package Homebrew keg-policy controls.
+
+### Changed
+- Launch-at-login now supports macOS 11+ with platform-aware implementation paths (`SMAppService` on macOS 13+, login-helper fallback on macOS 11/12).
+- Manager inspector now prioritizes executable selection controls and package inspector actions for pin/update/remove workflows.
+- Website download UX now includes a download dropdown with explicit DMG and CLI install paths, plus a copyable `curl | sh` command modal.
+
+### Fixed
+- TUI filter-mode lifecycle now exits correctly when the query is cleared.
+- Manager diagnostics views now keep empty-state content top-aligned for consistency across tabs.
+- `helm` short-flag parsing now supports combined single-character flags (for example `-vV`).
+
 ## [0.17.3] - 2026-02-23
 
 Patch `0.17.3` finalizes CLI parity-hardening and release-channel safety guardrails delivered after `0.17.2`, while keeping GUI Sparkle flows intact for direct DMG installs.
