@@ -8,22 +8,21 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.17.4 stable release published** with promotion + publication completed on `main`.
+Current documentation baseline: **0.17.5 stable release published** with promotion + publication completed on `main`.
 
-Implementation baseline: **0.17.3** with diagnostics/logging delivery, manager-selection/enablement enforcement, onboarding/detection hardening, and post-`0.17.2` CLI parity/supply-chain hardening shipped.
+Implementation baseline: **0.17.5** with diagnostics/logging delivery, TUI + bundled-CLI parity closure, manager-selection/enablement and onboarding/detection hardening, plus release-process hardening phases 1-5 shipped.
 
 See:
 - CHANGELOG.md
 
 Active milestone:
-- latest promoted release content on `main`: **0.17.4** (TUI + bundled-CLI shim + parity closures + macOS 11+ launch-at-login support)
-- stable publication cut completed for `v0.17.4`:
-  - release publish PRs merged on `main`: `#176`, `#177`, `#178`
+- latest promoted release content on `main`: **0.17.5** (release-process hardening promotion + fallback publish-path validation + metadata publication)
+- stable publication cut completed for `v0.17.5`:
+  - fallback release publish PRs merged on `main`: `#181` (CLI metadata), `#182` (appcast + release notes)
   - latest successful release workflows:
-    - `Release CLI Direct Installer` run `22337004057` (`workflow_dispatch`, success)
-    - `Release macOS DMG` run `22337385648` (`workflow_dispatch`, success)
-    - `Appcast Drift Guard` run `22337904410` (success after metadata publication)
-  - initial failed `v0.17.4` release-triggered runs (`22336315837`, `22336315855`) are retained for audit history and superseded by the successful reruns above
+    - `Release CLI Direct Installer` run `22364342041` (`workflow_dispatch`, success)
+    - `Release macOS DMG` run `22364342082` (`workflow_dispatch`, success)
+  - release workflows now report fallback publish PR outcomes as follow-up-required (non-red) when publication PR merges are still pending
 - 0.17.x — Diagnostics & Logging (**stable released on `main`**, RC lineage `v0.17.0-rc.1` through `v0.17.0-rc.5`)
   - delivered: `feat/v0.17-log-foundation` (SQLite-backed task lifecycle logs + retrieval plumbing)
   - delivered: `feat/v0.17-task-log-viewer` (inspector diagnostics logs tab with level/status filters + load-more pagination)
@@ -61,7 +60,7 @@ Active milestone:
   - delivered: post-`v0.17.5` release-process hardening phase 4 (on `dev`): preflight now performs pre-tag stable metadata snapshot sanity (`origin/main` appcast + `cli/latest.json` synchronization and target-order checks), and a new `Release Publish Verify` workflow now runs on publish-metadata merges to confirm main metadata and release objects remain aligned after publish PR merges.
   - delivered: post-`v0.17.5` release-process hardening phase 5 (on `dev`): release scripts/workflows now normalize locale environment defaults for operator/CI consistency, release logs now emit phase prefixes (`[preflight]`, `[build]`, `[publish]`, `[verify]`) for faster triage, and recurring release friction now has a documented promotion path from `TMP_RELEASE_FRICTION` into permanent decision/runbook/checklist docs.
   - delivered: GitHub governance hardening follow-up (on `dev`): per-branch rulesets are now explicit for `main`/`dev`/`docs`/`web` with branch-specific required checks; new `Policy Gate` + `Docs Checks` + `Web Build` workflows enforce branch targeting/scope policy; repository merge settings keep auto-merge/update-branch enabled while delete-branch-on-merge stays off to protect primary branches; blocking ruleset `update` enforcement was removed after protected-ref merge-block diagnostics; CodeQL is now main-focused (push/schedule/manual) to avoid PR gate friction.
-  - `v0.17.3` stable release execution status: complete (validation green + stable tag + GitHub release published)
+  - `v0.17.5` stable release execution status: complete (validation green + stable tag + GitHub release published)
 
 Security rollout staging status:
 - Stage 0 (`<=0.16.x`): planning/docs only (active in `0.16.1`)
@@ -944,4 +943,4 @@ Helm is a **functional control plane for 28 implemented managers** with:
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-0.13.x through 0.17.3 stable checkpoints are complete on `main`; `v0.17.0-rc.1` through `v0.17.0-rc.5` served as the completed RC validation path into stable `0.17.0`, followed by stable patch releases `v0.17.1`, `v0.17.2`, and `v0.17.3`.
+0.13.x through 0.17.5 stable checkpoints are complete on `main`; `v0.17.0-rc.1` through `v0.17.0-rc.5` served as the completed RC validation path into stable `0.17.0`, followed by stable patch releases `v0.17.1`, `v0.17.2`, `v0.17.3`, `v0.17.4`, and `v0.17.5`.
