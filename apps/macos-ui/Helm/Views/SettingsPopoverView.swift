@@ -90,6 +90,13 @@ struct SettingsSectionView: View {
         }
     }
 
+    private func closeControlCenterWindowForOnboarding() {
+        context.dismissUpgradeSheet()
+        if let window = NSApp.windows.first(where: { $0 is ControlCenterWindow }) {
+            window.performClose(nil)
+        }
+    }
+
     private var serviceConnectionStatusLabel: String {
         core.isConnected
             ? L10n.App.Settings.ServiceHealth.Status.connected.localized
@@ -213,6 +220,22 @@ struct SettingsSectionView: View {
                     }
                 }
 
+                SettingsCard(title: L10n.App.Settings.Section.managers.localized, icon: "shield.lefthalf.filled", fill: cardFill) {
+                    Toggle(L10n.App.Settings.Label.safeMode.localized, isOn: Binding(
+                        get: { core.safeModeEnabled },
+                        set: { core.setSafeMode($0) }
+                    ))
+                    .toggleStyle(.switch)
+
+                    Divider()
+
+                    Toggle(L10n.App.Settings.Label.autoCleanKegs.localized, isOn: Binding(
+                        get: { core.homebrewKegAutoCleanupEnabled },
+                        set: { core.setHomebrewKegAutoCleanup($0) }
+                    ))
+                    .toggleStyle(.switch)
+                }
+
                 SettingsCard(title: L10n.App.Settings.CLI.section.localized, icon: "terminal", fill: cardFill) {
                     ServiceHealthStatusRow(
                         title: L10n.App.Settings.CLI.status.localized,
@@ -258,74 +281,6 @@ struct SettingsSectionView: View {
                         Text(statusMessage)
                             .font(.caption)
                             .foregroundColor(.secondary)
-                    }
-                }
-
-                SettingsCard(title: L10n.App.Settings.Section.managers.localized, icon: "shield.lefthalf.filled", fill: cardFill) {
-                    Toggle(L10n.App.Settings.Label.safeMode.localized, isOn: Binding(
-                        get: { core.safeModeEnabled },
-                        set: { core.setSafeMode($0) }
-                    ))
-                    .toggleStyle(.switch)
-
-                    Divider()
-
-                    Toggle(L10n.App.Settings.Label.autoCleanKegs.localized, isOn: Binding(
-                        get: { core.homebrewKegAutoCleanupEnabled },
-                        set: { core.setHomebrewKegAutoCleanup($0) }
-                    ))
-                    .toggleStyle(.switch)
-                }
-
-                SettingsCard(title: L10n.App.Settings.Section.advanced.localized, icon: "bolt.fill", fill: cardFill) {
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                        SettingsActionButton(
-                            title: L10n.App.Settings.Action.refreshNow.localized,
-                            badges: [],
-                            isProminent: false,
-                            useSystemStyle: true
-                        ) {
-                            core.triggerRefresh()
-                        }
-                        .disabled(core.isRefreshing)
-
-                        SettingsActionButton(
-                            title: L10n.App.Settings.Action.reset.localized,
-                            badges: [],
-                            isProminent: false,
-                            useSystemStyle: true
-                        ) {
-                            showResetConfirmation = true
-                        }
-                        .disabled(core.isRefreshing || isResetting)
-
-                        SettingsActionButton(
-                            title: L10n.App.Settings.Action.quit.localized,
-                            badges: [],
-                            isProminent: false,
-                            useSystemStyle: true
-                        ) {
-                            NSApplication.shared.terminate(nil)
-                        }
-
-                        SettingsActionButton(
-                            title: L10n.App.Settings.Action.replayWalkthrough.localized,
-                            badges: [],
-                            isProminent: false,
-                            useSystemStyle: true
-                        ) {
-                            walkthrough.resetWalkthroughs()
-                            walkthrough.startPopoverWalkthrough()
-                        }
-
-                        SettingsActionButton(
-                            title: L10n.App.Settings.Action.restoreManagerPriority.localized,
-                            badges: [],
-                            isProminent: false,
-                            useSystemStyle: true
-                        ) {
-                            core.restoreDefaultManagerPriorities()
-                        }
                     }
                 }
 
@@ -533,6 +488,58 @@ struct SettingsSectionView: View {
                         .transition(.opacity.combined(with: .scale))
                     }
                 }
+
+                SettingsCard(title: L10n.App.Settings.Section.advanced.localized, icon: "bolt.fill", fill: cardFill) {
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                        SettingsActionButton(
+                            title: L10n.App.Settings.Action.refreshNow.localized,
+                            badges: [],
+                            isProminent: false,
+                            useSystemStyle: true
+                        ) {
+                            core.triggerRefresh()
+                        }
+                        .disabled(core.isRefreshing)
+
+                        SettingsActionButton(
+                            title: L10n.App.Settings.Action.reset.localized,
+                            badges: [],
+                            isProminent: false,
+                            useSystemStyle: true
+                        ) {
+                            showResetConfirmation = true
+                        }
+                        .disabled(core.isRefreshing || isResetting)
+
+                        SettingsActionButton(
+                            title: L10n.App.Settings.Action.quit.localized,
+                            badges: [],
+                            isProminent: false,
+                            useSystemStyle: true
+                        ) {
+                            NSApplication.shared.terminate(nil)
+                        }
+
+                        SettingsActionButton(
+                            title: L10n.App.Settings.Action.replayWalkthrough.localized,
+                            badges: [],
+                            isProminent: false,
+                            useSystemStyle: true
+                        ) {
+                            walkthrough.resetWalkthroughs()
+                            walkthrough.startPopoverWalkthrough()
+                        }
+
+                        SettingsActionButton(
+                            title: L10n.App.Settings.Action.restoreManagerPriority.localized,
+                            badges: [],
+                            isProminent: false,
+                            useSystemStyle: true
+                        ) {
+                            core.restoreDefaultManagerPriorities()
+                        }
+                    }
+                }
             }
             .padding(20)
         }
@@ -544,6 +551,7 @@ struct SettingsSectionView: View {
                     isResetting = true
                     core.resetDatabase { _ in
                         isResetting = false
+                        closeControlCenterWindowForOnboarding()
                     }
                 },
                 secondaryButton: .cancel(Text(L10n.Common.cancel.localized))

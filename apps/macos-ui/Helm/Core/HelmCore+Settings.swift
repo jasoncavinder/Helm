@@ -116,17 +116,46 @@ extension HelmCore {
     // MARK: - Bundled CLI Shim
 
     static func defaultHelmCliShimURL() -> URL {
-        FileManager.default.homeDirectoryForCurrentUser
+        userHomeDirectoryURL()
             .appendingPathComponent(".local", isDirectory: true)
             .appendingPathComponent("bin", isDirectory: true)
             .appendingPathComponent("helm", isDirectory: false)
     }
 
     static func defaultHelmCliInstallMarkerURL() -> URL {
-        FileManager.default.homeDirectoryForCurrentUser
+        userHomeDirectoryURL()
             .appendingPathComponent(".config", isDirectory: true)
             .appendingPathComponent("helm", isDirectory: true)
             .appendingPathComponent("install.json", isDirectory: false)
+    }
+
+    private static func userHomeDirectoryURL() -> URL {
+        if let posixHomePath = posixHomeDirectoryPath() {
+            return URL(fileURLWithPath: posixHomePath, isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+    }
+
+    private static func posixHomeDirectoryPath() -> String? {
+        let uid = getuid()
+        let initialBufferSize = max(1024, Int(sysconf(_SC_GETPW_R_SIZE_MAX)))
+        var buffer = [CChar](repeating: 0, count: initialBufferSize)
+        var pwd = passwd()
+        var result: UnsafeMutablePointer<passwd>?
+
+        let status = getpwuid_r(
+            uid,
+            &pwd,
+            &buffer,
+            buffer.count,
+            &result
+        )
+        guard status == 0,
+              let directoryPtr = result?.pointee.pw_dir else {
+            return nil
+        }
+        let path = String(cString: directoryPtr)
+        return path.isEmpty ? nil : path
     }
 
     func refreshHelmCliShimStatus() {
