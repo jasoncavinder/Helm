@@ -168,6 +168,11 @@ Current checkpoint:
     - release scripts/workflows now normalize locale environment defaults for operator/CI consistency
     - release logs now use phase prefixes (`[preflight]`, `[build]`, `[publish]`, `[verify]`) for faster triage
     - recurring release friction now has a documented promotion path from `TMP_RELEASE_FRICTION` into permanent decision/runbook/checklist docs
+  - post-`v0.17.5` refresh reliability + diagnostics hardening delivered on `dev`:
+    - task output persistence now records effective cwd/timing/exit metadata and structured error details used by diagnostics commands
+    - diagnostics summary now reports failure-class counters for faster operator triage
+    - coordinator health inspection now reports stale-state reasons and request timeout handling now performs one stale-state recovery retry
+    - refresh/search request-response now retries once for transient timeout/network-resolution failures, and npm list timeout is now 120s
   - GitHub governance hardening delivered on `dev`:
     - branch rulesets now explicitly enforce `main`/`dev`/`docs`/`web` with branch-specific required checks
     - `Policy Gate` now validates PR base/head/scope policy for all protected branches
