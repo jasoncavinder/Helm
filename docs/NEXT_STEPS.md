@@ -17,6 +17,7 @@ Helm is in:
 Focus:
 - complete `v0.17.4` validation gates and promotion sequencing (`dev`/`docs`/`web` -> `main`)
 - monitor release-channel publication outputs (appcast, CLI metadata, website release content)
+- apply phase-6 drift-control guidance on the next release-prep cycle (branch sync + conflict-risk checklist)
 - begin planning and branch setup for `0.18.x` local security groundwork after the stable cut
 - keep launch-at-login scoped to GUI only (no CLI/TUI parity target)
 
@@ -128,6 +129,9 @@ Current checkpoint:
     - release workflow now treats fallback appcast-publish PR-creation failures as blocking errors (no soft-success path)
     - release workflow now verifies `web/public/updates/appcast.xml` on `main` matches the release tag before marking release success
     - new scheduled/manual `Appcast Drift Guard` workflow now fails when latest stable GitHub release and top appcast version diverge
+  - release-process hardening phase 6 docs delivered on `docs`:
+    - release docs now require syncing release-prep branches with latest `origin/main` before final prep PRs
+    - release checklist now includes a conflict-risk path review (`CHANGELOG`, generated version files, release workflows, update metadata paths)
   - GitHub governance hardening delivered on `dev`:
     - branch rulesets now explicitly enforce `main`/`dev`/`docs`/`web` with branch-specific required checks
     - `Policy Gate` now validates PR base/head/scope policy for all protected branches

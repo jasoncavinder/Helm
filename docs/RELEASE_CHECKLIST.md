@@ -24,6 +24,43 @@ This checklist is required before creating a release tag on `main`.
 - [ ] Confirm repo merge settings remain enabled/configured: auto-merge on, update-branch on, and delete-branch-on-merge off.
 - [ ] Confirm release metadata publication remains PR-based (no direct-push fallback path in `.github/workflows/release-macos-dmg.yml`).
 
+## Release Preflight (All Releases, Mandatory Before Tagging)
+
+- [ ] Run `scripts/release/preflight.sh --tag <vX.Y.Z|vX.Y.Z-rc.N>` from a clean local clone before tag creation.
+- [ ] Confirm preflight reports token scopes include `repo` and `workflow`.
+- [ ] Confirm preflight validates required release workflows are present and enabled.
+- [ ] Confirm preflight validates required DMG/signing/update secrets are present.
+- [ ] Confirm preflight validates `main` ruleset publish-PR bypass policy (prefer GitHub Actions app `pull_request` bypass when available; otherwise use `Repository admin` `pull_request` fallback; no `always` bypass actors).
+- [ ] Confirm preflight snapshot sanity passes for stable tags (`origin/main` appcast + `cli/latest.json` in sync and behind target tag).
+- [ ] Optional wrapper path: `scripts/release/runbook.sh prepare --tag <tag>`.
+
+## Release Branch Drift Control (All Releases)
+
+- [ ] Before opening the final release-prep PR, sync the working release branch with latest `origin/main` (merge or rebase).
+- [ ] Review conflict-risk files after branch sync:
+  - `CHANGELOG.md`
+  - `apps/macos-ui/Generated/HelmVersion.swift`
+  - `apps/macos-ui/Generated/HelmVersion.xcconfig`
+  - `.github/workflows/release-cli-direct.yml`
+  - `.github/workflows/release-macos-dmg.yml`
+  - `web/public/updates/appcast.xml`
+  - `web/public/updates/cli/latest.json`
+  - `web/public/updates/cli/latest-rc.json`
+  - `web/public/updates/release-notes/*`
+
+## Release Publication Verification (All Releases)
+
+- [ ] Review release workflow summary output for both release workflows:
+  - `Artifacts uploaded: yes`
+  - `Publish PR opened: yes/no`
+  - `Main metadata synced: yes/no`
+- [ ] If workflow summary reports follow-up required (publish PR still open), merge the publish PR and rerun the workflow to verify `Main metadata synced: yes`.
+- [ ] Confirm release publication verification status is green after publish PR merge:
+  - `Release Publish Verify`
+  - `Appcast Drift Guard`
+  - `CLI Update Metadata Drift Guard`
+- [ ] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
+
 ## v0.17.4 (Stable Patch Release Gate)
 
 ### Scope and Documentation
