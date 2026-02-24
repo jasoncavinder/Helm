@@ -277,6 +277,16 @@ Helm is infrastructure. Treat it like one.
 - Do not rewrite published history (no force-push) unless explicitly instructed.
 - Prefer small, coherent commits.
 
+### Mandatory Branch Safety Gate (Start of Every Task)
+- Before any edits, agents MUST verify the current branch (`git branch --show-current`).
+- If currently on a long-lived branch (`main`, `dev`, `docs`, `web`), agents MUST create and switch to a task branch before changing files.
+- Task-branch base must match change type:
+  - code/config/runtime changes -> branch from `dev`
+  - docs-only changes -> branch from `docs` (`docs-*` branch naming)
+  - website-only changes -> branch from `web` (`web-*` branch naming)
+- Agents MUST NOT “start work on main and move files later”; branch selection happens first.
+- If changes were accidentally made on a long-lived branch, agents must stop and ask the user how to proceed before continuing.
+
 ### GitHub Enforcement Model (Rulesets + Checks)
 
 GitHub branch rulesets enforce the branch model. Agents must assume these are active and design PRs accordingly.
