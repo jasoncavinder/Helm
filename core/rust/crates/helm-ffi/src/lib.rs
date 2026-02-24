@@ -5271,16 +5271,16 @@ pub unsafe extern "C" fn helm_set_manager_enabled(
         return false;
     }
 
-    if !enabled {
-        if !purge_tasks_for_manager(
+    if !enabled
+        && !purge_tasks_for_manager(
             store.as_ref(),
             runtime.as_ref(),
             &rt_handle,
             manager,
             "set_manager_enabled",
-        ) {
-            return return_error_bool("service.error.storage_failure");
-        }
+        )
+    {
+        return return_error_bool("service.error.storage_failure");
     }
 
     true
