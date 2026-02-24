@@ -89,6 +89,7 @@ mkdir -p "$DEST_DIR"
 FINGERPRINT_PATH="$DEST_DIR/.rust-build-fingerprint"
 OUTPUT_FILES=(
     "$DEST_DIR/libhelm_ffi.a"
+    "$DEST_DIR/helm-cli"
     "$DEST_DIR/helm.h"
     "$DEST_DIR/HelmVersion.swift"
     "$DEST_DIR/HelmVersion.xcconfig"
@@ -139,6 +140,7 @@ if [ -n "$INPUTS_FINGERPRINT" ] && [ -f "$FINGERPRINT_PATH" ]; then
 fi
 
 LIB_INPUTS=()
+CLI_INPUTS=()
 CARGO_OUTPUT_DIR="${CARGO_TARGET_DIR:-target}"
 installed_targets=""
 if command -v rustup >/dev/null 2>&1; then
@@ -166,10 +168,19 @@ for target in "${RUST_TARGETS[@]}"; do
     echo "Building helm-ffi for $target..."
     cargo build -p helm-ffi $CARGO_FLAGS --target "$target"
     LIB_INPUTS+=("$CARGO_OUTPUT_DIR/$target/$PROFILE/libhelm_ffi.a")
+
+    echo "Building helm-cli for $target..."
+    cargo build -p helm-cli $CARGO_FLAGS --target "$target"
+    CLI_INPUTS+=("$CARGO_OUTPUT_DIR/$target/$PROFILE/helm")
 done
 
 if [ "${#LIB_INPUTS[@]}" -eq 0 ]; then
     echo "No Rust targets were built. Ensure rustup targets are installed." >&2
+    exit 1
+fi
+
+if [ "${#CLI_INPUTS[@]}" -eq 0 ]; then
+    echo "No CLI targets were built. Ensure rustup targets are installed." >&2
     exit 1
 fi
 
@@ -181,6 +192,15 @@ else
     echo "Creating universal static library..."
     lipo -create "${LIB_INPUTS[@]}" -output "$DEST_DIR/libhelm_ffi.a"
 fi
+
+if [ "${#CLI_INPUTS[@]}" -eq 1 ]; then
+    cp "${CLI_INPUTS[0]}" "$DEST_DIR/helm-cli"
+else
+    echo "Creating universal CLI binary..."
+    lipo -create "${CLI_INPUTS[@]}" -output "$DEST_DIR/helm-cli"
+fi
+chmod +x "$DEST_DIR/helm-cli"
+
 cp "crates/helm-ffi/include/helm.h" "$DEST_DIR/"
 
 # Extract version from workspace Cargo.toml and generate Swift constant

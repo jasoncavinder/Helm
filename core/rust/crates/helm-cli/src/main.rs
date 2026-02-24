@@ -25,17 +25,17 @@ use helm_core::adapters::{
     ProcessPipxSource, ProcessPnpmSource, ProcessPodmanSource, ProcessPoetrySource,
     ProcessRosetta2Source, ProcessRubyGemsSource, ProcessRustupSource, ProcessSetappSource,
     ProcessSoftwareUpdateSource, ProcessSparkleSource, ProcessXcodeCommandLineToolsSource,
-    ProcessYarnSource, Rosetta2Adapter, RubyGemsAdapter, RustupAdapter, SetappAdapter,
-    SoftwareUpdateAdapter, SparkleAdapter, UninstallRequest, UnpinRequest, UpgradeRequest,
-    XcodeCommandLineToolsAdapter, YarnAdapter,
+    ProcessYarnSource, Rosetta2Adapter, RubyGemsAdapter, RustupAdapter, SearchRequest,
+    SetappAdapter, SoftwareUpdateAdapter, SparkleAdapter, UninstallRequest, UnpinRequest,
+    UpgradeRequest, XcodeCommandLineToolsAdapter, YarnAdapter,
 };
 use helm_core::execution::{
     TokioProcessExecutor, clear_manager_selected_executables, set_manager_selected_executable,
 };
 use helm_core::models::{
     CachedSearchResult, Capability, DetectionInfo, HomebrewKegPolicy, InstalledPackage,
-    ManagerAuthority, ManagerId, OutdatedPackage, PackageRef, PinKind, PinRecord, TaskId,
-    TaskLogLevel, TaskRecord, TaskStatus,
+    ManagerAuthority, ManagerId, OutdatedPackage, PackageRef, PinKind, PinRecord, SearchQuery,
+    TaskId, TaskLogLevel, TaskRecord, TaskStatus,
 };
 use helm_core::orchestration::{AdapterRuntime, AdapterTaskTerminalState, CancellationMode};
 use helm_core::persistence::{DetectionStore, PackageStore, PinStore, SearchCacheStore, TaskStore};
@@ -50,10 +50,11 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 mod provenance;
+mod tui;
 
 use provenance::{
     InstallChannel, InstallMarker, UpdatePolicy, can_self_update as provenance_can_self_update,
-    detect_install_provenance, install_marker_path,
+    detect_install_provenance, install_marker_path, read_install_marker,
     recommended_action as provenance_recommended_action, write_install_marker,
 };
 
@@ -80,7 +81,7 @@ const BASH_COMPLETION_SCRIPT: &str = r#"_helm_complete() {
 
     case "${COMP_WORDS[1]}" in
         packages)
-            COMPREPLY=( $(compgen -W "list search show install uninstall upgrade pin unpin help" -- "${cur}") )
+            COMPREPLY=( $(compgen -W "list search show install uninstall upgrade pin unpin keg-policy help" -- "${cur}") )
             ;;
         updates)
             COMPREPLY=( $(compgen -W "list summary preview run help" -- "${cur}") )
@@ -104,7 +105,7 @@ const BASH_COMPLETION_SCRIPT: &str = r#"_helm_complete() {
             if [[ ${COMP_CWORD} -ge 3 && "${COMP_WORDS[2]}" == "auto-check" ]]; then
                 COMPREPLY=( $(compgen -W "status enable disable frequency help" -- "${cur}") )
             else
-                COMPREPLY=( $(compgen -W "status check update auto-check help" -- "${cur}") )
+                COMPREPLY=( $(compgen -W "status check update uninstall auto-check help" -- "${cur}") )
             fi
             ;;
         completion)
@@ -141,7 +142,7 @@ fi
 
 case $words[2] in
   packages)
-    _values 'subcommand' list search show install uninstall upgrade pin unpin help
+    _values 'subcommand' list search show install uninstall upgrade pin unpin keg-policy help
     ;;
   updates)
     _values 'subcommand' list summary preview run help
@@ -165,7 +166,7 @@ case $words[2] in
     if [[ "$words[3]" == "auto-check" ]]; then
       _values 'subcommand' status enable disable frequency help
     else
-      _values 'subcommand' status check update auto-check help
+      _values 'subcommand' status check update uninstall auto-check help
     fi
     ;;
   completion)
@@ -175,14 +176,14 @@ esac
 "#;
 const FISH_COMPLETION_SCRIPT: &str = r#"complete -c helm -f
 complete -c helm -n "__fish_use_subcommand" -a "status refresh search ls packages updates tasks managers settings diagnostics doctor self completion help"
-complete -c helm -n "__fish_seen_subcommand_from packages" -a "list search show install uninstall upgrade pin unpin help"
+complete -c helm -n "__fish_seen_subcommand_from packages" -a "list search show install uninstall upgrade pin unpin keg-policy help"
 complete -c helm -n "__fish_seen_subcommand_from updates" -a "list summary preview run help"
 complete -c helm -n "__fish_seen_subcommand_from tasks" -a "list show logs output follow cancel help"
 complete -c helm -n "__fish_seen_subcommand_from managers" -a "list show detect enable disable install update uninstall executables install-methods priority help"
 complete -c helm -n "__fish_seen_subcommand_from settings" -a "list get set reset help"
 complete -c helm -n "__fish_seen_subcommand_from diagnostics" -a "summary task manager provenance export help"
 complete -c helm -n "__fish_seen_subcommand_from doctor" -a "summary task manager provenance export help"
-complete -c helm -n "__fish_seen_subcommand_from self" -a "status check update auto-check help"
+complete -c helm -n "__fish_seen_subcommand_from self" -a "status check update uninstall auto-check help"
 complete -c helm -n "__fish_seen_subcommand_from auto-check" -a "status enable disable frequency help"
 complete -c helm -n "__fish_seen_subcommand_from completion" -a "bash zsh fish help"
 "#;
@@ -208,6 +209,7 @@ enum ExecutionMode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Command {
+    Tui,
     Help,
     Version,
     Status,
@@ -403,6 +405,9 @@ enum CoordinatorRequest {
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum CoordinatorSubmitRequest {
     Detect,
+    Search {
+        query: String,
+    },
     Install {
         package_name: String,
         version: Option<String>,
@@ -433,6 +438,7 @@ enum CoordinatorWorkflowRequest {
     UpdatesRun {
         include_pinned: bool,
         allow_os_updates: bool,
+        manager_id: Option<String>,
     },
 }
 
@@ -597,10 +603,11 @@ fn main() -> ExitCode {
 
     let options_for_error = options.clone();
     match command {
+        Command::Tui => cmd_tui(store.clone(), options),
         Command::Status => cmd_status(store.as_ref(), options),
         Command::Refresh => cmd_refresh(store.clone(), options, &command_args),
         Command::Ls => cmd_packages(store.clone(), options, &command_args),
-        Command::Search => cmd_search(store.as_ref(), options, &command_args),
+        Command::Search => cmd_search(store.clone(), options, &command_args),
         Command::Packages => cmd_packages(store.clone(), options, &command_args),
         Command::Updates => cmd_updates(store.clone(), options, &command_args),
         Command::Tasks => cmd_tasks(store.as_ref(), options, &command_args),
@@ -628,10 +635,24 @@ fn main() -> ExitCode {
     })
 }
 
+fn cmd_tui(store: Arc<SqliteStore>, options: GlobalOptions) -> Result<(), String> {
+    if options.json {
+        return Err("TUI mode does not support --json or --ndjson".to_string());
+    }
+    tui::run(store, options.no_color, options.quiet)
+}
+
 fn parse_args(args: Vec<String>) -> Result<(GlobalOptions, Command, Vec<String>), String> {
+    parse_args_with_tty(args, std::io::stdout().is_terminal())
+}
+
+fn parse_args_with_tty(
+    args: Vec<String>,
+    stdout_is_tty: bool,
+) -> Result<(GlobalOptions, Command, Vec<String>), String> {
     if args.is_empty() {
-        if std::io::stdout().is_terminal() {
-            print_tui_placeholder();
+        if stdout_is_tty {
+            return Ok((GlobalOptions::default(), Command::Tui, Vec::new()));
         }
         return Ok((GlobalOptions::default(), Command::Help, Vec::new()));
     }
@@ -686,6 +707,10 @@ fn parse_args(args: Vec<String>) -> Result<(GlobalOptions, Command, Vec<String>)
                 continue;
             }
             _ => {}
+        }
+        if filtered.is_empty() && parse_combined_short_flags(arg, &mut options, &mut filtered)? {
+            index += 1;
+            continue;
         }
         if let Some((key, value)) = arg.split_once('=')
             && key == "--locale"
@@ -765,6 +790,51 @@ fn parse_args(args: Vec<String>) -> Result<(GlobalOptions, Command, Vec<String>)
         parse_top_level_command(first).ok_or_else(|| format!("unknown command '{first}'"))?;
 
     Ok((options, command, filtered[1..].to_vec()))
+}
+
+fn parse_combined_short_flags(
+    arg: &str,
+    options: &mut GlobalOptions,
+    filtered: &mut Vec<String>,
+) -> Result<bool, String> {
+    if !arg.starts_with('-') || arg.starts_with("--") || arg.len() <= 2 {
+        return Ok(false);
+    }
+
+    let bundle = &arg[1..];
+    if !bundle.chars().all(|ch| ch.is_ascii_alphabetic()) {
+        return Ok(false);
+    }
+
+    let mut parsed_any = false;
+    for ch in bundle.chars() {
+        match ch {
+            'v' => {
+                options.verbose = true;
+                parsed_any = true;
+            }
+            'q' => {
+                options.quiet = true;
+                parsed_any = true;
+            }
+            'h' => {
+                filtered.push("-h".to_string());
+                parsed_any = true;
+            }
+            'V' => {
+                filtered.push("-V".to_string());
+                parsed_any = true;
+            }
+            _ => {
+                return Err(format!(
+                    "unknown short flag '-{}' in combined flags '{}'",
+                    ch, arg
+                ));
+            }
+        }
+    }
+
+    Ok(parsed_any)
 }
 
 fn env_flag_enabled(key: &str) -> bool {
@@ -927,6 +997,7 @@ fn emit_version_metadata_if_verbose() {
 
 fn command_label(command: Command) -> &'static str {
     match command {
+        Command::Tui => "tui",
         Command::Help => "help",
         Command::Version => "version",
         Command::Status => "status",
@@ -985,23 +1056,38 @@ fn command_help_topic_exists(command: Command, path: &[String]) -> bool {
     }
 
     match command {
+        Command::Tui => path.is_empty(),
         Command::Status | Command::Refresh | Command::Search | Command::Ls => path.is_empty(),
         Command::Packages => {
-            path.is_empty()
-                || (path.len() == 1
-                    && matches!(
-                        first(path),
-                        Some(
-                            "list"
-                                | "search"
-                                | "show"
-                                | "install"
-                                | "uninstall"
-                                | "upgrade"
-                                | "pin"
-                                | "unpin"
-                        )
-                    ))
+            if path.is_empty() {
+                return true;
+            }
+            if path.len() == 1 {
+                return matches!(
+                    first(path),
+                    Some(
+                        "list"
+                            | "search"
+                            | "show"
+                            | "install"
+                            | "uninstall"
+                            | "upgrade"
+                            | "pin"
+                            | "unpin"
+                            | "keg-policy"
+                    )
+                );
+            }
+            if path.len() == 2 {
+                return matches!(
+                    (path[0].as_str(), path[1].as_str()),
+                    ("keg-policy", "list")
+                        | ("keg-policy", "get")
+                        | ("keg-policy", "set")
+                        | ("keg-policy", "reset")
+                );
+            }
+            false
         }
         Command::Updates => {
             path.is_empty()
@@ -1072,7 +1158,7 @@ fn command_help_topic_exists(command: Command, path: &[String]) -> bool {
             if path.len() == 1 {
                 return matches!(
                     first(path),
-                    Some("status" | "check" | "update" | "auto-check")
+                    Some("status" | "check" | "update" | "uninstall" | "auto-check")
                 );
             }
             if path.len() == 2 {
@@ -1282,14 +1368,15 @@ fn cmd_packages(
     }
 
     if command_args[0] == "search" {
-        if command_args.len() < 2 {
-            return Err("packages search requires a query argument".to_string());
-        }
-        return cmd_search_query(store.as_ref(), options, &command_args[1]);
+        return cmd_search_query(store.clone(), options, &command_args[1..]);
     }
 
     if command_args[0] == "show" {
         return cmd_packages_show(store.as_ref(), options, &command_args[1..]);
+    }
+
+    if command_args[0] == "keg-policy" {
+        return cmd_packages_keg_policy(store.as_ref(), options, &command_args[1..]);
     }
 
     if matches!(
@@ -1300,48 +1387,82 @@ fn cmd_packages(
     }
 
     Err(format!(
-        "unsupported packages subcommand '{}'; currently supported: list, search, show, install, uninstall, upgrade, pin, unpin",
+        "unsupported packages subcommand '{}'; currently supported: list, search, show, install, uninstall, upgrade, pin, unpin, keg-policy",
         command_args[0]
     ))
 }
 
 fn cmd_search(
-    store: &SqliteStore,
+    store: Arc<SqliteStore>,
     options: GlobalOptions,
     command_args: &[String],
 ) -> Result<(), String> {
-    if command_args.is_empty() {
-        return Err("search requires a query argument".to_string());
-    }
-    cmd_search_query(store, options, &command_args[0])
+    cmd_search_query(store, options, command_args)
 }
 
 fn cmd_search_query(
-    store: &SqliteStore,
+    store: Arc<SqliteStore>,
     options: GlobalOptions,
-    query: &str,
+    command_args: &[String],
 ) -> Result<(), String> {
-    let enabled_map = manager_enabled_map(store)?;
-    let results = search_local_for_enabled(store, &enabled_map, query)?;
+    let parsed = parse_search_args(command_args)?;
+    let enabled_map = manager_enabled_map(store.as_ref())?;
+    let local_results = if parsed.remote_only {
+        Vec::new()
+    } else {
+        let mut rows = search_local_for_enabled(store.as_ref(), &enabled_map, &parsed.query)?;
+        if let Some(manager) = parsed.manager_filter {
+            rows.retain(|result| result.result.package.manager == manager);
+        }
+        rows
+    };
+
+    let (remote_results, remote_errors) = if parsed.local_only {
+        (Vec::new(), Vec::new())
+    } else {
+        search_remote_for_enabled(
+            store.clone(),
+            &parsed.query,
+            parsed.manager_filter,
+            &enabled_map,
+        )?
+    };
+    let mut merged_results = merge_search_results(local_results.clone(), remote_results.clone());
+    if let Some(limit) = parsed.limit {
+        merged_results.truncate(limit);
+    }
 
     if options.json {
         emit_json_payload(
-            "helm.cli.v1.search.local",
+            "helm.cli.v1.search",
             json!({
-                "query": query,
-                "results": results
+                "query": parsed.query,
+                "manager_filter": parsed.manager_filter.map(|manager| manager.as_str().to_string()),
+                "local_only": parsed.local_only,
+                "remote_only": parsed.remote_only,
+                "limit": parsed.limit,
+                "local_results": local_results,
+                "remote_results": remote_results,
+                "merged_results": merged_results,
+                "remote_errors": remote_errors
             }),
         );
         return Ok(());
     }
 
-    if results.is_empty() {
-        println!("No local search results for query '{query}'.");
+    if merged_results.is_empty() {
+        println!("No search results for query '{}'.", parsed.query);
         return Ok(());
     }
 
-    println!("Search Results (local cache)");
-    for result in results {
+    if parsed.local_only {
+        println!("Search Results (local cache)");
+    } else if parsed.remote_only {
+        println!("Search Results (remote)");
+    } else {
+        println!("Search Results (progressive local + remote)");
+    }
+    for result in merged_results {
         let version = result
             .result
             .version
@@ -1356,6 +1477,13 @@ fn cmd_search_query(
             summary,
             result.source_manager.as_str()
         );
+    }
+    if !remote_errors.is_empty() {
+        println!();
+        println!("Remote search warnings:");
+        for warning in remote_errors {
+            println!("  - {}", warning);
+        }
     }
     Ok(())
 }
@@ -1734,6 +1862,189 @@ fn cmd_packages_mutation(
     Ok(())
 }
 
+fn cmd_packages_keg_policy(
+    store: &SqliteStore,
+    options: GlobalOptions,
+    command_args: &[String],
+) -> Result<(), String> {
+    if command_args.is_empty() {
+        return Err("packages keg-policy requires a subcommand: list, get, set, reset".to_string());
+    }
+
+    match command_args[0].as_str() {
+        "list" => {
+            if command_args.len() != 1 {
+                return Err(
+                    "packages keg-policy list does not accept additional arguments".to_string(),
+                );
+            }
+            let default_policy = store
+                .homebrew_keg_policy()
+                .map_err(|error| format!("failed to read homebrew keg policy: {error}"))?;
+            let mut overrides = store
+                .list_package_keg_policies()
+                .map_err(|error| format!("failed to list package keg policies: {error}"))?
+                .into_iter()
+                .filter(|entry| entry.package.manager == ManagerId::HomebrewFormula)
+                .map(|entry| {
+                    json!({
+                        "package_name": entry.package.name,
+                        "manager_id": entry.package.manager.as_str(),
+                        "policy": entry.policy.as_str()
+                    })
+                })
+                .collect::<Vec<_>>();
+            overrides.sort_by(|left, right| {
+                left["package_name"]
+                    .as_str()
+                    .unwrap_or("")
+                    .cmp(right["package_name"].as_str().unwrap_or(""))
+            });
+
+            if options.json {
+                emit_json_payload(
+                    "helm.cli.v1.packages.keg_policy.list",
+                    json!({
+                        "default_policy": default_policy.as_str(),
+                        "overrides": overrides
+                    }),
+                );
+                return Ok(());
+            }
+
+            println!("Homebrew keg policy");
+            println!("  default_policy: {}", default_policy.as_str());
+            if overrides.is_empty() {
+                println!("  overrides: -");
+            } else {
+                println!("  overrides:");
+                for row in overrides {
+                    println!(
+                        "    - {} => {}",
+                        row["package_name"].as_str().unwrap_or("-"),
+                        row["policy"].as_str().unwrap_or("-")
+                    );
+                }
+            }
+            Ok(())
+        }
+        "get" => {
+            if command_args.len() != 2 {
+                return Err(
+                    "packages keg-policy get requires <package-name|package@homebrew_formula>"
+                        .to_string(),
+                );
+            }
+            let package = parse_homebrew_keg_policy_package_selector(&command_args[1])?;
+            let default_policy = store
+                .homebrew_keg_policy()
+                .map_err(|error| format!("failed to read homebrew keg policy: {error}"))?;
+            let override_policy = store
+                .package_keg_policy(&package)
+                .map_err(|error| format!("failed to read package keg policy: {error}"))?;
+            let effective_policy = override_policy.unwrap_or(default_policy);
+
+            if options.json {
+                emit_json_payload(
+                    "helm.cli.v1.packages.keg_policy.get",
+                    json!({
+                        "package_name": package.name,
+                        "manager_id": package.manager.as_str(),
+                        "default_policy": default_policy.as_str(),
+                        "override_policy": override_policy.map(|value| value.as_str().to_string()),
+                        "effective_policy": effective_policy.as_str()
+                    }),
+                );
+                return Ok(());
+            }
+
+            println!("Homebrew keg policy for '{}'", package.name);
+            println!("  manager: {}", package.manager.as_str());
+            println!("  default_policy: {}", default_policy.as_str());
+            println!(
+                "  override_policy: {}",
+                override_policy
+                    .map(|value| value.as_str().to_string())
+                    .unwrap_or_else(|| "-".to_string())
+            );
+            println!("  effective_policy: {}", effective_policy.as_str());
+            Ok(())
+        }
+        "set" => {
+            if command_args.len() != 3 {
+                return Err("packages keg-policy set requires <package-name|package@homebrew_formula> <keep|cleanup|default>".to_string());
+            }
+            let package = parse_homebrew_keg_policy_package_selector(&command_args[1])?;
+            let policy = parse_homebrew_keg_policy_arg(&command_args[2])?;
+            store
+                .set_package_keg_policy(&package, policy)
+                .map_err(|error| format!("failed to persist package keg policy: {error}"))?;
+            let effective_policy = effective_homebrew_keg_policy(store, &package.name);
+
+            if options.json {
+                emit_json_payload(
+                    "helm.cli.v1.packages.keg_policy.set",
+                    json!({
+                        "package_name": package.name,
+                        "manager_id": package.manager.as_str(),
+                        "override_policy": policy.map(|value| value.as_str().to_string()),
+                        "effective_policy": effective_policy.as_str()
+                    }),
+                );
+                return Ok(());
+            }
+
+            let override_rendered = policy
+                .map(|value| value.as_str().to_string())
+                .unwrap_or_else(|| "default".to_string());
+            println!(
+                "Homebrew keg policy override for '{}' set to '{}' (effective: {}).",
+                package.name,
+                override_rendered,
+                effective_policy.as_str()
+            );
+            Ok(())
+        }
+        "reset" => {
+            if command_args.len() != 2 {
+                return Err(
+                    "packages keg-policy reset requires <package-name|package@homebrew_formula>"
+                        .to_string(),
+                );
+            }
+            let package = parse_homebrew_keg_policy_package_selector(&command_args[1])?;
+            store
+                .set_package_keg_policy(&package, None)
+                .map_err(|error| format!("failed to reset package keg policy: {error}"))?;
+            let effective_policy = effective_homebrew_keg_policy(store, &package.name);
+
+            if options.json {
+                emit_json_payload(
+                    "helm.cli.v1.packages.keg_policy.reset",
+                    json!({
+                        "package_name": package.name,
+                        "manager_id": package.manager.as_str(),
+                        "override_policy": serde_json::Value::Null,
+                        "effective_policy": effective_policy.as_str()
+                    }),
+                );
+                return Ok(());
+            }
+
+            println!(
+                "Homebrew keg policy override for '{}' cleared (effective: {}).",
+                package.name,
+                effective_policy.as_str()
+            );
+            Ok(())
+        }
+        other => Err(format!(
+            "unsupported packages keg-policy subcommand '{}'; currently supported: list, get, set, reset",
+            other
+        )),
+    }
+}
+
 fn cmd_updates(
     store: Arc<SqliteStore>,
     options: GlobalOptions,
@@ -1874,6 +2185,7 @@ fn cmd_updates_preview(
         &runtime,
         parsed.include_pinned,
         parsed.allow_os_updates,
+        parsed.manager_filter,
     )?;
     let plan_steps = serialize_upgrade_plan_steps(&steps);
 
@@ -1883,6 +2195,7 @@ fn cmd_updates_preview(
             json!({
                 "include_pinned": parsed.include_pinned,
                 "allow_os_updates": parsed.allow_os_updates,
+                "manager_filter": parsed.manager_filter.map(|manager| manager.as_str().to_string()),
                 "total_steps": plan_steps.len(),
                 "steps": plan_steps
             }),
@@ -1898,6 +2211,13 @@ fn cmd_updates_preview(
     println!("Upgrade Plan Preview");
     println!("  include_pinned: {}", parsed.include_pinned);
     println!("  allow_os_updates: {}", parsed.allow_os_updates);
+    println!(
+        "  manager_filter: {}",
+        parsed
+            .manager_filter
+            .map(|manager| manager.as_str().to_string())
+            .unwrap_or_else(|| "all".to_string())
+    );
     for step in plan_steps {
         let pinned = if step.pinned { " [pinned]" } else { "" };
         let restart = if step.restart_required {
@@ -1925,8 +2245,11 @@ fn cmd_updates_run(
 ) -> Result<(), String> {
     let parsed = parse_updates_run_preview_args(command_args, true)?;
     verbose_log(format!(
-        "updates run requested include_pinned={} allow_os_updates={} mode={:?}",
-        parsed.include_pinned, parsed.allow_os_updates, options.execution_mode
+        "updates run requested include_pinned={} allow_os_updates={} manager_filter={:?} mode={:?}",
+        parsed.include_pinned,
+        parsed.allow_os_updates,
+        parsed.manager_filter,
+        options.execution_mode
     ));
     if !parsed.yes {
         return Err("updates run requires --yes".to_string());
@@ -1936,6 +2259,9 @@ fn cmd_updates_run(
         let response = coordinator_start_workflow(CoordinatorWorkflowRequest::UpdatesRun {
             include_pinned: parsed.include_pinned,
             allow_os_updates: parsed.allow_os_updates,
+            manager_id: parsed
+                .manager_filter
+                .map(|manager| manager.as_str().to_string()),
         })?;
         let job_id = response
             .job_id
@@ -1948,8 +2274,15 @@ fn cmd_updates_run(
                     "mode": "detach",
                     "job_id": job_id,
                     "include_pinned": parsed.include_pinned,
-                    "allow_os_updates": parsed.allow_os_updates
+                    "allow_os_updates": parsed.allow_os_updates,
+                    "manager_filter": parsed.manager_filter.map(|manager| manager.as_str().to_string())
                 }),
+            );
+        } else if let Some(manager) = parsed.manager_filter {
+            println!(
+                "Upgrade workflow submitted for manager '{}' (job {}).",
+                manager.as_str(),
+                job_id
             );
         } else {
             println!("Upgrade workflow submitted (job {}).", job_id);
@@ -1964,6 +2297,7 @@ fn cmd_updates_run(
         &runtime,
         parsed.include_pinned,
         parsed.allow_os_updates,
+        parsed.manager_filter,
     )?;
 
     if steps.is_empty() {
@@ -1973,6 +2307,7 @@ fn cmd_updates_run(
                 json!({
                     "include_pinned": parsed.include_pinned,
                     "allow_os_updates": parsed.allow_os_updates,
+                    "manager_filter": parsed.manager_filter.map(|manager| manager.as_str().to_string()),
                     "results": [],
                     "total_steps": 0,
                     "failed_steps": 0
@@ -2026,6 +2361,7 @@ fn cmd_updates_run(
             json!({
                 "include_pinned": parsed.include_pinned,
                 "allow_os_updates": parsed.allow_os_updates,
+                "manager_filter": parsed.manager_filter.map(|manager| manager.as_str().to_string()),
                 "results": results,
                 "total_steps": steps.len(),
                 "failed_steps": failures
@@ -2033,6 +2369,9 @@ fn cmd_updates_run(
         );
     } else {
         println!("Upgrade Run Results");
+        if let Some(manager) = parsed.manager_filter {
+            println!("  manager_filter: {}", manager.as_str());
+        }
         for row in &results {
             if row.success {
                 println!(
@@ -3106,6 +3445,8 @@ const SELF_UPDATE_HTTP_CONNECT_TIMEOUT_SECS: u64 = 10;
 const SELF_UPDATE_HTTP_READ_TIMEOUT_SECS: u64 = 30;
 const SELF_UPDATE_HTTP_WRITE_TIMEOUT_SECS: u64 = 30;
 const SELF_UPDATE_MAX_DOWNLOAD_BYTES_DEFAULT: usize = 64 * 1024 * 1024;
+const APP_BUNDLE_SHIM_SENTINEL: &str = "# helm-cli-shim: app-bundle";
+const DEFAULT_HELM_CLI_SHIM_RELATIVE_PATH: &str = ".local/bin/helm";
 const SELF_UPDATE_ALLOWED_HOSTS: [&str; 5] = [
     "helmapp.dev",
     "github.com",
@@ -3822,6 +4163,159 @@ fn persist_direct_update_marker(version: &str) -> Result<(), String> {
     write_install_marker(&marker_path, &marker)
 }
 
+fn default_helm_cli_shim_path() -> Result<PathBuf, String> {
+    let home = env::var("HOME").map_err(|_| "HOME is not set".to_string())?;
+    Ok(PathBuf::from(home).join(DEFAULT_HELM_CLI_SHIM_RELATIVE_PATH))
+}
+
+fn self_uninstall_recommended_action(channel: InstallChannel, executable_path: &Path) -> String {
+    match channel {
+        InstallChannel::DirectScript => "helm self uninstall".to_string(),
+        InstallChannel::AppBundleShim => {
+            "remove the managed Helm CLI shim via GUI Settings (Install Helm CLI)".to_string()
+        }
+        InstallChannel::Brew => "brew uninstall helm-cli".to_string(),
+        InstallChannel::Macports => "sudo port uninstall helm-cli".to_string(),
+        InstallChannel::Cargo => "cargo uninstall helm-cli".to_string(),
+        InstallChannel::Unknown => format!(
+            "remove the binary manually: rm '{}'",
+            executable_path.display()
+        ),
+        InstallChannel::Managed => "follow managed organizational uninstall policy".to_string(),
+    }
+}
+
+fn remove_regular_file(path: &Path, label: &str) -> Result<bool, String> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => {
+            return Err(format!(
+                "failed to inspect {} '{}': {}",
+                label,
+                path.display(),
+                error
+            ));
+        }
+    };
+    if metadata.file_type().is_symlink() {
+        return Err(format!(
+            "refusing to remove {} symlink path '{}'",
+            label,
+            path.display()
+        ));
+    }
+    if !metadata.file_type().is_file() {
+        return Err(format!(
+            "refusing to remove non-file {} path '{}'",
+            label,
+            path.display()
+        ));
+    }
+    fs::remove_file(path)
+        .map_err(|error| format!("failed to remove {} '{}': {}", label, path.display(), error))?;
+    sync_parent_directory(path)?;
+    Ok(true)
+}
+
+fn remove_install_marker_if_channel(
+    marker_path: &Path,
+    expected_channel: InstallChannel,
+) -> Result<(bool, Option<String>), String> {
+    let metadata = match fs::symlink_metadata(marker_path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok((false, None)),
+        Err(error) => {
+            return Err(format!(
+                "failed to inspect install marker '{}': {}",
+                marker_path.display(),
+                error
+            ));
+        }
+    };
+    if metadata.file_type().is_symlink() {
+        return Err(format!(
+            "refusing to remove install marker symlink path '{}'",
+            marker_path.display()
+        ));
+    }
+    if !metadata.file_type().is_file() {
+        return Err(format!(
+            "refusing to remove non-file install marker path '{}'",
+            marker_path.display()
+        ));
+    }
+
+    let Some(marker) = read_install_marker(marker_path) else {
+        return Ok((
+            false,
+            Some("install marker exists but is not schema-valid; left in place".to_string()),
+        ));
+    };
+    if marker.channel != expected_channel.as_str() {
+        return Ok((
+            false,
+            Some(format!(
+                "install marker channel '{}' does not match '{}' and was left in place",
+                marker.channel,
+                expected_channel.as_str()
+            )),
+        ));
+    }
+
+    remove_regular_file(marker_path, "install marker").map(|removed| (removed, None))
+}
+
+fn remove_managed_app_bundle_shim(shim_path: &Path) -> Result<bool, String> {
+    let metadata = match fs::symlink_metadata(shim_path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => {
+            return Err(format!(
+                "failed to inspect Helm CLI shim '{}': {}",
+                shim_path.display(),
+                error
+            ));
+        }
+    };
+    if metadata.file_type().is_symlink() {
+        return Err(format!(
+            "refusing to remove Helm CLI shim symlink path '{}'",
+            shim_path.display()
+        ));
+    }
+    if !metadata.file_type().is_file() {
+        return Err(format!(
+            "refusing to remove non-file Helm CLI shim path '{}'",
+            shim_path.display()
+        ));
+    }
+
+    let script = fs::read_to_string(shim_path).map_err(|error| {
+        format!(
+            "failed to read Helm CLI shim '{}': {}",
+            shim_path.display(),
+            error
+        )
+    })?;
+    if !script.contains(APP_BUNDLE_SHIM_SENTINEL) {
+        return Err(format!(
+            "refusing to remove non-managed Helm CLI shim at '{}'",
+            shim_path.display()
+        ));
+    }
+
+    fs::remove_file(shim_path).map_err(|error| {
+        format!(
+            "failed to remove Helm CLI shim '{}': {}",
+            shim_path.display(),
+            error
+        )
+    })?;
+    sync_parent_directory(shim_path)?;
+    Ok(true)
+}
+
 fn direct_update_check_status(
     current_version: &str,
 ) -> Result<SelfUpdateCheckStatus, SelfUpdateCommandError> {
@@ -4023,8 +4517,15 @@ fn cmd_self(
         .map_err(|error| format!("failed to resolve current executable path: {error}"))?;
     let provenance = detect_install_provenance(&executable_path);
     let recommended_action = provenance_recommended_action(provenance.channel).to_string();
+    let uninstall_recommended_action =
+        self_uninstall_recommended_action(provenance.channel, &provenance.executable_path);
     let current_version = current_cli_version();
     let can_self_update = provenance_can_self_update(provenance.update_policy);
+    let can_self_uninstall = provenance.update_policy != UpdatePolicy::Managed
+        && matches!(
+            provenance.channel,
+            InstallChannel::DirectScript | InstallChannel::AppBundleShim
+        );
     let force_direct_override =
         |force: bool| force && provenance.channel == InstallChannel::DirectScript;
     verbose_log(format!(
@@ -4418,8 +4919,184 @@ fn cmd_self(
             }
             Ok(())
         }
+        "uninstall" => {
+            if options.execution_mode == ExecutionMode::Detach {
+                return Err("self uninstall does not support --detach".to_string());
+            }
+            if command_args.len() > 1 {
+                return Err("self uninstall does not take additional arguments".to_string());
+            }
+
+            if provenance.update_policy == UpdatePolicy::Managed {
+                let reason = "self-uninstall blocked by managed policy".to_string();
+                if options.json {
+                    emit_json_payload(
+                        "helm.cli.v1.self.uninstall",
+                        json!({
+                            "accepted": false,
+                            "removed": false,
+                            "channel": provenance.channel.as_str(),
+                            "update_policy": provenance.update_policy.as_str(),
+                            "can_self_uninstall": false,
+                            "recommended_action": uninstall_recommended_action,
+                            "current_version": current_version,
+                            "executable_path": provenance.executable_path.to_string_lossy().to_string(),
+                            "marker_path": provenance.marker_path.to_string_lossy().to_string(),
+                            "shim_path": serde_json::Value::Null,
+                            "removed_executable": false,
+                            "removed_shim": false,
+                            "removed_marker": false,
+                            "warning": serde_json::Value::Null,
+                            "reason": reason
+                        }),
+                    );
+                }
+                return Err(mark_json_error_emitted(
+                    "self uninstall unavailable: managed policy denies direct uninstall",
+                ));
+            }
+
+            if !can_self_uninstall {
+                let reason = format!(
+                    "self-uninstall is channel-managed for '{}' installs; {}",
+                    provenance.channel.as_str(),
+                    uninstall_recommended_action
+                );
+                if options.json {
+                    emit_json_payload(
+                        "helm.cli.v1.self.uninstall",
+                        json!({
+                            "accepted": false,
+                            "removed": false,
+                            "channel": provenance.channel.as_str(),
+                            "update_policy": provenance.update_policy.as_str(),
+                            "can_self_uninstall": false,
+                            "recommended_action": uninstall_recommended_action,
+                            "current_version": current_version,
+                            "executable_path": provenance.executable_path.to_string_lossy().to_string(),
+                            "marker_path": provenance.marker_path.to_string_lossy().to_string(),
+                            "shim_path": serde_json::Value::Null,
+                            "removed_executable": false,
+                            "removed_shim": false,
+                            "removed_marker": false,
+                            "warning": serde_json::Value::Null,
+                            "reason": reason
+                        }),
+                    );
+                }
+                return Err(mark_json_error_emitted(
+                    "self uninstall unavailable: installation is channel-managed",
+                ));
+            }
+
+            let mut removed_executable = false;
+            let mut removed_shim = false;
+            let mut removed_marker = false;
+            let mut marker_warning: Option<String> = None;
+            let mut shim_path: Option<String> = None;
+
+            let uninstall_result = match provenance.channel {
+                InstallChannel::DirectScript => {
+                    removed_executable =
+                        remove_regular_file(&provenance.executable_path, "CLI executable")?;
+                    let (marker_removed, warning) = remove_install_marker_if_channel(
+                        &provenance.marker_path,
+                        InstallChannel::DirectScript,
+                    )?;
+                    removed_marker = marker_removed;
+                    marker_warning = warning;
+                    Ok(())
+                }
+                InstallChannel::AppBundleShim => {
+                    let path = default_helm_cli_shim_path()?;
+                    shim_path = Some(path.to_string_lossy().to_string());
+                    removed_shim = remove_managed_app_bundle_shim(path.as_path())?;
+                    let (marker_removed, warning) = remove_install_marker_if_channel(
+                        &provenance.marker_path,
+                        InstallChannel::AppBundleShim,
+                    )?;
+                    removed_marker = marker_removed;
+                    marker_warning = warning;
+                    Ok(())
+                }
+                _ => Err("self uninstall unsupported for this install channel".to_string()),
+            };
+            if let Err(error) = uninstall_result {
+                if options.json {
+                    emit_json_payload(
+                        "helm.cli.v1.self.uninstall",
+                        json!({
+                            "accepted": false,
+                            "removed": false,
+                            "channel": provenance.channel.as_str(),
+                            "update_policy": provenance.update_policy.as_str(),
+                            "can_self_uninstall": can_self_uninstall,
+                            "recommended_action": uninstall_recommended_action,
+                            "current_version": current_version,
+                            "executable_path": provenance.executable_path.to_string_lossy().to_string(),
+                            "marker_path": provenance.marker_path.to_string_lossy().to_string(),
+                            "shim_path": shim_path,
+                            "removed_executable": removed_executable,
+                            "removed_shim": removed_shim,
+                            "removed_marker": removed_marker,
+                            "warning": marker_warning,
+                            "reason": error
+                        }),
+                    );
+                    return Err(mark_json_error_emitted(error));
+                }
+                return Err(error);
+            }
+
+            let removed = removed_executable || removed_shim;
+            if options.json {
+                emit_json_payload(
+                    "helm.cli.v1.self.uninstall",
+                    json!({
+                        "accepted": true,
+                        "removed": removed,
+                        "channel": provenance.channel.as_str(),
+                        "update_policy": provenance.update_policy.as_str(),
+                        "can_self_uninstall": can_self_uninstall,
+                        "recommended_action": uninstall_recommended_action,
+                        "current_version": current_version,
+                        "executable_path": provenance.executable_path.to_string_lossy().to_string(),
+                        "marker_path": provenance.marker_path.to_string_lossy().to_string(),
+                        "shim_path": shim_path,
+                        "removed_executable": removed_executable,
+                        "removed_shim": removed_shim,
+                        "removed_marker": removed_marker,
+                        "warning": marker_warning,
+                        "reason": serde_json::Value::Null
+                    }),
+                );
+            } else {
+                if removed {
+                    println!("Helm CLI uninstall completed.");
+                } else {
+                    println!("Helm CLI uninstall completed; no managed CLI shim was present.");
+                }
+                println!("  channel: {}", provenance.channel.as_str());
+                println!("  update_policy: {}", provenance.update_policy.as_str());
+                if removed_executable {
+                    println!(
+                        "  removed_executable: {}",
+                        provenance.executable_path.display()
+                    );
+                }
+                if let Some(shim_path) = shim_path.as_deref() {
+                    println!("  shim_path: {shim_path}");
+                    println!("  removed_shim: {}", removed_shim);
+                }
+                println!("  removed_marker: {}", removed_marker);
+                if let Some(warning) = marker_warning {
+                    println!("  warning: {warning}");
+                }
+            }
+            Ok(())
+        }
         _ => Err(format!(
-            "unsupported self subcommand '{}'; currently supported: status, check, update, auto-check",
+            "unsupported self subcommand '{}'; currently supported: status, check, update, uninstall, auto-check",
             command_args[0]
         )),
     }
@@ -5336,12 +6013,15 @@ fn run_coordinator_workflow(
         CoordinatorWorkflowRequest::UpdatesRun {
             include_pinned,
             allow_os_updates,
+            manager_id,
         } => {
+            let manager_filter = manager_id.as_deref().map(parse_manager_id).transpose()?;
             let steps = collect_upgrade_execution_steps(
                 store.as_ref(),
                 &runtime,
                 include_pinned,
                 allow_os_updates,
+                manager_filter,
             )?;
             for step in &steps {
                 let request_name =
@@ -5376,6 +6056,12 @@ fn coordinator_submit_request_to_adapter(
 ) -> AdapterRequest {
     match request {
         CoordinatorSubmitRequest::Detect => AdapterRequest::Detect(DetectRequest),
+        CoordinatorSubmitRequest::Search { query } => AdapterRequest::Search(SearchRequest {
+            query: SearchQuery {
+                text: query,
+                issued_at: SystemTime::now(),
+            },
+        }),
         CoordinatorSubmitRequest::Install {
             package_name,
             version,
@@ -5423,6 +6109,9 @@ fn adapter_request_to_coordinator_submit(
 ) -> Result<CoordinatorSubmitRequest, String> {
     match request {
         AdapterRequest::Detect(_) => Ok(CoordinatorSubmitRequest::Detect),
+        AdapterRequest::Search(search) => Ok(CoordinatorSubmitRequest::Search {
+            query: search.query.text,
+        }),
         AdapterRequest::Install(install) => Ok(CoordinatorSubmitRequest::Install {
             package_name: install.package.name,
             version: install.version,
@@ -6256,6 +6945,35 @@ fn parse_package_selector(raw: &str) -> Result<(String, Option<ManagerId>), Stri
     Ok((trimmed.to_string(), None))
 }
 
+fn parse_homebrew_keg_policy_package_selector(raw: &str) -> Result<PackageRef, String> {
+    let (package_name, selected_manager) = parse_package_selector(raw)?;
+    let manager = selected_manager.unwrap_or(ManagerId::HomebrewFormula);
+    if manager != ManagerId::HomebrewFormula {
+        return Err(format!(
+            "packages keg-policy only supports manager '{}' (received '{}')",
+            ManagerId::HomebrewFormula.as_str(),
+            manager.as_str()
+        ));
+    }
+    Ok(PackageRef {
+        manager,
+        name: package_name,
+    })
+}
+
+fn parse_homebrew_keg_policy_arg(raw: &str) -> Result<Option<HomebrewKegPolicy>, String> {
+    let normalized = raw.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "keep" => Ok(Some(HomebrewKegPolicy::Keep)),
+        "cleanup" => Ok(Some(HomebrewKegPolicy::Cleanup)),
+        "default" | "inherit" => Ok(None),
+        other => Err(format!(
+            "unsupported keg policy '{}' (expected: keep, cleanup, default)",
+            other
+        )),
+    }
+}
+
 fn parse_manager_target(
     command_args: &[String],
     command_name: &str,
@@ -6786,6 +7504,105 @@ fn search_local_for_enabled(
                     .unwrap_or(true)
         })
         .collect())
+}
+
+fn merge_search_results(
+    local_results: Vec<CachedSearchResult>,
+    remote_results: Vec<CachedSearchResult>,
+) -> Vec<CachedSearchResult> {
+    let mut merged: HashMap<(ManagerId, String), CachedSearchResult> = HashMap::new();
+    for row in local_results {
+        let key = (row.result.package.manager, row.result.package.name.clone());
+        merged.entry(key).or_insert(row);
+    }
+    for row in remote_results {
+        let key = (row.result.package.manager, row.result.package.name.clone());
+        merged.insert(key, row);
+    }
+    let mut rows = merged.into_values().collect::<Vec<_>>();
+    rows.sort_by(|left, right| {
+        let name_cmp = left
+            .result
+            .package
+            .name
+            .to_ascii_lowercase()
+            .cmp(&right.result.package.name.to_ascii_lowercase());
+        if name_cmp != std::cmp::Ordering::Equal {
+            return name_cmp;
+        }
+        left.result
+            .package
+            .manager
+            .as_str()
+            .cmp(right.result.package.manager.as_str())
+    });
+    rows
+}
+
+fn search_remote_for_enabled(
+    store: Arc<SqliteStore>,
+    query: &str,
+    manager_filter: Option<ManagerId>,
+    enabled_map: &HashMap<ManagerId, bool>,
+) -> Result<(Vec<CachedSearchResult>, Vec<String>), String> {
+    let managers = list_managers(store.as_ref())?;
+    let mut target_managers = managers
+        .into_iter()
+        .filter_map(|row| {
+            let manager_id = row.manager_id.parse::<ManagerId>().ok()?;
+            if manager_filter.is_some() && manager_filter != Some(manager_id) {
+                return None;
+            }
+            if !row.enabled || !row.detected || !row.supports_remote_search {
+                return None;
+            }
+            if !enabled_map.get(&manager_id).copied().unwrap_or(true) {
+                return None;
+            }
+            Some(manager_id)
+        })
+        .collect::<Vec<_>>();
+    target_managers.sort_by(|left, right| left.as_str().cmp(right.as_str()));
+
+    if target_managers.is_empty() {
+        if let Some(manager) = manager_filter {
+            return Err(format!(
+                "manager '{}' is not available for remote search (enabled + detected + search-capable required)",
+                manager.as_str()
+            ));
+        }
+        return Ok((Vec::new(), Vec::new()));
+    }
+
+    sync_manager_executable_overrides(store.as_ref())?;
+    let runtime = build_adapter_runtime(store)?;
+    let tokio_runtime = cli_tokio_runtime()?;
+    let mut remote_results = Vec::new();
+    let mut remote_errors = Vec::new();
+    for manager in target_managers {
+        let request = AdapterRequest::Search(SearchRequest {
+            query: SearchQuery {
+                text: query.to_string(),
+                issued_at: SystemTime::now(),
+            },
+        });
+        match tokio_runtime.block_on(submit_request_wait(&runtime, manager, request)) {
+            Ok((_task_id, AdapterResponse::SearchResults(results))) => {
+                remote_results.extend(results);
+            }
+            Ok((_task_id, _)) => {
+                remote_errors.push(format!(
+                    "{} returned unexpected response for remote search",
+                    manager.as_str()
+                ));
+            }
+            Err(error) => {
+                remote_errors.push(format!("{}: {}", manager.as_str(), error));
+            }
+        }
+    }
+
+    Ok((remote_results, remote_errors))
 }
 
 fn list_tasks_for_enabled(
@@ -7901,6 +8718,7 @@ fn reset_setting(store: &SqliteStore, key: &str) -> Result<(), String> {
 struct ParsedUpdatesRunPreviewArgs {
     include_pinned: bool,
     allow_os_updates: bool,
+    manager_filter: Option<ManagerId>,
     yes: bool,
 }
 
@@ -8014,6 +8832,15 @@ struct ParsedUpdatesListArgs {
     limit: Option<usize>,
 }
 
+#[derive(Debug, Clone)]
+struct ParsedSearchArgs {
+    query: String,
+    manager_filter: Option<ManagerId>,
+    local_only: bool,
+    remote_only: bool,
+    limit: Option<usize>,
+}
+
 fn parse_updates_list_args(command_args: &[String]) -> Result<ParsedUpdatesListArgs, String> {
     let mut manager_filter: Option<ManagerId> = None;
     let mut limit: Option<usize> = None;
@@ -8061,24 +8888,120 @@ fn parse_updates_list_args(command_args: &[String]) -> Result<ParsedUpdatesListA
     })
 }
 
+fn parse_search_args(command_args: &[String]) -> Result<ParsedSearchArgs, String> {
+    let mut query: Option<String> = None;
+    let mut manager_filter: Option<ManagerId> = None;
+    let mut local_only = false;
+    let mut remote_only = false;
+    let mut limit: Option<usize> = None;
+
+    let mut index = 0usize;
+    while index < command_args.len() {
+        match command_args[index].as_str() {
+            "--manager" => {
+                if index + 1 >= command_args.len() {
+                    return Err("search --manager requires a manager id".to_string());
+                }
+                if manager_filter.is_some() {
+                    return Err("search --manager specified multiple times".to_string());
+                }
+                manager_filter = Some(parse_manager_id(&command_args[index + 1])?);
+                index += 2;
+            }
+            "--local" => {
+                local_only = true;
+                index += 1;
+            }
+            "--remote" => {
+                remote_only = true;
+                index += 1;
+            }
+            "--limit" => {
+                if index + 1 >= command_args.len() {
+                    return Err("search --limit requires a value".to_string());
+                }
+                if limit.is_some() {
+                    return Err("search --limit specified multiple times".to_string());
+                }
+                let value = command_args[index + 1]
+                    .parse::<usize>()
+                    .map_err(|_| format!("invalid --limit value '{}'", command_args[index + 1]))?;
+                if value == 0 {
+                    return Err("--limit must be greater than 0".to_string());
+                }
+                limit = Some(value);
+                index += 2;
+            }
+            value => {
+                if query.is_some() {
+                    return Err(format!(
+                        "search accepts exactly one query argument (unexpected '{}')",
+                        value
+                    ));
+                }
+                query = Some(value.to_string());
+                index += 1;
+            }
+        }
+    }
+
+    if local_only && remote_only {
+        return Err("search flags --local and --remote are mutually exclusive".to_string());
+    }
+    let query = query.ok_or_else(|| "search requires a query argument".to_string())?;
+
+    Ok(ParsedSearchArgs {
+        query,
+        manager_filter,
+        local_only,
+        remote_only,
+        limit,
+    })
+}
+
 fn parse_updates_run_preview_args(
     command_args: &[String],
     allow_yes: bool,
 ) -> Result<ParsedUpdatesRunPreviewArgs, String> {
     let mut include_pinned = false;
     let mut allow_os_updates = false;
+    let mut manager_filter: Option<ManagerId> = None;
     let mut yes = false;
 
-    for arg in command_args {
-        match arg.as_str() {
-            "--include-pinned" => include_pinned = true,
-            "--allow-os-updates" => allow_os_updates = true,
-            "--yes" if allow_yes => yes = true,
+    let mut index = 0usize;
+    while index < command_args.len() {
+        match command_args[index].as_str() {
+            "--include-pinned" => {
+                include_pinned = true;
+                index += 1;
+            }
+            "--allow-os-updates" => {
+                allow_os_updates = true;
+                index += 1;
+            }
+            "--manager" => {
+                if index + 1 >= command_args.len() {
+                    return Err("updates --manager requires a manager id".to_string());
+                }
+                if manager_filter.is_some() {
+                    return Err("updates --manager specified multiple times".to_string());
+                }
+                manager_filter = Some(parse_manager_id(&command_args[index + 1])?);
+                index += 2;
+            }
+            "--yes" if allow_yes => {
+                yes = true;
+                index += 1;
+            }
             "--yes" => {
                 return Err("--yes is only valid for 'updates run'".to_string());
             }
             other => {
-                return Err(format!("unsupported updates argument '{}'", other));
+                return Err(format!(
+                    "unsupported updates argument '{}'; supported: --include-pinned, --allow-os-updates, --manager <id>{}",
+                    other,
+                    if allow_yes { ", --yes" } else { "" }
+                ));
             }
         }
     }
@@ -8086,6 +9009,7 @@ fn parse_updates_run_preview_args(
     Ok(ParsedUpdatesRunPreviewArgs {
         include_pinned,
         allow_os_updates,
+        manager_filter,
         yes,
     })
 }
@@ -8127,6 +9051,7 @@ fn collect_upgrade_execution_steps(
     runtime: &AdapterRuntime,
     include_pinned: bool,
     allow_os_updates: bool,
+    manager_filter: Option<ManagerId>,
 ) -> Result<Vec<UpgradeExecutionStep>, String> {
     let enabled_map = manager_enabled_map(store)?;
     let outdated = list_outdated_for_enabled(store, &enabled_map)?;
@@ -8142,6 +9067,9 @@ fn collect_upgrade_execution_steps(
 
     for package in outdated {
         let manager = package.package.manager;
+        if manager_filter.is_some() && manager_filter != Some(manager) {
+            continue;
+        }
         if !runtime.has_manager(manager)
             || !runtime.supports_capability(manager, Capability::Upgrade)
         {
@@ -8254,10 +9182,6 @@ fn parse_positive_u32(raw: &str, key: &str) -> Result<u32, String> {
     Ok(value)
 }
 
-fn print_tui_placeholder() {
-    eprintln!("helm: TUI mode is not implemented yet; showing command help.");
-}
-
 fn is_help_token(raw: &str) -> bool {
     matches!(raw, "help" | "-h" | "--help")
 }
@@ -8274,6 +9198,13 @@ fn print_help_topic(command_args: &[String]) -> bool {
 
 fn print_command_help_topic(command: Command, path: &[String]) -> bool {
     match command {
+        Command::Tui => {
+            if !path.is_empty() {
+                return false;
+            }
+            print_tui_help();
+            true
+        }
         Command::Status => {
             if !path.is_empty() {
                 return false;
@@ -8315,49 +9246,85 @@ fn print_command_help_topic(command: Command, path: &[String]) -> bool {
     }
 }
 
+fn print_tui_help() {
+    println!("USAGE:");
+    println!("  helm");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Launch the interactive Helm terminal UI (TUI) when stdout is a TTY.");
+    println!("  In non-TTY contexts, 'helm' without arguments prints help instead.");
+}
+
 fn print_packages_help_topic(path: &[String]) -> bool {
     if path.is_empty() {
         print_packages_help();
         return true;
     }
-    if path.len() != 1 {
-        return false;
+    if path.len() == 1 {
+        return match path[0].as_str() {
+            "list" => {
+                print_packages_list_help();
+                true
+            }
+            "search" => {
+                print_packages_search_help();
+                true
+            }
+            "show" => {
+                print_packages_show_help();
+                true
+            }
+            "install" => {
+                print_packages_install_help();
+                true
+            }
+            "uninstall" => {
+                print_packages_uninstall_help();
+                true
+            }
+            "upgrade" => {
+                print_packages_upgrade_help();
+                true
+            }
+            "pin" => {
+                print_packages_pin_help();
+                true
+            }
+            "unpin" => {
+                print_packages_unpin_help();
+                true
+            }
+            "keg-policy" => {
+                print_packages_keg_policy_help();
+                true
+            }
+            _ => false,
+        };
     }
-    match path[0].as_str() {
-        "list" => {
-            print_packages_list_help();
-            true
-        }
-        "search" => {
-            print_packages_search_help();
-            true
-        }
-        "show" => {
-            print_packages_show_help();
-            true
-        }
-        "install" => {
-            print_packages_install_help();
-            true
-        }
-        "uninstall" => {
-            print_packages_uninstall_help();
-            true
-        }
-        "upgrade" => {
-            print_packages_upgrade_help();
-            true
-        }
-        "pin" => {
-            print_packages_pin_help();
-            true
-        }
-        "unpin" => {
-            print_packages_unpin_help();
-            true
-        }
-        _ => false,
+
+    if path.len() == 2 && path[0] == "keg-policy" {
+        return match path[1].as_str() {
+            "list" => {
+                print_packages_keg_policy_list_help();
+                true
+            }
+            "get" => {
+                print_packages_keg_policy_get_help();
+                true
+            }
+            "set" => {
+                print_packages_keg_policy_set_help();
+                true
+            }
+            "reset" => {
+                print_packages_keg_policy_reset_help();
+                true
+            }
+            _ => false,
+        };
     }
+
+    false
 }
 
 fn print_updates_help_topic(path: &[String]) -> bool {
@@ -8567,6 +9534,10 @@ fn print_self_help_topic(path: &[String]) -> bool {
                 print_self_update_help();
                 return true;
             }
+            "uninstall" => {
+                print_self_uninstall_help();
+                return true;
+            }
             "auto-check" => {
                 print_self_auto_check_help();
                 return true;
@@ -8652,7 +9623,12 @@ fn print_doctor_help_topic(path: &[String]) -> bool {
 fn print_help() {
     println!("Helm CLI");
     println!();
+    println!("NOTE:");
+    println!("  helm (no arguments) launches the interactive TUI when stdout is a TTY.");
+    println!("  In non-TTY contexts, helm (no arguments) prints this help.");
+    println!();
     println!("USAGE:");
+    println!("  helm");
     println!(
         "  helm [--json|--ndjson] [-v|--verbose|-q|--quiet] [--no-color] [--locale <id>] [--timeout <seconds>] [--wait|--detach] <command> [subcommand]"
     );
@@ -8664,9 +9640,9 @@ fn print_help() {
     println!("COMMANDS:");
     println!("  status                 Show overall snapshot summary");
     println!("  refresh                Run detection + refresh pipeline");
-    println!("  search <query>         Search local package cache");
+    println!("  search <query>         Progressive package search (local + remote)");
     println!("  ls                     List installed packages (alias)");
-    println!("  packages [list|search|show|install|uninstall|upgrade|pin|unpin]");
+    println!("  packages [list|search|show|install|uninstall|upgrade|pin|unpin|keg-policy]");
     println!("                         Package listing/search/details and mutations");
     println!("  updates [list|summary|preview|run]");
     println!("                         List/summarize/preview/run package upgrades");
@@ -8682,8 +9658,8 @@ fn print_help() {
     println!("                         Read diagnostics snapshots and export support data");
     println!("  doctor [summary|task|manager|provenance|export]");
     println!("                         Diagnostics alias; default shows provenance");
-    println!("  self [status|check|update|auto-check]");
-    println!("                         Helm self-update status/check/update namespace");
+    println!("  self [status|check|update|uninstall|auto-check]");
+    println!("                         Helm self-update/uninstall namespace");
     println!("  completion [bash|zsh|fish]");
     println!("                         Generate shell completion scripts");
     println!("  help                   Show this help");
@@ -8721,10 +9697,11 @@ fn print_refresh_help() {
 
 fn print_search_help() {
     println!("USAGE:");
-    println!("  helm search <query>");
+    println!("  helm search <query> [--manager <id>] [--local|--remote] [--limit <n>]");
     println!();
     println!("DESCRIPTION:");
-    println!("  Search local cached package metadata for the query.");
+    println!("  Progressive package search: local cache plus remote manager fan-out.");
+    println!("  Use --local for cache-only or --remote for remote-only.");
 }
 
 fn print_packages_help() {
@@ -8734,13 +9711,14 @@ fn print_packages_help() {
     println!();
     println!("SUBCOMMANDS:");
     println!("  list [--limit <n>]");
-    println!("  search <query>");
+    println!("  search <query> [--manager <id>] [--local|--remote] [--limit <n>]");
     println!("  show <name> [--manager <id>]");
     println!("  install <name|name@manager> --manager <id> [--version <v>]");
     println!("  uninstall <name|name@manager> --manager <id>");
     println!("  upgrade <name|name@manager> --manager <id>");
     println!("  pin <name|name@manager> --manager <id> [--version <v>]");
     println!("  unpin <name|name@manager> --manager <id>");
+    println!("  keg-policy <list|get|set|reset> ...");
     println!();
     println!("DESCRIPTION:");
     println!("  List/search/show and mutate package state for manager-scoped package references.");
@@ -8758,10 +9736,10 @@ fn print_packages_list_help() {
 
 fn print_packages_search_help() {
     println!("USAGE:");
-    println!("  helm packages search <query>");
+    println!("  helm packages search <query> [--manager <id>] [--local|--remote] [--limit <n>]");
     println!();
     println!("DESCRIPTION:");
-    println!("  Search local cached package metadata.");
+    println!("  Progressive package search: local cache plus remote manager fan-out.");
 }
 
 fn print_packages_show_help() {
@@ -8815,12 +9793,55 @@ fn print_packages_unpin_help() {
     println!("  Remove pin state for a package.");
 }
 
+fn print_packages_keg_policy_help() {
+    println!("USAGE:");
+    println!("  helm packages keg-policy list");
+    println!("  helm packages keg-policy get <name|name@homebrew_formula>");
+    println!("  helm packages keg-policy set <name|name@homebrew_formula> <keep|cleanup|default>");
+    println!("  helm packages keg-policy reset <name|name@homebrew_formula>");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Manage per-package Homebrew keg cleanup overrides.");
+}
+
+fn print_packages_keg_policy_list_help() {
+    println!("USAGE:");
+    println!("  helm packages keg-policy list");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  List global default Homebrew keg policy and package-specific overrides.");
+}
+
+fn print_packages_keg_policy_get_help() {
+    println!("USAGE:");
+    println!("  helm packages keg-policy get <name|name@homebrew_formula>");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Show default, override, and effective Homebrew keg policy for one package.");
+}
+
+fn print_packages_keg_policy_set_help() {
+    println!("USAGE:");
+    println!("  helm packages keg-policy set <name|name@homebrew_formula> <keep|cleanup|default>");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Set or clear package-specific Homebrew keg policy override.");
+}
+
+fn print_packages_keg_policy_reset_help() {
+    println!("USAGE:");
+    println!("  helm packages keg-policy reset <name|name@homebrew_formula>");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Clear package-specific Homebrew keg policy override and inherit default.");
+}
+
 fn print_updates_help() {
     println!("USAGE:");
     println!("  helm updates list [--manager <id>] [--limit <n>]");
     println!("  helm updates summary");
-    println!("  helm updates preview [--include-pinned] [--allow-os-updates]");
-    println!("  helm updates run --yes [--include-pinned] [--allow-os-updates]");
+    println!("  helm updates preview [--include-pinned] [--allow-os-updates] [--manager <id>]");
+    println!("  helm updates run --yes [--include-pinned] [--allow-os-updates] [--manager <id>]");
     println!();
     println!("DESCRIPTION:");
     println!("  Inspect and execute bulk upgrade plans from the cached outdated snapshot.");
@@ -8845,7 +9866,7 @@ fn print_updates_summary_help() {
 
 fn print_updates_preview_help() {
     println!("USAGE:");
-    println!("  helm updates preview [--include-pinned] [--allow-os-updates]");
+    println!("  helm updates preview [--include-pinned] [--allow-os-updates] [--manager <id>]");
     println!();
     println!("DESCRIPTION:");
     println!("  Build and display ordered upgrade steps without executing.");
@@ -8853,7 +9874,7 @@ fn print_updates_preview_help() {
 
 fn print_updates_run_help() {
     println!("USAGE:");
-    println!("  helm updates run --yes [--include-pinned] [--allow-os-updates]");
+    println!("  helm updates run --yes [--include-pinned] [--allow-os-updates] [--manager <id>]");
     println!();
     println!("DESCRIPTION:");
     println!("  Execute the ordered upgrade plan derived from the current snapshot.");
@@ -9221,6 +10242,7 @@ fn print_self_help() {
     println!("  helm self status");
     println!("  helm self check");
     println!("  helm self update [--check] [--force]");
+    println!("  helm self uninstall");
     println!("  helm self auto-check status");
     println!("  helm self auto-check enable");
     println!("  helm self auto-check disable");
@@ -9256,6 +10278,17 @@ fn print_self_update_help() {
     println!("  Apply direct CLI self-update when provenance policy allows it.");
     println!("  --check performs a non-mutating availability check.");
     println!("  --force is only honored for direct-script installs.");
+}
+
+fn print_self_uninstall_help() {
+    println!("USAGE:");
+    println!("  helm self uninstall");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Remove Helm CLI when install provenance allows direct uninstall.");
+    println!("  direct-script installs remove the active executable and matching marker.");
+    println!("  app-bundle-shim installs remove the managed ~/.local/bin/helm shim and marker.");
+    println!("  channel-managed installs print the required channel uninstall action.");
 }
 
 fn print_self_auto_check_help() {
@@ -9313,11 +10346,25 @@ fn print_completion_help() {
 #[cfg(test)]
 mod tests {
     use super::{
-        Command, ExecutionMode, build_json_payload_lines, command_help_topic_exists,
-        exit_code_for_error, mark_exit_code, parse_args, raw_args_request_json,
-        raw_args_request_ndjson, strip_exit_code_marker,
+        Command, ExecutionMode, HomebrewKegPolicy, InstallChannel, ManagerId,
+        build_json_payload_lines, command_help_topic_exists, exit_code_for_error, mark_exit_code,
+        parse_args, parse_args_with_tty, parse_homebrew_keg_policy_arg, parse_search_args,
+        parse_updates_run_preview_args, raw_args_request_json, raw_args_request_ndjson,
+        remove_install_marker_if_channel, self_uninstall_recommended_action,
+        strip_exit_code_marker,
     };
     use serde_json::json;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_file_path(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("helm-cli-self-uninstall-{name}-{nanos}.json"))
+    }
 
     #[test]
     fn exit_code_mapping_defaults_to_runtime_error_without_marker() {
@@ -9379,6 +10426,32 @@ mod tests {
     }
 
     #[test]
+    fn parse_args_supports_combined_short_flags_for_verbose_version() {
+        let (options, command, args) =
+            parse_args(vec!["-vV".to_string()]).expect("combined short flags should parse");
+        assert!(options.verbose);
+        assert!(!options.quiet);
+        assert_eq!(command, Command::Version);
+        assert!(args.is_empty());
+    }
+
+    #[test]
+    fn parse_args_rejects_unknown_combined_short_flag() {
+        let error = parse_args(vec!["-vZ".to_string(), "status".to_string()])
+            .expect_err("unknown combined short flag should fail");
+        assert!(error.contains("unknown short flag"));
+        assert!(error.contains("-Z"));
+    }
+
+    #[test]
+    fn parse_args_keeps_non_flag_hyphenated_command_args() {
+        let (_, command, args) = parse_args(vec!["search".to_string(), "-foo".to_string()])
+            .expect("search query args should parse");
+        assert_eq!(command, Command::Search);
+        assert_eq!(args, vec!["-foo".to_string()]);
+    }
+
+    #[test]
     fn parse_args_rejects_verbose_and_quiet_together() {
         let error = parse_args(vec![
             "--verbose".to_string(),
@@ -9408,6 +10481,22 @@ mod tests {
             .expect("doctor alias should parse");
         assert_eq!(command, Command::Doctor);
         assert_eq!(args, vec!["provenance".to_string()]);
+    }
+
+    #[test]
+    fn parse_args_no_args_launches_tui_when_stdout_is_tty() {
+        let (_, command, args) =
+            parse_args_with_tty(Vec::new(), true).expect("empty args should parse");
+        assert_eq!(command, Command::Tui);
+        assert!(args.is_empty());
+    }
+
+    #[test]
+    fn parse_args_no_args_falls_back_to_help_when_stdout_is_not_tty() {
+        let (_, command, args) =
+            parse_args_with_tty(Vec::new(), false).expect("empty args should parse");
+        assert_eq!(command, Command::Help);
+        assert!(args.is_empty());
     }
 
     #[test]
@@ -9473,6 +10562,10 @@ mod tests {
             &["list".to_string()]
         ));
         assert!(command_help_topic_exists(
+            Command::Packages,
+            &["keg-policy".to_string(), "set".to_string()]
+        ));
+        assert!(command_help_topic_exists(
             Command::Managers,
             &["executables".to_string(), "set".to_string()]
         ));
@@ -9480,9 +10573,152 @@ mod tests {
             Command::SelfCmd,
             &["auto-check".to_string(), "frequency".to_string()]
         ));
+        assert!(command_help_topic_exists(
+            Command::SelfCmd,
+            &["uninstall".to_string()]
+        ));
         assert!(!command_help_topic_exists(
             Command::Updates,
             &["unknown".to_string()]
         ));
+    }
+
+    #[test]
+    fn parse_search_args_supports_progressive_manager_and_limit() {
+        let parsed = parse_search_args(&[
+            "--manager".to_string(),
+            "homebrew_formula".to_string(),
+            "--limit".to_string(),
+            "25".to_string(),
+            "ripgrep".to_string(),
+        ])
+        .expect("search args should parse");
+        assert_eq!(parsed.query, "ripgrep");
+        assert_eq!(parsed.manager_filter, Some(ManagerId::HomebrewFormula));
+        assert_eq!(parsed.limit, Some(25));
+        assert!(!parsed.local_only);
+        assert!(!parsed.remote_only);
+    }
+
+    #[test]
+    fn parse_search_args_rejects_conflicting_modes() {
+        let error = parse_search_args(&[
+            "--local".to_string(),
+            "--remote".to_string(),
+            "ripgrep".to_string(),
+        ])
+        .expect_err("search mode conflict must fail");
+        assert!(error.contains("--local"));
+        assert!(error.contains("--remote"));
+    }
+
+    #[test]
+    fn parse_updates_run_preview_args_supports_manager_filter() {
+        let parsed = parse_updates_run_preview_args(
+            &[
+                "--include-pinned".to_string(),
+                "--manager".to_string(),
+                "homebrew_formula".to_string(),
+            ],
+            false,
+        )
+        .expect("updates preview args should parse");
+        assert!(parsed.include_pinned);
+        assert_eq!(parsed.manager_filter, Some(ManagerId::HomebrewFormula));
+        assert!(!parsed.yes);
+    }
+
+    #[test]
+    fn parse_updates_run_preview_args_rejects_duplicate_manager_filter() {
+        let error = parse_updates_run_preview_args(
+            &[
+                "--manager".to_string(),
+                "homebrew_formula".to_string(),
+                "--manager".to_string(),
+                "npm".to_string(),
+            ],
+            true,
+        )
+        .expect_err("duplicate --manager should fail");
+        assert!(error.contains("specified multiple times"));
+    }
+
+    #[test]
+    fn parse_homebrew_keg_policy_arg_supports_expected_values() {
+        assert_eq!(
+            parse_homebrew_keg_policy_arg("keep").unwrap(),
+            Some(HomebrewKegPolicy::Keep)
+        );
+        assert_eq!(
+            parse_homebrew_keg_policy_arg("cleanup").unwrap(),
+            Some(HomebrewKegPolicy::Cleanup)
+        );
+        assert_eq!(parse_homebrew_keg_policy_arg("default").unwrap(), None);
+        assert!(parse_homebrew_keg_policy_arg("invalid").is_err());
+    }
+
+    #[test]
+    fn self_uninstall_recommended_actions_match_channel_contract() {
+        let executable_path = Path::new("/tmp/helm");
+        assert_eq!(
+            self_uninstall_recommended_action(InstallChannel::DirectScript, executable_path),
+            "helm self uninstall"
+        );
+        assert_eq!(
+            self_uninstall_recommended_action(InstallChannel::Brew, executable_path),
+            "brew uninstall helm-cli"
+        );
+        assert_eq!(
+            self_uninstall_recommended_action(InstallChannel::Macports, executable_path),
+            "sudo port uninstall helm-cli"
+        );
+        assert_eq!(
+            self_uninstall_recommended_action(InstallChannel::Cargo, executable_path),
+            "cargo uninstall helm-cli"
+        );
+        assert_eq!(
+            self_uninstall_recommended_action(InstallChannel::Managed, executable_path),
+            "follow managed organizational uninstall policy"
+        );
+        assert!(
+            self_uninstall_recommended_action(InstallChannel::Unknown, executable_path)
+                .contains("rm '/tmp/helm'")
+        );
+    }
+
+    #[test]
+    fn remove_install_marker_if_channel_respects_channel_match() {
+        let direct_path = temp_file_path("direct-marker");
+        fs::write(
+            &direct_path,
+            r#"{"channel":"direct-script","artifact":"helm-cli","installed_at":"2026-02-24T00:00:00Z","update_policy":"self","version":"0.17.3"}"#,
+        )
+        .expect("writes direct marker fixture");
+        let (removed, warning) =
+            remove_install_marker_if_channel(&direct_path, InstallChannel::DirectScript)
+                .expect("direct marker removal should succeed");
+        assert!(removed);
+        assert!(warning.is_none());
+        assert!(!direct_path.exists());
+
+        let mismatch_path = temp_file_path("brew-marker");
+        fs::write(
+            &mismatch_path,
+            r#"{"channel":"brew","artifact":"helm-cli","installed_at":"2026-02-24T00:00:00Z","update_policy":"channel","version":"0.17.3"}"#,
+        )
+        .expect("writes brew marker fixture");
+        let (removed, warning) =
+            remove_install_marker_if_channel(&mismatch_path, InstallChannel::DirectScript)
+                .expect("mismatch marker should not hard-fail");
+        assert!(!removed);
+        assert!(
+            warning
+                .as_deref()
+                .unwrap_or_default()
+                .contains("does not match")
+        );
+        assert!(mismatch_path.exists());
+
+        let _ = fs::remove_file(mismatch_path);
     }
 }
