@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -476,6 +476,7 @@ impl AppState {
                 cancelled_tasks: 0,
                 failed_task_ids: Vec::new(),
                 undetected_enabled_managers: Vec::new(),
+                failure_classes: BTreeMap::new(),
             },
             settings: SettingsSnapshot::default(),
             self_update: SelfUpdateSnapshot::default(),

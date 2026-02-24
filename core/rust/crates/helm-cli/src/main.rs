@@ -1,4 +1,4 @@
-use std::collections::{HashMap, hash_map::DefaultHasher};
+use std::collections::{BTreeMap, HashMap, hash_map::DefaultHasher};
 use std::env;
 use std::fs::{self, OpenOptions};
 use std::hash::{Hash, Hasher};
@@ -30,7 +30,8 @@ use helm_core::adapters::{
     UpgradeRequest, XcodeCommandLineToolsAdapter, YarnAdapter,
 };
 use helm_core::execution::{
-    TokioProcessExecutor, clear_manager_selected_executables, set_manager_selected_executable,
+    TaskOutputRecord, TokioProcessExecutor, clear_manager_selected_executables,
+    set_manager_selected_executable,
 };
 use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
@@ -283,6 +284,31 @@ struct CliDiagnosticsSummary {
     cancelled_tasks: usize,
     failed_task_ids: Vec<u64>,
     undetected_enabled_managers: Vec<String>,
+    failure_classes: BTreeMap<String, usize>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CliTaskDiagnosticsOutput {
+    available: bool,
+    command: Option<String>,
+    cwd: Option<String>,
+    started_at_unix_ms: Option<i64>,
+    finished_at_unix_ms: Option<i64>,
+    duration_ms: Option<u64>,
+    exit_code: Option<i32>,
+    termination_reason: Option<String>,
+    error_code: Option<String>,
+    error_message: Option<String>,
+    stdout: Option<String>,
+    stderr: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CliTaskDiagnosticsError {
+    code: String,
+    message: String,
 }
 
 #[derive(Serialize)]
@@ -2925,26 +2951,31 @@ fn cmd_tasks_logs(
 fn cmd_tasks_output(options: GlobalOptions, command_args: &[String]) -> Result<(), String> {
     let task_id = parse_task_id_argument(command_args, "tasks output")?;
     let output = helm_core::execution::task_output(TaskId(task_id));
-    let available = output.is_some();
-    let command = output.as_ref().and_then(|entry| entry.command.clone());
-    let stdout = output.as_ref().and_then(|entry| entry.stdout.clone());
-    let stderr = output.as_ref().and_then(|entry| entry.stderr.clone());
+    let output_payload = task_output_to_cli_diagnostics(output.as_ref());
 
     if options.json {
         emit_json_payload(
             "helm.cli.v1.tasks.output",
             json!({
                 "task_id": task_id,
-                "available": available,
-                "command": command,
-                "stdout": stdout,
-                "stderr": stderr
+                "available": output_payload.available,
+                "command": output_payload.command,
+                "cwd": output_payload.cwd,
+                "started_at_unix_ms": output_payload.started_at_unix_ms,
+                "finished_at_unix_ms": output_payload.finished_at_unix_ms,
+                "duration_ms": output_payload.duration_ms,
+                "exit_code": output_payload.exit_code,
+                "termination_reason": output_payload.termination_reason,
+                "error_code": output_payload.error_code,
+                "error_message": output_payload.error_message,
+                "stdout": output_payload.stdout,
+                "stderr": output_payload.stderr
             }),
         );
         return Ok(());
     }
 
-    if !available {
+    if !output_payload.available {
         println!(
             "Task output for #{} is not available in this CLI process session.",
             task_id
@@ -2954,11 +2985,55 @@ fn cmd_tasks_output(options: GlobalOptions, command_args: &[String]) -> Result<(
     }
 
     println!("Task Output #{}", task_id);
-    println!("  command: {}", command.as_deref().unwrap_or("-"));
+    println!(
+        "  command: {}",
+        output_payload.command.as_deref().unwrap_or("-")
+    );
+    println!("  cwd: {}", output_payload.cwd.as_deref().unwrap_or("-"));
+    println!(
+        "  started_at_unix_ms: {}",
+        output_payload
+            .started_at_unix_ms
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string())
+    );
+    println!(
+        "  finished_at_unix_ms: {}",
+        output_payload
+            .finished_at_unix_ms
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string())
+    );
+    println!(
+        "  duration_ms: {}",
+        output_payload
+            .duration_ms
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string())
+    );
+    println!(
+        "  exit_code: {}",
+        output_payload
+            .exit_code
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string())
+    );
+    println!(
+        "  termination_reason: {}",
+        output_payload.termination_reason.as_deref().unwrap_or("-")
+    );
+    println!(
+        "  error_code: {}",
+        output_payload.error_code.as_deref().unwrap_or("-")
+    );
+    println!(
+        "  error_message: {}",
+        output_payload.error_message.as_deref().unwrap_or("-")
+    );
     println!("  stdout:");
-    println!("{}", stdout.as_deref().unwrap_or(""));
+    println!("{}", output_payload.stdout.as_deref().unwrap_or(""));
     println!("  stderr:");
-    println!("{}", stderr.as_deref().unwrap_or(""));
+    println!("{}", output_payload.stderr.as_deref().unwrap_or(""));
     Ok(())
 }
 
@@ -6680,6 +6755,14 @@ fn cmd_diagnostics_summary(store: &SqliteStore, options: GlobalOptions) -> Resul
             summary.undetected_enabled_managers.join(", ")
         );
     }
+    if summary.failure_classes.is_empty() {
+        println!("  failure_classes: -");
+    } else {
+        println!("  failure_classes:");
+        for (class, count) in &summary.failure_classes {
+            println!("    {class}: {count}");
+        }
+    }
     Ok(())
 }
 
@@ -6696,6 +6779,7 @@ fn cmd_diagnostics_task(
         .into_iter()
         .find(|row| row.id.0 == task_id)
         .ok_or_else(|| format!("task '{}' not found in recent task window", task_id))?;
+    let task_status = task.status;
     let task_view = task_to_cli_task(task);
 
     let logs = store
@@ -6706,12 +6790,8 @@ fn cmd_diagnostics_task(
         .collect::<Vec<_>>();
 
     let output = helm_core::execution::task_output(TaskId(task_id));
-    let output_payload = json!({
-        "available": output.is_some(),
-        "command": output.as_ref().and_then(|entry| entry.command.clone()),
-        "stdout": output.as_ref().and_then(|entry| entry.stdout.clone()),
-        "stderr": output.as_ref().and_then(|entry| entry.stderr.clone())
-    });
+    let output_payload = task_output_to_cli_diagnostics(output.as_ref());
+    let diagnostics_error = build_task_diagnostics_error(task_status, &logs, output.as_ref());
 
     if options.json {
         emit_json_payload(
@@ -6719,7 +6799,8 @@ fn cmd_diagnostics_task(
             json!({
                 "task": task_view,
                 "logs": logs,
-                "output": output_payload
+                "output": output_payload,
+                "error": diagnostics_error
             }),
         );
         return Ok(());
@@ -6731,7 +6812,7 @@ fn cmd_diagnostics_task(
     println!("  status: {}", task_view.status);
     println!("  created_at_unix: {}", task_view.created_at_unix);
     println!("  log_entries: {}", logs.len());
-    if let Some(last_log) = logs.last() {
+    if let Some(last_log) = logs.first() {
         println!(
             "  last_log: [{}] [{}] {}",
             last_log.created_at_unix, last_log.level, last_log.message
@@ -6739,11 +6820,59 @@ fn cmd_diagnostics_task(
     } else {
         println!("  last_log: -");
     }
-    if output.is_some() {
+    if let Some(error) = diagnostics_error {
+        println!("  error_code: {}", error.code);
+        println!("  error_message: {}", error.message);
+    } else {
+        println!("  error_code: -");
+        println!("  error_message: -");
+    }
+    if output_payload.available {
         println!("  output_available: true");
         println!(
             "  command: {}",
-            output_payload["command"].as_str().unwrap_or("-")
+            output_payload.command.as_deref().unwrap_or("-")
+        );
+        println!("  cwd: {}", output_payload.cwd.as_deref().unwrap_or("-"));
+        println!(
+            "  started_at_unix_ms: {}",
+            output_payload
+                .started_at_unix_ms
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string())
+        );
+        println!(
+            "  finished_at_unix_ms: {}",
+            output_payload
+                .finished_at_unix_ms
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string())
+        );
+        println!(
+            "  duration_ms: {}",
+            output_payload
+                .duration_ms
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string())
+        );
+        println!(
+            "  exit_code: {}",
+            output_payload
+                .exit_code
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string())
+        );
+        println!(
+            "  termination_reason: {}",
+            output_payload.termination_reason.as_deref().unwrap_or("-")
+        );
+        println!(
+            "  output_error_code: {}",
+            output_payload.error_code.as_deref().unwrap_or("-")
+        );
+        println!(
+            "  output_error_message: {}",
+            output_payload.error_message.as_deref().unwrap_or("-")
         );
     } else {
         println!("  output_available: false");
@@ -6975,6 +7104,221 @@ fn parse_diagnostics_export_path(command_args: &[String]) -> Result<Option<Strin
     Ok(path)
 }
 
+fn task_output_to_cli_diagnostics(output: Option<&TaskOutputRecord>) -> CliTaskDiagnosticsOutput {
+    CliTaskDiagnosticsOutput {
+        available: output.is_some(),
+        command: output.and_then(|entry| entry.command.clone()),
+        cwd: output.and_then(|entry| entry.cwd.clone()),
+        started_at_unix_ms: output.and_then(|entry| entry.started_at_unix_ms),
+        finished_at_unix_ms: output.and_then(|entry| entry.finished_at_unix_ms),
+        duration_ms: output.and_then(|entry| entry.duration_ms),
+        exit_code: output.and_then(|entry| entry.exit_code),
+        termination_reason: output.and_then(|entry| entry.termination_reason.clone()),
+        error_code: output.and_then(|entry| entry.error_code.clone()),
+        error_message: output.and_then(|entry| entry.error_message.clone()),
+        stdout: output.and_then(|entry| entry.stdout.clone()),
+        stderr: output.and_then(|entry| entry.stderr.clone()),
+    }
+}
+
+fn build_task_diagnostics_error(
+    status: TaskStatus,
+    logs: &[CliTaskLogRecord],
+    output: Option<&TaskOutputRecord>,
+) -> Option<CliTaskDiagnosticsError> {
+    if !matches!(status, TaskStatus::Failed | TaskStatus::Cancelled) {
+        return None;
+    }
+
+    if let Some(output) = output
+        && let (Some(code), Some(message)) = (&output.error_code, &output.error_message)
+        && !code.trim().is_empty()
+        && !message.trim().is_empty()
+    {
+        return Some(CliTaskDiagnosticsError {
+            code: code.clone(),
+            message: message.clone(),
+        });
+    }
+
+    if let Some(parsed) = parse_terminal_error_from_logs(status, logs, output) {
+        return Some(parsed);
+    }
+
+    let fallback_message = output
+        .and_then(|entry| entry.error_message.clone())
+        .or_else(|| {
+            output
+                .and_then(|entry| entry.stderr.as_deref())
+                .and_then(last_non_empty_line)
+                .map(str::to_string)
+        })
+        .or_else(|| {
+            logs.iter()
+                .find(|record| matches!(record.level.as_str(), "error" | "warn"))
+                .map(|record| record.message.clone())
+        })
+        .unwrap_or_else(|| match status {
+            TaskStatus::Failed => "task failed without persisted diagnostics".to_string(),
+            TaskStatus::Cancelled => "task cancelled without persisted diagnostics".to_string(),
+            _ => "task error".to_string(),
+        });
+    let code = classify_failure_class(output, Some(fallback_message.as_str())).to_string();
+    Some(CliTaskDiagnosticsError {
+        code,
+        message: fallback_message,
+    })
+}
+
+fn parse_terminal_error_from_logs(
+    status: TaskStatus,
+    logs: &[CliTaskLogRecord],
+    output: Option<&TaskOutputRecord>,
+) -> Option<CliTaskDiagnosticsError> {
+    let expected_prefix = match status {
+        TaskStatus::Failed => "task failed",
+        TaskStatus::Cancelled => "task cancelled",
+        _ => return None,
+    };
+
+    for record in logs {
+        if !matches!(record.level.as_str(), "error" | "warn") {
+            continue;
+        }
+        let message = record.message.trim();
+        if !message.starts_with(expected_prefix) {
+            continue;
+        }
+
+        if let Some(parsed) = parse_structured_terminal_error_message(message, expected_prefix) {
+            return Some(parsed);
+        }
+
+        if let Some(unstructured) = message
+            .strip_prefix(expected_prefix)
+            .and_then(|suffix| suffix.strip_prefix(':'))
+            .map(str::trim)
+            .filter(|detail| !detail.is_empty())
+        {
+            return Some(CliTaskDiagnosticsError {
+                code: classify_failure_class(output, Some(unstructured)).to_string(),
+                message: unstructured.to_string(),
+            });
+        }
+    }
+    None
+}
+
+fn parse_structured_terminal_error_message(
+    message: &str,
+    prefix: &str,
+) -> Option<CliTaskDiagnosticsError> {
+    let remainder = message.strip_prefix(prefix)?.trim_start();
+    let bracketed = remainder.strip_prefix('[')?;
+    let bracket_end = bracketed.find(']')?;
+    let code = bracketed[..bracket_end].trim();
+    if code.is_empty() {
+        return None;
+    }
+    let detail = bracketed[bracket_end + 1..]
+        .trim_start()
+        .strip_prefix(':')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
+    Some(CliTaskDiagnosticsError {
+        code: code.to_string(),
+        message: detail.to_string(),
+    })
+}
+
+fn last_non_empty_line(value: &str) -> Option<&str> {
+    value.lines().rev().find_map(|line| {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
+    })
+}
+
+fn classify_failure_class(
+    output: Option<&TaskOutputRecord>,
+    message: Option<&str>,
+) -> &'static str {
+    if let Some(output) = output {
+        if matches!(output.termination_reason.as_deref(), Some("timeout")) {
+            return "timeout";
+        }
+        if let Some(code) = output.error_code.as_deref() {
+            match code {
+                "timeout" => return "timeout",
+                "unsupported_capability" => return "unsupported_capability",
+                _ => {}
+            }
+        }
+    }
+
+    let normalized = message.unwrap_or_default().to_ascii_lowercase();
+    if normalized.contains("timed out waiting for coordinator response")
+        || normalized.contains("coordinator response")
+    {
+        return "coordinator_timeout";
+    }
+    if normalized.contains("unsupported capability") {
+        return "unsupported_capability";
+    }
+    if normalized.contains("current working directory must exist")
+        || normalized.contains("process.cwd failed")
+        || normalized.contains("could not locate working directory")
+        || normalized.contains("getcwd")
+    {
+        return "cwd_missing";
+    }
+    if normalized.contains("temporary failure in name resolution")
+        || normalized.contains("name or service not known")
+        || normalized.contains("failed to lookup address")
+        || normalized.contains("could not resolve host")
+        || normalized.contains("dns")
+    {
+        return "network_dns";
+    }
+    if normalized.contains("timed out") || normalized.contains("timeout") {
+        return "timeout";
+    }
+    "other"
+}
+
+fn diagnose_failure_class_for_task(store: &SqliteStore, task_id: TaskId) -> Result<String, String> {
+    let logs = store
+        .list_task_logs(task_id, 128)
+        .map_err(|error| format!("failed to list task logs for task '{}': {error}", task_id.0))?
+        .into_iter()
+        .map(task_log_to_cli_record)
+        .collect::<Vec<_>>();
+    let output = helm_core::execution::task_output(task_id);
+    let message = logs
+        .iter()
+        .find(|record| {
+            matches!(record.level.as_str(), "error" | "warn")
+                || record.status.as_deref() == Some("failed")
+        })
+        .map(|record| record.message.as_str())
+        .or_else(|| {
+            output
+                .as_ref()
+                .and_then(|entry| entry.error_message.as_deref())
+        })
+        .or_else(|| {
+            output
+                .as_ref()
+                .and_then(|entry| entry.stderr.as_deref())
+                .and_then(last_non_empty_line)
+        });
+
+    Ok(classify_failure_class(output.as_ref(), message).to_string())
+}
+
 fn build_diagnostics_summary(store: &SqliteStore) -> Result<CliDiagnosticsSummary, String> {
     let installed = store
         .list_installed()
@@ -6993,6 +7337,7 @@ fn build_diagnostics_summary(store: &SqliteStore) -> Result<CliDiagnosticsSummar
     let mut failed_tasks = 0usize;
     let mut cancelled_tasks = 0usize;
     let mut failed_task_ids = Vec::new();
+    let mut failure_classes: BTreeMap<String, usize> = BTreeMap::new();
     for task in tasks {
         match task.status {
             TaskStatus::Queued => queued_tasks = queued_tasks.saturating_add(1),
@@ -7001,6 +7346,9 @@ fn build_diagnostics_summary(store: &SqliteStore) -> Result<CliDiagnosticsSummar
             TaskStatus::Failed => {
                 failed_tasks = failed_tasks.saturating_add(1);
                 failed_task_ids.push(task.id.0);
+                let class = diagnose_failure_class_for_task(store, task.id)?;
+                let entry = failure_classes.entry(class).or_insert(0);
+                *entry = entry.saturating_add(1);
             }
             TaskStatus::Cancelled => cancelled_tasks = cancelled_tasks.saturating_add(1),
         }
@@ -7029,6 +7377,7 @@ fn build_diagnostics_summary(store: &SqliteStore) -> Result<CliDiagnosticsSummar
         cancelled_tasks,
         failed_task_ids,
         undetected_enabled_managers,
+        failure_classes,
     })
 }
 
@@ -11017,12 +11366,14 @@ mod tests {
     use super::{
         CLI_LICENSE_TERMS_VERSION, Command, ExecutionMode, GlobalOptions, HomebrewKegPolicy,
         InstallChannel, ManagerId, apply_manager_enablement_self_heal, build_json_payload_lines,
-        command_help_topic_exists, ensure_cli_onboarding_completed, exit_code_for_error,
-        mark_exit_code, parse_args, parse_args_with_tty, parse_homebrew_keg_policy_arg,
-        parse_search_args, parse_updates_run_preview_args, raw_args_request_json,
-        raw_args_request_ndjson, remove_install_marker_if_channel,
-        self_uninstall_recommended_action, strip_exit_code_marker,
+        classify_failure_class, command_help_topic_exists, ensure_cli_onboarding_completed,
+        exit_code_for_error, mark_exit_code, parse_args, parse_args_with_tty,
+        parse_homebrew_keg_policy_arg, parse_search_args, parse_structured_terminal_error_message,
+        parse_updates_run_preview_args, raw_args_request_json, raw_args_request_ndjson,
+        remove_install_marker_if_channel, self_uninstall_recommended_action,
+        strip_exit_code_marker,
     };
+    use helm_core::execution::TaskOutputRecord;
     use helm_core::models::DetectionInfo;
     use helm_core::persistence::DetectionStore;
     use helm_core::sqlite::SqliteStore;
@@ -11142,6 +11493,36 @@ mod tests {
         .expect_err("conflicting verbosity flags must fail");
         assert!(error.contains("--verbose"));
         assert!(error.contains("--quiet"));
+    }
+
+    #[test]
+    fn classify_failure_class_detects_cwd_missing_pattern() {
+        let class = classify_failure_class(
+            None,
+            Some("Error: The current working directory must exist to run brew."),
+        );
+        assert_eq!(class, "cwd_missing");
+    }
+
+    #[test]
+    fn classify_failure_class_prefers_timeout_reason_from_output() {
+        let output = TaskOutputRecord {
+            termination_reason: Some("timeout".to_string()),
+            ..TaskOutputRecord::default()
+        };
+        let class = classify_failure_class(Some(&output), Some("some unrelated failure"));
+        assert_eq!(class, "timeout");
+    }
+
+    #[test]
+    fn parse_structured_terminal_error_message_extracts_error_details() {
+        let parsed = parse_structured_terminal_error_message(
+            "task failed [timeout]: process timed out after 60000ms",
+            "task failed",
+        )
+        .expect("structured failed-task log should parse");
+        assert_eq!(parsed.code, "timeout");
+        assert_eq!(parsed.message, "process timed out after 60000ms");
     }
 
     #[test]
