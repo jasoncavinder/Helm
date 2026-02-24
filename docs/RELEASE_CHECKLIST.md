@@ -24,6 +24,14 @@ This checklist is required before creating a release tag on `main`.
 - [ ] Confirm repo merge settings remain enabled/configured: auto-merge on, update-branch on, and delete-branch-on-merge off.
 - [ ] Confirm release metadata publication remains PR-based (no direct-push fallback path in `.github/workflows/release-macos-dmg.yml`).
 
+## Release Preflight (All Releases, Mandatory Before Tagging)
+
+- [ ] Run `scripts/release/preflight.sh --tag <vX.Y.Z|vX.Y.Z-rc.N>` from a clean local clone before tag creation.
+- [ ] Confirm preflight reports token scopes include `repo` and `workflow`.
+- [ ] Confirm preflight validates required release workflows are present and enabled.
+- [ ] Confirm preflight validates required DMG/signing/update secrets are present.
+- [ ] Optional wrapper path: `scripts/release/runbook.sh prepare --tag <tag>`.
+
 ## v0.17.3 (Stable Patch Release Gate)
 
 ### Scope and Documentation

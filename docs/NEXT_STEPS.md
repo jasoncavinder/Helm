@@ -17,6 +17,7 @@ Helm is in:
 Focus:
 - verify post-publication endpoint health (`/cli/install.sh`, `/updates/cli/latest.json`, appcast/release notes)
 - back-sync `main` hotfix/publication commits to `dev`/`docs`/`web` via targeted PRs
+- execute release-process hardening in phases (`preflight`/`runbook` adoption first, then workflow outcome semantics + policy alignment)
 - begin planning and branch setup for `0.18.x` local security groundwork after stable publication
 - keep launch-at-login scoped to GUI only (no CLI/TUI parity target)
 
@@ -148,6 +149,10 @@ Current checkpoint:
     - release workflow now treats fallback appcast-publish PR-creation failures as blocking errors (no soft-success path)
     - release workflow now verifies `web/public/updates/appcast.xml` on `main` matches the release tag before marking release success
     - new scheduled/manual `Appcast Drift Guard` workflow now fails when latest stable GitHub release and top appcast version diverge
+  - post-`v0.17.5` release-process hardening phase 1 delivered on `dev`:
+    - added `scripts/release/preflight.sh` for required git/auth/scope/workflow/secret validation before tagging
+    - added `scripts/release/runbook.sh` with `prepare|tag|publish|verify` wrappers
+    - release docs/checklist now mandate preflight before release tag creation
   - GitHub governance hardening delivered on `dev`:
     - branch rulesets now explicitly enforce `main`/`dev`/`docs`/`web` with branch-specific required checks
     - `Policy Gate` now validates PR base/head/scope policy for all protected branches
