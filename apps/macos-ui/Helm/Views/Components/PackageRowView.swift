@@ -1,23 +1,13 @@
 import SwiftUI
 
-enum KegPolicyMenuSelection {
-    case useGlobal
-    case keep
-    case cleanup
-}
-
 struct PackageRowView: View {
     let package: PackageItem
     var managerDisplayNames: [String]?
     var isSelected: Bool = false
-    var isPinActionInFlight: Bool = false
     var isUpgradeActionInFlight: Bool = false
     var isInstallActionInFlight: Bool = false
-    var kegPolicySelection: KegPolicyMenuSelection?
-    var onSelectKegPolicy: ((KegPolicyMenuSelection) -> Void)?
     var onUpgrade: (() -> Void)?
     var onInstall: (() -> Void)?
-    var onTogglePin: (() -> Void)?
 
     private var accessibilityDescription: String {
         let managerList = displayedManagerNames.joined(separator: ", ")
@@ -118,50 +108,6 @@ struct PackageRowView: View {
 
             VStack(alignment: .trailing, spacing: 2) {
                 HStack(spacing: 6) {
-                    if let onSelectKegPolicy, let kegPolicySelection {
-                        Menu {
-                            Button {
-                                onSelectKegPolicy(.useGlobal)
-                            } label: {
-                                HStack {
-                                    Text(L10n.App.Packages.KegPolicy.useGlobal.localized)
-                                    if kegPolicySelection == .useGlobal {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-
-                            Button {
-                                onSelectKegPolicy(.keep)
-                            } label: {
-                                HStack {
-                                    Text(L10n.App.Packages.KegPolicy.keepOld.localized)
-                                    if kegPolicySelection == .keep {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-
-                            Button {
-                                onSelectKegPolicy(.cleanup)
-                            } label: {
-                                HStack {
-                                    Text(L10n.App.Packages.KegPolicy.cleanupOld.localized)
-                                    if kegPolicySelection == .cleanup {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        } label: {
-                            Image(systemName: "shippingbox")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .menuStyle(.borderlessButton)
-                        .help(L10n.App.Packages.Label.homebrewKegPolicy.localized)
-                        .helmPointer()
-                    }
-
                     if let onUpgrade {
                         if isUpgradeActionInFlight {
                             ProgressView()
@@ -179,28 +125,6 @@ struct PackageRowView: View {
                             .helmPointer()
                         }
                     }
-
-                    if let onTogglePin {
-                        if isPinActionInFlight {
-                            ProgressView()
-                                .controlSize(.mini)
-                                .scaleEffect(0.75)
-                                .frame(width: 16, height: 16)
-                        } else {
-                            Button(action: onTogglePin) {
-                                Image(systemName: package.pinned ? "pin.slash.fill" : "pin")
-                                    .font(.caption)
-                                    .foregroundColor(package.pinned ? HelmTheme.stateAttention : HelmTheme.textSecondary)
-                            }
-                            .buttonStyle(.borderless)
-                            .help(
-                                package.pinned
-                                    ? L10n.App.Packages.Action.unpin.localized
-                                    : L10n.App.Packages.Action.pin.localized
-                            )
-                            .helmPointer()
-                        }
-                    }
                 }
 
                 if let latest = package.latestVersion {
@@ -208,15 +132,15 @@ struct PackageRowView: View {
                         Text(latest)
                             .font(.system(.caption, design: .monospaced))
                             .foregroundColor(HelmTheme.stateAttention)
-                            if package.restartRequired {
-                                Image(systemName: "arrow.triangle.2.circlepath")
-                                    .font(.caption2)
-                                    .foregroundColor(HelmTheme.stateAttention)
-                                    .help(L10n.App.Packages.Label.restartRequired.localized)
-                            }
+                        if package.restartRequired {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.caption2)
+                                .foregroundColor(HelmTheme.stateAttention)
+                                .help(L10n.App.Packages.Label.restartRequired.localized)
                         }
-                        Text(package.version)
-                            .font(.system(.caption2, design: .monospaced))
+                    }
+                    Text(package.version)
+                        .font(.system(.caption2, design: .monospaced))
                         .foregroundColor(.secondary)
                         .strikethrough()
                 } else {

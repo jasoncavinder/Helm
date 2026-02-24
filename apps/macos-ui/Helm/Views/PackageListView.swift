@@ -26,21 +26,6 @@ struct PackagesSectionView: View {
         )
     }
 
-    private func kegPolicyMenuSelection(for package: PackageItem) -> KegPolicyMenuSelection? {
-        guard package.managerId == "homebrew_formula", package.status != .available else {
-            return nil
-        }
-
-        switch core.kegPolicySelection(for: package) {
-        case .useGlobal:
-            return .useGlobal
-        case .keep:
-            return .keep
-        case .cleanup:
-            return .cleanup
-        }
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -138,33 +123,10 @@ struct PackagesSectionView: View {
                                 package: package,
                                 managerDisplayNames: packageRow.managerDisplayNames,
                                 isSelected: packageRow.containsPackageId(context.selectedPackageId),
-                                isPinActionInFlight: core.pinActionPackageIds.contains(package.id),
                                 isUpgradeActionInFlight: core.upgradeActionPackageIds.contains(package.id),
-                                kegPolicySelection: kegPolicyMenuSelection(for: package),
-                                onSelectKegPolicy: package.managerId == "homebrew_formula"
-                                    ? { selection in
-                                        switch selection {
-                                        case .useGlobal:
-                                            core.setKegPolicySelection(for: package, selection: .useGlobal)
-                                        case .keep:
-                                            core.setKegPolicySelection(for: package, selection: .keep)
-                                        case .cleanup:
-                                            core.setKegPolicySelection(for: package, selection: .cleanup)
-                                        }
-                                    }
-                                    : nil,
                                 onUpgrade: core.canUpgradeIndividually(package)
                                     ? { core.upgradePackage(package) }
-                                    : nil,
-                                onTogglePin: package.status == .available
-                                    ? nil
-                                    : {
-                                        if package.pinned {
-                                            core.unpinPackage(package)
-                                        } else {
-                                            core.pinPackage(package)
-                                        }
-                                    }
+                                    : nil
                             )
                             .contentShape(Rectangle())
                             .onTapGesture {

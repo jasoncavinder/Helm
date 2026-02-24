@@ -238,11 +238,36 @@ extension L10n {
                 static let quit = "app.settings.action.quit"
                 static let replayWalkthrough = "app.settings.action.replay_walkthrough"
                 static let restoreManagerPriority = "app.settings.action.restore_manager_priority"
+                static let installCli = "app.settings.action.install_cli"
+                static let removeCli = "app.settings.action.remove_cli"
             }
             struct Metric {
                 static let managers = "app.settings.metric.managers"
                 static let updates = "app.settings.metric.updates"
                 static let tasks = "app.settings.metric.tasks"
+            }
+            struct CLI {
+                static let section = "app.settings.section.cli"
+                static let description = "app.settings.cli.description"
+                static let status = "app.settings.cli.status"
+                static let shimPath = "app.settings.cli.shim_path"
+                static let bundledPath = "app.settings.cli.bundled_path"
+
+                struct Status {
+                    static let installed = "app.settings.cli.status.installed"
+                    static let notInstalled = "app.settings.cli.status.not_installed"
+                    static let bundleUnavailable = "app.settings.cli.status.bundle_unavailable"
+                }
+
+                struct Message {
+                    static let installSuccess = "app.settings.cli.message.install_success"
+                    static let installFailed = "app.settings.cli.message.install_failed"
+                    static let removeSuccess = "app.settings.cli.message.remove_success"
+                    static let removeFailed = "app.settings.cli.message.remove_failed"
+                    static let bundleUnavailable = "app.settings.cli.message.bundle_unavailable"
+                    static let existingInstallConflict = "app.settings.cli.message.existing_install_conflict"
+                    static let removeBlockedNotManaged = "app.settings.cli.message.remove_blocked_not_managed"
+                }
             }
             struct ServiceHealth {
                 static let section = "app.settings.section.service_health"
