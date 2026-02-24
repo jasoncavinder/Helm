@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use helm_core::adapters::{
@@ -191,6 +192,63 @@ impl ManagerAdapter for TestAdapter {
             AdapterBehavior::Succeeds(response) => Ok(response.clone()),
             AdapterBehavior::Fails(error) => Err(error.clone()),
         }
+    }
+}
+
+struct SequencedAdapter {
+    descriptor: ManagerDescriptor,
+    responses: Mutex<Vec<AdapterResult<AdapterResponse>>>,
+    call_count: Arc<AtomicUsize>,
+}
+
+impl SequencedAdapter {
+    fn new(
+        manager: ManagerId,
+        responses: Vec<AdapterResult<AdapterResponse>>,
+        call_count: Arc<AtomicUsize>,
+    ) -> Self {
+        Self {
+            descriptor: ManagerDescriptor {
+                id: manager,
+                display_name: "sequenced-adapter",
+                category: ManagerCategory::Language,
+                authority: ManagerAuthority::Standard,
+                capabilities: TEST_CAPABILITIES,
+            },
+            responses: Mutex::new(responses),
+            call_count,
+        }
+    }
+}
+
+impl ManagerAdapter for SequencedAdapter {
+    fn descriptor(&self) -> &ManagerDescriptor {
+        &self.descriptor
+    }
+
+    fn action_safety(&self, action: ManagerAction) -> ActionSafety {
+        action.safety()
+    }
+
+    fn execute(&self, _request: AdapterRequest) -> AdapterResult<AdapterResponse> {
+        self.call_count.fetch_add(1, Ordering::SeqCst);
+        let mut responses = self.responses.lock().map_err(|_| CoreError {
+            manager: None,
+            task: None,
+            action: None,
+            kind: CoreErrorKind::Internal,
+            message: "sequenced adapter mutex poisoned".to_string(),
+        })?;
+        if responses.is_empty() {
+            return Err(CoreError {
+                manager: None,
+                task: None,
+                action: None,
+                kind: CoreErrorKind::Internal,
+                message: "no sequenced adapter response configured".to_string(),
+            });
+        }
+        responses.remove(0)
     }
 }
 
@@ -508,4 +566,63 @@ async fn submit_refresh_request_response_returns_attributed_failure() {
     assert_eq!(error.manager, Some(ManagerId::Npm));
     assert_eq!(error.task, Some(TaskType::Refresh));
     assert_eq!(error.action, Some(ManagerAction::Refresh));
+}
+
+#[tokio::test]
+async fn submit_refresh_request_response_retries_once_on_timeout() {
+    let call_count = Arc::new(AtomicUsize::new(0));
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(SequencedAdapter::new(
+        ManagerId::Npm,
+        vec![
+            Err(CoreError {
+                manager: None,
+                task: None,
+                action: None,
+                kind: CoreErrorKind::Timeout,
+                message: "operation timed out".to_string(),
+            }),
+            Ok(AdapterResponse::Refreshed),
+        ],
+        call_count.clone(),
+    ));
+    let runtime = AdapterRuntime::new([adapter]).unwrap();
+
+    let response = runtime
+        .submit_refresh_request_response(ManagerId::Npm, AdapterRequest::Refresh(RefreshRequest))
+        .await
+        .expect("expected transient timeout to be retried once");
+
+    assert_eq!(response, AdapterResponse::Refreshed);
+    assert_eq!(call_count.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn submit_refresh_request_response_does_not_retry_parse_failure() {
+    let call_count = Arc::new(AtomicUsize::new(0));
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(SequencedAdapter::new(
+        ManagerId::Npm,
+        vec![
+            Err(CoreError {
+                manager: None,
+                task: None,
+                action: None,
+                kind: CoreErrorKind::ParseFailure,
+                message: "invalid parse payload".to_string(),
+            }),
+            Ok(AdapterResponse::Refreshed),
+        ],
+        call_count.clone(),
+    ));
+    let runtime = AdapterRuntime::new([adapter]).unwrap();
+
+    let error = runtime
+        .submit_refresh_request_response(ManagerId::Npm, AdapterRequest::Refresh(RefreshRequest))
+        .await
+        .expect_err("expected parse failure without retry");
+
+    assert_eq!(error.kind, CoreErrorKind::ParseFailure);
+    assert_eq!(error.manager, Some(ManagerId::Npm));
+    assert_eq!(error.task, Some(TaskType::Refresh));
+    assert_eq!(error.action, Some(ManagerAction::Refresh));
+    assert_eq!(call_count.load(Ordering::SeqCst), 1);
 }

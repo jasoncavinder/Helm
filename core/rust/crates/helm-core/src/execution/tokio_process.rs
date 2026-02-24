@@ -22,8 +22,12 @@ impl ProcessExecutor for TokioProcessExecutor {
         let task_type = request.task_type;
         let action = request.action;
         let command_display = prepared.command_display.clone();
-        let working_dir_display =
-            resolve_working_dir_display(prepared.command.working_dir.as_deref());
+        let effective_working_dir =
+            resolve_effective_working_dir(prepared.command.working_dir.as_deref());
+        let working_dir_display = effective_working_dir
+            .as_ref()
+            .map(|path| path.to_string_lossy().to_string())
+            .or_else(|| resolve_working_dir_display(prepared.command.working_dir.as_deref()));
         if let Some(task_id) = task_id {
             crate::execution::task_output_store::record_context(
                 task_id,
@@ -39,7 +43,7 @@ impl ProcessExecutor for TokioProcessExecutor {
             cmd.env(key, value);
         }
 
-        if let Some(dir) = &prepared.command.working_dir {
+        if let Some(dir) = &effective_working_dir {
             cmd.current_dir(dir);
         }
 
@@ -558,6 +562,34 @@ fn format_command_for_display(command: &CommandSpec) -> String {
     parts.join(" ")
 }
 
+fn resolve_effective_working_dir(requested_working_dir: Option<&Path>) -> Option<PathBuf> {
+    if let Some(path) = requested_working_dir
+        && path.is_dir()
+    {
+        return Some(path.to_path_buf());
+    }
+
+    if let Ok(current_dir) = std::env::current_dir()
+        && current_dir.is_dir()
+    {
+        return Some(current_dir);
+    }
+
+    if let Ok(home_dir) = std::env::var("HOME") {
+        let home = PathBuf::from(home_dir);
+        if home.is_dir() {
+            return Some(home);
+        }
+    }
+
+    let temp_dir = std::env::temp_dir();
+    if temp_dir.is_dir() {
+        return Some(temp_dir);
+    }
+
+    None
+}
+
 fn resolve_working_dir_display(requested_working_dir: Option<&Path>) -> Option<String> {
     if let Some(path) = requested_working_dir {
         return Some(path.to_string_lossy().to_string());
@@ -601,7 +633,7 @@ fn process_failure(
 
 #[cfg(test)]
 mod tests {
-    use super::prepare_command_for_spawn;
+    use super::{prepare_command_for_spawn, resolve_effective_working_dir};
     use crate::execution::{CommandSpec, ProcessSpawnRequest};
     use crate::models::{ManagerAction, ManagerId, TaskType};
     use std::fs;
@@ -675,5 +707,34 @@ mod tests {
         );
 
         let _ = fs::remove_file(askpass_path);
+    }
+
+    #[test]
+    fn resolve_effective_working_dir_prefers_existing_requested_dir() {
+        let requested = std::env::temp_dir().join("helm-tokio-process-cwd-existing");
+        fs::create_dir_all(&requested).expect("failed to create temp directory");
+
+        let resolved = resolve_effective_working_dir(Some(requested.as_path()))
+            .expect("expected working directory to resolve");
+        assert_eq!(resolved, requested);
+
+        let _ = fs::remove_dir_all(resolved);
+    }
+
+    #[test]
+    fn resolve_effective_working_dir_falls_back_when_requested_dir_is_missing() {
+        let requested = std::env::temp_dir().join("helm-tokio-process-cwd-missing");
+        let _ = fs::remove_dir_all(&requested);
+
+        let resolved = resolve_effective_working_dir(Some(requested.as_path()))
+            .expect("expected fallback working directory");
+        assert!(
+            resolved.is_dir(),
+            "fallback working directory should exist and be a directory"
+        );
+        assert_ne!(
+            resolved, requested,
+            "missing requested working directory should not be selected"
+        );
     }
 }
