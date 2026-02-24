@@ -159,6 +159,144 @@ check_tag_availability() {
   fi
 }
 
+extract_appcast_version_from_origin_main() {
+  local payload
+  payload="$(git show "origin/main:web/public/updates/appcast.xml" 2>/dev/null || true)"
+  APPCAST_PAYLOAD="$payload" python3 - <<'PY'
+import os
+import xml.etree.ElementTree as ET
+
+sparkle_ns = "http://www.andymatuschak.org/xml-namespaces/sparkle"
+payload = os.environ.get("APPCAST_PAYLOAD", "").strip()
+if not payload:
+    print("")
+    raise SystemExit(0)
+
+try:
+    root = ET.fromstring(payload)
+except ET.ParseError:
+    print("")
+    raise SystemExit(0)
+
+item = root.find("./channel/item")
+if item is None:
+    print("")
+    raise SystemExit(0)
+
+enclosure = item.find("enclosure")
+if enclosure is not None:
+    version = enclosure.attrib.get(f"{{{sparkle_ns}}}shortVersionString", "").strip()
+    if version:
+        print(version)
+        raise SystemExit(0)
+
+title = (item.findtext("title") or "").strip()
+if title.lower().startswith("helm "):
+    print(title[5:].strip())
+else:
+    print("")
+PY
+}
+
+extract_json_version_from_origin_main() {
+  local path="$1"
+  local payload
+  payload="$(git show "origin/main:${path}" 2>/dev/null || true)"
+  JSON_PAYLOAD="$payload" python3 - <<'PY'
+import json
+import os
+
+payload = os.environ.get("JSON_PAYLOAD", "").strip()
+if not payload:
+    print("")
+    raise SystemExit(0)
+
+try:
+    obj = json.loads(payload)
+except json.JSONDecodeError:
+    print("")
+    raise SystemExit(0)
+
+print(str(obj.get("version", "")).strip())
+PY
+}
+
+compare_stable_versions() {
+  local a="$1"
+  local b="$2"
+  python3 - "$a" "$b" <<'PY'
+import re
+import sys
+
+def parse(value: str):
+    if not re.fullmatch(r"\d+\.\d+\.\d+", value):
+        return None
+    return tuple(int(part) for part in value.split("."))
+
+a = parse(sys.argv[1].strip())
+b = parse(sys.argv[2].strip())
+if a is None or b is None:
+    print("invalid")
+    raise SystemExit(0)
+
+if a < b:
+    print("-1")
+elif a > b:
+    print("1")
+else:
+    print("0")
+PY
+}
+
+check_pre_tag_metadata_snapshot() {
+  if [ -z "$TAG_NAME" ]; then
+    return
+  fi
+
+  if [[ "$TAG_NAME" =~ -rc\.[0-9]+$ ]]; then
+    info "rc tag detected (${TAG_NAME}); skipping stable metadata snapshot ordering checks"
+    return
+  fi
+
+  local expected_version appcast_version cli_version compare_result
+  expected_version="${TAG_NAME#v}"
+  appcast_version="$(extract_appcast_version_from_origin_main)"
+  cli_version="$(extract_json_version_from_origin_main "web/public/updates/cli/latest.json")"
+
+  if [ -z "$appcast_version" ]; then
+    fail "unable to read top appcast stable version from origin/main:web/public/updates/appcast.xml"
+    return
+  fi
+
+  if [ -z "$cli_version" ]; then
+    fail "unable to read stable CLI metadata version from origin/main:web/public/updates/cli/latest.json"
+    return
+  fi
+
+  info "pre-tag metadata snapshot: appcast=${appcast_version}, cli_latest=${cli_version}, target=${expected_version}"
+
+  if [ "$appcast_version" != "$cli_version" ]; then
+    fail "stable metadata on origin/main is not synchronized (appcast=${appcast_version}, cli_latest=${cli_version})"
+    return
+  fi
+
+  compare_result="$(compare_stable_versions "$appcast_version" "$expected_version")"
+  case "$compare_result" in
+  -1)
+    info "stable metadata on origin/main is behind target tag (${appcast_version} < ${expected_version})"
+    ;;
+  0)
+    fail "stable metadata on origin/main already matches target version ${expected_version}; choose the next tag or resolve existing publication state"
+    ;;
+  1)
+    fail "stable metadata on origin/main is ahead of target version (${appcast_version} > ${expected_version})"
+    ;;
+  *)
+    fail "unable to compare stable metadata snapshot (${appcast_version}) with target version (${expected_version}); expected stable semver X.Y.Z"
+    ;;
+  esac
+}
+
 parse_scopes() {
   local raw="$1"
   printf '%s' "$raw" | tr '[:upper:]' '[:lower:]' | tr ',' ' ' | xargs
@@ -509,6 +647,7 @@ main() {
 
   check_git_state
   check_tag_availability
+  check_pre_tag_metadata_snapshot
   check_github_auth
   check_main_ruleset_policy
   check_required_workflows
