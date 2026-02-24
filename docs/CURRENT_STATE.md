@@ -8,7 +8,7 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.17.3** on `main` (stable), with `dev` aligned for post-`0.17.x` planning.
+Current documentation baseline: **0.17.4 stable release published** with promotion + publication completed on `main`.
 
 Implementation baseline: **0.17.3** with diagnostics/logging delivery, manager-selection/enablement enforcement, onboarding/detection hardening, and post-`0.17.2` CLI parity/supply-chain hardening shipped.
 
@@ -16,7 +16,14 @@ See:
 - CHANGELOG.md
 
 Active milestone:
-- latest shipped release on `main`: **0.17.3** (post-`0.17.2` CLI parity, provenance, and release-channel hardening patch)
+- latest promoted release content on `main`: **0.17.4** (TUI + bundled-CLI shim + parity closures + macOS 11+ launch-at-login support)
+- stable publication cut completed for `v0.17.4`:
+  - release publish PRs merged on `main`: `#176`, `#177`, `#178`
+  - latest successful release workflows:
+    - `Release CLI Direct Installer` run `22337004057` (`workflow_dispatch`, success)
+    - `Release macOS DMG` run `22337385648` (`workflow_dispatch`, success)
+    - `Appcast Drift Guard` run `22337904410` (success after metadata publication)
+  - initial failed `v0.17.4` release-triggered runs (`22336315837`, `22336315855`) are retained for audit history and superseded by the successful reruns above
 - 0.17.x — Diagnostics & Logging (**stable released on `main`**, RC lineage `v0.17.0-rc.1` through `v0.17.0-rc.5`)
   - delivered: `feat/v0.17-log-foundation` (SQLite-backed task lifecycle logs + retrieval plumbing)
   - delivered: `feat/v0.17-task-log-viewer` (inspector diagnostics logs tab with level/status filters + load-more pagination)
@@ -40,7 +47,10 @@ Active milestone:
   - delivered: post-`rc.4` responsiveness follow-up: Control Center/Popover overview + managers surfaces now consume section-scoped derived state snapshots (precomputed manager counts/health/task slices); snapshot polling cadence is adaptive to interactive-surface visibility and now tracks popover/control-center visibility from app lifecycle events; package-description rich/plain rendering now uses bounded LRU caching in core; scroll-heavy managers/overview/updates/settings/search stacks now use lazy container variants where applicable.
   - delivered: post-`0.17.x` manager-selection execution follow-up (on `dev`): manager inspector executable-path and install-method controls are now actionable (including a PATH-default executable mode); selected manager executable and install-method preferences persist in SQLite (`manager_preferences` migration v7) and sync through XPC/FFI; core process execution now routes manager commands through the selected executable override map; manager install/update/uninstall flows now honor selected install method where implemented (currently `mise`, `mas`, and `rustup` paths).
   - delivered: post-`0.17.x` manager-enablement enforcement follow-up (on `dev`): disabled managers are now excluded from package/outdated/search/task snapshot surfaces, runtime task submission rejects disabled managers centrally, disabling a manager cancels in-flight tasks for that manager, and Control Center manager-scope/filter pickers now normalize away disabled-manager selections.
+  - delivered: post-`0.17.4` manager eligibility-policy hardening follow-up (on `dev`): base-system RubyGems/Bundler/pip executables (`/usr/bin/gem`, `/usr/bin/bundle`, `/usr/bin/python3|pip|pip3`) remain detectable/selectable but are policy-ineligible for enablement and management actions; GUI/CLI/TUI status surfaces now expose eligibility + remediation context; enable attempts are blocked with structured reason keys; runtime submission treats ineligible managers as disabled; status sync self-heals stale enabled state by auto-disabling with diagnostics logging; and the policy matrix is documented at `docs/architecture/MANAGER_ELIGIBILITY_POLICY.md`.
   - delivered: post-`0.17.x` detection/onboarding follow-up (on `dev`): onboarding now triggers a detection-only pipeline (no immediate refresh/list-installed/list-outdated side effects), manager presence is pre-seeded from executable-path discovery so detected managers appear immediately, onboarding rows now show localized `Loading` for version text until detection tasks finish version probing, onboarding license acceptance now runs as step 2 (after welcome) and no longer resets onboarding back to step 1 on accept, core executable lookup now falls back to direct filesystem path probing when `which` lookup fails, and runtime detection now emits per-manager timing telemetry (including slow-detection warnings at >=3s) via structured tracing logs.
+  - delivered: post-`0.17.4` onboarding/UX follow-up (on `dev`): Managers cards in Control Center now include a visual drag-handle affordance; Settings cards are reordered to `General -> Managers -> CLI -> Service Health -> Support & Feedback -> Advanced`; `Reset Local Data` now closes Control Center after successful reset so the next app interaction returns users to onboarding; and `helm-cli` now enforces first-run onboarding + license acceptance with terminal/menu onboarding flow, explicit `--accept-license` + `--accept-defaults` flags (plus env-var parity), `helm onboarding status|run|reset`, and deterministic JSON errors when onboarding/license is required in machine mode.
+  - delivered: post-`0.17.4` task/about UX follow-up (on `dev`): failed tasks are no longer age-pruned, remain visible until replaced/dismissed/reset/manager disable flows, and can now be manually dismissed from task rows; manager disable now clears persisted manager-scoped task history; inspector manager actions avoid unstyled system buttons; About overlay now uses OK-only dismissal, includes copyright text, removes channel/authority/last-check/check-update metadata, and shows an update-indicator message when Helm package updates are detected.
   - delivered: post-`0.17.x` upgrade-plan modal follow-up (on `dev`): execution-plan sheet presentation is now scoped to the initiating surface (popover vs Control Center) to prevent duplicate modal presentation across both windows, and the deprecated `Dry Run` action has been removed from the execution-plan footer.
   - delivered: pre-stable `rc.5 -> 0.17.0` hardening follow-up: manager display-name localization mapping is now centralized in one shared helper across Core/UI surfaces; localization diagnostics now use structured logger output; polling cadence now introduces a lower-frequency idle-visible mode for no-inflight states; SQLite connections now enforce `WAL`/`NORMAL`/`busy_timeout`/foreign-key pragmas by default; terminal-task pruning now includes `cancelled`; Rust build script now fingerprints Rust/script inputs and skips rebuilds when generated artifacts are unchanged.
   - delivered: website release-readiness follow-up: Starlight now uses a local blog plugin to register a `/blog/` section and RSS social link, the site includes a global beta-tester announcement banner (visual treatment refined), blog pages expose social-share actions, and the landing navigation now includes right-aligned `Blog` and `Docs` links for faster access.
@@ -92,7 +102,7 @@ Fully functional:
 - npm (global)
 - pnpm (global)
 - yarn (global)
-- RubyGems
+- RubyGems (non-system installations manageable; base-system `/usr/bin/gem` is detected but policy-blocked from enablement/actions)
 - Poetry (self/plugins)
 - Bundler
 - pip (`python3 -m pip`, global)
