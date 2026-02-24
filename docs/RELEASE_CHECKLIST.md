@@ -35,6 +35,20 @@ This checklist is required before creating a release tag on `main`.
 - [ ] Confirm preflight snapshot sanity passes for stable tags (`origin/main` appcast + `cli/latest.json` in sync and behind target tag).
 - [ ] Optional wrapper path: `scripts/release/runbook.sh prepare --tag <tag>`.
 
+## Release Branch Drift Control (All Releases)
+
+- [ ] Before opening the final release-prep PR, sync the working release branch with latest `origin/main` (merge or rebase).
+- [ ] Review conflict-risk files after branch sync:
+  - `CHANGELOG.md`
+  - `apps/macos-ui/Generated/HelmVersion.swift`
+  - `apps/macos-ui/Generated/HelmVersion.xcconfig`
+  - `.github/workflows/release-cli-direct.yml`
+  - `.github/workflows/release-macos-dmg.yml`
+  - `web/public/updates/appcast.xml`
+  - `web/public/updates/cli/latest.json`
+  - `web/public/updates/cli/latest-rc.json`
+  - `web/public/updates/release-notes/*`
+
 ## Release Publication Verification (All Releases)
 
 - [ ] Review release workflow summary output for both release workflows:

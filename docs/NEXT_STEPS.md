@@ -17,7 +17,7 @@ Helm is in:
 Focus:
 - verify post-publication endpoint health (`/cli/install.sh`, `/updates/cli/latest.json`, appcast/release notes)
 - back-sync `main` hotfix/publication commits to `dev`/`docs`/`web` via targeted PRs
-- execute remaining release-process hardening phases (phases 1-3 complete; next focus is phase 4 checkpointing/drift-prevention automation)
+- monitor release-process hardening outcomes across the next stable cuts (phases 1-6 delivered)
 - begin planning and branch setup for `0.18.x` local security groundwork after stable publication
 - keep launch-at-login scoped to GUI only (no CLI/TUI parity target)
 
@@ -169,6 +169,9 @@ Current checkpoint:
     - release scripts/workflows now normalize locale environment defaults for operator/CI consistency
     - release logs now use phase prefixes (`[preflight]`, `[build]`, `[publish]`, `[verify]`) for faster triage
     - recurring release friction now has a documented promotion path from `TMP_RELEASE_FRICTION` into permanent decision/runbook/checklist docs
+  - post-`v0.17.5` release-process hardening phase 6 delivered on `dev`:
+    - release docs now require syncing release-prep branches with latest `origin/main` before final prep PRs
+    - release checklist now includes a conflict-risk path review (`CHANGELOG`, generated version files, release workflows, update metadata paths)
   - GitHub governance hardening delivered on `dev`:
     - branch rulesets now explicitly enforce `main`/`dev`/`docs`/`web` with branch-specific required checks
     - `Policy Gate` now validates PR base/head/scope policy for all protected branches

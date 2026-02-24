@@ -131,21 +131,22 @@ Operational settings:
 4. Run mandatory preflight:
    - `scripts/release/preflight.sh --tag <tag>`
    - or wrapper: `scripts/release/runbook.sh prepare --tag <tag>`
-5. Open and merge PR `dev` -> `main` (auto-merge is preferred once required checks are green).
-6. If release-critical docs/website deltas were developed on `docs` or `web`, merge those branches into `main` via PR before tagging.
-7. Create annotated tag.
-8. Push tag to GitHub.
-9. Publish GitHub release notes.
-10. Let release workflows publish metadata via PR branches:
+5. Before the final release-prep PR, sync the release branch with latest `origin/main` (merge or rebase) and resolve conflict-risk files (`CHANGELOG.md`, generated version artifacts, release workflows, update metadata paths).
+6. Open and merge PR `dev` -> `main` (auto-merge is preferred once required checks are green).
+7. If release-critical docs/website deltas were developed on `docs` or `web`, merge those branches into `main` via PR before tagging.
+8. Create annotated tag.
+9. Push tag to GitHub.
+10. Publish GitHub release notes.
+11. Let release workflows publish metadata via PR branches:
    - `release-macos-dmg.yml` -> `chore/publish-updates-<tag>`
    - `release-cli-direct.yml` -> `chore/publish-cli-updates-<tag>-<channel>`
-11. Review release workflow summary output:
+12. Review release workflow summary output:
    - `Artifacts uploaded: yes/no`
    - `Publish PR opened: yes/no`
    - `Main metadata synced: yes/no`
-12. If the workflow reports follow-up required (publish PR still open), merge the publish PR and rerun the workflow to confirm metadata sync.
-13. Confirm post-merge publish verification is green (`Release Publish Verify`).
-14. Confirm drift checks remain green (`Appcast Drift Guard`, `CLI Update Metadata Drift Guard`).
+13. If the workflow reports follow-up required (publish PR still open), merge the publish PR and rerun the workflow to confirm metadata sync.
+14. Confirm post-merge publish verification is green (`Release Publish Verify`).
+15. Confirm drift checks remain green (`Appcast Drift Guard`, `CLI Update Metadata Drift Guard`).
 
 Release checklist document:
 - `docs/RELEASE_CHECKLIST.md`
