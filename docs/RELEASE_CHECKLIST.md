@@ -24,23 +24,36 @@ This checklist is required before creating a release tag on `main`.
 - [ ] Confirm repo merge settings remain enabled/configured: auto-merge on, update-branch on, and delete-branch-on-merge off.
 - [ ] Confirm release metadata publication remains PR-based (no direct-push fallback path in `.github/workflows/release-macos-dmg.yml`).
 
-## v0.17.3 (Stable Patch Release Gate)
+## v0.17.4 (Stable Patch Release Gate)
 
 ### Scope and Documentation
-- [ ] `CHANGELOG.md` includes finalized `0.17.3` patch notes for the stable incremental cut.
-- [ ] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect `v0.17.3` stable release-cut status.
-- [ ] Website changelog includes `0.17.3` patch entry and release-order alignment.
+- [ ] `CHANGELOG.md` includes finalized `0.17.4` patch notes for the stable incremental cut.
+- [ ] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect `v0.17.4` stable release-cut status.
+- [ ] Website changelog includes `0.17.4` patch entry and release-order alignment.
+- [ ] `docs/architecture/HELM_TUI_IMPLEMENTATION_PLAN.md` reflects delivered TUI behavior and known parity deltas (if any).
 
 ### Versioning
-- [ ] Workspace version bumped to `0.17.3` in `core/rust/Cargo.toml`.
-- [ ] Rust lockfile local package versions aligned to `0.17.3` in `core/rust/Cargo.lock`.
-- [ ] Generated app version artifacts aligned to `0.17.3` (`apps/macos-ui/Generated/HelmVersion.swift`, `apps/macos-ui/Generated/HelmVersion.xcconfig`).
+- [ ] Workspace version bumped to `0.17.4` in `core/rust/Cargo.toml`.
+- [ ] Rust lockfile local package versions aligned to `0.17.4` in `core/rust/Cargo.lock`.
+- [ ] Generated app version artifacts aligned to `0.17.4` (`apps/macos-ui/Generated/HelmVersion.swift`, `apps/macos-ui/Generated/HelmVersion.xcconfig`).
 
 ### Validation
 - [ ] Rust tests pass (`cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`).
+- [ ] CLI tests pass (`cargo test -p helm-cli --manifest-path core/rust/Cargo.toml`).
 - [ ] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`).
 - [ ] Locale checks pass (`apps/macos-ui/scripts/check_locale_integrity.sh` and `apps/macos-ui/scripts/check_locale_lengths.sh`).
 - [ ] Third-party license audit commands complete without runtime-license scope regressions (`cargo metadata`, `cargo tree`, website lockfile license scan).
+- [ ] Launch-at-login behavior validated on both paths:
+  - macOS 13+ (`SMAppService.mainApp`)
+  - macOS 11/12 login-helper fallback (`SMLoginItemSetEnabled`)
+- [ ] Bundled CLI shim install/remove validated from GUI Settings (`~/.local/bin/helm`), including app-bundle provenance marker writes.
+- [ ] TUI smoke validation complete:
+  - no-arg TTY launch
+  - command palette/help overlays
+  - updates/packages/tasks/managers/settings/diagnostics navigation
+  - package install/uninstall/upgrade + keg-policy actions
+  - manager detect/executable/install-method/priority controls
+  - self-update status/check/apply/uninstall command parity in settings pane
 - [ ] Sparkle feed publication + direct-channel update smoke validation complete against the stable appcast entry.
 
 ### Branch and Tag
@@ -48,10 +61,11 @@ This checklist is required before creating a release tag on `main`.
 - [ ] `dev` merged into `main` for stable cut.
 - [ ] If release-critical docs updates were developed on `docs`, merge `docs` into `main`.
 - [ ] If release-critical website updates were developed on `web`, merge `web` into `main`.
-- [ ] Create annotated stable tag from `main`: `git tag -a v0.17.3 -m "Helm v0.17.3"`.
-- [ ] Push stable tag: `git push origin v0.17.3`.
-- [ ] Publish GitHub release for `v0.17.3` (mark as latest, non-prerelease).
-- [ ] Confirm release-generated publish PR (`chore/publish-updates-v0.17.3`) merged to `main`.
+- [ ] Create annotated stable tag from `main`: `git tag -a v0.17.4 -m "Helm v0.17.4"`.
+- [ ] Push stable tag: `git push origin v0.17.4`.
+- [ ] Publish GitHub release for `v0.17.4` (mark as latest, non-prerelease).
+- [ ] Confirm release-generated publish PR (`chore/publish-updates-v0.17.4`) merged to `main`.
+- [ ] Confirm release-generated CLI metadata publish PR (`chore/publish-cli-updates-v0.17.4-stable`) merged to `main`.
 - [ ] Confirm `Appcast Drift Guard` is green after publication.
 
 ## Historical RC and Prior-Release Checklists (Archive)
