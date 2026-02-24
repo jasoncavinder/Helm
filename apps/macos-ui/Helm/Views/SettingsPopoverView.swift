@@ -39,6 +39,21 @@ struct SettingsSectionView: View {
         }
     }
 
+    private var helmCliStatusLabel: String {
+        if !core.helmCliBundledAvailable {
+            return L10n.App.Settings.CLI.Status.bundleUnavailable.localized
+        }
+        return core.helmCliShimInstalled
+            ? L10n.App.Settings.CLI.Status.installed.localized
+            : L10n.App.Settings.CLI.Status.notInstalled.localized
+    }
+
+    private var helmCliActionTitle: String {
+        core.helmCliShimInstalled
+            ? L10n.App.Settings.Action.removeCli.localized
+            : L10n.App.Settings.Action.installCli.localized
+    }
+
     private var cardFill: Color {
         HelmTheme.surfacePanel
     }
@@ -193,6 +208,54 @@ struct SettingsSectionView: View {
                         Text(L10n.App.Settings.Label.checkFrequency.localized)
                         Spacer()
                         Text(selectedFrequencyLabel)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                SettingsCard(title: L10n.App.Settings.CLI.section.localized, icon: "terminal", fill: cardFill) {
+                    ServiceHealthStatusRow(
+                        title: L10n.App.Settings.CLI.status.localized,
+                        value: helmCliStatusLabel
+                    )
+                    ServiceHealthStatusRow(
+                        title: L10n.App.Settings.CLI.shimPath.localized,
+                        value: core.helmCliShimPath,
+                        multiline: true
+                    )
+                    if let bundledPath = core.helmCliBundledPath, !bundledPath.isEmpty {
+                        ServiceHealthStatusRow(
+                            title: L10n.App.Settings.CLI.bundledPath.localized,
+                            value: bundledPath,
+                            multiline: true
+                        )
+                    }
+
+                    Text(L10n.App.Settings.CLI.description.localized)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    Divider()
+
+                    SettingsActionButton(
+                        title: helmCliActionTitle,
+                        badges: [],
+                        isProminent: false,
+                        useSystemStyle: true
+                    ) {
+                        if core.helmCliShimInstalled {
+                            core.removeHelmCliShim()
+                        } else {
+                            core.installHelmCliShim()
+                        }
+                    }
+                    .disabled(
+                        core.helmCliShimOperationInProgress ||
+                        (!core.helmCliBundledAvailable && !core.helmCliShimInstalled)
+                    )
+
+                    if let statusMessage = core.helmCliShimStatusMessage, !statusMessage.isEmpty {
+                        Text(statusMessage)
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
@@ -497,6 +560,7 @@ struct SettingsSectionView: View {
         }
         .onAppear {
             core.refreshLaunchAtLogin()
+            core.refreshHelmCliShimStatus()
         }
     }
 }

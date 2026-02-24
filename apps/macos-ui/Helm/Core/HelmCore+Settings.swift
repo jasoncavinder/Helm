@@ -4,10 +4,14 @@ import os.log
 import Darwin
 import ServiceManagement
 
+// swiftlint:disable file_length
+
 private let logger = Logger(subsystem: "com.jasoncavinder.Helm", category: "core.settings")
 
 extension HelmCore {
     static let allManagersScopeId = UpgradePreviewPlanner.allManagersScopeId
+    private static let legacyLoginItemBundleIdentifier = "com.jasoncavinder.HelmLoginHelper"
+    private static let legacyLoginItemAppName = "HelmLoginHelper.app"
 
     // MARK: - App Lifecycle
 
@@ -15,7 +19,31 @@ extension HelmCore {
         if #available(macOS 13.0, *) {
             return true
         }
-        return false
+        return legacyLoginItemIsAvailable()
+    }
+
+    private func legacyLoginItemBundleURL() -> URL {
+        Bundle.main.bundleURL
+            .appendingPathComponent("Contents", isDirectory: true)
+            .appendingPathComponent("Library", isDirectory: true)
+            .appendingPathComponent("LoginItems", isDirectory: true)
+            .appendingPathComponent(Self.legacyLoginItemAppName, isDirectory: true)
+    }
+
+    private func legacyLoginItemIsAvailable() -> Bool {
+        FileManager.default.fileExists(atPath: legacyLoginItemBundleURL().path)
+    }
+
+    private func legacyLoginItemIsEnabled() -> Bool {
+        if let jobs = SMCopyAllJobDictionaries(kSMDomainUserLaunchd)?.takeRetainedValue()
+            as? [[String: Any]]
+        {
+            if jobs.contains(where: { ($0["Label"] as? String) == Self.legacyLoginItemBundleIdentifier })
+            {
+                return true
+            }
+        }
+        return UserDefaults.standard.bool(forKey: Self.launchAtLoginEnabledKey)
     }
 
     func refreshLaunchAtLogin() {
@@ -33,6 +61,13 @@ extension HelmCore {
                 UserDefaults.standard.set(enabled, forKey: Self.launchAtLoginEnabledKey)
                 self.launchAtLoginEnabled = enabled
             }
+            return
+        }
+
+        let enabled = legacyLoginItemIsEnabled()
+        DispatchQueue.main.async {
+            UserDefaults.standard.set(enabled, forKey: Self.launchAtLoginEnabledKey)
+            self.launchAtLoginEnabled = enabled
         }
     }
 
@@ -61,9 +96,171 @@ extension HelmCore {
                     taskType: "settings"
                 )
             }
+            refreshLaunchAtLogin()
+            return
+        }
+
+        let success = SMLoginItemSetEnabled(Self.legacyLoginItemBundleIdentifier as CFString, enabled)
+        if !success {
+            logger.error("setLaunchAtLogin(\(enabled)) failed for legacy login helper")
+            recordLastError(
+                source: "core.settings",
+                action: "setLaunchAtLogin.legacy",
+                taskType: "settings"
+            )
         }
 
         refreshLaunchAtLogin()
+    }
+
+    // MARK: - Bundled CLI Shim
+
+    static func defaultHelmCliShimURL() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".local", isDirectory: true)
+            .appendingPathComponent("bin", isDirectory: true)
+            .appendingPathComponent("helm", isDirectory: false)
+    }
+
+    static func defaultHelmCliInstallMarkerURL() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config", isDirectory: true)
+            .appendingPathComponent("helm", isDirectory: true)
+            .appendingPathComponent("install.json", isDirectory: false)
+    }
+
+    func refreshHelmCliShimStatus() {
+        let status = HelmCliShimInstaller.status(
+            bundle: .main,
+            shimURL: Self.defaultHelmCliShimURL()
+        )
+
+        DispatchQueue.main.async {
+            self.helmCliBundledAvailable = status.bundledCliPath != nil
+            self.helmCliBundledPath = status.bundledCliPath
+            self.helmCliShimInstalled = status.shimInstalled
+            self.helmCliShimPath = Self.defaultHelmCliShimURL().path
+        }
+    }
+
+    func installHelmCliShim() {
+        guard !helmCliShimOperationInProgress else { return }
+
+        DispatchQueue.main.async {
+            self.helmCliShimOperationInProgress = true
+            self.helmCliShimStatusMessage = nil
+        }
+
+        do {
+            let installResult = try HelmCliShimInstaller.install(
+                bundle: .main,
+                shimURL: Self.defaultHelmCliShimURL(),
+                markerURL: Self.defaultHelmCliInstallMarkerURL()
+            )
+
+            logger.info("Installed Helm CLI shim at \(installResult.shimPath, privacy: .public)")
+            DispatchQueue.main.async {
+                self.helmCliShimStatusMessage = L10n.App.Settings.CLI.Message.installSuccess.localized
+            }
+        } catch let error as HelmCliShimInstaller.Error {
+            logger.error("installHelmCliShim failed: \(error.logDescription, privacy: .public)")
+            recordLastError(
+                source: "core.settings",
+                action: "installHelmCliShim",
+                taskType: "settings"
+            )
+            DispatchQueue.main.async {
+                self.helmCliShimStatusMessage = self.messageForHelmCliShimError(
+                    error,
+                    installOperation: true
+                )
+            }
+        } catch {
+            logger.error("installHelmCliShim failed: \(error.localizedDescription, privacy: .public)")
+            recordLastError(
+                source: "core.settings",
+                action: "installHelmCliShim",
+                taskType: "settings"
+            )
+            DispatchQueue.main.async {
+                self.helmCliShimStatusMessage = L10n.App.Settings.CLI.Message.installFailed.localized
+            }
+        }
+
+        refreshHelmCliShimStatus()
+        DispatchQueue.main.async {
+            self.helmCliShimOperationInProgress = false
+        }
+    }
+
+    func removeHelmCliShim() {
+        guard !helmCliShimOperationInProgress else { return }
+
+        DispatchQueue.main.async {
+            self.helmCliShimOperationInProgress = true
+            self.helmCliShimStatusMessage = nil
+        }
+
+        do {
+            let removed = try HelmCliShimInstaller.remove(
+                shimURL: Self.defaultHelmCliShimURL(),
+                markerURL: Self.defaultHelmCliInstallMarkerURL()
+            )
+            if removed {
+                logger.info("Removed Helm CLI shim at \(Self.defaultHelmCliShimURL().path, privacy: .public)")
+            } else {
+                logger.info("Helm CLI shim remove requested, but shim was already absent.")
+            }
+            DispatchQueue.main.async {
+                self.helmCliShimStatusMessage = L10n.App.Settings.CLI.Message.removeSuccess.localized
+            }
+        } catch let error as HelmCliShimInstaller.Error {
+            logger.error("removeHelmCliShim failed: \(error.logDescription, privacy: .public)")
+            recordLastError(
+                source: "core.settings",
+                action: "removeHelmCliShim",
+                taskType: "settings"
+            )
+            DispatchQueue.main.async {
+                self.helmCliShimStatusMessage = self.messageForHelmCliShimError(
+                    error,
+                    installOperation: false
+                )
+            }
+        } catch {
+            logger.error("removeHelmCliShim failed: \(error.localizedDescription, privacy: .public)")
+            recordLastError(
+                source: "core.settings",
+                action: "removeHelmCliShim",
+                taskType: "settings"
+            )
+            DispatchQueue.main.async {
+                self.helmCliShimStatusMessage = L10n.App.Settings.CLI.Message.removeFailed.localized
+            }
+        }
+
+        refreshHelmCliShimStatus()
+        DispatchQueue.main.async {
+            self.helmCliShimOperationInProgress = false
+        }
+    }
+
+    private func messageForHelmCliShimError(
+        _ error: HelmCliShimInstaller.Error,
+        installOperation: Bool
+    ) -> String {
+        switch error {
+        case .bundledCliMissing:
+            return L10n.App.Settings.CLI.Message.bundleUnavailable.localized
+        case .existingNonManagedShim:
+            return L10n.App.Settings.CLI.Message.existingInstallConflict.localized
+        case .removeRefusedNonManagedShim:
+            return L10n.App.Settings.CLI.Message.removeBlockedNotManaged.localized
+        case .ioFailure:
+            return installOperation
+                ? L10n.App.Settings.CLI.Message.installFailed.localized
+                : L10n.App.Settings.CLI.Message.removeFailed.localized
+        }
     }
 
     // MARK: - Safe Mode
@@ -704,6 +901,321 @@ extension HelmCore {
             return false
         case .useGlobal:
             return homebrewKegAutoCleanupEnabled
+        }
+    }
+}
+
+private struct HelmCliShimStatus {
+    let bundledCliPath: String?
+    let shimInstalled: Bool
+}
+
+private enum HelmCliShimInstaller {
+    struct InstallResult {
+        let shimPath: String
+    }
+
+    enum Error: Swift.Error {
+        case bundledCliMissing
+        case existingNonManagedShim(path: String)
+        case removeRefusedNonManagedShim(path: String)
+        case ioFailure(description: String)
+
+        var logDescription: String {
+            switch self {
+            case .bundledCliMissing:
+                return "bundled CLI binary is missing from the app bundle"
+            case .existingNonManagedShim(let path):
+                return "refusing to replace non-Helm shim at \(path)"
+            case .removeRefusedNonManagedShim(let path):
+                return "refusing to remove non-Helm shim at \(path)"
+            case .ioFailure(let description):
+                return description
+            }
+        }
+    }
+
+    private static let shimSentinel = "# helm-cli-shim: app-bundle"
+    private static let defaultBundleIdentifier = "app.jasoncavinder.Helm"
+
+    static func status(bundle: Bundle, shimURL: URL) -> HelmCliShimStatus {
+        let bundledCliPath = bundledCliURL(bundle: bundle)?.path
+        let shimInstalled = isManagedShimInstalled(shimURL: shimURL)
+        return HelmCliShimStatus(
+            bundledCliPath: bundledCliPath,
+            shimInstalled: shimInstalled
+        )
+    }
+
+    static func install(bundle: Bundle, shimURL: URL, markerURL: URL) throws -> InstallResult {
+        guard let bundledCliURL = bundledCliURL(bundle: bundle) else {
+            throw Error.bundledCliMissing
+        }
+
+        if FileManager.default.fileExists(atPath: shimURL.path),
+           !isManagedShimInstalled(shimURL: shimURL) {
+            throw Error.existingNonManagedShim(path: shimURL.path)
+        }
+
+        let bundlePath = bundle.bundleURL.standardizedFileURL.path
+        let bundleIdentifier = bundle.bundleIdentifier ?? defaultBundleIdentifier
+        let script = renderShimScript(
+            appBundlePath: bundlePath,
+            appBundleIdentifier: bundleIdentifier
+        )
+
+        do {
+            try writeTextAtomically(
+                script,
+                to: shimURL,
+                filePermissions: 0o755,
+                disallowSymlinkTarget: false
+            )
+            try writeInstallMarker(
+                markerURL: markerURL,
+                version: bundleVersion(bundle: bundle)
+            )
+        } catch {
+            throw Error.ioFailure(description: error.localizedDescription)
+        }
+
+        logger.info(
+            "Helm CLI shim installed. shim=\(shimURL.path, privacy: .public), bundled_cli=\(bundledCliURL.path, privacy: .public)"
+        )
+        return InstallResult(shimPath: shimURL.path)
+    }
+
+    static func remove(shimURL: URL, markerURL: URL) throws -> Bool {
+        var removedShim = false
+        guard FileManager.default.fileExists(atPath: shimURL.path) else {
+            try? removeInstallMarkerIfAppBundleShim(markerURL: markerURL)
+            return false
+        }
+        guard isManagedShimInstalled(shimURL: shimURL) else {
+            throw Error.removeRefusedNonManagedShim(path: shimURL.path)
+        }
+
+        do {
+            try FileManager.default.removeItem(at: shimURL)
+            removedShim = true
+            try? removeInstallMarkerIfAppBundleShim(markerURL: markerURL)
+        } catch {
+            throw Error.ioFailure(description: error.localizedDescription)
+        }
+        return removedShim
+    }
+
+    private static func bundledCliURL(bundle: Bundle) -> URL? {
+        guard let bundledCliURL = bundle.url(
+            forResource: "helm-cli",
+            withExtension: nil
+        ) else {
+            return nil
+        }
+        guard FileManager.default.isExecutableFile(atPath: bundledCliURL.path) else {
+            return nil
+        }
+        return bundledCliURL
+    }
+
+    private static func bundleVersion(bundle: Bundle) -> String {
+        if let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+           !version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return version
+        }
+        return helmVersion
+    }
+
+    private static func isManagedShimInstalled(shimURL: URL) -> Bool {
+        guard let data = try? Data(contentsOf: shimURL),
+              let script = String(data: data, encoding: .utf8) else {
+            return false
+        }
+        return script.contains(shimSentinel)
+    }
+
+    private static func shellSingleQuote(_ value: String) -> String {
+        let escaped = value.replacingOccurrences(of: "'", with: "'\"'\"'")
+        return "'\(escaped)'"
+    }
+
+    private static func renderShimScript(
+        appBundlePath: String,
+        appBundleIdentifier: String
+    ) -> String {
+        let quotedBundlePath = shellSingleQuote(appBundlePath)
+        let quotedBundleIdentifier = shellSingleQuote(appBundleIdentifier)
+        return """
+        #!/bin/sh
+        set -eu
+
+        HELM_APP_BUNDLE_PATH=\(quotedBundlePath)
+        HELM_APP_BUNDLE_ID=\(quotedBundleIdentifier)
+        HELM_CLI_RELATIVE_PATH='Contents/Resources/helm-cli'
+        HELM_SHIM_SELF="$0"
+        \(shimSentinel)
+
+        resolve_cli_from_bundle() {
+          bundle_path="$1"
+          candidate="${bundle_path%/}/${HELM_CLI_RELATIVE_PATH}"
+          if [ -x "$candidate" ]; then
+            printf '%s\\n' "$candidate"
+            return 0
+          fi
+          return 1
+        }
+
+        resolve_cli() {
+          if candidate="$(resolve_cli_from_bundle "$HELM_APP_BUNDLE_PATH")"; then
+            printf '%s\\n' "$candidate"
+            return 0
+          fi
+
+          if command -v osascript >/dev/null 2>&1; then
+            discovered="$(osascript -e 'try' -e "POSIX path of (path to application id \\"${HELM_APP_BUNDLE_ID}\\")" -e 'on error' -e 'return ""' -e 'end try' 2>/dev/null | tr -d '\\r')"
+            if [ -n "$discovered" ]; then
+              if candidate="$(resolve_cli_from_bundle "${discovered%/}")"; then
+                printf '%s\\n' "$candidate"
+                return 0
+              fi
+            fi
+          fi
+
+          return 1
+        }
+
+        if cli_path="$(resolve_cli)"; then
+          exec "$cli_path" "$@"
+        fi
+
+        echo "Helm app bundle was not found or is missing its embedded CLI binary." >&2
+        echo "If Helm is removed, this shim can remove itself." >&2
+        echo "Shim path: ${HELM_SHIM_SELF}" >&2
+
+        if [ -t 0 ]; then
+          printf "Remove this shim now? [y/N] " >&2
+          if read -r answer; then
+            case "$answer" in
+              y|Y|yes|YES)
+                if rm -f -- "$HELM_SHIM_SELF"; then
+                  echo "Removed shim: ${HELM_SHIM_SELF}" >&2
+                else
+                  echo "Failed to remove shim: ${HELM_SHIM_SELF}" >&2
+                fi
+                ;;
+            esac
+          fi
+        fi
+
+        exit 1
+        """
+    }
+
+    private static func writeInstallMarker(markerURL: URL, version: String) throws {
+        struct InstallMarker: Codable {
+            let channel: String
+            let artifact: String
+            let installedAt: String
+            let updatePolicy: String
+            let version: String
+
+            enum CodingKeys: String, CodingKey {
+                case channel
+                case artifact
+                case installedAt = "installed_at"
+                case updatePolicy = "update_policy"
+                case version
+            }
+        }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        let payload = InstallMarker(
+            channel: "app-bundle-shim",
+            artifact: "helm-cli",
+            installedAt: formatter.string(from: Date()),
+            updatePolicy: "channel",
+            version: version
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted]
+        let data = try encoder.encode(payload)
+        guard let json = String(data: data, encoding: .utf8) else {
+            throw CocoaError(.fileReadInapplicableStringEncoding)
+        }
+        try writeTextAtomically(
+            json + "\n",
+            to: markerURL,
+            filePermissions: 0o644,
+            disallowSymlinkTarget: true
+        )
+    }
+
+    private static func removeInstallMarkerIfAppBundleShim(markerURL: URL) throws {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: markerURL.path) else {
+            return
+        }
+        guard let markerData = try? Data(contentsOf: markerURL),
+              let markerText = String(data: markerData, encoding: .utf8),
+              markerText.contains("\"channel\": \"app-bundle-shim\"") else {
+            return
+        }
+        try fileManager.removeItem(at: markerURL)
+    }
+
+    private static func writeTextAtomically(
+        _ content: String,
+        to url: URL,
+        filePermissions: Int,
+        disallowSymlinkTarget: Bool
+    ) throws {
+        let fileManager = FileManager.default
+        let parentDirectory = url.deletingLastPathComponent()
+        try fileManager.createDirectory(
+            at: parentDirectory,
+            withIntermediateDirectories: true
+        )
+
+        if disallowSymlinkTarget,
+           fileManager.fileExists(atPath: url.path) {
+            let values = try url.resourceValues(forKeys: [.isSymbolicLinkKey])
+            if values.isSymbolicLink == true {
+                throw NSError(
+                    domain: "HelmCliShimInstaller",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Refusing to write through symlink path: \(url.path)"]
+                )
+            }
+        }
+
+        let tempURL = parentDirectory.appendingPathComponent(".\(url.lastPathComponent).tmp-\(UUID().uuidString)")
+        do {
+            guard let encoded = content.data(using: .utf8) else {
+                throw NSError(
+                    domain: "HelmCliShimInstaller",
+                    code: 2,
+                    userInfo: [NSLocalizedDescriptionKey: "Failed to encode text content as UTF-8"]
+                )
+            }
+            try encoded.write(to: tempURL, options: .withoutOverwriting)
+            try fileManager.setAttributes(
+                [.posixPermissions: NSNumber(value: filePermissions)],
+                ofItemAtPath: tempURL.path
+            )
+            if fileManager.fileExists(atPath: url.path) {
+                _ = try fileManager.replaceItemAt(
+                    url,
+                    withItemAt: tempURL,
+                    backupItemName: nil,
+                    options: []
+                )
+            } else {
+                try fileManager.moveItem(at: tempURL, to: url)
+            }
+        } catch {
+            try? fileManager.removeItem(at: tempURL)
+            throw error
         }
     }
 }
