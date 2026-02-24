@@ -15,6 +15,11 @@ This guide covers:
 - `install.sh` validation and maintainer actions outside CI
 - all-variant release orchestration (`release-all-variants.yml`)
 
+Mandatory release preflight tooling:
+
+- `scripts/release/preflight.sh` (scope/auth/workflow/secret/git checks)
+- `scripts/release/runbook.sh` (prepare/tag/publish/verify wrappers)
+
 Reference contracts:
 
 - `docs/architecture/BUILD_VARIANTS.md`
@@ -137,12 +142,37 @@ Blocked channels (non-self policy):
 
 ## 5. Maintainer Actions Required Outside CI
 
+### 5.0 Run Release Preflight First (Required)
+
+Before tagging or publishing, run:
+
+```bash
+scripts/release/preflight.sh --tag vX.Y.Z
+```
+
+or the wrapper form:
+
+```bash
+scripts/release/runbook.sh prepare --tag vX.Y.Z
+```
+
+Expected outcome:
+
+- zero preflight errors
+- token scopes include `repo` and `workflow`
+- release workflows are discoverable by `gh`
+- required DMG signing/update secrets are present
+
+If preflight fails, resolve failures before creating/pushing tags.
+
 ### 5.1 Authenticate `gh` with Maintainer PAT
 
 Required scopes (minimum):
 
 - `repo`
 - `workflow`
+
+Without these, release operators cannot reliably rerun/dispatch workflows (`Resource not accessible by personal access token`).
 
 Commands:
 
