@@ -11,20 +11,27 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-0.18.x kickoff preparation
+0.17.4 post-release stabilization
 ```
 
 Focus:
-- monitor post-release feedback on stable `v0.17.3`
-- begin planning and branch setup for `0.18.x` local security groundwork
-- close confirmed non-TUI GUI↔CLI parity gaps:
-  - progressive remote-search orchestration parity
-  - launch-at-login settings parity
-  - per-package Homebrew keg-policy parity
-  - manager-scoped bulk-upgrade parity
+- verify post-publication endpoint health (`/cli/install.sh`, `/updates/cli/latest.json`, appcast/release notes)
+- back-sync `main` hotfix/publication commits to `dev`/`docs`/`web` via targeted PRs
+- begin planning and branch setup for `0.18.x` local security groundwork after stable publication
+- keep launch-at-login scoped to GUI only (no CLI/TUI parity target)
 
 Current checkpoint:
-- `v0.17.3` is released on `main`; the full `rc.1` through `rc.5` hardening lineage is consolidated in stable, with follow-up stable patch cuts (`v0.17.1`, `v0.17.2`, `v0.17.3`) now published:
+- `v0.17.4` release content is promoted and published on `main` (app/core + docs + web):
+  - release publish PRs merged: `#176` (CLI metadata), `#177` and `#178` (Sparkle appcast + release notes)
+  - initial failed release-triggered runs for `v0.17.4` were superseded by successful manual reruns:
+    - `Release CLI Direct Installer` run `22337004057` (success)
+    - `Release macOS DMG` run `22337385648` (success)
+    - `Appcast Drift Guard` run `22337904410` (success)
+  - post-`0.17.3` `0.17.4` TUI planning slice delivered: detailed ratatui implementation plan documented at `docs/architecture/HELM_TUI_IMPLEMENTATION_PLAN.md` (keyboard model, parity matrix, branding constraints, and ASCII splash-screen contract).
+  - post-`0.17.3` `0.17.4` TUI implementation slice delivered: no-arg TTY now launches the ratatui TUI with branded ASCII splash (`logo` + `Helm` + `Take the helm.`), keyboard navigation, command palette/help/confirm overlays, read-only parity panes (updates/packages/tasks/managers/settings/diagnostics), and direct mutation hooks for common manager/package/task actions.
+  - post-`0.17.3` `0.17.4` TUI parity-expansion slice delivered: managers pane now supports selected-manager detect/executable/method/priority controls via keyboard, updates pane now supports include-pinned + allow-OS-updates toggles for upgrade workflows, diagnostics pane supports one-key export snapshot writes, task-log detail follows selection movement immediately, and settings pane now exposes integrated self-update status/check/apply controls honoring provenance/channel policy semantics.
+  - post-`0.17.3` `0.17.4` GUI↔CLI/TUI parity-closure slice delivered: CLI search now supports progressive local+remote orchestration with manager scoping; CLI updates preview/run now support manager-scoped bulk execution; CLI now exposes per-package Homebrew keg-policy commands; and TUI packages now include progressive available-package rows with install action + Homebrew keg-policy controls.
+  - post-`0.17.3` `0.17.4` kickoff slice delivered: app now bundles `helm-cli` and Settings includes install/remove controls for a managed `~/.local/bin/helm` shim with app-bundle provenance marker writes.
   - `#93` `feat/v0.17-log-foundation`
   - `#95` `feat/v0.17-structured-error-export`
   - `#96` `feat/v0.17-service-health-panel`
@@ -98,6 +105,11 @@ Current checkpoint:
     - disabled managers are now excluded from installed/outdated/search/task snapshot surfaces and package/dropdown filters
     - runtime task submission now rejects disabled managers centrally; disabling a manager now cancels in-flight tasks for that manager
     - package/update manager-scope selections now normalize away disabled manager IDs to prevent stale disabled-manager targeting
+  - post-`0.17.4` manager eligibility-policy hardening delivered on `dev`:
+    - macOS base-system RubyGems/Bundler/pip executables are now explicitly supported as `detected-but-not-manageable`
+    - enabling affected managers while mapped to system executables is blocked with structured, localized remediation guidance
+    - runtime hard-stops task submission when eligibility is false, and startup/status sync self-heals stale enabled state by auto-disabling
+    - shared policy matrix + lessons learned are now documented at `docs/architecture/MANAGER_ELIGIBILITY_POLICY.md`
   - post-`0.17.x` detection/onboarding follow-up delivered on `dev`:
     - onboarding detection now calls a detection-only trigger instead of full refresh, avoiding immediate list-installed/list-outdated work during first-run detection
     - detection trigger pre-seeds manager presence from executable-path discovery so detected managers render immediately while version probing continues
@@ -105,6 +117,16 @@ Current checkpoint:
     - onboarding license acceptance is now step 2 (after welcome) and no longer re-enters the onboarding sequence after license acceptance
     - core executable lookup now falls back to direct filesystem probing across known bin locations when `which` lookup fails
     - core runtime now logs per-manager detection timing with structured fields and emits a slow-detection warning threshold at 3000ms
+  - post-`0.17.4` onboarding/UX follow-up delivered on `dev`:
+    - Control Center manager cards now include a visible drag affordance symbol
+    - Control Center Settings card order now follows `General -> Managers -> CLI -> Service Health -> Support & Feedback -> Advanced`
+    - `Reset Local Data` now closes Control Center after successful reset so onboarding is re-entered on next interaction
+    - CLI now enforces first-run onboarding before normal command execution (except help/version/completion/onboarding), with terminal/menu onboarding flow, `--accept-license`, `--accept-defaults`, machine-mode JSON error semantics when onboarding is required, and explicit `helm onboarding status|run|reset`
+  - post-`0.17.4` task/about UX follow-up delivered on `dev`:
+    - failed tasks are no longer age-pruned and now persist until replacement, manual dismissal, manager disable cleanup, or local reset
+    - task rows now expose explicit failed-task dismissal actions, backed by persisted task-log/task-record deletion
+    - About overlay is simplified (OK-only dismissal, metadata removal) and now shows copyright plus Helm-update-detected messaging
+    - manager inspector primary actions now use Helm-styled buttons instead of default system button styling
   - post-`0.17.x` upgrade-plan modal follow-up delivered on `dev`:
     - execution-plan sheet state now records the initiating host surface so only that UI (popover or Control Center) presents the modal
     - `Upgrade All` from Control Center/menu now targets Control Center-hosted modal presentation without surfacing the popover
@@ -166,7 +188,7 @@ Current checkpoint:
     - audit-remediation follow-up delivered: stable CLI update metadata now points to published `v0.17.2` CLI release assets with real checksums (no placeholder zeros), and auto-check last-checked timestamps now update only after eligible direct self-managed check attempts instead of policy-gated skips
     - audit-remediation follow-up delivered: distribution profile contract is now centralized in `docs/contracts/distribution-profiles.json` and consumed by shared build orchestration (`scripts/build.sh`, `scripts/release/build_unsigned_variant.sh`, matrix-based `release-all-variants.yml` auxiliary jobs); Swift update-authority mapping now has one source (`AppUpdateConfiguration`), targeted updater policy tests pass on macOS, and GUI checksum-publication symmetry is explicitly documented as deferred while Sparkle remains canonical GUI integrity authority
     - trust-chain future work is now explicitly tracked: detached signatures + signing-key rotation for CLI update artifacts (`docs/roadmap/CLI_DISTRIBUTION_CI_MILESTONES.md`, milestone M5)
-- latest stable release on `main`: `v0.17.3`
+- latest stable release on `main`: `v0.17.4`
 - validation gates are green through the stable cut (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke across `v0.17.0-rc.1` through `v0.17.0-rc.5`)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)

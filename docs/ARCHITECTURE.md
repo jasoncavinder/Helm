@@ -184,6 +184,12 @@ disable UI action
 
 This avoids false assumptions about manager behavior.
 
+Policy-driven manageability is distinct from detection:
+
+- A manager can be detected but ineligible for mutating operations under policy.
+- Example: RubyGems/Bundler/pip mapped to macOS base-system executables are detected but treated as non-manageable (enablement/actions blocked).
+- Policy matrix source: `docs/architecture/MANAGER_ELIGIBILITY_POLICY.md`.
+
 ---
 
 ### 4.3 Authority Model

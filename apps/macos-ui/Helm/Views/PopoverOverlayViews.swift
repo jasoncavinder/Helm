@@ -270,8 +270,7 @@ struct PopoverSettingsOverlayContent: View {
 }
 
 struct PopoverAboutOverlayContent: View {
-    @ObservedObject private var overviewState = HelmCore.shared.overviewState
-    @ObservedObject private var appUpdate = AppUpdateCoordinator.shared
+    @ObservedObject private var core = HelmCore.shared
     @State private var showSupportOptionsModal = false
     let onClose: () -> Void
 
@@ -280,49 +279,12 @@ struct PopoverAboutOverlayContent: View {
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? "-"
     }
 
-    private var channelLabel: String {
-        switch appUpdate.distributionChannel {
-        case .developerID:
-            return L10n.App.Overlay.About.Channel.developerID.localized
-        case .appStore:
-            return L10n.App.Overlay.About.Channel.appStore.localized
-        case .setapp:
-            return L10n.App.Overlay.About.Channel.setapp.localized
-        case .fleet:
-            return L10n.App.Overlay.About.Channel.fleet.localized
-        case .unknown:
-            return L10n.App.Overlay.About.Channel.unknown.localized
+    private var helmUpdateDetected: Bool {
+        core.outdatedPackages.contains { package in
+            let normalized = package.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return normalized == "helm" || normalized == "helm-cli"
         }
     }
-
-    private var updateAuthorityLabel: String {
-        switch appUpdate.updateAuthority {
-        case .sparkle:
-            return L10n.App.Overlay.About.UpdateAuthority.sparkle.localized
-        case .appStore:
-            return L10n.App.Overlay.About.UpdateAuthority.appStore.localized
-        case .setapp:
-            return L10n.App.Overlay.About.UpdateAuthority.setapp.localized
-        case .adminControlled:
-            return L10n.App.Overlay.About.UpdateAuthority.adminControlled.localized
-        case .unavailable:
-            return L10n.App.Overlay.About.UpdateAuthority.unavailable.localized
-        }
-    }
-
-    private var lastCheckedLabel: String {
-        guard let lastCheckDate = appUpdate.lastCheckDate else {
-            return L10n.App.Overlay.About.never.localized
-        }
-        return Self.lastCheckFormatter.string(from: lastCheckDate)
-    }
-
-    private static let lastCheckFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter
-    }()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -349,49 +311,16 @@ struct PopoverAboutOverlayContent: View {
                 Text(L10n.App.Overlay.About.build.localized(with: ["build": buildVersion]))
                     .font(.caption2)
                     .foregroundColor(.secondary)
-            }
-
-            Text(L10n.App.Overlay.About.summary.localized(with: [
-                "managers": overviewState.visibleManagers.count,
-                "updates": overviewState.outdatedPackagesCount
-            ]))
-            .font(.caption)
-            .foregroundColor(.secondary)
-
-            VStack(alignment: .leading, spacing: 4) {
-                overlayDetailRow(
-                    label: L10n.App.Overlay.About.channel.localized,
-                    value: channelLabel
-                )
-                overlayDetailRow(
-                    label: L10n.App.Overlay.About.updateAuthority.localized,
-                    value: updateAuthorityLabel
-                )
-                overlayDetailRow(
-                    label: L10n.App.Overlay.About.lastChecked.localized,
-                    value: lastCheckedLabel
-                )
-            }
-            .padding(.vertical, 2)
-
-            if let unavailableKey = appUpdate.unavailableReasonLocalizationKey, !appUpdate.canCheckForUpdates {
-                Text(unavailableKey.localized)
+                Text(L10n.App.Overlay.About.copyright.localized)
                     .font(.caption2)
                     .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
 
-            if appUpdate.canCheckForUpdates {
-                HStack {
-                    Button(L10n.App.Overlay.About.checkForUpdates.localized) {
-                        appUpdate.checkForUpdates()
-                    }
-                    .buttonStyle(HelmSecondaryButtonStyle())
-                    .disabled(appUpdate.isCheckingForUpdates)
-                    .helmPointer(enabled: !appUpdate.isCheckingForUpdates)
-
-                    Spacer()
-                }
+            if helmUpdateDetected {
+                Text(L10n.App.Overlay.About.updateDetected.localized)
+                    .font(.caption)
+                    .foregroundColor(HelmTheme.stateAttention)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             HStack(spacing: 8) {
@@ -424,19 +353,6 @@ struct PopoverAboutOverlayContent: View {
             } onClose: {
                 showSupportOptionsModal = false
             }
-        }
-    }
-
-    @ViewBuilder
-    private func overlayDetailRow(label: String, value: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(label)
-                .font(.caption2)
-                .foregroundColor(.secondary)
-            Spacer()
-            Text(value)
-                .font(.caption2)
-                .multilineTextAlignment(.trailing)
         }
     }
 }

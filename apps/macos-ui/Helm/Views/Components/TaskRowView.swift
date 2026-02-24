@@ -8,6 +8,7 @@ enum TaskOutputSurface {
 struct TaskRowView: View {
     let task: TaskItem
     var onCancel: (() -> Void)?
+    var onDismiss: (() -> Void)?
     var canExpandDetails = false
     var isExpanded = false
     var isSelected = false
@@ -61,6 +62,19 @@ struct TaskRowView: View {
                     .help(L10n.App.Tasks.Action.cancel.localized)
                     .helmPointer()
                     .accessibilityLabel(L10n.App.Tasks.Action.cancel.localized)
+                }
+
+                if !task.isRunning,
+                   task.status.lowercased() == "failed",
+                   let onDismiss {
+                    Button(action: onDismiss) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help(L10n.App.Tasks.Action.dismissFailed.localized)
+                    .helmPointer()
+                    .accessibilityLabel(L10n.App.Tasks.Action.dismissFailed.localized)
                 }
             }
             .contentShape(Rectangle())

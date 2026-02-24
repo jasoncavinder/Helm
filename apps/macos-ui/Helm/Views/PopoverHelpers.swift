@@ -3,6 +3,7 @@ import SwiftUI
 struct PopoverOverlayCard<Content: View>: View {
     let title: String
     let onClose: () -> Void
+    var showsCloseButton: Bool = true
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -11,14 +12,16 @@ struct PopoverOverlayCard<Content: View>: View {
                 Text(title)
                     .font(.headline)
                 Spacer()
-                Button(action: onClose) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary)
+                if showsCloseButton {
+                    Button(action: onClose) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.escape, modifiers: [])
+                    .helmPointer()
+                    .accessibilityLabel(L10n.Common.close.localized)
                 }
-                .buttonStyle(.plain)
-                .keyboardShortcut(.escape, modifiers: [])
-                .helmPointer()
-                .accessibilityLabel(L10n.Common.close.localized)
             }
 
             content

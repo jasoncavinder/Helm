@@ -499,6 +499,8 @@ extension L10n {
                 static let version = "app.overlay.about.version"
                 static let build = "app.overlay.about.build"
                 static let summary = "app.overlay.about.summary"
+                static let copyright = "app.overlay.about.copyright"
+                static let updateDetected = "app.overlay.about.update_detected"
                 static let channel = "app.overlay.about.channel"
                 static let updateAuthority = "app.overlay.about.update_authority"
                 static let lastChecked = "app.overlay.about.last_checked"
@@ -556,6 +558,7 @@ extension L10n.App {
 
         struct Action {
             static let cancel = "app.tasks.action.cancel"
+            static let dismissFailed = "app.tasks.action.dismiss_failed"
         }
     }
 }

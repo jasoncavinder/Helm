@@ -50,6 +50,17 @@ pub trait DetectionStore: Send + Sync {
 
     fn auto_check_last_checked_unix(&self) -> PersistenceResult<Option<i64>>;
 
+    fn set_cli_onboarding_completed(&self, completed: bool) -> PersistenceResult<()>;
+
+    fn cli_onboarding_completed(&self) -> PersistenceResult<bool>;
+
+    fn set_cli_accepted_license_terms_version(
+        &self,
+        version: Option<&str>,
+    ) -> PersistenceResult<()>;
+
+    fn cli_accepted_license_terms_version(&self) -> PersistenceResult<Option<String>>;
+
     fn set_manager_priority_overrides_json(
         &self,
         overrides_json: Option<&str>,

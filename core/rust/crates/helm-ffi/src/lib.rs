@@ -18,7 +18,7 @@
 //!   accessing the engine. Poisoned-lock recovery is implemented via
 //!   [`lock_or_recover`] to prevent lock-poison panics at the FFI boundary.
 //!
-//! ## FFI Exports (31 functions)
+//! ## FFI Exports (32 functions)
 //!
 //! | Function | Category |
 //! |----------|----------|
@@ -31,6 +31,7 @@
 //! | `helm_trigger_refresh` | Task management |
 //! | `helm_trigger_detection` | Task management |
 //! | `helm_cancel_task` | Task management |
+//! | `helm_dismiss_task` | Task management |
 //! | `helm_search_local` | Search |
 //! | `helm_trigger_remote_search` | Search |
 //! | `helm_list_manager_status` | Manager control |
@@ -129,6 +130,7 @@ use helm_core::adapters::{
 };
 use helm_core::execution::tokio_process::TokioProcessExecutor;
 use helm_core::execution::{clear_manager_selected_executables, set_manager_selected_executable};
+use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
     Capability, DetectionInfo, HomebrewKegPolicy, ManagerAuthority, ManagerId, OutdatedPackage,
     PackageRef, PinKind, PinRecord, SearchQuery, TaskId, TaskLogLevel, TaskStatus, TaskType,
@@ -291,6 +293,10 @@ struct FfiManagerStatus {
     supports_package_install: bool,
     supports_package_uninstall: bool,
     supports_package_upgrade: bool,
+    is_eligible: bool,
+    ineligible_reason_code: Option<String>,
+    ineligible_reason_message: Option<String>,
+    ineligible_service_error_key: Option<String>,
 }
 
 static EXECUTABLE_DISCOVERY_CACHE: OnceLock<
@@ -830,20 +836,28 @@ fn resolve_selected_executable_path(
     default_path
 }
 
+fn resolved_manager_selected_executable_path(
+    manager: ManagerId,
+    detection_map: &std::collections::HashMap<ManagerId, DetectionInfo>,
+    pref_map: &std::collections::HashMap<ManagerId, ManagerPreference>,
+) -> Option<String> {
+    let detection = detection_map.get(&manager);
+    let active_path = detection.and_then(|d| d.executable_path.as_deref());
+    let executable_paths = collect_manager_executable_paths(manager, active_path);
+    let default_path = default_manager_executable_path(manager, &executable_paths);
+    let preferred_path = pref_map
+        .get(&manager)
+        .and_then(|pref| normalize_nonempty(pref.selected_executable_path.clone()));
+    resolve_selected_executable_path(preferred_path, default_path)
+}
+
 fn sync_manager_executable_overrides(
     detection_map: &std::collections::HashMap<ManagerId, DetectionInfo>,
     pref_map: &std::collections::HashMap<ManagerId, ManagerPreference>,
 ) {
     clear_manager_selected_executables();
     for manager in ManagerId::ALL {
-        let detection = detection_map.get(&manager);
-        let active_path = detection.and_then(|d| d.executable_path.as_deref());
-        let executable_paths = collect_manager_executable_paths(manager, active_path);
-        let default_path = default_manager_executable_path(manager, &executable_paths);
-        let preferred_path = pref_map
-            .get(&manager)
-            .and_then(|pref| normalize_nonempty(pref.selected_executable_path.clone()));
-        let selected = resolve_selected_executable_path(preferred_path, default_path);
+        let selected = resolved_manager_selected_executable_path(manager, detection_map, pref_map);
         set_manager_selected_executable(manager, selected.map(std::path::PathBuf::from));
     }
 }
@@ -857,7 +871,7 @@ fn build_manager_statuses(
         .iter()
         .map(|&id| {
             let detection = detection_map.get(&id);
-            let enabled = pref_map
+            let configured_enabled = pref_map
                 .get(&id)
                 .map(|pref| pref.enabled)
                 .unwrap_or_else(|| default_enabled_for_manager(id));
@@ -887,12 +901,15 @@ fn build_manager_statuses(
                 Vec::new()
             };
             let default_executable_path = default_manager_executable_path(id, &executable_paths);
-            let selected_executable_path = resolve_selected_executable_path(
-                pref_map
-                    .get(&id)
-                    .and_then(|pref| normalize_nonempty(pref.selected_executable_path.clone())),
-                default_executable_path.clone(),
+            let selected_executable_path =
+                resolved_manager_selected_executable_path(id, detection_map, pref_map);
+            let eligibility = manager_enablement_eligibility(
+                id,
+                selected_executable_path
+                    .as_deref()
+                    .map(std::path::Path::new),
             );
+            let enabled = configured_enabled && eligibility.is_eligible;
             let version = detection.and_then(|d| normalize_nonempty(d.version.clone()));
             let supports_remote_search = runtime
                 .map(|runtime| can_submit_remote_search(runtime, id))
@@ -928,6 +945,10 @@ fn build_manager_statuses(
                 supports_package_install,
                 supports_package_uninstall,
                 supports_package_upgrade,
+                is_eligible: eligibility.is_eligible,
+                ineligible_reason_code: eligibility.reason_code.map(str::to_string),
+                ineligible_reason_message: eligibility.reason_message.map(str::to_string),
+                ineligible_service_error_key: eligibility.service_error_key.map(str::to_string),
             }
         })
         .collect()
@@ -977,6 +998,25 @@ fn is_recent_inflight_task(task: &helm_core::models::TaskRecord) -> bool {
         .unwrap_or(true)
 }
 
+fn task_signature_key(
+    task: &helm_core::models::TaskRecord,
+    labels: &std::collections::HashMap<u64, TaskLabel>,
+) -> String {
+    labels
+        .get(&task.id.0)
+        .map(|label| {
+            let mut encoded = format!("{:?}:{:?}:{}", task.manager, task.task_type, label.key);
+            for (arg_key, arg_value) in &label.args {
+                encoded.push('|');
+                encoded.push_str(arg_key);
+                encoded.push('=');
+                encoded.push_str(arg_value);
+            }
+            encoded
+        })
+        .unwrap_or_else(|| format!("{:?}:{:?}", task.manager, task.task_type))
+}
+
 fn build_visible_tasks(
     tasks: Vec<helm_core::models::TaskRecord>,
     labels: &std::collections::HashMap<u64, TaskLabel>,
@@ -984,33 +1024,25 @@ fn build_visible_tasks(
     let mut visible = Vec::with_capacity(tasks.len());
     let mut seen_inflight: std::collections::HashMap<String, usize> =
         std::collections::HashMap::new();
+    let mut seen_signatures: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut terminal_count = 0usize;
 
     for task in tasks {
+        let signature = task_signature_key(&task, labels);
         if is_inflight_status(task.status) {
-            let key = labels
-                .get(&task.id.0)
-                .map(|label| {
-                    let mut encoded =
-                        format!("{:?}:{:?}:{}", task.manager, task.task_type, label.key);
-                    for (arg_key, arg_value) in &label.args {
-                        encoded.push('|');
-                        encoded.push_str(arg_key);
-                        encoded.push('=');
-                        encoded.push_str(arg_value);
-                    }
-                    encoded
-                })
-                .unwrap_or_else(|| format!("{:?}:{:?}", task.manager, task.task_type));
-
-            if let Some(existing_index) = seen_inflight.get(&key).copied() {
+            if let Some(existing_index) = seen_inflight.get(&signature).copied() {
                 if should_replace_visible_inflight_task(&visible[existing_index], &task) {
                     visible[existing_index] = task;
                 }
             } else {
-                seen_inflight.insert(key, visible.len());
+                seen_inflight.insert(signature.clone(), visible.len());
                 visible.push(task);
             }
+            seen_signatures.insert(signature);
+            continue;
+        }
+
+        if task.status == TaskStatus::Failed && seen_signatures.contains(&signature) {
             continue;
         }
 
@@ -1018,6 +1050,7 @@ fn build_visible_tasks(
             visible.push(task);
             terminal_count = terminal_count.saturating_add(1);
         }
+        seen_signatures.insert(signature);
     }
 
     visible
@@ -1118,13 +1151,159 @@ fn cancel_inflight_tasks_for_manager(
     }
 }
 
+fn purge_tasks_for_manager(
+    store: &SqliteStore,
+    runtime: &AdapterRuntime,
+    rt_handle: &tokio::runtime::Handle,
+    manager: ManagerId,
+    context: &str,
+) -> bool {
+    let task_ids_for_manager: std::collections::HashSet<u64> = store
+        .list_recent_tasks(TASK_RECENT_FETCH_LIMIT)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|task| task.manager == manager)
+        .map(|task| task.id.0)
+        .collect();
+
+    if task_ids_for_manager.is_empty() {
+        return true;
+    }
+
+    cancel_inflight_tasks_for_manager(store, runtime, rt_handle, manager);
+    if let Err(error) = store.delete_tasks_for_manager(manager) {
+        eprintln!(
+            "{}: failed to delete task history for '{}' ({})",
+            context,
+            manager.as_str(),
+            error
+        );
+        return false;
+    }
+
+    let mut labels = lock_or_recover(&TASK_LABELS, "task_labels");
+    labels.retain(|task_id, _| !task_ids_for_manager.contains(task_id));
+    true
+}
+
+fn apply_manager_enablement_self_heal(
+    store: &SqliteStore,
+    runtime: &AdapterRuntime,
+    rt_handle: &tokio::runtime::Handle,
+    detection_map: &std::collections::HashMap<ManagerId, DetectionInfo>,
+    pref_map: &mut std::collections::HashMap<ManagerId, ManagerPreference>,
+) -> bool {
+    let mut changed = false;
+
+    for manager in ManagerId::ALL {
+        if detection_map
+            .get(&manager)
+            .map(|info| !info.installed)
+            .unwrap_or(false)
+            && !purge_tasks_for_manager(
+                store,
+                runtime,
+                rt_handle,
+                manager,
+                "manager uninstall cleanup",
+            )
+        {
+            eprintln!(
+                "manager uninstall cleanup: task purge failed for '{}'",
+                manager.as_str()
+            );
+        }
+
+        let configured_enabled = pref_map
+            .get(&manager)
+            .map(|preference| preference.enabled)
+            .unwrap_or_else(|| default_enabled_for_manager(manager));
+        if !configured_enabled {
+            continue;
+        }
+
+        let selected_executable =
+            resolved_manager_selected_executable_path(manager, detection_map, pref_map);
+        let eligibility = manager_enablement_eligibility(
+            manager,
+            selected_executable.as_deref().map(std::path::Path::new),
+        );
+        if eligibility.is_eligible {
+            continue;
+        }
+
+        if let Err(error) = store.set_manager_enabled(manager, false) {
+            eprintln!(
+                "manager policy self-heal: failed to persist disable for '{}' (reason_code={}, error={})",
+                manager.as_str(),
+                eligibility.reason_code.unwrap_or("manager.ineligible"),
+                error
+            );
+            continue;
+        }
+
+        if let Some(preference) = pref_map.get_mut(&manager) {
+            preference.enabled = false;
+        } else {
+            pref_map.insert(
+                manager,
+                ManagerPreference {
+                    manager,
+                    enabled: false,
+                    selected_executable_path: None,
+                    selected_install_method: None,
+                },
+            );
+        }
+
+        eprintln!(
+            "manager policy self-heal: auto-disabled '{}' (reason_code={}, executable_path='{}')",
+            manager.as_str(),
+            eligibility.reason_code.unwrap_or("manager.ineligible"),
+            selected_executable.as_deref().unwrap_or("<none>")
+        );
+        let _ = purge_tasks_for_manager(
+            store,
+            runtime,
+            rt_handle,
+            manager,
+            "manager policy self-heal",
+        );
+        changed = true;
+    }
+
+    changed
+}
+
 fn manager_enabled_map(store: &SqliteStore) -> std::collections::HashMap<ManagerId, bool> {
-    store
+    let detections: std::collections::HashMap<ManagerId, DetectionInfo> = store
+        .list_detections()
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+    let preferences: std::collections::HashMap<ManagerId, ManagerPreference> = store
         .list_manager_preferences()
         .unwrap_or_default()
         .into_iter()
-        .map(|pref| (pref.manager, pref.enabled))
-        .collect()
+        .map(|preference| (preference.manager, preference))
+        .collect();
+
+    let mut enabled_by_manager = std::collections::HashMap::new();
+    for manager in ManagerId::ALL {
+        let configured_enabled = preferences
+            .get(&manager)
+            .map(|preference| preference.enabled)
+            .unwrap_or_else(|| default_enabled_for_manager(manager));
+        let selected_executable =
+            resolved_manager_selected_executable_path(manager, &detections, &preferences);
+        let eligibility = manager_enablement_eligibility(
+            manager,
+            selected_executable.as_deref().map(std::path::Path::new),
+        );
+        enabled_by_manager.insert(manager, configured_enabled && eligibility.is_eligible);
+    }
+
+    enabled_by_manager
 }
 
 fn manager_is_enabled(
@@ -2833,7 +3012,7 @@ pub extern "C" fn helm_list_tasks() -> *mut c_char {
         None => return std::ptr::null_mut(),
     };
 
-    // Auto-prune terminal tasks older than 5 minutes.
+    // Auto-prune completed/cancelled tasks older than 5 minutes.
     let _ = state.store.prune_completed_tasks(TASK_PRUNE_MAX_AGE_SECS);
 
     let enabled_by_manager = manager_enabled_map(state.store.as_ref());
@@ -3329,6 +3508,35 @@ pub extern "C" fn helm_cancel_task(task_id: i64) -> bool {
     }
 }
 
+/// Dismiss a terminal task by ID. Returns true on success.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_dismiss_task(task_id: i64) -> bool {
+    clear_last_error_key();
+    if task_id < 0 {
+        return return_error_bool("service.error.invalid_input");
+    }
+
+    let store = {
+        let guard = lock_or_recover(&STATE, "state");
+        let state = match guard.as_ref() {
+            Some(s) => s,
+            None => return return_error_bool("service.error.internal"),
+        };
+        state.store.clone()
+    };
+
+    if store
+        .delete_task(TaskId(task_id as u64))
+        .map_err(|_| set_last_error_key("service.error.storage_failure"))
+        .is_err()
+    {
+        return false;
+    }
+
+    lock_or_recover(&TASK_LABELS, "task_labels").remove(&(task_id as u64));
+    true
+}
+
 /// List manager status: detection info + preferences + implementation status as JSON.
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_list_manager_status() -> *mut c_char {
@@ -3342,11 +3550,17 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
     let preferences = state.store.list_manager_preferences().unwrap_or_default();
 
     let mut detection_map: std::collections::HashMap<_, _> = detections.into_iter().collect();
-    let pref_map: std::collections::HashMap<_, _> = preferences
+    let mut pref_map: std::collections::HashMap<_, _> = preferences
         .into_iter()
         .map(|pref| (pref.manager, pref))
         .collect();
-
+    apply_manager_enablement_self_heal(
+        state.store.as_ref(),
+        state.runtime.as_ref(),
+        &state.rt_handle,
+        &detection_map,
+        &mut pref_map,
+    );
     sync_manager_executable_overrides(&detection_map, &pref_map);
 
     let mut statuses =
@@ -5021,6 +5235,34 @@ pub unsafe extern "C" fn helm_set_manager_enabled(
         )
     };
 
+    if enabled {
+        let detection_map: std::collections::HashMap<ManagerId, DetectionInfo> = store
+            .list_detections()
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
+        let pref_map: std::collections::HashMap<ManagerId, ManagerPreference> = store
+            .list_manager_preferences()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|preference| (preference.manager, preference))
+            .collect();
+
+        let selected_executable =
+            resolved_manager_selected_executable_path(manager, &detection_map, &pref_map);
+        let eligibility = manager_enablement_eligibility(
+            manager,
+            selected_executable.as_deref().map(std::path::Path::new),
+        );
+        if !eligibility.is_eligible {
+            return return_error_bool(
+                eligibility
+                    .service_error_key
+                    .unwrap_or("service.error.unsupported_capability"),
+            );
+        }
+    }
+
     if store
         .set_manager_enabled(manager, enabled)
         .map_err(|_| set_last_error_key("service.error.storage_failure"))
@@ -5029,8 +5271,16 @@ pub unsafe extern "C" fn helm_set_manager_enabled(
         return false;
     }
 
-    if !enabled {
-        cancel_inflight_tasks_for_manager(store.as_ref(), runtime.as_ref(), &rt_handle, manager);
+    if !enabled
+        && !purge_tasks_for_manager(
+            store.as_ref(),
+            runtime.as_ref(),
+            &rt_handle,
+            manager,
+            "set_manager_enabled",
+        )
+    {
+        return return_error_bool("service.error.storage_failure");
     }
 
     true
@@ -5654,6 +5904,9 @@ mod tests {
         search_label_key_for_query, upgrade_plan_step_id, upgrade_reason_label_for,
         upgrade_task_label_for,
     };
+    use helm_core::manager_policy::{
+        PIP_SYSTEM_UNMANAGED_REASON_CODE, RUBYGEMS_SYSTEM_UNMANAGED_REASON_CODE,
+    };
     use helm_core::models::{
         DetectionInfo, ManagerId, OutdatedPackage, PackageRef, TaskId, TaskRecord, TaskStatus,
         TaskType,
@@ -5902,6 +6155,93 @@ mod tests {
     }
 
     #[test]
+    fn manager_status_marks_rubygems_ineligible_for_system_executable() {
+        let detection_map = HashMap::from([(
+            ManagerId::RubyGems,
+            DetectionInfo {
+                installed: true,
+                executable_path: Some(std::path::PathBuf::from("/usr/bin/gem")),
+                version: Some("3.4.10".to_string()),
+            },
+        )]);
+        let pref_map = HashMap::from([(
+            ManagerId::RubyGems,
+            ManagerPreference {
+                manager: ManagerId::RubyGems,
+                enabled: true,
+                selected_executable_path: Some("/usr/bin/gem".to_string()),
+                selected_install_method: None,
+            },
+        )]);
+
+        let statuses = build_manager_statuses(None, &detection_map, &pref_map);
+        let rubygems = status_for(&statuses, ManagerId::RubyGems);
+        assert!(!rubygems.enabled);
+        assert!(!rubygems.is_eligible);
+        assert_eq!(
+            rubygems.ineligible_reason_code.as_deref(),
+            Some(RUBYGEMS_SYSTEM_UNMANAGED_REASON_CODE)
+        );
+    }
+
+    #[test]
+    fn manager_status_keeps_rubygems_eligible_for_non_system_executable() {
+        let detection_map = HashMap::from([(
+            ManagerId::RubyGems,
+            DetectionInfo {
+                installed: true,
+                executable_path: Some(std::path::PathBuf::from("/opt/homebrew/bin/gem")),
+                version: Some("3.4.10".to_string()),
+            },
+        )]);
+        let pref_map = HashMap::from([(
+            ManagerId::RubyGems,
+            ManagerPreference {
+                manager: ManagerId::RubyGems,
+                enabled: true,
+                selected_executable_path: Some("/opt/homebrew/bin/gem".to_string()),
+                selected_install_method: None,
+            },
+        )]);
+
+        let statuses = build_manager_statuses(None, &detection_map, &pref_map);
+        let rubygems = status_for(&statuses, ManagerId::RubyGems);
+        assert!(rubygems.enabled);
+        assert!(rubygems.is_eligible);
+        assert!(rubygems.ineligible_reason_code.is_none());
+    }
+
+    #[test]
+    fn manager_status_marks_pip_ineligible_for_system_executable() {
+        let detection_map = HashMap::from([(
+            ManagerId::Pip,
+            DetectionInfo {
+                installed: true,
+                executable_path: Some(std::path::PathBuf::from("/usr/bin/python3")),
+                version: Some("3.9.6".to_string()),
+            },
+        )]);
+        let pref_map = HashMap::from([(
+            ManagerId::Pip,
+            ManagerPreference {
+                manager: ManagerId::Pip,
+                enabled: true,
+                selected_executable_path: Some("/usr/bin/python3".to_string()),
+                selected_install_method: None,
+            },
+        )]);
+
+        let statuses = build_manager_statuses(None, &detection_map, &pref_map);
+        let pip = status_for(&statuses, ManagerId::Pip);
+        assert!(!pip.enabled);
+        assert!(!pip.is_eligible);
+        assert_eq!(
+            pip.ineligible_reason_code.as_deref(),
+            Some(PIP_SYSTEM_UNMANAGED_REASON_CODE)
+        );
+    }
+
+    #[test]
     fn build_visible_tasks_deduplicates_inflight_rows_by_manager_and_type() {
         let tasks = vec![
             TaskRecord {
@@ -5984,6 +6324,31 @@ mod tests {
         assert_eq!(visible.len(), 50);
         assert_eq!(visible[0].id, TaskId(0));
         assert_eq!(visible[49].id, TaskId(49));
+    }
+
+    #[test]
+    fn build_visible_tasks_replaces_older_identical_failed_task() {
+        let tasks = vec![
+            TaskRecord {
+                id: TaskId(201),
+                manager: ManagerId::Npm,
+                task_type: TaskType::Upgrade,
+                status: TaskStatus::Running,
+                created_at: std::time::SystemTime::now(),
+            },
+            TaskRecord {
+                id: TaskId(200),
+                manager: ManagerId::Npm,
+                task_type: TaskType::Upgrade,
+                status: TaskStatus::Failed,
+                created_at: std::time::SystemTime::now(),
+            },
+        ];
+        let labels = std::collections::HashMap::new();
+        let visible = build_visible_tasks(tasks, &labels);
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].id, TaskId(201));
+        assert_eq!(visible[0].status, TaskStatus::Running);
     }
 
     #[test]

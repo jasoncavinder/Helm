@@ -323,6 +323,7 @@ struct RedesignPopoverView: View {
                     TaskRowView(
                         task: task,
                         onCancel: task.isRunning ? { core.cancelTask(task) } : nil,
+                        onDismiss: task.status.lowercased() == "failed" ? { core.dismissTask(task) } : nil,
                         canExpandDetails: task.supportsInlineDetails,
                         isExpanded: expandedTaskId == task.id,
                         outputSurface: .popover,
@@ -392,7 +393,8 @@ struct RedesignPopoverView: View {
         case .about:
             PopoverOverlayCard(
                 title: L10n.App.Overlay.About.title.localized,
-                onClose: closeOverlay
+                onClose: closeOverlay,
+                showsCloseButton: false
             ) {
                 PopoverAboutOverlayContent(onClose: closeOverlay)
             }

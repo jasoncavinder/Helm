@@ -12,6 +12,7 @@ import Foundation
     func triggerRemoteSearch(query: String, withReply reply: @escaping (Int64) -> Void)
     func triggerRemoteSearchForManager(managerId: String, query: String, withReply reply: @escaping (Int64) -> Void)
     func cancelTask(taskId: Int64, withReply reply: @escaping (Bool) -> Void)
+    func dismissTask(taskId: Int64, withReply reply: @escaping (Bool) -> Void)
     func listManagerStatus(withReply reply: @escaping (String?) -> Void)
     func getSafeMode(withReply reply: @escaping (Bool) -> Void)
     func setSafeMode(enabled: Bool, withReply reply: @escaping (Bool) -> Void)

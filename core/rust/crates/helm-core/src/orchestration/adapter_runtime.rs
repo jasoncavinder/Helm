@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
@@ -8,6 +9,7 @@ use crate::adapters::{
     AdapterRequest, AdapterResponse, DetectRequest, ListInstalledRequest, ListOutdatedRequest,
     ManagerAdapter,
 };
+use crate::manager_policy::manager_enablement_eligibility;
 use crate::models::{
     Capability, CoreError, CoreErrorKind, ManagerAction, ManagerId, NewTaskLogRecord, TaskId,
     TaskLogLevel, TaskRecord, TaskStatus, TaskType,
@@ -136,21 +138,44 @@ impl AdapterRuntime {
     }
 
     pub fn is_manager_enabled(&self, manager: ManagerId) -> bool {
-        if let Some(ds) = &self.detection_store {
-            match ds.list_manager_preferences() {
-                Ok(prefs) => {
-                    for pref in prefs {
-                        if pref.manager == manager {
-                            return pref.enabled;
-                        }
-                    }
-                    true // default: enabled
-                }
-                Err(_) => true,
+        let Some(ds) = &self.detection_store else {
+            return true;
+        };
+
+        let prefs = match ds.list_manager_preferences() {
+            Ok(value) => value,
+            Err(_) => return true,
+        };
+
+        let mut enabled = true;
+        let mut selected_executable_path: Option<PathBuf> = None;
+        for pref in prefs {
+            if pref.manager != manager {
+                continue;
             }
-        } else {
-            true
+
+            enabled = pref.enabled;
+            selected_executable_path = pref
+                .selected_executable_path
+                .as_ref()
+                .map(|value| value.trim())
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from);
+            break;
         }
+        if !enabled {
+            return false;
+        }
+
+        let detected_executable_path = match ds.list_detections() {
+            Ok(detections) => detections
+                .into_iter()
+                .find_map(|(id, info)| (id == manager).then_some(info.executable_path).flatten()),
+            Err(_) => None,
+        };
+
+        let resolved_executable = selected_executable_path.or(detected_executable_path);
+        manager_enablement_eligibility(manager, resolved_executable.as_deref()).is_eligible
     }
 
     pub fn is_safe_mode(&self) -> bool {

@@ -343,6 +343,10 @@ struct ManagerStatus: Codable {
     let supportsPackageInstall: Bool
     let supportsPackageUninstall: Bool
     let supportsPackageUpgrade: Bool
+    let isEligible: Bool?
+    let ineligibleReasonCode: String?
+    let ineligibleReasonMessage: String?
+    let ineligibleServiceErrorKey: String?
 }
 
 final class HelmOverviewState: ObservableObject {
