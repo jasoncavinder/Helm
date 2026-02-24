@@ -7,15 +7,15 @@
     <language>en</language>
     <item>
       <title>Helm 0.17.5</title>
-      <pubDate>Tue, 24 Feb 2026 18:32:27 +0000</pubDate>
+      <pubDate>Tue, 24 Feb 2026 18:49:06 +0000</pubDate>
       <sparkle:releaseNotesLink>https://helmapp.dev/updates/release-notes/v0.17.5.html</sparkle:releaseNotesLink>
       <enclosure
         url="https://github.com/jasoncavinder/Helm/releases/download/v0.17.5/Helm-v0.17.5-macos-universal.dmg"
         sparkle:version="17005900"
         sparkle:shortVersionString="0.17.5"
-        sparkle:edSignature="gy688fQgqOE5xvBiTpTnfqJDnjAKCYjOyYLyTGZfzHxOaANmVY7+n1nGiVPpxIahHGCoe89d1aI1iR3o5mYlCw=="
+        sparkle:edSignature="Jt4lBFW68HLAbgD1tS8I/6R3+Df4Va0HWOVpUuGXegN0r3iCOFtdNcTrJ4m/B18qk1s7/KstuQ3LL6QpbKEiAQ=="
          sparkle:minimumSystemVersion="11.0"
-        length="24212558"
+        length="24216433"
         type="application/octet-stream"/>
     </item>
   </channel>
