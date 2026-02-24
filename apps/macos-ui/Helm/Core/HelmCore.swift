@@ -489,6 +489,12 @@ final class HelmCore: ObservableObject {
     @Published var launchAtLoginEnabled: Bool = UserDefaults.standard.bool(
         forKey: HelmCore.launchAtLoginEnabledKey
     )
+    @Published var helmCliShimInstalled: Bool = false
+    @Published var helmCliBundledAvailable: Bool = false
+    @Published var helmCliShimOperationInProgress: Bool = false
+    @Published var helmCliShimStatusMessage: String?
+    @Published var helmCliShimPath: String = HelmCore.defaultHelmCliShimURL().path
+    @Published var helmCliBundledPath: String?
 
     let overviewState = HelmOverviewState()
     let managersState = HelmManagersState()
@@ -529,6 +535,7 @@ final class HelmCore: ObservableObject {
     }
 
     private init() {
+        refreshHelmCliShimStatus()
         setupConnection()
     }
 

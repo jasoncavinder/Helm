@@ -479,11 +479,16 @@ private struct TaskOutputTextView: View {
                         RoundedRectangle(cornerRadius: 8)
                             .fill(Color(NSColor.textBackgroundColor))
                     )
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 Text(unavailableText)
                     .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
+
+            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
@@ -578,6 +583,7 @@ private struct TaskLogListView: View {
                         )
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             if canLoadMore && !isLoading {
                 Button(L10n.App.Inspector.taskLogsLoadMore.localized) {
@@ -587,7 +593,10 @@ private struct TaskLogListView: View {
                 .font(.caption)
                 .helmPointer()
             }
+
+            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
@@ -649,6 +658,14 @@ private struct InspectorPackageDetailView: View {
     @State private var renderedPackageDescription: PackageDescriptionRenderer.RenderedDescription?
     let package: PackageItem
 
+    private var supportsKegPolicyOverride: Bool {
+        package.managerId == "homebrew_formula" && package.status != .available
+    }
+
+    private var kegPolicySelection: KegPolicySelection {
+        core.kegPolicySelection(for: package)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(package.name)
@@ -681,6 +698,10 @@ private struct InspectorPackageDetailView: View {
                     Text(latest)
                         .font(.caption.monospacedDigit())
                 }
+            }
+
+            if supportsKegPolicyOverride {
+                kegPolicyMenuField
             }
 
             if package.pinned {
@@ -732,6 +753,79 @@ private struct InspectorPackageDetailView: View {
                 }
             }
 
+            packageActionRow
+
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear {
+            core.ensurePackageDescription(for: package)
+            refreshRenderedPackageDescription()
+        }
+        .onChange(of: package.id) { _ in
+            core.ensurePackageDescription(for: package)
+            refreshRenderedPackageDescription()
+        }
+        .onChange(of: package.summary) { _ in
+            core.ensurePackageDescription(for: package)
+            refreshRenderedPackageDescription()
+        }
+    }
+
+    private func refreshRenderedPackageDescription() {
+        renderedPackageDescription = core.renderedPackageDescription(for: package)
+    }
+
+    private var kegPolicyMenuField: some View {
+        InspectorField(label: L10n.App.Packages.Label.homebrewKegPolicy.localized) {
+            Menu {
+                Button {
+                    core.setKegPolicySelection(for: package, selection: .useGlobal)
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(L10n.App.Packages.KegPolicy.useGlobal.localized)
+                        if kegPolicySelection == .useGlobal {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+
+                Button {
+                    core.setKegPolicySelection(for: package, selection: .keep)
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(L10n.App.Packages.KegPolicy.keepOld.localized)
+                        if kegPolicySelection == .keep {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+
+                Button {
+                    core.setKegPolicySelection(for: package, selection: .cleanup)
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(L10n.App.Packages.KegPolicy.cleanupOld.localized)
+                        if kegPolicySelection == .cleanup {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Text(kegPolicyLabel(kegPolicySelection))
+                        .font(.callout)
+                    Image(systemName: "chevron.down")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .menuStyle(.borderlessButton)
+        }
+    }
+
+    private var packageActionRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 if core.canInstallPackage(package) {
                     packageActionButton(
@@ -794,31 +888,30 @@ private struct InspectorPackageDetailView: View {
                 Spacer(minLength: 0)
             }
 
-            InspectorField(label: L10n.App.Inspector.packageId.localized) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(L10n.App.Inspector.packageId.localized)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
                 Text(package.id)
                     .font(.caption.monospacedDigit())
                     .foregroundColor(.secondary)
-                    .accessibilityLabel(L10n.App.Inspector.packageId.localized)
-                    .accessibilityValue(package.id)
             }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .onAppear {
-            core.ensurePackageDescription(for: package)
-            refreshRenderedPackageDescription()
-        }
-        .onChange(of: package.id) { _ in
-            core.ensurePackageDescription(for: package)
-            refreshRenderedPackageDescription()
-        }
-        .onChange(of: package.summary) { _ in
-            core.ensurePackageDescription(for: package)
-            refreshRenderedPackageDescription()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(L10n.App.Inspector.packageId.localized)
+            .accessibilityValue(package.id)
         }
     }
 
-    private func refreshRenderedPackageDescription() {
-        renderedPackageDescription = core.renderedPackageDescription(for: package)
+    private func kegPolicyLabel(_ selection: KegPolicySelection) -> String {
+        switch selection {
+        case .useGlobal:
+            return L10n.App.Packages.KegPolicy.useGlobal.localized
+        case .keep:
+            return L10n.App.Packages.KegPolicy.keepOld.localized
+        case .cleanup:
+            return L10n.App.Packages.KegPolicy.cleanupOld.localized
+        }
     }
 
     private func packageActionButton(
@@ -1084,45 +1177,6 @@ private struct InspectorManagerDetailView: View {
                     .menuStyle(.borderlessButton)
                 }
 
-                if !executablePaths.isEmpty {
-                    InspectorField(label: L10n.App.Inspector.executablePaths.localized) {
-                        Group {
-                            if executablePaths.count > 5 {
-                                ScrollView {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        ForEach(executablePaths, id: \.self) { path in
-                                            Text(path)
-                                                .font(
-                                                    path == selectedExecutablePath
-                                                        ? .caption.monospacedDigit().weight(.semibold)
-                                                        : .caption.monospacedDigit()
-                                                )
-                                                .lineLimit(2)
-                                        }
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                                .frame(maxHeight: 96)
-                            } else {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    ForEach(executablePaths, id: \.self) { path in
-                                        Text(path)
-                                            .font(
-                                                path == selectedExecutablePath
-                                                    ? .caption.monospacedDigit().weight(.semibold)
-                                                    : .caption.monospacedDigit()
-                                            )
-                                            .lineLimit(2)
-                                    }
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        }
-                        .accessibilityLabel(L10n.App.Inspector.executablePaths.localized)
-                        .accessibilityValue(executablePaths.joined(separator: ", "))
-                    }
-                }
-
             }
 
             InspectorField(label: L10n.App.Inspector.installMethod.localized) {
@@ -1267,7 +1321,12 @@ private struct InspectorManagerDetailView: View {
 
 private struct InspectorField<Content: View>: View {
     let label: String
-    @ViewBuilder let content: Content
+    let content: Content
+
+    init(label: String, @ViewBuilder content: () -> Content) {
+        self.label = label
+        self.content = content()
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
