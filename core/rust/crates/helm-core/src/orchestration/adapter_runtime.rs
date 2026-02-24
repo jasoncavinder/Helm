@@ -375,40 +375,64 @@ impl AdapterRuntime {
     ) -> OrchestrationResult<AdapterResponse> {
         let action = request.action();
         let task_type = task_type_for_action(action);
-        let started_at = Instant::now();
+        let mut attempt = 0u8;
+        loop {
+            attempt = attempt.saturating_add(1);
+            let started_at = Instant::now();
 
-        let task_id = self
-            .submit(manager, request)
-            .await
-            .map_err(|error| attribute_error(error, manager, task_type, action))?;
-        let snapshot = self
-            .wait_for_terminal(task_id, Some(Duration::from_secs(60)))
-            .await
-            .map_err(|error| attribute_error(error, manager, task_type, action))?;
+            let task_id = self
+                .submit(manager, request.clone())
+                .await
+                .map_err(|error| attribute_error(error, manager, task_type, action))?;
+            let snapshot = self
+                .wait_for_terminal(task_id, Some(Duration::from_secs(60)))
+                .await
+                .map_err(|error| attribute_error(error, manager, task_type, action))?;
 
-        if task_type == TaskType::Detection {
-            log_detection_timing(manager, task_id, started_at.elapsed(), &snapshot);
-        }
-
-        match snapshot.terminal_state {
-            Some(AdapterTaskTerminalState::Succeeded(response)) => Ok(response),
-            Some(AdapterTaskTerminalState::Failed(e)) => {
-                Err(attribute_error(e, manager, task_type, action))
+            if task_type == TaskType::Detection {
+                log_detection_timing(manager, task_id, started_at.elapsed(), &snapshot);
             }
-            Some(AdapterTaskTerminalState::Cancelled(e)) => Err(e.unwrap_or(CoreError {
-                manager: Some(manager),
-                task: Some(task_type),
-                action: Some(action),
-                kind: CoreErrorKind::Cancelled,
-                message: "task was cancelled".to_string(),
-            })),
-            None => Err(CoreError {
-                manager: Some(manager),
-                task: Some(task_type),
-                action: Some(action),
-                kind: CoreErrorKind::Internal,
-                message: "task reached terminal state with no result".to_string(),
-            }),
+
+            let terminal_result = match snapshot.terminal_state {
+                Some(AdapterTaskTerminalState::Succeeded(response)) => Ok(response),
+                Some(AdapterTaskTerminalState::Failed(e)) => {
+                    Err(attribute_error(e, manager, task_type, action))
+                }
+                Some(AdapterTaskTerminalState::Cancelled(e)) => Err(e.unwrap_or(CoreError {
+                    manager: Some(manager),
+                    task: Some(task_type),
+                    action: Some(action),
+                    kind: CoreErrorKind::Cancelled,
+                    message: "task was cancelled".to_string(),
+                })),
+                None => Err(CoreError {
+                    manager: Some(manager),
+                    task: Some(task_type),
+                    action: Some(action),
+                    kind: CoreErrorKind::Internal,
+                    message: "task reached terminal state with no result".to_string(),
+                }),
+            };
+
+            match terminal_result {
+                Ok(response) => return Ok(response),
+                Err(error)
+                    if attempt < 2
+                        && should_retry_transient_refresh_error(task_type, action, &error) =>
+                {
+                    tracing::warn!(
+                        manager = ?manager,
+                        task_type = ?task_type,
+                        action = ?action,
+                        kind = ?error.kind,
+                        message = %error.message,
+                        attempt = attempt,
+                        "retrying transient refresh/search request once"
+                    );
+                    continue;
+                }
+                Err(error) => return Err(error),
+            }
         }
     }
 
@@ -1043,6 +1067,49 @@ fn attribute_error(
         kind: error.kind,
         message: error.message,
     }
+}
+
+fn should_retry_transient_refresh_error(
+    task_type: TaskType,
+    action: ManagerAction,
+    error: &CoreError,
+) -> bool {
+    if !matches!(task_type, TaskType::Refresh | TaskType::Search) {
+        return false;
+    }
+    if !matches!(
+        action,
+        ManagerAction::Refresh
+            | ManagerAction::ListInstalled
+            | ManagerAction::ListOutdated
+            | ManagerAction::Search
+    ) {
+        return false;
+    }
+    if matches!(
+        error.kind,
+        CoreErrorKind::Cancelled
+            | CoreErrorKind::UnsupportedCapability
+            | CoreErrorKind::InvalidInput
+            | CoreErrorKind::ParseFailure
+    ) {
+        return false;
+    }
+    if error.kind == CoreErrorKind::Timeout {
+        return true;
+    }
+
+    let normalized = error.message.to_ascii_lowercase();
+    normalized.contains("temporary failure in name resolution")
+        || normalized.contains("name or service not known")
+        || normalized.contains("failed to lookup address")
+        || normalized.contains("could not resolve host")
+        || normalized.contains("check your internet connection")
+        || normalized.contains("network request failed")
+        || normalized.contains("network is unreachable")
+        || normalized.contains("connection timed out")
+        || normalized.contains("operation timed out")
+        || normalized.contains("timed out")
 }
 
 fn log_detection_timing(
