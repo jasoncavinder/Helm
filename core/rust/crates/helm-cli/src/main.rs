@@ -2,7 +2,7 @@ use std::collections::{HashMap, hash_map::DefaultHasher};
 use std::env;
 use std::fs::{self, OpenOptions};
 use std::hash::{Hash, Hasher};
-use std::io::{IsTerminal, Read};
+use std::io::{IsTerminal, Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{ExitCode, Stdio};
@@ -32,6 +32,7 @@ use helm_core::adapters::{
 use helm_core::execution::{
     TokioProcessExecutor, clear_manager_selected_executables, set_manager_selected_executable,
 };
+use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
     CachedSearchResult, Capability, DetectionInfo, HomebrewKegPolicy, InstalledPackage,
     ManagerAuthority, ManagerId, OutdatedPackage, PackageRef, PinKind, PinRecord, SearchQuery,
@@ -63,6 +64,12 @@ const TASK_FOLLOW_MAX_WAIT_MS: u64 = 30_000;
 const JSON_SCHEMA_VERSION: u32 = 1;
 const JSON_ERROR_EMITTED_PREFIX: &str = "__HELM_JSON_ERROR_EMITTED__:";
 const EXIT_CODE_MARKER_PREFIX: &str = "__HELM_EXIT_CODE__:";
+const CLI_ONBOARDING_REQUIRED_EXIT_CODE: u8 = 5;
+const CLI_LICENSE_ACCEPTANCE_REQUIRED_EXIT_CODE: u8 = 6;
+const CLI_LICENSE_TERMS_VERSION: &str = "helm-source-available-license-v1.0-pre1.0";
+const CLI_LICENSE_TERMS_URL: &str = "https://github.com/jasoncavinder/Helm/blob/main/LICENSE";
+const CLI_ACCEPT_LICENSE_ENV: &str = "HELM_ACCEPT_LICENSE";
+const CLI_ACCEPT_DEFAULTS_ENV: &str = "HELM_ACCEPT_DEFAULTS";
 static CLI_TOKIO_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
 static EXECUTABLE_DISCOVERY_CACHE: OnceLock<Mutex<HashMap<ManagerId, Vec<String>>>> =
     OnceLock::new();
@@ -73,7 +80,7 @@ static CLI_NDJSON: AtomicBool = AtomicBool::new(false);
 const BASH_COMPLETION_SCRIPT: &str = r#"_helm_complete() {
     local cur
     cur="${COMP_WORDS[COMP_CWORD]}"
-    local commands="status refresh search ls packages updates tasks managers settings diagnostics doctor self completion help"
+    local commands="status refresh search ls packages updates tasks managers settings diagnostics doctor onboarding self completion help"
     if [[ ${COMP_CWORD} -eq 1 ]]; then
         COMPREPLY=( $(compgen -W "${commands}" -- "${cur}") )
         return 0
@@ -100,6 +107,9 @@ const BASH_COMPLETION_SCRIPT: &str = r#"_helm_complete() {
             ;;
         doctor)
             COMPREPLY=( $(compgen -W "summary task manager provenance export help" -- "${cur}") )
+            ;;
+        onboarding)
+            COMPREPLY=( $(compgen -W "status run reset help" -- "${cur}") )
             ;;
         self)
             if [[ ${COMP_CWORD} -ge 3 && "${COMP_WORDS[2]}" == "auto-check" ]]; then
@@ -130,6 +140,7 @@ commands=(
   settings
   diagnostics
   doctor
+  onboarding
   self
   completion
   help
@@ -162,6 +173,9 @@ case $words[2] in
   doctor)
     _values 'subcommand' summary task manager provenance export help
     ;;
+  onboarding)
+    _values 'subcommand' status run reset help
+    ;;
   self)
     if [[ "$words[3]" == "auto-check" ]]; then
       _values 'subcommand' status enable disable frequency help
@@ -175,7 +189,7 @@ case $words[2] in
 esac
 "#;
 const FISH_COMPLETION_SCRIPT: &str = r#"complete -c helm -f
-complete -c helm -n "__fish_use_subcommand" -a "status refresh search ls packages updates tasks managers settings diagnostics doctor self completion help"
+complete -c helm -n "__fish_use_subcommand" -a "status refresh search ls packages updates tasks managers settings diagnostics doctor onboarding self completion help"
 complete -c helm -n "__fish_seen_subcommand_from packages" -a "list search show install uninstall upgrade pin unpin keg-policy help"
 complete -c helm -n "__fish_seen_subcommand_from updates" -a "list summary preview run help"
 complete -c helm -n "__fish_seen_subcommand_from tasks" -a "list show logs output follow cancel help"
@@ -183,6 +197,7 @@ complete -c helm -n "__fish_seen_subcommand_from managers" -a "list show detect 
 complete -c helm -n "__fish_seen_subcommand_from settings" -a "list get set reset help"
 complete -c helm -n "__fish_seen_subcommand_from diagnostics" -a "summary task manager provenance export help"
 complete -c helm -n "__fish_seen_subcommand_from doctor" -a "summary task manager provenance export help"
+complete -c helm -n "__fish_seen_subcommand_from onboarding" -a "status run reset help"
 complete -c helm -n "__fish_seen_subcommand_from self" -a "status check update uninstall auto-check help"
 complete -c helm -n "__fish_seen_subcommand_from auto-check" -a "status enable disable frequency help"
 complete -c helm -n "__fish_seen_subcommand_from completion" -a "bash zsh fish help"
@@ -198,6 +213,8 @@ struct GlobalOptions {
     locale: Option<String>,
     timeout_seconds: Option<u64>,
     execution_mode: ExecutionMode,
+    accept_license: bool,
+    accept_defaults: bool,
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
@@ -223,6 +240,7 @@ enum Command {
     Settings,
     Diagnostics,
     Doctor,
+    Onboarding,
     SelfCmd,
     Completion,
     InternalCoordinator,
@@ -286,6 +304,9 @@ struct CliManagerStatus {
     supports_package_upgrade: bool,
     selected_executable_path: Option<String>,
     selected_install_method: Option<String>,
+    is_eligible: bool,
+    ineligible_reason_code: Option<String>,
+    ineligible_reason_message: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -518,7 +539,7 @@ fn main() -> ExitCode {
     set_ndjson_enabled(options.ndjson);
     emit_version_metadata_if_verbose();
     verbose_log(format!(
-        "parsed invocation: command={:?}, args={:?}, json={}, ndjson={}, execution_mode={:?}, verbose={}, quiet={}, no_color={}, locale={:?}, timeout_seconds={:?}",
+        "parsed invocation: command={:?}, args={:?}, json={}, ndjson={}, execution_mode={:?}, verbose={}, quiet={}, no_color={}, locale={:?}, timeout_seconds={:?}, accept_license={}, accept_defaults={}",
         command,
         command_args,
         options.json,
@@ -528,7 +549,9 @@ fn main() -> ExitCode {
         options.quiet,
         options.no_color,
         options.locale,
-        options.timeout_seconds
+        options.timeout_seconds,
+        options.accept_license,
+        options.accept_defaults
     ));
 
     if matches!(command, Command::Help) {
@@ -600,6 +623,24 @@ fn main() -> ExitCode {
             return ExitCode::from(exit_code);
         }
     };
+    if let Err(error) = apply_manager_enablement_self_heal(store.as_ref()) {
+        verbose_log(format!("manager policy self-heal skipped: {}", error));
+    }
+    if command_requires_cli_onboarding(command)
+        && let Err(error) = ensure_cli_onboarding_completed(store.as_ref(), &options)
+    {
+        let (json_emitted, normalized_error) = strip_json_error_marker(error.as_str());
+        let (marked_exit_code, normalized_error) = strip_exit_code_marker(normalized_error);
+        let exit_code = marked_exit_code.unwrap_or_else(|| exit_code_for_error(normalized_error));
+        if options.json {
+            if !json_emitted {
+                emit_cli_error_json("helm.cli.v1.error", normalized_error, exit_code);
+            }
+        } else if !json_emitted {
+            eprintln!("helm: {normalized_error}");
+        }
+        return ExitCode::from(exit_code);
+    }
 
     let options_for_error = options.clone();
     match command {
@@ -615,6 +656,7 @@ fn main() -> ExitCode {
         Command::Settings => cmd_settings(store.as_ref(), options, &command_args),
         Command::Diagnostics => cmd_diagnostics(store.as_ref(), options, &command_args),
         Command::Doctor => cmd_doctor(store.as_ref(), options, &command_args),
+        Command::Onboarding => cmd_onboarding(store.as_ref(), options, &command_args),
         Command::SelfCmd => cmd_self(store.clone(), options, &command_args),
         Command::InternalCoordinator => cmd_internal_coordinator(store.clone(), &command_args),
         Command::Completion | Command::Help | Command::Version => Ok(()),
@@ -652,15 +694,12 @@ fn parse_args_with_tty(
 ) -> Result<(GlobalOptions, Command, Vec<String>), String> {
     if args.is_empty() {
         if stdout_is_tty {
-            return Ok((GlobalOptions::default(), Command::Tui, Vec::new()));
+            return Ok((global_options_from_env(), Command::Tui, Vec::new()));
         }
-        return Ok((GlobalOptions::default(), Command::Help, Vec::new()));
+        return Ok((global_options_from_env(), Command::Help, Vec::new()));
     }
 
-    let mut options = GlobalOptions {
-        verbose: env_flag_enabled("HELM_CLI_VERBOSE"),
-        ..GlobalOptions::default()
-    };
+    let mut options = global_options_from_env();
     let mut filtered = Vec::new();
     let mut wait_flag = false;
     let mut detach_flag = false;
@@ -703,6 +742,16 @@ fn parse_args_with_tty(
             "--detach" => {
                 detach_flag = true;
                 options.execution_mode = ExecutionMode::Detach;
+                index += 1;
+                continue;
+            }
+            "--accept-license" => {
+                options.accept_license = true;
+                index += 1;
+                continue;
+            }
+            "--accept-defaults" => {
+                options.accept_defaults = true;
                 index += 1;
                 continue;
             }
@@ -847,6 +896,15 @@ fn env_flag_enabled(key: &str) -> bool {
     )
 }
 
+fn global_options_from_env() -> GlobalOptions {
+    GlobalOptions {
+        verbose: env_flag_enabled("HELM_CLI_VERBOSE"),
+        accept_license: env_flag_enabled(CLI_ACCEPT_LICENSE_ENV),
+        accept_defaults: env_flag_enabled(CLI_ACCEPT_DEFAULTS_ENV),
+        ..GlobalOptions::default()
+    }
+}
+
 fn set_verbose_enabled(enabled: bool) {
     CLI_VERBOSE.store(enabled, Ordering::Relaxed);
 }
@@ -924,6 +982,7 @@ fn parse_top_level_command(raw: &str) -> Option<Command> {
         "config" | "settings" => Some(Command::Settings),
         "diagnostics" => Some(Command::Diagnostics),
         "doctor" => Some(Command::Doctor),
+        "onboarding" => Some(Command::Onboarding),
         "self" => Some(Command::SelfCmd),
         "completion" => Some(Command::Completion),
         "__coordinator__" => Some(Command::InternalCoordinator),
@@ -1011,6 +1070,7 @@ fn command_label(command: Command) -> &'static str {
         Command::Settings => "settings",
         Command::Diagnostics => "diagnostics",
         Command::Doctor => "doctor",
+        Command::Onboarding => "onboarding",
         Command::SelfCmd => "self",
         Command::Completion => "completion",
         Command::InternalCoordinator => "__coordinator__",
@@ -1030,6 +1090,7 @@ fn emit_help_json_payload(command: Option<Command>, path: &[String], resolved: b
         "settings",
         "diagnostics",
         "doctor",
+        "onboarding",
         "self",
         "completion",
         "help",
@@ -1151,6 +1212,10 @@ fn command_help_topic_exists(command: Command, path: &[String]) -> bool {
                         Some("summary" | "task" | "manager" | "provenance" | "export")
                     ))
         }
+        Command::Onboarding => {
+            path.is_empty()
+                || (path.len() == 1 && matches!(first(path), Some("status" | "run" | "reset")))
+        }
         Command::SelfCmd => {
             if path.is_empty() {
                 return true;
@@ -1184,6 +1249,295 @@ fn open_store() -> Result<Arc<SqliteStore>, String> {
         .map_err(|error| format!("failed to migrate sqlite store: {error}"))?;
     verbose_log("sqlite store ready");
     Ok(store)
+}
+
+#[derive(Debug, Clone)]
+struct CliOnboardingState {
+    completed: bool,
+    accepted_license_terms_version: Option<String>,
+}
+
+impl CliOnboardingState {
+    fn current_license_accepted(&self) -> bool {
+        self.accepted_license_terms_version.as_deref() == Some(CLI_LICENSE_TERMS_VERSION)
+    }
+
+    fn fully_complete(&self) -> bool {
+        self.completed && self.current_license_accepted()
+    }
+}
+
+fn command_requires_cli_onboarding(command: Command) -> bool {
+    !matches!(
+        command,
+        Command::Help
+            | Command::Version
+            | Command::Completion
+            | Command::Onboarding
+            | Command::InternalCoordinator
+    )
+}
+
+fn load_cli_onboarding_state(store: &SqliteStore) -> Result<CliOnboardingState, String> {
+    let completed = store
+        .cli_onboarding_completed()
+        .map_err(|error| format!("failed to read CLI onboarding completion state: {error}"))?;
+    let accepted_license_terms_version = store
+        .cli_accepted_license_terms_version()
+        .map_err(|error| format!("failed to read CLI accepted license terms version: {error}"))?;
+    Ok(CliOnboardingState {
+        completed,
+        accepted_license_terms_version,
+    })
+}
+
+fn set_cli_license_accepted(store: &SqliteStore) -> Result<(), String> {
+    store
+        .set_cli_accepted_license_terms_version(Some(CLI_LICENSE_TERMS_VERSION))
+        .map_err(|error| format!("failed to persist CLI accepted license terms version: {error}"))
+}
+
+fn set_cli_onboarding_completed(store: &SqliteStore, completed: bool) -> Result<(), String> {
+    store
+        .set_cli_onboarding_completed(completed)
+        .map_err(|error| format!("failed to persist CLI onboarding completion state: {error}"))
+}
+
+fn apply_cli_default_settings(store: &SqliteStore) -> Result<(), String> {
+    store
+        .set_safe_mode(false)
+        .map_err(|error| format!("failed to apply CLI default safe_mode setting: {error}"))?;
+    store
+        .set_homebrew_keg_policy(HomebrewKegPolicy::Keep)
+        .map_err(|error| {
+            format!("failed to apply CLI default homebrew_keg_auto_cleanup setting: {error}")
+        })?;
+    store.set_auto_check_for_updates(false).map_err(|error| {
+        format!("failed to apply CLI default auto_check_for_updates setting: {error}")
+    })?;
+    store
+        .set_auto_check_frequency_minutes(1_440)
+        .map_err(|error| {
+            format!("failed to apply CLI default auto_check_frequency_minutes setting: {error}")
+        })?;
+    Ok(())
+}
+
+fn can_run_interactive_onboarding() -> bool {
+    std::io::stdin().is_terminal() && std::io::stdout().is_terminal()
+}
+
+fn onboarding_block_error_message(state: &CliOnboardingState) -> String {
+    if !state.current_license_accepted() {
+        "CLI onboarding requires license acceptance before commands can run. Run Helm interactively and accept the license, or rerun with --accept-license --accept-defaults (or HELM_ACCEPT_LICENSE=1 HELM_ACCEPT_DEFAULTS=1).".to_string()
+    } else {
+        "CLI onboarding has not completed. Run Helm interactively to complete onboarding, or rerun with --accept-defaults (or HELM_ACCEPT_DEFAULTS=1).".to_string()
+    }
+}
+
+fn onboarding_block_exit_code(state: &CliOnboardingState) -> u8 {
+    if !state.current_license_accepted() {
+        CLI_LICENSE_ACCEPTANCE_REQUIRED_EXIT_CODE
+    } else {
+        CLI_ONBOARDING_REQUIRED_EXIT_CODE
+    }
+}
+
+fn ensure_cli_onboarding_completed(
+    store: &SqliteStore,
+    options: &GlobalOptions,
+) -> Result<(), String> {
+    let mut state = load_cli_onboarding_state(store)?;
+    if state.fully_complete() {
+        return Ok(());
+    }
+
+    if !state.current_license_accepted() && options.accept_license {
+        set_cli_license_accepted(store)?;
+    }
+    if !state.completed && options.accept_defaults {
+        apply_cli_default_settings(store)?;
+        set_cli_onboarding_completed(store, true)?;
+    }
+
+    state = load_cli_onboarding_state(store)?;
+    if state.fully_complete() {
+        return Ok(());
+    }
+
+    if options.json {
+        return Err(mark_exit_code(
+            onboarding_block_error_message(&state),
+            onboarding_block_exit_code(&state),
+        ));
+    }
+    if !can_run_interactive_onboarding() {
+        return Err(mark_exit_code(
+            onboarding_block_error_message(&state),
+            onboarding_block_exit_code(&state),
+        ));
+    }
+    run_cli_onboarding_interactive(store, options.quiet)
+}
+
+fn prompt_line(prompt: &str) -> Result<String, String> {
+    print!("{prompt}");
+    std::io::stdout()
+        .flush()
+        .map_err(|error| format!("failed to flush stdout: {error}"))?;
+
+    let mut input = String::new();
+    let bytes = std::io::stdin()
+        .read_line(&mut input)
+        .map_err(|error| format!("failed to read stdin: {error}"))?;
+    if bytes == 0 {
+        return Err("stdin closed while reading onboarding input".to_string());
+    }
+    Ok(input.trim().to_string())
+}
+
+fn prompt_yes_no(prompt: &str, default: bool) -> Result<bool, String> {
+    loop {
+        let suffix = if default { "[Y/n]" } else { "[y/N]" };
+        let input = prompt_line(&format!("{prompt} {suffix} "))?;
+        if input.is_empty() {
+            return Ok(default);
+        }
+        match input.to_ascii_lowercase().as_str() {
+            "y" | "yes" => return Ok(true),
+            "n" | "no" => return Ok(false),
+            _ => {
+                eprintln!("Please enter y or n.");
+            }
+        }
+    }
+}
+
+fn prompt_menu_choice(prompt: &str, choices: &[&str], default: &str) -> Result<String, String> {
+    loop {
+        let input = prompt_line(prompt)?;
+        let value = if input.is_empty() {
+            default.to_string()
+        } else {
+            input
+        };
+        if choices.iter().any(|choice| *choice == value) {
+            return Ok(value);
+        }
+        eprintln!("Please select one of: {}", choices.join(", "));
+    }
+}
+
+fn prompt_frequency_minutes() -> Result<u32, String> {
+    loop {
+        let input = prompt_line("Update-check frequency in minutes [1440]: ")?;
+        let value = if input.is_empty() {
+            "1440".to_string()
+        } else {
+            input
+        };
+        let parsed = match value.parse::<u32>() {
+            Ok(parsed) if parsed > 0 => parsed,
+            _ => {
+                eprintln!("Please provide a positive integer.");
+                continue;
+            }
+        };
+        return Ok(parsed);
+    }
+}
+
+fn run_cli_onboarding_interactive(store: &SqliteStore, quiet: bool) -> Result<(), String> {
+    let mut state = load_cli_onboarding_state(store)?;
+
+    if !quiet {
+        println!("Helm CLI setup");
+        println!("  Version: {}", env!("CARGO_PKG_VERSION"));
+        println!("  This setup runs once, then your original command continues.");
+    }
+
+    if !state.current_license_accepted() {
+        if !quiet {
+            println!();
+            println!("License terms");
+            println!("  Version: {CLI_LICENSE_TERMS_VERSION}");
+            println!("  URL: {CLI_LICENSE_TERMS_URL}");
+        }
+        let accepted = prompt_yes_no("Accept license terms to continue?", false)?;
+        if !accepted {
+            return Err(mark_exit_code(
+                "license acceptance is required to continue",
+                CLI_LICENSE_ACCEPTANCE_REQUIRED_EXIT_CODE,
+            ));
+        }
+        set_cli_license_accepted(store)?;
+        state = load_cli_onboarding_state(store)?;
+    }
+
+    if !state.completed {
+        let (safe_mode, homebrew_auto_cleanup, auto_check_for_updates, auto_check_frequency) =
+            if quiet {
+                (false, false, false, 1_440)
+            } else {
+                println!();
+                println!("Onboarding profile");
+                println!(
+                    "  1) Recommended defaults (safe mode off, keg auto-cleanup off, auto-check off)"
+                );
+                println!("  2) Custom settings");
+                let profile =
+                    prompt_menu_choice("Select profile [1-2] (default 1): ", &["1", "2"], "1")?;
+                if profile == "1" {
+                    (false, false, false, 1_440)
+                } else {
+                    let safe_mode = prompt_yes_no("Enable safe mode?", false)?;
+                    let homebrew_auto_cleanup =
+                        prompt_yes_no("Enable Homebrew keg auto-cleanup?", false)?;
+                    let auto_check_for_updates =
+                        prompt_yes_no("Enable auto-check for updates?", false)?;
+                    let auto_check_frequency = if auto_check_for_updates {
+                        prompt_frequency_minutes()?
+                    } else {
+                        1_440
+                    };
+                    (
+                        safe_mode,
+                        homebrew_auto_cleanup,
+                        auto_check_for_updates,
+                        auto_check_frequency,
+                    )
+                }
+            };
+
+        store
+            .set_safe_mode(safe_mode)
+            .map_err(|error| format!("failed to persist safe_mode setting: {error}"))?;
+        store
+            .set_homebrew_keg_policy(if homebrew_auto_cleanup {
+                HomebrewKegPolicy::Cleanup
+            } else {
+                HomebrewKegPolicy::Keep
+            })
+            .map_err(|error| {
+                format!("failed to persist homebrew_keg_auto_cleanup setting: {error}")
+            })?;
+        store
+            .set_auto_check_for_updates(auto_check_for_updates)
+            .map_err(|error| {
+                format!("failed to persist auto_check_for_updates setting: {error}")
+            })?;
+        store
+            .set_auto_check_frequency_minutes(auto_check_frequency)
+            .map_err(|error| {
+                format!("failed to persist auto_check_frequency_minutes setting: {error}")
+            })?;
+        set_cli_onboarding_completed(store, true)?;
+    }
+
+    if !quiet {
+        println!("CLI onboarding complete.");
+    }
+    Ok(())
 }
 
 fn database_path() -> Result<String, String> {
@@ -2784,6 +3138,17 @@ fn cmd_managers(
                     "  selected_install_method: {}",
                     row.selected_install_method.as_deref().unwrap_or("-")
                 );
+                println!("  eligible: {}", row.is_eligible);
+                if !row.is_eligible {
+                    println!(
+                        "  ineligible_reason_code: {}",
+                        row.ineligible_reason_code.as_deref().unwrap_or("-")
+                    );
+                    println!(
+                        "  ineligible_reason_message: {}",
+                        row.ineligible_reason_message.as_deref().unwrap_or("-")
+                    );
+                }
             }
             Ok(())
         }
@@ -2796,6 +3161,17 @@ fn cmd_managers(
             }
             let manager_id = parse_manager_id(&command_args[1])?;
             let enabled = command_args[0] == "enable";
+            if enabled {
+                let eligibility =
+                    manager_enablement_eligibility_for_store(store.as_ref(), manager_id)?;
+                if !eligibility.is_eligible {
+                    let reason = eligibility.reason_message.unwrap_or(
+                        "manager is not eligible to be enabled with the current executable selection",
+                    );
+                    let code = eligibility.reason_code.unwrap_or("manager.ineligible");
+                    return Err(format!("{reason} (reason_code={code})"));
+                }
+            }
             store
                 .set_manager_enabled(manager_id, enabled)
                 .map_err(|error| format!("failed to set manager enabled state: {error}"))?;
@@ -3432,6 +3808,100 @@ fn cmd_settings(
         }
         _ => Err(format!(
             "unsupported settings subcommand '{}'; currently supported: list, get, set, reset",
+            command_args[0]
+        )),
+    }
+}
+
+fn cmd_onboarding(
+    store: &SqliteStore,
+    options: GlobalOptions,
+    command_args: &[String],
+) -> Result<(), String> {
+    if command_args.is_empty() || is_help_token(&command_args[0]) {
+        if options.json {
+            emit_help_json_payload(Some(Command::Onboarding), &[], true);
+        } else {
+            print_onboarding_help();
+        }
+        return Ok(());
+    }
+
+    match command_args[0].as_str() {
+        "status" => {
+            let state = load_cli_onboarding_state(store)?;
+            if options.json {
+                emit_json_payload(
+                    "helm.cli.v1.onboarding.status",
+                    json!({
+                        "completed": state.completed,
+                        "license_terms_version": state.accepted_license_terms_version,
+                        "current_license_terms_version": CLI_LICENSE_TERMS_VERSION,
+                        "license_accepted_for_current_version": state.current_license_accepted()
+                    }),
+                );
+            } else {
+                println!("CLI Onboarding");
+                println!("  completed: {}", state.completed);
+                println!(
+                    "  license_terms_version: {}",
+                    state
+                        .accepted_license_terms_version
+                        .as_deref()
+                        .unwrap_or("none")
+                );
+                println!("  current_license_terms_version: {CLI_LICENSE_TERMS_VERSION}");
+                println!(
+                    "  license_accepted_for_current_version: {}",
+                    state.current_license_accepted()
+                );
+            }
+            Ok(())
+        }
+        "run" => {
+            let before = load_cli_onboarding_state(store)?;
+            if !before.fully_complete() {
+                ensure_cli_onboarding_completed(store, &options)?;
+            }
+            let after = load_cli_onboarding_state(store)?;
+            if options.json {
+                emit_json_payload(
+                    "helm.cli.v1.onboarding.run",
+                    json!({
+                        "completed": after.completed,
+                        "license_terms_version": after.accepted_license_terms_version,
+                        "license_accepted_for_current_version": after.current_license_accepted()
+                    }),
+                );
+            } else if before.fully_complete() {
+                println!("CLI onboarding is already complete.");
+            } else {
+                println!("CLI onboarding complete.");
+            }
+            Ok(())
+        }
+        "reset" => {
+            set_cli_onboarding_completed(store, false)?;
+            store
+                .set_cli_accepted_license_terms_version(None)
+                .map_err(|error| {
+                    format!("failed to clear CLI accepted license terms version: {error}")
+                })?;
+            if options.json {
+                emit_json_payload(
+                    "helm.cli.v1.onboarding.reset",
+                    json!({
+                        "completed": false,
+                        "license_terms_version": serde_json::Value::Null
+                    }),
+                );
+            } else {
+                println!("CLI onboarding state reset.");
+            }
+            Ok(())
+        }
+        _ => Err(format!(
+            "unsupported onboarding subcommand '{}'; currently supported: status, run, reset",
             command_args[0]
         )),
     }
@@ -6580,6 +7050,12 @@ fn cmd_settings_list(store: &SqliteStore, options: GlobalOptions) -> Result<(), 
     let auto_check_last_checked_unix = store
         .auto_check_last_checked_unix()
         .map_err(|error| format!("failed to read auto_check_last_checked_unix: {error}"))?;
+    let cli_onboarding_completed = store
+        .cli_onboarding_completed()
+        .map_err(|error| format!("failed to read cli_onboarding_completed: {error}"))?;
+    let cli_accepted_license_terms_version = store
+        .cli_accepted_license_terms_version()
+        .map_err(|error| format!("failed to read cli_accepted_license_terms_version: {error}"))?;
     if options.json {
         emit_json_payload(
             "helm.cli.v1.settings.list",
@@ -6589,7 +7065,9 @@ fn cmd_settings_list(store: &SqliteStore, options: GlobalOptions) -> Result<(), 
                 "database_path": db_path,
                 "auto_check_for_updates": auto_check_for_updates,
                 "auto_check_frequency_minutes": auto_check_frequency_minutes,
-                "auto_check_last_checked_unix": auto_check_last_checked_unix
+                "auto_check_last_checked_unix": auto_check_last_checked_unix,
+                "cli_onboarding_completed": cli_onboarding_completed,
+                "cli_accepted_license_terms_version": cli_accepted_license_terms_version
             }),
         );
         return Ok(());
@@ -6606,6 +7084,11 @@ fn cmd_settings_list(store: &SqliteStore, options: GlobalOptions) -> Result<(), 
         auto_check_last_checked_unix
             .map(|value| value.to_string())
             .unwrap_or_else(|| "null".to_string())
+    );
+    println!("  cli_onboarding_completed: {cli_onboarding_completed}");
+    println!(
+        "  cli_accepted_license_terms_version: {}",
+        cli_accepted_license_terms_version.unwrap_or_else(|| "null".to_string())
     );
     Ok(())
 }
@@ -7425,19 +7908,83 @@ async fn refresh_single_manager(
 }
 
 fn manager_enabled_map(store: &SqliteStore) -> Result<HashMap<ManagerId, bool>, String> {
+    let detections: HashMap<ManagerId, DetectionInfo> = store
+        .list_detections()
+        .map_err(|error| format!("failed to list manager detections: {error}"))?
+        .into_iter()
+        .collect();
     let preferences = store
         .list_manager_preferences()
         .map_err(|error| format!("failed to list manager preferences: {error}"))?;
-    let mut map: HashMap<ManagerId, bool> = HashMap::new();
+    let mut preference_map: HashMap<ManagerId, helm_core::persistence::ManagerPreference> =
+        HashMap::new();
     for preference in preferences {
-        map.insert(preference.manager, preference.enabled);
+        preference_map.insert(preference.manager, preference);
     }
 
+    let mut map: HashMap<ManagerId, bool> = HashMap::new();
     for manager in ManagerId::ALL {
-        map.entry(manager)
-            .or_insert_with(|| default_enabled_for_manager(manager));
+        let configured_enabled = preference_map
+            .get(&manager)
+            .map(|preference| preference.enabled)
+            .unwrap_or_else(|| default_enabled_for_manager(manager));
+        let selected_path =
+            resolved_manager_selected_executable_path(manager, &detections, &preference_map);
+        let eligibility = manager_enablement_eligibility(
+            manager,
+            selected_path.as_deref().map(std::path::Path::new),
+        );
+        map.insert(manager, configured_enabled && eligibility.is_eligible);
     }
     Ok(map)
+}
+
+fn apply_manager_enablement_self_heal(store: &SqliteStore) -> Result<(), String> {
+    let detections: HashMap<ManagerId, DetectionInfo> = store
+        .list_detections()
+        .map_err(|error| format!("failed to list manager detections: {error}"))?
+        .into_iter()
+        .collect();
+    let mut preferences: HashMap<ManagerId, helm_core::persistence::ManagerPreference> = store
+        .list_manager_preferences()
+        .map_err(|error| format!("failed to list manager preferences: {error}"))?
+        .into_iter()
+        .map(|preference| (preference.manager, preference))
+        .collect();
+
+    for manager in ManagerId::ALL {
+        let configured_enabled = preferences
+            .get(&manager)
+            .map(|preference| preference.enabled)
+            .unwrap_or_else(|| default_enabled_for_manager(manager));
+        if !configured_enabled {
+            continue;
+        }
+
+        let selected_path =
+            resolved_manager_selected_executable_path(manager, &detections, &preferences);
+        let eligibility =
+            manager_enablement_eligibility(manager, selected_path.as_deref().map(Path::new));
+        if eligibility.is_eligible {
+            continue;
+        }
+
+        store
+            .set_manager_enabled(manager, false)
+            .map_err(|error| format!("failed to auto-disable '{}': {error}", manager.as_str()))?;
+        if let Some(preference) = preferences.get_mut(&manager) {
+            preference.enabled = false;
+        }
+
+        verbose_log(format!(
+            "manager policy self-heal: auto-disabled '{}' (reason_code={}, executable_path='{}')",
+            manager.as_str(),
+            eligibility.reason_code.unwrap_or("manager.ineligible"),
+            selected_path.as_deref().unwrap_or("<none>")
+        ));
+    }
+
+    Ok(())
 }
 
 fn default_enabled_for_manager(manager: ManagerId) -> bool {
@@ -7898,9 +8445,21 @@ fn list_managers(store: &SqliteStore) -> Result<Vec<CliManagerStatus>, String> {
     for descriptor in registry::managers() {
         let detection = detection_map.get(&descriptor.id);
         let preference = preference_map.get(&descriptor.id);
-        let enabled = preference
+        let configured_enabled = preference
             .map(|preference| preference.enabled)
             .unwrap_or_else(|| default_enabled_for_manager(descriptor.id));
+        let selected_executable_path = resolved_manager_selected_executable_path(
+            descriptor.id,
+            &detection_map,
+            &preference_map,
+        );
+        let eligibility = manager_enablement_eligibility(
+            descriptor.id,
+            selected_executable_path
+                .as_deref()
+                .map(std::path::Path::new),
+        );
+        let enabled = configured_enabled && eligibility.is_eligible;
 
         rows.push(CliManagerStatus {
             manager_id: descriptor.id.as_str().to_string(),
@@ -7928,13 +8487,7 @@ fn list_managers(store: &SqliteStore) -> Result<Vec<CliManagerStatus>, String> {
             supports_package_install: descriptor.capabilities.contains(&Capability::Install),
             supports_package_uninstall: descriptor.capabilities.contains(&Capability::Uninstall),
             supports_package_upgrade: descriptor.capabilities.contains(&Capability::Upgrade),
-            selected_executable_path: preference.and_then(|preference| {
-                preference
-                    .selected_executable_path
-                    .as_ref()
-                    .filter(|value| !value.trim().is_empty())
-                    .cloned()
-            }),
+            selected_executable_path,
             selected_install_method: preference.and_then(|preference| {
                 preference
                     .selected_install_method
@@ -7942,6 +8495,9 @@ fn list_managers(store: &SqliteStore) -> Result<Vec<CliManagerStatus>, String> {
                     .filter(|value| !value.trim().is_empty())
                     .cloned()
             }),
+            is_eligible: eligibility.is_eligible,
+            ineligible_reason_code: eligibility.reason_code.map(str::to_string),
+            ineligible_reason_message: eligibility.reason_message.map(str::to_string),
         });
     }
 
@@ -8004,13 +8560,8 @@ fn manager_executable_status(
             .and_then(|d| d.executable_path.as_deref()),
     );
     let default_executable_path = default_manager_executable_path(manager, &executable_paths);
-    let preferred_executable_path = preferences
-        .get(&manager)
-        .and_then(|preference| normalize_nonempty(preference.selected_executable_path.clone()));
-    let selected_executable_path = resolve_selected_executable_path(
-        preferred_executable_path,
-        default_executable_path.clone(),
-    );
+    let selected_executable_path =
+        resolved_manager_selected_executable_path(manager, &detections, &preferences);
 
     Ok(CliManagerExecutableStatus {
         manager_id: manager.as_str().to_string(),
@@ -8019,6 +8570,47 @@ fn manager_executable_status(
         default_executable_path,
         selected_executable_path,
     })
+}
+
+fn resolved_manager_selected_executable_path(
+    manager: ManagerId,
+    detections: &HashMap<ManagerId, DetectionInfo>,
+    preferences: &HashMap<ManagerId, helm_core::persistence::ManagerPreference>,
+) -> Option<String> {
+    let executable_paths = collect_manager_executable_paths(
+        manager,
+        detections
+            .get(&manager)
+            .and_then(|d| d.executable_path.as_deref()),
+    );
+    let default_executable_path = default_manager_executable_path(manager, &executable_paths);
+    let preferred_executable_path = preferences
+        .get(&manager)
+        .and_then(|preference| normalize_nonempty(preference.selected_executable_path.clone()));
+    resolve_selected_executable_path(preferred_executable_path, default_executable_path)
+}
+
+fn manager_enablement_eligibility_for_store(
+    store: &SqliteStore,
+    manager: ManagerId,
+) -> Result<helm_core::manager_policy::ManagerEnablementEligibility, String> {
+    let detections: HashMap<ManagerId, DetectionInfo> = store
+        .list_detections()
+        .map_err(|error| format!("failed to list manager detections: {error}"))?
+        .into_iter()
+        .collect();
+    let preferences: HashMap<ManagerId, helm_core::persistence::ManagerPreference> = store
+        .list_manager_preferences()
+        .map_err(|error| format!("failed to list manager preferences: {error}"))?
+        .into_iter()
+        .map(|preference| (preference.manager, preference))
+        .collect();
+    let selected_path =
+        resolved_manager_selected_executable_path(manager, &detections, &preferences);
+    Ok(manager_enablement_eligibility(
+        manager,
+        selected_path.as_deref().map(std::path::Path::new),
+    ))
 }
 
 fn manager_install_methods_status(
@@ -8663,6 +9255,14 @@ fn read_setting(store: &SqliteStore, key: &str) -> Result<String, String> {
                     .unwrap_or_else(|| "null".to_string())
             })
             .map_err(|error| format!("failed to read setting '{key}': {error}")),
+        "cli_onboarding_completed" => store
+            .cli_onboarding_completed()
+            .map(|value| value.to_string())
+            .map_err(|error| format!("failed to read setting '{key}': {error}")),
+        "cli_accepted_license_terms_version" => store
+            .cli_accepted_license_terms_version()
+            .map(|value| value.unwrap_or_else(|| "null".to_string()))
+            .map_err(|error| format!("failed to read setting '{key}': {error}")),
         _ => Err(format!("unsupported setting key '{key}'")),
     }
 }
@@ -9240,6 +9840,7 @@ fn print_command_help_topic(command: Command, path: &[String]) -> bool {
         Command::Settings => print_settings_help_topic(path),
         Command::Diagnostics => print_diagnostics_help_topic(path),
         Command::Doctor => print_doctor_help_topic(path),
+        Command::Onboarding => print_onboarding_help_topic(path),
         Command::SelfCmd => print_self_help_topic(path),
         Command::Completion => print_completion_help_topic(path),
         Command::InternalCoordinator | Command::Help | Command::Version => false,
@@ -9515,6 +10116,31 @@ fn print_settings_help_topic(path: &[String]) -> bool {
     }
 }
 
+fn print_onboarding_help_topic(path: &[String]) -> bool {
+    if path.is_empty() {
+        print_onboarding_help();
+        return true;
+    }
+    if path.len() != 1 {
+        return false;
+    }
+    match path[0].as_str() {
+        "status" => {
+            print_onboarding_status_help();
+            true
+        }
+        "run" => {
+            print_onboarding_run_help();
+            true
+        }
+        "reset" => {
+            print_onboarding_reset_help();
+            true
+        }
+        _ => false,
+    }
+}
+
 fn print_self_help_topic(path: &[String]) -> bool {
     if path.is_empty() {
         print_self_help();
@@ -9622,6 +10248,7 @@ fn print_doctor_help_topic(path: &[String]) -> bool {
 
 fn print_help() {
     println!("Helm CLI");
+    println!("Copyright (c) 2026 Jason Cavinder");
     println!();
     println!("NOTE:");
     println!("  helm (no arguments) launches the interactive TUI when stdout is a TTY.");
@@ -9658,6 +10285,8 @@ fn print_help() {
     println!("                         Read diagnostics snapshots and export support data");
     println!("  doctor [summary|task|manager|provenance|export]");
     println!("                         Diagnostics alias; default shows provenance");
+    println!("  onboarding [status|run|reset]");
+    println!("                         Inspect/run/reset CLI first-run onboarding state");
     println!("  self [status|check|update|uninstall|auto-check]");
     println!("                         Helm self-update/uninstall namespace");
     println!("  completion [bash|zsh|fish]");
@@ -9674,6 +10303,8 @@ fn print_help() {
     println!("  --timeout <seconds>    Override coordinator request timeout");
     println!("  --wait                 Wait for task completion (default)");
     println!("  --detach               Return after task submission");
+    println!("  --accept-license       Auto-accept CLI license terms during first-run onboarding");
+    println!("  --accept-defaults      Auto-apply default CLI onboarding settings");
     println!("  -V, --version          Show version");
 }
 
@@ -10136,7 +10767,7 @@ fn print_settings_help() {
     println!("DESCRIPTION:");
     println!("  Read and mutate CLI-visible settings.");
     println!(
-        "  Implemented keys: safe_mode, homebrew_keg_auto_cleanup, auto_check_for_updates, auto_check_frequency_minutes, auto_check_last_checked_unix (read-only)."
+        "  Implemented keys: safe_mode, homebrew_keg_auto_cleanup, auto_check_for_updates, auto_check_frequency_minutes, auto_check_last_checked_unix (read-only), cli_onboarding_completed (read-only), cli_accepted_license_terms_version (read-only)."
     );
 }
 
@@ -10170,6 +10801,44 @@ fn print_settings_reset_help() {
     println!();
     println!("DESCRIPTION:");
     println!("  Reset one supported setting to default.");
+}
+
+fn print_onboarding_help() {
+    println!("USAGE:");
+    println!("  helm onboarding status");
+    println!("  helm onboarding run");
+    println!("  helm onboarding reset");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Inspect, run, or reset CLI first-run onboarding state.");
+    println!("  Use --accept-license and --accept-defaults for script-friendly onboarding.");
+}
+
+fn print_onboarding_status_help() {
+    println!("USAGE:");
+    println!("  helm onboarding status");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Show CLI onboarding completion and accepted license terms version.");
+}
+
+fn print_onboarding_run_help() {
+    println!("USAGE:");
+    println!("  helm onboarding run [--accept-license] [--accept-defaults]");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Complete CLI onboarding if needed.");
+    println!(
+        "  In non-interactive/scripted environments, pass both --accept-license and --accept-defaults."
+    );
+}
+
+fn print_onboarding_reset_help() {
+    println!("USAGE:");
+    println!("  helm onboarding reset");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Clear CLI onboarding and accepted license state.");
 }
 
 fn print_diagnostics_help() {
@@ -10346,13 +11015,17 @@ fn print_completion_help() {
 #[cfg(test)]
 mod tests {
     use super::{
-        Command, ExecutionMode, HomebrewKegPolicy, InstallChannel, ManagerId,
-        build_json_payload_lines, command_help_topic_exists, exit_code_for_error, mark_exit_code,
-        parse_args, parse_args_with_tty, parse_homebrew_keg_policy_arg, parse_search_args,
-        parse_updates_run_preview_args, raw_args_request_json, raw_args_request_ndjson,
-        remove_install_marker_if_channel, self_uninstall_recommended_action,
-        strip_exit_code_marker,
+        CLI_LICENSE_TERMS_VERSION, Command, ExecutionMode, GlobalOptions, HomebrewKegPolicy,
+        InstallChannel, ManagerId, apply_manager_enablement_self_heal, build_json_payload_lines,
+        command_help_topic_exists, ensure_cli_onboarding_completed, exit_code_for_error,
+        mark_exit_code, parse_args, parse_args_with_tty, parse_homebrew_keg_policy_arg,
+        parse_search_args, parse_updates_run_preview_args, raw_args_request_json,
+        raw_args_request_ndjson, remove_install_marker_if_channel,
+        self_uninstall_recommended_action, strip_exit_code_marker,
     };
+    use helm_core::models::DetectionInfo;
+    use helm_core::persistence::DetectionStore;
+    use helm_core::sqlite::SqliteStore;
     use serde_json::json;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -10364,6 +11037,14 @@ mod tests {
             .expect("clock should be after epoch")
             .as_nanos();
         std::env::temp_dir().join(format!("helm-cli-self-uninstall-{name}-{nanos}.json"))
+    }
+
+    fn temp_db_path(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("helm-cli-self-heal-{name}-{nanos}.sqlite3"))
     }
 
     #[test]
@@ -10484,6 +11165,21 @@ mod tests {
     }
 
     #[test]
+    fn parse_args_supports_onboarding_command_with_accept_flags() {
+        let (options, command, args) = parse_args(vec![
+            "--accept-license".to_string(),
+            "--accept-defaults".to_string(),
+            "onboarding".to_string(),
+            "status".to_string(),
+        ])
+        .expect("onboarding args should parse");
+        assert!(options.accept_license);
+        assert!(options.accept_defaults);
+        assert_eq!(command, Command::Onboarding);
+        assert_eq!(args, vec!["status".to_string()]);
+    }
+
+    #[test]
     fn parse_args_no_args_launches_tui_when_stdout_is_tty() {
         let (_, command, args) =
             parse_args_with_tty(Vec::new(), true).expect("empty args should parse");
@@ -10576,6 +11272,10 @@ mod tests {
         assert!(command_help_topic_exists(
             Command::SelfCmd,
             &["uninstall".to_string()]
+        ));
+        assert!(command_help_topic_exists(
+            Command::Onboarding,
+            &["status".to_string()]
         ));
         assert!(!command_help_topic_exists(
             Command::Updates,
@@ -10720,5 +11420,148 @@ mod tests {
         assert!(mismatch_path.exists());
 
         let _ = fs::remove_file(mismatch_path);
+    }
+
+    #[test]
+    fn manager_self_heal_auto_disables_rubygems_for_system_executable() {
+        let db_path = temp_db_path("rubygems-system");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .upsert_detection(
+                ManagerId::RubyGems,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(PathBuf::from("/usr/bin/gem")),
+                    version: Some("3.4.10".to_string()),
+                },
+            )
+            .expect("ruby gems detection should persist");
+        store
+            .set_manager_enabled(ManagerId::RubyGems, true)
+            .expect("ruby gems should be explicitly enabled before self-heal");
+
+        apply_manager_enablement_self_heal(&store).expect("self-heal should succeed");
+
+        let preference = store
+            .list_manager_preferences()
+            .expect("manager preferences should be readable")
+            .into_iter()
+            .find(|entry| entry.manager == ManagerId::RubyGems)
+            .expect("ruby gems preference should exist");
+        assert!(
+            !preference.enabled,
+            "ruby gems must be disabled when /usr/bin/gem is selected"
+        );
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn manager_self_heal_keeps_rubygems_enabled_for_non_system_executable() {
+        let db_path = temp_db_path("rubygems-homebrew");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .upsert_detection(
+                ManagerId::RubyGems,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(PathBuf::from("/opt/homebrew/bin/gem")),
+                    version: Some("3.4.10".to_string()),
+                },
+            )
+            .expect("ruby gems detection should persist");
+        store
+            .set_manager_enabled(ManagerId::RubyGems, true)
+            .expect("ruby gems should be enabled for non-system executable");
+
+        apply_manager_enablement_self_heal(&store).expect("self-heal should succeed");
+
+        let preference = store
+            .list_manager_preferences()
+            .expect("manager preferences should be readable")
+            .into_iter()
+            .find(|entry| entry.manager == ManagerId::RubyGems)
+            .expect("ruby gems preference should exist");
+        assert!(
+            preference.enabled,
+            "ruby gems should remain enabled for non-system executable"
+        );
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn manager_self_heal_auto_disables_pip_for_system_executable() {
+        let db_path = temp_db_path("pip-system");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .upsert_detection(
+                ManagerId::Pip,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(PathBuf::from("/usr/bin/python3")),
+                    version: Some("3.9.6".to_string()),
+                },
+            )
+            .expect("pip detection should persist");
+        store
+            .set_manager_enabled(ManagerId::Pip, true)
+            .expect("pip should be explicitly enabled before self-heal");
+
+        apply_manager_enablement_self_heal(&store).expect("self-heal should succeed");
+
+        let preference = store
+            .list_manager_preferences()
+            .expect("manager preferences should be readable")
+            .into_iter()
+            .find(|entry| entry.manager == ManagerId::Pip)
+            .expect("pip preference should exist");
+        assert!(
+            !preference.enabled,
+            "pip must be disabled when /usr/bin/python3 is selected"
+        );
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn ensure_cli_onboarding_completed_applies_accept_flags() {
+        let db_path = temp_db_path("cli-onboarding-accept-flags");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+
+        let options = GlobalOptions {
+            accept_license: true,
+            accept_defaults: true,
+            ..GlobalOptions::default()
+        };
+        ensure_cli_onboarding_completed(&store, &options)
+            .expect("accept flags should complete onboarding without prompts");
+
+        assert!(
+            store
+                .cli_onboarding_completed()
+                .expect("read onboarding completed"),
+            "cli onboarding should be marked complete"
+        );
+        assert_eq!(
+            store
+                .cli_accepted_license_terms_version()
+                .expect("read accepted license version"),
+            Some(CLI_LICENSE_TERMS_VERSION.to_string())
+        );
+
+        let _ = fs::remove_file(db_path);
     }
 }

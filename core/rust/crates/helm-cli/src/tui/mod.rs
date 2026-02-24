@@ -29,10 +29,10 @@ use super::{
     coordinator_submit_request, current_cli_version, database_path, detect_install_provenance,
     direct_update_apply, direct_update_check_status, env_flag_enabled, is_running_as_root,
     list_installed_for_enabled, list_managers, list_outdated_for_enabled, list_tasks_for_enabled,
-    manager_enabled_map, manager_executable_status, manager_install_methods_status,
-    manager_priority_entries, provenance_can_self_update, provenance_recommended_action,
-    search_local_for_enabled, set_manager_priority_rank, task_log_to_cli_record, task_to_cli_task,
-    write_setting,
+    manager_enabled_map, manager_enablement_eligibility_for_store, manager_executable_status,
+    manager_install_methods_status, manager_priority_entries, provenance_can_self_update,
+    provenance_recommended_action, search_local_for_enabled, set_manager_priority_rank,
+    task_log_to_cli_record, task_to_cli_task, write_setting,
 };
 use helm_core::models::HomebrewKegPolicy;
 
@@ -1803,6 +1803,16 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
             Ok(format!("Cancellation requested for task #{}.", task_id))
         }
         ConfirmAction::ToggleManager { manager, enable } => {
+            if enable {
+                let eligibility = manager_enablement_eligibility_for_store(store, manager)?;
+                if !eligibility.is_eligible {
+                    let reason = eligibility.reason_message.unwrap_or(
+                        "manager is not eligible to be enabled with the current executable selection",
+                    );
+                    let code = eligibility.reason_code.unwrap_or("manager.ineligible");
+                    return Err(format!("{reason} (reason_code={code})"));
+                }
+            }
             store
                 .set_manager_enabled(manager, enable)
                 .map_err(|error| format!("failed to set manager enabled state: {error}"))?;
@@ -2430,15 +2440,21 @@ fn render_list_pane(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState) 
                     } else {
                         "disabled"
                     };
+                    let eligibility = if manager.is_eligible {
+                        "eligible"
+                    } else {
+                        "blocked"
+                    };
                     let detected = if manager.detected {
                         "detected"
                     } else {
                         "not-detected"
                     };
                     ListItem::new(format!(
-                        "{}  [{}|{}]  {}",
+                        "{}  [{}|{}|{}]  {}",
                         manager.manager_id,
                         enabled,
+                        eligibility,
                         detected,
                         manager.version.as_deref().unwrap_or("-")
                     ))
@@ -2683,11 +2699,21 @@ fn render_detail_pane(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState
                 lines.push(Line::from(format!("Name: {}", manager.display_name)));
                 lines.push(Line::from(format!("Authority: {}", manager.authority)));
                 lines.push(Line::from(format!("Enabled: {}", manager.enabled)));
+                lines.push(Line::from(format!("Eligible: {}", manager.is_eligible)));
                 lines.push(Line::from(format!("Detected: {}", manager.detected)));
                 lines.push(Line::from(format!(
                     "Version: {}",
                     manager.version.as_deref().unwrap_or("-")
                 )));
+                if !manager.is_eligible {
+                    lines.push(Line::from(format!(
+                        "Ineligible reason: {}",
+                        manager
+                            .ineligible_reason_message
+                            .as_deref()
+                            .unwrap_or("manager policy blocked")
+                    )));
+                }
                 lines.push(Line::from(format!(
                     "Executable: {}",
                     manager
@@ -2979,6 +3005,10 @@ fn render_help_overlay(frame: &mut ratatui::Frame<'_>, app: &AppState) {
     frame.render_widget(Clear, area);
     let help_text = vec![
         Line::from(Span::styled("Helm TUI Keymap", app.theme.accent)),
+        Line::from(Span::styled(
+            "Copyright (c) 2026 Jason Cavinder",
+            app.theme.subtle,
+        )),
         Line::from(""),
         Line::from("Navigation"),
         Line::from("  1..6       switch sections"),
