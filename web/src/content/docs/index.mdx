@@ -11,7 +11,7 @@ hero:
     alt: "Helm Control Center showing manager and package status."
   actions:
     - text: Download Helm
-      link: https://github.com/jasoncavinder/Helm/releases/latest/download/Helm.dmg
+      link: "#download-helm-menu"
       icon: download
       variant: primary
     - text: View on GitHub
@@ -164,10 +164,35 @@ import statusMenuShotDark from '../../assets/tour/status-menu-dark.png';
       <p>Download Helm for macOS and run updates with operational clarity.</p>
     </div>
     <div class="cta-actions">
-      <LinkButton href="https://github.com/jasoncavinder/Helm/releases/latest/download/Helm.dmg" icon="download" variant="primary">Download Helm</LinkButton>
+      <LinkButton href="#download-helm-menu" icon="download" variant="primary">Download Helm</LinkButton>
       <LinkButton href="https://github.com/jasoncavinder/Helm" icon="external" variant="secondary">View on GitHub</LinkButton>
       <LinkButton href="/product-roadmap/" icon="document" variant="minimal">Product roadmap</LinkButton>
     </div>
     <p class="small-note">Helm is currently source-available under a non-commercial license.</p>
   </section>
 </div>
+
+<div id="download-helm-menu" class="download-menu-popover" hidden role="menu" aria-label="Download options">
+  <a href="https://github.com/jasoncavinder/Helm/releases/latest/download/Helm.dmg" class="download-menu-item" role="menuitem">{"Download DMG"}</a>
+  <button type="button" class="download-menu-item" data-open-cli-install-modal role="menuitem">{"Get Helm CLI"}</button>
+</div>
+
+<dialog id="cli-install-modal" class="cli-install-modal" aria-labelledby="cli-install-title">
+  <form method="dialog" class="cli-install-modal-close-row">
+    <button type="submit" class="cli-install-modal-close-button" aria-label="Close CLI install dialog">×</button>
+  </form>
+  <h3 id="cli-install-title">Install Helm CLI</h3>
+  <p>Run this command in your terminal:</p>
+  <pre class="cli-install-command-shell"><code id="cli-install-command">{"curl -fsSL https://helmapp.dev/cli/install.sh | sh"}</code></pre>
+  <div class="cli-install-actions">
+    <button type="button" class="sl-link-button primary not-content" data-copy-cli-install-command>
+      Copy Command
+    </button>
+    <form method="dialog">
+      <button type="submit" class="sl-link-button secondary not-content">Close</button>
+    </form>
+  </div>
+  <p class="small-note" data-copy-status aria-live="polite"></p>
+</dialog>
+
+<script src="/scripts/landing-download-menu.js"></script>

@@ -164,11 +164,15 @@ jobs:
 
           APP_PATH="$PWD/build/DerivedData/Build/Products/Release/Helm.app"
           SPARKLE_VERSION_DIR="$APP_PATH/Contents/Frameworks/Sparkle.framework/Versions/B"
+          BUNDLED_CLI_BIN="$APP_PATH/Contents/Resources/helm-cli"
           SIGN_IDENTITY="Developer ID Application"
 
           test -d "$APP_PATH"
           test -d "$SPARKLE_VERSION_DIR"
+          test -f "$BUNDLED_CLI_BIN"
 
+          # Sign bundled CLI resource explicitly so notarization accepts the nested executable.
+          codesign --force --timestamp --options runtime --sign "$SIGN_IDENTITY" "$BUNDLED_CLI_BIN"
           codesign --force --timestamp --sign "$SIGN_IDENTITY" "$SPARKLE_VERSION_DIR/Autoupdate"
           codesign --force --deep --timestamp --options runtime --sign "$SIGN_IDENTITY" "$SPARKLE_VERSION_DIR/Updater.app"
           codesign --force --deep --timestamp --options runtime --sign "$SIGN_IDENTITY" "$SPARKLE_VERSION_DIR/XPCServices/Downloader.xpc"
@@ -177,6 +181,7 @@ jobs:
           codesign --force --deep --timestamp --options runtime --sign "$SIGN_IDENTITY" --preserve-metadata=entitlements,requirements,flags "$APP_PATH"
 
           echo "=== Sparkle signing check ==="
+          codesign -dv --verbose=4 "$BUNDLED_CLI_BIN" 2>&1 | grep -E "Authority=Developer ID Application|Timestamp=|flags=0x10000\\(runtime\\)"
           codesign -dv --verbose=4 "$SPARKLE_VERSION_DIR/Autoupdate" 2>&1 | grep -E "Authority=Developer ID Application|Timestamp="
           codesign -dv --verbose=4 "$SPARKLE_VERSION_DIR/Updater.app/Contents/MacOS/Updater" 2>&1 | grep -E "Authority=Developer ID Application|Timestamp="
 
@@ -186,6 +191,7 @@ jobs:
           APP_PATH="$PWD/build/DerivedData/Build/Products/Release/Helm.app"
           HELM_BIN="$APP_PATH/Contents/MacOS/Helm"
           XPC_BIN="$APP_PATH/Contents/XPCServices/HelmService.xpc/Contents/MacOS/HelmService"
+          CLI_BIN="$APP_PATH/Contents/Resources/helm-cli"
           APP_INFO_PLIST="$APP_PATH/Contents/Info.plist"
           SPARKLE_FRAMEWORK="$APP_PATH/Contents/Frameworks/Sparkle.framework"
 
@@ -243,6 +249,9 @@ jobs:
           echo "=== Codesign verify (deep, strict) ==="
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
+          echo "=== Bundled CLI binary: codesign details ==="
+          codesign -dv --verbose=4 "$CLI_BIN" 2>&1
+
           echo "=== Helm binary: entitlements ==="
           codesign -d --entitlements :- "$HELM_BIN" 2>/dev/null || echo "(no entitlements)"
 
@@ -266,6 +275,12 @@ jobs:
             echo "HelmService: hardened runtime flag present ✓"
           else
             echo "::warning::HelmService: hardened runtime flag NOT detected in codesign output"
+          fi
+          if codesign -dv --verbose=4 "$CLI_BIN" 2>&1 | grep -q "flags=0x10000(runtime)"; then
+            echo "Bundled helm-cli: hardened runtime flag present ✓"
+          else
+            echo "::error::Bundled helm-cli: hardened runtime flag NOT detected in codesign output"
+            exit 1
           fi
 
           echo "=== Notarization pre-check: get-task-allow must be absent ==="
@@ -319,7 +334,7 @@ jobs:
 
           # Ensure detach happens even if AppleScript fails
           cleanup() {
-            if mount | rg -q "$MOUNT_PATH"; then
+            if mount | grep -q "$MOUNT_PATH"; then
               hdiutil detach "$DEVICE" || hdiutil detach -force "$DEVICE" || true
             fi
           }

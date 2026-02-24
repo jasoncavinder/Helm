@@ -3,7 +3,7 @@ title: Installation
 description: Build and run Helm from source.
 ---
 
-Helm is pre-1.0 software and ships signed test binaries in addition to source builds.
+Helm is pre-1.0 software and ships signed release binaries in addition to source builds.
 
 ## Download DMG (Recommended)
 
@@ -16,6 +16,18 @@ When you open the DMG, install like a standard macOS app:
 3. If macOS prompts, confirm opening the app and grant requested permissions.
 
 The DMG is built for **Any Mac (Apple Silicon + Intel)** with a **macOS 11+ (Big Sur)** minimum target.
+
+## Install Helm CLI (curl/sh)
+
+Install the latest CLI (`helm`) to `~/.local/bin`:
+
+```bash
+curl -fsSL https://helmapp.dev/cli/install.sh | sh
+```
+
+Installer behavior:
+- installs `helm` into `~/.local/bin` by default
+- writes install provenance to `~/.config/helm/install.json`
 
 ## Prerequisites
 
