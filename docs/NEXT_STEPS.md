@@ -17,14 +17,21 @@ Helm is in:
 Focus:
 - monitor post-release feedback on stable `v0.17.3`
 - begin planning and branch setup for `0.18.x` local security groundwork
-- close confirmed non-TUI GUI↔CLI parity gaps:
+- execute `0.17.4` TUI implementation using `ratatui` per `docs/architecture/HELM_TUI_IMPLEMENTATION_PLAN.md`
+- validate/harden recently delivered GUI↔CLI/TUI parity closures:
   - progressive remote-search orchestration parity
-  - launch-at-login settings parity
   - per-package Homebrew keg-policy parity
   - manager-scoped bulk-upgrade parity
+  - TUI package-install action parity
+- keep launch-at-login scoped to GUI only (no CLI/TUI parity target)
 
 Current checkpoint:
 - `v0.17.3` is released on `main`; the full `rc.1` through `rc.5` hardening lineage is consolidated in stable, with follow-up stable patch cuts (`v0.17.1`, `v0.17.2`, `v0.17.3`) now published:
+  - post-`0.17.3` `0.17.4` TUI planning slice delivered: detailed ratatui implementation plan documented at `docs/architecture/HELM_TUI_IMPLEMENTATION_PLAN.md` (keyboard model, parity matrix, branding constraints, and ASCII splash-screen contract).
+  - post-`0.17.3` `0.17.4` TUI implementation slice delivered: no-arg TTY now launches the ratatui TUI with branded ASCII splash (`logo` + `Helm` + `Take the helm.`), keyboard navigation, command palette/help/confirm overlays, read-only parity panes (updates/packages/tasks/managers/settings/diagnostics), and direct mutation hooks for common manager/package/task actions.
+  - post-`0.17.3` `0.17.4` TUI parity-expansion slice delivered: managers pane now supports selected-manager detect/executable/method/priority controls via keyboard, updates pane now supports include-pinned + allow-OS-updates toggles for upgrade workflows, diagnostics pane supports one-key export snapshot writes, task-log detail follows selection movement immediately, and settings pane now exposes integrated self-update status/check/apply controls honoring provenance/channel policy semantics.
+  - post-`0.17.3` `0.17.4` GUI↔CLI/TUI parity-closure slice delivered: CLI search now supports progressive local+remote orchestration with manager scoping; CLI updates preview/run now support manager-scoped bulk execution; CLI now exposes per-package Homebrew keg-policy commands; and TUI packages now include progressive available-package rows with install action + Homebrew keg-policy controls.
+  - post-`0.17.3` `0.17.4` kickoff slice delivered: app now bundles `helm-cli` and Settings includes install/remove controls for a managed `~/.local/bin/helm` shim with app-bundle provenance marker writes.
   - `#93` `feat/v0.17-log-foundation`
   - `#95` `feat/v0.17-structured-error-export`
   - `#96` `feat/v0.17-service-health-panel`
@@ -61,7 +68,7 @@ Current checkpoint:
     - Control Center drag-to-move now applies across the full window background (interactive controls still take precedence)
     - settings top metric cards now deep-link to Managers/Updates/Tasks
     - inspector selection now clears when sections change and selected rows/cards are visually highlighted
-    - launch-at-login setting added for supported systems (macOS 13+), with localized unsupported messaging on older systems
+    - launch-at-login setting now supports macOS 11+ (macOS 13+ via `SMAppService.mainApp`, macOS 11/12 via embedded login-helper fallback)
     - manager/popover count rendering paths precompute per-manager counts to reduce repeated filtering work in hot UI update loops
   - pre-rc.4 stabilization follow-up delivered on `dev`:
     - popover outside-click close handling now only reacts to click events (not hover/drag movement)
@@ -150,7 +157,7 @@ Current checkpoint:
     - read-only list ergonomics delivered: `--limit` now applies to `packages list`/`ls`, `updates list` (including `helm updates --limit ...`), and `tasks list` (including `helm tasks --limit ...`)
     - global diagnostics verbosity delivered: CLI now supports `-v` / `--verbose` and emits runtime/coordinator diagnostic traces to `stderr` for investigation workflows while preserving `stdout` output contracts
     - settings persistence expanded: `auto_check_for_updates` and `auto_check_frequency_minutes` now support `settings get|set|reset` and are reflected by `settings list` + `self status`
-    - `self` namespace baseline delivered for Homebrew-formula installs: `self status|check|update` now provide method-aware status, live snapshot check, and task-backed update execution (wait/detach) with explicit guidance for unsupported install paths
+    - `self` namespace baseline delivered for Homebrew-formula installs: `self status|check|update|uninstall` now provide method-aware status, live snapshot check, direct/app-shim uninstall routing, and task-backed update execution (wait/detach) with explicit guidance for unsupported install paths
     - `self auto-check` command slice delivered: `self auto-check status|enable|disable|frequency <minutes>` now maps directly to persisted auto-check settings (`auto_check_for_updates`, `auto_check_frequency_minutes`) with nested help/completion coverage
     - manager enablement parity hardening delivered: `managers disable` now performs best-effort cancellation of queued/running tasks for that manager through the CLI coordinator and reports cancellation diagnostics in JSON/human output
     - mutation JSON envelope hardening delivered: manager enable/disable, settings set/reset, manager detection wait output, and shared manager-result payloads now consistently emit the standard envelope (`schema`, `schema_version`, `generated_at`, `data`)
@@ -211,7 +218,7 @@ Next release targets:
 - [x] post-`rc.3` manager inspector install-metadata expansion — inspector now shows all discovered executable paths (active path emphasized), install-method metadata with recommended/preferred tags, and expanded per-manager install-method catalogs.
 - [x] post-`rc.3` About diagnostics metadata enhancement — About overlay now surfaces build number, distribution channel, update authority, and last update-check timestamp.
 - [x] post-`rc.3` control-center workflow polish — reset-local-data clears license-acceptance state; running-task row taps toggle details; settings metrics deep-link to managers/updates/tasks; inspector selection clears on section changes and selected entities are highlighted.
-- [x] post-`rc.3` startup/interaction polish — launch-at-login setting added (macOS 13+), popover cursor handling restored for hover affordance clarity, full-window Control Center drag support enabled, and count-heavy UI lists now use precomputed manager count maps for smoother drag/scroll behavior on lower-spec Macs.
+- [x] post-`rc.3` startup/interaction polish — launch-at-login setting now supports macOS 11+ (macOS 13+ via `SMAppService.mainApp`, macOS 11/12 via embedded login-helper fallback), popover cursor handling restored for hover affordance clarity, full-window Control Center drag support enabled, and count-heavy UI lists now use precomputed manager count maps for smoother drag/scroll behavior on lower-spec Macs.
 - [x] pre-`rc.4` stabilization — popover outside-click behavior hardened to click-only event handling; floating-panel cursor forcing removed; consolidated package manager preference now authority-aware; executable-path discovery cost reduced via undetected-manager skip + discovery caching; targeted policy/manager-status regression tests added.
 - [x] post-`rc.4` issue-remediation — softwareupdate symbol mapping corrected; manager drag-vs-window-drag precedence fixed; inflight-task dedupe now prefers running/newer rows for live command/output panes; Packages gained localized `Pinned` filtering with upgradable exclusion and overflow-safe horizontal chip layout.
 - [x] post-`rc.4` UX/task-diagnostics hardening — popover search package rows gained quick icon actions (install/uninstall/update/pin), package inspector actions moved to icon+tooltip buttons, manager inspector executable paths now scroll when long and include error-state `View Diagnostics`, failed tasks now support inline details with single-selection expansion, and task retention timing now starts from terminal transition time.
