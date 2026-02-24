@@ -161,6 +161,10 @@ Current checkpoint:
     - `main` ruleset bypass policy now uses `pull_request`-only mode (broad `always` bypass removed)
     - preflight now enforces least-privilege bypass policy with required `Policy Gate` check presence and `no always` guardrails
     - docs now capture preferred GitHub Actions integration bypass and repository-role fallback when GitHub rejects integration actors for repository-owned rulesets
+  - post-`v0.17.5` release-process hardening phase 4 delivered on `dev`:
+    - preflight now enforces pre-tag stable metadata snapshot sanity (`origin/main` appcast + `cli/latest.json` sync and target-order checks for stable tags)
+    - new `Release Publish Verify` workflow now runs on publish-metadata pushes to `main` and validates release-object alignment after publish PR merges
+    - release checklist/versioning docs now include explicit publish-verifier + drift-guard checkpoint requirements
   - GitHub governance hardening delivered on `dev`:
     - branch rulesets now explicitly enforce `main`/`dev`/`docs`/`web` with branch-specific required checks
     - `Policy Gate` now validates PR base/head/scope policy for all protected branches

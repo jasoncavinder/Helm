@@ -32,6 +32,7 @@ This checklist is required before creating a release tag on `main`.
 - [ ] Confirm preflight validates required release workflows are present and enabled.
 - [ ] Confirm preflight validates required DMG/signing/update secrets are present.
 - [ ] Confirm preflight validates `main` ruleset publish-PR bypass policy (prefer GitHub Actions app `pull_request` bypass when available; otherwise use `Repository admin` `pull_request` fallback; no `always` bypass actors).
+- [ ] Confirm preflight snapshot sanity passes for stable tags (`origin/main` appcast + `cli/latest.json` in sync and behind target tag).
 - [ ] Optional wrapper path: `scripts/release/runbook.sh prepare --tag <tag>`.
 
 ## Release Publication Verification (All Releases)
@@ -41,6 +42,10 @@ This checklist is required before creating a release tag on `main`.
   - `Publish PR opened: yes/no`
   - `Main metadata synced: yes/no`
 - [ ] If workflow summary reports follow-up required (publish PR still open), merge the publish PR and rerun the workflow to verify `Main metadata synced: yes`.
+- [ ] Confirm release publication verification status is green after publish PR merge:
+  - `Release Publish Verify`
+  - `Appcast Drift Guard`
+  - `CLI Update Metadata Drift Guard`
 
 ## v0.17.3 (Stable Patch Release Gate)
 

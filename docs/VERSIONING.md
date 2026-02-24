@@ -144,7 +144,8 @@ Operational settings:
    - `Publish PR opened: yes/no`
    - `Main metadata synced: yes/no`
 12. If the workflow reports follow-up required (publish PR still open), merge the publish PR and rerun the workflow to confirm metadata sync.
-13. Confirm drift checks remain green (`Appcast Drift Guard`).
+13. Confirm post-merge publish verification is green (`Release Publish Verify`).
+14. Confirm drift checks remain green (`Appcast Drift Guard`, `CLI Update Metadata Drift Guard`).
 
 Release checklist document:
 - `docs/RELEASE_CHECKLIST.md`

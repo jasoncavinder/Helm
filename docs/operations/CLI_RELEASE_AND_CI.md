@@ -2,7 +2,7 @@
 
 Status: Active operational guide  
 Owner: Helm Release Engineering  
-Last Updated: 2026-02-23
+Last Updated: 2026-02-24
 
 ---
 
@@ -24,6 +24,7 @@ Reference contracts:
 
 - `docs/architecture/BUILD_VARIANTS.md`
 - `.github/workflows/release-cli-direct.yml`
+- `.github/workflows/release-publish-verify.yml`
 - `.github/workflows/cli-installer-checks.yml`
 - `.github/workflows/release-all-variants.yml`
 
@@ -162,6 +163,7 @@ Expected outcome:
 - token scopes include `repo` and `workflow`
 - release workflows are discoverable by `gh`
 - required DMG signing/update secrets are present
+- stable metadata snapshot on `origin/main` is synchronized (`appcast.xml` and `cli/latest.json`) and behind the target stable tag
 
 If preflight fails, resolve failures before creating/pushing tags.
 
@@ -284,7 +286,32 @@ Outcome semantics:
 - if publication PR automation succeeds but PR merge is still pending, the run can complete with follow-up required (non-red terminal state)
 - when follow-up is required: merge the publish PR and rerun the workflow to confirm `Main metadata synced: yes`
 
-### 5.6 Trigger All-Variant Build/Release Orchestration
+### 5.6 Verify Publish-PR Merge Checkpoint
+
+`release-publish-verify.yml` runs automatically on `main` pushes touching publish metadata paths and can be run manually.
+
+It verifies:
+
+- top `appcast.xml` version matches `cli/latest.json` stable version
+- matched stable version maps to a non-draft, non-prerelease GitHub release tag
+- matching release-notes artifact exists under `web/public/updates/release-notes/<tag>.html`
+- `cli/latest-rc.json` (when present) maps to a non-draft prerelease tag with `channel=rc`
+
+Manual trigger:
+
+```bash
+gh workflow run release-publish-verify.yml
+gh run list --workflow "Release Publish Verify" --limit 5
+gh run view <run-id> --log
+```
+
+Optional strict target check:
+
+```bash
+gh workflow run release-publish-verify.yml -f tag=vX.Y.Z
+```
+
+### 5.7 Trigger All-Variant Build/Release Orchestration
 
 This workflow runs:
 
@@ -323,6 +350,7 @@ Notes:
 
 Additional metadata guard:
 
+- `release-publish-verify.yml` validates publish-PR merge outcomes against GitHub release state on every relevant `main` metadata push.
 - `cli-update-drift.yml` validates that stable/prerelease CLI metadata pointers align with latest GitHub releases.
 - release workflows pin release-critical third-party actions to immutable SHAs and use explicit per-job token write scopes.
 - `release-cli-direct.yml` verifies the built universal binary reports a version matching the target tag before asset publication.

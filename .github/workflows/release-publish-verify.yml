@@ -1,0 +1,217 @@
+name: Release Publish Verify
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Optional stable release tag to enforce (for example v0.17.6)"
+        required: false
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - "web/public/updates/appcast.xml"
+      - "web/public/updates/release-notes/**"
+      - "web/public/updates/cli/latest.json"
+      - "web/public/updates/cli/latest-rc.json"
+      - ".github/workflows/release-publish-verify.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-release-publish-metadata:
+    runs-on: ubuntu-latest
+    env:
+      EXPECTED_TAG: ${{ github.event.inputs.tag || '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Verify stable publish metadata maps to a stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          APPCAST_FILE="web/public/updates/appcast.xml"
+          STABLE_CLI_FILE="web/public/updates/cli/latest.json"
+
+          if [ ! -f "$APPCAST_FILE" ]; then
+            echo "::error::Missing appcast file: ${APPCAST_FILE}"
+            exit 1
+          fi
+          if [ ! -f "$STABLE_CLI_FILE" ]; then
+            echo "::error::Missing stable CLI metadata file: ${STABLE_CLI_FILE}"
+            exit 1
+          fi
+
+          APPCAST_VERSION="$(
+          APPCAST_FILE="$APPCAST_FILE" python3 - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+
+          sparkle_ns = "http://www.andymatuschak.org/xml-namespaces/sparkle"
+          root = ET.parse(os.environ["APPCAST_FILE"]).getroot()
+          item = root.find("./channel/item")
+          if item is None:
+              print("")
+              raise SystemExit(0)
+
+          enclosure = item.find("enclosure")
+          if enclosure is not None:
+              version = enclosure.attrib.get(f"{{{sparkle_ns}}}shortVersionString", "").strip()
+              if version:
+                  print(version)
+                  raise SystemExit(0)
+
+          title = (item.findtext("title") or "").strip()
+          if title.lower().startswith("helm "):
+              print(title[5:].strip())
+          else:
+              print("")
+          PY
+          )"
+
+          STABLE_CLI_VERSION="$(
+          python3 - "$STABLE_CLI_FILE" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], "r", encoding="utf-8") as f:
+              payload = json.load(f)
+          print(str(payload.get("version", "")).strip())
+          PY
+          )"
+
+          STABLE_CLI_CHANNEL="$(
+          python3 - "$STABLE_CLI_FILE" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], "r", encoding="utf-8") as f:
+              payload = json.load(f)
+          print(str(payload.get("channel", "")).strip())
+          PY
+          )"
+
+          if [ -z "$APPCAST_VERSION" ]; then
+            echo "::error::Unable to parse top appcast version from ${APPCAST_FILE}"
+            exit 1
+          fi
+          if [ -z "$STABLE_CLI_VERSION" ]; then
+            echo "::error::Unable to parse stable CLI version from ${STABLE_CLI_FILE}"
+            exit 1
+          fi
+          if [ "$STABLE_CLI_CHANNEL" != "stable" ]; then
+            echo "::error::Stable CLI metadata must declare channel=stable."
+            echo "::error::actual channel=${STABLE_CLI_CHANNEL}"
+            exit 1
+          fi
+
+          if [ "$APPCAST_VERSION" != "$STABLE_CLI_VERSION" ]; then
+            echo "::error::Stable publish metadata mismatch."
+            echo "::error::appcast=${APPCAST_VERSION} cli_latest=${STABLE_CLI_VERSION}"
+            exit 1
+          fi
+
+          STABLE_TAG="v${APPCAST_VERSION}"
+          if [ -n "${EXPECTED_TAG}" ] && [ "${EXPECTED_TAG}" != "${STABLE_TAG}" ]; then
+            echo "::error::Expected tag does not match stable metadata."
+            echo "::error::expected=${EXPECTED_TAG} actual=${STABLE_TAG}"
+            exit 1
+          fi
+
+          RELEASE_STATE="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${STABLE_TAG}" --jq '{tag_name, draft, prerelease}')"
+          RELEASE_DRAFT="$(printf '%s' "$RELEASE_STATE" | python3 -c 'import json,sys; print("true" if json.load(sys.stdin).get("draft") else "false")')"
+          RELEASE_PRERELEASE="$(printf '%s' "$RELEASE_STATE" | python3 -c 'import json,sys; print("true" if json.load(sys.stdin).get("prerelease") else "false")')"
+
+          if [ "$RELEASE_DRAFT" = "true" ]; then
+            echo "::error::Release ${STABLE_TAG} is still draft."
+            exit 1
+          fi
+          if [ "$RELEASE_PRERELEASE" = "true" ]; then
+            echo "::error::Release ${STABLE_TAG} must be stable (prerelease=false) for top appcast/latest metadata."
+            exit 1
+          fi
+
+          RELEASE_NOTES_FILE="web/public/updates/release-notes/${STABLE_TAG}.html"
+          if [ ! -f "$RELEASE_NOTES_FILE" ]; then
+            echo "::error::Missing published release notes file for ${STABLE_TAG}: ${RELEASE_NOTES_FILE}"
+            exit 1
+          fi
+
+          {
+            echo "## Release Publish Verify"
+            echo ""
+            echo "- Stable metadata version: ${APPCAST_VERSION}"
+            echo "- Stable metadata tag: ${STABLE_TAG}"
+            echo "- Stable release notes file: ${RELEASE_NOTES_FILE}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "Stable publish metadata is consistent for ${STABLE_TAG}."
+
+      - name: Verify prerelease CLI metadata maps to a prerelease release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          RC_CLI_FILE="web/public/updates/cli/latest-rc.json"
+          if [ ! -f "$RC_CLI_FILE" ]; then
+            echo "No rc metadata file found; skipping prerelease metadata verification."
+            exit 0
+          fi
+
+          RC_CLI_VERSION="$(
+          python3 - "$RC_CLI_FILE" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], "r", encoding="utf-8") as f:
+              payload = json.load(f)
+          print(str(payload.get("version", "")).strip())
+          PY
+          )"
+
+          RC_CLI_CHANNEL="$(
+          python3 - "$RC_CLI_FILE" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], "r", encoding="utf-8") as f:
+              payload = json.load(f)
+          print(str(payload.get("channel", "")).strip())
+          PY
+          )"
+
+          if [ -z "$RC_CLI_VERSION" ]; then
+            echo "::error::Unable to parse prerelease CLI version from ${RC_CLI_FILE}"
+            exit 1
+          fi
+          if [ "$RC_CLI_CHANNEL" != "rc" ]; then
+            echo "::error::Prerelease CLI metadata must declare channel=rc."
+            echo "::error::actual channel=${RC_CLI_CHANNEL}"
+            exit 1
+          fi
+
+          RC_TAG="v${RC_CLI_VERSION}"
+          RC_RELEASE_STATE="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RC_TAG}" --jq '{tag_name, draft, prerelease}')"
+          RC_RELEASE_DRAFT="$(printf '%s' "$RC_RELEASE_STATE" | python3 -c 'import json,sys; print("true" if json.load(sys.stdin).get("draft") else "false")')"
+          RC_RELEASE_PRERELEASE="$(printf '%s' "$RC_RELEASE_STATE" | python3 -c 'import json,sys; print("true" if json.load(sys.stdin).get("prerelease") else "false")')"
+
+          if [ "$RC_RELEASE_DRAFT" = "true" ]; then
+            echo "::error::Prerelease tag ${RC_TAG} is still draft."
+            exit 1
+          fi
+          if [ "$RC_RELEASE_PRERELEASE" != "true" ]; then
+            echo "::error::RC metadata points at ${RC_TAG}, but that release is not marked prerelease=true."
+            exit 1
+          fi
+
+          {
+            echo "- RC metadata version: ${RC_CLI_VERSION}"
+            echo "- RC metadata tag: ${RC_TAG}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "Prerelease CLI metadata is consistent for ${RC_TAG}."
