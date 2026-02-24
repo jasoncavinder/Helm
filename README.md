@@ -7,9 +7,9 @@
 <p align="center">
   <em>Take the helm.</em>
   <br>
-  A native macOS menu bar app for unified package manager control.
+  A macOS control center and CLI for unified package manager control.
   <br>
-  <strong>Pre-1.0 &middot; v0.17.0</strong>
+  <strong>Pre-1.0 &middot; v0.17.4</strong>
 </p>
 
 <p align="center">
@@ -23,9 +23,9 @@
 
 Helm manages software across multiple package managers (Homebrew, npm, pip, Cargo, etc.) and runtime tools (mise, rustup) from a single menu bar interface. It is designed as infrastructure software: deterministic, safety-first, and explicit about authority, orchestration, and error handling.
 
-> **Status:** Active pre-1.0 development with stable `v0.17.0` on `main` and post-`0.17.x` planning on `dev`.
+> **Status:** Active pre-1.0 development with stable `v0.17.4` on `main` and post-`0.17.x` planning on `dev`.
 >
-> **Testing:** Please test `v0.17.0` and report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Testing:** Please test `v0.17.4` and report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
 ## Editions (Beta)
 
@@ -56,9 +56,9 @@ You can also help by [reporting bugs](https://github.com/jasoncavinder/Helm/issu
 
 Your support helps fund continued development.
 
-## Beta Download
+## Download
 
-Install the latest beta DMG from GitHub Releases:
+Install the latest DMG from GitHub Releases:
 - https://github.com/jasoncavinder/Helm/releases
 
 DMG builds target **Any Mac (Apple Silicon + Intel)** on **macOS 11+ (Big Sur)** and use standard drag-to-`Applications` installation.
@@ -79,7 +79,7 @@ Release assets include:
 Install the latest CLI (`helm`) to `~/.local/bin`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jasoncavinder/Helm/main/install.sh | sh
+curl -fsSL https://helmapp.dev/cli/install.sh | sh
 ```
 
 Installer behavior:
@@ -168,7 +168,7 @@ Or open `apps/macos-ui/Helm.xcodeproj` in Xcode and run the **Helm** scheme. The
 | 0.16.x | Self-Update & Installer Hardening — Sparkle integration, signed verification | Completed (`v0.16.0`) |
 | 0.16.1 | Documentation, Milestone Restructure & Security Staging Clarification | Completed (documentation-only) |
 | 0.16.2 | Sparkle Connectivity + Platform Baseline Alignment — network-client entitlement, feed diagnostics, macOS 11 deployment target enforcement | Completed |
-| 0.17.x | Diagnostics & Logging — log viewer, structured error export, health panel | Completed (`v0.17.0`) |
+| 0.17.x | Diagnostics, logging, CLI/TUI parity slices, and release hardening | Completed (`v0.17.4`) |
 | 0.18.x | Local Security Groundwork — local vulnerability abstractions and cache plumbing (no public feature surface) | Planned |
 | 0.19.x | Stability & Pre-1.0 Hardening — stress tests, crash recovery, memory audit | Planned |
 | 1.0.0 | Stable Control Plane Release — production-safe execution, full feature set | Planned |
