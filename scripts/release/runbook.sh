@@ -8,7 +8,7 @@ PREFLIGHT_SCRIPT="${SCRIPT_DIR}/preflight.sh"
 usage() {
   cat <<'EOF'
 Usage:
-  scripts/release/runbook.sh prepare --tag <tag> [--allow-non-main] [--allow-dirty] [--no-fetch]
+  scripts/release/runbook.sh prepare --tag <tag> [--allow-non-main] [--allow-dirty] [--no-fetch] [--skip-secrets] [--skip-workflows] [--skip-ruleset-policy]
   scripts/release/runbook.sh tag --tag <tag>
   scripts/release/runbook.sh publish --tag <tag>
   scripts/release/runbook.sh verify --tag <tag>
@@ -21,13 +21,35 @@ Commands:
 EOF
 }
 
-info() {
-  printf '[runbook] %s\n' "$1"
-}
-
 fail() {
   printf '[runbook] error: %s\n' "$1" >&2
   exit 1
+}
+
+phase_info() {
+  local phase="$1"
+  local message="$2"
+  printf '[%s] %s\n' "$phase" "$message"
+}
+
+normalize_locale_environment() {
+  local available selected=""
+  available="$(locale -a 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
+
+  if printf '%s\n' "$available" | grep -Eq '^en_us\.(utf-8|utf8)$'; then
+    selected="en_US.UTF-8"
+  elif printf '%s\n' "$available" | grep -Eq '^c\.(utf-8|utf8)$'; then
+    selected="C.UTF-8"
+  fi
+
+  if [ -n "$selected" ]; then
+    export LANG="$selected"
+    export LC_ALL="$selected"
+    return
+  fi
+
+  export LANG="C"
+  unset LC_ALL || true
 }
 
 is_rc_tag() {
@@ -68,7 +90,7 @@ cmd_prepare() {
       args+=("--tag" "$2")
       shift 2
       ;;
-    --allow-non-main | --allow-dirty | --no-fetch | --skip-secrets | --skip-workflows)
+    --allow-non-main | --allow-dirty | --no-fetch | --skip-secrets | --skip-workflows | --skip-ruleset-policy)
       args+=("$1")
       shift
       ;;
@@ -78,6 +100,7 @@ cmd_prepare() {
     esac
   done
 
+  phase_info "preflight" "running release preflight checks"
   "${PREFLIGHT_SCRIPT}" "${args[@]}"
 }
 
@@ -86,12 +109,13 @@ cmd_tag() {
   tag="$(parse_common_tag_args "$@")"
   require_tag_arg "$tag"
 
+  phase_info "preflight" "running release preflight for ${tag}"
   "${PREFLIGHT_SCRIPT}" --tag "$tag"
 
-  info "creating annotated tag ${tag}"
+  phase_info "publish" "creating annotated tag ${tag}"
   git tag -a "$tag" -m "Helm ${tag#v}"
 
-  info "pushing tag ${tag}"
+  phase_info "publish" "pushing tag ${tag}"
   git push origin "$tag"
 }
 
@@ -100,15 +124,16 @@ cmd_publish() {
   tag="$(parse_common_tag_args "$@")"
   require_tag_arg "$tag"
 
+  phase_info "preflight" "running release preflight for ${tag}"
   "${PREFLIGHT_SCRIPT}" --tag "$tag" --allow-non-main --allow-existing-tag
 
   if gh release view "$tag" >/dev/null 2>&1; then
-    info "GitHub release already exists for ${tag}"
+    phase_info "publish" "GitHub release already exists for ${tag}"
     gh release view "$tag" --json url,isDraft,isPrerelease,publishedAt --jq '{url, draft:.isDraft, prerelease:.isPrerelease, published_at:.publishedAt}'
     return
   fi
 
-  info "creating GitHub release ${tag}"
+  phase_info "publish" "creating GitHub release ${tag}"
   if is_rc_tag "$tag"; then
     gh release create "$tag" \
       --verify-tag \
@@ -205,6 +230,7 @@ cmd_verify() {
   local errors=0
   local missing=""
 
+  phase_info "preflight" "running release preflight for ${tag}"
   "${PREFLIGHT_SCRIPT}" --tag "$tag" --allow-non-main --allow-dirty --skip-secrets --skip-workflows --allow-existing-tag
 
   if ! gh release view "$tag" >/dev/null 2>&1; then
@@ -219,10 +245,10 @@ cmd_verify() {
   required_assets="helm-cli-${tag}-darwin-universal,helm-cli-${tag}-darwin-arm64,helm-cli-${tag}-darwin-x86_64,helm-cli-${tag}-checksums.txt,Helm-${tag}-macos-universal.dmg"
   missing="$(release_has_assets "$tag" "$required_assets" 2>/dev/null || true)"
   if [ -n "${missing:-}" ]; then
-    printf '[runbook] error: release %s is missing required assets: %s\n' "$tag" "$missing" >&2
+    printf '[verify] error: release %s is missing required assets: %s\n' "$tag" "$missing" >&2
     errors=$((errors + 1))
   else
-    info "required release assets are present"
+    phase_info "verify" "required release assets are present"
   fi
 
   local cli_path cli_version
@@ -233,23 +259,23 @@ cmd_verify() {
   fi
   cli_version="$(extract_json_version_from_main "$cli_path" || true)"
   if [ "$cli_version" != "$expected_version" ]; then
-    printf '[runbook] error: %s version mismatch on main (expected=%s actual=%s)\n' "$cli_path" "$expected_version" "${cli_version:-<empty>}" >&2
+    printf '[verify] error: %s version mismatch on main (expected=%s actual=%s)\n' "$cli_path" "$expected_version" "${cli_version:-<empty>}" >&2
     errors=$((errors + 1))
   else
-    info "${cli_path} matches ${expected_version}"
+    phase_info "verify" "${cli_path} matches ${expected_version}"
   fi
 
   if ! is_rc_tag "$tag"; then
     local appcast_version
     appcast_version="$(extract_appcast_version || true)"
     if [ "$appcast_version" != "$expected_version" ]; then
-      printf '[runbook] error: appcast version mismatch on main (expected=%s actual=%s)\n' "$expected_version" "${appcast_version:-<empty>}" >&2
+      printf '[verify] error: appcast version mismatch on main (expected=%s actual=%s)\n' "$expected_version" "${appcast_version:-<empty>}" >&2
       errors=$((errors + 1))
     else
-      info "appcast version matches ${expected_version}"
+      phase_info "verify" "appcast version matches ${expected_version}"
     fi
   else
-    info "rc tag detected; skipping stable appcast version verification"
+    phase_info "verify" "rc tag detected; skipping stable appcast version verification"
   fi
 
   local open_publish_prs pr_json
@@ -269,22 +295,23 @@ print("\n".join(lines))
 PY
 )"
   if [ -n "$open_publish_prs" ]; then
-    printf '[runbook] error: open release publish PR(s) remain:\n%s\n' "$open_publish_prs" >&2
+    printf '[verify] error: open release publish PR(s) remain:\n%s\n' "$open_publish_prs" >&2
     errors=$((errors + 1))
   else
-    info "no open publish PRs for ${tag}"
+    phase_info "verify" "no open publish PRs for ${tag}"
   fi
 
   if [ "$errors" -gt 0 ]; then
-    printf '[runbook] verification failed with %d issue(s)\n' "$errors" >&2
+    printf '[verify] failed with %d issue(s)\n' "$errors" >&2
     exit 1
   fi
 
-  info "verification passed for ${tag}"
+  phase_info "verify" "verification passed for ${tag}"
 }
 
 main() {
   cd "$ROOT_DIR"
+  normalize_locale_environment
 
   [ $# -ge 1 ] || {
     usage

@@ -58,6 +58,26 @@ require_tool() {
   return 0
 }
 
+normalize_locale_environment() {
+  local available selected=""
+  available="$(locale -a 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
+
+  if printf '%s\n' "$available" | grep -Eq '^en_us\.(utf-8|utf8)$'; then
+    selected="en_US.UTF-8"
+  elif printf '%s\n' "$available" | grep -Eq '^c\.(utf-8|utf8)$'; then
+    selected="C.UTF-8"
+  fi
+
+  if [ -n "$selected" ]; then
+    export LANG="$selected"
+    export LC_ALL="$selected"
+    return
+  fi
+
+  export LANG="C"
+  unset LC_ALL || true
+}
+
 validate_tag_format() {
   local tag="$1"
   if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -640,6 +660,7 @@ main() {
   cd "$ROOT_DIR"
 
   parse_args "$@" || true
+  normalize_locale_environment
 
   require_tool git || true
   require_tool gh || true

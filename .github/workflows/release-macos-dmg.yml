@@ -38,6 +38,8 @@ jobs:
       HELM_SPARKLE_PUBLIC_ED_KEY: ${{ secrets.HELM_SPARKLE_PUBLIC_ED_KEY }}
       HELM_SPARKLE_PRIVATE_ED_KEY: ${{ secrets.HELM_SPARKLE_PRIVATE_ED_KEY }}
       TAG_NAME: ${{ inputs.tag || github.event.release.tag_name || github.event.inputs.tag }}
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
 
     steps:
       - name: Validate required secrets
@@ -70,7 +72,7 @@ jobs:
               print(f"::error::HELM_SPARKLE_FEED_URL host is not resolvable in CI DNS: host={host} error={exc}")
               sys.exit(1)
 
-          print(f"HELM_SPARKLE_FEED_URL host resolved: {host}")
+          print(f"[preflight] HELM_SPARKLE_FEED_URL host resolved: {host}")
           PY
 
       - name: Initialize release publication state
@@ -527,7 +529,7 @@ jobs:
 
           cd "$PUBLISH_DIR"
           if [ -z "$(git status --porcelain -- "$FEED_PATH" "$RELEASE_NOTES_FEED_PATH")" ]; then
-            echo "Appcast and release notes are already current on main."
+            echo "[publish] Appcast and release notes are already current on main."
             echo "MAIN_METADATA_SYNCED=yes" >> "$GITHUB_ENV"
             exit 0
           fi
@@ -546,7 +548,7 @@ jobs:
           EXISTING_PR="$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$PUBLISH_BRANCH" --state open --json number --jq '.[0].number // empty' || true)"
           if [ -n "$EXISTING_PR" ]; then
             PR_NUMBER="$EXISTING_PR"
-            echo "PR already exists for $PUBLISH_BRANCH (#$PR_NUMBER)."
+            echo "[publish] PR already exists for $PUBLISH_BRANCH (#$PR_NUMBER)."
           else
             PR_URL="$(gh pr create \
               --repo "$GITHUB_REPOSITORY" \
@@ -579,7 +581,7 @@ jobs:
               exit 1
             fi
 
-            echo "Created publish PR #${PR_NUMBER}: ${PR_URL}"
+            echo "[publish] Created publish PR #${PR_NUMBER}: ${PR_URL}"
           fi
 
           PR_URL="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json url --jq '.url')"
@@ -590,7 +592,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
           if gh pr merge --repo "$GITHUB_REPOSITORY" --squash --auto "$PR_NUMBER"; then
-            echo "Auto-merge enabled for publish PR #${PR_NUMBER}."
+            echo "[publish] Auto-merge enabled for publish PR #${PR_NUMBER}."
           else
             echo "::warning::Unable to enable auto-merge for publish PR #${PR_NUMBER}."
             echo "::warning::Manual merge may be required."
@@ -601,7 +603,7 @@ jobs:
           for i in {1..40}; do
             read -r PR_STATE MERGED_AT PR_URL <<<"$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json state,mergedAt,url --jq '[.state, (.mergedAt // ""), .url] | @tsv')"
             if [ -n "$MERGED_AT" ]; then
-              echo "Publish PR #${PR_NUMBER} merged at ${MERGED_AT}."
+              echo "[publish] Publish PR #${PR_NUMBER} merged at ${MERGED_AT}."
               break
             fi
 
@@ -611,7 +613,7 @@ jobs:
               exit 1
             fi
 
-            echo "Waiting for publish PR #${PR_NUMBER} to merge (attempt ${i}/40)..."
+            echo "[publish] Waiting for publish PR #${PR_NUMBER} to merge (attempt ${i}/40)..."
             sleep 30
           done
 
@@ -702,7 +704,7 @@ jobs:
             echo "PUBLISH_FOLLOWUP_REQUIRED=no" >> "$GITHUB_ENV"
           fi
           echo "MAIN_METADATA_SYNCED=yes" >> "$GITHUB_ENV"
-          echo "Verified appcast on main matches release tag: ${ACTUAL_VERSION}"
+          echo "[verify] Verified appcast on main matches release tag: ${ACTUAL_VERSION}"
 
       - name: Release publication summary
         if: ${{ always() }}
@@ -733,5 +735,5 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "${publish_followup_required}" = "yes" ]; then
-            echo "::notice::Release artifacts published, publish PR is open, and follow-up merge+rerun is required."
+            echo "::notice::[verify] Release artifacts published, publish PR is open, and follow-up merge+rerun is required."
           fi

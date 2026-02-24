@@ -165,6 +165,10 @@ Current checkpoint:
     - preflight now enforces pre-tag stable metadata snapshot sanity (`origin/main` appcast + `cli/latest.json` sync and target-order checks for stable tags)
     - new `Release Publish Verify` workflow now runs on publish-metadata pushes to `main` and validates release-object alignment after publish PR merges
     - release checklist/versioning docs now include explicit publish-verifier + drift-guard checkpoint requirements
+  - post-`v0.17.5` release-process hardening phase 5 delivered on `dev`:
+    - release scripts/workflows now normalize locale environment defaults for operator/CI consistency
+    - release logs now use phase prefixes (`[preflight]`, `[build]`, `[publish]`, `[verify]`) for faster triage
+    - recurring release friction now has a documented promotion path from `TMP_RELEASE_FRICTION` into permanent decision/runbook/checklist docs
   - GitHub governance hardening delivered on `dev`:
     - branch rulesets now explicitly enforce `main`/`dev`/`docs`/`web` with branch-specific required checks
     - `Policy Gate` now validates PR base/head/scope policy for all protected branches
