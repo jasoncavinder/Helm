@@ -6,24 +6,57 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
-## [0.17.4] - 2026-02-24
+## [0.17.5] - 2026-02-24
 
-Patch `0.17.4` delivers the first ratatui-based Helm TUI, bundled-app CLI shim install/remove flows, and post-`0.17.3` GUI/CLI parity closures.
+Patch `0.17.5` ships manager eligibility-policy enforcement, first-run CLI onboarding, and task/about UX hardening after `0.17.4`.
 
 ### Added
-- New no-arg TTY TUI for `helm` with a branded splash screen, keyboard-first navigation, section views (`updates`, `packages`, `tasks`, `managers`, `settings`, `diagnostics`), and inline help/command overlays.
-- GUI Settings now supports managed installation/removal of a `~/.local/bin/helm` shim that targets the app-bundled CLI.
-- CLI and TUI now expose progressive remote package search, manager-scoped bulk-upgrade controls, and per-package Homebrew keg-policy controls.
+- Manager eligibility policy matrix and enforcement for system-managed executables:
+  - RubyGems `/usr/bin/gem`
+  - Bundler `/usr/bin/bundle`
+  - pip `/usr/bin/python3|pip|pip3`
+- CLI first-run onboarding flow with terminal prompts, onboarding status/run/reset commands, and script-oriented first-run flags:
+  - `--accept-license`
+  - `--accept-defaults`
+- Manual failed-task dismissal action in task rows.
 
 ### Changed
-- Launch-at-login now supports macOS 11+ with platform-aware implementation paths (`SMAppService` on macOS 13+, login-helper fallback on macOS 11/12).
-- Manager inspector now prioritizes executable selection controls and package inspector actions for pin/update/remove workflows.
-- Website download UX now includes a download dropdown with explicit DMG and CLI install paths, plus a copyable `curl | sh` command modal.
+- Failed tasks are now retained until replacement, manual dismissal, manager disable/uninstall cleanup, or local-data reset.
+- About overlay is simplified to product/version/copyright focus with update-available indication only.
+- Settings section order is now `General -> Managers -> CLI -> Service Health -> Support & Feedback -> Advanced`.
+- Reset Local Data now closes Control Center so the app re-enters onboarding on next interaction.
 
 ### Fixed
-- TUI filter-mode lifecycle now exits correctly when the query is cleared.
-- Manager diagnostics views now keep empty-state content top-aligned for consistency across tabs.
-- `helm` short-flag parsing now supports combined single-character flags (for example `-vV`).
+- Enabling ineligible managers is now blocked with structured/localized remediation; stale enabled state is auto-healed to disabled.
+- Runtime task submission now hard-stops ineligible managers (policy-blocked state treated as disabled).
+- CLI shim status now resolves home-directory paths robustly for settings diagnostics.
+- Manager disable now purges manager-scoped persisted task records.
+
+## [0.17.4] - 2026-02-24
+
+Patch `0.17.4` packages the first ratatui-powered Helm TUI, bundled-app CLI shim workflows, and post-`0.17.3` GUI/CLI parity closures.
+
+### Added
+- No-arg TTY launch now opens a ratatui/crossterm TUI with branded splash, keyboard-first navigation, and section workflows for updates/packages/tasks/managers/settings/diagnostics.
+- GUI Settings now supports installing/removing a managed `~/.local/bin/helm` shim that resolves to the app-bundled CLI and writes app-bundle install provenance.
+- CLI now supports smart uninstall via `helm self uninstall`, with channel-aware policy handling:
+  - direct-script: remove executable + matching marker
+  - app-bundle-shim: remove managed shim + matching marker
+  - channel-managed installs: return actionable uninstall guidance
+
+### Changed
+- Launch-at-login now supports macOS 11+ with dual-path implementation:
+  - macOS 13+: `SMAppService.mainApp`
+  - macOS 11/12: embedded login-helper fallback via `SMLoginItemSetEnabled`
+- GUI/CLI/TUI parity expanded:
+  - progressive local+remote search in CLI/TUI
+  - per-package Homebrew keg-policy controls in CLI/TUI
+  - manager-scoped bulk upgrade execution in CLI
+  - TUI package install actions and Homebrew keg-policy editing
+
+### Fixed
+- TUI filter mode now exits correctly when the filter text is erased.
+- Help/completion contracts now include the expanded self-management command surface (`self uninstall`).
 
 ## [0.17.3] - 2026-02-23
 

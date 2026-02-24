@@ -8,9 +8,9 @@ use helm_core::adapters::{
     AdapterRequest, AdapterResponse, AdapterResult, ManagerAdapter, RefreshRequest, SearchRequest,
 };
 use helm_core::models::{
-    ActionSafety, Capability, CoreError, CoreErrorKind, ManagerAction, ManagerAuthority,
-    ManagerCategory, ManagerDescriptor, ManagerId, SearchQuery, TaskId, TaskRecord, TaskStatus,
-    TaskType,
+    ActionSafety, Capability, CoreError, CoreErrorKind, DetectionInfo, ManagerAction,
+    ManagerAuthority, ManagerCategory, ManagerDescriptor, ManagerId, SearchQuery, TaskId,
+    TaskRecord, TaskStatus, TaskType,
 };
 use helm_core::orchestration::{AdapterRuntime, AdapterTaskTerminalState};
 use helm_core::persistence::{DetectionStore, PersistenceResult, TaskStore};
@@ -272,6 +272,96 @@ async fn submit_returns_structured_error_for_disabled_manager() {
 
     assert_eq!(error.kind, CoreErrorKind::InvalidInput);
     assert_eq!(error.manager, Some(ManagerId::Npm));
+    assert_eq!(error.task, Some(TaskType::Refresh));
+    assert_eq!(error.action, Some(ManagerAction::Refresh));
+}
+
+#[tokio::test]
+async fn submit_returns_structured_error_for_ineligible_system_rubygems_manager() {
+    let path = test_db_path("orchestration-runtime-ineligible-rubygems-manager");
+    let store = Arc::new(SqliteStore::new(&path));
+    store.migrate_to_latest().unwrap();
+    store
+        .upsert_detection(
+            ManagerId::RubyGems,
+            &DetectionInfo {
+                installed: true,
+                executable_path: Some(PathBuf::from("/usr/bin/gem")),
+                version: Some("3.4.10".to_string()),
+            },
+        )
+        .unwrap();
+    store
+        .set_manager_selected_executable_path(ManagerId::RubyGems, Some("/usr/bin/gem"))
+        .unwrap();
+    store
+        .set_manager_enabled(ManagerId::RubyGems, true)
+        .unwrap();
+
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(TestAdapter::new(
+        ManagerId::RubyGems,
+        AdapterBehavior::Succeeds(AdapterResponse::Refreshed),
+    ));
+    let runtime = AdapterRuntime::with_all_stores(
+        [adapter],
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+    )
+    .unwrap();
+
+    let error = runtime
+        .submit(ManagerId::RubyGems, AdapterRequest::Refresh(RefreshRequest))
+        .await
+        .expect_err("expected ineligible manager error");
+
+    assert_eq!(error.kind, CoreErrorKind::InvalidInput);
+    assert_eq!(error.manager, Some(ManagerId::RubyGems));
+    assert_eq!(error.task, Some(TaskType::Refresh));
+    assert_eq!(error.action, Some(ManagerAction::Refresh));
+}
+
+#[tokio::test]
+async fn submit_returns_structured_error_for_ineligible_system_pip_manager() {
+    let path = test_db_path("orchestration-runtime-ineligible-pip-manager");
+    let store = Arc::new(SqliteStore::new(&path));
+    store.migrate_to_latest().unwrap();
+    store
+        .upsert_detection(
+            ManagerId::Pip,
+            &DetectionInfo {
+                installed: true,
+                executable_path: Some(PathBuf::from("/usr/bin/python3")),
+                version: Some("3.9.6".to_string()),
+            },
+        )
+        .unwrap();
+    store
+        .set_manager_selected_executable_path(ManagerId::Pip, Some("/usr/bin/python3"))
+        .unwrap();
+    store.set_manager_enabled(ManagerId::Pip, true).unwrap();
+
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(TestAdapter::new(
+        ManagerId::Pip,
+        AdapterBehavior::Succeeds(AdapterResponse::Refreshed),
+    ));
+    let runtime = AdapterRuntime::with_all_stores(
+        [adapter],
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+    )
+    .unwrap();
+
+    let error = runtime
+        .submit(ManagerId::Pip, AdapterRequest::Refresh(RefreshRequest))
+        .await
+        .expect_err("expected ineligible manager error");
+
+    assert_eq!(error.kind, CoreErrorKind::InvalidInput);
+    assert_eq!(error.manager, Some(ManagerId::Pip));
     assert_eq!(error.task, Some(TaskType::Refresh));
     assert_eq!(error.action, Some(ManagerAction::Refresh));
 }

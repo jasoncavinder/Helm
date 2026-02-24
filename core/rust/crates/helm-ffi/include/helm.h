@@ -72,6 +72,11 @@ int64_t helm_trigger_remote_search_for_manager(const char *manager_id, const cha
 bool helm_cancel_task(int64_t task_id);
 
 /**
+ * Dismiss a terminal task by ID. Returns true on success.
+ */
+bool helm_dismiss_task(int64_t task_id);
+
+/**
  * List manager status: detection info + preferences + implementation status as JSON.
  */
 char *helm_list_manager_status(void);

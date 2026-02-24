@@ -1222,6 +1222,7 @@ private struct InspectorManagerDetailView: View {
                     onViewPackages()
                 }
                 .font(.caption)
+                .buttonStyle(HelmSecondaryButtonStyle())
                 .helmPointer()
             }
 

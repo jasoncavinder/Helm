@@ -42,6 +42,20 @@ struct OnboardingConfigureView: View {
                         ForEach(detectedManagers) { manager in
                             let status = core.managerStatuses[manager.id]
                             let enabled = status?.enabled ?? true
+                            let ineligibleReason: String? = {
+                                guard status?.isEligible == false else { return nil }
+                                if let key = status?.ineligibleServiceErrorKey?.trimmingCharacters(in: .whitespacesAndNewlines),
+                                   !key.isEmpty
+                                {
+                                    return key.localized
+                                }
+                                if let message = status?.ineligibleReasonMessage?.trimmingCharacters(in: .whitespacesAndNewlines),
+                                   !message.isEmpty
+                                {
+                                    return message
+                                }
+                                return nil
+                            }()
                             let versionLabel: String? = {
                                 guard let version = status?.version?.trimmingCharacters(in: .whitespacesAndNewlines),
                                       !version.isEmpty else {
@@ -50,42 +64,52 @@ struct OnboardingConfigureView: View {
                                 return L10n.Common.version.localized(with: ["version": version])
                             }()
 
-                            HStack(spacing: 10) {
-                                Circle()
-                                    .fill(enabled ? Color.green : Color.gray)
-                                    .frame(width: 8, height: 8)
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(spacing: 10) {
+                                    Circle()
+                                        .fill(enabled ? Color.green : Color.gray)
+                                        .frame(width: 8, height: 8)
 
-                                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                    Text(manager.displayName)
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-                                        .lineLimit(1)
-                                        .truncationMode(.tail)
-                                    if let versionLabel {
-                                        Text(versionLabel)
-                                            .font(.caption2)
-                                            .foregroundColor(.secondary)
+                                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                        Text(manager.displayName)
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
                                             .lineLimit(1)
                                             .truncationMode(.tail)
+                                        if let versionLabel {
+                                            Text(versionLabel)
+                                                .font(.caption2)
+                                                .foregroundColor(.secondary)
+                                                .lineLimit(1)
+                                                .truncationMode(.tail)
+                                        }
                                     }
+
+                                    Spacer()
+
+                                    Text(enabled ? L10n.Common.enabled.localized : L10n.Common.disabled.localized)
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+
+                                    Toggle("", isOn: Binding(
+                                        get: { enabled },
+                                        set: { _ in
+                                            core.setManagerEnabled(manager.id, enabled: !enabled)
+                                        }
+                                    ))
+                                    .toggleStyle(.switch)
+                                    .scaleEffect(0.7)
+                                    .labelsHidden()
+                                    .accessibilityLabel(manager.displayName)
+                                    .disabled(ineligibleReason != nil && !enabled)
                                 }
 
-                                Spacer()
-
-                                Text(enabled ? L10n.Common.enabled.localized : L10n.Common.disabled.localized)
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-
-                                Toggle("", isOn: Binding(
-                                    get: { enabled },
-                                    set: { _ in
-                                        core.setManagerEnabled(manager.id, enabled: !enabled)
-                                    }
-                                ))
-                                .toggleStyle(.switch)
-                                .scaleEffect(0.7)
-                                .labelsHidden()
-                                .accessibilityLabel(manager.displayName)
+                                if let ineligibleReason {
+                                    Text(ineligibleReason)
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(2)
+                                }
                             }
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)

@@ -474,6 +474,57 @@ The upcoming CLI and existing GUI must share a single per-user coordinator/task 
 - If no coordinator exists, GUI host starts a local coordinator endpoint and CLI launch-on-demand requests connect to it.
 
 ---
+## Decision 029 — Base-System Manager Policy Gate
+
+**Decision:**
+Treat macOS base-system language-manager executables as detectable but not manageable.
+
+**Policy:**
+
+- Affected managers may remain visible in detection and executable-path selection.
+- Current blocked executables:
+  - RubyGems: `/usr/bin/gem`
+  - Bundler: `/usr/bin/bundle`
+  - pip: `/usr/bin/python3`, `/usr/bin/pip`, `/usr/bin/pip3`
+- Manager enablement is blocked when resolved executable matches blocked criteria.
+- No privilege-escalation path is offered for this blocked case.
+- Runtime task submission treats policy-ineligible managers as effectively disabled.
+- Shared matrix and rule maintenance contract live in `docs/architecture/MANAGER_ELIGIBILITY_POLICY.md`.
+
+**Rationale:**
+
+- Avoid mutating Apple-managed base-system toolchains.
+- Prevent non-deterministic failures and environment-specific behavior.
+- Keep behavior predictable across user systems while preserving detection transparency.
+
+---
+## Decision 030 — CLI First-Run Onboarding Gate
+
+**Decision:**
+`helm-cli` enforces first-run onboarding and license acceptance before running normal operational commands.
+
+**Policy:**
+
+- Persist CLI onboarding state and accepted license terms version in Helm settings storage.
+- Block command execution until both are satisfied, except for:
+  - `help` / `--version`
+  - `completion`
+  - `onboarding` namespace
+- First-run onboarding UX is terminal/menu based (non-TUI).
+- On successful onboarding, the original command continues in the same invocation.
+- Non-interactive/script-friendly first-run controls:
+  - `--accept-license`
+  - `--accept-defaults`
+- If onboarding is required and machine mode is requested (`--json`/`--ndjson`) without sufficient acceptance flags:
+  - return deterministic JSON error with explicit onboarding/license-required guidance.
+
+**Rationale:**
+
+- Aligns CLI legal/onboarding guarantees with GUI onboarding requirements.
+- Keeps CI/script bootstrap deterministic while preserving explicit consent semantics.
+- Avoids hidden state mutation or partial command execution before prerequisites are met.
+
+---
 ## Summary
 
 Helm prioritizes:

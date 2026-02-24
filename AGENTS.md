@@ -18,6 +18,7 @@ before making changes.
 - `docs/PROJECT_BRIEF.md` — authoritative product and architecture specification
 - `docs/CURRENT_STATE.md` — current implementation status and known gaps
 - `docs/NEXT_STEPS.md` — prioritized upcoming work
+- `docs/architecture/MANAGER_ELIGIBILITY_POLICY.md` — detected-vs-manageable manager policy matrix and enforcement rules
 
 Agents must not begin implementation until these documents have been read.
 

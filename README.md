@@ -280,6 +280,8 @@ Helm is currently released under a **source-available, non-commercial license** 
 
 See [LICENSE](LICENSE) for full terms.
 
+Copyright (c) 2026 Jason Cavinder. All rights reserved.
+
 ---
 
 ## Contributions

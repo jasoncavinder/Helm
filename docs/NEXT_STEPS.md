@@ -11,17 +11,22 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-0.17.4 release publication
+0.17.4 post-release stabilization
 ```
 
 Focus:
-- complete stable publication for `v0.17.4` (tag, release, appcast/CLI metadata publish PRs, drift checks)
-- verify website and installer endpoints after publication (`/cli/install.sh`, `/updates/cli/latest.json`, appcast/release notes)
+- verify post-publication endpoint health (`/cli/install.sh`, `/updates/cli/latest.json`, appcast/release notes)
+- back-sync `main` hotfix/publication commits to `dev`/`docs`/`web` via targeted PRs
 - begin planning and branch setup for `0.18.x` local security groundwork after stable publication
 - keep launch-at-login scoped to GUI only (no CLI/TUI parity target)
 
 Current checkpoint:
-- `v0.17.4` release content is promoted to `main` (app/core + docs + web), with stable publication/tag workflows in progress:
+- `v0.17.4` release content is promoted and published on `main` (app/core + docs + web):
+  - release publish PRs merged: `#176` (CLI metadata), `#177` and `#178` (Sparkle appcast + release notes)
+  - initial failed release-triggered runs for `v0.17.4` were superseded by successful manual reruns:
+    - `Release CLI Direct Installer` run `22337004057` (success)
+    - `Release macOS DMG` run `22337385648` (success)
+    - `Appcast Drift Guard` run `22337904410` (success)
   - post-`0.17.3` `0.17.4` TUI planning slice delivered: detailed ratatui implementation plan documented at `docs/architecture/HELM_TUI_IMPLEMENTATION_PLAN.md` (keyboard model, parity matrix, branding constraints, and ASCII splash-screen contract).
   - post-`0.17.3` `0.17.4` TUI implementation slice delivered: no-arg TTY now launches the ratatui TUI with branded ASCII splash (`logo` + `Helm` + `Take the helm.`), keyboard navigation, command palette/help/confirm overlays, read-only parity panes (updates/packages/tasks/managers/settings/diagnostics), and direct mutation hooks for common manager/package/task actions.
   - post-`0.17.3` `0.17.4` TUI parity-expansion slice delivered: managers pane now supports selected-manager detect/executable/method/priority controls via keyboard, updates pane now supports include-pinned + allow-OS-updates toggles for upgrade workflows, diagnostics pane supports one-key export snapshot writes, task-log detail follows selection movement immediately, and settings pane now exposes integrated self-update status/check/apply controls honoring provenance/channel policy semantics.
@@ -63,7 +68,7 @@ Current checkpoint:
     - Control Center drag-to-move now applies across the full window background (interactive controls still take precedence)
     - settings top metric cards now deep-link to Managers/Updates/Tasks
     - inspector selection now clears when sections change and selected rows/cards are visually highlighted
-    - launch-at-login setting now supports macOS 11+ (macOS 13+ via `SMAppService.mainApp`, macOS 11/12 via embedded login-helper fallback)
+    - launch-at-login setting added for supported systems (macOS 13+), with localized unsupported messaging on older systems
     - manager/popover count rendering paths precompute per-manager counts to reduce repeated filtering work in hot UI update loops
   - pre-rc.4 stabilization follow-up delivered on `dev`:
     - popover outside-click close handling now only reacts to click events (not hover/drag movement)
@@ -100,6 +105,11 @@ Current checkpoint:
     - disabled managers are now excluded from installed/outdated/search/task snapshot surfaces and package/dropdown filters
     - runtime task submission now rejects disabled managers centrally; disabling a manager now cancels in-flight tasks for that manager
     - package/update manager-scope selections now normalize away disabled manager IDs to prevent stale disabled-manager targeting
+  - post-`0.17.4` manager eligibility-policy hardening delivered on `dev`:
+    - macOS base-system RubyGems/Bundler/pip executables are now explicitly supported as `detected-but-not-manageable`
+    - enabling affected managers while mapped to system executables is blocked with structured, localized remediation guidance
+    - runtime hard-stops task submission when eligibility is false, and startup/status sync self-heals stale enabled state by auto-disabling
+    - shared policy matrix + lessons learned are now documented at `docs/architecture/MANAGER_ELIGIBILITY_POLICY.md`
   - post-`0.17.x` detection/onboarding follow-up delivered on `dev`:
     - onboarding detection now calls a detection-only trigger instead of full refresh, avoiding immediate list-installed/list-outdated work during first-run detection
     - detection trigger pre-seeds manager presence from executable-path discovery so detected managers render immediately while version probing continues
@@ -107,6 +117,16 @@ Current checkpoint:
     - onboarding license acceptance is now step 2 (after welcome) and no longer re-enters the onboarding sequence after license acceptance
     - core executable lookup now falls back to direct filesystem probing across known bin locations when `which` lookup fails
     - core runtime now logs per-manager detection timing with structured fields and emits a slow-detection warning threshold at 3000ms
+  - post-`0.17.4` onboarding/UX follow-up delivered on `dev`:
+    - Control Center manager cards now include a visible drag affordance symbol
+    - Control Center Settings card order now follows `General -> Managers -> CLI -> Service Health -> Support & Feedback -> Advanced`
+    - `Reset Local Data` now closes Control Center after successful reset so onboarding is re-entered on next interaction
+    - CLI now enforces first-run onboarding before normal command execution (except help/version/completion/onboarding), with terminal/menu onboarding flow, `--accept-license`, `--accept-defaults`, machine-mode JSON error semantics when onboarding is required, and explicit `helm onboarding status|run|reset`
+  - post-`0.17.4` task/about UX follow-up delivered on `dev`:
+    - failed tasks are no longer age-pruned and now persist until replacement, manual dismissal, manager disable cleanup, or local reset
+    - task rows now expose explicit failed-task dismissal actions, backed by persisted task-log/task-record deletion
+    - About overlay is simplified (OK-only dismissal, metadata removal) and now shows copyright plus Helm-update-detected messaging
+    - manager inspector primary actions now use Helm-styled buttons instead of default system button styling
   - post-`0.17.x` upgrade-plan modal follow-up delivered on `dev`:
     - execution-plan sheet state now records the initiating host surface so only that UI (popover or Control Center) presents the modal
     - `Upgrade All` from Control Center/menu now targets Control Center-hosted modal presentation without surfacing the popover
@@ -152,7 +172,7 @@ Current checkpoint:
     - read-only list ergonomics delivered: `--limit` now applies to `packages list`/`ls`, `updates list` (including `helm updates --limit ...`), and `tasks list` (including `helm tasks --limit ...`)
     - global diagnostics verbosity delivered: CLI now supports `-v` / `--verbose` and emits runtime/coordinator diagnostic traces to `stderr` for investigation workflows while preserving `stdout` output contracts
     - settings persistence expanded: `auto_check_for_updates` and `auto_check_frequency_minutes` now support `settings get|set|reset` and are reflected by `settings list` + `self status`
-    - `self` namespace baseline delivered for Homebrew-formula installs: `self status|check|update|uninstall` now provide method-aware status, live snapshot check, direct/app-shim uninstall routing, and task-backed update execution (wait/detach) with explicit guidance for unsupported install paths
+    - `self` namespace baseline delivered for Homebrew-formula installs: `self status|check|update` now provide method-aware status, live snapshot check, and task-backed update execution (wait/detach) with explicit guidance for unsupported install paths
     - `self auto-check` command slice delivered: `self auto-check status|enable|disable|frequency <minutes>` now maps directly to persisted auto-check settings (`auto_check_for_updates`, `auto_check_frequency_minutes`) with nested help/completion coverage
     - manager enablement parity hardening delivered: `managers disable` now performs best-effort cancellation of queued/running tasks for that manager through the CLI coordinator and reports cancellation diagnostics in JSON/human output
     - mutation JSON envelope hardening delivered: manager enable/disable, settings set/reset, manager detection wait output, and shared manager-result payloads now consistently emit the standard envelope (`schema`, `schema_version`, `generated_at`, `data`)
@@ -168,7 +188,7 @@ Current checkpoint:
     - audit-remediation follow-up delivered: stable CLI update metadata now points to published `v0.17.2` CLI release assets with real checksums (no placeholder zeros), and auto-check last-checked timestamps now update only after eligible direct self-managed check attempts instead of policy-gated skips
     - audit-remediation follow-up delivered: distribution profile contract is now centralized in `docs/contracts/distribution-profiles.json` and consumed by shared build orchestration (`scripts/build.sh`, `scripts/release/build_unsigned_variant.sh`, matrix-based `release-all-variants.yml` auxiliary jobs); Swift update-authority mapping now has one source (`AppUpdateConfiguration`), targeted updater policy tests pass on macOS, and GUI checksum-publication symmetry is explicitly documented as deferred while Sparkle remains canonical GUI integrity authority
     - trust-chain future work is now explicitly tracked: detached signatures + signing-key rotation for CLI update artifacts (`docs/roadmap/CLI_DISTRIBUTION_CI_MILESTONES.md`, milestone M5)
-- latest stable release on `main`: `v0.17.3`
+- latest stable release on `main`: `v0.17.4`
 - validation gates are green through the stable cut (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke across `v0.17.0-rc.1` through `v0.17.0-rc.5`)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
@@ -213,7 +233,7 @@ Next release targets:
 - [x] post-`rc.3` manager inspector install-metadata expansion — inspector now shows all discovered executable paths (active path emphasized), install-method metadata with recommended/preferred tags, and expanded per-manager install-method catalogs.
 - [x] post-`rc.3` About diagnostics metadata enhancement — About overlay now surfaces build number, distribution channel, update authority, and last update-check timestamp.
 - [x] post-`rc.3` control-center workflow polish — reset-local-data clears license-acceptance state; running-task row taps toggle details; settings metrics deep-link to managers/updates/tasks; inspector selection clears on section changes and selected entities are highlighted.
-- [x] post-`rc.3` startup/interaction polish — launch-at-login setting now supports macOS 11+ (macOS 13+ via `SMAppService.mainApp`, macOS 11/12 via embedded login-helper fallback), popover cursor handling restored for hover affordance clarity, full-window Control Center drag support enabled, and count-heavy UI lists now use precomputed manager count maps for smoother drag/scroll behavior on lower-spec Macs.
+- [x] post-`rc.3` startup/interaction polish — launch-at-login setting added (macOS 13+), popover cursor handling restored for hover affordance clarity, full-window Control Center drag support enabled, and count-heavy UI lists now use precomputed manager count maps for smoother drag/scroll behavior on lower-spec Macs.
 - [x] pre-`rc.4` stabilization — popover outside-click behavior hardened to click-only event handling; floating-panel cursor forcing removed; consolidated package manager preference now authority-aware; executable-path discovery cost reduced via undetected-manager skip + discovery caching; targeted policy/manager-status regression tests added.
 - [x] post-`rc.4` issue-remediation — softwareupdate symbol mapping corrected; manager drag-vs-window-drag precedence fixed; inflight-task dedupe now prefers running/newer rows for live command/output panes; Packages gained localized `Pinned` filtering with upgradable exclusion and overflow-safe horizontal chip layout.
 - [x] post-`rc.4` UX/task-diagnostics hardening — popover search package rows gained quick icon actions (install/uninstall/update/pin), package inspector actions moved to icon+tooltip buttons, manager inspector executable paths now scroll when long and include error-state `View Diagnostics`, failed tasks now support inline details with single-selection expansion, and task retention timing now starts from terminal transition time.

@@ -32,5 +32,8 @@
   "service.task.label.search.package": "Buscando '{query}' em {manager}",
   "service.task.label.search.manager": "Atualizando pacotes disponíveis de {manager}",
   "service.task.label.install.package": "Instalar {package} via {manager}",
-  "service.task.label.uninstall.package": "Desinstalar {package} via {manager}"
+  "service.task.label.uninstall.package": "Desinstalar {package} via {manager}",
+  "service.error.rubygems_system_unmanaged": "RubyGems at /usr/bin/gem is a macOS base-system install and cannot be managed by Helm. Select a non-system Ruby/Gems executable (Homebrew, mise, or asdf).",
+  "service.error.bundler_system_unmanaged": "Bundler at /usr/bin/bundle is a macOS base-system install and cannot be managed by Helm. Select a non-system Ruby/Bundler executable (Homebrew, mise, or asdf).",
+  "service.error.pip_system_unmanaged": "pip at /usr/bin/python3, /usr/bin/pip, or /usr/bin/pip3 is a macOS base-system install and cannot be managed by Helm. Select a non-system Python/pip executable (Homebrew, mise, or asdf)."
 }

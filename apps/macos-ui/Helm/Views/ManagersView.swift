@@ -140,9 +140,38 @@ private struct ManagerSectionRow: View {
         status?.enabled ?? true
     }
 
+    private var isEligibleForEnablement: Bool {
+        status?.isEligible ?? true
+    }
+
+    private var ineligibleReason: String? {
+        guard detected, !isEligibleForEnablement else { return nil }
+        if let key = status?.ineligibleServiceErrorKey?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !key.isEmpty
+        {
+            return key.localized
+        }
+        if let message = status?.ineligibleReasonMessage?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !message.isEmpty
+        {
+            return message
+        }
+        return nil
+    }
+
+    private var enableToggleDisabled: Bool {
+        ineligibleReason != nil && !enabled
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
+                Image(systemName: "line.3.horizontal")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(HelmTheme.textSecondary)
+                    .frame(width: 12)
+                    .accessibilityHidden(true)
+
                 HealthBadgeView(status: health)
 
                 VStack(alignment: .leading, spacing: 3) {
@@ -187,6 +216,7 @@ private struct ManagerSectionRow: View {
                     .toggleStyle(.switch)
                     .labelsHidden()
                     .scaleEffect(0.75)
+                    .disabled(enableToggleDisabled)
                 }
             }
 
@@ -226,6 +256,12 @@ private struct ManagerSectionRow: View {
                 .helmPointer(enabled: packageCount > 0 && enabled)
             }
             .font(.caption)
+
+            if let ineligibleReason {
+                Text(ineligibleReason)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
         }
         .padding(12)
         .helmCardSurface(cornerRadius: 12)

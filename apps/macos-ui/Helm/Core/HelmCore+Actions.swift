@@ -39,6 +39,29 @@ extension HelmCore {
         }
     }
 
+    func dismissTask(_ task: TaskItem) {
+        guard !task.isRunning,
+              task.status.lowercased() == "failed",
+              let taskId = Int64(task.id) else { return }
+
+        service()?.dismissTask(taskId: taskId) { [weak self] success in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if success {
+                    self.activeTasks.removeAll { $0.id == task.id }
+                } else {
+                    logger.warning("dismissTask(\(taskId)) returned false")
+                    self.recordLastError(
+                        source: "core.actions",
+                        action: "dismissTask",
+                        managerId: task.managerId,
+                        taskType: task.taskType
+                    )
+                }
+            }
+        }
+    }
+
     func upgradePackage(_ package: PackageItem) {
         guard canUpgradeIndividually(package), !upgradeActionPackageIds.contains(package.id) else { return }
 
@@ -545,6 +568,23 @@ extension HelmCore {
     }
 
     func setManagerEnabled(_ managerId: String, enabled: Bool) {
+        if enabled,
+           let status = managerStatuses[managerId],
+           status.isEligible == false
+        {
+            let ineligibleMessage = status.ineligibleServiceErrorKey?.localized
+                ?? status.ineligibleReasonMessage
+                ?? L10n.Common.error.localized
+            recordLastError(
+                message: ineligibleMessage,
+                source: "core.actions",
+                action: "setManagerEnabled.ineligible",
+                managerId: managerId,
+                taskType: "settings"
+            )
+            return
+        }
+
         guard let service = service() else {
             recordLastError(
                 source: "core.actions",
@@ -560,12 +600,16 @@ extension HelmCore {
                 guard let self else { return }
                 if !success {
                     logger.error("setManagerEnabled(\(managerId), \(enabled)) failed")
-                    self.recordLastError(
-                        source: "core.actions",
-                        action: "setManagerEnabled",
-                        managerId: managerId,
-                        taskType: "settings"
-                    )
+                    self.consumeLastServiceErrorKey { serviceErrorKey in
+                        let errorMessage = serviceErrorKey?.localized ?? L10n.Common.error.localized
+                        self.recordLastError(
+                            message: errorMessage,
+                            source: "core.actions",
+                            action: "setManagerEnabled",
+                            managerId: managerId,
+                            taskType: "settings"
+                        )
+                    }
                     return
                 }
 

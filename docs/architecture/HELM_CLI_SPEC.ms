@@ -1,7 +1,7 @@
 # Helm CLI Specification (Draft)
 
 Status: Draft 0.2  
-Last Updated: 2026-02-23  
+Last Updated: 2026-02-24  
 Owner: Helm Core
 
 ---
@@ -74,6 +74,23 @@ This document is a contract-first specification. It clarifies identifiers, JSON 
 - Future mutation commands that require confirmation must be explicit in non-interactive mode:
   - fail fast without required confirmation flags (for example `--yes`) rather than prompting.
 
+### 4.4 CLI First-Run Onboarding
+
+- CLI maintains first-run onboarding state in Helm settings storage.
+- Required state gates:
+  - accepted CLI license terms version
+  - CLI onboarding completed flag
+- Gate behavior:
+  - commands other than `help`, `--version`, `completion`, and `onboarding` are blocked until first-run onboarding is complete.
+  - interactive TTY flow is terminal/menu based (not TUI).
+  - once onboarding completes, the original command continues in the same invocation.
+- Script/automation flags:
+  - `--accept-license`
+  - `--accept-defaults`
+  - both flags are first-run aids and are ignored after onboarding is complete.
+- Machine mode:
+  - if onboarding/license is still required and invocation uses `--json`/`--ndjson`, command fails with a descriptive JSON error payload.
+
 ---
 
 ## 5. Top-Level Command Surface
@@ -91,6 +108,7 @@ Baseline top-level commands:
 - `helm managers`
 - `helm settings`
 - `helm diagnostics`
+- `helm onboarding`
 - `helm self`
 - `helm completion`
 - `helm help`
@@ -167,6 +185,11 @@ helm
     manager <manager-id>
     export [--json|--path <file>]
 
+  onboarding
+    status
+    run
+    reset
+
   self
     check
     status
@@ -196,6 +219,12 @@ helm
 - CLI/API contract:
   - only canonical values are accepted.
   - display names are not accepted as identifiers.
+
+Manager policy note:
+
+- Detection and manageability are separate contracts.
+- Base-system language-manager executables (currently RubyGems/Bundler/pip system paths) are detectable/selectable but policy-ineligible for enablement and mutating actions.
+- `helm managers enable <manager-id>` must fail deterministically while policy ineligibility is true.
 
 ### 7.2 `PackageRef`
 
@@ -390,7 +419,10 @@ Schema: `helm.cli.v1.managers.list`
         "supportsPackageUninstall": true,
         "supportsPackageUpgrade": true,
         "selectedExecutablePath": null,
-        "selectedInstallMethod": null
+        "selectedInstallMethod": null,
+        "isEligible": true,
+        "ineligibleReasonCode": null,
+        "ineligibleReasonMessage": null
       }
     ]
   }
