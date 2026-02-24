@@ -111,7 +111,7 @@ Ergonomic aliases:
 helm
   status
   refresh [--manager <id>|--all]
-  search <query> [--manager <id>] [--remote]
+  search <query> [--manager <id>] [--local|--remote] [--limit <n>]
 
   packages
     list [--manager <id>] [--status installed|upgradable|available|pinned]
@@ -122,12 +122,13 @@ helm
     upgrade <name> --manager <id>
     pin <name> --manager <id> [--version <v>]
     unpin <name> --manager <id>
+    keg-policy list|get|set|reset ...
 
   updates
     list [--manager <id>]
     summary
-    preview [--include-pinned] [--allow-os-updates]
-    run [--include-pinned] [--allow-os-updates] [--yes]
+    preview [--include-pinned] [--allow-os-updates] [--manager <id>]
+    run [--include-pinned] [--allow-os-updates] [--manager <id>] [--yes]
 
   tasks
     list [--status queued|running|completed|failed|cancelled]
@@ -170,6 +171,7 @@ helm
     check
     status
     update
+    uninstall
     auto-check enable
     auto-check disable
     auto-check frequency <minutes>
@@ -494,6 +496,10 @@ Flag conflicts:
 
 ## 12. TUI Specification
 
+Detailed implementation plan source of truth:
+
+- `docs/architecture/HELM_TUI_IMPLEMENTATION_PLAN.md`
+
 ### 12.1 Entry
 
 - TTY no-arg launch enters TUI.
@@ -519,6 +525,36 @@ The TUI primary sections mirror GUI sections:
 ### 12.4 Library Direction
 
 - `ratatui` + `crossterm` is the preferred implementation direction.
+
+### 12.5 Splash Screen Requirement
+
+On TUI launch, a short splash screen must render:
+
+- Helm logo (ASCII art)
+- program name `Helm` (ASCII art)
+- tagline `Take the helm.` (ASCII art)
+
+The splash must be skippable by keypress and non-blocking.
+
+### 12.6 Current Implementation Note (2026-02-23)
+
+- no-argument TTY invocation now launches a `ratatui` + `crossterm` interactive TUI (`Command::Tui` path)
+- non-TTY no-argument invocation still prints help and exits `0`
+- the TUI currently ships:
+  - splash screen with ASCII logo + `Helm` + `Take the helm.`
+  - section tabs for Updates/Packages/Tasks/Managers/Settings/Diagnostics
+  - keyboard navigation (`1..6`, `j/k`, arrows, `PgUp/PgDn`, `Home/End`, `Tab`, `/`, `?`, `Ctrl+K`, `q`)
+  - command palette, help overlay, confirmation overlays, and live toast feedback
+  - read-only state panes backed by the same SQLite/core data model as CLI commands
+  - direct mutation hooks for common operations:
+    - refresh all / detect all
+    - package upgrade/uninstall/pin-unpin
+    - task cancel
+    - manager enable/disable/install/update/uninstall
+    - selected-manager detect, executable-path selection cycling, install-method selection cycling, priority up/down reordering
+    - updates-run workflow submission with in-pane `include_pinned` and `allow_os_updates` option toggles
+    - diagnostics snapshot export action from the diagnostics pane
+    - settings-pane integrated self-update status/check/apply controls (including guarded force path for direct-script provenance only)
 
 ---
 
@@ -597,7 +633,7 @@ Phase 1:
   - `tasks list|show`
   - `managers list|show`
   - `settings list|get`
-  - `search` (local cache)
+  - `search` / `packages search` progressive local+remote search modes (`--local|--remote`, optional manager scope)
   - `diagnostics summary|task|manager|export` inspection/export command surface
   - `completion bash|zsh|fish` shell completion-script generation
   - JSON envelope consistency (`schema`, `schema_version`, `generated_at`, `data`) for read-only command outputs, including `search`, `managers show`, `settings list`, and `settings get`
@@ -610,8 +646,9 @@ Phase 2:
 - Mutating command coverage for package/manager/task operations with task wait/detach behavior.
 - Current delivered slice:
   - command-scoped help across top-level and nested command namespaces (`helm <command> help`, `helm <command> <subcommand> help`, and `helm help <command> [subcommand]`)
-  - `updates preview` and `updates run --yes` command surface for cached-snapshot plan/run flows (`--include-pinned`, `--allow-os-updates`)
+  - `updates preview` and `updates run --yes` command surface for cached-snapshot plan/run flows (`--include-pinned`, `--allow-os-updates`, `--manager <id>`)
   - `packages install|uninstall|upgrade|pin|unpin` with explicit manager targeting (`--manager` or `name@manager`)
+  - `packages keg-policy list|get|set|reset` for per-package Homebrew keg-policy overrides
   - `packages show` ambiguity-safe manager resolution behavior
   - `managers install|update|uninstall` for currently supported manager lifecycle targets with method-aware routing
   - multi-step detach workflow coverage (`refresh`, `updates run`, `managers detect --all`) with coordinator workflow job IDs
@@ -638,7 +675,8 @@ Phase 5:
 
 - `self` and automatic-check policy commands/settings persistence.
 - Current delivered slice:
-  - `self status`, `self check`, and `self update` are implemented for provenance-aware channels (`direct-script`, `brew`, `macports`, `cargo`, `app-bundle-shim`, `managed`, `unknown`)
+  - `self status`, `self check`, `self update`, and `self uninstall` are implemented for provenance-aware channels (`direct-script`, `brew`, `macports`, `cargo`, `app-bundle-shim`, `managed`, `unknown`)
+  - `self uninstall` now removes direct-script binaries (plus matching marker) and managed app-bundle shims (`~/.local/bin/helm`) while returning channel-managed guidance for package-manager/managed installs
   - `self auto-check status|enable|disable|frequency <minutes>` now maps to persisted auto-check settings
   - `auto_check_for_updates` and `auto_check_frequency_minutes` settings persist via `settings get|set|reset` and are reflected in `settings list` / `self status`
   - `auto_check_last_checked_unix` now persists scheduled check execution timestamps and is exposed in `settings list` / `self status` / `self auto-check status`
@@ -670,11 +708,11 @@ Phase 5:
 - Confirm exact default for `updates run` confirmation behavior in non-interactive contexts.
 - Confirm final `refresh` intent naming and behavior once shared coordinator routing is in place.
 - Confirm packaging/signing policy for standalone CLI artifacts that must interact with coordinator under code-signing enforcement.
-- GUI↔CLI non-TUI parity gaps pending:
-  - progressive remote search orchestration parity (GUI currently debounces/cancels remote search; CLI search is local-cache only)
-  - launch-at-login setting parity (GUI supports toggle; CLI settings surface does not yet expose it)
-  - per-package Homebrew keg-policy parity (GUI supports package-level override; CLI currently exposes only global cleanup policy)
-  - manager-scoped bulk-upgrade parity (`Upgrade All` per manager exists in GUI; CLI bulk run is global plan execution)
+- GUI↔CLI non-TUI parity status:
+  - progressive remote search orchestration parity: delivered (`search` / `packages search` local+remote modes with manager scope)
+  - per-package Homebrew keg-policy parity: delivered (`packages keg-policy list|get|set|reset`)
+  - manager-scoped bulk-upgrade parity: delivered (`updates preview|run --manager <id>`)
+  - launch-at-login remains intentionally GUI-scoped (no CLI/TUI parity target)
   - GUI-only onboarding/walkthrough/support flows remain intentionally GUI-scoped unless explicit CLI parity is requested
 
 ---
@@ -691,5 +729,5 @@ Phase 5:
 | Update Rollup | Control-center aggregate update counts | `helm updates summary` | Y | N | Y |
 | Task List | Tasks table/list | `helm tasks list` | Y | N | Y |
 | Task Details | Inspector details for selected task | `helm tasks show <task-id>` | Y | N | Y |
-| Local Search | Cached package search | `helm search <query>`, `helm packages search <query>` | Y | N | Y |
+| Progressive Search | Local cache + remote manager fan-out search | `helm search <query>`, `helm packages search <query>` | Y | N | Y |
 | Settings Read | Settings view read path | `helm settings list`, `helm settings get <key>` | Y | N | Y |

@@ -474,7 +474,6 @@ The upcoming CLI and existing GUI must share a single per-user coordinator/task 
 - If no coordinator exists, GUI host starts a local coordinator endpoint and CLI launch-on-demand requests connect to it.
 
 ---
-
 ## Summary
 
 Helm prioritizes:
