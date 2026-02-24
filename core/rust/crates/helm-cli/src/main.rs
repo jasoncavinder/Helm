@@ -285,6 +285,20 @@ struct CliDiagnosticsSummary {
     failed_task_ids: Vec<u64>,
     undetected_enabled_managers: Vec<String>,
     failure_classes: BTreeMap<String, usize>,
+    coordinator: CliCoordinatorHealthSummary,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CliCoordinatorHealthSummary {
+    state_dir: String,
+    ready_file_present: bool,
+    pid: Option<u32>,
+    pid_alive: Option<bool>,
+    executable_path: Option<String>,
+    executable_exists: Option<bool>,
+    last_heartbeat_unix: Option<i64>,
+    stale_reasons: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -525,6 +539,32 @@ enum CoordinatorPayload {
     SearchResults {
         count: usize,
     },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CoordinatorReadyState {
+    pid: u32,
+    started_at: i64,
+    heartbeat_unix: i64,
+    #[serde(default)]
+    executable_path: Option<String>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct CoordinatorStateHealth {
+    ready_file_present: bool,
+    pid: Option<u32>,
+    pid_alive: Option<bool>,
+    executable_path: Option<String>,
+    executable_exists: Option<bool>,
+    last_heartbeat_unix: Option<i64>,
+    stale_reasons: Vec<String>,
+}
+
+impl CoordinatorStateHealth {
+    fn is_stale(&self) -> bool {
+        !self.stale_reasons.is_empty()
+    }
 }
 
 fn coordinator_request_kind(request: &CoordinatorRequest) -> &'static str {
@@ -5996,6 +6036,144 @@ fn read_json_file<T: DeserializeOwned>(path: &std::path::Path) -> Result<T, Stri
         .map_err(|error| format!("failed to decode json file '{}': {error}", path.display()))
 }
 
+fn file_modified_unix_seconds(path: &std::path::Path) -> Option<i64> {
+    let metadata = std::fs::metadata(path).ok()?;
+    let modified = metadata.modified().ok()?;
+    let duration = modified.duration_since(UNIX_EPOCH).ok()?;
+    i64::try_from(duration.as_secs()).ok()
+}
+
+fn process_is_alive(pid: u32) -> bool {
+    let output = std::process::Command::new("ps")
+        .arg("-p")
+        .arg(pid.to_string())
+        .arg("-o")
+        .arg("pid=")
+        .output();
+    let Ok(output) = output else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    !stdout.trim().is_empty()
+}
+
+fn coordinator_process_looks_owned(pid: u32, state_dir: &std::path::Path) -> bool {
+    let output = std::process::Command::new("ps")
+        .arg("-p")
+        .arg(pid.to_string())
+        .arg("-o")
+        .arg("command=")
+        .output();
+    let Ok(output) = output else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
+    }
+    let command = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if command.is_empty() {
+        return false;
+    }
+    command.contains("__coordinator__") && command.contains(state_dir.to_string_lossy().as_ref())
+}
+
+fn terminate_coordinator_process_if_owned(pid: u32, state_dir: &std::path::Path) {
+    if !coordinator_process_looks_owned(pid, state_dir) {
+        return;
+    }
+
+    let _ = std::process::Command::new("/bin/kill")
+        .arg("-TERM")
+        .arg(pid.to_string())
+        .status();
+    for _ in 0..20 {
+        if !process_is_alive(pid) {
+            return;
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
+    let _ = std::process::Command::new("/bin/kill")
+        .arg("-KILL")
+        .arg(pid.to_string())
+        .status();
+}
+
+fn inspect_coordinator_state_health(state_dir: &std::path::Path) -> CoordinatorStateHealth {
+    let ready_path = coordinator_ready_file(state_dir);
+    if !ready_path.exists() {
+        return CoordinatorStateHealth::default();
+    }
+
+    let mut health = CoordinatorStateHealth {
+        ready_file_present: true,
+        last_heartbeat_unix: file_modified_unix_seconds(ready_path.as_path()),
+        ..CoordinatorStateHealth::default()
+    };
+
+    match read_json_file::<CoordinatorReadyState>(ready_path.as_path()) {
+        Ok(ready) => {
+            health.pid = Some(ready.pid);
+            health.pid_alive = Some(process_is_alive(ready.pid));
+            health.executable_path = ready.executable_path.clone();
+            health.executable_exists = ready
+                .executable_path
+                .as_ref()
+                .map(|value| std::path::Path::new(value).exists());
+            health.last_heartbeat_unix = Some(ready.heartbeat_unix);
+
+            if health.pid_alive == Some(false) {
+                health.stale_reasons.push("pid_not_alive".to_string());
+            }
+            if health.executable_exists == Some(false) {
+                health.stale_reasons.push("executable_missing".to_string());
+            }
+        }
+        Err(_) => {
+            health
+                .stale_reasons
+                .push("ready_file_decode_failed".to_string());
+        }
+    }
+    health
+}
+
+fn recover_stale_coordinator_state(
+    state_dir: &std::path::Path,
+    health: &CoordinatorStateHealth,
+) -> Result<bool, String> {
+    if !health.is_stale() {
+        return Ok(false);
+    }
+
+    if let (Some(pid), Some(true)) = (health.pid, health.pid_alive) {
+        terminate_coordinator_process_if_owned(pid, state_dir);
+    }
+    reset_coordinator_state_dir(state_dir)?;
+    Ok(true)
+}
+
+fn write_coordinator_ready_state(
+    state_dir: &std::path::Path,
+    started_at: i64,
+) -> Result<(), String> {
+    let ready = CoordinatorReadyState {
+        pid: std::process::id(),
+        started_at,
+        heartbeat_unix: json_generated_at_unix(),
+        executable_path: env::current_exe()
+            .ok()
+            .map(|path| path.to_string_lossy().to_string()),
+    };
+    write_json_file(coordinator_ready_file(state_dir).as_path(), &ready)
+}
+
+fn is_coordinator_timeout_error(error: &str) -> bool {
+    error.contains("timed out waiting for coordinator response")
+}
+
 fn reset_coordinator_state_dir(state_dir: &std::path::Path) -> Result<(), String> {
     if state_dir.exists() {
         std::fs::remove_dir_all(state_dir).map_err(|error| {
@@ -6073,6 +6251,16 @@ fn coordinator_send_request(
         start_if_needed,
         socket_path.display()
     ));
+    let initial_health = inspect_coordinator_state_health(socket_path.as_path());
+    if initial_health.is_stale() {
+        verbose_log(format!(
+            "detected stale coordinator state in '{}': {}",
+            socket_path.display(),
+            initial_health.stale_reasons.join(", ")
+        ));
+        recover_stale_coordinator_state(socket_path.as_path(), &initial_health)?;
+    }
+
     match send_coordinator_request_once(socket_path.as_path(), request) {
         Ok(response) => {
             verbose_log(format!(
@@ -6085,13 +6273,50 @@ fn coordinator_send_request(
             Ok(response)
         }
         Err(error) => {
+            let mut effective_error = error;
+            let mut launched_for_recovery = false;
+
+            if is_coordinator_timeout_error(effective_error.as_str()) {
+                let timeout_health = inspect_coordinator_state_health(socket_path.as_path());
+                if timeout_health.is_stale() {
+                    verbose_log(format!(
+                        "coordinator request timeout with stale state in '{}': {}",
+                        socket_path.display(),
+                        timeout_health.stale_reasons.join(", ")
+                    ));
+                    recover_stale_coordinator_state(socket_path.as_path(), &timeout_health)?;
+                    if start_if_needed {
+                        spawn_coordinator_daemon(socket_path.as_path())?;
+                        launched_for_recovery = true;
+                    }
+                    match send_coordinator_request_once(socket_path.as_path(), request) {
+                        Ok(response) => {
+                            verbose_log(format!(
+                                "coordinator response after stale-timeout recovery kind='{}' ok={} task_id={:?} job_id={:?}",
+                                coordinator_request_kind(request),
+                                response.ok,
+                                response.task_id,
+                                response.job_id
+                            ));
+                            return Ok(response);
+                        }
+                        Err(retry_error) => {
+                            effective_error = retry_error;
+                        }
+                    }
+                }
+            }
+
             if !start_if_needed {
-                return Err(error);
+                return Err(effective_error);
+            }
+            if launched_for_recovery {
+                return Err(effective_error);
             }
             verbose_log(format!(
                 "coordinator request kind='{}' failed before startup: {}; attempting launch-on-demand",
                 coordinator_request_kind(request),
-                error
+                effective_error
             ));
             spawn_coordinator_daemon(socket_path.as_path())?;
             let response = send_coordinator_request_once(socket_path.as_path(), request)?;
@@ -6240,16 +6465,21 @@ fn run_coordinator_server(store: Arc<SqliteStore>, socket_path: PathBuf) -> Resu
 
     let requests_dir = coordinator_requests_dir(socket_path.as_path());
     let runtime = Arc::new(build_adapter_runtime(store.clone())?);
-    write_json_file(
-        coordinator_ready_file(socket_path.as_path()).as_path(),
-        &json!({
-            "pid": std::process::id(),
-            "started_at": json_generated_at_unix()
-        }),
-    )?;
+    let started_at_unix = json_generated_at_unix();
+    write_coordinator_ready_state(socket_path.as_path(), started_at_unix)?;
     verbose_log("coordinator ready and processing requests");
     let mut next_auto_check_tick = Instant::now();
+    let mut next_ready_heartbeat_tick = Instant::now() + Duration::from_secs(2);
     loop {
+        if Instant::now() >= next_ready_heartbeat_tick {
+            if let Err(error) =
+                write_coordinator_ready_state(socket_path.as_path(), started_at_unix)
+            {
+                verbose_log(format!("coordinator heartbeat write failed: {}", error));
+            }
+            next_ready_heartbeat_tick = Instant::now() + Duration::from_secs(2);
+        }
+
         if Instant::now() >= next_auto_check_tick {
             if let Err(error) = run_due_auto_check(store.as_ref()) {
                 verbose_log(format!("auto-check tick failed: {}", error));
@@ -6762,6 +6992,60 @@ fn cmd_diagnostics_summary(store: &SqliteStore, options: GlobalOptions) -> Resul
         for (class, count) in &summary.failure_classes {
             println!("    {class}: {count}");
         }
+    }
+    println!("  coordinator:");
+    println!("    state_dir: {}", summary.coordinator.state_dir);
+    println!(
+        "    ready_file_present: {}",
+        summary.coordinator.ready_file_present
+    );
+    println!(
+        "    pid: {}",
+        summary
+            .coordinator
+            .pid
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string())
+    );
+    println!(
+        "    pid_alive: {}",
+        summary
+            .coordinator
+            .pid_alive
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string())
+    );
+    println!(
+        "    executable_path: {}",
+        summary
+            .coordinator
+            .executable_path
+            .as_deref()
+            .unwrap_or("-")
+    );
+    println!(
+        "    executable_exists: {}",
+        summary
+            .coordinator
+            .executable_exists
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string())
+    );
+    println!(
+        "    last_heartbeat_unix: {}",
+        summary
+            .coordinator
+            .last_heartbeat_unix
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string())
+    );
+    if summary.coordinator.stale_reasons.is_empty() {
+        println!("    stale_reasons: -");
+    } else {
+        println!(
+            "    stale_reasons: {}",
+            summary.coordinator.stale_reasons.join(", ")
+        );
     }
     Ok(())
 }
@@ -7319,6 +7603,34 @@ fn diagnose_failure_class_for_task(store: &SqliteStore, task_id: TaskId) -> Resu
     Ok(classify_failure_class(output.as_ref(), message).to_string())
 }
 
+fn build_coordinator_health_summary() -> CliCoordinatorHealthSummary {
+    match coordinator_socket_path() {
+        Ok(state_dir) => {
+            let health = inspect_coordinator_state_health(state_dir.as_path());
+            CliCoordinatorHealthSummary {
+                state_dir: state_dir.to_string_lossy().to_string(),
+                ready_file_present: health.ready_file_present,
+                pid: health.pid,
+                pid_alive: health.pid_alive,
+                executable_path: health.executable_path,
+                executable_exists: health.executable_exists,
+                last_heartbeat_unix: health.last_heartbeat_unix,
+                stale_reasons: health.stale_reasons,
+            }
+        }
+        Err(error) => CliCoordinatorHealthSummary {
+            state_dir: format!("<unavailable: {error}>"),
+            ready_file_present: false,
+            pid: None,
+            pid_alive: None,
+            executable_path: None,
+            executable_exists: None,
+            last_heartbeat_unix: None,
+            stale_reasons: vec!["state_dir_unavailable".to_string()],
+        },
+    }
+}
+
 fn build_diagnostics_summary(store: &SqliteStore) -> Result<CliDiagnosticsSummary, String> {
     let installed = store
         .list_installed()
@@ -7378,6 +7690,7 @@ fn build_diagnostics_summary(store: &SqliteStore) -> Result<CliDiagnosticsSummar
         failed_task_ids,
         undetected_enabled_managers,
         failure_classes,
+        coordinator: build_coordinator_health_summary(),
     })
 }
 
@@ -11523,6 +11836,42 @@ mod tests {
         .expect("structured failed-task log should parse");
         assert_eq!(parsed.code, "timeout");
         assert_eq!(parsed.message, "process timed out after 60000ms");
+    }
+
+    #[test]
+    fn inspect_coordinator_state_health_marks_dead_pid_as_stale() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        let state_dir = std::env::temp_dir().join(format!("helm-cli-coordinator-health-{nanos}"));
+        std::fs::create_dir_all(&state_dir).expect("failed to create coordinator state dir");
+        let ready_path = super::coordinator_ready_file(state_dir.as_path());
+        let ready = super::CoordinatorReadyState {
+            pid: 999_999,
+            started_at: 1,
+            heartbeat_unix: 2,
+            executable_path: Some("/tmp/nonexistent-helm".to_string()),
+        };
+        super::write_json_file(ready_path.as_path(), &ready).expect("failed to write ready file");
+
+        let health = super::inspect_coordinator_state_health(state_dir.as_path());
+        assert!(health.ready_file_present);
+        assert_eq!(health.pid, Some(999_999));
+        assert_eq!(health.pid_alive, Some(false));
+        assert_eq!(health.executable_exists, Some(false));
+        assert!(
+            health.stale_reasons.contains(&"pid_not_alive".to_string()),
+            "expected pid_not_alive stale reason"
+        );
+        assert!(
+            health
+                .stale_reasons
+                .contains(&"executable_missing".to_string()),
+            "expected executable_missing stale reason"
+        );
+
+        let _ = std::fs::remove_dir_all(state_dir);
     }
 
     #[test]
