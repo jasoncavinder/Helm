@@ -1404,20 +1404,19 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                 }
             }
             Section::Settings => {
-                if let Some((key, value)) = app.selected_settings_entry() {
-                    if key == "safe_mode"
+                if let Some((key, value)) = app.selected_settings_entry()
+                    && (key == "safe_mode"
                         || key == "homebrew_keg_auto_cleanup"
-                        || key == "auto_check_for_updates"
-                    {
-                        let next = value != "true";
-                        let rendered = if next { "true" } else { "false" };
-                        match write_setting(store, key.as_str(), rendered) {
-                            Ok(()) => {
-                                app.note_success(format!("{key} set to {rendered}"));
-                                app.reload(store)?;
-                            }
-                            Err(error) => app.note_error(error),
+                        || key == "auto_check_for_updates")
+                {
+                    let next = value != "true";
+                    let rendered = if next { "true" } else { "false" };
+                    match write_setting(store, key.as_str(), rendered) {
+                        Ok(()) => {
+                            app.note_success(format!("{key} set to {rendered}"));
+                            app.reload(store)?;
                         }
+                        Err(error) => app.note_error(error),
                     }
                 }
             }
@@ -2910,7 +2909,7 @@ fn render_footer(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState) {
         String::new()
     };
 
-    let mut line = format!("{base_help}");
+    let mut line = base_help.to_string();
     if !section_help.is_empty() {
         line.push_str(" | ");
         line.push_str(section_help);
@@ -3078,7 +3077,7 @@ fn parse_ansi_splash_text(raw: &str, fallback_style: Style, allow_colors: bool) 
                     segment.clear();
                 }
                 let mut sgr = String::new();
-                while let Some(next) = chars.next() {
+                for next in chars.by_ref() {
                     if next == 'm' {
                         break;
                     }

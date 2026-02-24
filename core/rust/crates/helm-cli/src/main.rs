@@ -2278,16 +2278,14 @@ fn cmd_updates_run(
                     "manager_filter": parsed.manager_filter.map(|manager| manager.as_str().to_string())
                 }),
             );
+        } else if let Some(manager) = parsed.manager_filter {
+            println!(
+                "Upgrade workflow submitted for manager '{}' (job {}).",
+                manager.as_str(),
+                job_id
+            );
         } else {
-            if let Some(manager) = parsed.manager_filter {
-                println!(
-                    "Upgrade workflow submitted for manager '{}' (job {}).",
-                    manager.as_str(),
-                    job_id
-                );
-            } else {
-                println!("Upgrade workflow submitted (job {}).", job_id);
-            }
+            println!("Upgrade workflow submitted (job {}).", job_id);
         }
         return Ok(());
     }
