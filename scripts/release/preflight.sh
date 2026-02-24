@@ -289,6 +289,10 @@ has_actions_pull_request_bypass = any(
     and actor.get("bypass_mode") == "pull_request"
     for actor in bypass_actors
 )
+has_repo_role_pull_request_bypass = any(
+    actor.get("actor_type") == "RepositoryRole" and actor.get("bypass_mode") == "pull_request"
+    for actor in bypass_actors
+)
 
 has_any_always_bypass = any(actor.get("bypass_mode") == "always" for actor in bypass_actors)
 has_repo_role_always_bypass = any(
@@ -302,6 +306,7 @@ print(f"has_pull_request_rule={'yes' if 'pull_request' in rule_types else 'no'}"
 print(f"has_required_status_checks_rule={'yes' if 'required_status_checks' in rule_types else 'no'}")
 print(f"has_policy_gate_check={'yes' if 'Policy Gate' in required_contexts else 'no'}")
 print(f"has_actions_pull_request_bypass={'yes' if has_actions_pull_request_bypass else 'no'}")
+print(f"has_repo_role_pull_request_bypass={'yes' if has_repo_role_pull_request_bypass else 'no'}")
 print(f"has_any_always_bypass={'yes' if has_any_always_bypass else 'no'}")
 print(f"has_repo_role_always_bypass={'yes' if has_repo_role_always_bypass else 'no'}")
 PY
@@ -316,6 +321,7 @@ PY
   local has_required_status_checks_rule=""
   local has_policy_gate_check=""
   local has_actions_pull_request_bypass=""
+  local has_repo_role_pull_request_bypass=""
   local has_any_always_bypass=""
   local has_repo_role_always_bypass=""
 
@@ -339,6 +345,9 @@ PY
     has_actions_pull_request_bypass)
       has_actions_pull_request_bypass="$value"
       ;;
+    has_repo_role_pull_request_bypass)
+      has_repo_role_pull_request_bypass="$value"
+      ;;
     has_any_always_bypass)
       has_any_always_bypass="$value"
       ;;
@@ -359,14 +368,20 @@ PY
   if [ "$has_policy_gate_check" != "yes" ]; then
     fail "main ruleset required checks do not include 'Policy Gate'"
   fi
-  if [ "$has_actions_pull_request_bypass" != "yes" ]; then
-    fail "main ruleset missing GitHub Actions app bypass in pull_request mode (actor_id 15368)"
-  fi
   if [ "$has_any_always_bypass" = "yes" ]; then
     fail "main ruleset has broad bypass actor(s) in always mode; use pull_request mode instead"
   fi
   if [ "$has_repo_role_always_bypass" = "yes" ]; then
     fail "main ruleset has RepositoryRole bypass in always mode; set to pull_request or remove"
+  fi
+  if [ "$has_actions_pull_request_bypass" != "yes" ] && [ "$has_repo_role_pull_request_bypass" != "yes" ]; then
+    fail "main ruleset requires pull_request-only bypass policy (GitHub Actions integration actor or RepositoryRole pull_request bypass)"
+  fi
+
+  if [ "$has_actions_pull_request_bypass" = "yes" ]; then
+    info "main ruleset includes GitHub Actions integration bypass in pull_request mode"
+  elif [ "$has_repo_role_pull_request_bypass" = "yes" ]; then
+    warn "main ruleset uses RepositoryRole pull_request bypass fallback; GitHub Actions integration bypass is unavailable in some repository configurations"
   fi
 }
 

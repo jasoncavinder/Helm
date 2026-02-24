@@ -17,7 +17,7 @@ Helm is in:
 Focus:
 - verify post-publication endpoint health (`/cli/install.sh`, `/updates/cli/latest.json`, appcast/release notes)
 - back-sync `main` hotfix/publication commits to `dev`/`docs`/`web` via targeted PRs
-- execute remaining release-process hardening phases (phase 1 preflight/runbook and phase 2 workflow outcome semantics are complete; next focus is policy alignment for publish PR auto-merge)
+- execute remaining release-process hardening phases (phases 1-3 complete; next focus is phase 4 checkpointing/drift-prevention automation)
 - begin planning and branch setup for `0.18.x` local security groundwork after stable publication
 - keep launch-at-login scoped to GUI only (no CLI/TUI parity target)
 
@@ -157,10 +157,10 @@ Current checkpoint:
     - release workflows now keep hard failures for build/signing/notarization/upload/PR-creation faults while allowing non-red follow-up-required completion when fallback publish PRs are open but not yet merged
     - release workflows now emit publication summary fields: `Artifacts uploaded`, `Publish PR opened`, and `Main metadata synced`
     - release docs now document follow-up merge + rerun expectations when summary indicates metadata sync is pending
-  - post-`v0.17.5` release-process hardening phase 3 is in progress on `dev`:
-    - preflight now enforces `main` ruleset publish-PR bypass policy (GitHub Actions integration pull-request bypass required, `Policy Gate` presence required, no `always` bypass)
-    - operator docs now include exact ruleset verification expectations
-    - remaining action: apply repository ruleset update with a maintainer token/permission set that can edit rulesets (current token context is read-only for that endpoint)
+  - post-`v0.17.5` release-process hardening phase 3 delivered on `dev`:
+    - `main` ruleset bypass policy now uses `pull_request`-only mode (broad `always` bypass removed)
+    - preflight now enforces least-privilege bypass policy with required `Policy Gate` check presence and `no always` guardrails
+    - docs now capture preferred GitHub Actions integration bypass and repository-role fallback when GitHub rejects integration actors for repository-owned rulesets
   - GitHub governance hardening delivered on `dev`:
     - branch rulesets now explicitly enforce `main`/`dev`/`docs`/`web` with branch-specific required checks
     - `Policy Gate` now validates PR base/head/scope policy for all protected branches

@@ -211,11 +211,12 @@ Expected policy (least privilege):
 
 - `pull_request` and `required_status_checks` rules are present on `refs/heads/main`
 - required checks include `Policy Gate`
-- bypass actor includes GitHub Actions app in pull-request mode:
+- bypass actor policy uses pull-request-only mode (never `always`)
+- preferred: bypass actor includes GitHub Actions app in pull-request mode:
   - `actor_type=Integration`
   - `actor_id=15368` (`github-actions`)
   - `bypass_mode=pull_request`
-- no bypass actor uses `bypass_mode=always`
+- fallback (when GitHub rejects integration actor for repository-owned rulesets): `Repository admin` role in `pull_request` mode
 
 Quick verification:
 
@@ -223,7 +224,10 @@ Quick verification:
 gh api repos/jasoncavinder/Helm/rulesets/13089765 --jq '{id,name,bypass_actors,rules:[.rules[].type],required_checks:(.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks | map(.context))}'
 ```
 
-If remediation is needed, update the `Protect main branch` ruleset so bypass actors use `pull_request` mode (not `always`) and include the GitHub Actions integration actor.
+If remediation is needed, update the `Protect main branch` ruleset so bypass actors use `pull_request` mode (not `always`), and apply the best available actor path:
+
+- preferred: GitHub Actions integration actor
+- fallback: `Repository admin` role with `pull_request` bypass mode only
 
 UI remediation path:
 
