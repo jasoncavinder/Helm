@@ -23,6 +23,7 @@ This checklist is required before creating a release tag on `main`.
   - `web`: `Policy Gate`, `Web Build`
 - [ ] Confirm repo merge settings remain enabled/configured: auto-merge on, update-branch on, and delete-branch-on-merge off.
 - [ ] Confirm release metadata publication remains PR-based (no direct-push fallback path in `.github/workflows/release-macos-dmg.yml`).
+- [ ] Confirm `main` ruleset bypass actors are least-privilege for release publish PR flow (prefer GitHub Actions app `pull_request` bypass, avoid broad `always` bypass).
 
 ## Release Preflight (All Releases, Mandatory Before Tagging)
 
@@ -31,6 +32,14 @@ This checklist is required before creating a release tag on `main`.
 - [ ] Confirm preflight validates required release workflows are present and enabled.
 - [ ] Confirm preflight validates required DMG/signing/update secrets are present.
 - [ ] Optional wrapper path: `scripts/release/runbook.sh prepare --tag <tag>`.
+
+## Release Publication Verification (All Releases)
+
+- [ ] Review release workflow summary output for both release workflows:
+  - `Artifacts uploaded: yes`
+  - `Publish PR opened: yes/no`
+  - `Main metadata synced: yes/no`
+- [ ] If workflow summary reports follow-up required (publish PR still open), merge the publish PR and rerun the workflow to verify `Main metadata synced: yes`.
 
 ## v0.17.3 (Stable Patch Release Gate)
 

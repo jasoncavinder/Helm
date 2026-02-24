@@ -236,7 +236,21 @@ Tag policy used by `release-cli-direct.yml`:
 - prerelease tags: `vX.Y.Z-rc.N` -> publish `web/public/updates/cli/latest-rc.json`
 - unsupported tag formats are rejected
 
-### 5.5 Trigger All-Variant Build/Release Orchestration
+### 5.5 Interpret Release Workflow Publication Summaries
+
+Both direct release workflows now emit a publication summary with:
+
+- `Artifacts uploaded: yes/no`
+- `Publish PR opened: yes/no`
+- `Main metadata synced: yes/no`
+
+Outcome semantics:
+
+- hard failures are retained for build/signing/notarization/upload/PR-creation faults
+- if publication PR automation succeeds but PR merge is still pending, the run can complete with follow-up required (non-red terminal state)
+- when follow-up is required: merge the publish PR and rerun the workflow to confirm `Main metadata synced: yes`
+
+### 5.6 Trigger All-Variant Build/Release Orchestration
 
 This workflow runs:
 
