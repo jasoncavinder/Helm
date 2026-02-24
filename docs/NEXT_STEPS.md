@@ -11,22 +11,17 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-0.18.x kickoff preparation
+0.17.4 release execution
 ```
 
 Focus:
-- monitor post-release feedback on stable `v0.17.3`
-- begin planning and branch setup for `0.18.x` local security groundwork
-- execute `0.17.4` TUI implementation using `ratatui` per `docs/architecture/HELM_TUI_IMPLEMENTATION_PLAN.md`
-- validate/harden recently delivered GUI↔CLI/TUI parity closures:
-  - progressive remote-search orchestration parity
-  - per-package Homebrew keg-policy parity
-  - manager-scoped bulk-upgrade parity
-  - TUI package-install action parity
+- complete `v0.17.4` validation gates and promotion sequencing (`dev`/`docs`/`web` -> `main`)
+- monitor release-channel publication outputs (appcast, CLI metadata, website release content)
+- begin planning and branch setup for `0.18.x` local security groundwork after the stable cut
 - keep launch-at-login scoped to GUI only (no CLI/TUI parity target)
 
 Current checkpoint:
-- `v0.17.3` is released on `main`; the full `rc.1` through `rc.5` hardening lineage is consolidated in stable, with follow-up stable patch cuts (`v0.17.1`, `v0.17.2`, `v0.17.3`) now published:
+- `v0.17.3` is released on `main`; `v0.17.4` release-prep is staged on integration branches with the full TUI/bundled-CLI/parity closure slices completed:
   - post-`0.17.3` `0.17.4` TUI planning slice delivered: detailed ratatui implementation plan documented at `docs/architecture/HELM_TUI_IMPLEMENTATION_PLAN.md` (keyboard model, parity matrix, branding constraints, and ASCII splash-screen contract).
   - post-`0.17.3` `0.17.4` TUI implementation slice delivered: no-arg TTY now launches the ratatui TUI with branded ASCII splash (`logo` + `Helm` + `Take the helm.`), keyboard navigation, command palette/help/confirm overlays, read-only parity panes (updates/packages/tasks/managers/settings/diagnostics), and direct mutation hooks for common manager/package/task actions.
   - post-`0.17.3` `0.17.4` TUI parity-expansion slice delivered: managers pane now supports selected-manager detect/executable/method/priority controls via keyboard, updates pane now supports include-pinned + allow-OS-updates toggles for upgrade workflows, diagnostics pane supports one-key export snapshot writes, task-log detail follows selection movement immediately, and settings pane now exposes integrated self-update status/check/apply controls honoring provenance/channel policy semantics.
