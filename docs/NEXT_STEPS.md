@@ -157,6 +157,10 @@ Current checkpoint:
     - release workflows now keep hard failures for build/signing/notarization/upload/PR-creation faults while allowing non-red follow-up-required completion when fallback publish PRs are open but not yet merged
     - release workflows now emit publication summary fields: `Artifacts uploaded`, `Publish PR opened`, and `Main metadata synced`
     - release docs now document follow-up merge + rerun expectations when summary indicates metadata sync is pending
+  - post-`v0.17.5` release-process hardening phase 3 is in progress on `dev`:
+    - preflight now enforces `main` ruleset publish-PR bypass policy (GitHub Actions integration pull-request bypass required, `Policy Gate` presence required, no `always` bypass)
+    - operator docs now include exact ruleset verification expectations
+    - remaining action: apply repository ruleset update with a maintainer token/permission set that can edit rulesets (current token context is read-only for that endpoint)
   - GitHub governance hardening delivered on `dev`:
     - branch rulesets now explicitly enforce `main`/`dev`/`docs`/`web` with branch-specific required checks
     - `Policy Gate` now validates PR base/head/scope policy for all protected branches

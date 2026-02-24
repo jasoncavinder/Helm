@@ -203,6 +203,36 @@ gh repo view --json name,defaultBranchRef
 gh workflow list
 ```
 
+### 5.2.1 Verify Main Ruleset Publish-PR Bypass Policy
+
+`scripts/release/preflight.sh` now validates `main` ruleset policy for release publish branches.
+
+Expected policy (least privilege):
+
+- `pull_request` and `required_status_checks` rules are present on `refs/heads/main`
+- required checks include `Policy Gate`
+- bypass actor includes GitHub Actions app in pull-request mode:
+  - `actor_type=Integration`
+  - `actor_id=15368` (`github-actions`)
+  - `bypass_mode=pull_request`
+- no bypass actor uses `bypass_mode=always`
+
+Quick verification:
+
+```bash
+gh api repos/jasoncavinder/Helm/rulesets/13089765 --jq '{id,name,bypass_actors,rules:[.rules[].type],required_checks:(.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks | map(.context))}'
+```
+
+If remediation is needed, update the `Protect main branch` ruleset so bypass actors use `pull_request` mode (not `always`) and include the GitHub Actions integration actor.
+
+UI remediation path:
+
+1. GitHub repository `Settings` -> `Rules` -> `Rulesets`.
+2. Open `Protect main branch`.
+3. In `Bypass list`, add `GitHub Actions` and set bypass mode to `Pull requests only`.
+4. In `Bypass list`, change any broad role bypass from `Always` to `Pull requests only` (or remove it).
+5. Save ruleset changes and rerun preflight.
+
 ### 5.3 Set/Verify Release Secrets
 
 Existing DMG release workflow (`release-macos-dmg.yml`) still requires current Apple/signing secrets.
