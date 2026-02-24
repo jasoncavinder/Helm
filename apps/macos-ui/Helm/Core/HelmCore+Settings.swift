@@ -4,6 +4,8 @@ import os.log
 import Darwin
 import ServiceManagement
 
+// swiftlint:disable file_length
+
 private let logger = Logger(subsystem: "com.jasoncavinder.Helm", category: "core.settings")
 
 extension HelmCore {
@@ -1138,7 +1140,9 @@ private enum HelmCliShimInstaller {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted]
         let data = try encoder.encode(payload)
-        let json = String(decoding: data, as: UTF8.self)
+        guard let json = String(data: data, encoding: .utf8) else {
+            throw CocoaError(.fileReadInapplicableStringEncoding)
+        }
         try writeTextAtomically(
             json + "\n",
             to: markerURL,

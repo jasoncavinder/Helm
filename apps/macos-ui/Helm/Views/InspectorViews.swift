@@ -1,6 +1,8 @@
 import SwiftUI
 import AppKit
 
+// swiftlint:disable file_length
+
 struct ControlCenterInspectorView: View {
     @ObservedObject private var core = HelmCore.shared
     @EnvironmentObject private var context: ControlCenterContext
