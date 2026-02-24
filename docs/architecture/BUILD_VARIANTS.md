@@ -77,7 +77,7 @@ Contract:
 
 - GUI and CLI share the same core task/orchestration authority model.
 - GUI distribution may include an embedded CLI payload.
-- GUI may install an optional shim at `~/.local/bin/helm` that points to bundled CLI runtime bits.
+- GUI includes an embedded CLI payload and can install a managed shim at `~/.local/bin/helm` (Settings action) that points to bundled CLI runtime bits.
 
 Provenance implications:
 
@@ -156,15 +156,15 @@ Default policy when marker missing:
 
 ## 7. Recommended Channel Actions
 
-| Provenance Channel | Recommended Action |
-|---|---|
-| `direct-script` | `helm self update` |
-| `brew` | `brew upgrade helm-cli` |
-| `macports` | `sudo port selfupdate && sudo port upgrade helm-cli` |
-| `cargo` | `cargo install --locked helm-cli` |
-| `app-bundle-shim` | Update the Helm GUI via its channel (Sparkle/App Store/Setapp) |
-| `managed` | Follow organization-managed update workflow |
-| `unknown` | Reinstall via supported channel or use direct installer |
+| Provenance Channel | Recommended Update Action | Recommended Uninstall Action |
+|---|---|---|
+| `direct-script` | `helm self update` | `helm self uninstall` |
+| `brew` | `brew upgrade helm-cli` | `brew uninstall helm-cli` |
+| `macports` | `sudo port selfupdate && sudo port upgrade helm-cli` | `sudo port uninstall helm-cli` |
+| `cargo` | `cargo install --locked helm-cli` | `cargo uninstall helm-cli` |
+| `app-bundle-shim` | Update the Helm GUI via its channel (Sparkle/App Store/Setapp) | Remove managed shim from Helm GUI Settings (`Install Helm CLI`) |
+| `managed` | Follow organization-managed update workflow | Follow organization-managed uninstall workflow |
+| `unknown` | Reinstall via supported channel or use direct installer | Remove binary manually or reinstall via supported channel first |
 
 ---
 
