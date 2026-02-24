@@ -220,10 +220,45 @@ check_main_ruleset_policy() {
   repo="$repo_output"
 
   local ruleset_json
-  if ! ruleset_json="$(gh api "repos/${repo}/rulesets" --jq '[.[] | select(.target=="branch" and ((.conditions.ref_name.include // []) | index("refs/heads/main")))] | .[0]' 2>/dev/null)"; then
+  local ruleset_ids
+  if ! ruleset_ids="$(gh api "repos/${repo}/rulesets" --jq '.[].id' 2>/dev/null)"; then
     fail "unable to query repository rulesets for main-branch policy checks"
     return
   fi
+
+  if [ -z "$ruleset_ids" ]; then
+    fail "no repository rulesets returned for policy checks"
+    return
+  fi
+
+  ruleset_json=""
+  local ruleset_id
+  local ruleset_detail
+  local includes_main
+  for ruleset_id in $ruleset_ids; do
+    ruleset_detail="$(gh api "repos/${repo}/rulesets/${ruleset_id}" 2>/dev/null || true)"
+    if [ -z "$ruleset_detail" ]; then
+      continue
+    fi
+
+    includes_main="$(
+      python3 - "$ruleset_detail" <<'PY'
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+conditions = payload.get("conditions") or {}
+ref_name = conditions.get("ref_name") or {}
+includes = ref_name.get("include") or []
+print("yes" if "refs/heads/main" in includes else "no")
+PY
+    )"
+
+    if [ "$includes_main" = "yes" ]; then
+      ruleset_json="$ruleset_detail"
+      break
+    fi
+  done
 
   if [ -z "$ruleset_json" ] || [ "$ruleset_json" = "null" ]; then
     fail "no main-branch ruleset found for policy checks"
