@@ -81,6 +81,7 @@ jobs:
       - name: Install Rust toolchain (universal targets)
         uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
+          toolchain: stable
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Configure temporary keychain and import Developer ID certificate
@@ -523,7 +524,10 @@ jobs:
           git commit -m "chore(release): publish Sparkle appcast + release notes for ${TAG_NAME}"
 
           git checkout -B "$PUBLISH_BRANCH"
-          git push -u origin "$PUBLISH_BRANCH" --force-with-lease
+          if ! git push -u origin "$PUBLISH_BRANCH" --force-with-lease; then
+            echo "::warning::force-with-lease push failed for ${PUBLISH_BRANCH}; retrying with --force."
+            git push -u origin "$PUBLISH_BRANCH" --force
+          fi
 
           EXISTING_PR="$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$PUBLISH_BRANCH" --state open --json number --jq '.[0].number // empty' || true)"
           if [ -n "$EXISTING_PR" ]; then
@@ -617,31 +621,31 @@ jobs:
           fi
 
           ACTUAL_VERSION="$(
-            MAIN_FEED="$MAIN_FEED" python3 - <<'PY'
-            import os
-            import xml.etree.ElementTree as ET
+          MAIN_FEED="$MAIN_FEED" python3 - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
 
-            sparkle_ns = "http://www.andymatuschak.org/xml-namespaces/sparkle"
-            feed_path = os.environ["MAIN_FEED"]
+          sparkle_ns = "http://www.andymatuschak.org/xml-namespaces/sparkle"
+          feed_path = os.environ["MAIN_FEED"]
 
-            root = ET.parse(feed_path).getroot()
-            item = root.find("./channel/item")
-            if item is None:
-                print("")
-                raise SystemExit(0)
+          root = ET.parse(feed_path).getroot()
+          item = root.find("./channel/item")
+          if item is None:
+              print("")
+              raise SystemExit(0)
 
-            enclosure = item.find("enclosure")
-            version = ""
-            if enclosure is not None:
-                version = enclosure.attrib.get(f"{{{sparkle_ns}}}shortVersionString", "").strip()
+          enclosure = item.find("enclosure")
+          version = ""
+          if enclosure is not None:
+              version = enclosure.attrib.get(f"{{{sparkle_ns}}}shortVersionString", "").strip()
 
-            if not version:
-                title = (item.findtext("title") or "").strip()
-                if title.lower().startswith("helm "):
-                    version = title[5:].strip()
+          if not version:
+              title = (item.findtext("title") or "").strip()
+              if title.lower().startswith("helm "):
+                  version = title[5:].strip()
 
-            print(version)
-            PY
+          print(version)
+          PY
           )"
 
           if [ -z "$ACTUAL_VERSION" ]; then
