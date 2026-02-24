@@ -11,6 +11,32 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ---
 
+## 0.17.6 — 2026-02-24
+
+Patch `0.17.6` hardens refresh reliability and diagnostics after the `v0.17.5` release cycle.
+
+### Added
+- Task diagnostics now include effective working directory, timing, exit metadata, and structured error attribution.
+- Diagnostics summary now includes failure-class counters to speed triage.
+- Coordinator health diagnostics now surface stale-state reasons (dead PID, missing executable target, invalid ready payload).
+
+### Changed
+- Coordinator request handling now performs one stale-state recovery retry on timeout.
+- Refresh/search request-response now retries once for transient timeout and network-resolution failures.
+- npm list timeout was increased from 60s to 120s.
+
+### Fixed
+- Process execution now falls back to a valid existing working directory when a recorded cwd no longer exists.
+
+## 0.17.5 — 2026-02-24
+
+Patch `0.17.5` finalized the release-process hardening phases delivered after `v0.17.4`.
+
+### Changed
+- Added release preflight and runbook operator scripts for `prepare`, `tag`, `publish`, and `verify`.
+- Release workflows now keep hard failures for true artifact/signing issues while reporting follow-up-required status for open metadata publish PRs.
+- Added publish verification and drift-guard checkpoints to reduce release metadata divergence risk.
+
 ## 0.17.2 — 2026-02-22
 
 Patch `0.17.2` ships post-`0.17.x` manager-control, onboarding/detection, and Control Center execution-plan fixes as a stable incremental release.
