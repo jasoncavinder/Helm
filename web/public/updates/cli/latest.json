@@ -1,7 +1,7 @@
 {
   "version": "0.17.4",
   "channel": "stable",
-  "published_at": "2026-02-24T04:17:12Z",
+  "published_at": "2026-02-24T04:47:35Z",
   "downloads": {
     "universal": {
       "url": "https://github.com/jasoncavinder/Helm/releases/download/v0.17.4/helm-cli-v0.17.4-darwin-universal",
