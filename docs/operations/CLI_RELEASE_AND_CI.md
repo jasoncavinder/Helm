@@ -137,6 +137,57 @@ Blocked channels (non-self policy):
 
 ## 5. Maintainer Actions Required Outside CI
 
+### 5.0 Run Release Preflight First (Required)
+
+Before tagging or publishing, run:
+
+```bash
+scripts/release/preflight.sh --tag vX.Y.Z
+```
+
+or the wrapper form:
+
+```bash
+scripts/release/runbook.sh prepare --tag vX.Y.Z
+```
+
+Expected outcome:
+
+- zero preflight errors
+- token scopes include `repo` and `workflow`
+- release workflows are discoverable by `gh`
+- required DMG signing/update secrets are present
+- stable metadata snapshot on `origin/main` is synchronized (`appcast.xml` and `cli/latest.json`) and behind the target stable tag
+
+If preflight fails, resolve failures before creating/pushing tags.
+
+### 5.0.1 Sync Release Branch to Latest `origin/main` Before Final Prep PR
+
+Before opening the final release-prep PR, reduce drift risk by syncing the release branch with current `main`:
+
+```bash
+git fetch origin
+git switch <release-prep-branch>
+git merge --ff-only origin/main
+```
+
+If fast-forward is not possible, use one of:
+
+- merge-based update: `git merge origin/main`
+- rebase-based update (before publish): `git rebase origin/main`
+
+After sync, manually review high-conflict paths:
+
+- `CHANGELOG.md`
+- `apps/macos-ui/Generated/HelmVersion.swift`
+- `apps/macos-ui/Generated/HelmVersion.xcconfig`
+- `.github/workflows/release-cli-direct.yml`
+- `.github/workflows/release-macos-dmg.yml`
+- `web/public/updates/appcast.xml`
+- `web/public/updates/cli/latest.json`
+- `web/public/updates/cli/latest-rc.json`
+- `web/public/updates/release-notes/*`
+
 ### 5.1 Authenticate `gh` with Maintainer PAT
 
 Required scopes (minimum):
