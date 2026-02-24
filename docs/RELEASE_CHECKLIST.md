@@ -31,6 +31,7 @@ This checklist is required before creating a release tag on `main`.
 - [ ] Confirm preflight reports token scopes include `repo` and `workflow`.
 - [ ] Confirm preflight validates required release workflows are present and enabled.
 - [ ] Confirm preflight validates required DMG/signing/update secrets are present.
+- [ ] Confirm preflight validates `main` ruleset publish-PR bypass policy (prefer GitHub Actions app `pull_request` bypass when available; otherwise use `Repository admin` `pull_request` fallback; no `always` bypass actors).
 - [ ] Optional wrapper path: `scripts/release/runbook.sh prepare --tag <tag>`.
 
 ## Release Publication Verification (All Releases)

@@ -9,6 +9,7 @@ REQUIRE_CLEAN=1
 FETCH_REMOTE=1
 CHECK_SECRETS=1
 CHECK_WORKFLOWS=1
+CHECK_RULESET_POLICY=1
 ALLOW_EXISTING_TAG=0
 TAG_NAME=""
 ERROR_COUNT=0
@@ -26,6 +27,7 @@ Options:
   --no-fetch                  Skip git fetch origin.
   --skip-secrets              Skip GitHub Actions secret presence checks.
   --skip-workflows            Skip GitHub workflow presence checks.
+  --skip-ruleset-policy       Skip main-branch ruleset bypass policy checks.
   --allow-existing-tag        Allow tag to already exist locally/remotely.
   -h, --help                  Show this help.
 
@@ -172,8 +174,10 @@ scope_contains() {
 }
 
 check_github_auth() {
-  if ! gh auth status >/dev/null 2>&1; then
-    fail "gh auth status failed; authenticate with a maintainer token first"
+  local auth_status_output=""
+  if ! auth_status_output="$(gh auth status 2>&1)"; then
+    auth_status_output="$(printf '%s' "$auth_status_output" | tr '\n' ' ' | xargs || true)"
+    fail "gh auth status failed: ${auth_status_output:-unknown error}"
     return
   fi
   info "gh authentication detected"
@@ -198,6 +202,186 @@ check_github_auth() {
   fi
   if ! scope_contains "$scopes" "workflow"; then
     fail "token is missing required scope: workflow"
+  fi
+}
+
+check_main_ruleset_policy() {
+  if [ "$CHECK_RULESET_POLICY" -ne 1 ]; then
+    return
+  fi
+
+  local repo
+  local repo_output=""
+  if ! repo_output="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>&1)"; then
+    repo_output="$(printf '%s' "$repo_output" | tr '\n' ' ' | xargs || true)"
+    fail "unable to resolve repository slug via gh for ruleset policy checks: ${repo_output:-unknown error}"
+    return
+  fi
+  repo="$repo_output"
+
+  local ruleset_json
+  local ruleset_ids
+  if ! ruleset_ids="$(gh api "repos/${repo}/rulesets" --jq '.[].id' 2>/dev/null)"; then
+    fail "unable to query repository rulesets for main-branch policy checks"
+    return
+  fi
+
+  if [ -z "$ruleset_ids" ]; then
+    fail "no repository rulesets returned for policy checks"
+    return
+  fi
+
+  ruleset_json=""
+  local ruleset_id
+  local ruleset_detail
+  local includes_main
+  for ruleset_id in $ruleset_ids; do
+    ruleset_detail="$(gh api "repos/${repo}/rulesets/${ruleset_id}" 2>/dev/null || true)"
+    if [ -z "$ruleset_detail" ]; then
+      continue
+    fi
+
+    includes_main="$(
+      python3 - "$ruleset_detail" <<'PY'
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+conditions = payload.get("conditions") or {}
+ref_name = conditions.get("ref_name") or {}
+includes = ref_name.get("include") or []
+print("yes" if "refs/heads/main" in includes else "no")
+PY
+    )"
+
+    if [ "$includes_main" = "yes" ]; then
+      ruleset_json="$ruleset_detail"
+      break
+    fi
+  done
+
+  if [ -z "$ruleset_json" ] || [ "$ruleset_json" = "null" ]; then
+    fail "no main-branch ruleset found for policy checks"
+    return
+  fi
+
+  local policy_result
+  if ! policy_result="$(python3 - "$ruleset_json" <<'PY'
+import json
+import sys
+
+ruleset = json.loads(sys.argv[1])
+bypass_actors = ruleset.get("bypass_actors") or []
+rules = ruleset.get("rules") or []
+
+rule_types = {rule.get("type") for rule in rules}
+required_contexts = []
+for rule in rules:
+    if rule.get("type") == "required_status_checks":
+        for check in (rule.get("parameters", {}).get("required_status_checks") or []):
+            context = (check or {}).get("context", "")
+            if context:
+                required_contexts.append(context)
+
+has_actions_pull_request_bypass = any(
+    actor.get("actor_type") == "Integration"
+    and actor.get("actor_id") == 15368
+    and actor.get("bypass_mode") == "pull_request"
+    for actor in bypass_actors
+)
+has_repo_role_pull_request_bypass = any(
+    actor.get("actor_type") == "RepositoryRole" and actor.get("bypass_mode") == "pull_request"
+    for actor in bypass_actors
+)
+
+has_any_always_bypass = any(actor.get("bypass_mode") == "always" for actor in bypass_actors)
+has_repo_role_always_bypass = any(
+    actor.get("actor_type") == "RepositoryRole" and actor.get("bypass_mode") == "always"
+    for actor in bypass_actors
+)
+
+print(f"ruleset_id={ruleset.get('id', '')}")
+print(f"ruleset_name={ruleset.get('name', '')}")
+print(f"has_pull_request_rule={'yes' if 'pull_request' in rule_types else 'no'}")
+print(f"has_required_status_checks_rule={'yes' if 'required_status_checks' in rule_types else 'no'}")
+print(f"has_policy_gate_check={'yes' if 'Policy Gate' in required_contexts else 'no'}")
+print(f"has_actions_pull_request_bypass={'yes' if has_actions_pull_request_bypass else 'no'}")
+print(f"has_repo_role_pull_request_bypass={'yes' if has_repo_role_pull_request_bypass else 'no'}")
+print(f"has_any_always_bypass={'yes' if has_any_always_bypass else 'no'}")
+print(f"has_repo_role_always_bypass={'yes' if has_repo_role_always_bypass else 'no'}")
+PY
+)"; then
+    fail "unable to evaluate main-branch ruleset policy details"
+    return
+  fi
+
+  local ruleset_id=""
+  local ruleset_name=""
+  local has_pull_request_rule=""
+  local has_required_status_checks_rule=""
+  local has_policy_gate_check=""
+  local has_actions_pull_request_bypass=""
+  local has_repo_role_pull_request_bypass=""
+  local has_any_always_bypass=""
+  local has_repo_role_always_bypass=""
+
+  while IFS='=' read -r key value; do
+    case "$key" in
+    ruleset_id)
+      ruleset_id="$value"
+      ;;
+    ruleset_name)
+      ruleset_name="$value"
+      ;;
+    has_pull_request_rule)
+      has_pull_request_rule="$value"
+      ;;
+    has_required_status_checks_rule)
+      has_required_status_checks_rule="$value"
+      ;;
+    has_policy_gate_check)
+      has_policy_gate_check="$value"
+      ;;
+    has_actions_pull_request_bypass)
+      has_actions_pull_request_bypass="$value"
+      ;;
+    has_repo_role_pull_request_bypass)
+      has_repo_role_pull_request_bypass="$value"
+      ;;
+    has_any_always_bypass)
+      has_any_always_bypass="$value"
+      ;;
+    has_repo_role_always_bypass)
+      has_repo_role_always_bypass="$value"
+      ;;
+    esac
+  done <<<"$policy_result"
+
+  info "main ruleset policy check: id=${ruleset_id} name='${ruleset_name}'"
+
+  if [ "$has_pull_request_rule" != "yes" ]; then
+    fail "main ruleset is missing pull_request enforcement rule"
+  fi
+  if [ "$has_required_status_checks_rule" != "yes" ]; then
+    fail "main ruleset is missing required_status_checks enforcement rule"
+  fi
+  if [ "$has_policy_gate_check" != "yes" ]; then
+    fail "main ruleset required checks do not include 'Policy Gate'"
+  fi
+  if [ "$has_any_always_bypass" = "yes" ]; then
+    fail "main ruleset has broad bypass actor(s) in always mode; use pull_request mode instead"
+  fi
+  if [ "$has_repo_role_always_bypass" = "yes" ]; then
+    fail "main ruleset has RepositoryRole bypass in always mode; set to pull_request or remove"
+  fi
+  if [ "$has_actions_pull_request_bypass" != "yes" ] && [ "$has_repo_role_pull_request_bypass" != "yes" ]; then
+    fail "main ruleset requires pull_request-only bypass policy (GitHub Actions integration actor or RepositoryRole pull_request bypass)"
+  fi
+
+  if [ "$has_actions_pull_request_bypass" = "yes" ]; then
+    info "main ruleset includes GitHub Actions integration bypass in pull_request mode"
+  elif [ "$has_repo_role_pull_request_bypass" = "yes" ]; then
+    warn "main ruleset uses RepositoryRole pull_request bypass fallback; GitHub Actions integration bypass is unavailable in some repository configurations"
   fi
 }
 
@@ -293,6 +477,10 @@ parse_args() {
       CHECK_WORKFLOWS=0
       shift
       ;;
+    --skip-ruleset-policy)
+      CHECK_RULESET_POLICY=0
+      shift
+      ;;
     --allow-existing-tag)
       ALLOW_EXISTING_TAG=1
       shift
@@ -322,6 +510,7 @@ main() {
   check_git_state
   check_tag_availability
   check_github_auth
+  check_main_ruleset_policy
   check_required_workflows
   check_required_secrets
 
