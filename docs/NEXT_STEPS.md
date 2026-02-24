@@ -17,7 +17,7 @@ Helm is in:
 Focus:
 - verify post-publication endpoint health (`/cli/install.sh`, `/updates/cli/latest.json`, appcast/release notes)
 - back-sync `main` hotfix/publication commits to `dev`/`docs`/`web` via targeted PRs
-- execute release-process hardening in phases (`preflight`/`runbook` adoption first, then workflow outcome semantics + policy alignment)
+- execute remaining release-process hardening phases (phase 1 preflight/runbook and phase 2 workflow outcome semantics are complete; next focus is policy alignment for publish PR auto-merge)
 - begin planning and branch setup for `0.18.x` local security groundwork after stable publication
 - keep launch-at-login scoped to GUI only (no CLI/TUI parity target)
 
@@ -153,6 +153,10 @@ Current checkpoint:
     - added `scripts/release/preflight.sh` for required git/auth/scope/workflow/secret validation before tagging
     - added `scripts/release/runbook.sh` with `prepare|tag|publish|verify` wrappers
     - release docs/checklist now mandate preflight before release tag creation
+  - post-`v0.17.5` release-process hardening phase 2 delivered on `dev`:
+    - release workflows now keep hard failures for build/signing/notarization/upload/PR-creation faults while allowing non-red follow-up-required completion when fallback publish PRs are open but not yet merged
+    - release workflows now emit publication summary fields: `Artifacts uploaded`, `Publish PR opened`, and `Main metadata synced`
+    - release docs now document follow-up merge + rerun expectations when summary indicates metadata sync is pending
   - GitHub governance hardening delivered on `dev`:
     - branch rulesets now explicitly enforce `main`/`dev`/`docs`/`web` with branch-specific required checks
     - `Policy Gate` now validates PR base/head/scope policy for all protected branches

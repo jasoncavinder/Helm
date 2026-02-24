@@ -70,6 +70,18 @@ jobs:
           echo "CLI_UPDATE_TARGET_PATH=${TARGET_PATH}" >> "$GITHUB_ENV"
           echo "Resolved channel=${CHANNEL} target=${TARGET_PATH}"
 
+      - name: Initialize release publication state
+        run: |
+          set -euo pipefail
+          {
+            echo "RELEASE_ARTIFACTS_UPLOADED=no"
+            echo "PUBLISH_PR_OPENED=no"
+            echo "PUBLISH_PR_NUMBER="
+            echo "PUBLISH_PR_URL="
+            echo "PUBLISH_FOLLOWUP_REQUIRED=no"
+            echo "MAIN_METADATA_SYNCED=unknown"
+          } >> "$GITHUB_ENV"
+
       - name: Checkout tag
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -192,6 +204,7 @@ jobs:
             "$ASSET_DIR/helm-cli-${TAG_NAME}-darwin-universal#helm-cli-${TAG_NAME}-darwin-universal" \
             "$ASSET_DIR/helm-cli-${TAG_NAME}-checksums.txt#helm-cli-${TAG_NAME}-checksums.txt" \
             --clobber
+          echo "RELEASE_ARTIFACTS_UPLOADED=yes" >> "$GITHUB_ENV"
 
       - name: Publish website CLI latest metadata via PR
         if: ${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
@@ -214,6 +227,7 @@ jobs:
           cd "$PUBLISH_DIR"
           if [ -z "$(git status --porcelain -- "$TARGET_PATH")" ]; then
             echo "CLI latest metadata is already current on main."
+            echo "MAIN_METADATA_SYNCED=yes" >> "$GITHUB_ENV"
             exit 0
           fi
 
@@ -266,6 +280,13 @@ jobs:
             echo "Created CLI publish PR #${PR_NUMBER}: ${PR_URL}"
           fi
 
+          PR_URL="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json url --jq '.url')"
+          {
+            echo "PUBLISH_PR_OPENED=yes"
+            echo "PUBLISH_PR_NUMBER=${PR_NUMBER}"
+            echo "PUBLISH_PR_URL=${PR_URL}"
+          } >> "$GITHUB_ENV"
+
           if gh pr merge --repo "$GITHUB_REPOSITORY" --squash --auto "$PR_NUMBER"; then
             echo "Auto-merge enabled for CLI publish PR #${PR_NUMBER}."
           else
@@ -293,10 +314,11 @@ jobs:
           done
 
           if [ -z "$MERGED_AT" ]; then
-            echo "::error::CLI publish PR #${PR_NUMBER} was not merged within the workflow wait window."
-            echo "::error::PR URL: ${PR_URL}"
-            echo "::error::Merge the PR and rerun this workflow."
-            exit 1
+            echo "::warning::CLI publish PR #${PR_NUMBER} was not merged within the workflow wait window."
+            echo "::warning::PR URL: ${PR_URL}"
+            echo "::warning::Merge the PR and rerun this workflow."
+            echo "::notice::Follow-up required: merge CLI publish PR #${PR_NUMBER} (${PR_URL}), then rerun this workflow to confirm metadata sync."
+            echo "PUBLISH_FOLLOWUP_REQUIRED=yes" >> "$GITHUB_ENV"
           fi
 
       - name: Verify CLI latest metadata on main matches release tag
@@ -314,6 +336,11 @@ jobs:
           MAIN_JSON="$VERIFY_DIR/$TARGET_PATH"
 
           if [ ! -f "$MAIN_JSON" ]; then
+            if [ "${PUBLISH_FOLLOWUP_REQUIRED}" = "yes" ]; then
+              echo "::warning::Expected CLI latest metadata not found on main yet: ${TARGET_PATH}"
+              echo "MAIN_METADATA_SYNCED=no" >> "$GITHUB_ENV"
+              exit 0
+            fi
             echo "::error::Expected CLI latest metadata not found on main: ${TARGET_PATH}"
             exit 1
           fi
@@ -330,15 +357,62 @@ jobs:
           )"
 
           if [ -z "$ACTUAL_VERSION" ]; then
+            if [ "${PUBLISH_FOLLOWUP_REQUIRED}" = "yes" ]; then
+              echo "::warning::Unable to parse version from ${TARGET_PATH} on main while publish PR follow-up is pending."
+              echo "MAIN_METADATA_SYNCED=no" >> "$GITHUB_ENV"
+              exit 0
+            fi
             echo "::error::Unable to parse version from ${TARGET_PATH} on main."
             exit 1
           fi
 
           if [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]; then
+            if [ "${PUBLISH_FOLLOWUP_REQUIRED}" = "yes" ]; then
+              echo "::warning::CLI latest metadata on main does not yet match release tag while publish PR follow-up is pending."
+              echo "::warning::expected=${EXPECTED_VERSION} actual=${ACTUAL_VERSION} file=${TARGET_PATH}"
+              echo "MAIN_METADATA_SYNCED=no" >> "$GITHUB_ENV"
+              exit 0
+            fi
             echo "::error::CLI latest metadata on main does not match release tag."
             echo "::error::expected=${EXPECTED_VERSION} actual=${ACTUAL_VERSION} file=${TARGET_PATH}"
             echo "::error::If fallback publishing was required, merge branch chore/publish-cli-updates-${TAG_NAME} and rerun this workflow."
             exit 1
           fi
 
+          if [ "${PUBLISH_FOLLOWUP_REQUIRED}" = "yes" ]; then
+            echo "PUBLISH_FOLLOWUP_REQUIRED=no" >> "$GITHUB_ENV"
+          fi
+          echo "MAIN_METADATA_SYNCED=yes" >> "$GITHUB_ENV"
           echo "Verified CLI latest metadata on main matches release tag: ${ACTUAL_VERSION}"
+
+      - name: Release publication summary
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          artifacts_uploaded="${RELEASE_ARTIFACTS_UPLOADED:-no}"
+          publish_pr_opened="${PUBLISH_PR_OPENED:-no}"
+          main_metadata_synced="${MAIN_METADATA_SYNCED:-unknown}"
+          publish_pr_number="${PUBLISH_PR_NUMBER:-}"
+          publish_pr_url="${PUBLISH_PR_URL:-}"
+          publish_followup_required="${PUBLISH_FOLLOWUP_REQUIRED:-no}"
+
+          {
+            echo "## Release CLI Publication Summary"
+            echo ""
+            echo "- Artifacts uploaded: ${artifacts_uploaded}"
+            echo "- Publish PR opened: ${publish_pr_opened}"
+            echo "- Main metadata synced: ${main_metadata_synced}"
+            if [ -n "${publish_pr_number}" ]; then
+              echo "- Publish PR: #${publish_pr_number} (${publish_pr_url})"
+            fi
+            if [ "${publish_followup_required}" = "yes" ]; then
+              echo ""
+              echo "Follow-up required:"
+              echo "1. Merge publish PR #${publish_pr_number}"
+              echo "2. Rerun this workflow to verify main metadata sync"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${publish_followup_required}" = "yes" ]; then
+            echo "::notice::Release artifacts published, publish PR is open, and follow-up merge+rerun is required."
+          fi

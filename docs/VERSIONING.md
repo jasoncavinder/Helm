@@ -136,8 +136,15 @@ Operational settings:
 7. Create annotated tag.
 8. Push tag to GitHub.
 9. Publish GitHub release notes.
-10. Let `release-macos-dmg.yml` publish appcast/release notes via PR branch `chore/publish-updates-<tag>` and wait for merge (no direct-push fallback).
-11. Confirm drift checks remain green (`Appcast Drift Guard`).
+10. Let release workflows publish metadata via PR branches:
+   - `release-macos-dmg.yml` -> `chore/publish-updates-<tag>`
+   - `release-cli-direct.yml` -> `chore/publish-cli-updates-<tag>-<channel>`
+11. Review release workflow summary output:
+   - `Artifacts uploaded: yes/no`
+   - `Publish PR opened: yes/no`
+   - `Main metadata synced: yes/no`
+12. If the workflow reports follow-up required (publish PR still open), merge the publish PR and rerun the workflow to confirm metadata sync.
+13. Confirm drift checks remain green (`Appcast Drift Guard`).
 
 Release checklist document:
 - `docs/RELEASE_CHECKLIST.md`
