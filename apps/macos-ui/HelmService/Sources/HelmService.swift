@@ -114,6 +114,12 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(result)
     }
 
+    func dismissTask(taskId: Int64, withReply reply: @escaping (Bool) -> Void) {
+        let result = helm_dismiss_task(taskId)
+        logger.info("helm_dismiss_task(\(taskId)) result: \(result)")
+        reply(result)
+    }
+
     func listManagerStatus(withReply reply: @escaping (String?) -> Void) {
         guard let cString = helm_list_manager_status() else {
             logger.warning("helm_list_manager_status returned nil")

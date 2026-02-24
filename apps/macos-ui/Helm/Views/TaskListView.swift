@@ -31,6 +31,7 @@ struct TasksSectionView: View {
                             TaskRowView(
                                 task: task,
                                 onCancel: task.isRunning ? { core.cancelTask(task) } : nil,
+                                onDismiss: task.status.lowercased() == "failed" ? { core.dismissTask(task) } : nil,
                                 canExpandDetails: task.supportsInlineDetails,
                                 isExpanded: expandedTaskId == task.id,
                                 isSelected: context.selectedTaskId == task.id,

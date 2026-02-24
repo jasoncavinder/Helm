@@ -62,6 +62,16 @@ pub trait TaskStore: Send + Sync {
     /// Returns the number of rows deleted.
     fn prune_completed_tasks(&self, max_age_secs: i64) -> PersistenceResult<usize>;
 
+    /// Delete a task record and any associated log rows.
+    fn delete_task(&self, _task_id: TaskId) -> PersistenceResult<()> {
+        Ok(())
+    }
+
+    /// Delete all task records (and associated logs) for a manager.
+    fn delete_tasks_for_manager(&self, _manager: ManagerId) -> PersistenceResult<()> {
+        Ok(())
+    }
+
     /// Delete all task records.
     fn delete_all_tasks(&self) -> PersistenceResult<()>;
 

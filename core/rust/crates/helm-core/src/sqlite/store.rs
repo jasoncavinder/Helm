@@ -699,7 +699,7 @@ DELETE FROM task_log_records
 WHERE task_id IN (
     SELECT task_id
     FROM task_records
-    WHERE status IN ('completed', 'failed', 'cancelled')
+    WHERE status IN ('completed', 'cancelled')
       AND created_at_unix < ?1
 )
 ",
@@ -708,13 +708,54 @@ WHERE task_id IN (
             let deleted = transaction.execute(
                 "
 DELETE FROM task_records
-WHERE status IN ('completed', 'failed', 'cancelled')
+WHERE status IN ('completed', 'cancelled')
   AND created_at_unix < ?1
 ",
                 params![cutoff],
             )?;
             transaction.commit()?;
             Ok(deleted)
+        })
+    }
+
+    fn delete_task(&self, task_id: TaskId) -> PersistenceResult<()> {
+        self.with_connection("delete_task", |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction = connection.transaction()?;
+            transaction.execute(
+                "DELETE FROM task_log_records WHERE task_id = ?1",
+                params![task_id_to_i64(task_id)?],
+            )?;
+            transaction.execute(
+                "DELETE FROM task_records WHERE task_id = ?1",
+                params![task_id_to_i64(task_id)?],
+            )?;
+            transaction.commit()?;
+            Ok(())
+        })
+    }
+
+    fn delete_tasks_for_manager(&self, manager: ManagerId) -> PersistenceResult<()> {
+        self.with_connection("delete_tasks_for_manager", |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction = connection.transaction()?;
+            transaction.execute(
+                "
+DELETE FROM task_log_records
+WHERE task_id IN (
+    SELECT task_id
+    FROM task_records
+    WHERE manager_id = ?1
+)
+",
+                params![manager.as_str()],
+            )?;
+            transaction.execute(
+                "DELETE FROM task_records WHERE manager_id = ?1",
+                params![manager.as_str()],
+            )?;
+            transaction.commit()?;
+            Ok(())
         })
     }
 
@@ -1146,6 +1187,84 @@ ON CONFLICT(key) DO UPDATE SET
             let value: String = row.get(0)?;
             let parsed = value.trim().parse::<i64>().ok();
             Ok(parsed)
+        })
+    }
+
+    fn set_cli_onboarding_completed(&self, completed: bool) -> PersistenceResult<()> {
+        self.with_connection("set_cli_onboarding_completed", |connection| {
+            ensure_schema_ready(connection)?;
+            connection.execute(
+                "
+INSERT INTO app_settings (key, value)
+VALUES ('cli_onboarding_completed', ?1)
+ON CONFLICT(key) DO UPDATE SET
+    value = excluded.value
+",
+                params![if completed { "1" } else { "0" }],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn cli_onboarding_completed(&self) -> PersistenceResult<bool> {
+        self.with_connection("cli_onboarding_completed", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection
+                .prepare("SELECT value FROM app_settings WHERE key = 'cli_onboarding_completed'")?;
+            let mut rows = statement.query([])?;
+            let Some(row) = rows.next()? else {
+                return Ok(false);
+            };
+            let value: String = row.get(0)?;
+            Ok(value.trim() == "1")
+        })
+    }
+
+    fn set_cli_accepted_license_terms_version(
+        &self,
+        version: Option<&str>,
+    ) -> PersistenceResult<()> {
+        self.with_connection("set_cli_accepted_license_terms_version", |connection| {
+            ensure_schema_ready(connection)?;
+            match version {
+                Some(value) => {
+                    connection.execute(
+                        "
+INSERT INTO app_settings (key, value)
+VALUES ('cli_accepted_license_terms_version', ?1)
+ON CONFLICT(key) DO UPDATE SET
+    value = excluded.value
+",
+                        params![value],
+                    )?;
+                }
+                None => {
+                    connection.execute(
+                        "DELETE FROM app_settings WHERE key = 'cli_accepted_license_terms_version'",
+                        [],
+                    )?;
+                }
+            }
+            Ok(())
+        })
+    }
+
+    fn cli_accepted_license_terms_version(&self) -> PersistenceResult<Option<String>> {
+        self.with_connection("cli_accepted_license_terms_version", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection.prepare(
+                "SELECT value FROM app_settings WHERE key = 'cli_accepted_license_terms_version'",
+            )?;
+            let mut rows = statement.query([])?;
+            let Some(row) = rows.next()? else {
+                return Ok(None);
+            };
+            let value: String = row.get(0)?;
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                return Ok(None);
+            }
+            Ok(Some(trimmed.to_string()))
         })
     }
 

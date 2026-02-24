@@ -267,6 +267,35 @@ fn auto_check_settings_roundtrip() {
 }
 
 #[test]
+fn cli_onboarding_settings_roundtrip() {
+    let path = test_db_path("cli-onboarding-settings-roundtrip");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    assert!(!store.cli_onboarding_completed().unwrap());
+    assert_eq!(store.cli_accepted_license_terms_version().unwrap(), None);
+
+    store.set_cli_onboarding_completed(true).unwrap();
+    store
+        .set_cli_accepted_license_terms_version(Some("helm-source-available-license-v1.0-pre1.0"))
+        .unwrap();
+
+    assert!(store.cli_onboarding_completed().unwrap());
+    assert_eq!(
+        store.cli_accepted_license_terms_version().unwrap(),
+        Some("helm-source-available-license-v1.0-pre1.0".to_string())
+    );
+
+    store.set_cli_onboarding_completed(false).unwrap();
+    store.set_cli_accepted_license_terms_version(None).unwrap();
+
+    assert!(!store.cli_onboarding_completed().unwrap());
+    assert_eq!(store.cli_accepted_license_terms_version().unwrap(), None);
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn homebrew_keg_policy_defaults_keep_and_roundtrips() {
     let path = test_db_path("keg-policy-roundtrip");
     let store = SqliteStore::new(&path);
@@ -771,11 +800,105 @@ fn prune_completed_tasks_removes_cancelled_and_keeps_running_records() {
     }
 
     let deleted = store.prune_completed_tasks(1).unwrap();
-    assert_eq!(deleted, 3);
+    assert_eq!(deleted, 2);
+
+    let remaining = store.list_recent_tasks(10).unwrap();
+    assert_eq!(remaining.len(), 2);
+    let statuses = remaining.into_iter().map(|task| task.status).collect::<Vec<_>>();
+    assert!(statuses.contains(&TaskStatus::Failed));
+    assert!(statuses.contains(&TaskStatus::Running));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn delete_task_removes_record_and_logs() {
+    let path = test_db_path("delete-task-with-logs");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let task = TaskRecord {
+        id: TaskId(333),
+        manager: ManagerId::Npm,
+        task_type: TaskType::Upgrade,
+        status: TaskStatus::Failed,
+        created_at: UNIX_EPOCH + Duration::from_secs(1_000),
+    };
+    store.create_task(&task).unwrap();
+    store
+        .append_task_log(&NewTaskLogRecord {
+            task_id: task.id,
+            manager: task.manager,
+            task_type: task.task_type,
+            status: Some(TaskStatus::Failed),
+            level: TaskLogLevel::Error,
+            message: "task failed".to_string(),
+            created_at: UNIX_EPOCH + Duration::from_secs(1_001),
+        })
+        .unwrap();
+
+    store.delete_task(task.id).unwrap();
+    assert!(store.list_recent_tasks(10).unwrap().is_empty());
+    assert!(store.list_task_logs(task.id, 10).unwrap().is_empty());
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn delete_tasks_for_manager_removes_only_matching_manager_rows() {
+    let path = test_db_path("delete-tasks-for-manager");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let homebrew_task = TaskRecord {
+        id: TaskId(400),
+        manager: ManagerId::HomebrewFormula,
+        task_type: TaskType::Upgrade,
+        status: TaskStatus::Failed,
+        created_at: UNIX_EPOCH + Duration::from_secs(1_100),
+    };
+    let npm_task = TaskRecord {
+        id: TaskId(401),
+        manager: ManagerId::Npm,
+        task_type: TaskType::Upgrade,
+        status: TaskStatus::Failed,
+        created_at: UNIX_EPOCH + Duration::from_secs(1_101),
+    };
+    store.create_task(&homebrew_task).unwrap();
+    store.create_task(&npm_task).unwrap();
+
+    store
+        .append_task_log(&NewTaskLogRecord {
+            task_id: homebrew_task.id,
+            manager: homebrew_task.manager,
+            task_type: homebrew_task.task_type,
+            status: Some(TaskStatus::Failed),
+            level: TaskLogLevel::Error,
+            message: "homebrew failed".to_string(),
+            created_at: UNIX_EPOCH + Duration::from_secs(1_102),
+        })
+        .unwrap();
+    store
+        .append_task_log(&NewTaskLogRecord {
+            task_id: npm_task.id,
+            manager: npm_task.manager,
+            task_type: npm_task.task_type,
+            status: Some(TaskStatus::Failed),
+            level: TaskLogLevel::Error,
+            message: "npm failed".to_string(),
+            created_at: UNIX_EPOCH + Duration::from_secs(1_103),
+        })
+        .unwrap();
+
+    store
+        .delete_tasks_for_manager(ManagerId::HomebrewFormula)
+        .unwrap();
 
     let remaining = store.list_recent_tasks(10).unwrap();
     assert_eq!(remaining.len(), 1);
-    assert_eq!(remaining[0].status, TaskStatus::Running);
+    assert_eq!(remaining[0].manager, ManagerId::Npm);
+    assert!(store.list_task_logs(homebrew_task.id, 10).unwrap().is_empty());
+    assert_eq!(store.list_task_logs(npm_task.id, 10).unwrap().len(), 1);
 
     let _ = std::fs::remove_file(path);
 }
