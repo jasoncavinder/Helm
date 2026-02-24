@@ -31,9 +31,9 @@ Helm follows feature-driven milestones. Dates are intentionally omitted — mile
 | 0.14.x | Platform, Detection & Optional Managers — Docker, Xcode, Rosetta, Sparkle, Setapp, Homebrew casks, optional managers (`v0.14.x` stable, latest patch `v0.14.1`) |
 | 0.15.x | Advanced Upgrade Transparency — richer execution-plan visibility, failure isolation, and operator controls (`v0.15.0` released) |
 | 0.16.x | Self-Update & Installer Hardening — Sparkle integration for direct Developer ID channel, signed verification (`v0.16.x` stable, latest patch `v0.16.2`) |
-| 0.17.x | Diagnostics & Logging + Release Hardening — task log viewer, structured diagnostics export, manager-detection diagnostics, onboarding/detection hardening, manager-selection controls, and stable release follow-up fixes (`v0.17.0` stable, latest patch `v0.17.3`) |
+| 0.17.x | Diagnostics & Logging + Release Hardening — task log viewer, structured diagnostics export, manager-detection diagnostics, onboarding/detection hardening, manager-selection controls, CLI/TUI parity slices, and stable release follow-up fixes (`v0.17.0` stable, latest patch `v0.17.4`) |
 
-> **Current Track:** `v0.17.3` is stable on `main`; planning is shifting to `0.18.x` local security groundwork. Submit feedback via [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Current Track:** `v0.17.4` is stable on `main`; planning is shifting to `0.18.x` local security groundwork. Submit feedback via [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
 ## Planned
 

@@ -13,6 +13,25 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ## Unreleased
 
+## 0.17.4 — 2026-02-24
+
+Patch `0.17.4` packages the first ratatui-powered Helm TUI, bundled-app CLI shim workflows, and post-`0.17.3` GUI/CLI parity closures.
+
+### Added
+- No-arg TTY launch now opens a ratatui/crossterm TUI with branded splash, keyboard-first navigation, and workflows for updates/packages/tasks/managers/settings/diagnostics.
+- GUI Settings now supports installing/removing a managed `~/.local/bin/helm` shim that resolves to the app-bundled CLI and writes app-bundle install provenance.
+- CLI now supports smart uninstall via `helm self uninstall` with channel-aware behavior.
+
+### Changed
+- Launch-at-login now supports macOS 11+ with a dual-path implementation:
+  - macOS 13+: `SMAppService.mainApp`
+  - macOS 11/12: embedded login-helper fallback via `SMLoginItemSetEnabled`
+- GUI/CLI/TUI parity expanded for progressive local+remote search, per-package Homebrew keg-policy controls, manager-scoped bulk upgrade execution, and TUI package install actions.
+
+### Fixed
+- TUI filter mode now exits correctly when the filter text is erased.
+- Help/completion contracts now include the expanded self-management command surface (`self uninstall`).
+
 ## 0.17.3 — 2026-02-23
 
 Patch `0.17.3` finalizes post-`0.17.2` CLI parity hardening and release-channel safety guardrails.

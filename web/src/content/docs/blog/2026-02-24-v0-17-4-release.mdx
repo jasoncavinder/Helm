@@ -1,0 +1,28 @@
+---
+title: "Helm v0.17.4 Released"
+description: "v0.17.4 is now live with the first ratatui TUI, app-bundled CLI shim workflows, and expanded GUI/CLI/TUI parity closures."
+summary: "A quick release note for v0.17.4 and what changed in this stable patch."
+publishDate: 2026-02-24
+author: Helm Team
+sidebar:
+  label: "v0.17.4 release"
+---
+
+Helm `v0.17.4` is now released on `main`.
+
+This stable patch follows `v0.17.3` and delivers the first interactive TUI plus post-`0.17.x` parity and platform-support follow-through.
+
+## Highlights
+
+- No-arg TTY launch now opens a ratatui/crossterm TUI with branded splash, keyboard-first navigation, and section workflows for updates/packages/tasks/managers/settings/diagnostics.
+- GUI Settings now supports installing/removing a managed `~/.local/bin/helm` shim that resolves to the app-bundled CLI.
+- CLI now supports smart uninstall via `helm self uninstall` with install-channel-aware behavior.
+- Launch-at-login now supports macOS 11+ with dual-path implementation (`SMAppService.mainApp` on macOS 13+, login-helper fallback on macOS 11/12).
+- GUI/CLI/TUI parity expanded for progressive remote search, manager-scoped bulk upgrades, per-package Homebrew keg policy, and TUI package install actions.
+
+## Release links
+
+- [GitHub Release: v0.17.4](https://github.com/jasoncavinder/Helm/releases/tag/v0.17.4)
+- [Changelog](https://helmapp.dev/changelog/)
+
+If you run into issues, please file a report with environment details and reproduction steps in [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
