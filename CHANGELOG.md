@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+### Added
+- Task diagnostics now capture richer execution metadata, including effective working directory, start/finish timestamps, duration, exit code, termination reason, and structured error attribution.
+- Diagnostics summary output now includes failure-class counters to speed up triage of refresh and coordinator failures.
+- Coordinator health diagnostics now surface stale-state reasons (dead PID, missing executable target, invalid ready-state payload) for faster runtime recovery analysis.
+
+### Changed
+- Coordinator request handling now performs a one-time stale-state recovery and retry when timeout failures indicate a stale local coordinator state.
+- Refresh/search request-response flows now retry once for transient timeout/network-resolution failures.
+- npm refresh list timeout has been increased from 60s to 120s to reduce avoidable refresh failures on slower networks.
+
+### Fixed
+- Process execution no longer fails immediately when a previously recorded working directory no longer exists; executor now falls back to a valid existing directory before spawn.
 ## [0.17.3] - 2026-02-23
 
 Patch `0.17.3` finalizes CLI parity-hardening and release-channel safety guardrails delivered after `0.17.2`, while keeping GUI Sparkle flows intact for direct DMG installs.
