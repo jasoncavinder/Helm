@@ -720,9 +720,9 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
         }
 
         let terminal_status = snapshot.runtime.status;
-        let terminal_error_message = snapshot.runtime.error_message.clone();
+        let terminal_error = terminal_error_details(&snapshot);
         let terminal_level = task_log_level_for_status(terminal_status);
-        let terminal_message = task_log_message_for_status(terminal_status, terminal_error_message);
+        let terminal_message = task_log_message_for_status(terminal_status, terminal_error);
 
         if let Err(error) = persist_append_task_log(
             task_store.clone(),
@@ -923,16 +923,63 @@ fn task_log_level_for_status(status: TaskStatus) -> TaskLogLevel {
     }
 }
 
-fn task_log_message_for_status(status: TaskStatus, error_message: Option<String>) -> String {
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct TaskTerminalErrorDetails {
+    code: String,
+    message: String,
+}
+
+fn terminal_error_details(snapshot: &AdapterTaskSnapshot) -> Option<TaskTerminalErrorDetails> {
+    let from_terminal_state = match &snapshot.terminal_state {
+        Some(AdapterTaskTerminalState::Failed(error))
+        | Some(AdapterTaskTerminalState::Cancelled(Some(error))) => Some(error.clone()),
+        _ => None,
+    };
+
+    if let Some(error) = from_terminal_state {
+        return Some(TaskTerminalErrorDetails {
+            code: core_error_kind_code(error.kind).to_string(),
+            message: error.message,
+        });
+    }
+
+    snapshot
+        .runtime
+        .error_message
+        .clone()
+        .map(|message| TaskTerminalErrorDetails {
+            code: "unknown".to_string(),
+            message,
+        })
+}
+
+fn core_error_kind_code(kind: CoreErrorKind) -> &'static str {
+    match kind {
+        CoreErrorKind::NotInstalled => "not_installed",
+        CoreErrorKind::UnsupportedCapability => "unsupported_capability",
+        CoreErrorKind::InvalidInput => "invalid_input",
+        CoreErrorKind::ParseFailure => "parse_failure",
+        CoreErrorKind::Timeout => "timeout",
+        CoreErrorKind::Cancelled => "cancelled",
+        CoreErrorKind::ProcessFailure => "process_failure",
+        CoreErrorKind::StorageFailure => "storage_failure",
+        CoreErrorKind::Internal => "internal",
+    }
+}
+
+fn task_log_message_for_status(
+    status: TaskStatus,
+    error: Option<TaskTerminalErrorDetails>,
+) -> String {
     match status {
         TaskStatus::Queued => "task queued".to_string(),
         TaskStatus::Running => "task started".to_string(),
         TaskStatus::Completed => "task completed".to_string(),
-        TaskStatus::Cancelled => error_message
-            .map(|message| format!("task cancelled: {message}"))
+        TaskStatus::Cancelled => error
+            .map(|details| format!("task cancelled [{}]: {}", details.code, details.message))
             .unwrap_or_else(|| "task cancelled".to_string()),
-        TaskStatus::Failed => error_message
-            .map(|message| format!("task failed: {message}"))
+        TaskStatus::Failed => error
+            .map(|details| format!("task failed [{}]: {}", details.code, details.message))
             .unwrap_or_else(|| "task failed".to_string()),
     }
 }
