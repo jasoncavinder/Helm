@@ -26,13 +26,16 @@ Reference contracts:
 - `docs/operations/RELEASE_REHEARSAL_DRY_RUN.md`
 - `docs/operations/SPARKLE_RECOVERY_SCENARIOS.md`
 - `docs/operations/REAL_MANAGER_CANARY.md`
+- `docs/operations/GUARDED_OS_UPDATE_VALIDATION.md`
 - `.github/workflows/release-cli-direct.yml`
 - `.github/workflows/release-publish-verify.yml`
 - `.github/workflows/cli-installer-checks.yml`
 - `.github/workflows/release-all-variants.yml`
+- `.github/workflows/guarded-os-update-contracts.yml`
 - `docs/contracts/release-line.json`
 - `scripts/release/check_release_line_copy.sh`
 - `scripts/release/rehearsal_dry_run.sh`
+- `scripts/tests/guarded_os_update_contract.sh`
 
 Release check policy (required vs advisory):
 

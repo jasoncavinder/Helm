@@ -1,0 +1,66 @@
+name: Guarded OS Update Contracts
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 6 * * 3'
+
+jobs:
+  guarded-os-update-contracts:
+    name: Guarded OS Update Contracts (Advisory)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Run guarded OS update contract suite
+        env:
+          GUARDED_OS_UPDATE_REPORT_PATH: ${{ runner.temp }}/guarded-os-update-contract-report.json
+        run: |
+          set -euo pipefail
+          scripts/tests/guarded_os_update_contract.sh \
+            --report-path "${GUARDED_OS_UPDATE_REPORT_PATH}" \
+            | tee "${RUNNER_TEMP}/guarded-os-update-contract.log"
+
+      - name: Validate guarded OS update report contract
+        env:
+          GUARDED_OS_UPDATE_REPORT_PATH: ${{ runner.temp }}/guarded-os-update-contract-report.json
+        run: |
+          python3 - "$GUARDED_OS_UPDATE_REPORT_PATH" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          report_path = pathlib.Path(sys.argv[1])
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+          assert report.get("schema") == "helm.tests.guarded_os_update_contract_report"
+          assert report.get("schema_version") == 1
+          assert report.get("overall_status") == "passed"
+          scenarios = report.get("scenario_results") or []
+          assert len(scenarios) >= 6
+          required = {
+              "read_only_refresh",
+              "mutating_confirmation_missing",
+              "mutating_isolation_missing",
+              "mutating_snapshot_missing",
+              "mutating_failed_after_mutation",
+              "mutating_ready",
+          }
+          got = {entry.get("scenario") for entry in scenarios}
+          assert required.issubset(got)
+          statuses = {entry.get("status") for entry in scenarios}
+          assert {"allowed", "needs_confirmation", "denied", "rollback_required"}.issubset(statuses)
+          PY
+
+      - name: Upload guarded OS update contract artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: guarded-os-update-contract-artifacts
+          path: |
+            ${{ runner.temp }}/guarded-os-update-contract.log
+            ${{ runner.temp }}/guarded-os-update-contract-report.json
+          if-no-files-found: error

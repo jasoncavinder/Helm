@@ -1,5 +1,39 @@
 # Remediation Log
 
+## 2026-02-26 — Batch `TEST-007A`, `TEST-007B`, `TEST-007C`
+
+### Scope
+
+- `TEST-007A`: added guarded OS update validation runbook + scenario matrix with explicit safety gates, abort conditions, and triage/rollback guidance:
+  - `docs/operations/GUARDED_OS_UPDATE_VALIDATION.md`
+- `TEST-007B`: added deterministic non-destructive guarded-update decision contract harness:
+  - `scripts/tests/guarded_os_update_decision.sh`
+  - `scripts/tests/guarded_os_update_contract.sh`
+  - `scripts/tests/fixtures/guarded_os_update/*`
+- `TEST-007C`: added advisory scheduled/manual CI lane and ops wiring:
+  - `.github/workflows/guarded-os-update-contracts.yml`
+  - `docs/operations/CLI_RELEASE_AND_CI.md`
+
+### Verification
+
+Commands run:
+
+- `bash -n scripts/tests/guarded_os_update_decision.sh scripts/tests/guarded_os_update_contract.sh`
+- `scripts/tests/guarded_os_update_contract.sh --report-path /tmp/helm-guarded-os-update-contract-report.json`
+- `ruby -e 'require "yaml"; YAML.load_file(".github/workflows/guarded-os-update-contracts.yml"); puts "guarded-os-update-contracts.yml: ok"'`
+
+Manual verification:
+
+- Confirmed contract scenarios cover all required decision classes: `allowed`, `needs_confirmation`, `denied`, and `rollback_required`.
+- Confirmed contract report schema is machine-readable (`helm.tests.guarded_os_update_contract_report`) and includes deterministic scenario entries.
+- Confirmed advisory workflow is manual/scheduled only, uploads log/report artifacts, and validates scenario/report contract before publishing artifacts.
+- Confirmed runbook documents non-destructive safety boundaries and explicit rollback/triage pathing.
+
+Remaining risks:
+
+- Contract lane is fixture-driven and does not execute live `softwareupdate` mutation paths by design.
+- Local shell emits non-blocking locale warnings (`LC_ALL=C.UTF-8`) during script execution in this environment.
+
 ## 2026-02-26 — Batch `TEST-007` (Backlog Split)
 
 ### Scope
