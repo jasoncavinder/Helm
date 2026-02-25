@@ -173,6 +173,10 @@ Current checkpoint:
     - `scripts/release/build_unsigned_variant.sh` now rejects invalid tag formats and enforces canonical output-root containment for generated zip/pkg paths
     - `Release Contract Checks` CI now runs non-destructive `preflight` + `runbook prepare` contract checks on PRs and validates unsigned-build script safety regressions
     - `Dependency Security` CI now runs Dependency Review on PRs and scheduled/PR `cargo audit` checks for Rust dependencies
+  - pre-1.0 remediation batch delivered on `dev` (`COR-002`, `TEST-003`, `DOC-001`):
+    - manager executable/timeout preference sync now uses atomic map replacement instead of clear-then-repopulate loops to avoid empty override windows during concurrent reads
+    - CLI tests now assert `updates run` mixed-success exit-code behavior and stable machine-output envelope structure
+    - common CLI errors now include actionable next-step hints for `helm help`, `helm managers list`, and `helm updates preview`
   - post-`v0.17.5` refresh reliability + diagnostics hardening delivered on `dev`:
     - task output persistence now records effective cwd/timing/exit metadata and structured error details used by diagnostics commands
     - diagnostics summary now reports failure-class counters for faster operator triage

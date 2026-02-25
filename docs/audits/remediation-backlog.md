@@ -16,6 +16,9 @@ Notes:
 - `SEC-004` — Done (`PR: TBD`, commit pending)
 - `BUILD-003` — Done (`PR: TBD`, commit pending)
 - `BUILD-002` — Done (`PR: TBD`, commit pending)
+- `COR-002` — Done (`39b6b17`)
+- `TEST-003` — Done (`ff95ae2`)
+- `DOC-001` — Done (`ff95ae2`)
 
 ## Prioritized Backlog
 

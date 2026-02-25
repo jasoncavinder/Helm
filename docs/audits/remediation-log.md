@@ -55,3 +55,33 @@ Remaining risks:
 
 - New GitHub workflows were validated for YAML syntax locally but were not executed in GitHub Actions in this run.
 - `cargo audit` output depends on the current RustSec advisory database state and may fail in CI when newly published advisories appear.
+
+## 2026-02-25 — Batch `COR-002`, `TEST-003`, `DOC-001`
+
+### Scope
+
+- `COR-002`: replace clear-then-set manager execution preference sync with atomic map swaps.
+- `TEST-003`: add regression tests for `updates run` mixed-success exit-code stability and machine-output envelope contract.
+- `DOC-001`: make common CLI errors actionable with explicit next-step hints (`helm help`, `helm managers list`, `helm updates preview`) and add contract tests.
+
+### Verification
+
+Commands run:
+
+- `cd core/rust && cargo test -p helm-core replace_manager_execution_preferences_avoids_empty_read_window`
+- `cd core/rust && cargo test -p helm-cli updates_run_`
+- `cd core/rust && cargo test -p helm-cli parse_args_unknown_command_includes_help_hint`
+- `cd core/rust && cargo test -p helm-cli parse_manager_id_unknown_includes_managers_list_hint`
+- `cd core/rust && cargo test -p helm-cli updates_run_requires_yes_message_includes_preview_hint`
+- `cd core/rust && cargo fmt --all`
+
+Manual verification:
+
+- Confirmed CLI and FFI preference-sync paths now build full executable/timeout maps and apply them through one runtime swap call instead of clear-then-repopulate loops.
+- Confirmed unknown command and unknown manager-id error messages now include actionable guidance.
+- Confirmed `updates run` missing-`--yes` error now points operators to `helm updates preview` before rerun.
+
+Remaining risks:
+
+- Atomic swap is process-local and protects in-process readers from empty windows; it does not introduce cross-process coordination semantics (not required for this item).
+- Existing unrelated local workspace changes remain outside this batch and were intentionally not modified.
