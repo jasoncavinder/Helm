@@ -60,12 +60,30 @@ You can also help by [reporting bugs](https://github.com/jasoncavinder/Helm/issu
 
 Your support helps fund continued development.
 
-## Beta Download
+## Download
 
-Install the latest beta DMG from GitHub Releases:
+Install the latest release DMG from GitHub Releases:
 - https://github.com/jasoncavinder/Helm/releases
 
 DMG builds target **Any Mac (Apple Silicon + Intel)** on **macOS 11+ (Big Sur)** and use standard drag-to-`Applications` installation.
+
+## Helm CLI (Bundled)
+
+Helm ships with a companion CLI (`helm`) for non-GUI workflows.
+
+- `helm` with no arguments launches the interactive TUI when running in a TTY.
+- In non-interactive contexts, `helm` with no arguments prints help.
+- Run `helm --help` for the full command surface and flag reference.
+
+Quick examples:
+
+```bash
+helm status
+helm refresh --detach
+helm managers list
+helm updates preview
+helm diagnostics summary
+```
 
 ## Features
 
