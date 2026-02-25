@@ -24,6 +24,7 @@ Reference contracts:
 
 - `docs/architecture/BUILD_VARIANTS.md`
 - `docs/operations/RELEASE_REHEARSAL_DRY_RUN.md`
+- `docs/operations/SPARKLE_RECOVERY_SCENARIOS.md`
 - `.github/workflows/release-cli-direct.yml`
 - `.github/workflows/release-publish-verify.yml`
 - `.github/workflows/cli-installer-checks.yml`
