@@ -52,6 +52,7 @@ use time::format_description::well_known::Rfc3339;
 
 mod command_dispatch;
 mod coordinator_transport;
+mod json_output;
 mod provenance;
 mod tui;
 
@@ -9010,33 +9011,13 @@ fn build_json_payload_lines(
     ndjson_mode: bool,
     generated_at: i64,
 ) -> Vec<serde_json::Value> {
-    let build = |item_data: serde_json::Value| {
-        json!({
-            "schema": schema,
-            "schema_version": JSON_SCHEMA_VERSION,
-            "generated_at": generated_at,
-            "data": item_data
-        })
-    };
-
-    ndjson_payload_items(data, ndjson_mode)
-        .into_iter()
-        .map(build)
-        .collect()
-}
-
-fn ndjson_payload_items(data: serde_json::Value, ndjson_mode: bool) -> Vec<serde_json::Value> {
-    if !ndjson_mode {
-        return vec![data];
-    }
-
-    match data {
-        serde_json::Value::Array(items) if items.is_empty() => {
-            vec![serde_json::Value::Array(Vec::new())]
-        }
-        serde_json::Value::Array(items) => items,
-        other => vec![other],
-    }
+    json_output::build_json_payload_lines(
+        schema,
+        data,
+        ndjson_mode,
+        generated_at,
+        JSON_SCHEMA_VERSION,
+    )
 }
 
 async fn refresh_single_manager(
