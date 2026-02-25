@@ -1,5 +1,31 @@
 # Remediation Log
 
+## 2026-02-26 — Batch Unblocking Split `SEC-003`, `REL-004`, `MNT-005`
+
+### Scope
+
+- `SEC-003`: split large redaction hardening into `SEC-003A` (core redaction pipeline) and `SEC-003B` (FFI default-redacted exposure/allowlist enforcement).
+- `REL-004`: split large coordinator transport hardening into `REL-004A` (XPC-first transport path) and `REL-004B` (bounded/removable file-IPC compatibility path).
+- `MNT-005`: split coordinator transport refactor into `MNT-005A/B/C` to keep review slices small and sequencing explicit.
+
+### Verification
+
+Commands run:
+
+- `rg -n "SEC-003|SEC-003A|SEC-003B|REL-004|REL-004A|REL-004B|MNT-005|MNT-005A|MNT-005B|MNT-005C|No open decision blockers" /Users/jasoncavinder/Projects/Helm/docs/audits/remediation-backlog.md`
+- `git diff -- /Users/jasoncavinder/Projects/Helm/docs/audits/remediation-backlog.md /Users/jasoncavinder/Projects/Helm/docs/audits/remediation-log.md`
+
+Manual verification:
+
+- Confirmed each split child item has explicit severity/category/fix-type/effort/risk/dependency/acceptance criteria fields.
+- Confirmed parent items (`SEC-003`, `REL-004`, `MNT-005`) now describe split-closure conditions rather than unresolved single large deliverables.
+- Confirmed decision-blocker section now reflects resolved decision state (`DEC-001..DEC-005` resolved).
+
+Remaining risks:
+
+- This is backlog decomposition only; no runtime hardening has been implemented yet.
+- Follow-up implementation batches must execute child items in order to retire the parent risks.
+
 ## 2026-02-26 — Batch `TEST-001B`, `MNT-004B`
 
 ### Scope

@@ -63,6 +63,9 @@ Notes:
 - `MNT-001B` — Done (`77c1657`)
 - `MNT-001C` — Done (`PR: TBD`)
 - `MNT-001` — Done (`PR: TBD`; split parent closed via `MNT-001A` + `MNT-001B` + `MNT-001C`)
+- `SEC-003` — Split (`PR: TBD`; follow-up `SEC-003A` + `SEC-003B` pending)
+- `REL-004` — Split (`PR: TBD`; follow-up `REL-004A` + `REL-004B` pending)
+- `MNT-005` — Split (`PR: TBD`; follow-up `MNT-005A` + `MNT-005B` + `MNT-005C` pending)
 
 ## Prioritized Backlog
 
@@ -70,7 +73,9 @@ Notes:
 |---|---|---|---|---|---|---|---|---|
 | SEC-001 | High | Security | `core/rust/crates/helm-core/src/execution/tokio_process.rs` | Hardening | M | Med | None | `HELM_SUDO_ASKPASS` override is disallowed by default (or strictly validated); elevated flows use only trusted helper paths; regression tests cover accepted/rejected override paths. |
 | SEC-002 | High | Security | `core/rust/crates/helm-cli/src/main.rs` (`process_is_alive`, `coordinator_process_looks_owned`) | Hardening | S | Low | None | Coordinator helper probes use absolute `/bin/ps` (or sanitized fixed `PATH`); test/assertion verifies no PATH-resolved `ps` invocation remains. |
-| SEC-003 | High | Security | `core/rust/crates/helm-core/src/execution/{tokio_process.rs,task_output_store.rs}`, `core/rust/crates/helm-ffi/src/lib.rs` | Hardening | L | Med | DEC-005 | Sensitive token patterns are redacted before persistence/exposure; diagnostics export/UI/CLI never surface raw secrets; redaction tests include auth headers/tokens/API keys. |
+| SEC-003 | High | Security | `core/rust/crates/helm-core/src/execution/{tokio_process.rs,task_output_store.rs}`, `core/rust/crates/helm-ffi/src/lib.rs` | Hardening | L | Med | None | Split into `SEC-003A` + `SEC-003B`; close parent when both child acceptance criteria pass with redaction-by-default behavior preserved. |
+| SEC-003A | High | Security | `core/rust/crates/helm-core/src/execution/{tokio_process.rs,task_output_store.rs}` | Hardening | M | Med | None | Centralized output redaction runs before diagnostics persistence/exposure; token/auth-header/API-key patterns are redacted with regression tests for positive and negative cases. |
+| SEC-003B | High | Security | `core/rust/crates/helm-ffi/src/lib.rs` diagnostics/output paths | Hardening | S | Med | None | FFI diagnostics responses apply centralized redaction by default, enforce strict env allowlist semantics, and include tests proving sensitive env-like keys never surface in default payloads. |
 | SEC-004 | High | Security | `scripts/release/build_unsigned_variant.sh` | Bugfix | S | Low | None | `TAG_NAME` is validated against release regex and canonicalized output paths are enforced under expected artifact roots; traversal attempts fail with explicit errors. |
 | SEC-005 | High | Security | `core/rust/crates/helm-cli/src/main.rs` (self-update fetch path) | Hardening | M | Med | None | Redirects are followed only with per-hop allowlist validation (or disabled by policy); final URL host must pass allowlist; integration tests cover redirect-to-disallowed-host rejection. |
 | COR-001 | High | Correctness | `core/rust/crates/helm-core/src/orchestration/adapter_runtime.rs` (`submit_refresh_request_response` wait path) | Bugfix | M | Med | DEC-002 | Wait-timeout behavior matches documented policy (effective manager/global timeout with explicit ceiling decision); no hard-coded 60s cap mismatch; regression tests assert policy alignment. |
@@ -78,7 +83,9 @@ Notes:
 | REL-001 | High | Build/Release | `web/public/updates/{appcast.xml,cli/latest.json,cli/latest-rc.json}`, `.github/workflows/cli-update-drift.yml` | Bugfix | S | Low | DEC-004 | Published stable/prerelease metadata policy is explicit and implemented; drift guard is green for chosen policy state; metadata files exist/align as required. |
 | REL-002 | High | Build/Release | `.github/workflows/release-publish-verify.yml`, release publish sequencing | Hardening | M | Med | None | Publish verification is deterministic across PR merge order; no transient red runs during normal publish PR sequencing; added contract tests/simulated order scenarios pass. |
 | REL-003 | High | Reliability | coordinator IPC tests (`helm-cli` + `helm-ffi`) | Test | M | Low | None | Tests assert coordinator directories are `0700` and request/response/temp files are `0600`; ownership assumptions are validated for both CLI and FFI paths. |
-| REL-004 | High | Security | coordinator request/response transport (file IPC auth) | Hardening | L | Med | DEC-001 | Request/response channel includes per-session nonce/token capability checks; stale/forged files are rejected with explicit diagnostics; compatibility path documented and tested. |
+| REL-004 | High | Security | coordinator request/response transport (file IPC auth) | Hardening | L | Med | None | Split into `REL-004A` + `REL-004B`; close parent when XPC-first transport is default and any file-IPC compatibility path is explicitly bounded/tested. |
+| REL-004A | High | Security | coordinator transport (`core/rust/crates/helm-cli/src/coordinator_transport.rs`, FFI coordinator bridge) | Hardening | M | Med | None | Coordinator request/response path defaults to XPC transport on macOS for CLI/FFI flows; parity tests confirm successful request/response behavior and ownership assumptions. |
+| REL-004B | High | Security | legacy file-IPC compatibility path + docs/tests | Hardening | S | Low | None | File-IPC compatibility path is either removed or feature-flagged for one release cycle only; tests assert default path does not use file IPC and docs capture sunset/removal timeline. |
 | BUILD-001 | High | Build | `.github/workflows/*.yml` | CI | S | Low | DEC-003 | All third-party `uses:` references are pinned to immutable SHAs (or policy-approved exceptions documented); workflow suite remains green post-update. |
 | BUILD-002 | High | Security | CI workflows (dependency checks) | CI | S | Low | None | CI runs dependency vulnerability checks (e.g., `cargo-audit`/`cargo-deny` and dependency review) on PR/schedule; failures are visible and actionable. |
 | COR-003 | Med | Correctness | `core/rust/crates/helm-core/src/orchestration/adapter_runtime.rs` | Bugfix | M | Med | None | Successful install/uninstall updates cached state (targeted refresh or equivalent) without requiring manual full refresh; integration tests verify snapshot freshness. |
@@ -125,16 +132,11 @@ Notes:
 | MNT-004 | Low | Maintainability | `apps/macos-ui/Helm/Core/HelmCore+{Fetching,Actions,Settings}.swift` | Refactor | M | Low | None | Split into `MNT-004A` + `MNT-004B`; close parent when both child acceptance criteria pass. |
 | MNT-004A | Low | Maintainability | `apps/macos-ui/Helm/Core/HelmCore+Settings.swift` | Refactor | S | Low | None | Settings decode/error handling for JSON payloads is centralized through a shared helper for at least two call sites with no behavior change; app build remains green. |
 | MNT-004B | Low | Maintainability | `apps/macos-ui/Helm/Core/HelmCore+{Fetching,Actions}.swift` | Refactor | M | Low | None | Shared decode/error helper coverage is extended to additional HelmCore extensions without altering user-visible messages or error attribution behavior. |
-| MNT-005 | Low | Maintainability | coordinator transport separation from CLI command file | Refactor | L | Med | DEC-001 | Coordinator protocol/state-machine is isolated behind module boundary; command dispatch no longer owns transport internals; compatibility tests pass. |
+| MNT-005 | Low | Maintainability | coordinator transport separation from CLI command file | Refactor | L | Med | None | Split into `MNT-005A` + `MNT-005B` + `MNT-005C`; close parent when coordinator protocol/transport boundaries are isolated and tested. |
+| MNT-005A | Low | Maintainability | `core/rust/crates/helm-cli/src/{main.rs,coordinator_transport.rs}` | Refactor | S | Low | None | Coordinator transport trait/boundary is explicit and command handlers call module entry points only (no inline transport details in `main.rs`). |
+| MNT-005B | Low | Maintainability | `core/rust/crates/helm-cli/src/coordinator_transport.rs` | Refactor | M | Low | None | Coordinator state-machine and lifecycle helpers are consolidated in transport module with no behavior changes; existing transport tests remain green. |
+| MNT-005C | Low | Maintainability | coordinator docs/tests | Refactor | S | Low | None | Coordinator transport invariants (boundary, fallback policy, ownership expectations) are documented and linked from CLI coordinator tests. |
 
 ## Blocked (Decision Required)
 
-Decision IDs below are blockers for related backlog items.
-
-| Decision ID | Blocks | Question |
-|---|---|---|
-| DEC-001 | REL-004, MNT-005 | Keep file-based coordinator IPC and harden incrementally, or migrate to stronger local IPC primitive now? |
-| DEC-002 | COR-001 | Should request-response wait timeout be derived from effective manager/global policy, or use an independent orchestration cap? |
-| DEC-003 | BUILD-001 | Enforce full immutable action SHA pinning immediately, or phase by workflow criticality? |
-| DEC-004 | REL-001 | Should `dev` carry publish-ready metadata artifacts, or should publish metadata truth be `main`/release branches only? |
-| DEC-005 | SEC-003, UX-001 | Should UI expose full diagnostics context (`PATH`/program) by default, redacted by default, or behind advanced/export-only surfaces? |
+No open decision blockers. `DEC-001..DEC-005` are resolved in `docs/audits/quality-audit-decisions.md`.
