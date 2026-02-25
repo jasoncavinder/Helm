@@ -59,6 +59,7 @@ This checklist is required before creating a release tag on `main`.
 - [ ] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect `v0.17.6` release execution status.
 - [ ] Website changelog and current-version surfaces reflect `v0.17.6`.
 - [ ] README current stable version markers reflect `v0.17.6`.
+- [ ] Canonical release-line contract check passes: `scripts/release/check_release_line_copy.sh`.
 
 ### Versioning
 - [ ] Workspace version bumped to `0.17.6` in `core/rust/Cargo.toml`.

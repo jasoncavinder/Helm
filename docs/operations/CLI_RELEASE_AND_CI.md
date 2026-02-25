@@ -27,6 +27,8 @@ Reference contracts:
 - `.github/workflows/release-publish-verify.yml`
 - `.github/workflows/cli-installer-checks.yml`
 - `.github/workflows/release-all-variants.yml`
+- `docs/contracts/release-line.json`
+- `scripts/release/check_release_line_copy.sh`
 
 Release check policy (required vs advisory):
 
