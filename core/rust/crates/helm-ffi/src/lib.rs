@@ -131,7 +131,7 @@ use helm_core::adapters::{
 use helm_core::execution::tokio_process::TokioProcessExecutor;
 use helm_core::execution::{
     ManagerTimeoutProfile, clear_manager_selected_executables, clear_manager_timeout_profiles,
-    set_manager_selected_executable, set_manager_timeout_profile,
+    replace_manager_execution_preferences,
 };
 use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
@@ -860,11 +860,15 @@ fn sync_manager_executable_overrides(
     detection_map: &std::collections::HashMap<ManagerId, DetectionInfo>,
     pref_map: &std::collections::HashMap<ManagerId, ManagerPreference>,
 ) {
-    clear_manager_selected_executables();
-    clear_manager_timeout_profiles();
+    let mut executable_overrides: std::collections::HashMap<ManagerId, std::path::PathBuf> =
+        std::collections::HashMap::new();
+    let mut timeout_profiles: std::collections::HashMap<ManagerId, ManagerTimeoutProfile> =
+        std::collections::HashMap::new();
     for manager in ManagerId::ALL {
         let selected = resolved_manager_selected_executable_path(manager, detection_map, pref_map);
-        set_manager_selected_executable(manager, selected.map(std::path::PathBuf::from));
+        if let Some(path) = selected {
+            executable_overrides.insert(manager, std::path::PathBuf::from(path));
+        }
         let hard_timeout = pref_map
             .get(&manager)
             .and_then(|preference| preference.timeout_hard_seconds)
@@ -875,14 +879,15 @@ fn sync_manager_executable_overrides(
             .and_then(|preference| preference.timeout_idle_seconds)
             .filter(|value| *value > 0)
             .map(Duration::from_secs);
-        set_manager_timeout_profile(
-            manager,
-            ManagerTimeoutProfile {
-                hard_timeout,
-                idle_timeout,
-            },
-        );
+        let profile = ManagerTimeoutProfile {
+            hard_timeout,
+            idle_timeout,
+        };
+        if profile.hard_timeout.is_some() || profile.idle_timeout.is_some() {
+            timeout_profiles.insert(manager, profile);
+        }
     }
+    replace_manager_execution_preferences(executable_overrides, timeout_profiles);
 }
 
 fn build_manager_statuses(

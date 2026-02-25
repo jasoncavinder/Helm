@@ -31,8 +31,7 @@ use helm_core::adapters::{
 };
 use helm_core::execution::{
     ManagerTimeoutProfile, TaskOutputRecord, TokioProcessExecutor,
-    clear_manager_selected_executables, clear_manager_timeout_profiles,
-    set_manager_selected_executable, set_manager_timeout_profile,
+    replace_manager_execution_preferences,
 };
 use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
@@ -8274,8 +8273,8 @@ fn sync_manager_executable_overrides(store: &SqliteStore) -> Result<(), String> 
         .map(|preference| (preference.manager, preference))
         .collect();
 
-    clear_manager_selected_executables();
-    clear_manager_timeout_profiles();
+    let mut executable_overrides: HashMap<ManagerId, PathBuf> = HashMap::new();
+    let mut timeout_profiles: HashMap<ManagerId, ManagerTimeoutProfile> = HashMap::new();
     for manager in ManagerId::ALL {
         let preferred = preferences
             .get(&manager)
@@ -8287,7 +8286,9 @@ fn sync_manager_executable_overrides(store: &SqliteStore) -> Result<(), String> 
                 .and_then(|path| normalize_nonempty(Some(path)))
         });
         let selected = preferred.or(detected);
-        set_manager_selected_executable(manager, selected.map(PathBuf::from));
+        if let Some(path) = selected {
+            executable_overrides.insert(manager, PathBuf::from(path));
+        }
 
         let hard_timeout = preferences
             .get(&manager)
@@ -8299,14 +8300,15 @@ fn sync_manager_executable_overrides(store: &SqliteStore) -> Result<(), String> 
             .and_then(|preference| preference.timeout_idle_seconds)
             .filter(|value| *value > 0)
             .map(Duration::from_secs);
-        set_manager_timeout_profile(
-            manager,
-            ManagerTimeoutProfile {
+        let profile = ManagerTimeoutProfile {
                 hard_timeout,
                 idle_timeout,
-            },
-        );
+            };
+        if profile.hard_timeout.is_some() || profile.idle_timeout.is_some() {
+            timeout_profiles.insert(manager, profile);
+        }
     }
+    replace_manager_execution_preferences(executable_overrides, timeout_profiles);
     Ok(())
 }
 
