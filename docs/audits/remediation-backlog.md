@@ -25,7 +25,7 @@ Notes:
 - `TEST-009B` — Done (`1067564`)
 - `TEST-009C` — Done (`PR: TBD`)
 - `TEST-009` — Done (`PR: TBD`; split parent closed via `TEST-009A` + `TEST-009B` + `TEST-009C`)
-- `TEST-007` — Split (`PR: TBD`; follow-up `TEST-007A` + `TEST-007B` + `TEST-007C` pending)
+- `TEST-007` — Split (`6be6a20`; follow-up `TEST-007A` + `TEST-007B` + `TEST-007C` pending)
 - `SEC-004` — Done (`e67d20e`)
 - `BUILD-003` — Done (`961c430`)
 - `BUILD-002` — Done (`c2580c8`)
