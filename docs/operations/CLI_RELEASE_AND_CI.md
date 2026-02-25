@@ -23,12 +23,14 @@ Mandatory release preflight tooling:
 Reference contracts:
 
 - `docs/architecture/BUILD_VARIANTS.md`
+- `docs/operations/RELEASE_REHEARSAL_DRY_RUN.md`
 - `.github/workflows/release-cli-direct.yml`
 - `.github/workflows/release-publish-verify.yml`
 - `.github/workflows/cli-installer-checks.yml`
 - `.github/workflows/release-all-variants.yml`
 - `docs/contracts/release-line.json`
 - `scripts/release/check_release_line_copy.sh`
+- `scripts/release/rehearsal_dry_run.sh`
 
 Release check policy (required vs advisory):
 
