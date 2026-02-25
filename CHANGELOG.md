@@ -6,6 +6,23 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.17.6] - 2026-02-24
+
+Patch `0.17.6` hardens refresh reliability and diagnostics after the `v0.17.5` release cycle.
+
+### Added
+- Task diagnostics now capture richer execution metadata, including effective working directory, start/finish timestamps, duration, exit code, termination reason, and structured error attribution.
+- Diagnostics summary output now includes failure-class counters to speed up triage of refresh and coordinator failures.
+- Coordinator health diagnostics now surface stale-state reasons (dead PID, missing executable target, invalid ready-state payload) for faster runtime recovery analysis.
+
+### Changed
+- Coordinator request handling now performs a one-time stale-state recovery and retry when timeout failures indicate stale local coordinator state.
+- Refresh/search request-response flows now retry once for transient timeout and network-resolution failures.
+- npm refresh list timeout has been increased from 60s to 120s to reduce avoidable refresh failures on slower networks.
+
+### Fixed
+- Process execution no longer fails immediately when a previously recorded working directory no longer exists; executor now falls back to a valid existing directory before spawn.
+
 ## [0.17.4] - 2026-02-24
 
 Patch `0.17.4` packages the first ratatui-powered Helm TUI, bundled-app CLI shim workflows, and post-`0.17.3` GUI/CLI parity closures.

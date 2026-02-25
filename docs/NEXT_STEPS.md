@@ -11,18 +11,18 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-0.17.5 post-release stabilization
+0.17.6 release execution
 ```
 
 Focus:
-- verify post-publication endpoint health (`/cli/install.sh`, `/updates/cli/latest.json`, appcast/release notes)
-- keep `main`/`dev`/`docs`/`web` publication docs in sync after release/publish PR merges
+- complete `v0.17.6` prep/promotion/publish verification with fallback publish PR handling
+- keep `main`/`dev`/`docs`/`web` publication docs and version markers aligned for `v0.17.6`
 - maintain release-process hardening guardrails now that phases 1-5 are complete (preflight, publish verification, drift prevention)
 - begin planning and branch setup for `0.18.x` local security groundwork after stable publication
 - keep launch-at-login scoped to GUI only (no CLI/TUI parity target)
 
 Current checkpoint:
-- `v0.17.5` release content is promoted and published on `main` (app/core + docs + web):
+- `v0.17.5` remains the current stable release on `main`; `v0.17.6` release-prep includes post-`v0.17.5` refresh reliability and diagnostics hardening:
   - fallback publish PRs merged: `#181` (CLI metadata), `#182` (Sparkle appcast + release notes)
   - latest successful release workflows:
     - `Release CLI Direct Installer` run `22364342041` (success)
@@ -168,6 +168,11 @@ Current checkpoint:
     - release scripts/workflows now normalize locale environment defaults for operator/CI consistency
     - release logs now use phase prefixes (`[preflight]`, `[build]`, `[publish]`, `[verify]`) for faster triage
     - recurring release friction now has a documented promotion path from `TMP_RELEASE_FRICTION` into permanent decision/runbook/checklist docs
+  - post-`v0.17.5` refresh reliability + diagnostics hardening delivered on `dev`:
+    - task output persistence now records effective cwd/timing/exit metadata and structured error details used by diagnostics commands
+    - diagnostics summary now reports failure-class counters for faster operator triage
+    - coordinator health inspection now reports stale-state reasons and request timeout handling now performs one stale-state recovery retry
+    - refresh/search request-response now retries once for transient timeout/network-resolution failures, and npm list timeout is now 120s
   - GitHub governance hardening delivered on `dev`:
     - branch rulesets now explicitly enforce `main`/`dev`/`docs`/`web` with branch-specific required checks
     - `Policy Gate` now validates PR base/head/scope policy for all protected branches
