@@ -15,5 +15,10 @@
 	<array>
 		<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	</array>
+	<key>com.apple.security.temporary-exception.files.home-relative-path.read-write</key>
+	<array>
+		<string>/.local/bin/</string>
+		<string>/.config/helm/</string>
+	</array>
 </dict>
 </plist>

@@ -32,6 +32,8 @@ Current checkpoint:
   - post-`0.17.3` `0.17.4` TUI parity-expansion slice delivered: managers pane now supports selected-manager detect/executable/method/priority controls via keyboard, updates pane now supports include-pinned + allow-OS-updates toggles for upgrade workflows, diagnostics pane supports one-key export snapshot writes, task-log detail follows selection movement immediately, and settings pane now exposes integrated self-update status/check/apply controls honoring provenance/channel policy semantics.
   - post-`0.17.3` `0.17.4` GUI↔CLI/TUI parity-closure slice delivered: CLI search now supports progressive local+remote orchestration with manager scoping; CLI updates preview/run now support manager-scoped bulk execution; CLI now exposes per-package Homebrew keg-policy commands; and TUI packages now include progressive available-package rows with install action + Homebrew keg-policy controls.
   - post-`0.17.3` `0.17.4` kickoff slice delivered: app now bundles `helm-cli` and Settings includes install/remove controls for a managed `~/.local/bin/helm` shim with app-bundle provenance marker writes.
+  - post-`v0.17.6` settings CLI-shim follow-up delivered on `dev`:
+    - `Helm.entitlements` and `HelmRelease.entitlements` now include home-relative read/write exceptions for `~/.local/bin/` and `~/.config/helm/` so sandboxed app builds can install/remove the managed CLI shim and marker at the real user-home paths.
   - `#93` `feat/v0.17-log-foundation`
   - `#95` `feat/v0.17-structured-error-export`
   - `#96` `feat/v0.17-service-health-panel`
