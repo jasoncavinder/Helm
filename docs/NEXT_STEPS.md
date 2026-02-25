@@ -169,6 +169,10 @@ Current checkpoint:
     - release scripts/workflows now normalize locale environment defaults for operator/CI consistency
     - release logs now use phase prefixes (`[preflight]`, `[build]`, `[publish]`, `[verify]`) for faster triage
     - recurring release friction now has a documented promotion path from `TMP_RELEASE_FRICTION` into permanent decision/runbook/checklist docs
+  - pre-1.0 remediation batch delivered on `dev` (`SEC-004`, `BUILD-003`, `BUILD-002`):
+    - `scripts/release/build_unsigned_variant.sh` now rejects invalid tag formats and enforces canonical output-root containment for generated zip/pkg paths
+    - `Release Contract Checks` CI now runs non-destructive `preflight` + `runbook prepare` contract checks on PRs and validates unsigned-build script safety regressions
+    - `Dependency Security` CI now runs Dependency Review on PRs and scheduled/PR `cargo audit` checks for Rust dependencies
   - post-`v0.17.5` refresh reliability + diagnostics hardening delivered on `dev`:
     - task output persistence now records effective cwd/timing/exit metadata and structured error details used by diagnostics commands
     - diagnostics summary now reports failure-class counters for faster operator triage
