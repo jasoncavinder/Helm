@@ -4042,6 +4042,7 @@ const SELF_UPDATE_HTTP_WRITE_TIMEOUT_SECS: u64 = 30;
 const SELF_UPDATE_MAX_DOWNLOAD_BYTES_DEFAULT: usize = 64 * 1024 * 1024;
 const APP_BUNDLE_SHIM_SENTINEL: &str = "# helm-cli-shim: app-bundle";
 const DEFAULT_HELM_CLI_SHIM_RELATIVE_PATH: &str = ".local/bin/helm";
+const SELF_UPDATE_MAX_REDIRECT_HOPS: usize = 5;
 const SELF_UPDATE_ALLOWED_HOSTS: [&str; 5] = [
     "helmapp.dev",
     "github.com",
@@ -4230,6 +4231,7 @@ fn self_update_http_agent() -> ureq::Agent {
         .timeout_connect(Duration::from_secs(SELF_UPDATE_HTTP_CONNECT_TIMEOUT_SECS))
         .timeout_read(Duration::from_secs(SELF_UPDATE_HTTP_READ_TIMEOUT_SECS))
         .timeout_write(Duration::from_secs(SELF_UPDATE_HTTP_WRITE_TIMEOUT_SECS))
+        .redirects(0)
         .build()
 }
 
@@ -4299,6 +4301,85 @@ fn parse_url_scheme_host(raw: &str) -> Option<(String, String)> {
         return None;
     }
     Some((scheme.to_ascii_lowercase(), host.to_ascii_lowercase()))
+}
+
+fn parse_url_base(raw: &str) -> Option<(String, String, String)> {
+    let trimmed = raw.trim();
+    let (scheme, remainder) = trimmed.split_once("://")?;
+    if scheme.is_empty() || remainder.is_empty() {
+        return None;
+    }
+    let (authority, path_with_query) = match remainder.split_once('/') {
+        Some((authority, path)) => (authority, format!("/{}", path)),
+        None => (remainder, "/".to_string()),
+    };
+    if authority.is_empty() || authority.contains('@') {
+        return None;
+    }
+    Some((
+        scheme.to_ascii_lowercase(),
+        authority.to_string(),
+        path_with_query,
+    ))
+}
+
+fn resolve_redirect_url(current_url: &str, location: &str) -> Option<String> {
+    let location = location.trim();
+    if location.is_empty() {
+        return None;
+    }
+    if location.starts_with("http://")
+        || location.starts_with("https://")
+        || location.starts_with("file://")
+    {
+        return Some(location.to_string());
+    }
+
+    let (scheme, authority, path_with_query) = parse_url_base(current_url)?;
+    if location.starts_with("//") {
+        return Some(format!("{scheme}:{location}"));
+    }
+    if location.starts_with('/') {
+        return Some(format!("{scheme}://{authority}{location}"));
+    }
+
+    let path_only = path_with_query.split(['?', '#']).next().unwrap_or("/");
+    let base_dir = path_only.rsplit_once('/').map(|(dir, _)| dir).unwrap_or("");
+    if base_dir.is_empty() {
+        Some(format!("{scheme}://{authority}/{location}"))
+    } else {
+        Some(format!("{scheme}://{authority}{base_dir}/{location}"))
+    }
+}
+
+fn is_http_redirect_status(status: u16) -> bool {
+    matches!(status, 301 | 302 | 303 | 307 | 308)
+}
+
+fn resolve_update_redirect_target(
+    current_url: &str,
+    location: &str,
+    field_name: &'static str,
+    endpoint: Option<&str>,
+    error_kind: SelfUpdateErrorKind,
+) -> Result<String, SelfUpdateCommandError> {
+    let Some(resolved) = resolve_redirect_url(current_url, location) else {
+        let mut error = SelfUpdateCommandError::new(
+            error_kind,
+            format!(
+                "self-update {field_name} redirect location is invalid: '{}'",
+                location
+            ),
+        )
+        .with_asset_url(current_url.to_string());
+        if let Some(endpoint) = endpoint {
+            error = error.with_endpoint(endpoint.to_string());
+        }
+        return Err(error);
+    };
+
+    validate_update_url(&resolved, field_name, endpoint)?;
+    Ok(resolved)
 }
 
 fn file_url_path(url: &str) -> Option<PathBuf> {
@@ -4434,63 +4515,153 @@ fn fetch_cli_update_manifest(endpoint: &str) -> Result<CliUpdateManifest, SelfUp
         return Ok(manifest);
     }
 
-    let response = match self_update_http_agent().get(endpoint).call() {
-        Ok(response) => response,
-        Err(ureq::Error::Status(code, response)) => {
-            let body = response.into_string().unwrap_or_default();
-            let body = body.replace('\n', " ");
-            let summary = if body.len() > 200 {
-                format!("{}...", &body[..200])
-            } else {
-                body
-            };
-            return Err(SelfUpdateCommandError::new(
+    let mut current_url = endpoint.trim().to_string();
+    let mut redirect_hops = 0usize;
+    loop {
+        let response = match self_update_http_agent().get(&current_url).call() {
+            Ok(response) => response,
+            Err(ureq::Error::Status(code, response)) => {
+                if is_http_redirect_status(code) {
+                    let location = response
+                        .header("Location")
+                        .map(str::trim)
+                        .unwrap_or_default();
+                    if location.is_empty() {
+                        return Err(SelfUpdateCommandError::new(
+                            SelfUpdateErrorKind::ManifestHttp,
+                            format!(
+                                "self-update endpoint redirect from '{}' is missing Location header",
+                                current_url
+                            ),
+                        )
+                        .with_endpoint(endpoint.to_string())
+                        .with_http_status(code)
+                        .with_asset_url(current_url.clone()));
+                    }
+                    if redirect_hops >= SELF_UPDATE_MAX_REDIRECT_HOPS {
+                        return Err(SelfUpdateCommandError::new(
+                            SelfUpdateErrorKind::ManifestHttp,
+                            format!(
+                                "self-update endpoint exceeded redirect limit ({} hops)",
+                                SELF_UPDATE_MAX_REDIRECT_HOPS
+                            ),
+                        )
+                        .with_endpoint(endpoint.to_string())
+                        .with_http_status(code)
+                        .with_asset_url(current_url.clone()));
+                    }
+                    current_url = resolve_update_redirect_target(
+                        current_url.as_str(),
+                        location,
+                        "endpoint",
+                        Some(endpoint),
+                        SelfUpdateErrorKind::ManifestHttp,
+                    )?;
+                    redirect_hops += 1;
+                    continue;
+                }
+
+                let body = response.into_string().unwrap_or_default();
+                let body = body.replace('\n', " ");
+                let summary = if body.len() > 200 {
+                    format!("{}...", &body[..200])
+                } else {
+                    body
+                };
+                return Err(SelfUpdateCommandError::new(
+                    SelfUpdateErrorKind::ManifestHttp,
+                    format!(
+                        "self-update endpoint returned HTTP {} for '{}': {}",
+                        code, current_url, summary
+                    ),
+                )
+                .with_endpoint(endpoint.to_string())
+                .with_http_status(code)
+                .with_asset_url(current_url));
+            }
+            Err(error) => {
+                return Err(SelfUpdateCommandError::new(
+                    SelfUpdateErrorKind::ManifestTransport,
+                    format!(
+                        "failed to reach self-update endpoint '{}': {error}",
+                        current_url
+                    ),
+                )
+                .with_endpoint(endpoint.to_string())
+                .with_asset_url(current_url));
+            }
+        };
+
+        if is_http_redirect_status(response.status()) {
+            let status = response.status();
+            let location = response
+                .header("Location")
+                .map(str::trim)
+                .unwrap_or_default();
+            if location.is_empty() {
+                return Err(SelfUpdateCommandError::new(
+                    SelfUpdateErrorKind::ManifestHttp,
+                    format!(
+                        "self-update endpoint redirect from '{}' is missing Location header",
+                        current_url
+                    ),
+                )
+                .with_endpoint(endpoint.to_string())
+                .with_http_status(status)
+                .with_asset_url(current_url));
+            }
+            if redirect_hops >= SELF_UPDATE_MAX_REDIRECT_HOPS {
+                return Err(SelfUpdateCommandError::new(
+                    SelfUpdateErrorKind::ManifestHttp,
+                    format!(
+                        "self-update endpoint exceeded redirect limit ({} hops)",
+                        SELF_UPDATE_MAX_REDIRECT_HOPS
+                    ),
+                )
+                .with_endpoint(endpoint.to_string())
+                .with_http_status(status)
+                .with_asset_url(current_url));
+            }
+            current_url = resolve_update_redirect_target(
+                current_url.as_str(),
+                location,
+                "endpoint",
+                Some(endpoint),
                 SelfUpdateErrorKind::ManifestHttp,
+            )?;
+            redirect_hops += 1;
+            continue;
+        }
+
+        let body = response.into_string().map_err(|error| {
+            SelfUpdateCommandError::new(
+                SelfUpdateErrorKind::ManifestRead,
+                format!("failed to read self-update endpoint payload: {error}"),
+            )
+            .with_endpoint(endpoint.to_string())
+            .with_asset_url(current_url.clone())
+        })?;
+        let manifest: CliUpdateManifest = serde_json::from_str(&body).map_err(|error| {
+            SelfUpdateCommandError::new(
+                SelfUpdateErrorKind::ManifestParse,
                 format!(
-                    "self-update endpoint returned HTTP {} for '{}': {}",
-                    code, endpoint, summary
+                    "failed to parse self-update endpoint payload for '{}': {error}",
+                    current_url
                 ),
             )
             .with_endpoint(endpoint.to_string())
-            .with_http_status(code));
-        }
-        Err(error) => {
+            .with_asset_url(current_url.clone())
+        })?;
+        if manifest.version.trim().is_empty() {
             return Err(SelfUpdateCommandError::new(
-                SelfUpdateErrorKind::ManifestTransport,
-                format!(
-                    "failed to reach self-update endpoint '{}': {error}",
-                    endpoint
-                ),
+                SelfUpdateErrorKind::ManifestContract,
+                "self-update endpoint payload is missing non-empty 'version'",
             )
-            .with_endpoint(endpoint.to_string()));
+            .with_endpoint(endpoint.to_string())
+            .with_asset_url(current_url));
         }
-    };
-
-    let body = response.into_string().map_err(|error| {
-        SelfUpdateCommandError::new(
-            SelfUpdateErrorKind::ManifestRead,
-            format!("failed to read self-update endpoint payload: {error}"),
-        )
-        .with_endpoint(endpoint.to_string())
-    })?;
-    let manifest: CliUpdateManifest = serde_json::from_str(&body).map_err(|error| {
-        SelfUpdateCommandError::new(
-            SelfUpdateErrorKind::ManifestParse,
-            format!(
-                "failed to parse self-update endpoint payload for '{}': {error}",
-                endpoint
-            ),
-        )
-        .with_endpoint(endpoint.to_string())
-    })?;
-    if manifest.version.trim().is_empty() {
-        return Err(SelfUpdateCommandError::new(
-            SelfUpdateErrorKind::ManifestContract,
-            "self-update endpoint payload is missing non-empty 'version'",
-        )
-        .with_endpoint(endpoint.to_string()));
+        return Ok(manifest);
     }
-    Ok(manifest)
 }
 
 fn parse_semver_lossy(raw: &str) -> Option<Version> {
@@ -4567,27 +4738,107 @@ fn download_update_bytes(url: &str) -> Result<Vec<u8>, SelfUpdateCommandError> {
         return read_update_bytes_with_limit(file, max_bytes, url);
     }
 
-    let response = match self_update_http_agent().get(url).call() {
-        Ok(response) => response,
-        Err(ureq::Error::Status(code, _)) => {
-            return Err(SelfUpdateCommandError::new(
-                SelfUpdateErrorKind::AssetHttp,
-                format!("failed to download update binary (HTTP {})", code),
-            )
-            .with_asset_url(url.to_string())
-            .with_http_status(code));
-        }
-        Err(error) => {
-            return Err(SelfUpdateCommandError::new(
-                SelfUpdateErrorKind::AssetTransport,
-                format!("failed to download update binary: {error}"),
-            )
-            .with_asset_url(url.to_string()));
-        }
-    };
+    let mut current_url = url.trim().to_string();
+    let mut redirect_hops = 0usize;
+    loop {
+        let response = match self_update_http_agent().get(&current_url).call() {
+            Ok(response) => response,
+            Err(ureq::Error::Status(code, response)) => {
+                if is_http_redirect_status(code) {
+                    let location = response
+                        .header("Location")
+                        .map(str::trim)
+                        .unwrap_or_default();
+                    if location.is_empty() {
+                        return Err(SelfUpdateCommandError::new(
+                            SelfUpdateErrorKind::AssetHttp,
+                            format!(
+                                "update download redirect from '{}' is missing Location header",
+                                current_url
+                            ),
+                        )
+                        .with_asset_url(current_url)
+                        .with_http_status(code));
+                    }
+                    if redirect_hops >= SELF_UPDATE_MAX_REDIRECT_HOPS {
+                        return Err(SelfUpdateCommandError::new(
+                            SelfUpdateErrorKind::AssetHttp,
+                            format!(
+                                "update download exceeded redirect limit ({} hops)",
+                                SELF_UPDATE_MAX_REDIRECT_HOPS
+                            ),
+                        )
+                        .with_asset_url(current_url)
+                        .with_http_status(code));
+                    }
+                    current_url = resolve_update_redirect_target(
+                        current_url.as_str(),
+                        location,
+                        "download",
+                        None,
+                        SelfUpdateErrorKind::AssetHttp,
+                    )?;
+                    redirect_hops += 1;
+                    continue;
+                }
+                return Err(SelfUpdateCommandError::new(
+                    SelfUpdateErrorKind::AssetHttp,
+                    format!("failed to download update binary (HTTP {})", code),
+                )
+                .with_asset_url(current_url)
+                .with_http_status(code));
+            }
+            Err(error) => {
+                return Err(SelfUpdateCommandError::new(
+                    SelfUpdateErrorKind::AssetTransport,
+                    format!("failed to download update binary: {error}"),
+                )
+                .with_asset_url(current_url));
+            }
+        };
 
-    let mut reader = response.into_reader();
-    read_update_bytes_with_limit(&mut reader, max_bytes, url)
+        if is_http_redirect_status(response.status()) {
+            let status = response.status();
+            let location = response
+                .header("Location")
+                .map(str::trim)
+                .unwrap_or_default();
+            if location.is_empty() {
+                return Err(SelfUpdateCommandError::new(
+                    SelfUpdateErrorKind::AssetHttp,
+                    format!(
+                        "update download redirect from '{}' is missing Location header",
+                        current_url
+                    ),
+                )
+                .with_asset_url(current_url)
+                .with_http_status(status));
+            }
+            if redirect_hops >= SELF_UPDATE_MAX_REDIRECT_HOPS {
+                return Err(SelfUpdateCommandError::new(
+                    SelfUpdateErrorKind::AssetHttp,
+                    format!(
+                        "update download exceeded redirect limit ({} hops)",
+                        SELF_UPDATE_MAX_REDIRECT_HOPS
+                    ),
+                )
+                .with_asset_url(current_url)
+                .with_http_status(status));
+            }
+            current_url = resolve_update_redirect_target(
+                current_url.as_str(),
+                location,
+                "download",
+                None,
+                SelfUpdateErrorKind::AssetHttp,
+            )?;
+            redirect_hops += 1;
+            continue;
+        }
+
+        let mut reader = response.into_reader();
+        return read_update_bytes_with_limit(&mut reader, max_bytes, current_url.as_str());
+    }
 }
 
 fn read_update_bytes_with_limit<R: Read>(
@@ -11874,14 +12125,17 @@ fn print_completion_help() {
 mod tests {
     use super::{
         CLI_LICENSE_TERMS_VERSION, Command, ExecutionMode, GlobalOptions, HomebrewKegPolicy,
-        InstallChannel, ManagerId, acquire_coordinator_bootstrap_lock,
+        InstallChannel, ManagerId, SelfUpdateErrorKind, UpdatePolicy,
+        acquire_coordinator_bootstrap_lock,
         apply_manager_enablement_self_heal, build_json_payload_lines, classify_failure_class,
         cmd_updates_run, command_help_topic_exists, ensure_cli_onboarding_completed,
         exit_code_for_error, mark_exit_code, parse_args, parse_args_with_tty,
         parse_homebrew_keg_policy_arg, parse_manager_id, parse_search_args,
         parse_structured_terminal_error_message, parse_updates_run_preview_args,
-        raw_args_request_json, raw_args_request_ndjson, remove_install_marker_if_channel,
-        self_uninstall_recommended_action, strip_exit_code_marker,
+        provenance_can_self_update, raw_args_request_json, raw_args_request_ndjson,
+        read_update_bytes_with_limit, remove_install_marker_if_channel, resolve_redirect_url,
+        resolve_update_redirect_target, self_uninstall_recommended_action,
+        strip_exit_code_marker,
     };
     use helm_core::execution::TaskOutputRecord;
     use helm_core::models::DetectionInfo;
@@ -11889,6 +12143,7 @@ mod tests {
     use helm_core::sqlite::SqliteStore;
     use serde_json::json;
     use std::fs;
+    use std::io::Cursor;
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -12503,6 +12758,72 @@ mod tests {
     #[test]
     fn coordinator_ps_command_path_is_absolute() {
         assert_eq!(super::PS_COMMAND_PATH, "/bin/ps");
+    }
+
+    #[test]
+    fn resolve_redirect_url_supports_relative_targets() {
+        let absolute_path = resolve_redirect_url(
+            "https://github.com/jasoncavinder/Helm/releases/latest",
+            "/jasoncavinder/Helm/releases/download/v0.17.6/helm",
+        )
+        .expect("absolute redirect path should resolve");
+        assert_eq!(
+            absolute_path,
+            "https://github.com/jasoncavinder/Helm/releases/download/v0.17.6/helm"
+        );
+
+        let relative_path = resolve_redirect_url(
+            "https://github.com/jasoncavinder/Helm/releases/latest?foo=bar",
+            "download/v0.17.6/helm",
+        )
+        .expect("relative redirect path should resolve");
+        assert_eq!(
+            relative_path,
+            "https://github.com/jasoncavinder/Helm/releases/download/v0.17.6/helm"
+        );
+    }
+
+    #[test]
+    fn resolve_update_redirect_target_rejects_disallowed_hosts() {
+        let error = resolve_update_redirect_target(
+            "https://github.com/jasoncavinder/Helm/releases/latest",
+            "https://evil.example.com/update.json",
+            "endpoint",
+            Some("https://github.com/jasoncavinder/Helm/releases/latest"),
+            SelfUpdateErrorKind::ManifestHttp,
+        )
+        .expect_err("disallowed redirect host must fail");
+        assert_eq!(error.kind, SelfUpdateErrorKind::UrlPolicy);
+        assert!(
+            error.message.contains("not allowlisted"),
+            "unexpected message: {}",
+            error.message
+        );
+    }
+
+    #[test]
+    fn read_update_bytes_with_limit_rejects_oversized_payload() {
+        let payload = vec![0x5Au8; 9];
+        let error = read_update_bytes_with_limit(
+            Cursor::new(payload),
+            8,
+            "https://github.com/jasoncavinder/Helm/releases/download/v0.17.6/helm",
+        )
+        .expect_err("oversized payload must fail");
+        assert_eq!(error.kind, SelfUpdateErrorKind::AssetContract);
+        assert!(
+            error.message.contains("exceeds maximum allowed size"),
+            "unexpected message: {}",
+            error.message
+        );
+    }
+
+    #[test]
+    fn self_update_policy_blocks_channel_managed_paths() {
+        assert!(!provenance_can_self_update(UpdatePolicy::ChannelManaged));
+        assert!(!provenance_can_self_update(UpdatePolicy::Managed));
+        assert!(!provenance_can_self_update(UpdatePolicy::None));
+        assert!(provenance_can_self_update(UpdatePolicy::SelfManaged));
     }
 
     #[test]
