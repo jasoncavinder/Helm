@@ -6260,34 +6260,8 @@ impl Drop for CoordinatorBootstrapLockGuard {
     }
 }
 
-fn coordinator_bootstrap_lock_is_stale(lock_file: &std::path::Path) -> bool {
-    coordinator_transport::coordinator_bootstrap_lock_is_stale(lock_file)
-}
-
-fn read_coordinator_bootstrap_lock_pid(lock_file: &std::path::Path) -> Option<u32> {
-    let content = std::fs::read_to_string(lock_file).ok()?;
-    content.trim().parse::<u32>().ok()
-}
-
 fn try_clear_stale_coordinator_bootstrap_lock(lock_file: &std::path::Path) -> Result<bool, String> {
-    if !coordinator_bootstrap_lock_is_stale(lock_file) {
-        return Ok(false);
-    }
-
-    if let Some(pid) = read_coordinator_bootstrap_lock_pid(lock_file)
-        && process_is_alive(pid)
-    {
-        return Ok(false);
-    }
-
-    match std::fs::remove_file(lock_file) {
-        Ok(()) => Ok(true),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(true),
-        Err(error) => Err(format!(
-            "failed to clear stale coordinator bootstrap lock '{}': {error}",
-            lock_file.display()
-        )),
-    }
+    coordinator_transport::try_clear_stale_coordinator_bootstrap_lock(lock_file)
 }
 
 fn acquire_coordinator_bootstrap_lock(
@@ -6556,7 +6530,7 @@ fn write_coordinator_ready_state(
 }
 
 fn is_coordinator_timeout_error(error: &str) -> bool {
-    error.contains("timed out waiting for coordinator response")
+    coordinator_transport::is_coordinator_timeout_error(error)
 }
 
 fn should_launch_coordinator_on_demand(
@@ -6564,9 +6538,11 @@ fn should_launch_coordinator_on_demand(
     launched_for_recovery: bool,
     error: &str,
 ) -> bool {
-    // Invariant: timeout errors must not trigger launch-on-demand reset paths,
-    // because the coordinator may still be healthy and processing a long task.
-    start_if_needed && !launched_for_recovery && !is_coordinator_timeout_error(error)
+    coordinator_transport::should_launch_coordinator_on_demand(
+        start_if_needed,
+        launched_for_recovery,
+        error,
+    )
 }
 
 fn reset_coordinator_state_dir(state_dir: &std::path::Path) -> Result<(), String> {
@@ -12201,6 +12177,9 @@ mod tests {
     use std::sync::Arc;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+    const COORDINATOR_TRANSPORT_INVARIANTS_DOC: &str =
+        "../../../../docs/architecture/CLI_COORDINATOR_TRANSPORT_INVARIANTS.md";
+
     fn temp_file_path(name: &str) -> PathBuf {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -12471,6 +12450,17 @@ mod tests {
             .expect("bootstrap lock worker should complete");
 
         let _ = std::fs::remove_dir_all(state_dir);
+    }
+
+    #[test]
+    fn coordinator_transport_invariants_doc_is_present() {
+        let doc_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(COORDINATOR_TRANSPORT_INVARIANTS_DOC);
+        assert!(
+            doc_path.exists(),
+            "coordinator transport invariants doc missing at {}",
+            doc_path.display()
+        );
     }
 
     #[test]

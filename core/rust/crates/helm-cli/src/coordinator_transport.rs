@@ -169,6 +169,32 @@ pub(crate) fn coordinator_bootstrap_lock_is_stale(lock_file: &Path) -> bool {
     elapsed >= Duration::from_secs(COORDINATOR_BOOTSTRAP_LOCK_STALE_SECS)
 }
 
+pub(crate) fn read_coordinator_bootstrap_lock_pid(lock_file: &Path) -> Option<u32> {
+    let content = std::fs::read_to_string(lock_file).ok()?;
+    content.trim().parse::<u32>().ok()
+}
+
+pub(crate) fn try_clear_stale_coordinator_bootstrap_lock(lock_file: &Path) -> Result<bool, String> {
+    if !coordinator_bootstrap_lock_is_stale(lock_file) {
+        return Ok(false);
+    }
+
+    if let Some(pid) = read_coordinator_bootstrap_lock_pid(lock_file)
+        && process_is_alive(pid)
+    {
+        return Ok(false);
+    }
+
+    match std::fs::remove_file(lock_file) {
+        Ok(()) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(true),
+        Err(error) => Err(format!(
+            "failed to clear stale coordinator bootstrap lock '{}': {error}",
+            lock_file.display()
+        )),
+    }
+}
+
 pub(crate) fn file_modified_unix_seconds(path: &Path) -> Option<i64> {
     let metadata = std::fs::metadata(path).ok()?;
     let modified = metadata.modified().ok()?;
@@ -211,6 +237,20 @@ pub(crate) fn coordinator_process_looks_owned(pid: u32, state_dir: &Path) -> boo
         return false;
     }
     command.contains("__coordinator__") && command.contains(state_dir.to_string_lossy().as_ref())
+}
+
+pub(crate) fn is_coordinator_timeout_error(error: &str) -> bool {
+    error.contains("timed out waiting for coordinator response")
+}
+
+pub(crate) fn should_launch_coordinator_on_demand(
+    start_if_needed: bool,
+    launched_for_recovery: bool,
+    error: &str,
+) -> bool {
+    // Invariant: timeout errors must not trigger launch-on-demand reset paths,
+    // because the coordinator may still be healthy and processing a long task.
+    start_if_needed && !launched_for_recovery && !is_coordinator_timeout_error(error)
 }
 
 #[cfg(test)]
@@ -273,5 +313,29 @@ mod tests {
             transport.bootstrap_lock_file(),
             PathBuf::from("/tmp/helm-c/.bootstrap.lock")
         );
+    }
+
+    #[test]
+    fn coordinator_launch_on_demand_is_disabled_for_timeout_errors() {
+        assert!(!should_launch_coordinator_on_demand(
+            true,
+            false,
+            "timed out waiting for coordinator response in '/tmp/helm'"
+        ));
+        assert!(!should_launch_coordinator_on_demand(
+            false,
+            false,
+            "failed to connect to coordinator"
+        ));
+        assert!(!should_launch_coordinator_on_demand(
+            true,
+            true,
+            "failed to connect to coordinator"
+        ));
+        assert!(should_launch_coordinator_on_demand(
+            true,
+            false,
+            "failed to connect to coordinator at '/tmp/helm': coordinator not ready"
+        ));
     }
 }
