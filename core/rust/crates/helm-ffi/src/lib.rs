@@ -3317,6 +3317,16 @@ pub extern "C" fn helm_list_tasks() -> *mut c_char {
 struct FfiTaskOutputRecord {
     task_id: TaskId,
     command: Option<String>,
+    cwd: Option<String>,
+    program_path: Option<String>,
+    path_snippet: Option<String>,
+    started_at_unix_ms: Option<i64>,
+    finished_at_unix_ms: Option<i64>,
+    duration_ms: Option<u64>,
+    exit_code: Option<i32>,
+    termination_reason: Option<String>,
+    error_code: Option<String>,
+    error_message: Option<String>,
     stdout: Option<String>,
     stderr: Option<String>,
 }
@@ -3472,6 +3482,26 @@ fn build_ffi_task_output_record(task_id: TaskId) -> FfiTaskOutputRecord {
         task_id,
         command: redact_diagnostics_optional(
             output.as_ref().and_then(|entry| entry.command.clone()),
+        ),
+        cwd: redact_diagnostics_optional(output.as_ref().and_then(|entry| entry.cwd.clone())),
+        program_path: redact_diagnostics_optional(
+            output.as_ref().and_then(|entry| entry.program_path.clone()),
+        ),
+        path_snippet: redact_diagnostics_optional(
+            output.as_ref().and_then(|entry| entry.path_snippet.clone()),
+        ),
+        started_at_unix_ms: output.as_ref().and_then(|entry| entry.started_at_unix_ms),
+        finished_at_unix_ms: output.as_ref().and_then(|entry| entry.finished_at_unix_ms),
+        duration_ms: output.as_ref().and_then(|entry| entry.duration_ms),
+        exit_code: output.as_ref().and_then(|entry| entry.exit_code),
+        termination_reason: output
+            .as_ref()
+            .and_then(|entry| entry.termination_reason.clone()),
+        error_code: output.as_ref().and_then(|entry| entry.error_code.clone()),
+        error_message: redact_diagnostics_optional(
+            output
+                .as_ref()
+                .and_then(|entry| entry.error_message.clone()),
         ),
         stdout: redact_diagnostics_optional(output.as_ref().and_then(|entry| entry.stdout.clone())),
         stderr: redact_diagnostics_optional(output.as_ref().and_then(|entry| entry.stderr.clone())),
@@ -7035,7 +7065,29 @@ mod tests {
         helm_core::execution::task_output_store::record_context(
             task_id,
             Some("API_TOKEN=abc PATH=/usr/bin helm refresh"),
-            None,
+            Some("/tmp/project"),
+        );
+        helm_core::execution::task_output_store::record_process_context(
+            task_id,
+            Some("/usr/bin/helm"),
+            Some("PATH=/usr/bin:/bin"),
+        );
+        let started_at = std::time::UNIX_EPOCH + std::time::Duration::from_secs(5);
+        let finished_at = std::time::UNIX_EPOCH + std::time::Duration::from_secs(8);
+        helm_core::execution::task_output_store::record_started_at(task_id, started_at);
+        helm_core::execution::task_output_store::record_terminal_metadata(
+            task_id,
+            started_at,
+            finished_at,
+            Some(1),
+            Some("error"),
+        );
+        helm_core::execution::task_output_store::record_error(
+            task_id,
+            "spawn_failed",
+            "request failed with api_key=abc123",
+            Some("error"),
+            Some(finished_at),
         );
         helm_core::execution::task_output_store::append_stdout(
             task_id,
@@ -7048,12 +7100,29 @@ mod tests {
 
         let record = super::build_ffi_task_output_record(task_id);
         let command = record.command.expect("command should be present");
+        let cwd = record.cwd.expect("cwd should be present");
+        let program_path = record.program_path.expect("program path should be present");
+        let path_snippet = record.path_snippet.expect("path snippet should be present");
+        let error_message = record
+            .error_message
+            .expect("error message should be present");
         let stdout = record.stdout.expect("stdout should be present");
         let stderr = record.stderr.expect("stderr should be present");
 
         assert!(command.contains("API_TOKEN=[REDACTED]"));
         assert!(command.contains("PATH=/usr/bin"));
         assert!(!command.contains("API_TOKEN=abc"));
+        assert_eq!(cwd, "/tmp/project");
+        assert_eq!(program_path, "/usr/bin/helm");
+        assert_eq!(path_snippet, "PATH=/usr/bin:/bin");
+        assert_eq!(record.started_at_unix_ms, Some(5_000));
+        assert_eq!(record.finished_at_unix_ms, Some(8_000));
+        assert_eq!(record.duration_ms, Some(3_000));
+        assert_eq!(record.exit_code, Some(1));
+        assert_eq!(record.termination_reason.as_deref(), Some("error"));
+        assert_eq!(record.error_code.as_deref(), Some("spawn_failed"));
+        assert!(error_message.contains("api_key=[REDACTED]"));
+        assert!(!error_message.contains("abc123"));
 
         assert!(stdout.contains("authorization: [REDACTED]"));
         assert!(stdout.contains("PATH=/usr/bin"));

@@ -1677,7 +1677,11 @@ struct HelmSupport {
         return redactor.redactString(raw)
     }
 
-    static func generateTaskDiagnostics(task: TaskItem, suggestedCommand: String?) -> String {
+    static func generateTaskDiagnostics(
+        task: TaskItem,
+        suggestedCommand: String?,
+        output: CoreTaskOutputRecord? = nil
+    ) -> String {
         var info = generateDiagnostics()
         info += "\nTask Focus:\n"
         info += "- Task ID: \(task.id)\n"
@@ -1699,6 +1703,41 @@ struct HelmSupport {
         }
         if let suggestedCommand, !suggestedCommand.isEmpty {
             info += "- Suggested Repro Command: \(suggestedCommand)\n"
+        }
+        if let output {
+            if let command = output.command, !command.isEmpty {
+                info += "- Command: \(command)\n"
+            }
+            if let cwd = output.cwd, !cwd.isEmpty {
+                info += "- CWD: \(cwd)\n"
+            }
+            if let programPath = output.programPath, !programPath.isEmpty {
+                info += "- Program Path: \(programPath)\n"
+            }
+            if let pathSnippet = output.pathSnippet, !pathSnippet.isEmpty {
+                info += "- PATH Snippet: \(pathSnippet)\n"
+            }
+            if let startedAtUnixMs = output.startedAtUnixMs {
+                info += "- Started At (unix ms): \(startedAtUnixMs)\n"
+            }
+            if let finishedAtUnixMs = output.finishedAtUnixMs {
+                info += "- Finished At (unix ms): \(finishedAtUnixMs)\n"
+            }
+            if let durationMs = output.durationMs {
+                info += "- Duration (ms): \(durationMs)\n"
+            }
+            if let exitCode = output.exitCode {
+                info += "- Exit Code: \(exitCode)\n"
+            }
+            if let terminationReason = output.terminationReason, !terminationReason.isEmpty {
+                info += "- Termination Reason: \(terminationReason)\n"
+            }
+            if let errorCode = output.errorCode, !errorCode.isEmpty {
+                info += "- Error Code: \(errorCode)\n"
+            }
+            if let errorMessage = output.errorMessage, !errorMessage.isEmpty {
+                info += "- Error Message: \(errorMessage)\n"
+            }
         }
         return info
     }
