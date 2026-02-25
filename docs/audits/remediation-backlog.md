@@ -31,7 +31,7 @@ Notes:
 - `DOC-003` — Done (`17bb923`)
 - `DOC-004` — Done (`1e7b655`)
 - `COR-003` — Done (`5fdb22d`)
-- `REL-006` — Done (`PR: TBD`, commit pending)
+- `REL-006` — Done (`7b914c6`)
 
 ## Prioritized Backlog
 
