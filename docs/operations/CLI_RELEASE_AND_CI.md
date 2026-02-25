@@ -70,6 +70,22 @@ Pin-rotation procedure:
 scripts/release/tests/ci_toolchain_contract.sh
 ```
 
+### 1.2 Immutable GitHub Action Pinning (Criticality-Phased)
+
+Phase 1 (pre-release required) is complete for release/security workflows:
+
+- `.github/workflows/release-contract-checks.yml`
+- `.github/workflows/appcast-drift.yml`
+- `.github/workflows/dependency-security.yml`
+- `.github/workflows/codeql.yml`
+- `.github/workflows/semgrep.yml`
+
+Policy:
+
+- release/security workflows must stay pinned to immutable action SHAs.
+- CI/test/lint and non-critical automation pinning continues in later phases.
+- new workflows must use immutable SHA pins when introduced.
+
 ---
 
 ## 2. CLI Update Metadata Endpoint Contract
@@ -85,6 +101,13 @@ Availability note:
 
 - `latest.json` is required and must stay publishable/non-404 for stable direct installs.
 - `latest-rc.json` is published only after the first prerelease tag flow (`vX.Y.Z-rc.N`).
+
+Branch truth policy:
+
+- publish-ready metadata is authoritative on `main` and `release/*` branches only.
+- `dev` is not required to carry publish-ready metadata artifacts.
+- `CLI Update Metadata Drift Guard` skips non-publish refs and enforces stable metadata only on publish-truth refs.
+- prerelease pointer validation (`latest-rc.json`) runs only when that file is present; if present, it must map to the latest published prerelease tag with `channel=rc`.
 
 Schema:
 

@@ -24,6 +24,19 @@ jobs:
 
           STABLE_FILE="web/public/updates/cli/latest.json"
           RC_FILE="web/public/updates/cli/latest-rc.json"
+          CURRENT_REF="${GITHUB_REF_NAME:-${GITHUB_REF#refs/heads/}}"
+          IS_PUBLISH_TRUTH_BRANCH=0
+
+          case "${CURRENT_REF}" in
+            main|release/*)
+              IS_PUBLISH_TRUTH_BRANCH=1
+              ;;
+          esac
+
+          if [ "${IS_PUBLISH_TRUTH_BRANCH}" -ne 1 ]; then
+            echo "::notice::Skipping publish-truth metadata checks on non-publish branch '${CURRENT_REF}'."
+            exit 0
+          fi
 
           if [ ! -f "$STABLE_FILE" ]; then
             echo "::error::Missing stable CLI metadata file: $STABLE_FILE"
@@ -62,14 +75,14 @@ jobs:
           fi
           echo "Stable CLI metadata is aligned with ${LATEST_STABLE_TAG}."
 
-          LATEST_RC_TAG="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '[.[] | select((.draft|not) and (.prerelease == true))][0].tag_name')"
-          if [ -z "$LATEST_RC_TAG" ] || [ "$LATEST_RC_TAG" = "null" ]; then
-            echo "No prerelease tag found; skipping RC metadata validation."
+          if [ ! -f "$RC_FILE" ]; then
+            echo "::notice::Prerelease metadata file not present (${RC_FILE}); RC pointer validation is optional."
             exit 0
           fi
 
-          if [ ! -f "$RC_FILE" ]; then
-            echo "::error::Prerelease tag exists (${LATEST_RC_TAG}) but RC metadata file is missing: ${RC_FILE}"
+          LATEST_RC_TAG="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '[.[] | select((.draft|not) and (.prerelease == true))][0].tag_name')"
+          if [ -z "$LATEST_RC_TAG" ] || [ "$LATEST_RC_TAG" = "null" ]; then
+            echo "::error::RC metadata exists (${RC_FILE}) but no published prerelease tag was found."
             exit 1
           fi
 
