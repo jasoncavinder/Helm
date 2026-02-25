@@ -12,6 +12,7 @@ const MAX_PROGRAM_PATH_BYTES: usize = 8 * 1024;
 const MAX_PATH_SNIPPET_BYTES: usize = 8 * 1024;
 const MAX_ERROR_CODE_BYTES: usize = 256;
 const MAX_ERROR_MESSAGE_BYTES: usize = 16 * 1024;
+const REDACTED_PLACEHOLDER: &str = "[REDACTED]";
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct TaskOutputRecord {
@@ -48,6 +49,7 @@ fn normalize_stream(bytes: &[u8]) -> Option<String> {
     };
 
     let text = String::from_utf8_lossy(normalized).to_string();
+    let text = redact_sensitive_text(text.as_str());
     if text.trim().is_empty() {
         None
     } else {
@@ -60,7 +62,8 @@ fn normalize_command(command: &str) -> Option<String> {
     if trimmed.is_empty() {
         None
     } else {
-        let normalized = truncate_str_to_tail_bytes(trimmed, MAX_COMMAND_BYTES);
+        let redacted = redact_sensitive_text(trimmed);
+        let normalized = truncate_str_to_tail_bytes(redacted.as_str(), MAX_COMMAND_BYTES);
         Some(normalized.to_string())
     }
 }
@@ -70,7 +73,8 @@ fn normalize_working_dir(working_dir: &str) -> Option<String> {
     if trimmed.is_empty() {
         None
     } else {
-        let normalized = truncate_str_to_tail_bytes(trimmed, MAX_WORKING_DIR_BYTES);
+        let redacted = redact_sensitive_text(trimmed);
+        let normalized = truncate_str_to_tail_bytes(redacted.as_str(), MAX_WORKING_DIR_BYTES);
         Some(normalized.to_string())
     }
 }
@@ -80,7 +84,8 @@ fn normalize_program_path(program_path: &str) -> Option<String> {
     if trimmed.is_empty() {
         None
     } else {
-        let normalized = truncate_str_to_tail_bytes(trimmed, MAX_PROGRAM_PATH_BYTES);
+        let redacted = redact_sensitive_text(trimmed);
+        let normalized = truncate_str_to_tail_bytes(redacted.as_str(), MAX_PROGRAM_PATH_BYTES);
         Some(normalized.to_string())
     }
 }
@@ -90,7 +95,8 @@ fn normalize_path_snippet(path_value: &str) -> Option<String> {
     if trimmed.is_empty() {
         None
     } else {
-        let normalized = truncate_str_to_tail_bytes(trimmed, MAX_PATH_SNIPPET_BYTES);
+        let redacted = redact_sensitive_text(trimmed);
+        let normalized = truncate_str_to_tail_bytes(redacted.as_str(), MAX_PATH_SNIPPET_BYTES);
         Some(normalized.to_string())
     }
 }
@@ -129,9 +135,98 @@ fn normalize_error_message(message: &str) -> Option<String> {
     if trimmed.is_empty() {
         None
     } else {
-        let normalized = truncate_str_to_tail_bytes(trimmed, MAX_ERROR_MESSAGE_BYTES);
+        let redacted = redact_sensitive_text(trimmed);
+        let normalized = truncate_str_to_tail_bytes(redacted.as_str(), MAX_ERROR_MESSAGE_BYTES);
         Some(normalized.to_string())
     }
+}
+
+fn normalize_sensitive_key(raw: &str) -> Option<String> {
+    let trimmed = raw.trim_matches(|character: char| {
+        !(character.is_ascii_alphanumeric() || character == '_' || character == '-')
+    });
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.to_ascii_lowercase().replace('-', "_"))
+}
+
+fn is_sensitive_key_name(key: &str) -> bool {
+    key.contains("token")
+        || key.contains("secret")
+        || key.contains("password")
+        || key.contains("passwd")
+        || key.contains("api_key")
+        || key.contains("apikey")
+        || key.contains("auth")
+        || key.contains("cookie")
+        || key.contains("session")
+        || key.contains("license_key")
+        || key.contains("private_key")
+}
+
+fn redact_sensitive_pair_token(token: &str) -> Option<String> {
+    let (key, delimiter, value) = if let Some((key, value)) = token.split_once('=') {
+        (key, '=', value)
+    } else if let Some((key, value)) = token.split_once(':') {
+        (key, ':', value)
+    } else {
+        return None;
+    };
+    if value.is_empty() {
+        return None;
+    }
+    let normalized = normalize_sensitive_key(key)?;
+    if !is_sensitive_key_name(normalized.as_str()) {
+        return None;
+    }
+    Some(format!("{key}{delimiter}{REDACTED_PLACEHOLDER}"))
+}
+
+fn redact_auth_header_line(line: &str) -> Option<String> {
+    let trimmed = line.trim_start();
+    let lowercase = trimmed.to_ascii_lowercase();
+    if !(lowercase.starts_with("authorization:") || lowercase.starts_with("proxy-authorization:")) {
+        return None;
+    }
+    let indent_len = line.len().saturating_sub(trimmed.len());
+    let indent = &line[..indent_len];
+    let header_name = trimmed
+        .split_once(':')
+        .map(|(name, _)| name)
+        .unwrap_or("Authorization");
+    Some(format!("{indent}{header_name}: {REDACTED_PLACEHOLDER}"))
+}
+
+fn redact_sensitive_text(value: &str) -> String {
+    let line_redacted = value
+        .lines()
+        .map(|line| redact_auth_header_line(line).unwrap_or_else(|| line.to_string()))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut rendered = String::with_capacity(line_redacted.len());
+    let mut token = String::new();
+    for character in line_redacted.chars() {
+        if character.is_whitespace() {
+            if !token.is_empty() {
+                let redacted =
+                    redact_sensitive_pair_token(token.as_str()).unwrap_or_else(|| token.clone());
+                rendered.push_str(redacted.as_str());
+                token.clear();
+            }
+            rendered.push(character);
+            continue;
+        }
+        token.push(character);
+    }
+    if !token.is_empty() {
+        let redacted = redact_sensitive_pair_token(token.as_str()).unwrap_or(token);
+        rendered.push_str(redacted.as_str());
+    }
+    if value.ends_with('\n') && !rendered.ends_with('\n') {
+        rendered.push('\n');
+    }
+    rendered
 }
 
 fn truncate_str_to_tail_bytes(input: &str, max_bytes: usize) -> &str {
@@ -195,6 +290,7 @@ fn append_stream(existing: &mut Option<String>, chunk: &[u8]) {
     }
 
     let text = String::from_utf8_lossy(&combined).to_string();
+    let text = redact_sensitive_text(text.as_str());
     if text.trim().is_empty() {
         *existing = None;
     } else {
@@ -380,6 +476,75 @@ mod tests {
         let output = get(task_id).expect("expected output to be recorded");
         let stdout = output.stdout.expect("expected stdout text");
         assert_eq!(stdout.len(), MAX_STREAM_BYTES);
+    }
+
+    #[test]
+    fn redaction_masks_sensitive_tokens_before_persistence() {
+        let _guard = acquire_test_lock();
+        clear_store();
+        let task_id = TaskId(9_015);
+        record(
+            task_id,
+            Some("API_TOKEN=abc123 helm refresh"),
+            b"authorization: Bearer token-value\nPATH=/usr/bin",
+            b"password=hunter2",
+        );
+
+        let output = get(task_id).expect("expected output to be recorded");
+        let command = output.command.expect("command should be present");
+        let stdout = output.stdout.expect("stdout should be present");
+        let stderr = output.stderr.expect("stderr should be present");
+
+        assert!(command.contains("API_TOKEN=[REDACTED]"));
+        assert!(!command.contains("abc123"));
+
+        assert!(stdout.contains("authorization: [REDACTED]"));
+        assert!(stdout.contains("PATH=/usr/bin"));
+        assert!(!stdout.contains("token-value"));
+
+        assert!(stderr.contains("password=[REDACTED]"));
+        assert!(!stderr.contains("hunter2"));
+    }
+
+    #[test]
+    fn redaction_preserves_non_sensitive_tokens() {
+        let _guard = acquire_test_lock();
+        clear_store();
+        let task_id = TaskId(9_016);
+        record(
+            task_id,
+            Some("PATH=/usr/bin helm refresh"),
+            b"status: running",
+            b"",
+        );
+
+        let output = get(task_id).expect("expected output to be recorded");
+        let command = output.command.expect("command should be present");
+        let stdout = output.stdout.expect("stdout should be present");
+
+        assert!(command.contains("PATH=/usr/bin"));
+        assert!(stdout.contains("status: running"));
+    }
+
+    #[test]
+    fn redaction_applies_to_error_messages() {
+        let _guard = acquire_test_lock();
+        clear_store();
+        let task_id = TaskId(9_017);
+        record_error(
+            task_id,
+            "spawn_failed",
+            "request failed with api_key=abc123",
+            Some("error"),
+            None,
+        );
+
+        let output = get(task_id).expect("expected output to be recorded");
+        let error_message = output
+            .error_message
+            .expect("error message should be present");
+        assert!(error_message.contains("api_key=[REDACTED]"));
+        assert!(!error_message.contains("abc123"));
     }
 
     #[test]
