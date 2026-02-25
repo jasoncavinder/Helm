@@ -21,6 +21,10 @@ This checklist is required before creating a release tag on `main`.
   - `main`/`dev`: `Policy Gate`, `Rust Core Tests`, `Xcode Build Check`, `hardcoded-ui-strings`, `Semgrep scan`, `Lint Swift`
   - `docs`: `Policy Gate`, `Docs Checks`
   - `web`: `Policy Gate`, `Web Build`
+- [ ] Confirm advisory release-monitor workflows are **not** required branch checks:
+  - `Release Publish Verify`
+  - `Appcast Drift Guard`
+  - `CLI Update Metadata Drift Guard`
 - [ ] Confirm repo merge settings remain enabled/configured: auto-merge on, update-branch on, and delete-branch-on-merge off.
 - [ ] Confirm release metadata publication remains PR-based (no direct-push fallback path in `.github/workflows/release-macos-dmg.yml`).
 - [ ] Confirm `main` ruleset bypass actors are least-privilege for release publish PR flow (prefer GitHub Actions app `pull_request` bypass, avoid broad `always` bypass).

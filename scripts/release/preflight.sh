@@ -441,6 +441,13 @@ for rule in rules:
             if context:
                 required_contexts.append(context)
 
+advisory_contexts = {
+    "Release Publish Verify",
+    "Appcast Drift Guard",
+    "CLI Update Metadata Drift Guard",
+}
+required_advisory_contexts = sorted(set(required_contexts).intersection(advisory_contexts))
+
 has_actions_pull_request_bypass = any(
     actor.get("actor_type") == "Integration"
     and actor.get("actor_id") == 15368
@@ -467,6 +474,8 @@ print(f"has_actions_pull_request_bypass={'yes' if has_actions_pull_request_bypas
 print(f"has_repo_role_pull_request_bypass={'yes' if has_repo_role_pull_request_bypass else 'no'}")
 print(f"has_any_always_bypass={'yes' if has_any_always_bypass else 'no'}")
 print(f"has_repo_role_always_bypass={'yes' if has_repo_role_always_bypass else 'no'}")
+print(f"has_advisory_checks_required={'yes' if required_advisory_contexts else 'no'}")
+print(f"required_advisory_checks={','.join(required_advisory_contexts)}")
 PY
 )"; then
     fail "unable to evaluate main-branch ruleset policy details"
@@ -482,6 +491,8 @@ PY
   local has_repo_role_pull_request_bypass=""
   local has_any_always_bypass=""
   local has_repo_role_always_bypass=""
+  local has_advisory_checks_required=""
+  local required_advisory_checks=""
 
   while IFS='=' read -r key value; do
     case "$key" in
@@ -512,6 +523,12 @@ PY
     has_repo_role_always_bypass)
       has_repo_role_always_bypass="$value"
       ;;
+    has_advisory_checks_required)
+      has_advisory_checks_required="$value"
+      ;;
+    required_advisory_checks)
+      required_advisory_checks="$value"
+      ;;
     esac
   done <<<"$policy_result"
 
@@ -531,6 +548,9 @@ PY
   fi
   if [ "$has_repo_role_always_bypass" = "yes" ]; then
     fail "main ruleset has RepositoryRole bypass in always mode; set to pull_request or remove"
+  fi
+  if [ "$has_advisory_checks_required" = "yes" ]; then
+    fail "main ruleset should not require advisory post-publish checks (${required_advisory_checks}); keep required checks limited to merge-gating checks."
   fi
   if [ "$has_actions_pull_request_bypass" != "yes" ] && [ "$has_repo_role_pull_request_bypass" != "yes" ]; then
     fail "main ruleset requires pull_request-only bypass policy (GitHub Actions integration actor or RepositoryRole pull_request bypass)"

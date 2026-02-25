@@ -28,6 +28,15 @@ Reference contracts:
 - `.github/workflows/cli-installer-checks.yml`
 - `.github/workflows/release-all-variants.yml`
 
+Release check policy (required vs advisory):
+
+- merge-gating required checks are enforced by branch rulesets (`Policy Gate`, test/lint/build checks)
+- post-publish convergence checks remain advisory:
+  - `Release Publish Verify`
+  - `Appcast Drift Guard`
+  - `CLI Update Metadata Drift Guard`
+- advisory checks must still be monitored and resolved before release sign-off
+
 ---
 
 ## 2. CLI Update Metadata Endpoint Contract

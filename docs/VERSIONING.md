@@ -111,6 +111,14 @@ Required checks by protected branch:
 - `docs`: `Policy Gate`, `Docs Checks`
 - `web`: `Policy Gate`, `Web Build`
 
+Advisory (non-required) release monitors:
+
+- `Release Publish Verify`
+- `Appcast Drift Guard`
+- `CLI Update Metadata Drift Guard`
+
+These workflows validate post-merge publication convergence and should stay advisory so release publish PR merge order does not block unrelated PR merges.
+
 Operational settings:
 
 - auto-merge enabled
