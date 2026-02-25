@@ -56,6 +56,11 @@ Notes:
 - `TEST-001A` — Done (`8887d9a`)
 - `MNT-004` — Split (`PR: TBD`; follow-up `MNT-004A` done)
 - `MNT-004A` — Done (`PR: TBD`)
+- `MNT-001` — Split (`PR: TBD`; follow-up `MNT-001A` + `MNT-001B` + `MNT-001C` done)
+- `MNT-001A` — Done (`263aa37`)
+- `MNT-001B` — Done (`77c1657`)
+- `MNT-001C` — Done (`PR: TBD`)
+- `MNT-001` — Done (`PR: TBD`; split parent closed via `MNT-001A` + `MNT-001B` + `MNT-001C`)
 
 ## Prioritized Backlog
 
@@ -109,7 +114,10 @@ Notes:
 | DOC-002 | Low | Docs | release-line copy across README/banner/docs | Docs | S | Low | None | One canonical source/value for current release channel copy is used across README/website/release docs; drift checks or lint prevent mismatch. |
 | DOC-003 | Low | Docs/Build | Starlight content registry/config for guides | Docs | S | Low | None | Website build no longer emits duplicate id warnings for `guides/faq`, `guides/installation`, `guides/usage`. |
 | DOC-004 | Low | Docs/UX | terminology consistency docs (`manager`/`adapter`/`service`) | Docs | S | Low | None | User-facing docs consistently use approved terms; architecture docs define internal terms once; terminology check added to docs review checklist. |
-| MNT-001 | Med | Maintainability | `core/rust/crates/helm-cli/src/main.rs` | Refactor | M | Med | None | CLI command handlers are split by domain modules without behavior/contract changes; existing CLI tests remain green. |
+| MNT-001 | Med | Maintainability | `core/rust/crates/helm-cli/src/main.rs` | Refactor | M | Med | None | Split into `MNT-001A` + `MNT-001B` + `MNT-001C`; close parent when all child acceptance criteria pass with `helm-cli` test suite green. |
+| MNT-001A | Med | Maintainability | `core/rust/crates/helm-cli/src/{main.rs,coordinator_transport.rs}` | Refactor | S | Low | None | Coordinator transport/path/polling/ownership helper implementations are extracted into `coordinator_transport.rs` with no behavior or contract changes; coordinator transport tests remain green. |
+| MNT-001B | Med | Maintainability | `core/rust/crates/helm-cli/src/{main.rs,json_output.rs}` | Refactor | S | Low | None | JSON/NDJSON envelope construction is extracted into `json_output.rs` while preserving existing schema shape and NDJSON split semantics; payload-shape tests remain green. |
+| MNT-001C | Med | Maintainability | `core/rust/crates/helm-cli/src/{main.rs,cli_errors.rs}` | Refactor | S | Low | None | Exit-marker parsing and failure-classification helpers are extracted into `cli_errors.rs` with unchanged marker semantics and classification hints; existing `helm-cli` tests remain green. |
 | MNT-002 | Med | Maintainability | `core/rust/crates/helm-ffi/src/lib.rs` | Refactor | M | Med | None | FFI high-frequency error keys are centralized (constants/typed enum mapping); repeated boilerplate paths use shared helpers; no behavior regressions. |
 | MNT-003 | Med | Maintainability | `core/rust/crates/helm-core/src/orchestration/adapter_runtime.rs` | Refactor | M | Med | None | Detect/refresh orchestration logic is decomposed into pure helpers with added unit tests for stage selection/reduction behavior. |
 | MNT-004 | Low | Maintainability | `apps/macos-ui/Helm/Core/HelmCore+{Fetching,Actions,Settings}.swift` | Refactor | M | Low | None | Split into `MNT-004A` + `MNT-004B`; close parent when both child acceptance criteria pass. |

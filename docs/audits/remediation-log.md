@@ -1,5 +1,32 @@
 # Remediation Log
 
+## 2026-02-25 — Batch `MNT-001A`, `MNT-001B`, `MNT-001C`
+
+### Scope
+
+- `MNT-001A`: extract coordinator transport/path/polling/process-ownership helpers from `main.rs` into `coordinator_transport.rs` without changing behavior.
+- `MNT-001B`: extract JSON/NDJSON envelope construction helpers from `main.rs` into `json_output.rs` while preserving schema contract behavior.
+- `MNT-001C`: extract CLI exit-marker parsing and failure-classification/hint helpers from `main.rs` into `cli_errors.rs` with no user-visible behavior changes.
+
+### Verification
+
+Commands run:
+
+- `cargo test --manifest-path /Users/jasoncavinder/Projects/Helm/core/rust/Cargo.toml -p helm-cli coordinator_`
+- `cargo test --manifest-path /Users/jasoncavinder/Projects/Helm/core/rust/Cargo.toml -p helm-cli build_json_payload_lines`
+- `cargo test --manifest-path /Users/jasoncavinder/Projects/Helm/core/rust/Cargo.toml -p helm-cli`
+
+Manual verification:
+
+- Confirmed coordinator helper implementations now live in `core/rust/crates/helm-cli/src/coordinator_transport.rs` with the same polling intervals, lock/ready paths, and `ps` ownership checks used previously.
+- Confirmed JSON envelope helper logic now lives in `core/rust/crates/helm-cli/src/json_output.rs` and preserves existing `schema`/`schema_version`/`generated_at`/`data` payload shape and NDJSON array-splitting rules.
+- Confirmed exit marker parsing (`__HELM_EXIT_CODE__`) and JSON-error marker handling (`__HELM_JSON_ERROR_EMITTED__`) plus failure classification/hint mapping now live in `core/rust/crates/helm-cli/src/cli_errors.rs`, with existing CLI tests passing unchanged.
+
+Remaining risks:
+
+- This is a pure maintainability extraction, so behavior risk is low; the primary risk is future drift between thin wrappers in `main.rs` and extracted helper modules if new helper paths are added without tests.
+- Existing unrelated `helm-cli` test-module unused-import warnings remain and were not changed in this batch.
+
 ## 2026-02-25 — Batch `BUILD-005`, `TEST-001A`, `MNT-004A`
 
 ### Scope
