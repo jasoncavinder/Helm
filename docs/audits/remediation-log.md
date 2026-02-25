@@ -1,5 +1,31 @@
 # Remediation Log
 
+## 2026-02-26 — Batch `TEST-006`, `TEST-008`, `TEST-009` (Backlog Split)
+
+### Scope
+
+- `TEST-006`: split large real-manager e2e matrix item into `TEST-006A` (smoke contract), `TEST-006B` (scheduled/manual canary lane), and `TEST-006C` (operator runbook).
+- `TEST-008`: split large Sparkle recovery item into `TEST-008A` (scenario matrix), `TEST-008B` (fixture-based recovery contract tests), and `TEST-008C` (advisory workflow wiring).
+- `TEST-009`: split large release-rehearsal item into `TEST-009A` (environment contract), `TEST-009B` (dry-run rehearsal script), and `TEST-009C` (workflow integration).
+
+### Verification
+
+Commands run:
+
+- `rg -n "TEST-006|TEST-007|TEST-008|TEST-009|TEST-006A|TEST-008A|TEST-009A" docs/audits/remediation-backlog.md`
+- `git diff -- docs/audits/remediation-backlog.md docs/audits/remediation-log.md`
+
+Manual verification:
+
+- Confirmed only `TEST-006`, `TEST-008`, and `TEST-009` were changed, each now split into `S/M` child items with explicit acceptance criteria and dependency ordering.
+- Confirmed `TEST-007` remained untouched (still intentionally large/high-risk VM lane work).
+- Confirmed no code paths were changed; this batch is backlog-structure only to enable constrained future implementation batches.
+
+Remaining risks:
+
+- No runtime behavior changed in this batch.
+- Child items remain pending implementation and must be delivered incrementally to close the parent risks.
+
 ## 2026-02-26 — Batch `SEC-003A`, `UX-001`, `REL-004A2`
 
 ### Scope

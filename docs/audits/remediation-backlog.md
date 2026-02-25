@@ -13,6 +13,9 @@ Notes:
 - `SEC-002` — Done (`78594cd`)
 - `SEC-005` — Done (`d830148`)
 - `TEST-005` — Done (`d830148`)
+- `TEST-006` — Split (`PR: TBD`; follow-up `TEST-006A` + `TEST-006B` + `TEST-006C` pending)
+- `TEST-008` — Split (`PR: TBD`; follow-up `TEST-008A` + `TEST-008B` + `TEST-008C` pending)
+- `TEST-009` — Split (`PR: TBD`; follow-up `TEST-009A` + `TEST-009B` + `TEST-009C` pending)
 - `SEC-004` — Done (`e67d20e`)
 - `BUILD-003` — Done (`961c430`)
 - `BUILD-002` — Done (`c2580c8`)
@@ -127,10 +130,19 @@ Notes:
 | TEST-004A | Med | Test | `scripts/release/tests/publish_verify_state_contract.sh` | Test | S | Low | REL-002 | Stable publish-verify contract covers deterministic merge-order outcomes, including both publish heads open; `MATCHING_HEADS` assertions are stable across permutations. |
 | TEST-004B | Med | Test | `scripts/release/publish_verify_prerelease_state.sh`, `.github/workflows/release-contract-checks.yml` | Test | S | Low | REL-001, REL-002 | Prerelease publish-verify contract script validates synced/pending/mismatch/invalid RC states and is executed by `Release Contract Checks` workflow. |
 | TEST-005 | Med | Test/Security | CLI self-update negative-path tests | Test | S | Low | SEC-005 | Tests cover redirect host rejection, oversized payload bounds, and policy-blocked update channels. |
-| TEST-006 | Med | Test | real-manager e2e matrix (Homebrew + node/python/ruby) | Test | L | Med | BUILD-004 | CI or scheduled canary matrix runs against real manager binaries and reports pass/fail independently from fast PR suite. |
+| TEST-006 | Med | Test | real-manager e2e matrix (Homebrew + node/python/ruby) | Test | L | Med | None | Split into `TEST-006A` + `TEST-006B` + `TEST-006C`; close parent when real-manager canary coverage, CI scheduling, and operator runbook criteria are all met. |
+| TEST-006A | Med | Test | `scripts/tests/` real-manager smoke contract script | Test | S | Low | None | Add a non-destructive real-manager smoke script that verifies binary availability/version checks for Homebrew, Node, Python, and Ruby managers and emits per-manager pass/fail summary with deterministic exit behavior. |
+| TEST-006B | Med | Test | `.github/workflows/` real-manager canary lane | CI | M | Med | TEST-006A | Add a scheduled/manual canary workflow that runs the real-manager smoke contract, stores logs/artifacts, and reports failure independently from fast PR checks. |
+| TEST-006C | Low | Docs/Test | `docs/operations/` canary runbook | Docs | S | Low | TEST-006A, TEST-006B | Add runbook guidance for running/interpreting the real-manager canary locally and in CI, including expected failure triage paths and known environment preconditions. |
 | TEST-007 | Low | Test/Reliability | guarded OS update validation lanes | Test | L | High | None | Dedicated VM/canary validation exists for destructive guarded update paths with explicit safety controls and rollback guidance. |
-| TEST-008 | Low | Test/Reliability | Sparkle updater end-to-end recovery scenarios | Test | L | Med | None | Automated updater interruption/recovery scenarios run on signed artifacts in dedicated environment; failures produce actionable diagnostics. |
-| TEST-009 | Low | Test/Release | staged release rehearsal environment | Test | L | Med | REL-001, REL-002 | Full publish rehearsal executes without touching production metadata and validates release flow end-to-end. |
+| TEST-008 | Low | Test/Reliability | Sparkle updater end-to-end recovery scenarios | Test | L | Med | None | Split into `TEST-008A` + `TEST-008B` + `TEST-008C`; close parent when updater-recovery scenarios are defined, contract-tested, and wired into an advisory lane. |
+| TEST-008A | Low | Test/Docs | Sparkle recovery scenario matrix docs | Docs | S | Low | None | Define updater interruption/recovery scenarios (interrupted download, interrupted apply, stale appcast, invalid metadata) with explicit expected outcomes and operator-observable signals. |
+| TEST-008B | Low | Test | `scripts/release/tests/` updater recovery contract scripts | Test | M | Med | TEST-008A | Add deterministic contract tests using fixtures/mocks for updater recovery decision logic and appcast/state transitions, with stable assertions suitable for CI. |
+| TEST-008C | Low | CI/Test | release/advisory contract workflow wiring | CI | S | Low | TEST-008B | Wire updater recovery contract tests into an advisory workflow path (manual/scheduled) with artifact retention for failure analysis. |
+| TEST-009 | Low | Test/Release | staged release rehearsal environment | Test | L | Med | None | Split into `TEST-009A` + `TEST-009B` + `TEST-009C`; close parent when dry-run release rehearsal contract, script execution, and CI invocation are in place. |
+| TEST-009A | Low | Release/Docs | rehearsal environment contract docs | Docs | S | Low | None | Define required rehearsal environment inputs (branch/tag conventions, sandbox artifacts, metadata targets) and explicit “no production mutation” guarantees. |
+| TEST-009B | Low | Release/Test | `scripts/release/` rehearsal dry-run script | Test | M | Med | TEST-009A | Add a release rehearsal script that executes preflight/prepare/verify in dry-run mode and writes a machine-readable report without mutating production metadata or releases. |
+| TEST-009C | Low | CI/Release | release contract-check workflow integration | CI | S | Low | TEST-009B | Add optional/manual workflow invocation for rehearsal dry-run with captured report artifacts and explicit pass/fail contract checks. |
 | DOC-001 | Low | UX/Docs | CLI errors in `core/rust/crates/helm-cli/src/main.rs` | Docs | S | Low | None | Common CLI errors include actionable next-step hints (`helm help`, `helm managers list`, `helm updates preview`); contract tests verify messages. |
 | DOC-002 | Low | Docs | release-line copy across README/banner/docs | Docs | S | Low | None | One canonical source/value for current release channel copy is used across README/website/release docs; drift checks or lint prevent mismatch. |
 | DOC-003 | Low | Docs/Build | Starlight content registry/config for guides | Docs | S | Low | None | Website build no longer emits duplicate id warnings for `guides/faq`, `guides/installation`, `guides/usage`. |
