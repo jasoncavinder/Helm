@@ -1,5 +1,34 @@
 # Remediation Log
 
+## 2026-02-26 — Batch `MNT-005B`, `MNT-005C`, `SEC-003B`
+
+### Scope
+
+- `MNT-005B`: moved coordinator stale-lock and launch-on-demand lifecycle/state-machine helpers into `coordinator_transport.rs` while keeping call-site behavior unchanged.
+- `MNT-005C`: documented coordinator transport invariants in `docs/architecture/CLI_COORDINATOR_TRANSPORT_INVARIANTS.md` and linked the doc from CLI coordinator tests via a path-presence assertion.
+- `SEC-003B`: added centralized FFI diagnostics redaction for task output and task logs, including strict env-style allowlist semantics (non-allowlisted env assignments are redacted by default).
+
+### Verification
+
+Commands run:
+
+- `cargo fmt --manifest-path core/rust/Cargo.toml --all`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-cli coordinator_`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-ffi redaction_`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-ffi build_ffi_task_output_record_redacts_sensitive_fields_by_default`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-ffi map_task_log_record_redacts_sensitive_message_payloads`
+
+Manual verification:
+
+- Confirmed `main.rs` now delegates stale-lock cleanup and launch policy checks to `coordinator_transport.rs` helpers, preserving existing coordinator recovery behavior.
+- Confirmed coordinator invariants documentation exists at the new architecture doc path and is exercised by CLI test coverage.
+- Confirmed `helm_get_task_output` and `helm_list_task_logs` now pass diagnostics fields through one redaction layer; sensitive env-like keys and auth/token/password-style pairs are masked in default payloads.
+
+Remaining risks:
+
+- `SEC-003A` (core diagnostics redaction before persistence) remains pending; this batch only hardens FFI exposure defaults.
+- Existing test warning noise from unrelated unused imports (`helm-cli` and `helm-ffi`) remains unchanged in this batch.
+
 ## 2026-02-26 — Batch `REL-004A`, `REL-004B`, `MNT-005A`
 
 ### Scope

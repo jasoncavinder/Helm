@@ -63,13 +63,16 @@ Notes:
 - `MNT-001B` — Done (`77c1657`)
 - `MNT-001C` — Done (`PR: TBD`)
 - `MNT-001` — Done (`PR: TBD`; split parent closed via `MNT-001A` + `MNT-001B` + `MNT-001C`)
-- `SEC-003` — Split (`PR: TBD`; follow-up `SEC-003A` + `SEC-003B` pending)
+- `SEC-003` — Split (`3f505be`; follow-up `SEC-003A` pending, `SEC-003B` done)
+- `SEC-003B` — Done (`3f505be`)
 - `REL-004A` — Split (`552a6b9`; follow-up `REL-004A1` done, `REL-004A2` pending)
 - `REL-004A1` — Done (`552a6b9`)
 - `REL-004B` — Done (`552a6b9`)
 - `REL-004` — Split (`552a6b9`; follow-up `REL-004A2` pending, `REL-004B` done)
 - `MNT-005A` — Done (`f4c3d4a`)
-- `MNT-005` — Split (`f4c3d4a`; follow-up `MNT-005A` done, `MNT-005B` + `MNT-005C` pending)
+- `MNT-005B` — Done (`330f8f4`)
+- `MNT-005C` — Done (`330f8f4`)
+- `MNT-005` — Done (`330f8f4`; split parent closed via `MNT-005A` + `MNT-005B` + `MNT-005C`)
 
 ## Prioritized Backlog
 
