@@ -364,6 +364,32 @@ extension HelmCore {
         }
     }
 
+    func decodeCorePayload<T: Decodable>(
+        _ type: T.Type,
+        from data: Data,
+        decodeContext: String,
+        source: String,
+        action: String,
+        managerId: String? = nil,
+        taskType: String,
+        keyDecodingStrategy: JSONDecoder.KeyDecodingStrategy = .convertFromSnakeCase
+    ) -> T? {
+        do {
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = keyDecodingStrategy
+            return try decoder.decode(type, from: data)
+        } catch {
+            logger.error("\(decodeContext): decode failed (\(data.count) bytes): \(error)")
+            recordLastError(
+                source: source,
+                action: action,
+                managerId: managerId,
+                taskType: taskType
+            )
+            return nil
+        }
+    }
+
     private func decodeSettingsPayload<T: Decodable>(
         _ type: T.Type,
         from data: Data,
@@ -372,20 +398,15 @@ extension HelmCore {
         managerId: String? = nil,
         taskType: String
     ) -> T? {
-        do {
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
-            return try decoder.decode(type, from: data)
-        } catch {
-            logger.error("\(decodeContext): decode failed (\(data.count) bytes): \(error)")
-            recordLastError(
-                source: "core.settings",
-                action: action,
-                managerId: managerId,
-                taskType: taskType
-            )
-            return nil
-        }
+        decodeCorePayload(
+            type,
+            from: data,
+            decodeContext: decodeContext,
+            source: "core.settings",
+            action: action,
+            managerId: managerId,
+            taskType: taskType
+        )
     }
 
     // MARK: - Keg Policies
