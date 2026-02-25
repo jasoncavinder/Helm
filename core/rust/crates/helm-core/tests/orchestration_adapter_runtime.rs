@@ -217,13 +217,22 @@ impl SequencedAdapter {
         responses: Vec<AdapterResult<AdapterResponse>>,
         call_count: Arc<AtomicUsize>,
     ) -> Self {
+        Self::with_capabilities(manager, TEST_CAPABILITIES, responses, call_count)
+    }
+
+    fn with_capabilities(
+        manager: ManagerId,
+        capabilities: &'static [Capability],
+        responses: Vec<AdapterResult<AdapterResponse>>,
+        call_count: Arc<AtomicUsize>,
+    ) -> Self {
         Self {
             descriptor: ManagerDescriptor {
                 id: manager,
                 display_name: "sequenced-adapter",
                 category: ManagerCategory::Language,
                 authority: ManagerAuthority::Standard,
-                capabilities: TEST_CAPABILITIES,
+                capabilities,
             },
             responses: Mutex::new(responses),
             call_count,
@@ -635,6 +644,57 @@ async fn submit_refresh_request_response_does_not_retry_parse_failure() {
     assert_eq!(error.task, Some(TaskType::Refresh));
     assert_eq!(error.action, Some(ManagerAction::Refresh));
     assert_eq!(call_count.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn refresh_all_ordered_recomputes_enablement_after_preference_update() {
+    let path = test_db_path("orchestration-runtime-enablement-refresh-invalidation");
+    let store = Arc::new(SqliteStore::new(&path));
+    store.migrate_to_latest().unwrap();
+    store.set_manager_enabled(ManagerId::Npm, true).unwrap();
+
+    let call_count = Arc::new(AtomicUsize::new(0));
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(SequencedAdapter::with_capabilities(
+        ManagerId::Npm,
+        &[Capability::Detect],
+        vec![
+            Ok(AdapterResponse::Detection(DetectionInfo {
+                installed: true,
+                executable_path: Some(PathBuf::from("/opt/homebrew/bin/npm")),
+                version: Some("10.9.0".to_string()),
+            })),
+            Ok(AdapterResponse::Detection(DetectionInfo {
+                installed: true,
+                executable_path: Some(PathBuf::from("/opt/homebrew/bin/npm")),
+                version: Some("10.9.0".to_string()),
+            })),
+        ],
+        call_count.clone(),
+    ));
+    let runtime = AdapterRuntime::with_all_stores(
+        [adapter],
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+    )
+    .unwrap();
+
+    let first_results = runtime.refresh_all_ordered().await;
+    assert_eq!(first_results.len(), 1);
+    assert!(first_results[0].1.is_ok());
+    assert_eq!(call_count.load(Ordering::SeqCst), 1);
+
+    store.set_manager_enabled(ManagerId::Npm, false).unwrap();
+
+    let second_results = runtime.refresh_all_ordered().await;
+    assert_eq!(second_results.len(), 1);
+    assert!(second_results[0].1.is_ok());
+    assert_eq!(
+        call_count.load(Ordering::SeqCst),
+        1,
+        "disabled manager should be skipped after preference update"
+    );
 }
 
 #[tokio::test]

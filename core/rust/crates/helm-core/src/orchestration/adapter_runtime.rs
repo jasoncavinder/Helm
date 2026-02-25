@@ -11,14 +11,16 @@ use crate::adapters::{
 };
 use crate::manager_policy::manager_enablement_eligibility;
 use crate::models::{
-    Capability, CoreError, CoreErrorKind, ManagerAction, ManagerId, NewTaskLogRecord, TaskId,
-    TaskLogLevel, TaskRecord, TaskStatus, TaskType,
+    Capability, CoreError, CoreErrorKind, DetectionInfo, ManagerAction, ManagerId,
+    NewTaskLogRecord, TaskId, TaskLogLevel, TaskRecord, TaskStatus, TaskType,
 };
 use crate::orchestration::{
     AdapterExecutionRuntime, AdapterTaskSnapshot, AdapterTaskTerminalState, CancellationMode,
     OrchestrationResult,
 };
-use crate::persistence::{DetectionStore, PackageStore, SearchCacheStore, TaskStore};
+use crate::persistence::{
+    DetectionStore, ManagerPreference, PackageStore, SearchCacheStore, TaskStore,
+};
 
 const TASK_PERSIST_RETRY_ATTEMPTS: usize = 3;
 const TASK_PERSIST_RETRY_DELAY_MS: u64 = 15;
@@ -38,6 +40,27 @@ pub struct AdapterRuntime {
     package_store: Option<Arc<dyn PackageStore>>,
     search_cache_store: Option<Arc<dyn SearchCacheStore>>,
     detection_store: Option<Arc<dyn DetectionStore>>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct ManagerEnablementSnapshot {
+    enabled_by_manager: HashMap<ManagerId, bool>,
+}
+
+impl ManagerEnablementSnapshot {
+    fn is_enabled(&self, manager: ManagerId) -> bool {
+        self.enabled_by_manager
+            .get(&manager)
+            .copied()
+            .unwrap_or(true)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RefreshCapabilityPlan {
+    detect: bool,
+    list_installed: bool,
+    list_outdated: bool,
 }
 
 impl AdapterRuntime {
@@ -192,6 +215,25 @@ impl AdapterRuntime {
         }
     }
 
+    fn manager_enablement_snapshot(&self) -> Option<Arc<ManagerEnablementSnapshot>> {
+        let detection_store = self.detection_store.as_ref()?;
+        let preferences = detection_store.list_manager_preferences().ok()?;
+        let detections = detection_store.list_detections().ok()?;
+        let enabled_by_manager =
+            build_manager_enablement_map(self.adapters.keys().copied(), &preferences, &detections);
+        Some(Arc::new(ManagerEnablementSnapshot { enabled_by_manager }))
+    }
+
+    fn manager_is_enabled_from_snapshot(
+        &self,
+        manager: ManagerId,
+        snapshot: Option<&ManagerEnablementSnapshot>,
+    ) -> bool {
+        snapshot
+            .map(|value| value.is_enabled(manager))
+            .unwrap_or_else(|| self.is_manager_enabled(manager))
+    }
+
     #[instrument(skip(self))]
     pub async fn detect_all_ordered(&self) -> Vec<(ManagerId, OrchestrationResult<()>)> {
         let adapter_refs: Vec<&dyn ManagerAdapter> =
@@ -201,29 +243,19 @@ impl AdapterRuntime {
         let mut all_results = Vec::new();
 
         for phase in phases {
+            let enablement_snapshot = self.manager_enablement_snapshot();
             let mut handles = Vec::new();
 
             for manager_id in &phase {
                 let manager = *manager_id;
 
-                if !self.is_manager_enabled(manager) {
+                if !self.manager_is_enabled_from_snapshot(manager, enablement_snapshot.as_deref()) {
                     all_results.push((manager, Ok(())));
                     continue;
                 }
 
                 let Some(adapter) = self.adapters.get(&manager) else {
-                    all_results.push((
-                        manager,
-                        Err(CoreError {
-                            manager: Some(manager),
-                            task: None,
-                            action: None,
-                            kind: CoreErrorKind::InvalidInput,
-                            message: format!(
-                                "manager '{manager:?}' is in execution phase but has no registered adapter"
-                            ),
-                        }),
-                    ));
+                    all_results.push((manager, Err(missing_phase_adapter_error(manager))));
                     continue;
                 };
 
@@ -233,17 +265,16 @@ impl AdapterRuntime {
                 }
 
                 let runtime = self.clone();
+                let enablement_snapshot = enablement_snapshot.clone();
                 handles.push(tokio::spawn(async move {
-                    match runtime
-                        .submit_refresh_request_response(
+                    let result = runtime
+                        .submit_refresh_request_response_with_enablement(
                             manager,
                             AdapterRequest::Detect(DetectRequest),
+                            enablement_snapshot.as_deref(),
                         )
-                        .await
-                    {
-                        Ok(AdapterResponse::Detection(_)) | Ok(_) => vec![(manager, Ok(()))],
-                        Err(e) => vec![(manager, Err(e))],
-                    }
+                        .await;
+                    vec![(manager, reduce_detect_request_result(result))]
                 }));
             }
 
@@ -267,76 +298,65 @@ impl AdapterRuntime {
         let mut all_results = Vec::new();
 
         for phase in phases {
+            let enablement_snapshot = self.manager_enablement_snapshot();
             let mut handles = Vec::new();
 
             for manager_id in &phase {
                 let manager = *manager_id;
 
                 // Skip managers that the user has disabled
-                if !self.is_manager_enabled(manager) {
+                if !self.manager_is_enabled_from_snapshot(manager, enablement_snapshot.as_deref()) {
                     all_results.push((manager, Ok(())));
                     continue;
                 }
 
                 let Some(adapter) = self.adapters.get(&manager) else {
-                    all_results.push((
-                        manager,
-                        Err(CoreError {
-                            manager: Some(manager),
-                            task: None,
-                            action: None,
-                            kind: CoreErrorKind::InvalidInput,
-                            message: format!(
-                                "manager '{manager:?}' is in execution phase but has no registered adapter"
-                            ),
-                        }),
-                    ));
+                    all_results.push((manager, Err(missing_phase_adapter_error(manager))));
                     continue;
                 };
-                let supports_detect = adapter.descriptor().supports(Capability::Detect);
-                let supports_list_installed =
-                    adapter.descriptor().supports(Capability::ListInstalled);
-                let supports_list_outdated =
-                    adapter.descriptor().supports(Capability::ListOutdated);
+                let capability_plan = refresh_capability_plan(adapter.as_ref());
 
                 let runtime = self.clone();
+                let enablement_snapshot = enablement_snapshot.clone();
 
                 handles.push(tokio::spawn(async move {
-                    if supports_detect {
+                    if capability_plan.detect {
                         // Detect first; skip refresh list actions when manager is not installed.
                         match runtime
-                            .submit_refresh_request_response(
+                            .submit_refresh_request_response_with_enablement(
                                 manager,
                                 AdapterRequest::Detect(DetectRequest),
+                                enablement_snapshot.as_deref(),
                             )
                             .await
                         {
-                            Ok(AdapterResponse::Detection(info)) => {
-                                if !info.installed {
+                            Ok(response) => {
+                                if should_skip_refresh_lists_after_detect(&response) {
                                     return vec![(manager, Ok(()))];
                                 }
                             }
-                            Ok(_) => {}
                             Err(e) => return vec![(manager, Err(e))],
                         }
                     }
 
-                    if supports_list_installed
+                    if capability_plan.list_installed
                         && let Err(e) = runtime
-                            .submit_refresh_request(
+                            .submit_refresh_request_with_enablement(
                                 manager,
                                 AdapterRequest::ListInstalled(ListInstalledRequest),
+                                enablement_snapshot.as_deref(),
                             )
                             .await
                     {
                         return vec![(manager, Err(e))];
                     }
 
-                    if supports_list_outdated
+                    if capability_plan.list_outdated
                         && let Err(e) = runtime
-                            .submit_refresh_request(
+                            .submit_refresh_request_with_enablement(
                                 manager,
                                 AdapterRequest::ListOutdated(ListOutdatedRequest),
+                                enablement_snapshot.as_deref(),
                             )
                             .await
                     {
@@ -367,10 +387,8 @@ impl AdapterRuntime {
         manager: ManagerId,
         request: AdapterRequest,
     ) -> OrchestrationResult<()> {
-        let _ = self
-            .submit_refresh_request_response(manager, request)
-            .await?;
-        Ok(())
+        self.submit_refresh_request_with_enablement(manager, request, None)
+            .await
     }
 
     #[instrument(skip(self, request), fields(manager = ?manager))]
@@ -378,6 +396,28 @@ impl AdapterRuntime {
         &self,
         manager: ManagerId,
         request: AdapterRequest,
+    ) -> OrchestrationResult<AdapterResponse> {
+        self.submit_refresh_request_response_with_enablement(manager, request, None)
+            .await
+    }
+
+    async fn submit_refresh_request_with_enablement(
+        &self,
+        manager: ManagerId,
+        request: AdapterRequest,
+        enablement_snapshot: Option<&ManagerEnablementSnapshot>,
+    ) -> OrchestrationResult<()> {
+        let _ = self
+            .submit_refresh_request_response_with_enablement(manager, request, enablement_snapshot)
+            .await?;
+        Ok(())
+    }
+
+    async fn submit_refresh_request_response_with_enablement(
+        &self,
+        manager: ManagerId,
+        request: AdapterRequest,
+        enablement_snapshot: Option<&ManagerEnablementSnapshot>,
     ) -> OrchestrationResult<AdapterResponse> {
         let action = request.action();
         let task_type = task_type_for_action(action);
@@ -388,7 +428,7 @@ impl AdapterRuntime {
             let started_at = Instant::now();
 
             let task_id = self
-                .submit(manager, request.clone())
+                .submit_with_enablement(manager, request.clone(), enablement_snapshot)
                 .await
                 .map_err(|error| attribute_error(error, manager, task_type, action))?;
             let snapshot = self
@@ -449,10 +489,19 @@ impl AdapterRuntime {
         manager: ManagerId,
         request: AdapterRequest,
     ) -> OrchestrationResult<TaskId> {
+        self.submit_with_enablement(manager, request, None).await
+    }
+
+    async fn submit_with_enablement(
+        &self,
+        manager: ManagerId,
+        request: AdapterRequest,
+        enablement_snapshot: Option<&ManagerEnablementSnapshot>,
+    ) -> OrchestrationResult<TaskId> {
         let action = request.action();
         let task_type = task_type_for_action(action);
 
-        if !self.is_manager_enabled(manager) {
+        if !self.manager_is_enabled_from_snapshot(manager, enablement_snapshot) {
             return Err(CoreError {
                 manager: Some(manager),
                 task: Some(task_type),
@@ -1079,6 +1128,84 @@ fn attribute_error(
     }
 }
 
+fn missing_phase_adapter_error(manager: ManagerId) -> CoreError {
+    CoreError {
+        manager: Some(manager),
+        task: None,
+        action: None,
+        kind: CoreErrorKind::InvalidInput,
+        message: format!(
+            "manager '{manager:?}' is in execution phase but has no registered adapter"
+        ),
+    }
+}
+
+fn reduce_detect_request_result(
+    result: OrchestrationResult<AdapterResponse>,
+) -> OrchestrationResult<()> {
+    result.map(|_| ())
+}
+
+fn build_refresh_capability_plan(
+    supports_detect: bool,
+    supports_list_installed: bool,
+    supports_list_outdated: bool,
+) -> RefreshCapabilityPlan {
+    RefreshCapabilityPlan {
+        detect: supports_detect,
+        list_installed: supports_list_installed,
+        list_outdated: supports_list_outdated,
+    }
+}
+
+fn refresh_capability_plan(adapter: &dyn ManagerAdapter) -> RefreshCapabilityPlan {
+    build_refresh_capability_plan(
+        adapter.descriptor().supports(Capability::Detect),
+        adapter.descriptor().supports(Capability::ListInstalled),
+        adapter.descriptor().supports(Capability::ListOutdated),
+    )
+}
+
+fn should_skip_refresh_lists_after_detect(response: &AdapterResponse) -> bool {
+    matches!(response, AdapterResponse::Detection(info) if !info.installed)
+}
+
+fn build_manager_enablement_map(
+    managers: impl IntoIterator<Item = ManagerId>,
+    preferences: &[ManagerPreference],
+    detections: &[(ManagerId, DetectionInfo)],
+) -> HashMap<ManagerId, bool> {
+    let mut preferences_by_manager: HashMap<ManagerId, &ManagerPreference> = HashMap::new();
+    for preference in preferences {
+        preferences_by_manager
+            .entry(preference.manager)
+            .or_insert(preference);
+    }
+
+    let detections_by_manager: HashMap<ManagerId, Option<PathBuf>> = detections
+        .iter()
+        .map(|(manager, info)| (*manager, info.executable_path.clone()))
+        .collect();
+
+    let mut enabled_by_manager = HashMap::new();
+    for manager in managers {
+        let preference = preferences_by_manager.get(&manager).copied();
+        let selected_executable_path = preference
+            .and_then(|value| value.selected_executable_path.as_ref())
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from);
+
+        let detected_executable_path = detections_by_manager.get(&manager).cloned().flatten();
+        let resolved_executable = selected_executable_path.or(detected_executable_path);
+        let enabled = preference.map(|value| value.enabled).unwrap_or(true)
+            && manager_enablement_eligibility(manager, resolved_executable.as_deref()).is_eligible;
+        enabled_by_manager.insert(manager, enabled);
+    }
+
+    enabled_by_manager
+}
+
 fn should_retry_transient_refresh_error(
     task_type: TaskType,
     action: ManagerAction,
@@ -1247,11 +1374,18 @@ fn task_type_for_action(action: ManagerAction) -> TaskType {
 
 #[cfg(test)]
 mod tests {
-    use super::{TaskType, refresh_wait_timeout};
+    use super::{
+        TaskType, build_manager_enablement_map, build_refresh_capability_plan,
+        reduce_detect_request_result, refresh_wait_timeout, should_skip_refresh_lists_after_detect,
+    };
+    use crate::adapters::AdapterResponse;
     use crate::execution::{
         ManagerTimeoutProfile, clear_manager_timeout_profiles, set_manager_timeout_profile,
     };
-    use crate::models::ManagerId;
+    use crate::models::{CoreError, CoreErrorKind, DetectionInfo, ManagerId};
+    use crate::persistence::ManagerPreference;
+    use std::collections::HashMap;
+    use std::path::PathBuf;
     use std::sync::{Mutex, OnceLock};
     use std::time::Duration;
 
@@ -1327,5 +1461,119 @@ mod tests {
         );
 
         clear_manager_timeout_profiles();
+    }
+
+    #[test]
+    fn build_refresh_capability_plan_reflects_support_flags() {
+        assert_eq!(
+            build_refresh_capability_plan(true, false, true),
+            super::RefreshCapabilityPlan {
+                detect: true,
+                list_installed: false,
+                list_outdated: true,
+            }
+        );
+        assert_eq!(
+            build_refresh_capability_plan(false, true, false),
+            super::RefreshCapabilityPlan {
+                detect: false,
+                list_installed: true,
+                list_outdated: false,
+            }
+        );
+    }
+
+    #[test]
+    fn should_skip_refresh_lists_after_detect_only_for_not_installed_detection() {
+        assert!(should_skip_refresh_lists_after_detect(
+            &AdapterResponse::Detection(DetectionInfo {
+                installed: false,
+                executable_path: None,
+                version: None,
+            })
+        ));
+        assert!(!should_skip_refresh_lists_after_detect(
+            &AdapterResponse::Detection(DetectionInfo {
+                installed: true,
+                executable_path: None,
+                version: Some("1.0.0".to_string()),
+            })
+        ));
+        assert!(!should_skip_refresh_lists_after_detect(
+            &AdapterResponse::Refreshed
+        ));
+    }
+
+    #[test]
+    fn reduce_detect_request_result_maps_success_and_error() {
+        assert!(reduce_detect_request_result(Ok(AdapterResponse::Refreshed)).is_ok());
+        let error = CoreError {
+            manager: Some(ManagerId::Npm),
+            task: Some(TaskType::Detection),
+            action: None,
+            kind: CoreErrorKind::Timeout,
+            message: "forced failure".to_string(),
+        };
+        let reduced = reduce_detect_request_result(Err(error.clone()))
+            .expect_err("error should be forwarded unchanged");
+        assert_eq!(reduced.kind, error.kind);
+        assert_eq!(reduced.message, error.message);
+    }
+
+    #[test]
+    fn build_manager_enablement_map_uses_selected_path_and_policy_eligibility() {
+        let preferences = vec![ManagerPreference {
+            manager: ManagerId::RubyGems,
+            enabled: true,
+            selected_executable_path: Some("/usr/bin/gem".to_string()),
+            selected_install_method: None,
+            timeout_hard_seconds: None,
+            timeout_idle_seconds: None,
+        }];
+        let detections = vec![(
+            ManagerId::RubyGems,
+            DetectionInfo {
+                installed: true,
+                executable_path: Some(PathBuf::from("/opt/homebrew/bin/gem")),
+                version: Some("3.5.0".to_string()),
+            },
+        )];
+
+        let map = build_manager_enablement_map([ManagerId::RubyGems], &preferences, &detections);
+        assert_eq!(map.get(&ManagerId::RubyGems), Some(&false));
+    }
+
+    #[test]
+    fn build_manager_enablement_map_falls_back_to_detected_path_when_selected_missing() {
+        let preferences = vec![ManagerPreference {
+            manager: ManagerId::Pip,
+            enabled: true,
+            selected_executable_path: None,
+            selected_install_method: None,
+            timeout_hard_seconds: None,
+            timeout_idle_seconds: None,
+        }];
+        let detections = vec![(
+            ManagerId::Pip,
+            DetectionInfo {
+                installed: true,
+                executable_path: Some(PathBuf::from("/usr/bin/python3")),
+                version: Some("3.9.6".to_string()),
+            },
+        )];
+
+        let map = build_manager_enablement_map([ManagerId::Pip], &preferences, &detections);
+        assert_eq!(map.get(&ManagerId::Pip), Some(&false));
+    }
+
+    #[test]
+    fn build_manager_enablement_map_defaults_enabled_for_unknown_manager() {
+        let map = build_manager_enablement_map(
+            [ManagerId::Npm],
+            &Vec::<ManagerPreference>::new(),
+            &Vec::<(ManagerId, DetectionInfo)>::new(),
+        );
+        let expected = HashMap::from([(ManagerId::Npm, true)]);
+        assert_eq!(map, expected);
     }
 }
