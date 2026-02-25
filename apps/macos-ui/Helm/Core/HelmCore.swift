@@ -335,6 +335,8 @@ struct ManagerStatus: Codable {
     let defaultExecutablePath: String?
     let selectedExecutablePath: String?
     let selectedInstallMethod: String?
+    let timeoutHardSeconds: Int?
+    let timeoutIdleSeconds: Int?
     let enabled: Bool
     let isImplemented: Bool
     let isOptional: Bool
