@@ -1,5 +1,36 @@
 # Remediation Log
 
+## 2026-02-25 — Batch `BUILD-004`, `BUILD-002`, `BUILD-003`
+
+### Scope
+
+- `BUILD-004`: pin Rust toolchain versions in CI/release workflows and replace mutable Homebrew SwiftLint install with pinned portable artifact + SHA-256 verification.
+- `BUILD-002`: finalize dependency-security remediation status using implemented workflow baseline (`c2580c8`) and re-verify coverage remains active.
+- `BUILD-003`: extend release-contract checks with a CI toolchain pin contract script to prevent version-drift regressions.
+
+### Verification
+
+Commands run:
+
+- `scripts/release/tests/ci_toolchain_contract.sh`
+- `scripts/release/tests/build_unsigned_variant_contract.sh`
+- `scripts/release/tests/publish_verify_state_contract.sh`
+- `scripts/release/check_release_line_copy.sh`
+- `scripts/release/preflight.sh --allow-non-main --allow-dirty --no-fetch --skip-secrets --skip-workflows --skip-ruleset-policy`
+- `scripts/release/runbook.sh prepare --allow-non-main --allow-dirty --no-fetch --skip-secrets --skip-workflows --skip-ruleset-policy`
+- `ruby -e 'require "yaml"; %w[.github/workflows/ci-test.yml .github/workflows/dependency-security.yml .github/workflows/swiftlint.yml .github/workflows/release-contract-checks.yml .github/workflows/release-cli-direct.yml .github/workflows/release-macos-dmg.yml .github/workflows/release-all-variants.yml].each { |f| YAML.load_file(f); puts "#{f}: ok" }'`
+
+Manual verification:
+
+- Confirmed all `dtolnay/rust-toolchain` workflow invocations now pin `toolchain: 1.93.1` (no `toolchain: stable` remains).
+- Confirmed SwiftLint CI now installs `portable_swiftlint.zip` for pinned `0.59.1` and verifies SHA-256 before execution.
+- Confirmed `release-contract-checks.yml` now enforces CI toolchain pin invariants through `scripts/release/tests/ci_toolchain_contract.sh`.
+
+Remaining risks:
+
+- SwiftLint binary distribution URL/asset naming is an external dependency; if upstream release assets change, SwiftLint CI will fail closed until the pinned version/hash is rotated.
+- Rust toolchain pin upgrades now require explicit maintenance updates across workflows and the contract script constants.
+
 ## 2026-02-25 — Batch `SEC-002`, `COR-005`, `COR-010`
 
 ### Scope
