@@ -1,5 +1,36 @@
 # Remediation Log
 
+## 2026-02-25 — Batch `SEC-005`, `TEST-005`, `SEC-004`
+
+### Scope
+
+- `SEC-005`: harden CLI self-update fetch path to disable implicit HTTP redirects and enforce per-hop allowlist URL policy validation before following redirects.
+- `TEST-005`: add regression coverage for redirect-host policy rejection, oversized update payload bounds, and channel-managed self-update policy blocking.
+- `SEC-004`: confirm existing release unsigned-variant script hardening remains enforced (`e67d20e`) and record finalized backlog reference.
+
+### Verification
+
+Commands run:
+
+- `scripts/release/tests/build_unsigned_variant_contract.sh`
+- `bash -n scripts/release/build_unsigned_variant.sh`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-cli resolve_update_redirect_target_rejects_disallowed_hosts`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-cli read_update_bytes_with_limit_rejects_oversized_payload`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-cli self_update_policy_blocks_channel_managed_paths`
+
+Manual verification:
+
+- Confirmed staged self-update transport changes are limited to redirect policy hardening and associated test imports/tests in `core/rust/crates/helm-cli/src/main.rs`.
+- Confirmed backlog commit mapping now references concrete hashes:
+  - `SEC-004` -> `e67d20e`
+  - `SEC-005` -> `d830148`
+  - `TEST-005` -> `d830148`
+
+Remaining risks:
+
+- Redirect resolution remains intentionally strict and fail-closed; uncommon redirect patterns from third-party endpoints may now hard-fail with URL-policy/HTTP errors until explicitly supported.
+- Redirect hop limit is fixed at `5`; longer redirect chains fail deterministically.
+
 ## 2026-02-26 — Batch `COR-003`, `REL-006`, `DOC-004`
 
 ### Scope

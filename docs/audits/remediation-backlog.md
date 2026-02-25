@@ -11,9 +11,9 @@ Notes:
 ## Batch Status Updates (2026-02-25)
 
 - `SEC-002` — Done (`78594cd`)
-- `SEC-005` — Done (`PR: TBD`, commit pending)
-- `TEST-005` — Done (`PR: TBD`, commit pending)
-- `SEC-004` — Done (`PR: TBD`, commit pending)
+- `SEC-005` — Done (`d830148`)
+- `TEST-005` — Done (`d830148`)
+- `SEC-004` — Done (`e67d20e`)
 - `BUILD-003` — Done (`961c430`)
 - `BUILD-002` — Done (`c2580c8`)
 - `BUILD-004` — Done (`c131a75`)
