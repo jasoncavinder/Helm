@@ -24,6 +24,9 @@ jobs:
       - name: Validate release publish verify merge-order contracts
         run: scripts/release/tests/publish_verify_state_contract.sh
 
+      - name: Validate prerelease publish verify merge-order contracts
+        run: scripts/release/tests/publish_verify_prerelease_state_contract.sh
+
       - name: Validate release-line copy drift contracts
         run: scripts/release/check_release_line_copy.sh
 

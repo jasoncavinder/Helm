@@ -37,6 +37,12 @@ assert_field "$case_pending_cli_first" "TARGET_VERSION" "0.17.7"
 case_pending_appcast_first="$("$SCRIPT_PATH" "0.17.7" "0.17.6" "chore/publish-cli-updates-v0.17.7-stable")"
 assert_field "$case_pending_appcast_first" "STATUS" "pending"
 assert_field "$case_pending_appcast_first" "TARGET_VERSION" "0.17.7"
+assert_field "$case_pending_appcast_first" "MATCHING_HEADS" "chore/publish-cli-updates-v0.17.7-stable"
+
+case_pending_both_heads="$("$SCRIPT_PATH" "0.17.6" "0.17.7" $'chore/publish-updates-v0.17.7\nchore/publish-cli-updates-v0.17.7-stable')"
+assert_field "$case_pending_both_heads" "STATUS" "pending"
+assert_field "$case_pending_both_heads" "TARGET_VERSION" "0.17.7"
+assert_field "$case_pending_both_heads" "MATCHING_HEADS" "chore/publish-updates-v0.17.7,chore/publish-cli-updates-v0.17.7-stable"
 
 case_unmatched="$("$SCRIPT_PATH" "0.17.7" "0.17.6" "")"
 assert_field "$case_unmatched" "STATUS" "mismatch"
@@ -46,4 +52,3 @@ case_invalid="$("$SCRIPT_PATH" "0.17.7-rc.1" "0.17.6" "")"
 assert_field "$case_invalid" "STATUS" "invalid"
 
 printf '[publish-verify-state-contract] passed\n'
-
