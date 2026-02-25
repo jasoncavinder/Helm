@@ -578,6 +578,32 @@ impl CoordinatorStateHealth {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CoordinatorClientTransport {
+    LocalInProcess,
+    ExternalFileIpc,
+}
+
+fn coordinator_transport_for_submit(execution_mode: ExecutionMode) -> CoordinatorClientTransport {
+    if execution_mode == ExecutionMode::Detach {
+        CoordinatorClientTransport::ExternalFileIpc
+    } else {
+        CoordinatorClientTransport::LocalInProcess
+    }
+}
+
+fn coordinator_transport_for_workflow(execution_mode: ExecutionMode) -> CoordinatorClientTransport {
+    if execution_mode == ExecutionMode::Detach {
+        CoordinatorClientTransport::ExternalFileIpc
+    } else {
+        CoordinatorClientTransport::LocalInProcess
+    }
+}
+
+fn coordinator_transport_for_cancel() -> CoordinatorClientTransport {
+    CoordinatorClientTransport::ExternalFileIpc
+}
+
 fn coordinator_request_kind(request: &CoordinatorRequest) -> &'static str {
     match request {
         CoordinatorRequest::Ping => "ping",
@@ -1672,12 +1698,16 @@ fn cmd_refresh(
         target, options.execution_mode
     ));
     let tokio_runtime = cli_tokio_runtime()?;
-    let runtime = build_adapter_runtime(store)?;
+    let runtime = build_adapter_runtime(store.clone())?;
 
     match target {
         ManagerTarget::All => {
             if options.execution_mode == ExecutionMode::Detach {
-                let response = coordinator_start_workflow(CoordinatorWorkflowRequest::RefreshAll)?;
+                let response = coordinator_start_workflow(
+                    store.as_ref(),
+                    CoordinatorWorkflowRequest::RefreshAll,
+                    options.execution_mode,
+                )?;
                 let job_id = response
                     .job_id
                     .ok_or_else(|| "coordinator workflow response missing job id".to_string())?;
@@ -1713,10 +1743,13 @@ fn cmd_refresh(
         }
         ManagerTarget::One(manager) => {
             if options.execution_mode == ExecutionMode::Detach {
-                let response =
-                    coordinator_start_workflow(CoordinatorWorkflowRequest::RefreshManager {
+                let response = coordinator_start_workflow(
+                    store.as_ref(),
+                    CoordinatorWorkflowRequest::RefreshManager {
                         manager_id: manager.as_str().to_string(),
-                    })?;
+                    },
+                    options.execution_mode,
+                )?;
                 let job_id = response
                     .job_id
                     .ok_or_else(|| "coordinator workflow response missing job id".to_string())?;
@@ -2131,6 +2164,7 @@ fn cmd_packages_mutation(
 
     let response = if let Some(request) = coordinator_request {
         Some(coordinator_submit_request(
+            store.as_ref(),
             parsed.manager,
             request,
             options.execution_mode,
@@ -2674,13 +2708,17 @@ fn cmd_updates_run(
     }
 
     if options.execution_mode == ExecutionMode::Detach {
-        let response = coordinator_start_workflow(CoordinatorWorkflowRequest::UpdatesRun {
-            include_pinned: parsed.include_pinned,
-            allow_os_updates: parsed.allow_os_updates,
-            manager_id: parsed
-                .manager_filter
-                .map(|manager| manager.as_str().to_string()),
-        })?;
+        let response = coordinator_start_workflow(
+            store.as_ref(),
+            CoordinatorWorkflowRequest::UpdatesRun {
+                include_pinned: parsed.include_pinned,
+                allow_os_updates: parsed.allow_os_updates,
+                manager_id: parsed
+                    .manager_filter
+                    .map(|manager| manager.as_str().to_string()),
+            },
+            options.execution_mode,
+        )?;
         let job_id = response
             .job_id
             .ok_or_else(|| "coordinator workflow response missing job id".to_string())?;
@@ -3418,7 +3456,11 @@ fn cmd_managers_detect(
     match target {
         ManagerTarget::All => {
             if options.execution_mode == ExecutionMode::Detach {
-                let response = coordinator_start_workflow(CoordinatorWorkflowRequest::DetectAll)?;
+                let response = coordinator_start_workflow(
+                    store.as_ref(),
+                    CoordinatorWorkflowRequest::DetectAll,
+                    options.execution_mode,
+                )?;
                 let job_id = response
                     .job_id
                     .ok_or_else(|| "coordinator workflow response missing job id".to_string())?;
@@ -3441,7 +3483,7 @@ fn cmd_managers_detect(
                 return Ok(());
             }
             let tokio_runtime = cli_tokio_runtime()?;
-            let runtime = build_adapter_runtime(store)?;
+            let runtime = build_adapter_runtime(store.clone())?;
             let rows = tokio_runtime.block_on(detect_all_no_timeout(&runtime));
             let failures = emit_manager_results(
                 options,
@@ -3456,6 +3498,7 @@ fn cmd_managers_detect(
         }
         ManagerTarget::One(manager) => {
             let response = coordinator_submit_request(
+                store.as_ref(),
                 manager,
                 CoordinatorSubmitRequest::Detect,
                 options.execution_mode,
@@ -3525,8 +3568,12 @@ fn cmd_managers_mutation(
     let (target_manager, request) =
         build_manager_mutation_request(store.as_ref(), manager, subcommand)?;
     let submit_request = adapter_request_to_coordinator_submit(request)?;
-    let response =
-        coordinator_submit_request(target_manager, submit_request, options.execution_mode)?;
+    let response = coordinator_submit_request(
+        store.as_ref(),
+        target_manager,
+        submit_request,
+        options.execution_mode,
+    )?;
     let task_id = response
         .task_id
         .ok_or_else(|| "coordinator response missing task id".to_string())?;
@@ -6613,7 +6660,7 @@ fn ensure_coordinator_daemon_running(socket_path: &std::path::Path) -> Result<()
     spawn_coordinator_daemon(socket_path)
 }
 
-fn coordinator_send_request(
+fn coordinator_send_request_external(
     request: &CoordinatorRequest,
     start_if_needed: bool,
 ) -> Result<CoordinatorResponse, String> {
@@ -6706,6 +6753,22 @@ fn coordinator_send_request(
     }
 }
 
+fn coordinator_send_request_local(
+    store: &SqliteStore,
+    request: &CoordinatorRequest,
+) -> Result<CoordinatorResponse, String> {
+    let local_store = Arc::new(SqliteStore::new(store.database_path().to_path_buf()));
+    local_store
+        .migrate_to_latest()
+        .map_err(|error| format!("failed to initialize local coordinator store: {error}"))?;
+    let runtime = build_adapter_runtime(local_store.clone())?;
+    Ok(handle_coordinator_request(
+        &runtime,
+        local_store.as_ref(),
+        request.clone(),
+    ))
+}
+
 fn send_coordinator_request_once(
     socket_path: &std::path::Path,
     request: &CoordinatorRequest,
@@ -6743,57 +6806,69 @@ fn send_coordinator_request_once(
 }
 
 fn coordinator_submit_request(
+    store: &SqliteStore,
     manager: ManagerId,
     request: CoordinatorSubmitRequest,
     execution_mode: ExecutionMode,
 ) -> Result<CoordinatorResponse, String> {
     let wait = execution_mode == ExecutionMode::Wait;
-    let response = coordinator_send_request(
-        &CoordinatorRequest::Submit {
-            manager_id: manager.as_str().to_string(),
-            request,
-            wait,
-        },
-        true,
-    )?;
+    let coordinator_request = CoordinatorRequest::Submit {
+        manager_id: manager.as_str().to_string(),
+        request,
+        wait,
+    };
+    let transport = coordinator_transport_for_submit(execution_mode);
+    let response = match transport {
+        CoordinatorClientTransport::LocalInProcess => {
+            coordinator_send_request_local(store, &coordinator_request)?
+        }
+        CoordinatorClientTransport::ExternalFileIpc => {
+            coordinator_send_request_external(&coordinator_request, true)?
+        }
+    };
 
-    if response.ok {
-        return Ok(response);
-    }
-
-    let message = response
-        .error
-        .unwrap_or_else(|| "coordinator submit request failed".to_string());
-    if let Some(exit_code) = response.exit_code {
-        return Err(mark_exit_code(message, exit_code));
-    }
-    Err(message)
+    coordinator_response_or_error(response, "coordinator submit request failed")
 }
 
 fn coordinator_cancel_task(task_id: u64) -> Result<(), String> {
-    let response = coordinator_send_request(&CoordinatorRequest::Cancel { task_id }, false)?;
-    if response.ok {
-        return Ok(());
-    }
-    let message = response
-        .error
-        .unwrap_or_else(|| format!("failed to cancel task '{}'", task_id));
-    if let Some(exit_code) = response.exit_code {
-        return Err(mark_exit_code(message, exit_code));
-    }
-    Err(message)
+    let response = match coordinator_transport_for_cancel() {
+        CoordinatorClientTransport::LocalInProcess => {
+            let store = open_store()?;
+            coordinator_send_request_local(store.as_ref(), &CoordinatorRequest::Cancel { task_id })?
+        }
+        CoordinatorClientTransport::ExternalFileIpc => {
+            coordinator_send_request_external(&CoordinatorRequest::Cancel { task_id }, false)?
+        }
+    };
+    coordinator_response_or_error(response, &format!("failed to cancel task '{}'", task_id))
+        .map(|_| ())
 }
 
 fn coordinator_start_workflow(
+    store: &SqliteStore,
     workflow: CoordinatorWorkflowRequest,
+    execution_mode: ExecutionMode,
 ) -> Result<CoordinatorResponse, String> {
-    let response = coordinator_send_request(&CoordinatorRequest::StartWorkflow { workflow }, true)?;
+    let coordinator_request = CoordinatorRequest::StartWorkflow { workflow };
+    let response = match coordinator_transport_for_workflow(execution_mode) {
+        CoordinatorClientTransport::LocalInProcess => {
+            coordinator_send_request_local(store, &coordinator_request)?
+        }
+        CoordinatorClientTransport::ExternalFileIpc => {
+            coordinator_send_request_external(&coordinator_request, true)?
+        }
+    };
+    coordinator_response_or_error(response, "coordinator workflow request failed")
+}
+
+fn coordinator_response_or_error(
+    response: CoordinatorResponse,
+    fallback_error: &str,
+) -> Result<CoordinatorResponse, String> {
     if response.ok {
         return Ok(response);
     }
-    let message = response
-        .error
-        .unwrap_or_else(|| "coordinator workflow request failed".to_string());
+    let message = response.error.unwrap_or_else(|| fallback_error.to_string());
     if let Some(exit_code) = response.exit_code {
         return Err(mark_exit_code(message, exit_code));
     }
@@ -9160,7 +9235,7 @@ fn search_remote_for_enabled(
     }
 
     sync_manager_executable_overrides(store.as_ref())?;
-    let runtime = build_adapter_runtime(store)?;
+    let runtime = build_adapter_runtime(store.clone())?;
     let tokio_runtime = cli_tokio_runtime()?;
     let mut remote_results = Vec::new();
     let mut remote_errors = Vec::new();
@@ -12149,15 +12224,17 @@ fn print_completion_help() {
 #[cfg(test)]
 mod tests {
     use super::{
-        CLI_LICENSE_TERMS_VERSION, Command, ExecutionMode, GlobalOptions, HomebrewKegPolicy,
-        InstallChannel, ManagerId, SelfUpdateErrorKind,
+        CLI_LICENSE_TERMS_VERSION, Command, CoordinatorClientTransport, ExecutionMode,
+        GlobalOptions, HomebrewKegPolicy, InstallChannel, ManagerId, SelfUpdateErrorKind,
         TASKS_FOLLOW_MACHINE_MODE_UNSUPPORTED_ERROR, UpdatePolicy, UpgradeExecutionStep,
         acquire_coordinator_bootstrap_lock, apply_manager_enablement_self_heal,
         build_json_payload_lines, classify_failure_class, cmd_tasks_follow, cmd_updates_run,
-        command_help_topic_exists, count_upgrade_step_failures, ensure_cli_onboarding_completed,
-        exit_code_for_error, failure_class_hint, manager_operation_failure_error, mark_exit_code,
-        parse_args, parse_args_with_tty, parse_homebrew_keg_policy_arg, parse_manager_id,
-        parse_search_args, parse_structured_terminal_error_message, parse_updates_run_preview_args,
+        command_help_topic_exists, coordinator_transport_for_cancel,
+        coordinator_transport_for_submit, coordinator_transport_for_workflow,
+        count_upgrade_step_failures, ensure_cli_onboarding_completed, exit_code_for_error,
+        failure_class_hint, manager_operation_failure_error, mark_exit_code, parse_args,
+        parse_args_with_tty, parse_homebrew_keg_policy_arg, parse_manager_id, parse_search_args,
+        parse_structured_terminal_error_message, parse_updates_run_preview_args,
         provenance_can_self_update, raw_args_request_json, raw_args_request_ndjson,
         read_update_bytes_with_limit, remove_install_marker_if_channel, resolve_redirect_url,
         resolve_update_redirect_target, selected_executable_differs_from_default,
@@ -12408,6 +12485,30 @@ mod tests {
     }
 
     #[test]
+    fn coordinator_transport_mode_selection_matches_execution_contract() {
+        assert_eq!(
+            coordinator_transport_for_submit(ExecutionMode::Wait),
+            CoordinatorClientTransport::LocalInProcess
+        );
+        assert_eq!(
+            coordinator_transport_for_submit(ExecutionMode::Detach),
+            CoordinatorClientTransport::ExternalFileIpc
+        );
+        assert_eq!(
+            coordinator_transport_for_workflow(ExecutionMode::Wait),
+            CoordinatorClientTransport::LocalInProcess
+        );
+        assert_eq!(
+            coordinator_transport_for_workflow(ExecutionMode::Detach),
+            CoordinatorClientTransport::ExternalFileIpc
+        );
+        assert_eq!(
+            coordinator_transport_for_cancel(),
+            CoordinatorClientTransport::ExternalFileIpc
+        );
+    }
+
+    #[test]
     fn coordinator_bootstrap_lock_serializes_parallel_acquisition() {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -12454,8 +12555,8 @@ mod tests {
 
     #[test]
     fn coordinator_transport_invariants_doc_is_present() {
-        let doc_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join(COORDINATOR_TRANSPORT_INVARIANTS_DOC);
+        let doc_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join(COORDINATOR_TRANSPORT_INVARIANTS_DOC);
         assert!(
             doc_path.exists(),
             "coordinator transport invariants doc missing at {}",

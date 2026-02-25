@@ -1,5 +1,36 @@
 # Remediation Log
 
+## 2026-02-26 — Batch `SEC-003A`, `UX-001`, `REL-004A2`
+
+### Scope
+
+- `SEC-003A`: add centralized sensitive-token/auth-header redaction in core task-output persistence paths before diagnostics are stored/exposed.
+- `UX-001`: propagate extended task-output diagnostics context (`cwd`, `program`, `PATH` snippet, timing, exit/termination/error metadata) through FFI to Swift UI diagnostics rendering with redaction-default behavior preserved.
+- `REL-004A2`: migrate default CLI submit/workflow `--wait` request transport to local in-process coordinator handling while keeping `--detach` and cancel paths on explicit external file-IPC transport.
+
+### Verification
+
+Commands run:
+
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-core redaction_`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-ffi build_ffi_task_output_record_redacts_sensitive_fields_by_default`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-ffi map_task_log_record_redacts_sensitive_message_payloads`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-cli coordinator_`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-cli`
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' -configuration Debug CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO build`
+
+Manual verification:
+
+- Confirmed persisted task command/stdout/stderr/error fields redact token/password/api-key and authorization-header patterns before storage retrieval.
+- Confirmed task inspector diagnostics export now includes the extended task-output context fields when available and remains compatible with missing/older payload fields.
+- Confirmed CLI coordinator transport policy now routes submit/workflow wait-mode calls to local in-process handling while detach and cancellation remain explicit external transport paths.
+- Confirmed coordinator transport invariants documentation reflects the new default submit/workflow wait-mode behavior and detach/cancel external path policy.
+
+Remaining risks:
+
+- `helm-cli` and `helm-ffi` test builds still emit pre-existing unused-import warnings unrelated to this batch.
+- External file-IPC transport still exists for detach/cancel compatibility by design and should continue to be monitored until full XPC migration is complete.
+
 ## 2026-02-26 — Batch `MNT-005B`, `MNT-005C`, `SEC-003B`
 
 ### Scope

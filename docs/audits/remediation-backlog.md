@@ -63,12 +63,15 @@ Notes:
 - `MNT-001B` — Done (`77c1657`)
 - `MNT-001C` — Done (`PR: TBD`)
 - `MNT-001` — Done (`PR: TBD`; split parent closed via `MNT-001A` + `MNT-001B` + `MNT-001C`)
-- `SEC-003` — Split (`3f505be`; follow-up `SEC-003A` pending, `SEC-003B` done)
+- `SEC-003` — Done (`PR: TBD`; split parent closed via `SEC-003A` + `SEC-003B`)
+- `SEC-003A` — Done (`2854558`)
 - `SEC-003B` — Done (`3f505be`)
-- `REL-004A` — Split (`552a6b9`; follow-up `REL-004A1` done, `REL-004A2` pending)
+- `REL-004A` — Done (`PR: TBD`; split parent closed via `REL-004A1` + `REL-004A2`)
 - `REL-004A1` — Done (`552a6b9`)
+- `REL-004A2` — Done (`PR: TBD`)
 - `REL-004B` — Done (`552a6b9`)
-- `REL-004` — Split (`552a6b9`; follow-up `REL-004A2` pending, `REL-004B` done)
+- `REL-004` — Done (`PR: TBD`; split parent closed via `REL-004A` + `REL-004B`)
+- `UX-001` — Done (`4b3f54b`)
 - `MNT-005A` — Done (`f4c3d4a`)
 - `MNT-005B` — Done (`330f8f4`)
 - `MNT-005C` — Done (`330f8f4`)
@@ -107,7 +110,7 @@ Notes:
 | COR-008B | Med | Correctness | manager executable status diagnostics (CLI/FFI surfaces) | Hardening | M | Med | None | Divergence between selected and detected default executable paths is surfaced as explicit diagnostics in manager status outputs; tests cover aligned vs diverged path reporting. |
 | COR-009 | Med | UX/CLI behavior | `core/rust/crates/helm-cli/src/main.rs` (`cmd_tasks_follow`) | Bugfix | M | Low | None | Machine mode (`--json`/`--ndjson`) has defined streaming behavior for follow, or emits explicit documented non-support contract with stable exit code; tests cover contract. |
 | COR-010 | Low | UX/CLI behavior | `core/rust/crates/helm-cli/src/main.rs` (`build_json_payload_lines`) | Hardening | S | Low | None | NDJSON contract is explicitly defined per command; nested array payload behavior is deterministic/documented; tests verify expected envelope shape. |
-| UX-001 | Med | UX/Docs | task output model across core/FFI/UI (`helm_get_task_output`, Swift `CoreTaskOutputRecord`) | Hardening | M | Med | DEC-005 | Core task output fields (`cwd`, `program`, `PATH` snippet, exit/termination/error context) are consistently propagated and rendered with backward-compatible decoding; privacy-safe redaction rules are applied. |
+| UX-001 | Med | UX/Docs | task output model across core/FFI/UI (`helm_get_task_output`, Swift `CoreTaskOutputRecord`) | Hardening | M | Med | None | Core task output fields (`cwd`, `program`, `PATH` snippet, exit/termination/error context) are consistently propagated and rendered with backward-compatible decoding; privacy-safe redaction rules are applied. |
 | PERF-001 | Med | Performance | coordinator poll loop in CLI workflow wait paths | Hardening | M | Low | None | Coordinator startup/bootstrap wait paths use bounded adaptive poll intervals instead of fixed 50ms sleeps; readiness timeout remains deterministic (`COORDINATOR_DAEMON_READY_TIMEOUT_MS`); poll-interval unit tests verify bounded backoff behavior. |
 | PERF-002 | Low | Performance | manager enablement hot paths in orchestration | Refactor | M | Low | None | Manager enablement snapshot is cached with correct invalidation on preference/detection updates; behavior parity tests pass. |
 | BUILD-003 | Med | Build/Release | CI workflows + `scripts/release/{preflight.sh,runbook.sh}` | CI | S | Low | None | Release preflight/runbook contract checks are exercised in CI (non-destructive mode) to catch regressions before release tags. |

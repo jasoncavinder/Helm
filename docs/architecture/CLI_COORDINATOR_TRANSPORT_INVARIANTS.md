@@ -10,8 +10,10 @@ This document records the invariants for Helm CLI coordinator transport behavior
 
 ## Fallback Policy
 
+- Default CLI submit request/response transport is local in-process for `--wait` execution mode.
 - macOS coordinator bridge policy is local/XPC-preferred by default.
 - Legacy external file-IPC compatibility remains opt-in and must be explicitly enabled (`HELM_LEGACY_FILE_COORDINATOR_IPC`).
+- CLI `--detach` and cancellation paths continue to use external coordinator file-IPC transport for cross-process lifecycle control.
 - Timeout errors must not trigger blind launch-on-demand resets.
 
 ## State and Ownership Safety
