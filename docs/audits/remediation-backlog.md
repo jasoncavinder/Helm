@@ -32,6 +32,10 @@ Notes:
 - `DOC-004` — Done (`1e7b655`)
 - `COR-003` — Done (`5fdb22d`)
 - `REL-006` — Done (`7b914c6`)
+- `COR-006` — Done (`aa10cb4`)
+- `COR-008` — Split (`80bba06`; follow-up `COR-008B` pending)
+- `COR-008A` — Done (`80bba06`)
+- `TEST-002` — Done (`PR: TBD`)
 
 ## Prioritized Backlog
 
@@ -55,7 +59,9 @@ Notes:
 | COR-005 | Med | Reliability | `core/rust/crates/helm-cli/src/main.rs` coordinator bootstrap | Bugfix | M | Med | None | Concurrent first-start bootstrap is serialized (lock/marker); parallel CLI launches do not race-reset state or spawn conflicting daemons; race test passes. |
 | COR-006 | Med | Correctness | `core/rust/crates/helm-core/src/adapters/process_utils.rs` | Bugfix | M | Low | None | Non-UTF8 manager output no longer hard-fails parse path by default; tolerant decoding path preserves operability and diagnostics context; regression tests include invalid UTF8 bytes. |
 | COR-007 | Med | Reliability | execution timeout/error classification + diagnostics surfaces | Hardening | M | Med | None | Offline/proxy/captive portal failures are classified distinctly from generic timeouts; user-facing diagnostics include actionable hints; tests cover representative network failure classes. |
-| COR-008 | Med | Correctness | `core/rust/crates/helm-core/src/adapters/detect_utils.rs` | Hardening | M | Low | None | Shim/root discovery includes documented manager ecosystems (e.g., `rtx`) and conflict diagnostics when selected/default executable diverge; tests cover path precedence cases. |
+| COR-008 | Med | Correctness | `core/rust/crates/helm-core/src/adapters/detect_utils.rs` + manager status surfaces | Hardening | M | Low | None | Split into `COR-008A` + `COR-008B`; close parent when both child acceptance criteria pass. |
+| COR-008A | Med | Correctness | `core/rust/crates/helm-core/src/adapters/detect_utils.rs` | Hardening | S | Low | None | Shim/root discovery includes documented `rtx` paths (shim + versioned installs) and path-precedence coverage validates extra-path-first behavior. |
+| COR-008B | Med | Correctness | manager executable status diagnostics (CLI/FFI surfaces) | Hardening | M | Med | None | Divergence between selected and detected default executable paths is surfaced as explicit diagnostics in manager status outputs; tests cover aligned vs diverged path reporting. |
 | COR-009 | Med | UX/CLI behavior | `core/rust/crates/helm-cli/src/main.rs` (`cmd_tasks_follow`) | Bugfix | M | Low | None | Machine mode (`--json`/`--ndjson`) has defined streaming behavior for follow, or emits explicit documented non-support contract with stable exit code; tests cover contract. |
 | COR-010 | Low | UX/CLI behavior | `core/rust/crates/helm-cli/src/main.rs` (`build_json_payload_lines`) | Hardening | S | Low | None | NDJSON contract is explicitly defined per command; nested array payload behavior is deterministic/documented; tests verify expected envelope shape. |
 | UX-001 | Med | UX/Docs | task output model across core/FFI/UI (`helm_get_task_output`, Swift `CoreTaskOutputRecord`) | Hardening | M | Med | DEC-005 | Core task output fields (`cwd`, `program`, `PATH` snippet, exit/termination/error context) are consistently propagated and rendered with backward-compatible decoding; privacy-safe redaction rules are applied. |

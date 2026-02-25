@@ -1,5 +1,38 @@
 # Remediation Log
 
+## 2026-02-26 — Batch `COR-006`, `COR-008`, `TEST-002`
+
+### Scope
+
+- `COR-006`: make adapter process stdout handling tolerant of non-UTF8 bytes on successful process exits so refresh/list flows fail less often under mixed-encoding manager output.
+- `COR-008`: extend executable discovery roots for `rtx` ecosystems and lock precedence behavior with targeted tests; split divergence-diagnostics surfacing into follow-up child item `COR-008B`.
+- `TEST-002`: add integration lifecycle coverage across authoritative (`asdf`), standard (`npm`), and guarded (`homebrew`) managers, including guarded idempotency assertions.
+
+### Verification
+
+Commands run:
+
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-core run_and_collect_stdout_uses_lossy_decode_for_non_utf8_stdout`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-core run_and_collect_stdout_preserves_process_failure_shape`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-core discover_executable_path_prefers_extra_paths_over_path`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-core discover_executable_path_finds_rtx_versioned_installs`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-core additional_and_versioned_roots_include_rtx_locations`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-core --test manager_lifecycle_matrix`
+
+Manual verification:
+
+- Confirmed `run_and_collect_stdout` now returns lossy-decoded stdout for `ExitCode(0)` responses instead of failing with UTF8 parse errors, while preserving existing manager/task/action attribution for non-zero exits.
+- Confirmed detection roots now include `~/.local/share/rtx/shims` and `~/.local/share/rtx/installs`, and precedence tests verify extra search roots win ahead of ambient `PATH`.
+- Confirmed new lifecycle integration test matrix covers install/update/remove behavior across authority classes and asserts guarded idempotency behavior for already-installed/already-absent Homebrew formulas.
+- Recorded `COR-008` as split:
+  - `COR-008A` complete in `80bba06` (discovery roots + precedence tests)
+  - `COR-008B` pending for manager-status divergence diagnostics surfacing.
+
+Remaining risks:
+
+- Lossy decode trades strict parse failure for operability; adapters that require strict machine-parse output may still fail later in parser-specific stages if replacement characters break schema/format assumptions.
+- `COR-008B` remains open; selected/default executable divergence is not yet surfaced in CLI/FFI manager-status diagnostics outputs.
+
 ## 2026-02-25 — Batch `SEC-005`, `TEST-005`, `SEC-004`
 
 ### Scope
