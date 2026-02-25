@@ -1,5 +1,35 @@
 # Remediation Log
 
+## 2026-02-26 — Batch `COR-007`, `PERF-002`, `MNT-003`
+
+### Scope
+
+- `COR-007`: classify explicit "check your internet connection" failures as `network_offline` and lock behavior with a regression test.
+- `PERF-002`: avoid repeated manager preference/detection scans in ordered detect/refresh flows by building and reusing per-phase manager enablement snapshots.
+- `MNT-003`: decompose dense detect/refresh orchestration flow into pure helper functions (capability planning, detect-result reduction, detection gate behavior, missing-adapter error shaping) with targeted unit coverage.
+
+### Verification
+
+Commands run:
+
+- `cargo fmt --manifest-path core/rust/Cargo.toml --all`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-cli classify_failure_class_detects_check_internet_connection_pattern`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-core build_refresh_capability_plan_reflects_support_flags`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-core build_manager_enablement_map_`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-core --test orchestration_adapter_runtime refresh_all_ordered_recomputes_enablement_after_preference_update`
+
+Manual verification:
+
+- Confirmed offline diagnostic classification now captures the "check your internet connection" phrase and emits `network_offline`.
+- Confirmed detect/refresh ordered flows now take a per-phase enablement snapshot and pass it through submit paths, reducing repeated preference/detection lookups during a phase.
+- Confirmed helper extraction keeps behavior intact: detect responses still reduce to success/error uniformly, detect-installed=false still short-circuits follow-up list actions, and missing-adapter phase failures still return structured `InvalidInput`.
+- Confirmed manager enablement changes between operations are respected (`refresh_all_ordered_recomputes_enablement_after_preference_update`).
+
+Remaining risks:
+
+- Enablement snapshots are phase-scoped, so preference flips mid-phase are not observed until the next phase/operation.
+- `PERF-002` improvements reduce lookup churn in hot ordered flows, but do not change lookup behavior for standalone direct submissions.
+
 ## 2026-02-26 — Batch `COR-001`, `REL-001`, `BUILD-001`
 
 ### Scope

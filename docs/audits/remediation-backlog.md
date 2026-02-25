@@ -43,6 +43,9 @@ Notes:
 - `COR-001` — Done (`efdb904`)
 - `REL-001` — Done (`67a8ce9`)
 - `BUILD-001` — Done (`PR: TBD`)
+- `COR-007` — Done (`64802ee`)
+- `PERF-002` — Done (`ecaaeba`)
+- `MNT-003` — Done (`ecaaeba`)
 
 ## Prioritized Backlog
 
