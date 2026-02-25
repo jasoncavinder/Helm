@@ -51,6 +51,7 @@ use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
+mod command_dispatch;
 mod provenance;
 mod tui;
 
@@ -719,38 +720,22 @@ fn main() -> ExitCode {
     }
 
     let options_for_error = options.clone();
-    match command {
-        Command::Tui => cmd_tui(store.clone(), options),
-        Command::Status => cmd_status(store.as_ref(), options),
-        Command::Refresh => cmd_refresh(store.clone(), options, &command_args),
-        Command::Ls => cmd_packages(store.clone(), options, &command_args),
-        Command::Search => cmd_search(store.clone(), options, &command_args),
-        Command::Packages => cmd_packages(store.clone(), options, &command_args),
-        Command::Updates => cmd_updates(store.clone(), options, &command_args),
-        Command::Tasks => cmd_tasks(store.as_ref(), options, &command_args),
-        Command::Managers => cmd_managers(store.clone(), options, &command_args),
-        Command::Settings => cmd_settings(store.as_ref(), options, &command_args),
-        Command::Diagnostics => cmd_diagnostics(store.as_ref(), options, &command_args),
-        Command::Doctor => cmd_doctor(store.as_ref(), options, &command_args),
-        Command::Onboarding => cmd_onboarding(store.as_ref(), options, &command_args),
-        Command::SelfCmd => cmd_self(store.clone(), options, &command_args),
-        Command::InternalCoordinator => cmd_internal_coordinator(store.clone(), &command_args),
-        Command::Completion | Command::Help | Command::Version => Ok(()),
-    }
-    .map(|_| ExitCode::SUCCESS)
-    .unwrap_or_else(|error| {
-        let (json_emitted, normalized_error) = strip_json_error_marker(error.as_str());
-        let (marked_exit_code, normalized_error) = strip_exit_code_marker(normalized_error);
-        let exit_code = marked_exit_code.unwrap_or_else(|| exit_code_for_error(normalized_error));
-        if options_for_error.json {
-            if !json_emitted {
-                emit_cli_error_json("helm.cli.v1.error", normalized_error, exit_code);
+    command_dispatch::execute_command(command, store.clone(), options, &command_args)
+        .map(|_| ExitCode::SUCCESS)
+        .unwrap_or_else(|error| {
+            let (json_emitted, normalized_error) = strip_json_error_marker(error.as_str());
+            let (marked_exit_code, normalized_error) = strip_exit_code_marker(normalized_error);
+            let exit_code =
+                marked_exit_code.unwrap_or_else(|| exit_code_for_error(normalized_error));
+            if options_for_error.json {
+                if !json_emitted {
+                    emit_cli_error_json("helm.cli.v1.error", normalized_error, exit_code);
+                }
+            } else if !json_emitted {
+                eprintln!("helm: {normalized_error}");
             }
-        } else if !json_emitted {
-            eprintln!("helm: {normalized_error}");
-        }
-        ExitCode::from(exit_code)
-    })
+            ExitCode::from(exit_code)
+        })
 }
 
 fn cmd_tui(store: Arc<SqliteStore>, options: GlobalOptions) -> Result<(), String> {
