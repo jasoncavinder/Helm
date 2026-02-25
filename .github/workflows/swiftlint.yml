@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+env:
+  SWIFTLINT_VERSION: "0.59.1"
+  SWIFTLINT_PORTABLE_SHA256: "58f9be8a4677900c945e2c618168223f4dd620a0cc65c9ccc5ea0f70433e89c1"
+
 jobs:
   swiftlint:
     name: Lint Swift
@@ -18,10 +22,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install SwiftLint
+      - name: Install pinned SwiftLint
         run: |
-          brew update
-          brew install swiftlint
+          set -euo pipefail
+          ZIP_PATH="$RUNNER_TEMP/portable_swiftlint.zip"
+          INSTALL_ROOT="$RUNNER_TEMP/swiftlint-${SWIFTLINT_VERSION}"
+          curl -fsSL \
+            "https://github.com/realm/SwiftLint/releases/download/${SWIFTLINT_VERSION}/portable_swiftlint.zip" \
+            -o "$ZIP_PATH"
+          echo "${SWIFTLINT_PORTABLE_SHA256}  ${ZIP_PATH}" | shasum -a 256 -c -
+          rm -rf "$INSTALL_ROOT"
+          mkdir -p "$INSTALL_ROOT"
+          unzip -q "$ZIP_PATH" -d "$INSTALL_ROOT"
+          chmod +x "$INSTALL_ROOT/swiftlint"
+          echo "$INSTALL_ROOT" >> "$GITHUB_PATH"
+          INSTALLED_VERSION="$("$INSTALL_ROOT/swiftlint" version)"
+          if [ "$INSTALLED_VERSION" != "$SWIFTLINT_VERSION" ]; then
+            echo "::error::SwiftLint version mismatch: expected ${SWIFTLINT_VERSION}, got ${INSTALLED_VERSION}"
+            exit 1
+          fi
 
       - name: Run SwiftLint
         run: |

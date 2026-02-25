@@ -39,6 +39,37 @@ Release check policy (required vs advisory):
   - `CLI Update Metadata Drift Guard`
 - advisory checks must still be monitored and resolved before release sign-off
 
+### 1.1 CI Toolchain Pin Contract (Reproducibility)
+
+Pinned versions:
+
+- Rust toolchain: `1.93.1` (all workflows using `dtolnay/rust-toolchain`)
+- SwiftLint: `0.59.1` via `portable_swiftlint.zip`
+- SwiftLint portable SHA-256: `58f9be8a4677900c945e2c618168223f4dd620a0cc65c9ccc5ea0f70433e89c1`
+
+Drift guard:
+
+- `scripts/release/tests/ci_toolchain_contract.sh`
+- executed by `.github/workflows/release-contract-checks.yml`
+
+Pin-rotation procedure:
+
+1. Choose target Rust + SwiftLint versions.
+2. Update Rust `toolchain:` values in:
+   - `.github/workflows/ci-test.yml`
+   - `.github/workflows/dependency-security.yml`
+   - `.github/workflows/release-cli-direct.yml`
+   - `.github/workflows/release-macos-dmg.yml`
+   - `.github/workflows/release-all-variants.yml`
+3. Download the target SwiftLint `portable_swiftlint.zip`, compute SHA-256, and update:
+   - `.github/workflows/swiftlint.yml` (`SWIFTLINT_VERSION`, `SWIFTLINT_PORTABLE_SHA256`)
+4. Update constants in `scripts/release/tests/ci_toolchain_contract.sh`.
+5. Run contracts locally before opening a PR:
+
+```bash
+scripts/release/tests/ci_toolchain_contract.sh
+```
+
 ---
 
 ## 2. CLI Update Metadata Endpoint Contract
