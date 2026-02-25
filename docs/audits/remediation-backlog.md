@@ -36,10 +36,10 @@ Notes:
 - `COR-008` — Split (`80bba06`; follow-up `COR-008B` pending)
 - `COR-008A` — Done (`80bba06`)
 - `TEST-002` — Done (`PR: TBD`)
-- `COR-008B` — Done (`PR: TBD`)
-- `COR-008` — Done (`PR: TBD`; split parent closed via `COR-008A` + `COR-008B`)
-- `REL-003` — Done (`PR: TBD`)
-- `MNT-002` — Done (`PR: TBD`)
+- `COR-008B` — Done (`7414d6e`)
+- `COR-008` — Done (`7414d6e`; split parent closed via `COR-008A` + `COR-008B`)
+- `REL-003` — Done (`7414d6e`)
+- `MNT-002` — Done (`7414d6e`)
 
 ## Prioritized Backlog
 
