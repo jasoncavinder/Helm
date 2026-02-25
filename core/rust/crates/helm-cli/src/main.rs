@@ -286,6 +286,7 @@ struct CliDiagnosticsSummary {
     failed_task_ids: Vec<u64>,
     undetected_enabled_managers: Vec<String>,
     failure_classes: BTreeMap<String, usize>,
+    failure_class_hints: BTreeMap<String, String>,
     coordinator: CliCoordinatorHealthSummary,
 }
 
@@ -326,6 +327,8 @@ struct CliTaskDiagnosticsOutput {
 struct CliTaskDiagnosticsError {
     code: String,
     message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hint: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -7440,7 +7443,11 @@ fn cmd_diagnostics_summary(store: &SqliteStore, options: GlobalOptions) -> Resul
     } else {
         println!("  failure_classes:");
         for (class, count) in &summary.failure_classes {
-            println!("    {class}: {count}");
+            if let Some(hint) = summary.failure_class_hints.get(class) {
+                println!("    {class}: {count} ({hint})");
+            } else {
+                println!("    {class}: {count}");
+            }
         }
     }
     println!("  coordinator:");
@@ -7557,9 +7564,11 @@ fn cmd_diagnostics_task(
     if let Some(error) = diagnostics_error {
         println!("  error_code: {}", error.code);
         println!("  error_message: {}", error.message);
+        println!("  error_hint: {}", error.hint.as_deref().unwrap_or("-"));
     } else {
         println!("  error_code: -");
         println!("  error_message: -");
+        println!("  error_hint: -");
     }
     if output_payload.available {
         println!("  output_available: true");
@@ -7879,8 +7888,10 @@ fn build_task_diagnostics_error(
         && !code.trim().is_empty()
         && !message.trim().is_empty()
     {
+        let normalized_code = code.trim().to_string();
         return Some(CliTaskDiagnosticsError {
-            code: code.clone(),
+            hint: failure_class_hint_string(normalized_code.as_str()),
+            code: normalized_code,
             message: message.clone(),
         });
     }
@@ -7909,6 +7920,7 @@ fn build_task_diagnostics_error(
         });
     let code = classify_failure_class(output, Some(fallback_message.as_str())).to_string();
     Some(CliTaskDiagnosticsError {
+        hint: failure_class_hint_string(code.as_str()),
         code,
         message: fallback_message,
     })
@@ -7944,8 +7956,10 @@ fn parse_terminal_error_from_logs(
             .map(str::trim)
             .filter(|detail| !detail.is_empty())
         {
+            let code = classify_failure_class(output, Some(unstructured)).to_string();
             return Some(CliTaskDiagnosticsError {
-                code: classify_failure_class(output, Some(unstructured)).to_string(),
+                hint: failure_class_hint_string(code.as_str()),
+                code,
                 message: unstructured.to_string(),
             });
         }
@@ -7970,6 +7984,7 @@ fn parse_structured_terminal_error_message(
         .map(str::trim)
         .filter(|value| !value.is_empty())?;
     Some(CliTaskDiagnosticsError {
+        hint: failure_class_hint_string(code),
         code: code.to_string(),
         message: detail.to_string(),
     })
@@ -8026,6 +8041,27 @@ fn classify_failure_class(
     {
         return "cwd_missing";
     }
+    if normalized.contains("captive portal")
+        || normalized.contains("network authentication required")
+        || normalized.contains("http 511")
+        || normalized.contains("wifi login")
+        || normalized.contains("sign in to network")
+        || normalized.contains("captive")
+    {
+        return "network_captive_portal";
+    }
+    if normalized.contains("proxy authentication required")
+        || normalized.contains("http 407")
+        || normalized.contains("proxyconnect")
+        || normalized.contains("via proxy")
+        || normalized.contains("proxy error")
+        || normalized.contains("https_proxy")
+        || normalized.contains("http_proxy")
+        || normalized.contains("all_proxy")
+        || normalized.contains(" proxy ")
+    {
+        return "network_proxy";
+    }
     if normalized.contains("temporary failure in name resolution")
         || normalized.contains("name or service not known")
         || normalized.contains("failed to lookup address")
@@ -8034,6 +8070,15 @@ fn classify_failure_class(
     {
         return "network_dns";
     }
+    if normalized.contains("network is unreachable")
+        || normalized.contains("no route to host")
+        || normalized.contains("not connected to the internet")
+        || normalized.contains("offline")
+        || normalized.contains("failed to connect")
+        || normalized.contains("connection refused")
+    {
+        return "network_offline";
+    }
     if normalized.contains("timed out") || normalized.contains("timeout") {
         return "timeout";
     }
@@ -8041,6 +8086,29 @@ fn classify_failure_class(
         return "idle_timeout";
     }
     "other"
+}
+
+fn failure_class_hint(code: &str) -> Option<&'static str> {
+    match code {
+        "network_dns" => Some("Check DNS resolution and retry the operation."),
+        "network_offline" => Some("Check internet connectivity and retry the operation."),
+        "network_proxy" => Some("Check proxy configuration and credentials, then retry."),
+        "network_captive_portal" => {
+            Some("Complete captive-portal sign-in in a browser, then retry.")
+        }
+        "timeout" | "hard_timeout" | "idle_timeout" => Some(
+            "Retry, or increase the manager timeout profile if this operation is expected to run longer.",
+        ),
+        "coordinator_timeout" => {
+            Some("Run 'helm diagnostics summary' to inspect coordinator health, then retry.")
+        }
+        "cwd_missing" => Some("Run Helm from an existing working directory and retry."),
+        _ => None,
+    }
+}
+
+fn failure_class_hint_string(code: &str) -> Option<String> {
+    failure_class_hint(code).map(str::to_string)
 }
 
 fn diagnose_failure_class_for_task(store: &SqliteStore, task_id: TaskId) -> Result<String, String> {
@@ -8120,6 +8188,7 @@ fn build_diagnostics_summary(store: &SqliteStore) -> Result<CliDiagnosticsSummar
     let mut cancelled_tasks = 0usize;
     let mut failed_task_ids = Vec::new();
     let mut failure_classes: BTreeMap<String, usize> = BTreeMap::new();
+    let mut failure_class_hints: BTreeMap<String, String> = BTreeMap::new();
     for task in tasks {
         match task.status {
             TaskStatus::Queued => queued_tasks = queued_tasks.saturating_add(1),
@@ -8129,6 +8198,11 @@ fn build_diagnostics_summary(store: &SqliteStore) -> Result<CliDiagnosticsSummar
                 failed_tasks = failed_tasks.saturating_add(1);
                 failed_task_ids.push(task.id.0);
                 let class = diagnose_failure_class_for_task(store, task.id)?;
+                if let Some(hint) = failure_class_hint(class.as_str()) {
+                    failure_class_hints
+                        .entry(class.clone())
+                        .or_insert_with(|| hint.to_string());
+                }
                 let entry = failure_classes.entry(class).or_insert(0);
                 *entry = entry.saturating_add(1);
             }
@@ -8160,6 +8234,7 @@ fn build_diagnostics_summary(store: &SqliteStore) -> Result<CliDiagnosticsSummar
         failed_task_ids,
         undetected_enabled_managers,
         failure_classes,
+        failure_class_hints,
         coordinator: build_coordinator_health_summary(),
     })
 }
@@ -12281,9 +12356,9 @@ mod tests {
         acquire_coordinator_bootstrap_lock, apply_manager_enablement_self_heal,
         build_json_payload_lines, classify_failure_class, cmd_tasks_follow, cmd_updates_run,
         command_help_topic_exists, count_upgrade_step_failures, ensure_cli_onboarding_completed,
-        exit_code_for_error, manager_operation_failure_error, mark_exit_code, parse_args,
-        parse_args_with_tty, parse_homebrew_keg_policy_arg, parse_manager_id, parse_search_args,
-        parse_structured_terminal_error_message, parse_updates_run_preview_args,
+        exit_code_for_error, failure_class_hint, manager_operation_failure_error, mark_exit_code,
+        parse_args, parse_args_with_tty, parse_homebrew_keg_policy_arg, parse_manager_id,
+        parse_search_args, parse_structured_terminal_error_message, parse_updates_run_preview_args,
         provenance_can_self_update, raw_args_request_json, raw_args_request_ndjson,
         read_update_bytes_with_limit, remove_install_marker_if_channel, resolve_redirect_url,
         resolve_update_redirect_target, selected_executable_differs_from_default,
@@ -12650,6 +12725,49 @@ mod tests {
             Some("Error: The current working directory must exist to run brew."),
         );
         assert_eq!(class, "cwd_missing");
+    }
+
+    #[test]
+    fn classify_failure_class_detects_network_offline_pattern() {
+        let class = classify_failure_class(
+            None,
+            Some("failed to connect: network is unreachable for host registry.npmjs.org"),
+        );
+        assert_eq!(class, "network_offline");
+    }
+
+    #[test]
+    fn classify_failure_class_detects_network_proxy_pattern() {
+        let class = classify_failure_class(
+            None,
+            Some("proxy authentication required (HTTP 407) while reaching mirror"),
+        );
+        assert_eq!(class, "network_proxy");
+    }
+
+    #[test]
+    fn classify_failure_class_detects_network_captive_portal_pattern() {
+        let class = classify_failure_class(
+            None,
+            Some("network authentication required (HTTP 511): captive portal login"),
+        );
+        assert_eq!(class, "network_captive_portal");
+    }
+
+    #[test]
+    fn failure_class_hint_provides_actionable_network_guidance() {
+        assert_eq!(
+            failure_class_hint("network_dns"),
+            Some("Check DNS resolution and retry the operation.")
+        );
+        assert_eq!(
+            failure_class_hint("network_proxy"),
+            Some("Check proxy configuration and credentials, then retry.")
+        );
+        assert_eq!(
+            failure_class_hint("network_captive_portal"),
+            Some("Complete captive-portal sign-in in a browser, then retry.")
+        );
     }
 
     #[test]

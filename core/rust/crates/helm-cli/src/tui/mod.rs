@@ -477,6 +477,7 @@ impl AppState {
                 failed_task_ids: Vec::new(),
                 undetected_enabled_managers: Vec::new(),
                 failure_classes: BTreeMap::new(),
+                failure_class_hints: BTreeMap::new(),
                 coordinator: super::CliCoordinatorHealthSummary {
                     state_dir: String::new(),
                     ready_file_present: false,
