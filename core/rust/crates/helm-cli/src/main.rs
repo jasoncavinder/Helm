@@ -67,6 +67,7 @@ const JSON_ERROR_EMITTED_PREFIX: &str = "__HELM_JSON_ERROR_EMITTED__:";
 const EXIT_CODE_MARKER_PREFIX: &str = "__HELM_EXIT_CODE__:";
 const CLI_ONBOARDING_REQUIRED_EXIT_CODE: u8 = 5;
 const CLI_LICENSE_ACCEPTANCE_REQUIRED_EXIT_CODE: u8 = 6;
+const TASKS_FOLLOW_MACHINE_MODE_UNSUPPORTED_ERROR: &str = "tasks follow does not support --json/--ndjson. Run without machine mode or use 'helm tasks logs <task-id>'.";
 const CLI_LICENSE_TERMS_VERSION: &str = "helm-source-available-license-v1.0-pre1.0";
 const CLI_LICENSE_TERMS_URL: &str = "https://github.com/jasoncavinder/Helm/blob/main/LICENSE";
 const CLI_ACCEPT_LICENSE_ENV: &str = "HELM_ACCEPT_LICENSE";
@@ -3088,7 +3089,7 @@ fn cmd_tasks_follow(
     command_args: &[String],
 ) -> Result<(), String> {
     if options.json {
-        return Err("tasks follow does not support --json streaming yet".to_string());
+        return Err(tasks_follow_machine_mode_error());
     }
 
     let parsed = parse_tasks_log_options(command_args, "follow")?;
@@ -3169,6 +3170,10 @@ fn cmd_tasks_follow(
 
         thread::sleep(Duration::from_millis(poll_ms));
     }
+}
+
+fn tasks_follow_machine_mode_error() -> String {
+    mark_exit_code(TASKS_FOLLOW_MACHINE_MODE_UNSUPPORTED_ERROR, 1)
 }
 
 fn cmd_tasks_cancel(options: GlobalOptions, command_args: &[String]) -> Result<(), String> {
@@ -11246,6 +11251,9 @@ fn print_tasks_help() {
     println!();
     println!("DESCRIPTION:");
     println!("  Inspect task state/logs/output and follow lifecycle logs.");
+    println!(
+        "  tasks follow is text-stream only; --json/--ndjson are not supported (exit code 1)."
+    );
     println!("  Task cancellation routes through the shared CLI coordinator.");
 }
 
@@ -11292,6 +11300,7 @@ fn print_tasks_follow_help() {
     println!();
     println!("DESCRIPTION:");
     println!("  Poll and stream persisted lifecycle logs until terminal status or timeout.");
+    println!("  --json/--ndjson are not supported for tasks follow and return exit code 1.");
 }
 
 fn print_tasks_cancel_help() {
@@ -12263,6 +12272,45 @@ mod tests {
         assert_eq!(payloads[0]["data"]["results"][0]["manager_id"], "npm");
         assert_eq!(payloads[0]["data"]["total_steps"], 1);
         assert_eq!(payloads[0]["data"]["failed_steps"], 0);
+    }
+
+    #[test]
+    fn tasks_follow_machine_mode_error_contract_is_stable() {
+        let marked = super::tasks_follow_machine_mode_error();
+        let (exit_code, message) = strip_exit_code_marker(marked.as_str());
+        assert_eq!(exit_code, Some(1));
+        assert_eq!(
+            message,
+            super::TASKS_FOLLOW_MACHINE_MODE_UNSUPPORTED_ERROR
+        );
+        assert!(message.contains("--json/--ndjson"));
+        assert!(message.contains("helm tasks logs <task-id>"));
+    }
+
+    #[test]
+    fn cmd_tasks_follow_rejects_machine_mode_with_stable_exit_code() {
+        let db_path = temp_db_path("tasks-follow-machine-mode");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        let args = vec!["42".to_string()];
+        let options = GlobalOptions {
+            json: true,
+            ndjson: true,
+            ..GlobalOptions::default()
+        };
+
+        let error = super::cmd_tasks_follow(&store, options, &args)
+            .expect_err("tasks follow machine mode should fail deterministically");
+        let (exit_code, message) = strip_exit_code_marker(error.as_str());
+        assert_eq!(exit_code, Some(1));
+        assert_eq!(
+            message,
+            super::TASKS_FOLLOW_MACHINE_MODE_UNSUPPORTED_ERROR
+        );
+
+        let _ = fs::remove_file(db_path);
     }
 
     #[test]
