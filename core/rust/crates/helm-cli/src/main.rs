@@ -6002,6 +6002,123 @@ fn coordinator_response_file(state_dir: &std::path::Path, request_id: &str) -> P
     coordinator_responses_dir(state_dir).join(format!("{request_id}.json"))
 }
 
+const COORDINATOR_BOOTSTRAP_LOCK_FILE: &str = ".bootstrap.lock";
+const COORDINATOR_BOOTSTRAP_LOCK_WAIT_TIMEOUT_MS: u64 = 5_000;
+const COORDINATOR_BOOTSTRAP_LOCK_STALE_SECS: u64 = 15;
+
+fn coordinator_bootstrap_lock_file(state_dir: &std::path::Path) -> PathBuf {
+    state_dir.join(COORDINATOR_BOOTSTRAP_LOCK_FILE)
+}
+
+struct CoordinatorBootstrapLockGuard {
+    lock_file: PathBuf,
+}
+
+impl Drop for CoordinatorBootstrapLockGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(self.lock_file.as_path());
+    }
+}
+
+fn coordinator_bootstrap_lock_is_stale(lock_file: &std::path::Path) -> bool {
+    let Ok(metadata) = std::fs::metadata(lock_file) else {
+        return false;
+    };
+    let Some(elapsed) = metadata
+        .modified()
+        .ok()
+        .and_then(|modified| modified.elapsed().ok())
+    else {
+        return false;
+    };
+    elapsed >= Duration::from_secs(COORDINATOR_BOOTSTRAP_LOCK_STALE_SECS)
+}
+
+fn read_coordinator_bootstrap_lock_pid(lock_file: &std::path::Path) -> Option<u32> {
+    let content = std::fs::read_to_string(lock_file).ok()?;
+    content.trim().parse::<u32>().ok()
+}
+
+fn try_clear_stale_coordinator_bootstrap_lock(lock_file: &std::path::Path) -> Result<bool, String> {
+    if !coordinator_bootstrap_lock_is_stale(lock_file) {
+        return Ok(false);
+    }
+
+    if let Some(pid) = read_coordinator_bootstrap_lock_pid(lock_file)
+        && process_is_alive(pid)
+    {
+        return Ok(false);
+    }
+
+    match std::fs::remove_file(lock_file) {
+        Ok(()) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(true),
+        Err(error) => Err(format!(
+            "failed to clear stale coordinator bootstrap lock '{}': {error}",
+            lock_file.display()
+        )),
+    }
+}
+
+fn acquire_coordinator_bootstrap_lock(
+    state_dir: &std::path::Path,
+) -> Result<CoordinatorBootstrapLockGuard, String> {
+    std::fs::create_dir_all(state_dir).map_err(|error| {
+        format!(
+            "failed to create coordinator bootstrap state directory '{}': {error}",
+            state_dir.display()
+        )
+    })?;
+    let lock_file = coordinator_bootstrap_lock_file(state_dir);
+    let started = Instant::now();
+
+    loop {
+        let open_result = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(lock_file.as_path());
+
+        match open_result {
+            Ok(mut file) => {
+                file.write_all(std::process::id().to_string().as_bytes())
+                    .map_err(|error| {
+                        format!(
+                            "failed to write coordinator bootstrap lock '{}': {error}",
+                            lock_file.display()
+                        )
+                    })?;
+                file.sync_all().map_err(|error| {
+                    format!(
+                        "failed to flush coordinator bootstrap lock '{}': {error}",
+                        lock_file.display()
+                    )
+                })?;
+                return Ok(CoordinatorBootstrapLockGuard { lock_file });
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                if try_clear_stale_coordinator_bootstrap_lock(lock_file.as_path())? {
+                    continue;
+                }
+                if started.elapsed()
+                    >= Duration::from_millis(COORDINATOR_BOOTSTRAP_LOCK_WAIT_TIMEOUT_MS)
+                {
+                    return Err(format!(
+                        "timed out waiting for coordinator bootstrap lock '{}'",
+                        lock_file.display()
+                    ));
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(error) => {
+                return Err(format!(
+                    "failed to create coordinator bootstrap lock '{}': {error}",
+                    lock_file.display()
+                ));
+            }
+        }
+    }
+}
+
 fn next_coordinator_request_id() -> String {
     let counter = COORDINATOR_REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed);
     let nanos = SystemTime::now()
@@ -6252,6 +6369,16 @@ fn spawn_coordinator_daemon(socket_path: &std::path::Path) -> Result<(), String>
     Err("coordinator daemon did not become ready in time".to_string())
 }
 
+fn ensure_coordinator_daemon_running(socket_path: &std::path::Path) -> Result<(), String> {
+    let _lock = acquire_coordinator_bootstrap_lock(socket_path)?;
+    if let Ok(response) = send_coordinator_request_once(socket_path, &CoordinatorRequest::Ping)
+        && response.ok
+    {
+        return Ok(());
+    }
+    spawn_coordinator_daemon(socket_path)
+}
+
 fn coordinator_send_request(
     request: &CoordinatorRequest,
     start_if_needed: bool,
@@ -6298,7 +6425,7 @@ fn coordinator_send_request(
                     ));
                     recover_stale_coordinator_state(socket_path.as_path(), &timeout_health)?;
                     if start_if_needed {
-                        spawn_coordinator_daemon(socket_path.as_path())?;
+                        ensure_coordinator_daemon_running(socket_path.as_path())?;
                         launched_for_recovery = true;
                     }
                     match send_coordinator_request_once(socket_path.as_path(), request) {
@@ -6330,7 +6457,7 @@ fn coordinator_send_request(
                 coordinator_request_kind(request),
                 effective_error
             ));
-            spawn_coordinator_daemon(socket_path.as_path())?;
+            ensure_coordinator_daemon_running(socket_path.as_path())?;
             let response = send_coordinator_request_once(socket_path.as_path(), request)?;
             verbose_log(format!(
                 "coordinator response after launch kind='{}' ok={} task_id={:?} job_id={:?}",
@@ -11747,10 +11874,11 @@ fn print_completion_help() {
 mod tests {
     use super::{
         CLI_LICENSE_TERMS_VERSION, Command, ExecutionMode, GlobalOptions, HomebrewKegPolicy,
-        InstallChannel, ManagerId, apply_manager_enablement_self_heal, build_json_payload_lines,
-        classify_failure_class, cmd_updates_run, command_help_topic_exists,
-        ensure_cli_onboarding_completed, exit_code_for_error, mark_exit_code, parse_args,
-        parse_args_with_tty, parse_homebrew_keg_policy_arg, parse_manager_id, parse_search_args,
+        InstallChannel, ManagerId, acquire_coordinator_bootstrap_lock,
+        apply_manager_enablement_self_heal, build_json_payload_lines, classify_failure_class,
+        cmd_updates_run, command_help_topic_exists, ensure_cli_onboarding_completed,
+        exit_code_for_error, mark_exit_code, parse_args, parse_args_with_tty,
+        parse_homebrew_keg_policy_arg, parse_manager_id, parse_search_args,
         parse_structured_terminal_error_message, parse_updates_run_preview_args,
         raw_args_request_json, raw_args_request_ndjson, remove_install_marker_if_channel,
         self_uninstall_recommended_action, strip_exit_code_marker,
@@ -11763,7 +11891,7 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     fn temp_file_path(name: &str) -> PathBuf {
         let nanos = SystemTime::now()
@@ -12327,6 +12455,49 @@ mod tests {
         );
         assert_eq!(parse_homebrew_keg_policy_arg("default").unwrap(), None);
         assert!(parse_homebrew_keg_policy_arg("invalid").is_err());
+    }
+
+    #[test]
+    fn coordinator_bootstrap_lock_serializes_parallel_acquisition() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        let state_dir =
+            std::env::temp_dir().join(format!("helm-cli-coordinator-bootstrap-lock-{nanos}"));
+        std::fs::create_dir_all(state_dir.as_path())
+            .expect("failed to create coordinator bootstrap test state dir");
+
+        let first = acquire_coordinator_bootstrap_lock(state_dir.as_path())
+            .expect("first bootstrap lock acquisition should succeed");
+        let (lock_tx, lock_rx) = std::sync::mpsc::channel();
+        let state_dir_for_thread = state_dir.clone();
+
+        let handle = std::thread::spawn(move || {
+            let second = acquire_coordinator_bootstrap_lock(state_dir_for_thread.as_path())
+                .expect("second bootstrap lock acquisition should succeed");
+            lock_tx
+                .send(())
+                .expect("bootstrap-lock notification send should succeed");
+            drop(second);
+        });
+
+        std::thread::sleep(Duration::from_millis(150));
+        assert!(
+            matches!(
+                lock_rx.try_recv(),
+                Err(std::sync::mpsc::TryRecvError::Empty)
+            ),
+            "second lock should still be blocked while first is held"
+        );
+
+        drop(first);
+        lock_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("second lock should acquire after first is released");
+        handle.join().expect("bootstrap lock worker should complete");
+
+        let _ = std::fs::remove_dir_all(state_dir);
     }
 
     #[test]
