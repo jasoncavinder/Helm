@@ -484,6 +484,17 @@ jobs:
           set -euo pipefail
           apps/macos-ui/scripts/verify_sparkle_appcast_policy.sh "$PWD/build/release-assets/appcast.xml"
 
+      - name: Generate DMG release provenance manifest
+        run: |
+          set -euo pipefail
+          scripts/release/generate_provenance_manifest.sh \
+            --output "$PWD/build/release-assets/provenance-${TAG_NAME}.json" \
+            --subject "$PWD/build/release-assets/Helm-${TAG_NAME}-macos-universal.dmg" \
+            --subject "$PWD/build/release-assets/Helm.dmg" \
+            --subject "$PWD/build/release-assets/appcast.xml" \
+            --subject "$PWD/build/release-assets/release-notes/${TAG_NAME}.html" \
+            --tag "$TAG_NAME"
+
       - name: Upload build artifacts to workflow run
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -491,6 +502,7 @@ jobs:
           path: |
             build/release-assets/*.dmg
             build/release-assets/appcast.xml
+            build/release-assets/provenance-${{ env.TAG_NAME }}.json
             build/release-assets/release-notes/*.html
 
       - name: Upload DMGs to GitHub release
@@ -503,6 +515,7 @@ jobs:
             "build/release-assets/Helm-${TAG_NAME}-macos-universal.dmg#Helm-${TAG_NAME}-macos-universal.dmg" \
             "build/release-assets/Helm.dmg#Helm.dmg" \
             "build/release-assets/appcast.xml#appcast.xml" \
+            "build/release-assets/provenance-${TAG_NAME}.json#provenance-${TAG_NAME}.json" \
             "build/release-assets/release-notes/${TAG_NAME}.html#release-notes-${TAG_NAME}.html" \
             --clobber
           echo "RELEASE_ARTIFACTS_UPLOADED=yes" >> "$GITHUB_ENV"
