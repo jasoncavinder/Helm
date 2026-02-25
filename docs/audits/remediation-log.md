@@ -1,5 +1,32 @@
 # Remediation Log
 
+## 2026-02-25 — Batch `PERF-001`, `TEST-004A`, `TEST-004B`
+
+### Scope
+
+- `PERF-001`: reduce fixed coordinator polling churn by switching bootstrap/startup wait loops to bounded adaptive backoff while keeping deterministic timeout semantics.
+- `TEST-004A`: strengthen stable publish-verify merge-order contracts to assert deterministic `MATCHING_HEADS` outcomes, including the dual-open-publish-head case.
+- `TEST-004B`: add prerelease publish-verify state contract coverage and wire it into CI release contract checks.
+
+### Verification
+
+Commands run:
+
+- `cargo test --manifest-path /Users/jasoncavinder/Projects/Helm/core/rust/Cargo.toml -p helm-cli poll_interval_backoff_is_bounded`
+- `/Users/jasoncavinder/Projects/Helm/scripts/release/tests/publish_verify_state_contract.sh`
+- `/Users/jasoncavinder/Projects/Helm/scripts/release/tests/publish_verify_prerelease_state_contract.sh`
+
+Manual verification:
+
+- Confirmed coordinator bootstrap/startup waits now use elapsed-time-based interval helpers with bounded ceilings, and readiness timeout remains explicitly bounded.
+- Confirmed stable publish-verify contract now asserts `MATCHING_HEADS` for single-head and dual-head pending states.
+- Confirmed prerelease publish-verify state script covers synced/pending/mismatch/invalid flows and the new prerelease contract test is invoked in `release-contract-checks.yml`.
+
+Remaining risks:
+
+- Adaptive polling thresholds are conservative defaults; extremely slow/contended environments may still require future tuning.
+- Prerelease publish-verify contract currently depends on the existing branch naming convention (`chore/publish-cli-updates-v<rc-tag>-rc`); any naming-policy change must update both script and contract test.
+
 ## 2026-02-26 — Batch `COR-007`, `PERF-002`, `MNT-003`
 
 ### Scope

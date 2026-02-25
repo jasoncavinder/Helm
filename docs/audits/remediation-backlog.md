@@ -46,6 +46,11 @@ Notes:
 - `COR-007` — Done (`64802ee`)
 - `PERF-002` — Done (`ecaaeba`)
 - `MNT-003` — Done (`ecaaeba`)
+- `PERF-001` — Done (`1ad330d`)
+- `TEST-004` — Split (`f55ba6a`; follow-up `TEST-004A` + `TEST-004B` done)
+- `TEST-004A` — Done (`f55ba6a`)
+- `TEST-004B` — Done (`f55ba6a`)
+- `TEST-004` — Done (`f55ba6a`; split parent closed via `TEST-004A` + `TEST-004B`)
 
 ## Prioritized Backlog
 
@@ -75,7 +80,7 @@ Notes:
 | COR-009 | Med | UX/CLI behavior | `core/rust/crates/helm-cli/src/main.rs` (`cmd_tasks_follow`) | Bugfix | M | Low | None | Machine mode (`--json`/`--ndjson`) has defined streaming behavior for follow, or emits explicit documented non-support contract with stable exit code; tests cover contract. |
 | COR-010 | Low | UX/CLI behavior | `core/rust/crates/helm-cli/src/main.rs` (`build_json_payload_lines`) | Hardening | S | Low | None | NDJSON contract is explicitly defined per command; nested array payload behavior is deterministic/documented; tests verify expected envelope shape. |
 | UX-001 | Med | UX/Docs | task output model across core/FFI/UI (`helm_get_task_output`, Swift `CoreTaskOutputRecord`) | Hardening | M | Med | DEC-005 | Core task output fields (`cwd`, `program`, `PATH` snippet, exit/termination/error context) are consistently propagated and rendered with backward-compatible decoding; privacy-safe redaction rules are applied. |
-| PERF-001 | Med | Performance | coordinator poll loop in CLI workflow wait paths | Hardening | M | Low | None | Polling cadence is adaptive or event-driven; idle wakeups are reduced measurably; timeout/failure semantics remain deterministic in tests. |
+| PERF-001 | Med | Performance | coordinator poll loop in CLI workflow wait paths | Hardening | M | Low | None | Coordinator startup/bootstrap wait paths use bounded adaptive poll intervals instead of fixed 50ms sleeps; readiness timeout remains deterministic (`COORDINATOR_DAEMON_READY_TIMEOUT_MS`); poll-interval unit tests verify bounded backoff behavior. |
 | PERF-002 | Low | Performance | manager enablement hot paths in orchestration | Refactor | M | Low | None | Manager enablement snapshot is cached with correct invalidation on preference/detection updates; behavior parity tests pass. |
 | BUILD-003 | Med | Build/Release | CI workflows + `scripts/release/{preflight.sh,runbook.sh}` | CI | S | Low | None | Release preflight/runbook contract checks are exercised in CI (non-destructive mode) to catch regressions before release tags. |
 | BUILD-004 | Med | Build/Reproducibility | CI toolchain provisioning (`rust-toolchain`, SwiftLint provisioning) | CI | M | Low | None | Rust toolchain and SwiftLint versions are pinned/reproducible in CI; version drift is explicit and controlled; docs reflect pin update process. |
@@ -85,7 +90,9 @@ Notes:
 | TEST-001 | Med | Test | timeout-sensitive orchestration tests (`end_to_end_rustup`, `end_to_end_mise`) | Test | M | Low | None | Soak/repeat test target exists; flake budget defined; repeated runs show deterministic pass criteria. |
 | TEST-002 | High | Test | manager lifecycle integration coverage (install/update/remove/pin) | Test | M | Med | None | Integration tests cover at least one manager in authoritative, standard, and guarded classes for install/update/remove behavior including idempotency assertions. |
 | TEST-003 | Med | Test | CLI non-interactive contract tests | Test | S | Low | None | Mixed-success `updates run` cases assert stable exit codes and JSON envelope schema; tests run in CI. |
-| TEST-004 | Med | Test | workflow contract tests for metadata convergence | Test | M | Low | REL-001, REL-002 | Automated tests simulate stable/prerelease metadata states and publish PR merge order; expected pass/fail conditions are asserted. |
+| TEST-004 | Med | Test | workflow contract tests for metadata convergence | Test | M | Low | REL-001, REL-002 | Split into `TEST-004A` + `TEST-004B`; close parent after both child acceptance criteria pass in CI. |
+| TEST-004A | Med | Test | `scripts/release/tests/publish_verify_state_contract.sh` | Test | S | Low | REL-002 | Stable publish-verify contract covers deterministic merge-order outcomes, including both publish heads open; `MATCHING_HEADS` assertions are stable across permutations. |
+| TEST-004B | Med | Test | `scripts/release/publish_verify_prerelease_state.sh`, `.github/workflows/release-contract-checks.yml` | Test | S | Low | REL-001, REL-002 | Prerelease publish-verify contract script validates synced/pending/mismatch/invalid RC states and is executed by `Release Contract Checks` workflow. |
 | TEST-005 | Med | Test/Security | CLI self-update negative-path tests | Test | S | Low | SEC-005 | Tests cover redirect host rejection, oversized payload bounds, and policy-blocked update channels. |
 | TEST-006 | Med | Test | real-manager e2e matrix (Homebrew + node/python/ruby) | Test | L | Med | BUILD-004 | CI or scheduled canary matrix runs against real manager binaries and reports pass/fail independently from fast PR suite. |
 | TEST-007 | Low | Test/Reliability | guarded OS update validation lanes | Test | L | High | None | Dedicated VM/canary validation exists for destructive guarded update paths with explicit safety controls and rollback guidance. |
