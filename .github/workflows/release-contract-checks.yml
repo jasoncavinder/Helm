@@ -1,0 +1,42 @@
+name: Release Contract Checks
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+jobs:
+  release-contracts:
+    name: Release Contract Checks
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate unsigned build script safety contracts
+        run: scripts/release/tests/build_unsigned_variant_contract.sh
+
+      - name: Run release preflight contract (non-destructive)
+        run: >
+          scripts/release/preflight.sh
+          --allow-non-main
+          --allow-dirty
+          --no-fetch
+          --skip-secrets
+          --skip-workflows
+          --skip-ruleset-policy
+
+      - name: Run release runbook contract (non-destructive prepare)
+        run: >
+          scripts/release/runbook.sh prepare
+          --allow-non-main
+          --allow-dirty
+          --no-fetch
+          --skip-secrets
+          --skip-workflows
+          --skip-ruleset-policy
