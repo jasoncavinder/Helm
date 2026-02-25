@@ -347,6 +347,70 @@ WHERE manager_id = ?1 AND package_name = ?2
         })
     }
 
+    fn apply_install_result(
+        &self,
+        package: &PackageRef,
+        installed_version: Option<&str>,
+    ) -> PersistenceResult<()> {
+        self.with_connection("apply_install_result", |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction = connection.transaction()?;
+
+            transaction.execute(
+                "
+INSERT INTO installed_packages (
+    manager_id, package_name, installed_version, pinned, updated_at_unix
+) VALUES (?1, ?2, ?3, 0, strftime('%s', 'now'))
+ON CONFLICT(manager_id, package_name) DO UPDATE SET
+    installed_version = COALESCE(excluded.installed_version, installed_packages.installed_version),
+    updated_at_unix = excluded.updated_at_unix
+",
+                params![
+                    package.manager.as_str(),
+                    package.name.as_str(),
+                    installed_version
+                ],
+            )?;
+
+            transaction.execute(
+                "
+DELETE FROM outdated_packages
+WHERE manager_id = ?1 AND package_name = ?2
+",
+                params![package.manager.as_str(), package.name.as_str()],
+            )?;
+
+            transaction.commit()?;
+            Ok(())
+        })
+    }
+
+    fn apply_uninstall_result(&self, package: &PackageRef) -> PersistenceResult<()> {
+        self.with_connection("apply_uninstall_result", |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction = connection.transaction()?;
+
+            transaction.execute(
+                "
+DELETE FROM installed_packages
+WHERE manager_id = ?1 AND package_name = ?2
+",
+                params![package.manager.as_str(), package.name.as_str()],
+            )?;
+
+            transaction.execute(
+                "
+DELETE FROM outdated_packages
+WHERE manager_id = ?1 AND package_name = ?2
+",
+                params![package.manager.as_str(), package.name.as_str()],
+            )?;
+
+            transaction.commit()?;
+            Ok(())
+        })
+    }
+
     fn apply_upgrade_result(&self, package: &PackageRef) -> PersistenceResult<()> {
         self.with_connection("apply_upgrade_result", |connection| {
             ensure_schema_ready(connection)?;

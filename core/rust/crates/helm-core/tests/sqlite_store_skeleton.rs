@@ -471,6 +471,82 @@ fn set_snapshot_pinned_updates_cached_rows_immediately() {
 }
 
 #[test]
+fn apply_install_result_updates_installed_snapshot_and_clears_outdated_entry() {
+    let path = test_db_path("apply-install-result");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let package = PackageRef {
+        manager: ManagerId::Npm,
+        name: "eslint".to_string(),
+    };
+
+    store
+        .upsert_outdated(&[OutdatedPackage {
+            package: package.clone(),
+            installed_version: Some("9.24.0".to_string()),
+            candidate_version: "9.25.0".to_string(),
+            pinned: false,
+            restart_required: false,
+        }])
+        .unwrap();
+
+    store
+        .apply_install_result(&package, Some("9.25.0"))
+        .unwrap();
+
+    let installed = store.list_installed().unwrap();
+    let outdated = store.list_outdated().unwrap();
+    let installed_entry = installed
+        .iter()
+        .find(|entry| entry.package == package)
+        .expect("installed snapshot should contain package after install result");
+
+    assert_eq!(installed_entry.installed_version.as_deref(), Some("9.25.0"));
+    assert!(outdated.iter().all(|entry| entry.package != package));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn apply_uninstall_result_removes_package_from_cached_snapshots() {
+    let path = test_db_path("apply-uninstall-result");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let package = PackageRef {
+        manager: ManagerId::Pnpm,
+        name: "typescript".to_string(),
+    };
+
+    store
+        .upsert_installed(&[InstalledPackage {
+            package: package.clone(),
+            installed_version: Some("5.8.3".to_string()),
+            pinned: false,
+        }])
+        .unwrap();
+    store
+        .upsert_outdated(&[OutdatedPackage {
+            package: package.clone(),
+            installed_version: Some("5.8.3".to_string()),
+            candidate_version: "5.9.0".to_string(),
+            pinned: false,
+            restart_required: false,
+        }])
+        .unwrap();
+
+    store.apply_uninstall_result(&package).unwrap();
+
+    let installed = store.list_installed().unwrap();
+    let outdated = store.list_outdated().unwrap();
+    assert!(installed.iter().all(|entry| entry.package != package));
+    assert!(outdated.iter().all(|entry| entry.package != package));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn apply_upgrade_result_promotes_package_to_installed_snapshot() {
     let path = test_db_path("apply-upgrade-result");
     let store = SqliteStore::new(&path);

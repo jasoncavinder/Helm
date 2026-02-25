@@ -800,6 +800,9 @@ async fn persist_adapter_response(
             AdapterResponse::Mutation(mutation) => match mutation.action {
                 ManagerAction::Pin => package_store.set_snapshot_pinned(&mutation.package, true),
                 ManagerAction::Unpin => package_store.set_snapshot_pinned(&mutation.package, false),
+                ManagerAction::Install => package_store
+                    .apply_install_result(&mutation.package, mutation.after_version.as_deref()),
+                ManagerAction::Uninstall => package_store.apply_uninstall_result(&mutation.package),
                 ManagerAction::Upgrade => package_store.apply_upgrade_result(&mutation.package),
                 _ => Ok(()),
             },
