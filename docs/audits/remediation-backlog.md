@@ -25,6 +25,7 @@ Notes:
 - `TEST-009B` — Done (`1067564`)
 - `TEST-009C` — Done (`PR: TBD`)
 - `TEST-009` — Done (`PR: TBD`; split parent closed via `TEST-009A` + `TEST-009B` + `TEST-009C`)
+- `TEST-007` — Split (`PR: TBD`; follow-up `TEST-007A` + `TEST-007B` + `TEST-007C` pending)
 - `SEC-004` — Done (`e67d20e`)
 - `BUILD-003` — Done (`961c430`)
 - `BUILD-002` — Done (`c2580c8`)
@@ -143,7 +144,10 @@ Notes:
 | TEST-006A | Med | Test | `scripts/tests/` real-manager smoke contract script | Test | S | Low | None | Add a non-destructive real-manager smoke script that verifies binary availability/version checks for Homebrew, Node, Python, and Ruby managers and emits per-manager pass/fail summary with deterministic exit behavior. |
 | TEST-006B | Med | Test | `.github/workflows/` real-manager canary lane | CI | M | Med | TEST-006A | Add a scheduled/manual canary workflow that runs the real-manager smoke contract, stores logs/artifacts, and reports failure independently from fast PR checks. |
 | TEST-006C | Low | Docs/Test | `docs/operations/` canary runbook | Docs | S | Low | TEST-006A, TEST-006B | Add runbook guidance for running/interpreting the real-manager canary locally and in CI, including expected failure triage paths and known environment preconditions. |
-| TEST-007 | Low | Test/Reliability | guarded OS update validation lanes | Test | L | High | None | Dedicated VM/canary validation exists for destructive guarded update paths with explicit safety controls and rollback guidance. |
+| TEST-007 | Low | Test/Reliability | guarded OS update validation lanes | Test | L | High | None | Split into `TEST-007A` + `TEST-007B` + `TEST-007C`; close parent when guarded-update VM scenario docs, non-destructive contract checks, and advisory lane/runbook safety controls are all in place. |
+| TEST-007A | Low | Test/Docs | guarded OS update scenario/safety matrix docs | Docs | S | Low | None | Define guarded OS update validation scenarios and required safety controls (snapshot/rollback, isolation, mutation guardrails, abort conditions) with explicit operator-visible pass/fail signals. |
+| TEST-007B | Low | Test/Reliability | guarded update decision/contract harness (`scripts/tests/` or `scripts/release/tests/`) | Test | M | Med | TEST-007A | Add deterministic non-destructive contract tests for guarded OS update orchestration decisions (allow/deny/confirm/rollback-required states) with machine-readable report output and stable exit semantics. |
+| TEST-007C | Low | CI/Test | advisory guarded-update validation lane + runbook wiring | CI | S | Med | TEST-007A, TEST-007B | Add manual/scheduled advisory lane that executes guarded-update contract checks, retains artifacts/logs, and link rollback/triage guidance in ops docs for safe execution outside production hosts. |
 | TEST-008 | Low | Test/Reliability | Sparkle updater end-to-end recovery scenarios | Test | L | Med | None | Split into `TEST-008A` + `TEST-008B` + `TEST-008C`; close parent when updater-recovery scenarios are defined, contract-tested, and wired into an advisory lane. |
 | TEST-008A | Low | Test/Docs | Sparkle recovery scenario matrix docs | Docs | S | Low | None | Define updater interruption/recovery scenarios (interrupted download, interrupted apply, stale appcast, invalid metadata) with explicit expected outcomes and operator-observable signals. |
 | TEST-008B | Low | Test | `scripts/release/tests/` updater recovery contract scripts | Test | M | Med | TEST-008A | Add deterministic contract tests using fixtures/mocks for updater recovery decision logic and appcast/state transitions, with stable assertions suitable for CI. |

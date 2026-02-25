@@ -1,5 +1,33 @@
 # Remediation Log
 
+## 2026-02-26 — Batch `TEST-007` (Backlog Split)
+
+### Scope
+
+- `TEST-007`: split the remaining large guarded OS update validation item into incremental child slices:
+  - `TEST-007A` (scenario + safety matrix docs)
+  - `TEST-007B` (non-destructive guarded-update contract harness)
+  - `TEST-007C` (advisory lane + rollback/triage runbook wiring)
+- Updated parent acceptance criteria to close only after all child criteria pass.
+
+### Verification
+
+Commands run:
+
+- `rg -n "TEST-007|TEST-007A|TEST-007B|TEST-007C" docs/audits/remediation-backlog.md docs/audits/remediation-log.md`
+- `git diff -- docs/audits/remediation-backlog.md docs/audits/remediation-log.md`
+
+Manual verification:
+
+- Confirmed only the `TEST-007` backlog scope changed; no code or workflow/runtime files were modified.
+- Confirmed all new child rows include severity/category/fix-type/effort/risk/dependencies/acceptance criteria fields.
+- Confirmed parent `TEST-007` now tracks split closure semantics and can be implemented with constrained `S/M` batches.
+
+Remaining risks:
+
+- This batch is planning-only and does not yet provide guarded-update runtime coverage.
+- `TEST-007B`/`TEST-007C` still require careful safety constraints before any environment that can mutate OS update state is used.
+
 ## 2026-02-26 — Batch `TEST-006A`, `TEST-006B`, `TEST-006C`
 
 ### Scope
