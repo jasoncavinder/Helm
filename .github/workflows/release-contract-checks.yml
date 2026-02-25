@@ -27,6 +27,9 @@ jobs:
       - name: Validate release-line copy drift contracts
         run: scripts/release/check_release_line_copy.sh
 
+      - name: Validate CI toolchain pin contracts
+        run: scripts/release/tests/ci_toolchain_contract.sh
+
       - name: Run release preflight contract (non-destructive)
         run: >
           scripts/release/preflight.sh
