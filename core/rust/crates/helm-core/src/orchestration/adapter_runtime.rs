@@ -23,6 +23,12 @@ use crate::persistence::{DetectionStore, PackageStore, SearchCacheStore, TaskSto
 const TASK_PERSIST_RETRY_ATTEMPTS: usize = 3;
 const TASK_PERSIST_RETRY_DELAY_MS: u64 = 15;
 const DETECTION_SLOW_WARN_THRESHOLD_MS: u128 = 3_000;
+const REFRESH_WAIT_POLICY_TIMEOUT_DETECTION_SECS: u64 = 90;
+const REFRESH_WAIT_POLICY_TIMEOUT_SEARCH_SECS: u64 = 120;
+const REFRESH_WAIT_POLICY_TIMEOUT_REFRESH_SECS: u64 = 180;
+const REFRESH_WAIT_ORCHESTRATION_CAP_DETECTION_SECS: u64 = 120;
+const REFRESH_WAIT_ORCHESTRATION_CAP_SEARCH_SECS: u64 = 180;
+const REFRESH_WAIT_ORCHESTRATION_CAP_REFRESH_SECS: u64 = 300;
 
 #[derive(Clone)]
 pub struct AdapterRuntime {
@@ -375,6 +381,7 @@ impl AdapterRuntime {
     ) -> OrchestrationResult<AdapterResponse> {
         let action = request.action();
         let task_type = task_type_for_action(action);
+        let wait_timeout = refresh_wait_timeout(manager, task_type);
         let mut attempt = 0u8;
         loop {
             attempt = attempt.saturating_add(1);
@@ -385,7 +392,7 @@ impl AdapterRuntime {
                 .await
                 .map_err(|error| attribute_error(error, manager, task_type, action))?;
             let snapshot = self
-                .wait_for_terminal(task_id, Some(Duration::from_secs(60)))
+                .wait_for_terminal(task_id, Some(wait_timeout))
                 .await
                 .map_err(|error| attribute_error(error, manager, task_type, action))?;
 
@@ -1115,6 +1122,31 @@ fn should_retry_transient_refresh_error(
         || normalized.contains("timed out")
 }
 
+fn default_refresh_wait_policy_timeout(task_type: TaskType) -> Duration {
+    match task_type {
+        TaskType::Detection => Duration::from_secs(REFRESH_WAIT_POLICY_TIMEOUT_DETECTION_SECS),
+        TaskType::Search => Duration::from_secs(REFRESH_WAIT_POLICY_TIMEOUT_SEARCH_SECS),
+        TaskType::Refresh => Duration::from_secs(REFRESH_WAIT_POLICY_TIMEOUT_REFRESH_SECS),
+        _ => Duration::from_secs(REFRESH_WAIT_POLICY_TIMEOUT_REFRESH_SECS),
+    }
+}
+
+fn refresh_wait_orchestration_cap(task_type: TaskType) -> Duration {
+    match task_type {
+        TaskType::Detection => Duration::from_secs(REFRESH_WAIT_ORCHESTRATION_CAP_DETECTION_SECS),
+        TaskType::Search => Duration::from_secs(REFRESH_WAIT_ORCHESTRATION_CAP_SEARCH_SECS),
+        TaskType::Refresh => Duration::from_secs(REFRESH_WAIT_ORCHESTRATION_CAP_REFRESH_SECS),
+        _ => Duration::from_secs(REFRESH_WAIT_ORCHESTRATION_CAP_REFRESH_SECS),
+    }
+}
+
+fn refresh_wait_timeout(manager: ManagerId, task_type: TaskType) -> Duration {
+    let policy_timeout = crate::execution::manager_timeout_profile(manager)
+        .and_then(|profile| profile.hard_timeout)
+        .unwrap_or_else(|| default_refresh_wait_policy_timeout(task_type));
+    policy_timeout.min(refresh_wait_orchestration_cap(task_type))
+}
+
 fn log_detection_timing(
     manager: ManagerId,
     task_id: TaskId,
@@ -1210,5 +1242,90 @@ fn task_type_for_action(action: ManagerAction) -> TaskType {
         ManagerAction::Upgrade => TaskType::Upgrade,
         ManagerAction::Pin => TaskType::Pin,
         ManagerAction::Unpin => TaskType::Unpin,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{TaskType, refresh_wait_timeout};
+    use crate::execution::{
+        ManagerTimeoutProfile, clear_manager_timeout_profiles, set_manager_timeout_profile,
+    };
+    use crate::models::ManagerId;
+    use std::sync::{Mutex, OnceLock};
+    use std::time::Duration;
+
+    fn timeout_profile_test_guard() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("timeout profile test lock should be available")
+    }
+
+    #[test]
+    fn refresh_wait_timeout_uses_default_policy_when_no_override_is_set() {
+        let _guard = timeout_profile_test_guard();
+        clear_manager_timeout_profiles();
+
+        assert_eq!(
+            refresh_wait_timeout(ManagerId::Npm, TaskType::Detection),
+            Duration::from_secs(90)
+        );
+        assert_eq!(
+            refresh_wait_timeout(ManagerId::Npm, TaskType::Search),
+            Duration::from_secs(120)
+        );
+        assert_eq!(
+            refresh_wait_timeout(ManagerId::Npm, TaskType::Refresh),
+            Duration::from_secs(180)
+        );
+    }
+
+    #[test]
+    fn refresh_wait_timeout_clamps_policy_to_operation_cap() {
+        let _guard = timeout_profile_test_guard();
+        clear_manager_timeout_profiles();
+        set_manager_timeout_profile(
+            ManagerId::Npm,
+            ManagerTimeoutProfile {
+                hard_timeout: Some(Duration::from_secs(600)),
+                idle_timeout: None,
+            },
+        );
+
+        assert_eq!(
+            refresh_wait_timeout(ManagerId::Npm, TaskType::Detection),
+            Duration::from_secs(120)
+        );
+        assert_eq!(
+            refresh_wait_timeout(ManagerId::Npm, TaskType::Search),
+            Duration::from_secs(180)
+        );
+        assert_eq!(
+            refresh_wait_timeout(ManagerId::Npm, TaskType::Refresh),
+            Duration::from_secs(300)
+        );
+
+        clear_manager_timeout_profiles();
+    }
+
+    #[test]
+    fn refresh_wait_timeout_respects_policy_when_below_cap() {
+        let _guard = timeout_profile_test_guard();
+        clear_manager_timeout_profiles();
+        set_manager_timeout_profile(
+            ManagerId::Npm,
+            ManagerTimeoutProfile {
+                hard_timeout: Some(Duration::from_secs(75)),
+                idle_timeout: None,
+            },
+        );
+
+        assert_eq!(
+            refresh_wait_timeout(ManagerId::Npm, TaskType::Refresh),
+            Duration::from_secs(75)
+        );
+
+        clear_manager_timeout_profiles();
     }
 }
