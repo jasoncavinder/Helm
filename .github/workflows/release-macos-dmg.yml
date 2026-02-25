@@ -38,6 +38,8 @@ jobs:
       HELM_SPARKLE_PUBLIC_ED_KEY: ${{ secrets.HELM_SPARKLE_PUBLIC_ED_KEY }}
       HELM_SPARKLE_PRIVATE_ED_KEY: ${{ secrets.HELM_SPARKLE_PRIVATE_ED_KEY }}
       TAG_NAME: ${{ inputs.tag || github.event.release.tag_name || github.event.inputs.tag }}
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
 
     steps:
       - name: Validate required secrets
@@ -70,8 +72,20 @@ jobs:
               print(f"::error::HELM_SPARKLE_FEED_URL host is not resolvable in CI DNS: host={host} error={exc}")
               sys.exit(1)
 
-          print(f"HELM_SPARKLE_FEED_URL host resolved: {host}")
+          print(f"[preflight] HELM_SPARKLE_FEED_URL host resolved: {host}")
           PY
+
+      - name: Initialize release publication state
+        run: |
+          set -euo pipefail
+          {
+            echo "RELEASE_ARTIFACTS_UPLOADED=no"
+            echo "PUBLISH_PR_OPENED=no"
+            echo "PUBLISH_PR_NUMBER="
+            echo "PUBLISH_PR_URL="
+            echo "PUBLISH_FOLLOWUP_REQUIRED=no"
+            echo "MAIN_METADATA_SYNCED=unknown"
+          } >> "$GITHUB_ENV"
 
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -506,6 +520,7 @@ jobs:
             "build/release-assets/appcast.xml#appcast.xml" \
             "build/release-assets/release-notes/${TAG_NAME}.html#release-notes-${TAG_NAME}.html" \
             --clobber
+          echo "RELEASE_ARTIFACTS_UPLOADED=yes" >> "$GITHUB_ENV"
 
       - name: Publish appcast and release notes via PR
         if: ${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
@@ -529,7 +544,8 @@ jobs:
 
           cd "$PUBLISH_DIR"
           if [ -z "$(git status --porcelain -- "$FEED_PATH" "$RELEASE_NOTES_FEED_PATH")" ]; then
-            echo "Appcast and release notes are already current on main."
+            echo "[publish] Appcast and release notes are already current on main."
+            echo "MAIN_METADATA_SYNCED=yes" >> "$GITHUB_ENV"
             exit 0
           fi
 
@@ -547,7 +563,7 @@ jobs:
           EXISTING_PR="$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$PUBLISH_BRANCH" --state open --json number --jq '.[0].number // empty' || true)"
           if [ -n "$EXISTING_PR" ]; then
             PR_NUMBER="$EXISTING_PR"
-            echo "PR already exists for $PUBLISH_BRANCH (#$PR_NUMBER)."
+            echo "[publish] PR already exists for $PUBLISH_BRANCH (#$PR_NUMBER)."
           else
             PR_URL="$(gh pr create \
               --repo "$GITHUB_REPOSITORY" \
@@ -580,11 +596,18 @@ jobs:
               exit 1
             fi
 
-            echo "Created publish PR #${PR_NUMBER}: ${PR_URL}"
+            echo "[publish] Created publish PR #${PR_NUMBER}: ${PR_URL}"
           fi
 
+          PR_URL="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json url --jq '.url')"
+          {
+            echo "PUBLISH_PR_OPENED=yes"
+            echo "PUBLISH_PR_NUMBER=${PR_NUMBER}"
+            echo "PUBLISH_PR_URL=${PR_URL}"
+          } >> "$GITHUB_ENV"
+
           if gh pr merge --repo "$GITHUB_REPOSITORY" --squash --auto "$PR_NUMBER"; then
-            echo "Auto-merge enabled for publish PR #${PR_NUMBER}."
+            echo "[publish] Auto-merge enabled for publish PR #${PR_NUMBER}."
           else
             echo "::warning::Unable to enable auto-merge for publish PR #${PR_NUMBER}."
             echo "::warning::Manual merge may be required."
@@ -595,7 +618,7 @@ jobs:
           for i in {1..40}; do
             read -r PR_STATE MERGED_AT PR_URL <<<"$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json state,mergedAt,url --jq '[.state, (.mergedAt // ""), .url] | @tsv')"
             if [ -n "$MERGED_AT" ]; then
-              echo "Publish PR #${PR_NUMBER} merged at ${MERGED_AT}."
+              echo "[publish] Publish PR #${PR_NUMBER} merged at ${MERGED_AT}."
               break
             fi
 
@@ -605,15 +628,16 @@ jobs:
               exit 1
             fi
 
-            echo "Waiting for publish PR #${PR_NUMBER} to merge (attempt ${i}/40)..."
+            echo "[publish] Waiting for publish PR #${PR_NUMBER} to merge (attempt ${i}/40)..."
             sleep 30
           done
 
           if [ -z "$MERGED_AT" ]; then
-            echo "::error::Publish PR #${PR_NUMBER} was not merged within the workflow wait window."
-            echo "::error::PR URL: ${PR_URL}"
-            echo "::error::Merge the PR and rerun this workflow."
-            exit 1
+            echo "::warning::Publish PR #${PR_NUMBER} was not merged within the workflow wait window."
+            echo "::warning::PR URL: ${PR_URL}"
+            echo "::warning::Merge the PR and rerun this workflow."
+            echo "::notice::Follow-up required: merge publish PR #${PR_NUMBER} (${PR_URL}), then rerun this workflow to confirm metadata sync."
+            echo "PUBLISH_FOLLOWUP_REQUIRED=yes" >> "$GITHUB_ENV"
           fi
 
       - name: Verify appcast on main matches release tag
@@ -631,6 +655,11 @@ jobs:
           MAIN_FEED="$VERIFY_DIR/$FEED_PATH"
 
           if [ ! -f "$MAIN_FEED" ]; then
+            if [ "${PUBLISH_FOLLOWUP_REQUIRED}" = "yes" ]; then
+              echo "::warning::Expected appcast file not found on main yet: ${FEED_PATH}"
+              echo "MAIN_METADATA_SYNCED=no" >> "$GITHUB_ENV"
+              exit 0
+            fi
             echo "::error::Expected appcast file not found on main: ${FEED_PATH}"
             exit 1
           fi
@@ -664,15 +693,62 @@ jobs:
           )"
 
           if [ -z "$ACTUAL_VERSION" ]; then
+            if [ "${PUBLISH_FOLLOWUP_REQUIRED}" = "yes" ]; then
+              echo "::warning::Unable to read top appcast version from main while publish PR follow-up is pending."
+              echo "MAIN_METADATA_SYNCED=no" >> "$GITHUB_ENV"
+              exit 0
+            fi
             echo "::error::Unable to read top appcast version from main at ${FEED_PATH}"
             exit 1
           fi
 
           if [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]; then
+            if [ "${PUBLISH_FOLLOWUP_REQUIRED}" = "yes" ]; then
+              echo "::warning::Appcast on main does not yet match release tag while publish PR follow-up is pending."
+              echo "::warning::expected=${EXPECTED_VERSION} actual=${ACTUAL_VERSION} file=${FEED_PATH}"
+              echo "MAIN_METADATA_SYNCED=no" >> "$GITHUB_ENV"
+              exit 0
+            fi
             echo "::error::Appcast on main does not match release tag."
             echo "::error::expected=${EXPECTED_VERSION} actual=${ACTUAL_VERSION} file=${FEED_PATH}"
             echo "::error::If fallback publishing was required, merge branch chore/publish-updates-${TAG_NAME} and rerun this workflow."
             exit 1
           fi
 
-          echo "Verified appcast on main matches release tag: ${ACTUAL_VERSION}"
+          if [ "${PUBLISH_FOLLOWUP_REQUIRED}" = "yes" ]; then
+            echo "PUBLISH_FOLLOWUP_REQUIRED=no" >> "$GITHUB_ENV"
+          fi
+          echo "MAIN_METADATA_SYNCED=yes" >> "$GITHUB_ENV"
+          echo "[verify] Verified appcast on main matches release tag: ${ACTUAL_VERSION}"
+
+      - name: Release publication summary
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          artifacts_uploaded="${RELEASE_ARTIFACTS_UPLOADED:-no}"
+          publish_pr_opened="${PUBLISH_PR_OPENED:-no}"
+          main_metadata_synced="${MAIN_METADATA_SYNCED:-unknown}"
+          publish_pr_number="${PUBLISH_PR_NUMBER:-}"
+          publish_pr_url="${PUBLISH_PR_URL:-}"
+          publish_followup_required="${PUBLISH_FOLLOWUP_REQUIRED:-no}"
+
+          {
+            echo "## Release DMG Publication Summary"
+            echo ""
+            echo "- Artifacts uploaded: ${artifacts_uploaded}"
+            echo "- Publish PR opened: ${publish_pr_opened}"
+            echo "- Main metadata synced: ${main_metadata_synced}"
+            if [ -n "${publish_pr_number}" ]; then
+              echo "- Publish PR: #${publish_pr_number} (${publish_pr_url})"
+            fi
+            if [ "${publish_followup_required}" = "yes" ]; then
+              echo ""
+              echo "Follow-up required:"
+              echo "1. Merge publish PR #${publish_pr_number}"
+              echo "2. Rerun this workflow to verify main metadata sync"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${publish_followup_required}" = "yes" ]; then
+            echo "::notice::[verify] Release artifacts published, publish PR is open, and follow-up merge+rerun is required."
+          fi

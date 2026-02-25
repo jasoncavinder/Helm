@@ -8,22 +8,22 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.17.4 stable release published** with promotion + publication completed on `main`.
+Current documentation baseline: **0.17.6 release execution** from `dev` with release-prep artifacts aligned for promotion.
 
-Implementation baseline: **0.17.3** with diagnostics/logging delivery, manager-selection/enablement enforcement, onboarding/detection hardening, and post-`0.17.2` CLI parity/supply-chain hardening shipped.
+Implementation baseline: **0.17.6 candidate** with diagnostics/logging delivery, TUI + bundled-CLI parity closure, manager-selection/enablement and onboarding/detection hardening, release-process hardening phases 1-5, and post-`v0.17.5` refresh reliability/diagnostics hardening.
 
 See:
 - CHANGELOG.md
 
 Active milestone:
-- latest promoted release content on `main`: **0.17.4** (TUI + bundled-CLI shim + parity closures + macOS 11+ launch-at-login support)
-- stable publication cut completed for `v0.17.4`:
-  - release publish PRs merged on `main`: `#176`, `#177`, `#178`
+- latest stable release currently published on `main`: **0.17.5** (release-process hardening promotion + fallback publish-path validation + metadata publication)
+- current stable release-prep target on integration branches: **0.17.6** (refresh reliability + diagnostics hardening follow-up)
+- stable publication cut completed for `v0.17.5`:
+  - fallback release publish PRs merged on `main`: `#181` (CLI metadata), `#182` (appcast + release notes)
   - latest successful release workflows:
-    - `Release CLI Direct Installer` run `22337004057` (`workflow_dispatch`, success)
-    - `Release macOS DMG` run `22337385648` (`workflow_dispatch`, success)
-    - `Appcast Drift Guard` run `22337904410` (success after metadata publication)
-  - initial failed `v0.17.4` release-triggered runs (`22336315837`, `22336315855`) are retained for audit history and superseded by the successful reruns above
+    - `Release CLI Direct Installer` run `22364342041` (`workflow_dispatch`, success)
+    - `Release macOS DMG` run `22364342082` (`workflow_dispatch`, success)
+  - release workflows now report fallback publish PR outcomes as follow-up-required (non-red) when publication PR merges are still pending
 - 0.17.x — Diagnostics & Logging (**stable released on `main`**, RC lineage `v0.17.0-rc.1` through `v0.17.0-rc.5`)
   - delivered: `feat/v0.17-log-foundation` (SQLite-backed task lifecycle logs + retrieval plumbing)
   - delivered: `feat/v0.17-task-log-viewer` (inspector diagnostics logs tab with level/status filters + load-more pagination)
@@ -55,8 +55,14 @@ Active milestone:
   - delivered: pre-stable `rc.5 -> 0.17.0` hardening follow-up: manager display-name localization mapping is now centralized in one shared helper across Core/UI surfaces; localization diagnostics now use structured logger output; polling cadence now introduces a lower-frequency idle-visible mode for no-inflight states; SQLite connections now enforce `WAL`/`NORMAL`/`busy_timeout`/foreign-key pragmas by default; terminal-task pruning now includes `cancelled`; Rust build script now fingerprints Rust/script inputs and skips rebuilds when generated artifacts are unchanged.
   - delivered: website release-readiness follow-up: Starlight now uses a local blog plugin to register a `/blog/` section and RSS social link, the site includes a global beta-tester announcement banner (visual treatment refined), blog pages expose social-share actions, and the landing navigation now includes right-aligned `Blog` and `Docs` links for faster access.
   - delivered: post-`v0.17.1` release-automation guardrails follow-up (on `dev`): release workflow appcast-publish fallback now hard-fails when automated PR creation is blocked, release workflow now verifies `main` appcast version matches the release tag before succeeding, and a dedicated `Appcast Drift Guard` workflow now checks latest stable release vs top appcast version on `main`.
+  - delivered: post-`v0.17.5` release-process hardening phase 1 (on `dev`): added maintainer preflight tooling (`scripts/release/preflight.sh`) for git/auth/scope/workflow/secret gating before release tagging and a companion wrapper (`scripts/release/runbook.sh`) with `prepare|tag|publish|verify` commands; release docs now require preflight prior to tag creation.
+  - delivered: post-`v0.17.5` release-process hardening phase 2 (on `dev`): `release-cli-direct.yml` and `release-macos-dmg.yml` now treat open fallback publish PRs as explicit follow-up-required outcomes (non-red) instead of terminal failures, while preserving hard failures for build/signing/notarization/upload/PR-creation faults; both workflows now emit publication summaries (`Artifacts uploaded`, `Publish PR opened`, `Main metadata synced`) with rerun guidance when metadata sync remains pending.
+  - delivered: post-`v0.17.5` release-process hardening phase 3 policy alignment (on `dev`): `main` branch ruleset bypass was reduced from broad `always` to `pull_request`-only mode (`RepositoryRole` fallback path), and preflight now enforces least-privilege publish-PR bypass policy with required `Policy Gate` status-check presence and `no always bypass` guardrails; docs now capture both preferred GitHub Actions integration bypass and repository-role fallback when GitHub rejects integration actors for repository-owned rulesets.
+  - delivered: post-`v0.17.5` release-process hardening phase 4 (on `dev`): preflight now performs pre-tag stable metadata snapshot sanity (`origin/main` appcast + `cli/latest.json` synchronization and target-order checks), and a new `Release Publish Verify` workflow now runs on publish-metadata merges to confirm main metadata and release objects remain aligned after publish PR merges.
+  - delivered: post-`v0.17.5` release-process hardening phase 5 (on `dev`): release scripts/workflows now normalize locale environment defaults for operator/CI consistency, release logs now emit phase prefixes (`[preflight]`, `[build]`, `[publish]`, `[verify]`) for faster triage, and recurring release friction now has a documented promotion path from `TMP_RELEASE_FRICTION` into permanent decision/runbook/checklist docs.
+  - delivered: post-`v0.17.5` refresh reliability + diagnostics hardening follow-up (on `dev`): task output records now persist effective working-directory/timing/exit metadata with structured error details; diagnostics summary now includes failure-class counters; coordinator health diagnostics now report stale-state reasons and recover stale local coordinator state on timeout with one retry; and refresh/search request-response flows now retry once for transient network/timeout failures (with npm list timeout increased to 120s).
   - delivered: GitHub governance hardening follow-up (on `dev`): per-branch rulesets are now explicit for `main`/`dev`/`docs`/`web` with branch-specific required checks; new `Policy Gate` + `Docs Checks` + `Web Build` workflows enforce branch targeting/scope policy; repository merge settings keep auto-merge/update-branch enabled while delete-branch-on-merge stays off to protect primary branches; blocking ruleset `update` enforcement was removed after protected-ref merge-block diagnostics; CodeQL is now main-focused (push/schedule/manual) to avoid PR gate friction.
-  - `v0.17.3` stable release execution status: complete (validation green + stable tag + GitHub release published)
+  - `v0.17.5` stable release execution status: complete (validation green + stable tag + GitHub release published)
 
 Security rollout staging status:
 - Stage 0 (`<=0.16.x`): planning/docs only (active in `0.16.1`)
@@ -607,14 +613,14 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
 
 ### Support & Feedback Entry Points
 - New "Support & Feedback" card added to Settings surface with 5 actions:
-  - Support Helm (opens GitHub Sponsors)
+  - Support Helm (opens all six support channels: GitHub Sponsors, Patreon, Buy Me a Coffee, Ko-fi, PayPal, Venmo)
   - Report a Bug (opens GitHub issue template with optional diagnostics copy)
   - Request a Feature (opens GitHub issue template with optional diagnostics copy)
   - Send Feedback (opens mailto: with structured feedback form)
   - Copy Diagnostics (copies system info to clipboard with transient confirmation)
 - "Include Diagnostics" toggle: when enabled, Report a Bug and Request a Feature copy diagnostics to clipboard before opening the issue template
 - All 9 new L10n keys translated across all 6 locales (en, es, de, fr, pt-BR, ja)
-- `.github/FUNDING.yml` created for GitHub Sponsors integration
+- `.github/FUNDING.yml` created for GitHub Sponsors and Patreon integration (plus direct support links for Buy Me a Coffee, Ko-fi, PayPal, and Venmo)
 - README.md updated with working sponsor and issue template links
 
 ---
@@ -939,4 +945,4 @@ Helm is a **functional control plane for 28 implemented managers** with:
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-0.13.x through 0.17.3 stable checkpoints are complete on `main`; `v0.17.0-rc.1` through `v0.17.0-rc.5` served as the completed RC validation path into stable `0.17.0`, followed by stable patch releases `v0.17.1`, `v0.17.2`, and `v0.17.3`.
+0.13.x through 0.17.5 stable checkpoints are complete on `main`; `v0.17.0-rc.1` through `v0.17.0-rc.5` served as the completed RC validation path into stable `0.17.0`, followed by stable patch releases `v0.17.1`, `v0.17.2`, `v0.17.3`, `v0.17.4`, and `v0.17.5`.

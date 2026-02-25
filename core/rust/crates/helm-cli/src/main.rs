@@ -1,4 +1,4 @@
-use std::collections::{HashMap, hash_map::DefaultHasher};
+use std::collections::{BTreeMap, HashMap, hash_map::DefaultHasher};
 use std::env;
 use std::fs::{self, OpenOptions};
 use std::hash::{Hash, Hasher};
@@ -30,7 +30,8 @@ use helm_core::adapters::{
     UpgradeRequest, XcodeCommandLineToolsAdapter, YarnAdapter,
 };
 use helm_core::execution::{
-    TokioProcessExecutor, clear_manager_selected_executables, set_manager_selected_executable,
+    TaskOutputRecord, TokioProcessExecutor, clear_manager_selected_executables,
+    set_manager_selected_executable,
 };
 use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
@@ -283,6 +284,45 @@ struct CliDiagnosticsSummary {
     cancelled_tasks: usize,
     failed_task_ids: Vec<u64>,
     undetected_enabled_managers: Vec<String>,
+    failure_classes: BTreeMap<String, usize>,
+    coordinator: CliCoordinatorHealthSummary,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CliCoordinatorHealthSummary {
+    state_dir: String,
+    ready_file_present: bool,
+    pid: Option<u32>,
+    pid_alive: Option<bool>,
+    executable_path: Option<String>,
+    executable_exists: Option<bool>,
+    last_heartbeat_unix: Option<i64>,
+    stale_reasons: Vec<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CliTaskDiagnosticsOutput {
+    available: bool,
+    command: Option<String>,
+    cwd: Option<String>,
+    started_at_unix_ms: Option<i64>,
+    finished_at_unix_ms: Option<i64>,
+    duration_ms: Option<u64>,
+    exit_code: Option<i32>,
+    termination_reason: Option<String>,
+    error_code: Option<String>,
+    error_message: Option<String>,
+    stdout: Option<String>,
+    stderr: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CliTaskDiagnosticsError {
+    code: String,
+    message: String,
 }
 
 #[derive(Serialize)]
@@ -499,6 +539,32 @@ enum CoordinatorPayload {
     SearchResults {
         count: usize,
     },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CoordinatorReadyState {
+    pid: u32,
+    started_at: i64,
+    heartbeat_unix: i64,
+    #[serde(default)]
+    executable_path: Option<String>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct CoordinatorStateHealth {
+    ready_file_present: bool,
+    pid: Option<u32>,
+    pid_alive: Option<bool>,
+    executable_path: Option<String>,
+    executable_exists: Option<bool>,
+    last_heartbeat_unix: Option<i64>,
+    stale_reasons: Vec<String>,
+}
+
+impl CoordinatorStateHealth {
+    fn is_stale(&self) -> bool {
+        !self.stale_reasons.is_empty()
+    }
 }
 
 fn coordinator_request_kind(request: &CoordinatorRequest) -> &'static str {
@@ -2925,26 +2991,31 @@ fn cmd_tasks_logs(
 fn cmd_tasks_output(options: GlobalOptions, command_args: &[String]) -> Result<(), String> {
     let task_id = parse_task_id_argument(command_args, "tasks output")?;
     let output = helm_core::execution::task_output(TaskId(task_id));
-    let available = output.is_some();
-    let command = output.as_ref().and_then(|entry| entry.command.clone());
-    let stdout = output.as_ref().and_then(|entry| entry.stdout.clone());
-    let stderr = output.as_ref().and_then(|entry| entry.stderr.clone());
+    let output_payload = task_output_to_cli_diagnostics(output.as_ref());
 
     if options.json {
         emit_json_payload(
             "helm.cli.v1.tasks.output",
             json!({
                 "task_id": task_id,
-                "available": available,
-                "command": command,
-                "stdout": stdout,
-                "stderr": stderr
+                "available": output_payload.available,
+                "command": output_payload.command,
+                "cwd": output_payload.cwd,
+                "started_at_unix_ms": output_payload.started_at_unix_ms,
+                "finished_at_unix_ms": output_payload.finished_at_unix_ms,
+                "duration_ms": output_payload.duration_ms,
+                "exit_code": output_payload.exit_code,
+                "termination_reason": output_payload.termination_reason,
+                "error_code": output_payload.error_code,
+                "error_message": output_payload.error_message,
+                "stdout": output_payload.stdout,
+                "stderr": output_payload.stderr
             }),
         );
         return Ok(());
     }
 
-    if !available {
+    if !output_payload.available {
         println!(
             "Task output for #{} is not available in this CLI process session.",
             task_id
@@ -2954,11 +3025,55 @@ fn cmd_tasks_output(options: GlobalOptions, command_args: &[String]) -> Result<(
     }
 
     println!("Task Output #{}", task_id);
-    println!("  command: {}", command.as_deref().unwrap_or("-"));
+    println!(
+        "  command: {}",
+        output_payload.command.as_deref().unwrap_or("-")
+    );
+    println!("  cwd: {}", output_payload.cwd.as_deref().unwrap_or("-"));
+    println!(
+        "  started_at_unix_ms: {}",
+        output_payload
+            .started_at_unix_ms
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string())
+    );
+    println!(
+        "  finished_at_unix_ms: {}",
+        output_payload
+            .finished_at_unix_ms
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string())
+    );
+    println!(
+        "  duration_ms: {}",
+        output_payload
+            .duration_ms
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string())
+    );
+    println!(
+        "  exit_code: {}",
+        output_payload
+            .exit_code
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string())
+    );
+    println!(
+        "  termination_reason: {}",
+        output_payload.termination_reason.as_deref().unwrap_or("-")
+    );
+    println!(
+        "  error_code: {}",
+        output_payload.error_code.as_deref().unwrap_or("-")
+    );
+    println!(
+        "  error_message: {}",
+        output_payload.error_message.as_deref().unwrap_or("-")
+    );
     println!("  stdout:");
-    println!("{}", stdout.as_deref().unwrap_or(""));
+    println!("{}", output_payload.stdout.as_deref().unwrap_or(""));
     println!("  stderr:");
-    println!("{}", stderr.as_deref().unwrap_or(""));
+    println!("{}", output_payload.stderr.as_deref().unwrap_or(""));
     Ok(())
 }
 
@@ -5921,6 +6036,144 @@ fn read_json_file<T: DeserializeOwned>(path: &std::path::Path) -> Result<T, Stri
         .map_err(|error| format!("failed to decode json file '{}': {error}", path.display()))
 }
 
+fn file_modified_unix_seconds(path: &std::path::Path) -> Option<i64> {
+    let metadata = std::fs::metadata(path).ok()?;
+    let modified = metadata.modified().ok()?;
+    let duration = modified.duration_since(UNIX_EPOCH).ok()?;
+    i64::try_from(duration.as_secs()).ok()
+}
+
+fn process_is_alive(pid: u32) -> bool {
+    let output = std::process::Command::new("ps")
+        .arg("-p")
+        .arg(pid.to_string())
+        .arg("-o")
+        .arg("pid=")
+        .output();
+    let Ok(output) = output else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    !stdout.trim().is_empty()
+}
+
+fn coordinator_process_looks_owned(pid: u32, state_dir: &std::path::Path) -> bool {
+    let output = std::process::Command::new("ps")
+        .arg("-p")
+        .arg(pid.to_string())
+        .arg("-o")
+        .arg("command=")
+        .output();
+    let Ok(output) = output else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
+    }
+    let command = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if command.is_empty() {
+        return false;
+    }
+    command.contains("__coordinator__") && command.contains(state_dir.to_string_lossy().as_ref())
+}
+
+fn terminate_coordinator_process_if_owned(pid: u32, state_dir: &std::path::Path) {
+    if !coordinator_process_looks_owned(pid, state_dir) {
+        return;
+    }
+
+    let _ = std::process::Command::new("/bin/kill")
+        .arg("-TERM")
+        .arg(pid.to_string())
+        .status();
+    for _ in 0..20 {
+        if !process_is_alive(pid) {
+            return;
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
+    let _ = std::process::Command::new("/bin/kill")
+        .arg("-KILL")
+        .arg(pid.to_string())
+        .status();
+}
+
+fn inspect_coordinator_state_health(state_dir: &std::path::Path) -> CoordinatorStateHealth {
+    let ready_path = coordinator_ready_file(state_dir);
+    if !ready_path.exists() {
+        return CoordinatorStateHealth::default();
+    }
+
+    let mut health = CoordinatorStateHealth {
+        ready_file_present: true,
+        last_heartbeat_unix: file_modified_unix_seconds(ready_path.as_path()),
+        ..CoordinatorStateHealth::default()
+    };
+
+    match read_json_file::<CoordinatorReadyState>(ready_path.as_path()) {
+        Ok(ready) => {
+            health.pid = Some(ready.pid);
+            health.pid_alive = Some(process_is_alive(ready.pid));
+            health.executable_path = ready.executable_path.clone();
+            health.executable_exists = ready
+                .executable_path
+                .as_ref()
+                .map(|value| std::path::Path::new(value).exists());
+            health.last_heartbeat_unix = Some(ready.heartbeat_unix);
+
+            if health.pid_alive == Some(false) {
+                health.stale_reasons.push("pid_not_alive".to_string());
+            }
+            if health.executable_exists == Some(false) {
+                health.stale_reasons.push("executable_missing".to_string());
+            }
+        }
+        Err(_) => {
+            health
+                .stale_reasons
+                .push("ready_file_decode_failed".to_string());
+        }
+    }
+    health
+}
+
+fn recover_stale_coordinator_state(
+    state_dir: &std::path::Path,
+    health: &CoordinatorStateHealth,
+) -> Result<bool, String> {
+    if !health.is_stale() {
+        return Ok(false);
+    }
+
+    if let (Some(pid), Some(true)) = (health.pid, health.pid_alive) {
+        terminate_coordinator_process_if_owned(pid, state_dir);
+    }
+    reset_coordinator_state_dir(state_dir)?;
+    Ok(true)
+}
+
+fn write_coordinator_ready_state(
+    state_dir: &std::path::Path,
+    started_at: i64,
+) -> Result<(), String> {
+    let ready = CoordinatorReadyState {
+        pid: std::process::id(),
+        started_at,
+        heartbeat_unix: json_generated_at_unix(),
+        executable_path: env::current_exe()
+            .ok()
+            .map(|path| path.to_string_lossy().to_string()),
+    };
+    write_json_file(coordinator_ready_file(state_dir).as_path(), &ready)
+}
+
+fn is_coordinator_timeout_error(error: &str) -> bool {
+    error.contains("timed out waiting for coordinator response")
+}
+
 fn reset_coordinator_state_dir(state_dir: &std::path::Path) -> Result<(), String> {
     if state_dir.exists() {
         std::fs::remove_dir_all(state_dir).map_err(|error| {
@@ -5998,6 +6251,16 @@ fn coordinator_send_request(
         start_if_needed,
         socket_path.display()
     ));
+    let initial_health = inspect_coordinator_state_health(socket_path.as_path());
+    if initial_health.is_stale() {
+        verbose_log(format!(
+            "detected stale coordinator state in '{}': {}",
+            socket_path.display(),
+            initial_health.stale_reasons.join(", ")
+        ));
+        recover_stale_coordinator_state(socket_path.as_path(), &initial_health)?;
+    }
+
     match send_coordinator_request_once(socket_path.as_path(), request) {
         Ok(response) => {
             verbose_log(format!(
@@ -6010,13 +6273,50 @@ fn coordinator_send_request(
             Ok(response)
         }
         Err(error) => {
+            let mut effective_error = error;
+            let mut launched_for_recovery = false;
+
+            if is_coordinator_timeout_error(effective_error.as_str()) {
+                let timeout_health = inspect_coordinator_state_health(socket_path.as_path());
+                if timeout_health.is_stale() {
+                    verbose_log(format!(
+                        "coordinator request timeout with stale state in '{}': {}",
+                        socket_path.display(),
+                        timeout_health.stale_reasons.join(", ")
+                    ));
+                    recover_stale_coordinator_state(socket_path.as_path(), &timeout_health)?;
+                    if start_if_needed {
+                        spawn_coordinator_daemon(socket_path.as_path())?;
+                        launched_for_recovery = true;
+                    }
+                    match send_coordinator_request_once(socket_path.as_path(), request) {
+                        Ok(response) => {
+                            verbose_log(format!(
+                                "coordinator response after stale-timeout recovery kind='{}' ok={} task_id={:?} job_id={:?}",
+                                coordinator_request_kind(request),
+                                response.ok,
+                                response.task_id,
+                                response.job_id
+                            ));
+                            return Ok(response);
+                        }
+                        Err(retry_error) => {
+                            effective_error = retry_error;
+                        }
+                    }
+                }
+            }
+
             if !start_if_needed {
-                return Err(error);
+                return Err(effective_error);
+            }
+            if launched_for_recovery {
+                return Err(effective_error);
             }
             verbose_log(format!(
                 "coordinator request kind='{}' failed before startup: {}; attempting launch-on-demand",
                 coordinator_request_kind(request),
-                error
+                effective_error
             ));
             spawn_coordinator_daemon(socket_path.as_path())?;
             let response = send_coordinator_request_once(socket_path.as_path(), request)?;
@@ -6165,16 +6465,21 @@ fn run_coordinator_server(store: Arc<SqliteStore>, socket_path: PathBuf) -> Resu
 
     let requests_dir = coordinator_requests_dir(socket_path.as_path());
     let runtime = Arc::new(build_adapter_runtime(store.clone())?);
-    write_json_file(
-        coordinator_ready_file(socket_path.as_path()).as_path(),
-        &json!({
-            "pid": std::process::id(),
-            "started_at": json_generated_at_unix()
-        }),
-    )?;
+    let started_at_unix = json_generated_at_unix();
+    write_coordinator_ready_state(socket_path.as_path(), started_at_unix)?;
     verbose_log("coordinator ready and processing requests");
     let mut next_auto_check_tick = Instant::now();
+    let mut next_ready_heartbeat_tick = Instant::now() + Duration::from_secs(2);
     loop {
+        if Instant::now() >= next_ready_heartbeat_tick {
+            if let Err(error) =
+                write_coordinator_ready_state(socket_path.as_path(), started_at_unix)
+            {
+                verbose_log(format!("coordinator heartbeat write failed: {}", error));
+            }
+            next_ready_heartbeat_tick = Instant::now() + Duration::from_secs(2);
+        }
+
         if Instant::now() >= next_auto_check_tick {
             if let Err(error) = run_due_auto_check(store.as_ref()) {
                 verbose_log(format!("auto-check tick failed: {}", error));
@@ -6680,6 +6985,68 @@ fn cmd_diagnostics_summary(store: &SqliteStore, options: GlobalOptions) -> Resul
             summary.undetected_enabled_managers.join(", ")
         );
     }
+    if summary.failure_classes.is_empty() {
+        println!("  failure_classes: -");
+    } else {
+        println!("  failure_classes:");
+        for (class, count) in &summary.failure_classes {
+            println!("    {class}: {count}");
+        }
+    }
+    println!("  coordinator:");
+    println!("    state_dir: {}", summary.coordinator.state_dir);
+    println!(
+        "    ready_file_present: {}",
+        summary.coordinator.ready_file_present
+    );
+    println!(
+        "    pid: {}",
+        summary
+            .coordinator
+            .pid
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string())
+    );
+    println!(
+        "    pid_alive: {}",
+        summary
+            .coordinator
+            .pid_alive
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string())
+    );
+    println!(
+        "    executable_path: {}",
+        summary
+            .coordinator
+            .executable_path
+            .as_deref()
+            .unwrap_or("-")
+    );
+    println!(
+        "    executable_exists: {}",
+        summary
+            .coordinator
+            .executable_exists
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string())
+    );
+    println!(
+        "    last_heartbeat_unix: {}",
+        summary
+            .coordinator
+            .last_heartbeat_unix
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string())
+    );
+    if summary.coordinator.stale_reasons.is_empty() {
+        println!("    stale_reasons: -");
+    } else {
+        println!(
+            "    stale_reasons: {}",
+            summary.coordinator.stale_reasons.join(", ")
+        );
+    }
     Ok(())
 }
 
@@ -6696,6 +7063,7 @@ fn cmd_diagnostics_task(
         .into_iter()
         .find(|row| row.id.0 == task_id)
         .ok_or_else(|| format!("task '{}' not found in recent task window", task_id))?;
+    let task_status = task.status;
     let task_view = task_to_cli_task(task);
 
     let logs = store
@@ -6706,12 +7074,8 @@ fn cmd_diagnostics_task(
         .collect::<Vec<_>>();
 
     let output = helm_core::execution::task_output(TaskId(task_id));
-    let output_payload = json!({
-        "available": output.is_some(),
-        "command": output.as_ref().and_then(|entry| entry.command.clone()),
-        "stdout": output.as_ref().and_then(|entry| entry.stdout.clone()),
-        "stderr": output.as_ref().and_then(|entry| entry.stderr.clone())
-    });
+    let output_payload = task_output_to_cli_diagnostics(output.as_ref());
+    let diagnostics_error = build_task_diagnostics_error(task_status, &logs, output.as_ref());
 
     if options.json {
         emit_json_payload(
@@ -6719,7 +7083,8 @@ fn cmd_diagnostics_task(
             json!({
                 "task": task_view,
                 "logs": logs,
-                "output": output_payload
+                "output": output_payload,
+                "error": diagnostics_error
             }),
         );
         return Ok(());
@@ -6731,7 +7096,7 @@ fn cmd_diagnostics_task(
     println!("  status: {}", task_view.status);
     println!("  created_at_unix: {}", task_view.created_at_unix);
     println!("  log_entries: {}", logs.len());
-    if let Some(last_log) = logs.last() {
+    if let Some(last_log) = logs.first() {
         println!(
             "  last_log: [{}] [{}] {}",
             last_log.created_at_unix, last_log.level, last_log.message
@@ -6739,11 +7104,59 @@ fn cmd_diagnostics_task(
     } else {
         println!("  last_log: -");
     }
-    if output.is_some() {
+    if let Some(error) = diagnostics_error {
+        println!("  error_code: {}", error.code);
+        println!("  error_message: {}", error.message);
+    } else {
+        println!("  error_code: -");
+        println!("  error_message: -");
+    }
+    if output_payload.available {
         println!("  output_available: true");
         println!(
             "  command: {}",
-            output_payload["command"].as_str().unwrap_or("-")
+            output_payload.command.as_deref().unwrap_or("-")
+        );
+        println!("  cwd: {}", output_payload.cwd.as_deref().unwrap_or("-"));
+        println!(
+            "  started_at_unix_ms: {}",
+            output_payload
+                .started_at_unix_ms
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string())
+        );
+        println!(
+            "  finished_at_unix_ms: {}",
+            output_payload
+                .finished_at_unix_ms
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string())
+        );
+        println!(
+            "  duration_ms: {}",
+            output_payload
+                .duration_ms
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string())
+        );
+        println!(
+            "  exit_code: {}",
+            output_payload
+                .exit_code
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string())
+        );
+        println!(
+            "  termination_reason: {}",
+            output_payload.termination_reason.as_deref().unwrap_or("-")
+        );
+        println!(
+            "  output_error_code: {}",
+            output_payload.error_code.as_deref().unwrap_or("-")
+        );
+        println!(
+            "  output_error_message: {}",
+            output_payload.error_message.as_deref().unwrap_or("-")
         );
     } else {
         println!("  output_available: false");
@@ -6975,6 +7388,249 @@ fn parse_diagnostics_export_path(command_args: &[String]) -> Result<Option<Strin
     Ok(path)
 }
 
+fn task_output_to_cli_diagnostics(output: Option<&TaskOutputRecord>) -> CliTaskDiagnosticsOutput {
+    CliTaskDiagnosticsOutput {
+        available: output.is_some(),
+        command: output.and_then(|entry| entry.command.clone()),
+        cwd: output.and_then(|entry| entry.cwd.clone()),
+        started_at_unix_ms: output.and_then(|entry| entry.started_at_unix_ms),
+        finished_at_unix_ms: output.and_then(|entry| entry.finished_at_unix_ms),
+        duration_ms: output.and_then(|entry| entry.duration_ms),
+        exit_code: output.and_then(|entry| entry.exit_code),
+        termination_reason: output.and_then(|entry| entry.termination_reason.clone()),
+        error_code: output.and_then(|entry| entry.error_code.clone()),
+        error_message: output.and_then(|entry| entry.error_message.clone()),
+        stdout: output.and_then(|entry| entry.stdout.clone()),
+        stderr: output.and_then(|entry| entry.stderr.clone()),
+    }
+}
+
+fn build_task_diagnostics_error(
+    status: TaskStatus,
+    logs: &[CliTaskLogRecord],
+    output: Option<&TaskOutputRecord>,
+) -> Option<CliTaskDiagnosticsError> {
+    if !matches!(status, TaskStatus::Failed | TaskStatus::Cancelled) {
+        return None;
+    }
+
+    if let Some(output) = output
+        && let (Some(code), Some(message)) = (&output.error_code, &output.error_message)
+        && !code.trim().is_empty()
+        && !message.trim().is_empty()
+    {
+        return Some(CliTaskDiagnosticsError {
+            code: code.clone(),
+            message: message.clone(),
+        });
+    }
+
+    if let Some(parsed) = parse_terminal_error_from_logs(status, logs, output) {
+        return Some(parsed);
+    }
+
+    let fallback_message = output
+        .and_then(|entry| entry.error_message.clone())
+        .or_else(|| {
+            output
+                .and_then(|entry| entry.stderr.as_deref())
+                .and_then(last_non_empty_line)
+                .map(str::to_string)
+        })
+        .or_else(|| {
+            logs.iter()
+                .find(|record| matches!(record.level.as_str(), "error" | "warn"))
+                .map(|record| record.message.clone())
+        })
+        .unwrap_or_else(|| match status {
+            TaskStatus::Failed => "task failed without persisted diagnostics".to_string(),
+            TaskStatus::Cancelled => "task cancelled without persisted diagnostics".to_string(),
+            _ => "task error".to_string(),
+        });
+    let code = classify_failure_class(output, Some(fallback_message.as_str())).to_string();
+    Some(CliTaskDiagnosticsError {
+        code,
+        message: fallback_message,
+    })
+}
+
+fn parse_terminal_error_from_logs(
+    status: TaskStatus,
+    logs: &[CliTaskLogRecord],
+    output: Option<&TaskOutputRecord>,
+) -> Option<CliTaskDiagnosticsError> {
+    let expected_prefix = match status {
+        TaskStatus::Failed => "task failed",
+        TaskStatus::Cancelled => "task cancelled",
+        _ => return None,
+    };
+
+    for record in logs {
+        if !matches!(record.level.as_str(), "error" | "warn") {
+            continue;
+        }
+        let message = record.message.trim();
+        if !message.starts_with(expected_prefix) {
+            continue;
+        }
+
+        if let Some(parsed) = parse_structured_terminal_error_message(message, expected_prefix) {
+            return Some(parsed);
+        }
+
+        if let Some(unstructured) = message
+            .strip_prefix(expected_prefix)
+            .and_then(|suffix| suffix.strip_prefix(':'))
+            .map(str::trim)
+            .filter(|detail| !detail.is_empty())
+        {
+            return Some(CliTaskDiagnosticsError {
+                code: classify_failure_class(output, Some(unstructured)).to_string(),
+                message: unstructured.to_string(),
+            });
+        }
+    }
+    None
+}
+
+fn parse_structured_terminal_error_message(
+    message: &str,
+    prefix: &str,
+) -> Option<CliTaskDiagnosticsError> {
+    let remainder = message.strip_prefix(prefix)?.trim_start();
+    let bracketed = remainder.strip_prefix('[')?;
+    let bracket_end = bracketed.find(']')?;
+    let code = bracketed[..bracket_end].trim();
+    if code.is_empty() {
+        return None;
+    }
+    let detail = bracketed[bracket_end + 1..]
+        .trim_start()
+        .strip_prefix(':')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
+    Some(CliTaskDiagnosticsError {
+        code: code.to_string(),
+        message: detail.to_string(),
+    })
+}
+
+fn last_non_empty_line(value: &str) -> Option<&str> {
+    value.lines().rev().find_map(|line| {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
+    })
+}
+
+fn classify_failure_class(
+    output: Option<&TaskOutputRecord>,
+    message: Option<&str>,
+) -> &'static str {
+    if let Some(output) = output {
+        if matches!(output.termination_reason.as_deref(), Some("timeout")) {
+            return "timeout";
+        }
+        if let Some(code) = output.error_code.as_deref() {
+            match code {
+                "timeout" => return "timeout",
+                "unsupported_capability" => return "unsupported_capability",
+                _ => {}
+            }
+        }
+    }
+
+    let normalized = message.unwrap_or_default().to_ascii_lowercase();
+    if normalized.contains("timed out waiting for coordinator response")
+        || normalized.contains("coordinator response")
+    {
+        return "coordinator_timeout";
+    }
+    if normalized.contains("unsupported capability") {
+        return "unsupported_capability";
+    }
+    if normalized.contains("current working directory must exist")
+        || normalized.contains("process.cwd failed")
+        || normalized.contains("could not locate working directory")
+        || normalized.contains("getcwd")
+    {
+        return "cwd_missing";
+    }
+    if normalized.contains("temporary failure in name resolution")
+        || normalized.contains("name or service not known")
+        || normalized.contains("failed to lookup address")
+        || normalized.contains("could not resolve host")
+        || normalized.contains("dns")
+    {
+        return "network_dns";
+    }
+    if normalized.contains("timed out") || normalized.contains("timeout") {
+        return "timeout";
+    }
+    "other"
+}
+
+fn diagnose_failure_class_for_task(store: &SqliteStore, task_id: TaskId) -> Result<String, String> {
+    let logs = store
+        .list_task_logs(task_id, 128)
+        .map_err(|error| format!("failed to list task logs for task '{}': {error}", task_id.0))?
+        .into_iter()
+        .map(task_log_to_cli_record)
+        .collect::<Vec<_>>();
+    let output = helm_core::execution::task_output(task_id);
+    let message = logs
+        .iter()
+        .find(|record| {
+            matches!(record.level.as_str(), "error" | "warn")
+                || record.status.as_deref() == Some("failed")
+        })
+        .map(|record| record.message.as_str())
+        .or_else(|| {
+            output
+                .as_ref()
+                .and_then(|entry| entry.error_message.as_deref())
+        })
+        .or_else(|| {
+            output
+                .as_ref()
+                .and_then(|entry| entry.stderr.as_deref())
+                .and_then(last_non_empty_line)
+        });
+
+    Ok(classify_failure_class(output.as_ref(), message).to_string())
+}
+
+fn build_coordinator_health_summary() -> CliCoordinatorHealthSummary {
+    match coordinator_socket_path() {
+        Ok(state_dir) => {
+            let health = inspect_coordinator_state_health(state_dir.as_path());
+            CliCoordinatorHealthSummary {
+                state_dir: state_dir.to_string_lossy().to_string(),
+                ready_file_present: health.ready_file_present,
+                pid: health.pid,
+                pid_alive: health.pid_alive,
+                executable_path: health.executable_path,
+                executable_exists: health.executable_exists,
+                last_heartbeat_unix: health.last_heartbeat_unix,
+                stale_reasons: health.stale_reasons,
+            }
+        }
+        Err(error) => CliCoordinatorHealthSummary {
+            state_dir: format!("<unavailable: {error}>"),
+            ready_file_present: false,
+            pid: None,
+            pid_alive: None,
+            executable_path: None,
+            executable_exists: None,
+            last_heartbeat_unix: None,
+            stale_reasons: vec!["state_dir_unavailable".to_string()],
+        },
+    }
+}
+
 fn build_diagnostics_summary(store: &SqliteStore) -> Result<CliDiagnosticsSummary, String> {
     let installed = store
         .list_installed()
@@ -6993,6 +7649,7 @@ fn build_diagnostics_summary(store: &SqliteStore) -> Result<CliDiagnosticsSummar
     let mut failed_tasks = 0usize;
     let mut cancelled_tasks = 0usize;
     let mut failed_task_ids = Vec::new();
+    let mut failure_classes: BTreeMap<String, usize> = BTreeMap::new();
     for task in tasks {
         match task.status {
             TaskStatus::Queued => queued_tasks = queued_tasks.saturating_add(1),
@@ -7001,6 +7658,9 @@ fn build_diagnostics_summary(store: &SqliteStore) -> Result<CliDiagnosticsSummar
             TaskStatus::Failed => {
                 failed_tasks = failed_tasks.saturating_add(1);
                 failed_task_ids.push(task.id.0);
+                let class = diagnose_failure_class_for_task(store, task.id)?;
+                let entry = failure_classes.entry(class).or_insert(0);
+                *entry = entry.saturating_add(1);
             }
             TaskStatus::Cancelled => cancelled_tasks = cancelled_tasks.saturating_add(1),
         }
@@ -7029,6 +7689,8 @@ fn build_diagnostics_summary(store: &SqliteStore) -> Result<CliDiagnosticsSummar
         cancelled_tasks,
         failed_task_ids,
         undetected_enabled_managers,
+        failure_classes,
+        coordinator: build_coordinator_health_summary(),
     })
 }
 
@@ -11017,12 +11679,14 @@ mod tests {
     use super::{
         CLI_LICENSE_TERMS_VERSION, Command, ExecutionMode, GlobalOptions, HomebrewKegPolicy,
         InstallChannel, ManagerId, apply_manager_enablement_self_heal, build_json_payload_lines,
-        command_help_topic_exists, ensure_cli_onboarding_completed, exit_code_for_error,
-        mark_exit_code, parse_args, parse_args_with_tty, parse_homebrew_keg_policy_arg,
-        parse_search_args, parse_updates_run_preview_args, raw_args_request_json,
-        raw_args_request_ndjson, remove_install_marker_if_channel,
-        self_uninstall_recommended_action, strip_exit_code_marker,
+        classify_failure_class, command_help_topic_exists, ensure_cli_onboarding_completed,
+        exit_code_for_error, mark_exit_code, parse_args, parse_args_with_tty,
+        parse_homebrew_keg_policy_arg, parse_search_args, parse_structured_terminal_error_message,
+        parse_updates_run_preview_args, raw_args_request_json, raw_args_request_ndjson,
+        remove_install_marker_if_channel, self_uninstall_recommended_action,
+        strip_exit_code_marker,
     };
+    use helm_core::execution::TaskOutputRecord;
     use helm_core::models::DetectionInfo;
     use helm_core::persistence::DetectionStore;
     use helm_core::sqlite::SqliteStore;
@@ -11142,6 +11806,72 @@ mod tests {
         .expect_err("conflicting verbosity flags must fail");
         assert!(error.contains("--verbose"));
         assert!(error.contains("--quiet"));
+    }
+
+    #[test]
+    fn classify_failure_class_detects_cwd_missing_pattern() {
+        let class = classify_failure_class(
+            None,
+            Some("Error: The current working directory must exist to run brew."),
+        );
+        assert_eq!(class, "cwd_missing");
+    }
+
+    #[test]
+    fn classify_failure_class_prefers_timeout_reason_from_output() {
+        let output = TaskOutputRecord {
+            termination_reason: Some("timeout".to_string()),
+            ..TaskOutputRecord::default()
+        };
+        let class = classify_failure_class(Some(&output), Some("some unrelated failure"));
+        assert_eq!(class, "timeout");
+    }
+
+    #[test]
+    fn parse_structured_terminal_error_message_extracts_error_details() {
+        let parsed = parse_structured_terminal_error_message(
+            "task failed [timeout]: process timed out after 60000ms",
+            "task failed",
+        )
+        .expect("structured failed-task log should parse");
+        assert_eq!(parsed.code, "timeout");
+        assert_eq!(parsed.message, "process timed out after 60000ms");
+    }
+
+    #[test]
+    fn inspect_coordinator_state_health_marks_dead_pid_as_stale() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        let state_dir = std::env::temp_dir().join(format!("helm-cli-coordinator-health-{nanos}"));
+        std::fs::create_dir_all(&state_dir).expect("failed to create coordinator state dir");
+        let ready_path = super::coordinator_ready_file(state_dir.as_path());
+        let ready = super::CoordinatorReadyState {
+            pid: 999_999,
+            started_at: 1,
+            heartbeat_unix: 2,
+            executable_path: Some("/tmp/nonexistent-helm".to_string()),
+        };
+        super::write_json_file(ready_path.as_path(), &ready).expect("failed to write ready file");
+
+        let health = super::inspect_coordinator_state_health(state_dir.as_path());
+        assert!(health.ready_file_present);
+        assert_eq!(health.pid, Some(999_999));
+        assert_eq!(health.pid_alive, Some(false));
+        assert_eq!(health.executable_exists, Some(false));
+        assert!(
+            health.stale_reasons.contains(&"pid_not_alive".to_string()),
+            "expected pid_not_alive stale reason"
+        );
+        assert!(
+            health
+                .stale_reasons
+                .contains(&"executable_missing".to_string()),
+            "expected executable_missing stale reason"
+        );
+
+        let _ = std::fs::remove_dir_all(state_dir);
     }
 
     #[test]
