@@ -1,5 +1,35 @@
 # Remediation Log
 
+## 2026-02-26 — Batch `REL-004A`, `REL-004B`, `MNT-005A`
+
+### Scope
+
+- `MNT-005A`: make coordinator file-IPC transport boundary explicit in CLI by introducing `FileIpcCoordinatorTransport` and routing coordinator state-dir/path resolution through `coordinator_transport.rs` entry points.
+- `REL-004A`: switch FFI coordinator bridge policy to local/XPC-preferred mode on macOS by default; keep external file-IPC bridge as policy-controlled behavior.
+- `REL-004B`: gate legacy file-IPC compatibility with explicit opt-in (`HELM_LEGACY_FILE_COORDINATOR_IPC`) and add bridge-selection regression coverage.
+
+### Verification
+
+Commands run:
+
+- `cargo fmt --manifest-path /Users/jasoncavinder/Projects/Helm/core/rust/Cargo.toml --all`
+- `cargo test --manifest-path /Users/jasoncavinder/Projects/Helm/core/rust/Cargo.toml -p helm-cli coordinator_transport::tests::`
+- `cargo test --manifest-path /Users/jasoncavinder/Projects/Helm/core/rust/Cargo.toml -p helm-cli coordinator_ipc_paths_use_private_modes_and_consistent_ownership`
+- `cargo test --manifest-path /Users/jasoncavinder/Projects/Helm/core/rust/Cargo.toml -p helm-ffi parse_legacy_file_coordinator_ipc_flag_`
+- `cargo test --manifest-path /Users/jasoncavinder/Projects/Helm/core/rust/Cargo.toml -p helm-ffi coordinator_bridge_external_file_ipc_selection_requires_opt_in_and_ready`
+
+Manual verification:
+
+- Confirmed CLI coordinator command-path parsing now uses module-level transport helpers (`parse_internal_coordinator_state_dir_arg`, `FileIpcCoordinatorTransport`) rather than inline state-dir parsing/path construction in `main.rs`.
+- Confirmed FFI coordinator bridge now defaults to local mode on macOS unless `HELM_LEGACY_FILE_COORDINATOR_IPC` is explicitly set to a truthy value.
+- Confirmed legacy file-IPC compatibility path is still available under explicit opt-in, preserving short-term compatibility while making the default safer.
+- Confirmed existing coordinator IPC file-permission tests still pass for compatibility paths.
+
+Remaining risks:
+
+- `REL-004A` required a scope split: `REL-004A1` is delivered in this batch (FFI bridge policy), while CLI daemon transport migration remains pending as `REL-004A2`.
+- FFI test builds still emit a pre-existing unused-import warning unrelated to this batch.
+
 ## 2026-02-26 — Batch Unblocking Split `SEC-003`, `REL-004`, `MNT-005`
 
 ### Scope

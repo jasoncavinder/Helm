@@ -64,8 +64,12 @@ Notes:
 - `MNT-001C` — Done (`PR: TBD`)
 - `MNT-001` — Done (`PR: TBD`; split parent closed via `MNT-001A` + `MNT-001B` + `MNT-001C`)
 - `SEC-003` — Split (`PR: TBD`; follow-up `SEC-003A` + `SEC-003B` pending)
-- `REL-004` — Split (`PR: TBD`; follow-up `REL-004A` + `REL-004B` pending)
-- `MNT-005` — Split (`PR: TBD`; follow-up `MNT-005A` + `MNT-005B` + `MNT-005C` pending)
+- `REL-004A` — Split (`552a6b9`; follow-up `REL-004A1` done, `REL-004A2` pending)
+- `REL-004A1` — Done (`552a6b9`)
+- `REL-004B` — Done (`552a6b9`)
+- `REL-004` — Split (`552a6b9`; follow-up `REL-004A2` pending, `REL-004B` done)
+- `MNT-005A` — Done (`f4c3d4a`)
+- `MNT-005` — Split (`f4c3d4a`; follow-up `MNT-005A` done, `MNT-005B` + `MNT-005C` pending)
 
 ## Prioritized Backlog
 
@@ -84,8 +88,10 @@ Notes:
 | REL-002 | High | Build/Release | `.github/workflows/release-publish-verify.yml`, release publish sequencing | Hardening | M | Med | None | Publish verification is deterministic across PR merge order; no transient red runs during normal publish PR sequencing; added contract tests/simulated order scenarios pass. |
 | REL-003 | High | Reliability | coordinator IPC tests (`helm-cli` + `helm-ffi`) | Test | M | Low | None | Tests assert coordinator directories are `0700` and request/response/temp files are `0600`; ownership assumptions are validated for both CLI and FFI paths. |
 | REL-004 | High | Security | coordinator request/response transport (file IPC auth) | Hardening | L | Med | None | Split into `REL-004A` + `REL-004B`; close parent when XPC-first transport is default and any file-IPC compatibility path is explicitly bounded/tested. |
-| REL-004A | High | Security | coordinator transport (`core/rust/crates/helm-cli/src/coordinator_transport.rs`, FFI coordinator bridge) | Hardening | M | Med | None | Coordinator request/response path defaults to XPC transport on macOS for CLI/FFI flows; parity tests confirm successful request/response behavior and ownership assumptions. |
-| REL-004B | High | Security | legacy file-IPC compatibility path + docs/tests | Hardening | S | Low | None | File-IPC compatibility path is either removed or feature-flagged for one release cycle only; tests assert default path does not use file IPC and docs capture sunset/removal timeline. |
+| REL-004A | High | Security | coordinator transport (`core/rust/crates/helm-cli/src/coordinator_transport.rs`, FFI coordinator bridge) | Hardening | M | Med | None | Split into `REL-004A1` + `REL-004A2`; close parent when local/XPC-first policy is default on macOS and CLI transport migration scope is completed. |
+| REL-004A1 | High | Security | `core/rust/crates/helm-ffi/src/lib.rs` coordinator bridge policy | Hardening | S | Low | None | macOS defaults to local/XPC-backed coordinator bridge; external file-IPC bridge requires explicit opt-in flag; regression tests cover opt-in parsing and external-bridge selection policy. |
+| REL-004A2 | High | Security | CLI coordinator daemon transport path (`core/rust/crates/helm-cli/src/main.rs`) | Hardening | M | Med | None | CLI coordinator request/response path is migrated away from default file-IPC polling transport with parity tests for submit/cancel/workflow paths and stale-state recovery behavior. |
+| REL-004B | High | Security | legacy file-IPC compatibility path + docs/tests | Hardening | S | Low | None | Legacy file-IPC compatibility path is feature-flagged (`HELM_LEGACY_FILE_COORDINATOR_IPC`) and default-off on macOS; tests assert default local-mode bridge selection and flag-gated legacy behavior. |
 | BUILD-001 | High | Build | `.github/workflows/*.yml` | CI | S | Low | DEC-003 | All third-party `uses:` references are pinned to immutable SHAs (or policy-approved exceptions documented); workflow suite remains green post-update. |
 | BUILD-002 | High | Security | CI workflows (dependency checks) | CI | S | Low | None | CI runs dependency vulnerability checks (e.g., `cargo-audit`/`cargo-deny` and dependency review) on PR/schedule; failures are visible and actionable. |
 | COR-003 | Med | Correctness | `core/rust/crates/helm-core/src/orchestration/adapter_runtime.rs` | Bugfix | M | Med | None | Successful install/uninstall updates cached state (targeted refresh or equivalent) without requiring manual full refresh; integration tests verify snapshot freshness. |
