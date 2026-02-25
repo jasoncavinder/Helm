@@ -1011,6 +1011,25 @@ fn coordinator_request_timeout() -> Duration {
     Duration::from_secs(CLI_REQUEST_TIMEOUT_SECONDS.load(Ordering::Relaxed).max(1))
 }
 
+fn coordinator_response_poll_interval(elapsed: Duration) -> Duration {
+    match elapsed.as_millis() {
+        0..=200 => Duration::from_millis(10),
+        201..=1_000 => Duration::from_millis(25),
+        1_001..=5_000 => Duration::from_millis(100),
+        _ => Duration::from_millis(250),
+    }
+}
+
+fn coordinator_server_idle_poll_interval(empty_iterations: u32) -> Duration {
+    if empty_iterations <= 10 {
+        Duration::from_millis(25)
+    } else if empty_iterations <= 40 {
+        Duration::from_millis(100)
+    } else {
+        Duration::from_millis(250)
+    }
+}
+
 fn exit_code_for_error(error: &str) -> u8 {
     let (marked_exit_code, _) = strip_exit_code_marker(error);
     marked_exit_code.unwrap_or(1)
@@ -6821,7 +6840,7 @@ fn send_coordinator_request_once(
             let _ = std::fs::remove_file(response_file.as_path());
             return Ok(response);
         }
-        thread::sleep(Duration::from_millis(25));
+        thread::sleep(coordinator_response_poll_interval(started.elapsed()));
     }
 
     let _ = std::fs::remove_file(request_file.as_path());
@@ -6933,6 +6952,7 @@ fn run_coordinator_server(store: Arc<SqliteStore>, socket_path: PathBuf) -> Resu
     verbose_log("coordinator ready and processing requests");
     let mut next_auto_check_tick = Instant::now();
     let mut next_ready_heartbeat_tick = Instant::now() + Duration::from_secs(2);
+    let mut empty_poll_iterations = 0u32;
     loop {
         if Instant::now() >= next_ready_heartbeat_tick {
             if let Err(error) =
@@ -6962,9 +6982,11 @@ fn run_coordinator_server(store: Arc<SqliteStore>, socket_path: PathBuf) -> Resu
         entries.sort_by_key(|entry| entry.file_name());
 
         if entries.is_empty() {
-            thread::sleep(Duration::from_millis(25));
+            empty_poll_iterations = empty_poll_iterations.saturating_add(1);
+            thread::sleep(coordinator_server_idle_poll_interval(empty_poll_iterations));
             continue;
         }
+        empty_poll_iterations = 0;
 
         for entry in entries {
             let request_path = entry.path();
@@ -12725,6 +12747,42 @@ mod tests {
             Some("Error: The current working directory must exist to run brew."),
         );
         assert_eq!(class, "cwd_missing");
+    }
+
+    #[test]
+    fn coordinator_response_poll_interval_backoff_is_bounded() {
+        assert_eq!(
+            super::coordinator_response_poll_interval(Duration::from_millis(50)),
+            Duration::from_millis(10)
+        );
+        assert_eq!(
+            super::coordinator_response_poll_interval(Duration::from_millis(500)),
+            Duration::from_millis(25)
+        );
+        assert_eq!(
+            super::coordinator_response_poll_interval(Duration::from_millis(2_000)),
+            Duration::from_millis(100)
+        );
+        assert_eq!(
+            super::coordinator_response_poll_interval(Duration::from_millis(8_000)),
+            Duration::from_millis(250)
+        );
+    }
+
+    #[test]
+    fn coordinator_server_idle_poll_interval_backoff_is_bounded() {
+        assert_eq!(
+            super::coordinator_server_idle_poll_interval(1),
+            Duration::from_millis(25)
+        );
+        assert_eq!(
+            super::coordinator_server_idle_poll_interval(20),
+            Duration::from_millis(100)
+        );
+        assert_eq!(
+            super::coordinator_server_idle_poll_interval(50),
+            Duration::from_millis(250)
+        );
     }
 
     #[test]
