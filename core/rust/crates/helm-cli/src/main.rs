@@ -6053,8 +6053,10 @@ fn file_modified_unix_seconds(path: &std::path::Path) -> Option<i64> {
     i64::try_from(duration.as_secs()).ok()
 }
 
+const PS_COMMAND_PATH: &str = "/bin/ps";
+
 fn process_is_alive(pid: u32) -> bool {
-    let output = std::process::Command::new("ps")
+    let output = std::process::Command::new(PS_COMMAND_PATH)
         .arg("-p")
         .arg(pid.to_string())
         .arg("-o")
@@ -6071,7 +6073,7 @@ fn process_is_alive(pid: u32) -> bool {
 }
 
 fn coordinator_process_looks_owned(pid: u32, state_dir: &std::path::Path) -> bool {
-    let output = std::process::Command::new("ps")
+    let output = std::process::Command::new(PS_COMMAND_PATH)
         .arg("-p")
         .arg(pid.to_string())
         .arg("-o")
@@ -12325,6 +12327,11 @@ mod tests {
         );
         assert_eq!(parse_homebrew_keg_policy_arg("default").unwrap(), None);
         assert!(parse_homebrew_keg_policy_arg("invalid").is_err());
+    }
+
+    #[test]
+    fn coordinator_ps_command_path_is_absolute() {
+        assert_eq!(super::PS_COMMAND_PATH, "/bin/ps");
     }
 
     #[test]
