@@ -1,5 +1,31 @@
 # Remediation Log
 
+## 2026-02-25 — Batch `SEC-002`, `COR-005`, `COR-010`
+
+### Scope
+
+- `SEC-002`: remove PATH-resolved `ps` usage from coordinator process-health/ownership probes.
+- `COR-005`: serialize coordinator bootstrap/reset startup with a lock file so parallel CLI launches do not race-reset state or spawn duplicate daemons.
+- `COR-010`: already completed on this branch in `6f39e3a` (no additional code changes required in this batch).
+
+### Verification
+
+Commands run:
+
+- `cargo fmt --manifest-path core/rust/Cargo.toml --all`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-cli`
+
+Manual verification:
+
+- Confirmed `process_is_alive` and `coordinator_process_looks_owned` now invoke `PS_COMMAND_PATH` (`/bin/ps`) and no longer rely on PATH lookup.
+- Confirmed coordinator startup path now gates `spawn_coordinator_daemon` behind `acquire_coordinator_bootstrap_lock` and re-checks ping while the lock is held.
+- Confirmed new regression test `coordinator_bootstrap_lock_serializes_parallel_acquisition` proves second acquisition blocks until the first lock is released.
+
+Remaining risks:
+
+- Lock stale detection is time+PID based; if platform process inspection fails unexpectedly, stale-lock clearing may wait until timeout and return a deterministic bootstrap error.
+- Locking prevents startup/reset races, but does not change existing coordinator request timeout policy semantics.
+
 ## 2026-02-25 — Batch `SEC-002`, `SEC-005`, `TEST-005`
 
 ### Scope

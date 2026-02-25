@@ -10,7 +10,7 @@ Notes:
 
 ## Batch Status Updates (2026-02-25)
 
-- `SEC-002` — Done (`PR: TBD`, commit pending)
+- `SEC-002` — Done (`78594cd`)
 - `SEC-005` — Done (`PR: TBD`, commit pending)
 - `TEST-005` — Done (`PR: TBD`, commit pending)
 - `SEC-004` — Done (`PR: TBD`, commit pending)
@@ -21,7 +21,8 @@ Notes:
 - `DOC-001` — Done (`ff95ae2`)
 - `SEC-001` — Done (`09b7e71`)
 - `COR-004` — Done (`4fc8a86`)
-- `COR-010` — Done (`PR: TBD`)
+- `COR-010` — Done (`6f39e3a`)
+- `COR-005` — Done (`0b0b9dc`)
 - `REL-002` — Done (`b385593`)
 - `REL-005` — Done (`b8a60a2`)
 - `DOC-002` — Done (`f28ec00`)
