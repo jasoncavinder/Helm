@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -476,6 +476,17 @@ impl AppState {
                 cancelled_tasks: 0,
                 failed_task_ids: Vec::new(),
                 undetected_enabled_managers: Vec::new(),
+                failure_classes: BTreeMap::new(),
+                coordinator: super::CliCoordinatorHealthSummary {
+                    state_dir: String::new(),
+                    ready_file_present: false,
+                    pid: None,
+                    pid_alive: None,
+                    executable_path: None,
+                    executable_exists: None,
+                    last_heartbeat_unix: None,
+                    stale_reasons: Vec::new(),
+                },
             },
             settings: SettingsSnapshot::default(),
             self_update: SelfUpdateSnapshot::default(),

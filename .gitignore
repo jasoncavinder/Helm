@@ -62,3 +62,6 @@ venv/
 
 # Local scratch outputs (ad-hoc test binaries, logs, release staging).
 /artifacts/
+
+# Root-level temporary notes used during release/debug sessions.
+/TMP_*

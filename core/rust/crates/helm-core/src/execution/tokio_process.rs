@@ -17,6 +17,24 @@ pub struct TokioProcessExecutor;
 impl ProcessExecutor for TokioProcessExecutor {
     fn spawn(&self, request: ProcessSpawnRequest) -> ExecutionResult<Box<dyn RunningProcess>> {
         let prepared = prepare_command_for_spawn(&request, None)?;
+        let task_id = request.task_id;
+        let manager = request.manager;
+        let task_type = request.task_type;
+        let action = request.action;
+        let command_display = prepared.command_display.clone();
+        let effective_working_dir =
+            resolve_effective_working_dir(prepared.command.working_dir.as_deref());
+        let working_dir_display = effective_working_dir
+            .as_ref()
+            .map(|path| path.to_string_lossy().to_string())
+            .or_else(|| resolve_working_dir_display(prepared.command.working_dir.as_deref()));
+        if let Some(task_id) = task_id {
+            crate::execution::task_output_store::record_context(
+                task_id,
+                Some(command_display.as_str()),
+                working_dir_display.as_deref(),
+            );
+        }
 
         let mut cmd = tokio::process::Command::new(&prepared.command.program);
         cmd.args(&prepared.command.args);
@@ -25,7 +43,7 @@ impl ProcessExecutor for TokioProcessExecutor {
             cmd.env(key, value);
         }
 
-        if let Some(dir) = &prepared.command.working_dir {
+        if let Some(dir) = &effective_working_dir {
             cmd.current_dir(dir);
         }
 
@@ -35,27 +53,36 @@ impl ProcessExecutor for TokioProcessExecutor {
         cmd.process_group(0);
 
         let child = cmd.spawn().map_err(|error| {
-            process_failure(
-                request.manager,
-                request.task_type,
-                request.action,
-                format!("failed to spawn process: {error}"),
-            )
+            let message = format!("failed to spawn process: {error}");
+            if let Some(task_id) = task_id {
+                crate::execution::task_output_store::record_error(
+                    task_id,
+                    "spawn_failed",
+                    message.as_str(),
+                    Some("error"),
+                    Some(SystemTime::now()),
+                );
+                crate::execution::task_output_store::append_stderr(task_id, message.as_bytes());
+            }
+            process_failure(manager, task_type, action, message)
         })?;
 
         let pid = child.id();
         let started_at = SystemTime::now();
+        if let Some(task_id) = task_id {
+            crate::execution::task_output_store::record_started_at(task_id, started_at);
+        }
 
         Ok(Box::new(TokioRunningProcess {
             child: Mutex::new(Some(child)),
             pid,
             started_at,
             timeout: request.timeout,
-            manager: request.manager,
-            task_type: request.task_type,
-            action: request.action,
-            task_id: request.task_id,
-            command_display: prepared.command_display,
+            manager,
+            task_type,
+            action,
+            task_id,
+            command_display,
         }))
     }
 }
@@ -303,12 +330,18 @@ impl RunningProcess for TokioRunningProcess {
 
         Box::pin(async move {
             let mut child = child.ok_or_else(|| {
-                process_failure(
-                    manager,
-                    task_type,
-                    action,
-                    "child process already consumed".to_string(),
-                )
+                let message = "child process already consumed".to_string();
+                if let Some(task_id) = task_id {
+                    crate::execution::task_output_store::record_error(
+                        task_id,
+                        "internal_child_consumed",
+                        message.as_str(),
+                        Some("error"),
+                        Some(SystemTime::now()),
+                    );
+                    crate::execution::task_output_store::append_stderr(task_id, message.as_bytes());
+                }
+                process_failure(manager, task_type, action, message)
             })?;
 
             if let Some(task_id) = task_id {
@@ -369,12 +402,18 @@ impl RunningProcess for TokioRunningProcess {
             };
 
             let wait_err = |error: std::io::Error| {
-                process_failure(
-                    manager,
-                    task_type,
-                    action,
-                    format!("failed to wait for process: {error}"),
-                )
+                let message = format!("failed to wait for process: {error}");
+                if let Some(task_id) = task_id {
+                    crate::execution::task_output_store::record_error(
+                        task_id,
+                        "wait_failed",
+                        message.as_str(),
+                        Some("error"),
+                        Some(SystemTime::now()),
+                    );
+                    crate::execution::task_output_store::append_stderr(task_id, message.as_bytes());
+                }
+                process_failure(manager, task_type, action, message)
             };
 
             // Wait for process exit first, then collect output with a short bounded read window.
@@ -392,15 +431,35 @@ impl RunningProcess for TokioRunningProcess {
                         let _ = tokio::time::timeout(Duration::from_secs(1), child.wait()).await;
                         stdout_reader.abort();
                         stderr_reader.abort();
+                        let finished_at = SystemTime::now();
+                        let message =
+                            format!("process timed out after {}ms", timeout_duration.as_millis());
+                        if let Some(task_id) = task_id {
+                            crate::execution::task_output_store::record_terminal_metadata(
+                                task_id,
+                                started_at,
+                                finished_at,
+                                None,
+                                Some("timeout"),
+                            );
+                            crate::execution::task_output_store::record_error(
+                                task_id,
+                                "timeout",
+                                message.as_str(),
+                                Some("timeout"),
+                                Some(finished_at),
+                            );
+                            crate::execution::task_output_store::append_stderr(
+                                task_id,
+                                message.as_bytes(),
+                            );
+                        }
                         return Err(CoreError {
                             manager: Some(manager),
                             task: Some(task_type),
                             action: Some(action),
                             kind: CoreErrorKind::Timeout,
-                            message: format!(
-                                "process timed out after {}ms",
-                                timeout_duration.as_millis()
-                            ),
+                            message,
                         });
                     }
                 }
@@ -420,10 +479,60 @@ impl RunningProcess for TokioRunningProcess {
 
             let finished_at = SystemTime::now();
 
-            let status = match status.code() {
-                Some(code) => ProcessExitStatus::ExitCode(code),
-                None => ProcessExitStatus::Terminated,
+            let (
+                status,
+                exit_code,
+                termination_reason,
+                terminal_error_code,
+                terminal_error_message,
+            ) = match status.code() {
+                Some(code) => {
+                    let reason = if code == 0 { None } else { Some("error") };
+                    let error_code = if code == 0 {
+                        None
+                    } else {
+                        Some("non_zero_exit")
+                    };
+                    let error_message = if code == 0 {
+                        None
+                    } else {
+                        Some(format!("process exited with code {code}"))
+                    };
+                    (
+                        ProcessExitStatus::ExitCode(code),
+                        Some(code),
+                        reason,
+                        error_code,
+                        error_message,
+                    )
+                }
+                None => (
+                    ProcessExitStatus::Terminated,
+                    None,
+                    Some("signal"),
+                    Some("terminated_by_signal"),
+                    Some("process terminated by signal".to_string()),
+                ),
             };
+
+            if let Some(task_id) = task_id {
+                crate::execution::task_output_store::record_terminal_metadata(
+                    task_id,
+                    started_at,
+                    finished_at,
+                    exit_code,
+                    termination_reason,
+                );
+                if let (Some(code), Some(message)) = (terminal_error_code, terminal_error_message) {
+                    crate::execution::task_output_store::record_error(
+                        task_id,
+                        code,
+                        message.as_str(),
+                        termination_reason,
+                        Some(finished_at),
+                    );
+                }
+            }
 
             if let Some(task_id) = task_id {
                 crate::execution::task_output_store::record(
@@ -432,7 +541,7 @@ impl RunningProcess for TokioRunningProcess {
                     &stdout,
                     &stderr,
                 );
-            }
+            };
 
             Ok(ProcessOutput {
                 status,
@@ -451,6 +560,44 @@ fn format_command_for_display(command: &CommandSpec) -> String {
     parts.extend(command.args.iter().map(|arg| shell_escape(arg)));
 
     parts.join(" ")
+}
+
+fn resolve_effective_working_dir(requested_working_dir: Option<&Path>) -> Option<PathBuf> {
+    if let Some(path) = requested_working_dir
+        && path.is_dir()
+    {
+        return Some(path.to_path_buf());
+    }
+
+    if let Ok(current_dir) = std::env::current_dir()
+        && current_dir.is_dir()
+    {
+        return Some(current_dir);
+    }
+
+    if let Ok(home_dir) = std::env::var("HOME") {
+        let home = PathBuf::from(home_dir);
+        if home.is_dir() {
+            return Some(home);
+        }
+    }
+
+    let temp_dir = std::env::temp_dir();
+    if temp_dir.is_dir() {
+        return Some(temp_dir);
+    }
+
+    None
+}
+
+fn resolve_working_dir_display(requested_working_dir: Option<&Path>) -> Option<String> {
+    if let Some(path) = requested_working_dir {
+        return Some(path.to_string_lossy().to_string());
+    }
+    match std::env::current_dir() {
+        Ok(path) => Some(path.to_string_lossy().to_string()),
+        Err(error) => Some(format!("<unavailable: {error}>")),
+    }
 }
 
 fn shell_escape(text: &str) -> String {
@@ -486,7 +633,7 @@ fn process_failure(
 
 #[cfg(test)]
 mod tests {
-    use super::prepare_command_for_spawn;
+    use super::{prepare_command_for_spawn, resolve_effective_working_dir};
     use crate::execution::{CommandSpec, ProcessSpawnRequest};
     use crate::models::{ManagerAction, ManagerId, TaskType};
     use std::fs;
@@ -560,5 +707,34 @@ mod tests {
         );
 
         let _ = fs::remove_file(askpass_path);
+    }
+
+    #[test]
+    fn resolve_effective_working_dir_prefers_existing_requested_dir() {
+        let requested = std::env::temp_dir().join("helm-tokio-process-cwd-existing");
+        fs::create_dir_all(&requested).expect("failed to create temp directory");
+
+        let resolved = resolve_effective_working_dir(Some(requested.as_path()))
+            .expect("expected working directory to resolve");
+        assert_eq!(resolved, requested);
+
+        let _ = fs::remove_dir_all(resolved);
+    }
+
+    #[test]
+    fn resolve_effective_working_dir_falls_back_when_requested_dir_is_missing() {
+        let requested = std::env::temp_dir().join("helm-tokio-process-cwd-missing");
+        let _ = fs::remove_dir_all(&requested);
+
+        let resolved = resolve_effective_working_dir(Some(requested.as_path()))
+            .expect("expected fallback working directory");
+        assert!(
+            resolved.is_dir(),
+            "fallback working directory should exist and be a directory"
+        );
+        assert_ne!(
+            resolved, requested,
+            "missing requested working directory should not be selected"
+        );
     }
 }

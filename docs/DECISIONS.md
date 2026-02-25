@@ -525,6 +525,18 @@ Treat macOS base-system language-manager executables as detectable but not manag
 - Avoids hidden state mutation or partial command execution before prerequisites are met.
 
 ---
+## Decision 031 — Release Friction Promotion Path
+
+**Decision:**
+Capture release-process friction in `TMP_RELEASE_FRICTION` during execution, then promote recurring friction into permanent operational docs and decisions.
+
+**Rationale:**
+
+- Keeps release notes lightweight during execution while preserving actionable context
+- Prevents recurring operator pain from staying in temporary files
+- Ensures release runbook/checklist/decision docs stay aligned with observed release behavior
+
+---
 ## Summary
 
 Helm prioritizes:

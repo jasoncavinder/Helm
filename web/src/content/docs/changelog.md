@@ -13,6 +13,32 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ## Unreleased
 
+## 0.17.6 — 2026-02-24
+
+Patch `0.17.6` hardens refresh reliability and diagnostics after the `v0.17.5` release cycle.
+
+### Added
+- Task diagnostics now include effective working directory, timing, exit metadata, and structured error attribution.
+- Diagnostics summary now includes failure-class counters to speed triage.
+- Coordinator health diagnostics now surface stale-state reasons (dead PID, missing executable target, invalid ready payload).
+
+### Changed
+- Coordinator request handling now performs one stale-state recovery retry on timeout.
+- Refresh/search request-response now retries once for transient timeout and network-resolution failures.
+- npm list timeout was increased from 60s to 120s.
+
+### Fixed
+- Process execution now falls back to a valid existing working directory when a recorded cwd no longer exists.
+
+## 0.17.5 — 2026-02-24
+
+Patch `0.17.5` finalized the release-process hardening phases delivered after `v0.17.4`.
+
+### Changed
+- Added release preflight and runbook operator scripts for `prepare`, `tag`, `publish`, and `verify`.
+- Release workflows now keep hard failures for true artifact/signing issues while reporting follow-up-required status for open metadata publish PRs.
+- Added publish verification and drift-guard checkpoints to reduce release metadata divergence risk.
+
 ## 0.17.4 — 2026-02-24
 
 Patch `0.17.4` packages the first ratatui-powered Helm TUI, bundled-app CLI shim workflows, and post-`0.17.3` GUI/CLI parity closures.
@@ -304,11 +330,11 @@ Stable `0.17.0` consolidates all `rc.1` through `rc.5` deliveries and includes f
 ## 0.13.0-rc.2 — 2026-02-19
 
 ### Added
-- "Support & Feedback" card in control-center Settings with 5 action buttons: Support Helm (GitHub Sponsors), Report a Bug, Request a Feature, Send Feedback (mailto), Copy Diagnostics
+- "Support & Feedback" card in control-center Settings with 5 action buttons: Support Helm (GitHub Sponsors, Patreon, Buy Me a Coffee, Ko-fi, PayPal, Venmo), Report a Bug, Request a Feature, Send Feedback (mailto), Copy Diagnostics
 - "Include Diagnostics" toggle that copies diagnostics to clipboard before opening GitHub issue templates
 - Transient "Copied!" confirmation with animated opacity transition
-- "Support Helm" submenu in right-click status menu with GitHub Sponsors and Patreon items
-- `.github/FUNDING.yml` for GitHub Sponsors and Patreon integration
+- "Support Helm" destinations now include all six configured channels (GitHub Sponsors, Patreon, Buy Me a Coffee, Ko-fi, PayPal, Venmo)
+- `.github/FUNDING.yml` for GitHub Sponsors and Patreon integration, with direct support links for Buy Me a Coffee, Ko-fi, PayPal, and Venmo
 - 11 new L10n keys across all 6 locales
 
 ### Changed

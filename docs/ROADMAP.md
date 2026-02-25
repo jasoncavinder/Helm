@@ -428,10 +428,10 @@ Delivered (`v0.13.0-rc.1` checkpoint):
 - Security Advisory System milestone added to roadmap (1.3.x)
 
 Delivered (`v0.13.0-rc.2` checkpoint):
-- Support & Feedback card in Settings with 5 actions (Support Helm, Report a Bug, Request a Feature, Send Feedback, Copy Diagnostics)
+- Support & Feedback card in Settings with 5 actions (Support Helm -> GitHub Sponsors, Patreon, Buy Me a Coffee, Ko-fi, PayPal, Venmo; plus Report a Bug, Request a Feature, Send Feedback, Copy Diagnostics)
 - Include Diagnostics toggle with clipboard copy before opening GitHub issue templates
-- Support Helm submenu in status menu right-click (GitHub Sponsors, Patreon)
-- GitHub Sponsors and Patreon funding integration (.github/FUNDING.yml)
+- Support Helm destinations across app surfaces now include all six configured channels (GitHub Sponsors, Patreon, Buy Me a Coffee, Ko-fi, PayPal, Venmo)
+- GitHub Sponsors and Patreon funding integration (.github/FUNDING.yml), plus direct support links for Buy Me a Coffee, Ko-fi, PayPal, and Venmo
 - 11 new L10n keys across all 6 locales
 - AppDelegate decomposed to satisfy SwiftLint thresholds
 
