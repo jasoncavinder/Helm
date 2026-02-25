@@ -1015,6 +1015,22 @@ fn coordinator_server_idle_poll_interval(empty_iterations: u32) -> Duration {
     }
 }
 
+fn coordinator_bootstrap_lock_poll_interval(elapsed: Duration) -> Duration {
+    match elapsed.as_millis() {
+        0..=500 => Duration::from_millis(25),
+        501..=2_000 => Duration::from_millis(50),
+        _ => Duration::from_millis(100),
+    }
+}
+
+fn coordinator_startup_poll_interval(elapsed: Duration) -> Duration {
+    match elapsed.as_millis() {
+        0..=500 => Duration::from_millis(10),
+        501..=2_000 => Duration::from_millis(25),
+        _ => Duration::from_millis(50),
+    }
+}
+
 fn exit_code_for_error(error: &str) -> u8 {
     let (marked_exit_code, _) = strip_exit_code_marker(error);
     marked_exit_code.unwrap_or(1)
@@ -6273,6 +6289,7 @@ fn coordinator_response_file(state_dir: &std::path::Path, request_id: &str) -> P
 const COORDINATOR_BOOTSTRAP_LOCK_FILE: &str = ".bootstrap.lock";
 const COORDINATOR_BOOTSTRAP_LOCK_WAIT_TIMEOUT_MS: u64 = 5_000;
 const COORDINATOR_BOOTSTRAP_LOCK_STALE_SECS: u64 = 15;
+const COORDINATOR_DAEMON_READY_TIMEOUT_MS: u64 = 3_000;
 
 fn coordinator_bootstrap_lock_file(state_dir: &std::path::Path) -> PathBuf {
     state_dir.join(COORDINATOR_BOOTSTRAP_LOCK_FILE)
@@ -6375,7 +6392,7 @@ fn acquire_coordinator_bootstrap_lock(
                         lock_file.display()
                     ));
                 }
-                thread::sleep(Duration::from_millis(50));
+                thread::sleep(coordinator_bootstrap_lock_poll_interval(started.elapsed()));
             }
             Err(error) => {
                 return Err(format!(
@@ -6684,13 +6701,14 @@ fn spawn_coordinator_daemon(socket_path: &std::path::Path) -> Result<(), String>
         .spawn()
         .map_err(|error| format!("failed to spawn coordinator daemon: {error}"))?;
 
-    for _ in 0..60 {
+    let started = Instant::now();
+    while started.elapsed() < Duration::from_millis(COORDINATOR_DAEMON_READY_TIMEOUT_MS) {
         if let Ok(response) = send_coordinator_request_once(socket_path, &CoordinatorRequest::Ping)
             && response.ok
         {
             return Ok(());
         }
-        thread::sleep(Duration::from_millis(50));
+        thread::sleep(coordinator_startup_poll_interval(started.elapsed()));
     }
 
     Err("coordinator daemon did not become ready in time".to_string())
@@ -12768,6 +12786,38 @@ mod tests {
         assert_eq!(
             super::coordinator_server_idle_poll_interval(50),
             Duration::from_millis(250)
+        );
+    }
+
+    #[test]
+    fn coordinator_bootstrap_lock_poll_interval_backoff_is_bounded() {
+        assert_eq!(
+            super::coordinator_bootstrap_lock_poll_interval(Duration::from_millis(100)),
+            Duration::from_millis(25)
+        );
+        assert_eq!(
+            super::coordinator_bootstrap_lock_poll_interval(Duration::from_millis(1_000)),
+            Duration::from_millis(50)
+        );
+        assert_eq!(
+            super::coordinator_bootstrap_lock_poll_interval(Duration::from_millis(4_000)),
+            Duration::from_millis(100)
+        );
+    }
+
+    #[test]
+    fn coordinator_startup_poll_interval_backoff_is_bounded() {
+        assert_eq!(
+            super::coordinator_startup_poll_interval(Duration::from_millis(100)),
+            Duration::from_millis(10)
+        );
+        assert_eq!(
+            super::coordinator_startup_poll_interval(Duration::from_millis(1_000)),
+            Duration::from_millis(25)
+        );
+        assert_eq!(
+            super::coordinator_startup_poll_interval(Duration::from_millis(4_000)),
+            Duration::from_millis(50)
         );
     }
 
