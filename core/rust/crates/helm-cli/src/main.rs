@@ -8080,6 +8080,7 @@ fn classify_failure_class(
     if normalized.contains("network is unreachable")
         || normalized.contains("no route to host")
         || normalized.contains("not connected to the internet")
+        || normalized.contains("check your internet connection")
         || normalized.contains("offline")
         || normalized.contains("failed to connect")
         || normalized.contains("connection refused")
@@ -12775,6 +12776,15 @@ mod tests {
         let class = classify_failure_class(
             None,
             Some("failed to connect: network is unreachable for host registry.npmjs.org"),
+        );
+        assert_eq!(class, "network_offline");
+    }
+
+    #[test]
+    fn classify_failure_class_detects_check_internet_connection_pattern() {
+        let class = classify_failure_class(
+            None,
+            Some("request failed: check your internet connection and try again"),
         );
         assert_eq!(class, "network_offline");
     }
