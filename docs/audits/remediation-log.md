@@ -1,5 +1,38 @@
 # Remediation Log
 
+## 2026-02-26 — Batch `COR-008B`, `REL-003`, `MNT-002`
+
+### Scope
+
+- `COR-008B`: surface explicit selected-vs-default executable diagnostics in CLI/FFI manager status outputs and add aligned/diverged coverage.
+- `REL-003`: add coordinator IPC permission/ownership tests for both CLI and FFI transport paths.
+- `MNT-002`: centralize high-frequency FFI service error keys into constants and replace stringly-typed call sites.
+
+### Verification
+
+Commands run:
+
+- `cargo fmt --manifest-path core/rust/Cargo.toml --all`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-cli selected_executable_differs_from_default_reports_alignment_and_divergence`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-cli manager_executable_path_diagnostic_reports_expected_states`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-cli coordinator_ipc_paths_use_private_modes_and_consistent_ownership`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-ffi manager_status_reports_executable_path_divergence_diagnostics`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-ffi manager_status_reports_executable_path_alignment_diagnostics`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-ffi coordinator_ipc_paths_use_private_modes_and_consistent_ownership`
+
+Manual verification:
+
+- Confirmed CLI manager status payloads and human output now expose `selected_executable_differs_from_default` and `executable_path_diagnostic`.
+- Confirmed FFI manager status rows include additive executable-path diagnostics and divergence signal for aligned/diverged selected-path scenarios.
+- Confirmed coordinator state/request/response/ready files are asserted as private (`0700` dirs, `0600` files) with consistent owner UID in both CLI and FFI tests.
+- Confirmed repeated FFI service error keys now route through centralized constants for invalid-input/storage/unsupported/process/internal paths.
+
+Remaining risks:
+
+- Manager status output shape is additive; consumers with strict schema validation must tolerate new fields.
+- Coordinator permission tests are `#[cfg(unix)]`; non-Unix environments rely on existing behavior without these assertions.
+- Existing unrelated test-only unused-import warnings remain in CLI/FFI test builds.
+
 ## 2026-02-26 — Batch `COR-006`, `COR-008`, `TEST-002`
 
 ### Scope

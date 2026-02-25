@@ -3,7 +3,7 @@ use std::env;
 use std::fs::{self, OpenOptions};
 use std::hash::{Hash, Hasher};
 use std::io::{IsTerminal, Read, Write};
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{ExitCode, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -346,6 +346,8 @@ struct CliManagerStatus {
     supports_package_uninstall: bool,
     supports_package_upgrade: bool,
     selected_executable_path: Option<String>,
+    selected_executable_differs_from_default: bool,
+    executable_path_diagnostic: String,
     selected_install_method: Option<String>,
     is_eligible: bool,
     ineligible_reason_code: Option<String>,
@@ -385,6 +387,8 @@ struct CliManagerExecutableStatus {
     executable_paths: Vec<String>,
     default_executable_path: Option<String>,
     selected_executable_path: Option<String>,
+    selected_executable_differs_from_default: bool,
+    executable_path_diagnostic: String,
 }
 
 #[derive(Serialize)]
@@ -1710,12 +1714,8 @@ fn cmd_refresh(
                 "Refresh completed",
                 rows,
             );
-            if failures > 0 {
-                let exit_code = if failures > 1 { 3 } else { 2 };
-                return Err(mark_exit_code(
-                    format!("{failures} manager refresh operations failed"),
-                    exit_code,
-                ));
+            if let Some(error) = manager_operation_failure_error("refresh", failures) {
+                return Err(error);
             }
             Ok(())
         }
@@ -2747,15 +2747,10 @@ fn cmd_updates_run(
 
     let mut results: Vec<CliUpgradeRunStepResult> = Vec::with_capacity(steps.len());
     for step in &steps {
-        let request_name = if step.manager == ManagerId::HomebrewFormula && step.cleanup_old_kegs {
-            encode_homebrew_upgrade_target(&step.package_name, true)
-        } else {
-            step.package_name.clone()
-        };
         let request = AdapterRequest::Upgrade(UpgradeRequest {
             package: Some(PackageRef {
                 manager: step.manager,
-                name: request_name,
+                name: upgrade_request_name(step),
             }),
         });
         let response = tokio_runtime.block_on(submit_request_wait(&runtime, step.manager, request));
@@ -2819,12 +2814,8 @@ fn cmd_updates_run(
         }
     }
 
-    if failures > 0 {
-        let exit_code = if failures > 1 { 3 } else { 2 };
-        return Err(mark_exit_code(
-            format!("{failures} upgrade steps failed"),
-            exit_code,
-        ));
+    if let Some(error) = manager_operation_failure_error("upgrade", failures) {
+        return Err(error);
     }
 
     Ok(())
@@ -3260,6 +3251,14 @@ fn cmd_managers(
                     row.selected_executable_path.as_deref().unwrap_or("-")
                 );
                 println!(
+                    "  selected_executable_differs_from_default: {}",
+                    row.selected_executable_differs_from_default
+                );
+                println!(
+                    "  executable_path_diagnostic: {}",
+                    row.executable_path_diagnostic
+                );
+                println!(
                     "  selected_install_method: {}",
                     row.selected_install_method.as_deref().unwrap_or("-")
                 );
@@ -3399,8 +3398,15 @@ fn cmd_managers_list(store: &SqliteStore, options: GlobalOptions) -> Result<(), 
             }
         );
         println!(
-            "  {} [{}|{}] {} exec={} method={}{}",
-            manager.manager_id, state, detected, version, executable, method, flags
+            "  {} [{}|{}] {} exec={} method={} exec_diag={}{}",
+            manager.manager_id,
+            state,
+            detected,
+            version,
+            executable,
+            method,
+            manager.executable_path_diagnostic,
+            flags
         );
     }
     Ok(())
@@ -3451,12 +3457,8 @@ fn cmd_managers_detect(
                 "Detection completed",
                 rows,
             );
-            if failures > 0 {
-                let exit_code = if failures > 1 { 3 } else { 2 };
-                return Err(mark_exit_code(
-                    format!("{failures} manager detection operations failed"),
-                    exit_code,
-                ));
+            if let Some(error) = manager_operation_failure_error("detection", failures) {
+                return Err(error);
             }
             Ok(())
         }
@@ -3639,6 +3641,14 @@ fn cmd_managers_executables(
             println!(
                 "  selected_executable_path: {}",
                 details.selected_executable_path.as_deref().unwrap_or("-")
+            );
+            println!(
+                "  selected_executable_differs_from_default: {}",
+                details.selected_executable_differs_from_default
+            );
+            println!(
+                "  executable_path_diagnostic: {}",
+                details.executable_path_diagnostic
             );
             if details.executable_paths.is_empty() {
                 println!("  executable_paths: -");
@@ -6379,6 +6389,69 @@ fn next_coordinator_request_id() -> String {
     format!("{}-{nanos}-{counter}", std::process::id())
 }
 
+#[cfg(unix)]
+fn set_private_directory_permissions(path: &std::path::Path) -> Result<(), String> {
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).map_err(|error| {
+        format!(
+            "failed to set private directory permissions on '{}': {error}",
+            path.display()
+        )
+    })
+}
+
+fn ensure_private_directory(path: &std::path::Path) -> Result<(), String> {
+    std::fs::create_dir_all(path).map_err(|error| {
+        format!(
+            "failed to create coordinator directory '{}': {error}",
+            path.display()
+        )
+    })?;
+    #[cfg(unix)]
+    {
+        set_private_directory_permissions(path)?;
+    }
+    Ok(())
+}
+
+fn write_private_json_temp_file(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(path)
+            .map_err(|error| {
+                format!(
+                    "failed to create private temp json file '{}': {error}",
+                    path.display()
+                )
+            })?;
+        file.write_all(bytes).map_err(|error| {
+            format!(
+                "failed to write private temp json file '{}': {error}",
+                path.display()
+            )
+        })?;
+        file.sync_all().map_err(|error| {
+            format!(
+                "failed to flush private temp json file '{}': {error}",
+                path.display()
+            )
+        })?;
+        return Ok(());
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(path, bytes).map_err(|error| {
+            format!(
+                "failed to write temp json file '{}': {error}",
+                path.display()
+            )
+        })
+    }
+}
+
 fn write_json_file<T: Serialize>(path: &std::path::Path, value: &T) -> Result<(), String> {
     let rendered = serde_json::to_vec(value)
         .map_err(|error| format!("failed to encode json file '{}': {error}", path.display()))?;
@@ -6391,12 +6464,7 @@ fn write_json_file<T: Serialize>(path: &std::path::Path, value: &T) -> Result<()
         COORDINATOR_REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed)
     );
     let temp_path = path.with_file_name(temp_name);
-    std::fs::write(&temp_path, rendered).map_err(|error| {
-        format!(
-            "failed to write temp json file '{}': {error}",
-            temp_path.display()
-        )
-    })?;
+    write_private_json_temp_file(&temp_path, rendered.as_slice())?;
     std::fs::rename(&temp_path, path).map_err(|error| {
         format!(
             "failed to move temp json file '{}' into '{}': {error}",
@@ -6554,6 +6622,16 @@ fn is_coordinator_timeout_error(error: &str) -> bool {
     error.contains("timed out waiting for coordinator response")
 }
 
+fn should_launch_coordinator_on_demand(
+    start_if_needed: bool,
+    launched_for_recovery: bool,
+    error: &str,
+) -> bool {
+    // Invariant: timeout errors must not trigger launch-on-demand reset paths,
+    // because the coordinator may still be healthy and processing a long task.
+    start_if_needed && !launched_for_recovery && !is_coordinator_timeout_error(error)
+}
+
 fn reset_coordinator_state_dir(state_dir: &std::path::Path) -> Result<(), String> {
     if state_dir.exists() {
         std::fs::remove_dir_all(state_dir).map_err(|error| {
@@ -6563,18 +6641,9 @@ fn reset_coordinator_state_dir(state_dir: &std::path::Path) -> Result<(), String
             )
         })?;
     }
-    std::fs::create_dir_all(coordinator_requests_dir(state_dir).as_path()).map_err(|error| {
-        format!(
-            "failed to create coordinator requests directory '{}': {error}",
-            coordinator_requests_dir(state_dir).display()
-        )
-    })?;
-    std::fs::create_dir_all(coordinator_responses_dir(state_dir).as_path()).map_err(|error| {
-        format!(
-            "failed to create coordinator responses directory '{}': {error}",
-            coordinator_responses_dir(state_dir).display()
-        )
-    })?;
+    ensure_private_directory(state_dir)?;
+    ensure_private_directory(coordinator_requests_dir(state_dir).as_path())?;
+    ensure_private_directory(coordinator_responses_dir(state_dir).as_path())?;
     Ok(())
 }
 
@@ -6697,10 +6766,11 @@ fn coordinator_send_request(
                 }
             }
 
-            if !start_if_needed {
-                return Err(effective_error);
-            }
-            if launched_for_recovery {
+            if !should_launch_coordinator_on_demand(
+                start_if_needed,
+                launched_for_recovery,
+                effective_error.as_str(),
+            ) {
                 return Err(effective_error);
             }
             verbose_log(format!(
@@ -7150,12 +7220,8 @@ fn run_coordinator_workflow(
         CoordinatorWorkflowRequest::RefreshAll => {
             let rows = tokio_runtime.block_on(refresh_all_no_timeout(&runtime));
             let failures = rows.iter().filter(|row| !row.success).count();
-            if failures > 0 {
-                let exit_code = if failures > 1 { 3 } else { 2 };
-                return Err(mark_exit_code(
-                    format!("{failures} manager refresh operations failed"),
-                    exit_code,
-                ));
+            if let Some(error) = manager_operation_failure_error("refresh", failures) {
+                return Err(error);
             }
             Ok(())
         }
@@ -7166,12 +7232,8 @@ fn run_coordinator_workflow(
         CoordinatorWorkflowRequest::DetectAll => {
             let rows = tokio_runtime.block_on(detect_all_no_timeout(&runtime));
             let failures = rows.iter().filter(|row| !row.success).count();
-            if failures > 0 {
-                let exit_code = if failures > 1 { 3 } else { 2 };
-                return Err(mark_exit_code(
-                    format!("{failures} manager detection operations failed"),
-                    exit_code,
-                ));
+            if let Some(error) = manager_operation_failure_error("detection", failures) {
+                return Err(error);
             }
             Ok(())
         }
@@ -7188,21 +7250,19 @@ fn run_coordinator_workflow(
                 allow_os_updates,
                 manager_filter,
             )?;
-            for step in &steps {
-                let request_name =
-                    if step.manager == ManagerId::HomebrewFormula && step.cleanup_old_kegs {
-                        encode_homebrew_upgrade_target(&step.package_name, true)
-                    } else {
-                        step.package_name.clone()
-                    };
+            let failures = count_upgrade_step_failures(&steps, |step| {
                 let request = AdapterRequest::Upgrade(UpgradeRequest {
                     package: Some(PackageRef {
                         manager: step.manager,
-                        name: request_name,
+                        name: upgrade_request_name(step),
                     }),
                 });
-                let _ =
-                    tokio_runtime.block_on(submit_request_wait(&runtime, step.manager, request));
+                tokio_runtime
+                    .block_on(submit_request_wait(&runtime, step.manager, request))
+                    .map(|_| ())
+            });
+            if let Some(error) = manager_operation_failure_error("upgrade", failures) {
+                return Err(error);
             }
             Ok(())
         }
@@ -9549,6 +9609,14 @@ fn list_managers(store: &SqliteStore) -> Result<Vec<CliManagerStatus>, String> {
     for descriptor in registry::managers() {
         let detection = detection_map.get(&descriptor.id);
         let preference = preference_map.get(&descriptor.id);
+        let active_executable_path = detection.and_then(|info| info.executable_path.as_deref());
+        let executable_paths = if detection.map(|info| info.installed).unwrap_or(false) {
+            collect_manager_executable_paths(descriptor.id, active_executable_path)
+        } else {
+            Vec::new()
+        };
+        let default_executable_path =
+            default_manager_executable_path(descriptor.id, &executable_paths);
         let configured_enabled = preference
             .map(|preference| preference.enabled)
             .unwrap_or_else(|| default_enabled_for_manager(descriptor.id));
@@ -9557,6 +9625,15 @@ fn list_managers(store: &SqliteStore) -> Result<Vec<CliManagerStatus>, String> {
             &detection_map,
             &preference_map,
         );
+        let selected_executable_differs_from_default = selected_executable_differs_from_default(
+            default_executable_path.as_deref(),
+            selected_executable_path.as_deref(),
+        );
+        let executable_path_diagnostic = manager_executable_path_diagnostic(
+            default_executable_path.as_deref(),
+            selected_executable_path.as_deref(),
+        )
+        .to_string();
         let eligibility = manager_enablement_eligibility(
             descriptor.id,
             selected_executable_path
@@ -9592,6 +9669,8 @@ fn list_managers(store: &SqliteStore) -> Result<Vec<CliManagerStatus>, String> {
             supports_package_uninstall: descriptor.capabilities.contains(&Capability::Uninstall),
             supports_package_upgrade: descriptor.capabilities.contains(&Capability::Upgrade),
             selected_executable_path,
+            selected_executable_differs_from_default,
+            executable_path_diagnostic,
             selected_install_method: preference.and_then(|preference| {
                 preference
                     .selected_install_method
@@ -9666,6 +9745,15 @@ fn manager_executable_status(
     let default_executable_path = default_manager_executable_path(manager, &executable_paths);
     let selected_executable_path =
         resolved_manager_selected_executable_path(manager, &detections, &preferences);
+    let selected_executable_differs_from_default = selected_executable_differs_from_default(
+        default_executable_path.as_deref(),
+        selected_executable_path.as_deref(),
+    );
+    let executable_path_diagnostic = manager_executable_path_diagnostic(
+        default_executable_path.as_deref(),
+        selected_executable_path.as_deref(),
+    )
+    .to_string();
 
     Ok(CliManagerExecutableStatus {
         manager_id: manager.as_str().to_string(),
@@ -9673,6 +9761,8 @@ fn manager_executable_status(
         executable_paths,
         default_executable_path,
         selected_executable_path,
+        selected_executable_differs_from_default,
+        executable_path_diagnostic,
     })
 }
 
@@ -10054,6 +10144,29 @@ fn resolve_selected_executable_path(
         return Some(preferred);
     }
     default_path
+}
+
+fn selected_executable_differs_from_default(
+    default_path: Option<&str>,
+    selected_path: Option<&str>,
+) -> bool {
+    matches!(
+        (default_path, selected_path),
+        (Some(default), Some(selected)) if default != selected
+    )
+}
+
+fn manager_executable_path_diagnostic(
+    default_path: Option<&str>,
+    selected_path: Option<&str>,
+) -> &'static str {
+    match (default_path, selected_path) {
+        (Some(default), Some(selected)) if default == selected => "aligned",
+        (Some(_), Some(_)) => "diverged",
+        (None, Some(_)) => "selected_only",
+        (Some(_), None) => "default_only",
+        (None, None) => "unresolved",
+    }
 }
 
 fn normalize_install_method(id: ManagerId, method: Option<String>) -> Option<String> {
@@ -10731,6 +10844,44 @@ fn manager_authority_key(id: ManagerId) -> &'static str {
 
 fn upgrade_plan_step_id(manager: ManagerId, package_name: &str) -> String {
     format!("{}:{}", manager.as_str(), package_name)
+}
+
+fn upgrade_request_name(step: &UpgradeExecutionStep) -> String {
+    if step.manager == ManagerId::HomebrewFormula && step.cleanup_old_kegs {
+        encode_homebrew_upgrade_target(&step.package_name, true)
+    } else {
+        step.package_name.clone()
+    }
+}
+
+fn manager_operation_failure_error(operation: &str, failures: usize) -> Option<String> {
+    if failures == 0 {
+        return None;
+    }
+    let exit_code = if failures > 1 { 3 } else { 2 };
+    Some(mark_exit_code(
+        format!("{failures} manager {operation} operations failed"),
+        exit_code,
+    ))
+}
+
+fn count_upgrade_step_failures<F>(steps: &[UpgradeExecutionStep], mut run_step: F) -> usize
+where
+    F: FnMut(&UpgradeExecutionStep) -> Result<(), String>,
+{
+    let mut failures = 0usize;
+    for step in steps {
+        if let Err(error) = run_step(step) {
+            failures += 1;
+            verbose_log(format!(
+                "upgrade step failed manager='{}' package='{}': {}",
+                step.manager.as_str(),
+                step.package_name,
+                error
+            ));
+        }
+    }
+    failures
 }
 
 fn serialize_upgrade_plan_steps(steps: &[UpgradeExecutionStep]) -> Vec<CliUpgradePlanStep> {
@@ -12125,17 +12276,19 @@ fn print_completion_help() {
 mod tests {
     use super::{
         CLI_LICENSE_TERMS_VERSION, Command, ExecutionMode, GlobalOptions, HomebrewKegPolicy,
-        InstallChannel, ManagerId, SelfUpdateErrorKind, UpdatePolicy,
-        acquire_coordinator_bootstrap_lock,
-        apply_manager_enablement_self_heal, build_json_payload_lines, classify_failure_class,
-        cmd_updates_run, command_help_topic_exists, ensure_cli_onboarding_completed,
-        exit_code_for_error, mark_exit_code, parse_args, parse_args_with_tty,
-        parse_homebrew_keg_policy_arg, parse_manager_id, parse_search_args,
+        InstallChannel, ManagerId, SelfUpdateErrorKind,
+        TASKS_FOLLOW_MACHINE_MODE_UNSUPPORTED_ERROR, UpdatePolicy, UpgradeExecutionStep,
+        acquire_coordinator_bootstrap_lock, apply_manager_enablement_self_heal,
+        build_json_payload_lines, classify_failure_class, cmd_tasks_follow, cmd_updates_run,
+        command_help_topic_exists, count_upgrade_step_failures, ensure_cli_onboarding_completed,
+        exit_code_for_error, manager_operation_failure_error, mark_exit_code, parse_args,
+        parse_args_with_tty, parse_homebrew_keg_policy_arg, parse_manager_id, parse_search_args,
         parse_structured_terminal_error_message, parse_updates_run_preview_args,
         provenance_can_self_update, raw_args_request_json, raw_args_request_ndjson,
         read_update_bytes_with_limit, remove_install_marker_if_channel, resolve_redirect_url,
-        resolve_update_redirect_target, self_uninstall_recommended_action,
-        strip_exit_code_marker,
+        resolve_update_redirect_target, selected_executable_differs_from_default,
+        self_uninstall_recommended_action, should_launch_coordinator_on_demand,
+        strip_exit_code_marker, tasks_follow_machine_mode_error, upgrade_request_name,
     };
     use helm_core::execution::TaskOutputRecord;
     use helm_core::models::DetectionInfo;
@@ -12144,6 +12297,8 @@ mod tests {
     use serde_json::json;
     use std::fs;
     use std::io::Cursor;
+    #[cfg(unix)]
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -12162,6 +12317,20 @@ mod tests {
             .expect("clock should be after epoch")
             .as_nanos();
         std::env::temp_dir().join(format!("helm-cli-self-heal-{name}-{nanos}.sqlite3"))
+    }
+
+    #[cfg(unix)]
+    fn unix_mode(path: &Path) -> u32 {
+        fs::metadata(path)
+            .expect("expected path metadata")
+            .permissions()
+            .mode()
+            & 0o777
+    }
+
+    #[cfg(unix)]
+    fn unix_uid(path: &Path) -> u32 {
+        fs::metadata(path).expect("expected path metadata").uid()
     }
 
     #[test]
@@ -12199,6 +12368,211 @@ mod tests {
         let (code, message) = strip_exit_code_marker("__HELM_EXIT_CODE__:abc:bad");
         assert_eq!(code, None);
         assert_eq!(message, "__HELM_EXIT_CODE__:abc:bad");
+    }
+
+    #[test]
+    fn manager_operation_failure_error_returns_none_when_no_failures() {
+        assert_eq!(manager_operation_failure_error("upgrade", 0), None);
+    }
+
+    #[test]
+    fn manager_operation_failure_error_marks_single_and_multiple_failures() {
+        let single = manager_operation_failure_error("upgrade", 1).expect("single failure marker");
+        let (single_code, single_message) = strip_exit_code_marker(single.as_str());
+        assert_eq!(single_code, Some(2));
+        assert_eq!(single_message, "1 manager upgrade operations failed");
+
+        let multiple =
+            manager_operation_failure_error("upgrade", 2).expect("multiple failure marker");
+        let (multiple_code, multiple_message) = strip_exit_code_marker(multiple.as_str());
+        assert_eq!(multiple_code, Some(3));
+        assert_eq!(multiple_message, "2 manager upgrade operations failed");
+    }
+
+    #[test]
+    fn selected_executable_differs_from_default_reports_alignment_and_divergence() {
+        assert!(!selected_executable_differs_from_default(
+            Some("/opt/homebrew/bin/npm"),
+            Some("/opt/homebrew/bin/npm")
+        ));
+        assert!(selected_executable_differs_from_default(
+            Some("/opt/homebrew/bin/npm"),
+            Some("/Users/test/.local/bin/npm")
+        ));
+        assert!(!selected_executable_differs_from_default(
+            None,
+            Some("/tmp/npm")
+        ));
+        assert!(!selected_executable_differs_from_default(
+            Some("/tmp/npm"),
+            None
+        ));
+    }
+
+    #[test]
+    fn manager_executable_path_diagnostic_reports_expected_states() {
+        assert_eq!(
+            super::manager_executable_path_diagnostic(
+                Some("/opt/homebrew/bin/npm"),
+                Some("/opt/homebrew/bin/npm")
+            ),
+            "aligned"
+        );
+        assert_eq!(
+            super::manager_executable_path_diagnostic(
+                Some("/opt/homebrew/bin/npm"),
+                Some("/Users/test/.local/bin/npm")
+            ),
+            "diverged"
+        );
+        assert_eq!(
+            super::manager_executable_path_diagnostic(None, Some("/tmp/npm")),
+            "selected_only"
+        );
+        assert_eq!(
+            super::manager_executable_path_diagnostic(Some("/tmp/npm"), None),
+            "default_only"
+        );
+    }
+
+    #[test]
+    fn count_upgrade_step_failures_counts_errors_without_short_circuiting() {
+        let steps = vec![
+            UpgradeExecutionStep {
+                manager: ManagerId::Npm,
+                package_name: "first".to_string(),
+                cleanup_old_kegs: false,
+                pinned: false,
+                restart_required: false,
+            },
+            UpgradeExecutionStep {
+                manager: ManagerId::Pnpm,
+                package_name: "second".to_string(),
+                cleanup_old_kegs: false,
+                pinned: false,
+                restart_required: false,
+            },
+            UpgradeExecutionStep {
+                manager: ManagerId::Yarn,
+                package_name: "third".to_string(),
+                cleanup_old_kegs: false,
+                pinned: false,
+                restart_required: false,
+            },
+        ];
+
+        let mut seen = Vec::new();
+        let failures = count_upgrade_step_failures(&steps, |step| {
+            seen.push(step.package_name.clone());
+            if step.package_name == "second" || step.package_name == "third" {
+                Err("simulated failure".to_string())
+            } else {
+                Ok(())
+            }
+        });
+
+        assert_eq!(
+            seen,
+            vec![
+                "first".to_string(),
+                "second".to_string(),
+                "third".to_string()
+            ]
+        );
+        assert_eq!(failures, 2);
+    }
+
+    #[test]
+    fn upgrade_request_name_encodes_homebrew_cleanup_targets() {
+        let homebrew_step = UpgradeExecutionStep {
+            manager: ManagerId::HomebrewFormula,
+            package_name: "wget".to_string(),
+            cleanup_old_kegs: true,
+            pinned: false,
+            restart_required: false,
+        };
+        let npm_step = UpgradeExecutionStep {
+            manager: ManagerId::Npm,
+            package_name: "eslint".to_string(),
+            cleanup_old_kegs: true,
+            pinned: false,
+            restart_required: false,
+        };
+
+        assert_eq!(
+            upgrade_request_name(&homebrew_step),
+            "wget@@helm.cleanup".to_string()
+        );
+        assert_eq!(upgrade_request_name(&npm_step), "eslint".to_string());
+    }
+
+    #[test]
+    fn coordinator_launch_on_demand_is_disabled_for_timeout_errors() {
+        assert!(!should_launch_coordinator_on_demand(
+            true,
+            false,
+            "timed out waiting for coordinator response in '/tmp/helm'"
+        ));
+        assert!(!should_launch_coordinator_on_demand(
+            false,
+            false,
+            "failed to connect to coordinator"
+        ));
+        assert!(!should_launch_coordinator_on_demand(
+            true,
+            true,
+            "failed to connect to coordinator"
+        ));
+        assert!(should_launch_coordinator_on_demand(
+            true,
+            false,
+            "failed to connect to coordinator at '/tmp/helm': coordinator not ready"
+        ));
+    }
+
+    #[test]
+    fn coordinator_bootstrap_lock_serializes_parallel_acquisition() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        let state_dir =
+            std::env::temp_dir().join(format!("helm-cli-coordinator-bootstrap-lock-{nanos}"));
+        std::fs::create_dir_all(state_dir.as_path())
+            .expect("failed to create coordinator bootstrap test state dir");
+
+        let first = acquire_coordinator_bootstrap_lock(state_dir.as_path())
+            .expect("first bootstrap lock acquisition should succeed");
+        let (lock_tx, lock_rx) = std::sync::mpsc::channel();
+        let state_dir_for_thread = state_dir.clone();
+
+        let handle = std::thread::spawn(move || {
+            let second = acquire_coordinator_bootstrap_lock(state_dir_for_thread.as_path())
+                .expect("second bootstrap lock acquisition should succeed");
+            lock_tx
+                .send(())
+                .expect("bootstrap-lock notification send should succeed");
+            drop(second);
+        });
+
+        std::thread::sleep(Duration::from_millis(150));
+        assert!(
+            matches!(
+                lock_rx.try_recv(),
+                Err(std::sync::mpsc::TryRecvError::Empty)
+            ),
+            "second lock should still be blocked while first is held"
+        );
+
+        drop(first);
+        lock_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("second lock should acquire after first is released");
+        handle
+            .join()
+            .expect("bootstrap lock worker should complete");
+
+        let _ = std::fs::remove_dir_all(state_dir);
     }
 
     #[test]
@@ -12353,6 +12727,47 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(state_dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn coordinator_ipc_paths_use_private_modes_and_consistent_ownership() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        let state_dir = std::env::temp_dir().join(format!("helm-cli-coordinator-perms-{nanos}"));
+        super::reset_coordinator_state_dir(state_dir.as_path())
+            .expect("reset coordinator state dir should succeed");
+
+        let requests_dir = super::coordinator_requests_dir(state_dir.as_path());
+        let responses_dir = super::coordinator_responses_dir(state_dir.as_path());
+        assert_eq!(unix_mode(state_dir.as_path()), 0o700);
+        assert_eq!(unix_mode(requests_dir.as_path()), 0o700);
+        assert_eq!(unix_mode(responses_dir.as_path()), 0o700);
+
+        let owner_uid = unix_uid(state_dir.as_path());
+        assert_eq!(unix_uid(requests_dir.as_path()), owner_uid);
+        assert_eq!(unix_uid(responses_dir.as_path()), owner_uid);
+
+        let request_file = super::coordinator_request_file(state_dir.as_path(), "perm-check");
+        let response_file = super::coordinator_response_file(state_dir.as_path(), "perm-check");
+        super::write_json_file(request_file.as_path(), &json!({ "kind": "ping" }))
+            .expect("request file write should succeed");
+        super::write_json_file(response_file.as_path(), &json!({ "ok": true }))
+            .expect("response file write should succeed");
+        super::write_coordinator_ready_state(state_dir.as_path(), 123)
+            .expect("ready file write should succeed");
+        let ready_file = super::coordinator_ready_file(state_dir.as_path());
+
+        assert_eq!(unix_mode(request_file.as_path()), 0o600);
+        assert_eq!(unix_mode(response_file.as_path()), 0o600);
+        assert_eq!(unix_mode(ready_file.as_path()), 0o600);
+        assert_eq!(unix_uid(request_file.as_path()), owner_uid);
+        assert_eq!(unix_uid(response_file.as_path()), owner_uid);
+        assert_eq!(unix_uid(ready_file.as_path()), owner_uid);
+
+        let _ = fs::remove_dir_all(state_dir);
     }
 
     #[test]
@@ -12603,28 +13018,14 @@ mod tests {
     }
 
     #[test]
-    fn updates_run_mixed_success_exit_codes_remain_stable() {
-        let one_failure = [true, false, true]
-            .iter()
-            .filter(|success| !**success)
-            .count();
-        let one_failure_code = if one_failure > 1 { 3 } else { 2 };
-        let one_failure_error = mark_exit_code(
-            format!("{one_failure} upgrade steps failed"),
-            one_failure_code,
-        );
-        assert_eq!(exit_code_for_error(one_failure_error.as_str()), 2);
-
-        let multiple_failures = [false, false, true]
-            .iter()
-            .filter(|success| !**success)
-            .count();
-        let multiple_failures_code = if multiple_failures > 1 { 3 } else { 2 };
-        let multiple_failures_error = mark_exit_code(
-            format!("{multiple_failures} upgrade steps failed"),
-            multiple_failures_code,
-        );
-        assert_eq!(exit_code_for_error(multiple_failures_error.as_str()), 3);
+    fn updates_run_mixed_success_uses_stable_exit_code_marker() {
+        let outcomes = [true, false, true];
+        let failures = outcomes.iter().filter(|success| !**success).count();
+        let marked = manager_operation_failure_error("upgrade", failures)
+            .expect("mixed success should emit failure marker");
+        let (code, message) = strip_exit_code_marker(marked.as_str());
+        assert_eq!(code, Some(2));
+        assert_eq!(message, "1 manager upgrade operations failed");
     }
 
     #[test]
@@ -12664,10 +13065,7 @@ mod tests {
         let marked = super::tasks_follow_machine_mode_error();
         let (exit_code, message) = strip_exit_code_marker(marked.as_str());
         assert_eq!(exit_code, Some(1));
-        assert_eq!(
-            message,
-            super::TASKS_FOLLOW_MACHINE_MODE_UNSUPPORTED_ERROR
-        );
+        assert_eq!(message, super::TASKS_FOLLOW_MACHINE_MODE_UNSUPPORTED_ERROR);
         assert!(message.contains("--json/--ndjson"));
         assert!(message.contains("helm tasks logs <task-id>"));
     }
@@ -12690,10 +13088,7 @@ mod tests {
             .expect_err("tasks follow machine mode should fail deterministically");
         let (exit_code, message) = strip_exit_code_marker(error.as_str());
         assert_eq!(exit_code, Some(1));
-        assert_eq!(
-            message,
-            super::TASKS_FOLLOW_MACHINE_MODE_UNSUPPORTED_ERROR
-        );
+        assert_eq!(message, super::TASKS_FOLLOW_MACHINE_MODE_UNSUPPORTED_ERROR);
 
         let _ = fs::remove_file(db_path);
     }
@@ -12710,49 +13105,6 @@ mod tests {
         );
         assert_eq!(parse_homebrew_keg_policy_arg("default").unwrap(), None);
         assert!(parse_homebrew_keg_policy_arg("invalid").is_err());
-    }
-
-    #[test]
-    fn coordinator_bootstrap_lock_serializes_parallel_acquisition() {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock should be after epoch")
-            .as_nanos();
-        let state_dir =
-            std::env::temp_dir().join(format!("helm-cli-coordinator-bootstrap-lock-{nanos}"));
-        std::fs::create_dir_all(state_dir.as_path())
-            .expect("failed to create coordinator bootstrap test state dir");
-
-        let first = acquire_coordinator_bootstrap_lock(state_dir.as_path())
-            .expect("first bootstrap lock acquisition should succeed");
-        let (lock_tx, lock_rx) = std::sync::mpsc::channel();
-        let state_dir_for_thread = state_dir.clone();
-
-        let handle = std::thread::spawn(move || {
-            let second = acquire_coordinator_bootstrap_lock(state_dir_for_thread.as_path())
-                .expect("second bootstrap lock acquisition should succeed");
-            lock_tx
-                .send(())
-                .expect("bootstrap-lock notification send should succeed");
-            drop(second);
-        });
-
-        std::thread::sleep(Duration::from_millis(150));
-        assert!(
-            matches!(
-                lock_rx.try_recv(),
-                Err(std::sync::mpsc::TryRecvError::Empty)
-            ),
-            "second lock should still be blocked while first is held"
-        );
-
-        drop(first);
-        lock_rx
-            .recv_timeout(Duration::from_secs(2))
-            .expect("second lock should acquire after first is released");
-        handle.join().expect("bootstrap lock worker should complete");
-
-        let _ = std::fs::remove_dir_all(state_dir);
     }
 
     #[test]
