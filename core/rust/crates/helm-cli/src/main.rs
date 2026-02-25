@@ -6199,54 +6199,46 @@ fn cmd_internal_coordinator(
 }
 
 fn parse_internal_coordinator_socket_path(command_args: &[String]) -> Result<PathBuf, String> {
-    let mut socket_path: Option<PathBuf> = None;
-    let mut index = 0usize;
-    while index < command_args.len() {
-        match command_args[index].as_str() {
-            "--state-dir" | "--socket" => {
-                if index + 1 >= command_args.len() {
-                    return Err("__coordinator__ serve --state-dir requires a value".to_string());
-                }
-                socket_path = Some(PathBuf::from(command_args[index + 1].as_str()));
-                index += 2;
-            }
-            other => {
-                return Err(format!(
-                    "unsupported __coordinator__ serve argument '{}'",
-                    other
-                ));
-            }
-        }
+    let transport = coordinator_transport::parse_internal_coordinator_state_dir_arg(command_args)?
+        .map(coordinator_transport::FileIpcCoordinatorTransport::from_state_dir);
+    match transport {
+        Some(transport) => Ok(transport.state_dir().to_path_buf()),
+        None => coordinator_socket_path(),
     }
-
-    socket_path.map(Ok).unwrap_or_else(coordinator_socket_path)
 }
 
 fn coordinator_socket_path() -> Result<PathBuf, String> {
     let db_path = database_path()?;
-    Ok(coordinator_transport::coordinator_socket_path(Path::new(
-        db_path.as_str(),
-    )))
+    let transport = coordinator_transport::FileIpcCoordinatorTransport::for_database_path(
+        Path::new(db_path.as_str()),
+    );
+    Ok(transport.state_dir().to_path_buf())
+}
+
+fn coordinator_file_transport(
+    state_dir: &std::path::Path,
+) -> coordinator_transport::FileIpcCoordinatorTransport {
+    coordinator_transport::FileIpcCoordinatorTransport::from_state_dir(state_dir.to_path_buf())
 }
 
 fn coordinator_ready_file(state_dir: &std::path::Path) -> PathBuf {
-    coordinator_transport::coordinator_ready_file(state_dir)
+    coordinator_file_transport(state_dir).ready_file()
 }
 
 fn coordinator_requests_dir(state_dir: &std::path::Path) -> PathBuf {
-    coordinator_transport::coordinator_requests_dir(state_dir)
+    coordinator_file_transport(state_dir).requests_dir()
 }
 
 fn coordinator_responses_dir(state_dir: &std::path::Path) -> PathBuf {
-    coordinator_transport::coordinator_responses_dir(state_dir)
+    coordinator_file_transport(state_dir).responses_dir()
 }
 
 fn coordinator_request_file(state_dir: &std::path::Path, request_id: &str) -> PathBuf {
-    coordinator_transport::coordinator_request_file(state_dir, request_id)
+    coordinator_file_transport(state_dir).request_file(request_id)
 }
 
 fn coordinator_response_file(state_dir: &std::path::Path, request_id: &str) -> PathBuf {
-    coordinator_transport::coordinator_response_file(state_dir, request_id)
+    coordinator_file_transport(state_dir).response_file(request_id)
 }
 
 const COORDINATOR_BOOTSTRAP_LOCK_WAIT_TIMEOUT_MS: u64 =
@@ -6255,7 +6247,7 @@ const COORDINATOR_DAEMON_READY_TIMEOUT_MS: u64 =
     coordinator_transport::COORDINATOR_DAEMON_READY_TIMEOUT_MS;
 
 fn coordinator_bootstrap_lock_file(state_dir: &std::path::Path) -> PathBuf {
-    coordinator_transport::coordinator_bootstrap_lock_file(state_dir)
+    coordinator_file_transport(state_dir).bootstrap_lock_file()
 }
 
 struct CoordinatorBootstrapLockGuard {

@@ -10,6 +10,11 @@ pub(crate) const COORDINATOR_BOOTSTRAP_LOCK_STALE_SECS: u64 = 15;
 pub(crate) const COORDINATOR_DAEMON_READY_TIMEOUT_MS: u64 = 3_000;
 pub(crate) const PS_COMMAND_PATH: &str = "/bin/ps";
 
+#[derive(Debug, Clone)]
+pub(crate) struct FileIpcCoordinatorTransport {
+    state_dir: PathBuf,
+}
+
 pub(crate) fn coordinator_request_timeout(timeout_seconds: u64) -> Duration {
     Duration::from_secs(timeout_seconds.max(1))
 }
@@ -49,7 +54,32 @@ pub(crate) fn coordinator_startup_poll_interval(elapsed: Duration) -> Duration {
     }
 }
 
-pub(crate) fn coordinator_socket_path(database_path: &Path) -> PathBuf {
+pub(crate) fn parse_internal_coordinator_state_dir_arg(
+    command_args: &[String],
+) -> Result<Option<PathBuf>, String> {
+    let mut state_dir: Option<PathBuf> = None;
+    let mut index = 0usize;
+    while index < command_args.len() {
+        match command_args[index].as_str() {
+            "--state-dir" | "--socket" => {
+                if index + 1 >= command_args.len() {
+                    return Err("__coordinator__ serve --state-dir requires a value".to_string());
+                }
+                state_dir = Some(PathBuf::from(command_args[index + 1].as_str()));
+                index += 2;
+            }
+            other => {
+                return Err(format!(
+                    "unsupported __coordinator__ serve argument '{}'",
+                    other
+                ));
+            }
+        }
+    }
+    Ok(state_dir)
+}
+
+pub(crate) fn coordinator_socket_path_for_database(database_path: &Path) -> PathBuf {
     let mut hasher = DefaultHasher::new();
     database_path.hash(&mut hasher);
     let suffix = format!("{:x}", hasher.finish());
@@ -59,6 +89,46 @@ pub(crate) fn coordinator_socket_path(database_path: &Path) -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/tmp"));
     root.join(format!("helm-cli-coordinator-{suffix}"))
+}
+
+impl FileIpcCoordinatorTransport {
+    pub(crate) fn for_database_path(database_path: &Path) -> Self {
+        Self {
+            state_dir: coordinator_socket_path_for_database(database_path),
+        }
+    }
+
+    pub(crate) fn from_state_dir(state_dir: PathBuf) -> Self {
+        Self { state_dir }
+    }
+
+    pub(crate) fn state_dir(&self) -> &Path {
+        self.state_dir.as_path()
+    }
+
+    pub(crate) fn ready_file(&self) -> PathBuf {
+        coordinator_ready_file(self.state_dir())
+    }
+
+    pub(crate) fn requests_dir(&self) -> PathBuf {
+        coordinator_requests_dir(self.state_dir())
+    }
+
+    pub(crate) fn responses_dir(&self) -> PathBuf {
+        coordinator_responses_dir(self.state_dir())
+    }
+
+    pub(crate) fn request_file(&self, request_id: &str) -> PathBuf {
+        coordinator_request_file(self.state_dir(), request_id)
+    }
+
+    pub(crate) fn response_file(&self, request_id: &str) -> PathBuf {
+        coordinator_response_file(self.state_dir(), request_id)
+    }
+
+    pub(crate) fn bootstrap_lock_file(&self) -> PathBuf {
+        coordinator_bootstrap_lock_file(self.state_dir())
+    }
 }
 
 pub(crate) fn coordinator_ready_file(state_dir: &Path) -> PathBuf {
@@ -141,4 +211,67 @@ pub(crate) fn coordinator_process_looks_owned(pid: u32, state_dir: &Path) -> boo
         return false;
     }
     command.contains("__coordinator__") && command.contains(state_dir.to_string_lossy().as_ref())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_internal_state_dir_arg_accepts_state_dir_and_socket_alias() {
+        let state_dir = parse_internal_coordinator_state_dir_arg(&[
+            "--state-dir".to_string(),
+            "/tmp/helm-a".to_string(),
+        ])
+        .expect("state dir arg should parse");
+        assert_eq!(state_dir, Some(PathBuf::from("/tmp/helm-a")));
+
+        let socket_alias = parse_internal_coordinator_state_dir_arg(&[
+            "--socket".to_string(),
+            "/tmp/helm-b".to_string(),
+        ])
+        .expect("socket alias arg should parse");
+        assert_eq!(socket_alias, Some(PathBuf::from("/tmp/helm-b")));
+    }
+
+    #[test]
+    fn parse_internal_state_dir_arg_rejects_unknown_or_missing_values() {
+        let missing_value = parse_internal_coordinator_state_dir_arg(&["--state-dir".to_string()])
+            .expect_err("missing state-dir value should fail");
+        assert!(missing_value.contains("requires a value"));
+
+        let unsupported = parse_internal_coordinator_state_dir_arg(&["--unsupported".to_string()])
+            .expect_err("unsupported arg should fail");
+        assert!(unsupported.contains("unsupported __coordinator__ serve argument"));
+    }
+
+    #[test]
+    fn file_ipc_transport_exposes_consistent_paths() {
+        let transport = FileIpcCoordinatorTransport::from_state_dir(PathBuf::from("/tmp/helm-c"));
+        assert_eq!(transport.state_dir(), Path::new("/tmp/helm-c"));
+        assert_eq!(
+            transport.ready_file(),
+            PathBuf::from("/tmp/helm-c/ready.json")
+        );
+        assert_eq!(
+            transport.requests_dir(),
+            PathBuf::from("/tmp/helm-c/requests")
+        );
+        assert_eq!(
+            transport.responses_dir(),
+            PathBuf::from("/tmp/helm-c/responses")
+        );
+        assert_eq!(
+            transport.request_file("abc"),
+            PathBuf::from("/tmp/helm-c/requests/abc.json")
+        );
+        assert_eq!(
+            transport.response_file("abc"),
+            PathBuf::from("/tmp/helm-c/responses/abc.json")
+        );
+        assert_eq!(
+            transport.bootstrap_lock_file(),
+            PathBuf::from("/tmp/helm-c/.bootstrap.lock")
+        );
+    }
 }
