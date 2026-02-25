@@ -903,8 +903,8 @@ fn parse_args_with_tty(
         return Ok((options, Command::Version, filtered[1..].to_vec()));
     }
 
-    let command =
-        parse_top_level_command(first).ok_or_else(|| format!("unknown command '{first}'"))?;
+    let command = parse_top_level_command(first)
+        .ok_or_else(|| format!("unknown command '{first}'. Run 'helm help' for usage."))?;
 
     Ok((options, command, filtered[1..].to_vec()))
 }
@@ -2674,7 +2674,10 @@ fn cmd_updates_run(
         options.execution_mode
     ));
     if !parsed.yes {
-        return Err("updates run requires --yes".to_string());
+        return Err(
+            "updates run requires --yes. Run 'helm updates preview' first, then rerun with --yes."
+                .to_string(),
+        );
     }
 
     if options.execution_mode == ExecutionMode::Detach {
@@ -8301,9 +8304,9 @@ fn sync_manager_executable_overrides(store: &SqliteStore) -> Result<(), String> 
             .filter(|value| *value > 0)
             .map(Duration::from_secs);
         let profile = ManagerTimeoutProfile {
-                hard_timeout,
-                idle_timeout,
-            };
+            hard_timeout,
+            idle_timeout,
+        };
         if profile.hard_timeout.is_some() || profile.idle_timeout.is_some() {
             timeout_profiles.insert(manager, profile);
         }
@@ -9931,8 +9934,9 @@ fn build_manager_mutation_request(
 }
 
 fn parse_manager_id(raw: &str) -> Result<ManagerId, String> {
-    raw.parse::<ManagerId>()
-        .map_err(|_| format!("unknown manager id '{raw}'"))
+    raw.parse::<ManagerId>().map_err(|_| {
+        format!("unknown manager id '{raw}'. Run 'helm managers list' to see supported ids.")
+    })
 }
 
 fn read_setting(store: &SqliteStore, key: &str) -> Result<String, String> {
@@ -11723,12 +11727,12 @@ mod tests {
     use super::{
         CLI_LICENSE_TERMS_VERSION, Command, ExecutionMode, GlobalOptions, HomebrewKegPolicy,
         InstallChannel, ManagerId, apply_manager_enablement_self_heal, build_json_payload_lines,
-        classify_failure_class, command_help_topic_exists, ensure_cli_onboarding_completed,
-        exit_code_for_error, mark_exit_code, parse_args, parse_args_with_tty,
-        parse_homebrew_keg_policy_arg, parse_search_args, parse_structured_terminal_error_message,
-        parse_updates_run_preview_args, raw_args_request_json, raw_args_request_ndjson,
-        remove_install_marker_if_channel, self_uninstall_recommended_action,
-        strip_exit_code_marker,
+        classify_failure_class, cmd_updates_run, command_help_topic_exists,
+        ensure_cli_onboarding_completed, exit_code_for_error, mark_exit_code, parse_args,
+        parse_args_with_tty, parse_homebrew_keg_policy_arg, parse_manager_id, parse_search_args,
+        parse_structured_terminal_error_message, parse_updates_run_preview_args,
+        raw_args_request_json, raw_args_request_ndjson, remove_install_marker_if_channel,
+        self_uninstall_recommended_action, strip_exit_code_marker,
     };
     use helm_core::execution::TaskOutputRecord;
     use helm_core::models::DetectionInfo;
@@ -11737,6 +11741,7 @@ mod tests {
     use serde_json::json;
     use std::fs;
     use std::path::{Path, PathBuf};
+    use std::sync::Arc;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_file_path(name: &str) -> PathBuf {
@@ -11830,6 +11835,14 @@ mod tests {
             .expect_err("unknown combined short flag should fail");
         assert!(error.contains("unknown short flag"));
         assert!(error.contains("-Z"));
+    }
+
+    #[test]
+    fn parse_args_unknown_command_includes_help_hint() {
+        let error = parse_args(vec!["not-a-command".to_string()])
+            .expect_err("unknown command should fail with hint");
+        assert!(error.contains("unknown command"));
+        assert!(error.contains("helm help"));
     }
 
     #[test]
@@ -12135,6 +12148,86 @@ mod tests {
         )
         .expect_err("duplicate --manager should fail");
         assert!(error.contains("specified multiple times"));
+    }
+
+    #[test]
+    fn parse_manager_id_unknown_includes_managers_list_hint() {
+        let error = parse_manager_id("nope").expect_err("unknown manager id should fail");
+        assert!(error.contains("unknown manager id"));
+        assert!(error.contains("helm managers list"));
+    }
+
+    #[test]
+    fn updates_run_requires_yes_message_includes_preview_hint() {
+        let db_path = temp_db_path("updates-run-yes-hint");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+
+        let error = cmd_updates_run(Arc::new(store), GlobalOptions::default(), &[])
+            .expect_err("updates run should require --yes");
+        assert!(error.contains("requires --yes"));
+        assert!(error.contains("helm updates preview"));
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn updates_run_mixed_success_exit_codes_remain_stable() {
+        let one_failure = [true, false, true]
+            .iter()
+            .filter(|success| !**success)
+            .count();
+        let one_failure_code = if one_failure > 1 { 3 } else { 2 };
+        let one_failure_error = mark_exit_code(
+            format!("{one_failure} upgrade steps failed"),
+            one_failure_code,
+        );
+        assert_eq!(exit_code_for_error(one_failure_error.as_str()), 2);
+
+        let multiple_failures = [false, false, true]
+            .iter()
+            .filter(|success| !**success)
+            .count();
+        let multiple_failures_code = if multiple_failures > 1 { 3 } else { 2 };
+        let multiple_failures_error = mark_exit_code(
+            format!("{multiple_failures} upgrade steps failed"),
+            multiple_failures_code,
+        );
+        assert_eq!(exit_code_for_error(multiple_failures_error.as_str()), 3);
+    }
+
+    #[test]
+    fn updates_run_json_envelope_schema_is_stable() {
+        let payloads = build_json_payload_lines(
+            "helm.cli.v1.updates.run",
+            json!({
+                "include_pinned": false,
+                "allow_os_updates": false,
+                "manager_filter": null,
+                "results": [
+                    {
+                        "step_id": "npm:eslint",
+                        "manager_id": "npm",
+                        "package_name": "eslint",
+                        "task_id": 42,
+                        "success": true,
+                        "error": null
+                    }
+                ],
+                "total_steps": 1,
+                "failed_steps": 0
+            }),
+            false,
+            123,
+        );
+        assert_eq!(payloads.len(), 1);
+        assert_eq!(payloads[0]["schema"], "helm.cli.v1.updates.run");
+        assert_eq!(payloads[0]["schema_version"], 1);
+        assert_eq!(payloads[0]["data"]["results"][0]["manager_id"], "npm");
+        assert_eq!(payloads[0]["data"]["total_steps"], 1);
+        assert_eq!(payloads[0]["data"]["failed_steps"], 0);
     }
 
     #[test]
