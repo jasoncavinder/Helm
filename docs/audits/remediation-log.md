@@ -1,5 +1,34 @@
 # Remediation Log
 
+## 2026-02-26 — Batch `TEST-009A`, `TEST-009B`, `TEST-009C`
+
+### Scope
+
+- `TEST-009A`: added release rehearsal environment contract documentation with required inputs and explicit non-mutation guarantees (`docs/operations/RELEASE_REHEARSAL_DRY_RUN.md`), and linked it from the primary release operations guide.
+- `TEST-009B`: added `scripts/release/rehearsal_dry_run.sh` to run non-mutating `preflight`, non-mutating `runbook prepare`, and verify contract scripts while emitting a machine-readable rehearsal report; added deterministic stubbed contract coverage in `scripts/release/tests/rehearsal_dry_run_contract.sh`.
+- `TEST-009C`: integrated rehearsal dry-run into `.github/workflows/release-contract-checks.yml`, added explicit report contract assertions, and uploaded rehearsal report artifacts.
+
+### Verification
+
+Commands run:
+
+- `bash -n scripts/release/rehearsal_dry_run.sh scripts/release/tests/rehearsal_dry_run_contract.sh`
+- `scripts/release/tests/rehearsal_dry_run_contract.sh`
+- `ruby -e 'require "yaml"; YAML.load_file(".github/workflows/release-contract-checks.yml"); puts "release-contract-checks.yml: ok"'`
+- `scripts/release/rehearsal_dry_run.sh --tag v99.99.99 --report-path /tmp/helm-release-rehearsal-report.json` (expected failure due invalid local GH token context)
+- `env -u GH_TOKEN scripts/release/rehearsal_dry_run.sh --tag v99.99.99 --report-path /tmp/helm-release-rehearsal-report.json` (expected failure due invalid `gh` default auth token)
+
+Manual verification:
+
+- Confirmed dry-run script report includes schema/version, dry-run marker, per-step status, and non-mutation guard statements.
+- Confirmed deterministic contract test covers both pass and fail report behavior for rehearsal runs without requiring live GitHub calls.
+- Confirmed workflow now executes rehearsal script, validates report payload, and uploads report artifact.
+
+Remaining risks:
+
+- Live local rehearsal execution currently fails in this environment because `gh auth status` reports invalid token credentials; operator must refresh `gh` auth (`gh auth login`) before using live rehearsal outside CI.
+- CI behavior depends on valid `github.token` auth context for preflight contract checks.
+
 ## 2026-02-26 — Batch `TEST-006`, `TEST-008`, `TEST-009` (Backlog Split)
 
 ### Scope

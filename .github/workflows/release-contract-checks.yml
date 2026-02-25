@@ -55,3 +55,43 @@ jobs:
           --skip-secrets
           --skip-workflows
           --skip-ruleset-policy
+
+      - name: Run release rehearsal dry-run contract
+        env:
+          REHEARSAL_TAG: v99.99.${{ github.run_id }}
+          REHEARSAL_REPORT_PATH: ${{ runner.temp }}/release-rehearsal-report.json
+        run: >
+          scripts/release/rehearsal_dry_run.sh
+          --tag "${REHEARSAL_TAG}"
+          --report-path "${REHEARSAL_REPORT_PATH}"
+
+      - name: Validate release rehearsal report contract
+        env:
+          REHEARSAL_REPORT_PATH: ${{ runner.temp }}/release-rehearsal-report.json
+        run: |
+          python3 - "$REHEARSAL_REPORT_PATH" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          report_path = pathlib.Path(sys.argv[1])
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+          assert report.get("schema") == "helm.release.rehearsal_report"
+          assert report.get("schema_version") == 1
+          assert report.get("dry_run") is True
+          assert report.get("overall_status") == "passed"
+
+          steps = report.get("steps") or []
+          names = [step.get("name") for step in steps]
+          assert names == ["preflight", "prepare", "verify"]
+          for step in steps:
+              assert step.get("status") == "passed"
+              assert step.get("exit_code") == 0
+          PY
+
+      - name: Upload release rehearsal report artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-rehearsal-report
+          path: ${{ runner.temp }}/release-rehearsal-report.json
+          if-no-files-found: error
