@@ -29,7 +29,9 @@ Notes:
 - `DOC-002` — Done (`f28ec00`)
 - `COR-009` — Done (`a8c9e13`)
 - `DOC-003` — Done (`17bb923`)
-- `DOC-004` — Done (`PR: TBD`, commit pending)
+- `DOC-004` — Done (`1e7b655`)
+- `COR-003` — Done (`5fdb22d`)
+- `REL-006` — Done (`PR: TBD`, commit pending)
 
 ## Prioritized Backlog
 
@@ -94,6 +96,3 @@ Decision IDs below are blockers for related backlog items.
 | DEC-003 | BUILD-001 | Enforce full immutable action SHA pinning immediately, or phase by workflow criticality? |
 | DEC-004 | REL-001 | Should `dev` carry publish-ready metadata artifacts, or should publish metadata truth be `main`/release branches only? |
 | DEC-005 | SEC-003, UX-001 | Should UI expose full diagnostics context (`PATH`/program) by default, redacted by default, or behind advanced/export-only surfaces? |
-
-Additional policy question (not yet in `quality-audit-decisions.md`):
-- DEC-006 (proposed): What is Helm’s 1.0 crash reporting posture (none, local-only, or opt-in remote) and who owns operations?

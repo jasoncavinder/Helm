@@ -428,6 +428,7 @@ Stage 3 (`1.4.x`) - Shared Brain:
 - The Security Advisory System (`1.3.x`) is independent of Shared Brain and remains functional without Helm-hosted services.
 - Shared Brain (`1.4.x`) is additive infrastructure that can enrich advisory outcomes but is not a prerequisite for local advisory evaluation.
 - Current releases (`<=0.17.x`) do not send package/fingerprint telemetry to a shared backend.
+- Helm `1.0` crash/error reporting posture is local-only with no automatic remote crash telemetry; operational policy and payload expectations are documented in `docs/operations/CRASH_REPORTING_POLICY.md`.
 
 ---
 

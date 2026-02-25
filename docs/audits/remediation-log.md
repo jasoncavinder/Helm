@@ -1,5 +1,39 @@
 # Remediation Log
 
+## 2026-02-26 — Batch `COR-003`, `REL-006`, `DOC-004`
+
+### Scope
+
+- `COR-003`: ensure successful install/uninstall mutation responses update cached installed/outdated snapshots without requiring manual refresh.
+- `REL-006`: define and document explicit 1.0 crash/error reporting posture with privacy constraints, payload schema expectations, and operational ownership.
+- `DOC-004`: finalize backlog status with implemented terminology-contract commit (`1e7b655`).
+
+### Verification
+
+Commands run:
+
+- `cd core/rust && cargo test -p helm-core --test sqlite_store_skeleton --test orchestration_adapter_runtime`
+- `cd core/rust && cargo fmt --all`
+- `cd core/rust && cargo test -p helm-core --test sqlite_store_skeleton --test orchestration_adapter_runtime` (post-format re-run)
+
+Manual verification:
+
+- Confirmed `persist_adapter_response` now applies install/uninstall mutation outcomes directly to package snapshots (`apply_install_result`, `apply_uninstall_result`), while preserving existing pin/unpin/upgrade behavior.
+- Confirmed regression coverage exists at both persistence and orchestration layers:
+  - `sqlite_store_skeleton`: install/uninstall snapshot cache behavior
+  - `orchestration_adapter_runtime`: mutation success updates cache state without manual refresh
+- Confirmed crash/error reporting posture is now explicitly documented as local-only for 1.0 in:
+  - `docs/DECISIONS.md` (Decision 032)
+  - `docs/ARCHITECTURE.md` (system-boundary policy note)
+  - `docs/operations/CRASH_REPORTING_POLICY.md` (policy/schema/privacy/owner)
+  - `docs/RELEASE_CHECKLIST.md` (release gate check)
+- Confirmed `DOC-004` backlog status now references implemented commit `1e7b655`.
+
+Remaining risks:
+
+- Install mutation versions remain best-effort (`after_version` from adapter response); managers that cannot provide an explicit post-install version may still persist `null` until a later refresh.
+- Local-only crash reporting intentionally favors privacy over centralized observability; operational triage still depends on user-initiated diagnostics export.
+
 ## 2026-02-25 — Batch `BUILD-004`, `BUILD-002`, `BUILD-003`
 
 ### Scope

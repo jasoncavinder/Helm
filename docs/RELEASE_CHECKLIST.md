@@ -37,6 +37,7 @@ This checklist is required before creating a release tag on `main`.
 - [ ] Confirm preflight validates required DMG/signing/update secrets are present.
 - [ ] Confirm preflight validates `main` ruleset publish-PR bypass policy (prefer GitHub Actions app `pull_request` bypass when available; otherwise use `Repository admin` `pull_request` fallback; no `always` bypass actors).
 - [ ] Confirm preflight snapshot sanity passes for stable tags (`origin/main` appcast + `cli/latest.json` in sync and behind target tag).
+- [ ] Confirm crash/error reporting policy remains local-only for the release line and no automatic remote telemetry path was introduced (`docs/operations/CRASH_REPORTING_POLICY.md`).
 - [ ] Optional wrapper path: `scripts/release/runbook.sh prepare --tag <tag>`.
 
 ## Release Publication Verification (All Releases)

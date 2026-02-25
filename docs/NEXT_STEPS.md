@@ -177,6 +177,10 @@ Current checkpoint:
     - manager executable/timeout preference sync now uses atomic map replacement instead of clear-then-repopulate loops to avoid empty override windows during concurrent reads
     - CLI tests now assert `updates run` mixed-success exit-code behavior and stable machine-output envelope structure
     - common CLI errors now include actionable next-step hints for `helm help`, `helm managers list`, and `helm updates preview`
+  - pre-1.0 remediation batch delivered on `dev` (`COR-003`, `REL-006`, `DOC-004`):
+    - install/uninstall mutation success now updates cached installed/outdated snapshots without requiring manual full refresh
+    - 1.0 crash/error reporting posture is now explicitly local-only with documented policy, payload schema, privacy constraints, and operational owner (`docs/operations/CRASH_REPORTING_POLICY.md`)
+    - architecture + PR checklist terminology contract enforcement remains explicit (`manager`/`task`/`service` user-facing, `adapter` internal)
   - post-`v0.17.5` refresh reliability + diagnostics hardening delivered on `dev`:
     - task output persistence now records effective cwd/timing/exit metadata and structured error details used by diagnostics commands
     - diagnostics summary now reports failure-class counters for faster operator triage
