@@ -1,5 +1,30 @@
 # Remediation Log
 
+## 2026-02-26 — Batch `TEST-001B`, `MNT-004B`
+
+### Scope
+
+- `TEST-001B`: add a dedicated timeout-sensitive orchestration repeat-run script with explicit pass/fail budget reporting and document it in the critical-path test plan.
+- `MNT-004B`: extend shared JSON decode/error handling from settings into additional `HelmCore` fetch decode paths while preserving existing error-attribution keys.
+
+### Verification
+
+Commands run:
+
+- `HELM_TIMEOUT_SENSITIVE_SOAK_RUNS=1 HELM_TIMEOUT_SENSITIVE_SOAK_FAILURE_BUDGET=2 /Users/jasoncavinder/Projects/Helm/scripts/tests/timeout_sensitive_orchestration_soak.sh`
+- `xcodebuild -project /Users/jasoncavinder/Projects/Helm/apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' -configuration Debug CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO build`
+
+Manual verification:
+
+- Confirmed the new soak driver prints explicit run/target totals and a final `passes/failures/budget` summary and exits based on the configured failure budget.
+- Confirmed `HelmCore+Fetching.swift` decode call sites now route through `decodeCorePayload(...)` while retaining existing `source`/`action`/`taskType` attribution (`core.fetching`, per-call decode action keys, matching task classes).
+- Confirmed `HelmCore+Settings.swift` remains the shared helper location and still supports settings-specific wrapper behavior.
+
+Remaining risks:
+
+- `TEST-001B` currently provides a documented/manual execution target and is not yet wired as a dedicated CI lane.
+- macOS build logs continue to emit local locale warnings (`LC_ALL=C.UTF-8`) but the build succeeds.
+
 ## 2026-02-25 — Batch `MNT-001A`, `MNT-001B`, `MNT-001C`
 
 ### Scope
