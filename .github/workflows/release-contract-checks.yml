@@ -21,6 +21,9 @@ jobs:
       - name: Validate unsigned build script safety contracts
         run: scripts/release/tests/build_unsigned_variant_contract.sh
 
+      - name: Validate release publish verify merge-order contracts
+        run: scripts/release/tests/publish_verify_state_contract.sh
+
       - name: Run release preflight contract (non-destructive)
         run: >
           scripts/release/preflight.sh
