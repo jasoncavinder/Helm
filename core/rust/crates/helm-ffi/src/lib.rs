@@ -331,10 +331,12 @@ static EXECUTABLE_DISCOVERY_CACHE: OnceLock<
 > = OnceLock::new();
 static COORDINATOR_REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
 static COORDINATOR_SERVER_STARTED: AtomicBool = AtomicBool::new(false);
+static AUTO_CHECK_TICKER_STARTED: AtomicBool = AtomicBool::new(false);
 
 const COORDINATOR_REQUEST_TIMEOUT_SECS: u64 = 30;
 const COORDINATOR_POLL_SLEEP_MS: u64 = 25;
 const AUTO_CHECK_TICK_SECS: u64 = 30;
+const LEGACY_FILE_COORDINATOR_IPC_ENV: &str = "HELM_LEGACY_FILE_COORDINATOR_IPC";
 const DEFAULT_CLI_UPDATE_ENDPOINT: &str = "https://helmapp.dev/updates/cli/latest.json";
 const DEFAULT_INSTALL_MARKER_RELATIVE_PATH: &str = ".config/helm/install.json";
 const AUTO_CHECK_ALLOW_INSECURE_ENV: &str = "HELM_CLI_ALLOW_INSECURE_UPDATE_URLS";
@@ -360,6 +362,12 @@ enum CoordinatorBridge {
     Disabled,
     Local,
     External(PathBuf),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CoordinatorBridgeMode {
+    LocalXpcPreferred,
+    LegacyFileIpc,
 }
 
 lazy_static! {
@@ -2044,29 +2052,81 @@ fn manager_selected_install_method(store: &SqliteStore, manager: ManagerId) -> O
     normalize_install_method(manager, preference.selected_install_method)
 }
 
+fn parse_legacy_file_coordinator_ipc_flag(value: Option<&str>) -> bool {
+    matches!(
+        value.map(|raw| raw.trim().to_ascii_lowercase()),
+        Some(normalized)
+            if matches!(normalized.as_str(), "1" | "true" | "yes" | "on")
+    )
+}
+
+fn legacy_file_coordinator_ipc_opt_in() -> bool {
+    parse_legacy_file_coordinator_ipc_flag(
+        std::env::var(LEGACY_FILE_COORDINATOR_IPC_ENV)
+            .ok()
+            .as_deref(),
+    )
+}
+
+fn coordinator_bridge_mode() -> CoordinatorBridgeMode {
+    #[cfg(target_os = "macos")]
+    {
+        if legacy_file_coordinator_ipc_opt_in() {
+            CoordinatorBridgeMode::LegacyFileIpc
+        } else {
+            CoordinatorBridgeMode::LocalXpcPreferred
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        CoordinatorBridgeMode::LegacyFileIpc
+    }
+}
+
+fn should_use_external_file_coordinator_with_health(
+    mode: CoordinatorBridgeMode,
+    external_ready: bool,
+) -> bool {
+    mode == CoordinatorBridgeMode::LegacyFileIpc && external_ready
+}
+
+fn should_use_external_file_coordinator(mode: CoordinatorBridgeMode, state_dir: &Path) -> bool {
+    should_use_external_file_coordinator_with_health(mode, coordinator_ready(state_dir))
+}
+
 fn initialize_coordinator_bridge(
     store: Arc<SqliteStore>,
     runtime: Arc<AdapterRuntime>,
     rt_handle: tokio::runtime::Handle,
 ) {
     let state_dir = coordinator_socket_path_for_store(store.as_ref());
-    if coordinator_ready(state_dir.as_path()) {
+    let bridge_mode = coordinator_bridge_mode();
+
+    if should_use_external_file_coordinator(bridge_mode, state_dir.as_path()) {
         *lock_or_recover(&COORDINATOR_BRIDGE, "coordinator_bridge") =
             CoordinatorBridge::External(state_dir);
         return;
     }
 
-    if COORDINATOR_SERVER_STARTED
+    if bridge_mode == CoordinatorBridgeMode::LegacyFileIpc {
+        if COORDINATOR_SERVER_STARTED
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+        {
+            start_local_coordinator_server(
+                state_dir.clone(),
+                store.clone(),
+                runtime.clone(),
+                rt_handle.clone(),
+            );
+        }
+    } else if AUTO_CHECK_TICKER_STARTED
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .is_ok()
     {
-        start_local_coordinator_server(
-            state_dir.clone(),
-            store.clone(),
-            runtime.clone(),
-            rt_handle.clone(),
-        );
+        start_local_auto_check_ticker(store.clone());
     }
+
     *lock_or_recover(&COORDINATOR_BRIDGE, "coordinator_bridge") = CoordinatorBridge::Local;
 }
 
@@ -2284,6 +2344,19 @@ fn run_due_auto_check_tick(store: &SqliteStore) {
     if let Err(error) = store.set_auto_check_last_checked_unix(now_unix) {
         eprintln!("coordinator auto-check failed to persist last-run timestamp: {error}");
     }
+}
+
+fn start_local_auto_check_ticker(store: Arc<SqliteStore>) {
+    thread::spawn(move || {
+        let mut next_auto_check_tick = Instant::now();
+        loop {
+            if Instant::now() >= next_auto_check_tick {
+                run_due_auto_check_tick(store.as_ref());
+                next_auto_check_tick = Instant::now() + Duration::from_secs(AUTO_CHECK_TICK_SECS);
+            }
+            thread::sleep(Duration::from_millis(COORDINATOR_POLL_SLEEP_MS));
+        }
+    });
 }
 
 fn start_local_coordinator_server(
@@ -6456,6 +6529,43 @@ mod tests {
         let npm = status_for(&statuses, ManagerId::Npm);
         assert!(!npm.selected_executable_differs_from_default);
         assert_eq!(npm.executable_path_diagnostic, "aligned");
+    }
+
+    #[test]
+    fn parse_legacy_file_coordinator_ipc_flag_accepts_truthy_values() {
+        assert!(super::parse_legacy_file_coordinator_ipc_flag(Some("1")));
+        assert!(super::parse_legacy_file_coordinator_ipc_flag(Some("true")));
+        assert!(super::parse_legacy_file_coordinator_ipc_flag(Some("YES")));
+        assert!(super::parse_legacy_file_coordinator_ipc_flag(Some(" on ")));
+    }
+
+    #[test]
+    fn parse_legacy_file_coordinator_ipc_flag_rejects_missing_or_falsey_values() {
+        assert!(!super::parse_legacy_file_coordinator_ipc_flag(None));
+        assert!(!super::parse_legacy_file_coordinator_ipc_flag(Some("0")));
+        assert!(!super::parse_legacy_file_coordinator_ipc_flag(Some(
+            "false"
+        )));
+        assert!(!super::parse_legacy_file_coordinator_ipc_flag(Some("off")));
+        assert!(!super::parse_legacy_file_coordinator_ipc_flag(Some(
+            "unexpected"
+        )));
+    }
+
+    #[test]
+    fn coordinator_bridge_external_file_ipc_selection_requires_opt_in_and_ready() {
+        assert!(!super::should_use_external_file_coordinator_with_health(
+            super::CoordinatorBridgeMode::LocalXpcPreferred,
+            true,
+        ));
+        assert!(!super::should_use_external_file_coordinator_with_health(
+            super::CoordinatorBridgeMode::LegacyFileIpc,
+            false,
+        ));
+        assert!(super::should_use_external_file_coordinator_with_health(
+            super::CoordinatorBridgeMode::LegacyFileIpc,
+            true,
+        ));
     }
 
     #[cfg(unix)]
