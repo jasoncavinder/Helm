@@ -8,6 +8,8 @@ const MAX_TASK_OUTPUT_RECORDS: usize = 512;
 const MAX_STREAM_BYTES: usize = 128 * 1024;
 const MAX_COMMAND_BYTES: usize = 8 * 1024;
 const MAX_WORKING_DIR_BYTES: usize = 8 * 1024;
+const MAX_PROGRAM_PATH_BYTES: usize = 8 * 1024;
+const MAX_PATH_SNIPPET_BYTES: usize = 8 * 1024;
 const MAX_ERROR_CODE_BYTES: usize = 256;
 const MAX_ERROR_MESSAGE_BYTES: usize = 16 * 1024;
 
@@ -15,6 +17,8 @@ const MAX_ERROR_MESSAGE_BYTES: usize = 16 * 1024;
 pub struct TaskOutputRecord {
     pub command: Option<String>,
     pub cwd: Option<String>,
+    pub program_path: Option<String>,
+    pub path_snippet: Option<String>,
     pub started_at_unix_ms: Option<i64>,
     pub finished_at_unix_ms: Option<i64>,
     pub duration_ms: Option<u64>,
@@ -67,6 +71,26 @@ fn normalize_working_dir(working_dir: &str) -> Option<String> {
         None
     } else {
         let normalized = truncate_str_to_tail_bytes(trimmed, MAX_WORKING_DIR_BYTES);
+        Some(normalized.to_string())
+    }
+}
+
+fn normalize_program_path(program_path: &str) -> Option<String> {
+    let trimmed = program_path.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        let normalized = truncate_str_to_tail_bytes(trimmed, MAX_PROGRAM_PATH_BYTES);
+        Some(normalized.to_string())
+    }
+}
+
+fn normalize_path_snippet(path_value: &str) -> Option<String> {
+    let trimmed = path_value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        let normalized = truncate_str_to_tail_bytes(trimmed, MAX_PATH_SNIPPET_BYTES);
         Some(normalized.to_string())
     }
 }
@@ -210,6 +234,22 @@ pub fn record_context(task_id: TaskId, command: Option<&str>, cwd: Option<&str>)
     }
 }
 
+pub fn record_process_context(
+    task_id: TaskId,
+    program_path: Option<&str>,
+    path_snippet: Option<&str>,
+) {
+    if let Ok(mut outputs) = task_outputs().lock() {
+        let entry = ensure_entry(&mut outputs, task_id);
+        if let Some(program_path) = program_path.and_then(normalize_program_path) {
+            entry.program_path = Some(program_path);
+        }
+        if let Some(path_snippet) = path_snippet.and_then(normalize_path_snippet) {
+            entry.path_snippet = Some(path_snippet);
+        }
+    }
+}
+
 pub fn record_started_at(task_id: TaskId, started_at: SystemTime) {
     if let Ok(mut outputs) = task_outputs().lock() {
         let entry = ensure_entry(&mut outputs, task_id);
@@ -286,8 +326,8 @@ mod tests {
 
     use super::{
         MAX_STREAM_BYTES, MAX_TASK_OUTPUT_RECORDS, append_stderr, append_stdout, get, record,
-        record_command, record_context, record_error, record_started_at, record_terminal_metadata,
-        task_outputs,
+        record_command, record_context, record_error, record_process_context, record_started_at,
+        record_terminal_metadata, task_outputs,
     };
     use crate::models::TaskId;
 
@@ -318,6 +358,8 @@ mod tests {
         assert_eq!(output.stdout.as_deref(), Some("hello\n"));
         assert_eq!(output.stderr.as_deref(), Some("warn\n"));
         assert_eq!(output.cwd, None);
+        assert_eq!(output.program_path, None);
+        assert_eq!(output.path_snippet, None);
         assert_eq!(output.started_at_unix_ms, None);
         assert_eq!(output.finished_at_unix_ms, None);
         assert_eq!(output.duration_ms, None);
@@ -392,6 +434,28 @@ mod tests {
         assert_eq!(output.duration_ms, Some(450));
         assert_eq!(output.exit_code, Some(0));
         assert_eq!(output.termination_reason, None);
+    }
+
+    #[test]
+    fn process_context_is_persisted() {
+        let _guard = acquire_test_lock();
+        clear_store();
+        let task_id = TaskId(9007);
+        record_process_context(
+            task_id,
+            Some("/opt/homebrew/bin/npm"),
+            Some("/opt/homebrew/bin:/usr/bin:/bin"),
+        );
+
+        let output = get(task_id).expect("expected output to be recorded");
+        assert_eq!(
+            output.program_path.as_deref(),
+            Some("/opt/homebrew/bin/npm")
+        );
+        assert_eq!(
+            output.path_snippet.as_deref(),
+            Some("/opt/homebrew/bin:/usr/bin:/bin")
+        );
     }
 
     #[test]

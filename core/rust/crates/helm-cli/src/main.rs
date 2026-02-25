@@ -30,8 +30,9 @@ use helm_core::adapters::{
     UpgradeRequest, XcodeCommandLineToolsAdapter, YarnAdapter,
 };
 use helm_core::execution::{
-    TaskOutputRecord, TokioProcessExecutor, clear_manager_selected_executables,
-    set_manager_selected_executable,
+    ManagerTimeoutProfile, TaskOutputRecord, TokioProcessExecutor,
+    clear_manager_selected_executables, clear_manager_timeout_profiles,
+    set_manager_selected_executable, set_manager_timeout_profile,
 };
 use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
@@ -307,6 +308,8 @@ struct CliTaskDiagnosticsOutput {
     available: bool,
     command: Option<String>,
     cwd: Option<String>,
+    program_path: Option<String>,
+    path_snippet: Option<String>,
     started_at_unix_ms: Option<i64>,
     finished_at_unix_ms: Option<i64>,
     duration_ms: Option<u64>,
@@ -7119,6 +7122,14 @@ fn cmd_diagnostics_task(
         );
         println!("  cwd: {}", output_payload.cwd.as_deref().unwrap_or("-"));
         println!(
+            "  program_path: {}",
+            output_payload.program_path.as_deref().unwrap_or("-")
+        );
+        println!(
+            "  path_snippet: {}",
+            output_payload.path_snippet.as_deref().unwrap_or("-")
+        );
+        println!(
             "  started_at_unix_ms: {}",
             output_payload
                 .started_at_unix_ms
@@ -7393,6 +7404,8 @@ fn task_output_to_cli_diagnostics(output: Option<&TaskOutputRecord>) -> CliTaskD
         available: output.is_some(),
         command: output.and_then(|entry| entry.command.clone()),
         cwd: output.and_then(|entry| entry.cwd.clone()),
+        program_path: output.and_then(|entry| entry.program_path.clone()),
+        path_snippet: output.and_then(|entry| entry.path_snippet.clone()),
         started_at_unix_ms: output.and_then(|entry| entry.started_at_unix_ms),
         finished_at_unix_ms: output.and_then(|entry| entry.finished_at_unix_ms),
         duration_ms: output.and_then(|entry| entry.duration_ms),
@@ -7531,6 +7544,13 @@ fn classify_failure_class(
     message: Option<&str>,
 ) -> &'static str {
     if let Some(output) = output {
+        if let Some(code) = output.error_code.as_deref() {
+            match code {
+                "hard_timeout" => return "hard_timeout",
+                "idle_timeout" => return "idle_timeout",
+                _ => {}
+            }
+        }
         if matches!(output.termination_reason.as_deref(), Some("timeout")) {
             return "timeout";
         }
@@ -7569,6 +7589,9 @@ fn classify_failure_class(
     }
     if normalized.contains("timed out") || normalized.contains("timeout") {
         return "timeout";
+    }
+    if normalized.contains("no output") {
+        return "idle_timeout";
     }
     "other"
 }
@@ -8252,6 +8275,7 @@ fn sync_manager_executable_overrides(store: &SqliteStore) -> Result<(), String> 
         .collect();
 
     clear_manager_selected_executables();
+    clear_manager_timeout_profiles();
     for manager in ManagerId::ALL {
         let preferred = preferences
             .get(&manager)
@@ -8264,6 +8288,24 @@ fn sync_manager_executable_overrides(store: &SqliteStore) -> Result<(), String> 
         });
         let selected = preferred.or(detected);
         set_manager_selected_executable(manager, selected.map(PathBuf::from));
+
+        let hard_timeout = preferences
+            .get(&manager)
+            .and_then(|preference| preference.timeout_hard_seconds)
+            .filter(|value| *value > 0)
+            .map(Duration::from_secs);
+        let idle_timeout = preferences
+            .get(&manager)
+            .and_then(|preference| preference.timeout_idle_seconds)
+            .filter(|value| *value > 0)
+            .map(Duration::from_secs);
+        set_manager_timeout_profile(
+            manager,
+            ManagerTimeoutProfile {
+                hard_timeout,
+                idle_timeout,
+            },
+        );
     }
     Ok(())
 }
@@ -11825,6 +11867,26 @@ mod tests {
         };
         let class = classify_failure_class(Some(&output), Some("some unrelated failure"));
         assert_eq!(class, "timeout");
+    }
+
+    #[test]
+    fn classify_failure_class_detects_hard_timeout_error_code() {
+        let output = TaskOutputRecord {
+            error_code: Some("hard_timeout".to_string()),
+            ..TaskOutputRecord::default()
+        };
+        let class = classify_failure_class(Some(&output), Some("process reached hard timeout"));
+        assert_eq!(class, "hard_timeout");
+    }
+
+    #[test]
+    fn classify_failure_class_detects_idle_timeout_error_code() {
+        let output = TaskOutputRecord {
+            error_code: Some("idle_timeout".to_string()),
+            ..TaskOutputRecord::default()
+        };
+        let class = classify_failure_class(Some(&output), Some("process produced no output"));
+        assert_eq!(class, "idle_timeout");
     }
 
     #[test]

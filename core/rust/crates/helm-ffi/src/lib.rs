@@ -18,7 +18,7 @@
 //!   accessing the engine. Poisoned-lock recovery is implemented via
 //!   [`lock_or_recover`] to prevent lock-poison panics at the FFI boundary.
 //!
-//! ## FFI Exports (32 functions)
+//! ## FFI Exports (service surface)
 //!
 //! | Function | Category |
 //! |----------|----------|
@@ -129,7 +129,10 @@ use helm_core::adapters::{
     UpgradeRequest,
 };
 use helm_core::execution::tokio_process::TokioProcessExecutor;
-use helm_core::execution::{clear_manager_selected_executables, set_manager_selected_executable};
+use helm_core::execution::{
+    ManagerTimeoutProfile, clear_manager_selected_executables, clear_manager_timeout_profiles,
+    set_manager_selected_executable, set_manager_timeout_profile,
+};
 use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
     Capability, DetectionInfo, HomebrewKegPolicy, ManagerAuthority, ManagerId, OutdatedPackage,
@@ -285,6 +288,8 @@ struct FfiManagerStatus {
     default_executable_path: Option<String>,
     selected_executable_path: Option<String>,
     selected_install_method: Option<String>,
+    timeout_hard_seconds: Option<u64>,
+    timeout_idle_seconds: Option<u64>,
     enabled: bool,
     is_implemented: bool,
     is_optional: bool,
@@ -856,9 +861,27 @@ fn sync_manager_executable_overrides(
     pref_map: &std::collections::HashMap<ManagerId, ManagerPreference>,
 ) {
     clear_manager_selected_executables();
+    clear_manager_timeout_profiles();
     for manager in ManagerId::ALL {
         let selected = resolved_manager_selected_executable_path(manager, detection_map, pref_map);
         set_manager_selected_executable(manager, selected.map(std::path::PathBuf::from));
+        let hard_timeout = pref_map
+            .get(&manager)
+            .and_then(|preference| preference.timeout_hard_seconds)
+            .filter(|value| *value > 0)
+            .map(Duration::from_secs);
+        let idle_timeout = pref_map
+            .get(&manager)
+            .and_then(|preference| preference.timeout_idle_seconds)
+            .filter(|value| *value > 0)
+            .map(Duration::from_secs);
+        set_manager_timeout_profile(
+            manager,
+            ManagerTimeoutProfile {
+                hard_timeout,
+                idle_timeout,
+            },
+        );
     }
 }
 
@@ -881,6 +904,14 @@ fn build_manager_statuses(
                     .get(&id)
                     .and_then(|pref| pref.selected_install_method.clone()),
             );
+            let timeout_hard_seconds = pref_map
+                .get(&id)
+                .and_then(|pref| pref.timeout_hard_seconds)
+                .filter(|value| *value > 0);
+            let timeout_idle_seconds = pref_map
+                .get(&id)
+                .and_then(|pref| pref.timeout_idle_seconds)
+                .filter(|value| *value > 0);
             let is_implemented = is_implemented_manager(id);
             let is_optional = is_optional_manager(id);
             let is_detection_only = is_detection_only_manager(id);
@@ -937,6 +968,8 @@ fn build_manager_statuses(
                 default_executable_path,
                 selected_executable_path,
                 selected_install_method,
+                timeout_hard_seconds,
+                timeout_idle_seconds,
                 enabled,
                 is_implemented,
                 is_optional,
@@ -1252,6 +1285,8 @@ fn apply_manager_enablement_self_heal(
                     enabled: false,
                     selected_executable_path: None,
                     selected_install_method: None,
+                    timeout_hard_seconds: None,
+                    timeout_idle_seconds: None,
                 },
             );
         }
@@ -5422,6 +5457,87 @@ pub unsafe extern "C" fn helm_set_manager_install_method(
         .is_ok()
 }
 
+/// Set manager timeout profile overrides in seconds.
+///
+/// Positive values set an override; zero/negative values clear the override.
+///
+/// # Safety
+///
+/// `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_set_manager_timeout_profile(
+    manager_id: *const c_char,
+    hard_timeout_seconds: i64,
+    idle_timeout_seconds: i64,
+) -> bool {
+    clear_last_error_key();
+    if manager_id.is_null() {
+        return return_error_bool("service.error.invalid_input");
+    }
+
+    let c_str = unsafe { CStr::from_ptr(manager_id) };
+    let id_str = match c_str.to_str() {
+        Ok(s) => s,
+        Err(_) => return return_error_bool("service.error.invalid_input"),
+    };
+
+    let manager = match id_str.parse::<ManagerId>() {
+        Ok(m) => m,
+        Err(_) => return return_error_bool("service.error.invalid_input"),
+    };
+
+    let hard_timeout = if hard_timeout_seconds > 0 {
+        Some(hard_timeout_seconds as u64)
+    } else {
+        None
+    };
+    let idle_timeout = if idle_timeout_seconds > 0 {
+        Some(idle_timeout_seconds as u64)
+    } else {
+        None
+    };
+
+    let guard = lock_or_recover(&STATE, "state");
+    let state = match guard.as_ref() {
+        Some(s) => s,
+        None => return return_error_bool("service.error.internal"),
+    };
+
+    if state
+        .store
+        .set_manager_timeout_hard_seconds(manager, hard_timeout)
+        .map_err(|_| set_last_error_key("service.error.storage_failure"))
+        .is_err()
+    {
+        return false;
+    }
+    if state
+        .store
+        .set_manager_timeout_idle_seconds(manager, idle_timeout)
+        .map_err(|_| set_last_error_key("service.error.storage_failure"))
+        .is_err()
+    {
+        return false;
+    }
+
+    let detection_map: std::collections::HashMap<_, _> = state
+        .store
+        .list_detections()
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+    let pref_map: std::collections::HashMap<_, _> = state
+        .store
+        .list_manager_preferences()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|pref| (pref.manager, pref))
+        .collect();
+    sync_manager_executable_overrides(&detection_map, &pref_map);
+
+    true
+}
+
 /// Install a manager tool via Homebrew. Returns the task ID, or -1 on error.
 ///
 /// Supported manager IDs: "mise", "mas".
@@ -6055,6 +6171,8 @@ mod tests {
                     enabled: true,
                     selected_executable_path: None,
                     selected_install_method: None,
+                    timeout_hard_seconds: None,
+                    timeout_idle_seconds: None,
                 },
             ),
             (
@@ -6064,6 +6182,8 @@ mod tests {
                     enabled: true,
                     selected_executable_path: None,
                     selected_install_method: None,
+                    timeout_hard_seconds: None,
+                    timeout_idle_seconds: None,
                 },
             ),
             (
@@ -6073,6 +6193,8 @@ mod tests {
                     enabled: false,
                     selected_executable_path: None,
                     selected_install_method: None,
+                    timeout_hard_seconds: None,
+                    timeout_idle_seconds: None,
                 },
             ),
         ]);
@@ -6171,6 +6293,8 @@ mod tests {
                 enabled: true,
                 selected_executable_path: Some("/usr/bin/gem".to_string()),
                 selected_install_method: None,
+                timeout_hard_seconds: None,
+                timeout_idle_seconds: None,
             },
         )]);
 
@@ -6201,6 +6325,8 @@ mod tests {
                 enabled: true,
                 selected_executable_path: Some("/opt/homebrew/bin/gem".to_string()),
                 selected_install_method: None,
+                timeout_hard_seconds: None,
+                timeout_idle_seconds: None,
             },
         )]);
 
@@ -6228,6 +6354,8 @@ mod tests {
                 enabled: true,
                 selected_executable_path: Some("/usr/bin/python3".to_string()),
                 selected_install_method: None,
+                timeout_hard_seconds: None,
+                timeout_idle_seconds: None,
             },
         )]);
 

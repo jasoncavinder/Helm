@@ -1003,12 +1003,67 @@ ON CONFLICT(manager_id) DO UPDATE SET
         })
     }
 
+    fn set_manager_timeout_hard_seconds(
+        &self,
+        manager: ManagerId,
+        seconds: Option<u64>,
+    ) -> PersistenceResult<()> {
+        self.with_connection("set_manager_timeout_hard_seconds", |connection| {
+            ensure_schema_ready(connection)?;
+            let seconds = seconds.and_then(|value| i64::try_from(value).ok());
+            connection.execute(
+                "
+INSERT INTO manager_preferences (manager_id, enabled, timeout_hard_seconds)
+VALUES (
+    ?1,
+    COALESCE((SELECT enabled FROM manager_preferences WHERE manager_id = ?1), 1),
+    ?2
+)
+ON CONFLICT(manager_id) DO UPDATE SET
+    timeout_hard_seconds = excluded.timeout_hard_seconds
+",
+                params![manager.as_str(), seconds],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn set_manager_timeout_idle_seconds(
+        &self,
+        manager: ManagerId,
+        seconds: Option<u64>,
+    ) -> PersistenceResult<()> {
+        self.with_connection("set_manager_timeout_idle_seconds", |connection| {
+            ensure_schema_ready(connection)?;
+            let seconds = seconds.and_then(|value| i64::try_from(value).ok());
+            connection.execute(
+                "
+INSERT INTO manager_preferences (manager_id, enabled, timeout_idle_seconds)
+VALUES (
+    ?1,
+    COALESCE((SELECT enabled FROM manager_preferences WHERE manager_id = ?1), 1),
+    ?2
+)
+ON CONFLICT(manager_id) DO UPDATE SET
+    timeout_idle_seconds = excluded.timeout_idle_seconds
+",
+                params![manager.as_str(), seconds],
+            )?;
+            Ok(())
+        })
+    }
+
     fn list_manager_preferences(&self) -> PersistenceResult<Vec<ManagerPreference>> {
         self.with_connection("list_manager_preferences", |connection| {
             ensure_schema_ready(connection)?;
             let mut statement = connection.prepare(
                 "
-SELECT manager_id, enabled, selected_executable_path, selected_install_method
+SELECT manager_id,
+       enabled,
+       selected_executable_path,
+       selected_install_method,
+       timeout_hard_seconds,
+       timeout_idle_seconds
 FROM manager_preferences
 ORDER BY manager_id
 ",
@@ -1019,6 +1074,8 @@ ORDER BY manager_id
                 let enabled_int: i64 = row.get(1)?;
                 let selected_executable_path: Option<String> = row.get(2)?;
                 let selected_install_method: Option<String> = row.get(3)?;
+                let timeout_hard_seconds_raw: Option<i64> = row.get(4)?;
+                let timeout_idle_seconds_raw: Option<i64> = row.get(5)?;
 
                 let manager = parse_manager_id(&manager_raw)?;
                 Ok(ManagerPreference {
@@ -1026,6 +1083,12 @@ ORDER BY manager_id
                     enabled: sqlite_to_bool(enabled_int),
                     selected_executable_path,
                     selected_install_method,
+                    timeout_hard_seconds: timeout_hard_seconds_raw
+                        .and_then(|value| u64::try_from(value).ok())
+                        .filter(|value| *value > 0),
+                    timeout_idle_seconds: timeout_idle_seconds_raw
+                        .and_then(|value| u64::try_from(value).ok())
+                        .filter(|value| *value > 0),
                 })
             })?;
 
