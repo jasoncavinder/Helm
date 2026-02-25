@@ -181,6 +181,10 @@ Current checkpoint:
     - install/uninstall mutation success now updates cached installed/outdated snapshots without requiring manual full refresh
     - 1.0 crash/error reporting posture is now explicitly local-only with documented policy, payload schema, privacy constraints, and operational owner (`docs/operations/CRASH_REPORTING_POLICY.md`)
     - architecture + PR checklist terminology contract enforcement remains explicit (`manager`/`task`/`service` user-facing, `adapter` internal)
+  - pre-1.0 remediation batch delivered on `dev` (`BUILD-005`, `TEST-001A`, `MNT-004A`):
+    - release workflows now generate/upload deterministic provenance manifests (`provenance-<tag>.json`) for CLI and DMG release artifacts, and `Release Contract Checks` now validates provenance-manifest schema/subject integrity
+    - timeout-sensitive orchestration suites (`end_to_end_mise`, `end_to_end_rustup`) now include repeat soak tests with explicit zero-failure budgets
+    - `HelmCore+Settings` now centralizes decode/error handling for settings JSON payload decode paths used by `listPackageKegPolicies` and `previewUpgradePlan`
   - post-`v0.17.5` refresh reliability + diagnostics hardening delivered on `dev`:
     - task output persistence now records effective cwd/timing/exit metadata and structured error details used by diagnostics commands
     - diagnostics summary now reports failure-class counters for faster operator triage

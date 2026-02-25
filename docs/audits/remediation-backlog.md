@@ -51,6 +51,11 @@ Notes:
 - `TEST-004A` — Done (`f55ba6a`)
 - `TEST-004B` — Done (`f55ba6a`)
 - `TEST-004` — Done (`f55ba6a`; split parent closed via `TEST-004A` + `TEST-004B`)
+- `BUILD-005` — Done (`8865639`)
+- `TEST-001` — Split (`8887d9a`; follow-up `TEST-001A` done)
+- `TEST-001A` — Done (`8887d9a`)
+- `MNT-004` — Split (`PR: TBD`; follow-up `MNT-004A` done)
+- `MNT-004A` — Done (`PR: TBD`)
 
 ## Prioritized Backlog
 
@@ -84,10 +89,12 @@ Notes:
 | PERF-002 | Low | Performance | manager enablement hot paths in orchestration | Refactor | M | Low | None | Manager enablement snapshot is cached with correct invalidation on preference/detection updates; behavior parity tests pass. |
 | BUILD-003 | Med | Build/Release | CI workflows + `scripts/release/{preflight.sh,runbook.sh}` | CI | S | Low | None | Release preflight/runbook contract checks are exercised in CI (non-destructive mode) to catch regressions before release tags. |
 | BUILD-004 | Med | Build/Reproducibility | CI toolchain provisioning (`rust-toolchain`, SwiftLint provisioning) | CI | M | Low | None | Rust toolchain and SwiftLint versions are pinned/reproducible in CI; version drift is explicit and controlled; docs reflect pin update process. |
-| BUILD-005 | Med | Build/Reproducibility | release pipeline provenance | CI | M | Med | None | Build provenance/SBOM generation is implemented, or explicit signed deferral decision is documented with target milestone and owner. |
+| BUILD-005 | Med | Build/Reproducibility | release workflows + provenance contracts | CI | M | Med | None | Release workflows generate deterministic provenance manifests for published artifacts (CLI + DMG/appcast/release-notes), include them in workflow artifacts/release uploads, and CI contract checks validate manifest schema/subject integrity. |
 | REL-005 | Med | Build/Release | branch/ruleset required-check policy | CI | S | Low | None | Release drift/publish verify checks have explicit gating policy (required vs advisory) and match branch intent; ruleset/workflow docs are consistent. |
 | REL-006 | Med | Reliability/Policy | crash/error reporting strategy docs + telemetry policy | Docs | S | Low | None | 1.0 crash reporting posture is explicitly decided (none vs opt-in channel) and documented with privacy constraints, data schema, and operational owner. |
-| TEST-001 | Med | Test | timeout-sensitive orchestration tests (`end_to_end_rustup`, `end_to_end_mise`) | Test | M | Low | None | Soak/repeat test target exists; flake budget defined; repeated runs show deterministic pass criteria. |
+| TEST-001 | Med | Test | timeout-sensitive orchestration tests (`end_to_end_rustup`, `end_to_end_mise`) | Test | M | Low | None | Split into `TEST-001A` + `TEST-001B`; close parent when both child acceptance criteria pass. |
+| TEST-001A | Med | Test | `core/rust/crates/helm-core/tests/end_to_end_{mise,rustup}.rs` | Test | S | Low | None | `mise` and `rustup` orchestration suites include repeat/soak tests with explicit zero-failure budget constants and deterministic assertions. |
+| TEST-001B | Med | Test | timeout-sensitive orchestration execution lane/docs | Test | M | Low | None | A repeat-run execution target (CI lane or documented script) runs timeout-sensitive suites multiple times with explicit pass/fail budget reporting. |
 | TEST-002 | High | Test | manager lifecycle integration coverage (install/update/remove/pin) | Test | M | Med | None | Integration tests cover at least one manager in authoritative, standard, and guarded classes for install/update/remove behavior including idempotency assertions. |
 | TEST-003 | Med | Test | CLI non-interactive contract tests | Test | S | Low | None | Mixed-success `updates run` cases assert stable exit codes and JSON envelope schema; tests run in CI. |
 | TEST-004 | Med | Test | workflow contract tests for metadata convergence | Test | M | Low | REL-001, REL-002 | Split into `TEST-004A` + `TEST-004B`; close parent after both child acceptance criteria pass in CI. |
@@ -105,7 +112,9 @@ Notes:
 | MNT-001 | Med | Maintainability | `core/rust/crates/helm-cli/src/main.rs` | Refactor | M | Med | None | CLI command handlers are split by domain modules without behavior/contract changes; existing CLI tests remain green. |
 | MNT-002 | Med | Maintainability | `core/rust/crates/helm-ffi/src/lib.rs` | Refactor | M | Med | None | FFI high-frequency error keys are centralized (constants/typed enum mapping); repeated boilerplate paths use shared helpers; no behavior regressions. |
 | MNT-003 | Med | Maintainability | `core/rust/crates/helm-core/src/orchestration/adapter_runtime.rs` | Refactor | M | Med | None | Detect/refresh orchestration logic is decomposed into pure helpers with added unit tests for stage selection/reduction behavior. |
-| MNT-004 | Low | Maintainability | `apps/macos-ui/Helm/Core/HelmCore+{Fetching,Actions,Settings}.swift` | Refactor | M | Low | None | Shared decode/error handling wrappers reduce duplication in HelmCore extensions; Swift tests pass with unchanged UX behavior. |
+| MNT-004 | Low | Maintainability | `apps/macos-ui/Helm/Core/HelmCore+{Fetching,Actions,Settings}.swift` | Refactor | M | Low | None | Split into `MNT-004A` + `MNT-004B`; close parent when both child acceptance criteria pass. |
+| MNT-004A | Low | Maintainability | `apps/macos-ui/Helm/Core/HelmCore+Settings.swift` | Refactor | S | Low | None | Settings decode/error handling for JSON payloads is centralized through a shared helper for at least two call sites with no behavior change; app build remains green. |
+| MNT-004B | Low | Maintainability | `apps/macos-ui/Helm/Core/HelmCore+{Fetching,Actions}.swift` | Refactor | M | Low | None | Shared decode/error helper coverage is extended to additional HelmCore extensions without altering user-visible messages or error attribution behavior. |
 | MNT-005 | Low | Maintainability | coordinator transport separation from CLI command file | Refactor | L | Med | DEC-001 | Coordinator protocol/state-machine is isolated behind module boundary; command dispatch no longer owns transport internals; compatibility tests pass. |
 
 ## Blocked (Decision Required)

@@ -1,5 +1,36 @@
 # Remediation Log
 
+## 2026-02-25 — Batch `BUILD-005`, `TEST-001A`, `MNT-004A`
+
+### Scope
+
+- `BUILD-005`: add release-provenance manifest generation for CLI and DMG release workflows, upload manifests with release artifacts, and add provenance contract validation to `Release Contract Checks`.
+- `TEST-001A`: add repeat/soak coverage with explicit zero-failure budgets for timeout-sensitive orchestration suites (`end_to_end_mise`, `end_to_end_rustup`).
+- `MNT-004A`: centralize JSON decode/error handling in `HelmCore+Settings.swift` for shared settings payload decode paths (`listPackageKegPolicies`, `previewUpgradePlan`).
+
+### Verification
+
+Commands run:
+
+- `/Users/jasoncavinder/Projects/Helm/scripts/release/tests/provenance_manifest_contract.sh`
+- `ruby -e 'require "yaml"; %w[/Users/jasoncavinder/Projects/Helm/.github/workflows/release-cli-direct.yml /Users/jasoncavinder/Projects/Helm/.github/workflows/release-macos-dmg.yml /Users/jasoncavinder/Projects/Helm/.github/workflows/release-contract-checks.yml].each { |f| YAML.load_file(f); puts "#{f}: ok" }'`
+- `cargo test --manifest-path /Users/jasoncavinder/Projects/Helm/core/rust/Cargo.toml -p helm-core --test end_to_end_mise mise_timeout_sensitive_orchestration_soak_budget`
+- `cargo test --manifest-path /Users/jasoncavinder/Projects/Helm/core/rust/Cargo.toml -p helm-core --test end_to_end_rustup rustup_timeout_sensitive_orchestration_soak_budget`
+- `xcodebuild -project /Users/jasoncavinder/Projects/Helm/apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' -configuration Debug CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO build`
+
+Manual verification:
+
+- Confirmed release workflows now generate deterministic provenance manifests via `scripts/release/generate_provenance_manifest.sh` and include `provenance-<tag>.json` in workflow artifacts and GitHub release uploads.
+- Confirmed provenance contract coverage is now part of `release-contract-checks.yml`.
+- Confirmed new soak tests encode explicit flake budget constants (`TIMEOUT_SENSITIVE_SOAK_FAILURE_BUDGET = 0`) and pass for both `mise` and `rustup`.
+- Confirmed `HelmCore+Settings.swift` now reuses one decode/error helper while preserving source/action/task attribution keys and existing user-visible behavior.
+
+Remaining risks:
+
+- `BUILD-005` currently provides deterministic manifest provenance; signed attestations/SBOM publication remain future hardening work.
+- `TEST-001` parent remains open via follow-up `TEST-001B` (dedicated repeat-run execution lane/reporting target not yet implemented).
+- `MNT-004` parent remains open via follow-up `MNT-004B` (helper extraction not yet extended beyond settings extension).
+
 ## 2026-02-25 — Batch `PERF-001`, `TEST-004A`, `TEST-004B`
 
 ### Scope

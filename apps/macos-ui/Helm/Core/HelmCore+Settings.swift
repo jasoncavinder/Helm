@@ -364,32 +364,52 @@ extension HelmCore {
         }
     }
 
+    private func decodeSettingsPayload<T: Decodable>(
+        _ type: T.Type,
+        from data: Data,
+        decodeContext: String,
+        action: String,
+        managerId: String? = nil,
+        taskType: String
+    ) -> T? {
+        do {
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            return try decoder.decode(type, from: data)
+        } catch {
+            logger.error("\(decodeContext): decode failed (\(data.count) bytes): \(error)")
+            recordLastError(
+                source: "core.settings",
+                action: action,
+                managerId: managerId,
+                taskType: taskType
+            )
+            return nil
+        }
+    }
+
     // MARK: - Keg Policies
 
     func fetchPackageKegPolicies() {
         service()?.listPackageKegPolicies { [weak self] jsonString in
-            guard let jsonString = jsonString, let data = jsonString.data(using: .utf8) else { return }
-
-            do {
-                let decoder = JSONDecoder()
-                decoder.keyDecodingStrategy = .convertFromSnakeCase
-                let entries = try decoder.decode([CorePackageKegPolicy].self, from: data)
-
-                DispatchQueue.main.async {
-                    var overrides: [String: HomebrewKegPolicyOverride] = [:]
-                    for entry in entries where entry.managerId == "homebrew_formula" {
-                        overrides["\(entry.managerId):\(entry.packageName)"] = entry.policy
-                    }
-                    self?.packageKegPolicyOverrides = overrides
-                }
-            } catch {
-                logger.error("Failed to decode package keg policies: \(error)")
-                self?.recordLastError(
-                    source: "core.settings",
+            guard let self = self,
+                  let jsonString = jsonString,
+                  let data = jsonString.data(using: .utf8),
+                  let entries: [CorePackageKegPolicy] = self.decodeSettingsPayload(
+                    [CorePackageKegPolicy].self,
+                    from: data,
+                    decodeContext: "fetchPackageKegPolicies",
                     action: "listPackageKegPolicies.decode",
                     managerId: "homebrew_formula",
                     taskType: "settings"
-                )
+                  ) else { return }
+
+            DispatchQueue.main.async {
+                var overrides: [String: HomebrewKegPolicyOverride] = [:]
+                for entry in entries where entry.managerId == "homebrew_formula" {
+                    overrides["\(entry.managerId):\(entry.packageName)"] = entry.policy
+                }
+                self.packageKegPolicyOverrides = overrides
             }
         }
     }
@@ -497,27 +517,23 @@ extension HelmCore {
         }
         service.previewUpgradePlan(includePinned: includePinned, allowOsUpdates: allowOsUpdates) { [weak self] jsonString in
             guard let self = self else { return }
-            guard let jsonString, let data = jsonString.data(using: .utf8) else { return }
-
-            do {
-                let decoder = JSONDecoder()
-                decoder.keyDecodingStrategy = .convertFromSnakeCase
-                let steps = try decoder.decode([CoreUpgradePlanStep].self, from: data)
-                DispatchQueue.main.async {
-                    self.upgradePlanIncludePinned = includePinned
-                    self.upgradePlanAllowOsUpdates = allowOsUpdates
-                    self.upgradePlanSteps = steps.sorted { lhs, rhs in
-                        lhs.orderIndex < rhs.orderIndex
-                    }
-                    self.syncUpgradePlanProjection(from: self.latestCoreTasksSnapshot)
-                }
-            } catch {
-                logger.error("refreshUpgradePlan: decode failed (\(data.count) bytes): \(error)")
-                self.recordLastError(
-                    source: "core.settings",
+            guard let jsonString,
+                  let data = jsonString.data(using: .utf8),
+                  let steps: [CoreUpgradePlanStep] = self.decodeSettingsPayload(
+                    [CoreUpgradePlanStep].self,
+                    from: data,
+                    decodeContext: "refreshUpgradePlan",
                     action: "previewUpgradePlan.decode",
                     taskType: "upgrade"
-                )
+                  ) else { return }
+
+            DispatchQueue.main.async {
+                self.upgradePlanIncludePinned = includePinned
+                self.upgradePlanAllowOsUpdates = allowOsUpdates
+                self.upgradePlanSteps = steps.sorted { lhs, rhs in
+                    lhs.orderIndex < rhs.orderIndex
+                }
+                self.syncUpgradePlanProjection(from: self.latestCoreTasksSnapshot)
             }
         }
     }
