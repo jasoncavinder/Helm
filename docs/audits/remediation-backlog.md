@@ -22,6 +22,12 @@ Notes:
 - `SEC-001` — Done (`09b7e71`)
 - `COR-004` — Done (`4fc8a86`)
 - `COR-010` — Done (`PR: TBD`)
+- `REL-002` — Done (`b385593`)
+- `REL-005` — Done (`b8a60a2`)
+- `DOC-002` — Done (`f28ec00`)
+- `COR-009` — Done (`a8c9e13`)
+- `DOC-003` — Done (`17bb923`)
+- `DOC-004` — Done (`PR: TBD`, commit pending)
 
 ## Prioritized Backlog
 

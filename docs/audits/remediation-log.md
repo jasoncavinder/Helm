@@ -112,3 +112,61 @@ Remaining risks:
 
 - Operators relying on legacy implicit `HELM_SUDO_ASKPASS` override behavior must now explicitly opt in with `HELM_SUDO_ASKPASS_ALLOW_OVERRIDE=1`.
 - Homebrew error matching is string-based for known benign "already absent" signatures and may need extension if Homebrew changes phrasing.
+
+## 2026-02-25 — Batch `REL-002`, `REL-005`, `DOC-002`
+
+### Scope
+
+- `REL-002`: make release publish verification deterministic when publish PRs merge in different order.
+- `REL-005`: codify required-vs-advisory release check policy and enforce it in preflight ruleset validation.
+- `DOC-002`: define a canonical release-line source and enforce cross-surface copy drift checks.
+
+### Verification
+
+Commands run:
+
+- `scripts/release/tests/publish_verify_state_contract.sh`
+- `scripts/release/check_release_line_copy.sh`
+- `bash -n scripts/release/publish_verify_state.sh scripts/release/tests/publish_verify_state_contract.sh scripts/release/check_release_line_copy.sh scripts/release/preflight.sh`
+- `scripts/release/preflight.sh --allow-non-main --allow-dirty --no-fetch --skip-secrets --skip-workflows --skip-ruleset-policy`
+- `ruby -e 'require "yaml"; %w[.github/workflows/release-publish-verify.yml .github/workflows/release-contract-checks.yml].each { |f| YAML.load_file(f); puts "#{f}: ok" }'`
+
+Manual verification:
+
+- Confirmed `Release Publish Verify` now classifies stable metadata mismatch as follow-up-required (non-red) when matching open publish branch(es) exist for the target stable version.
+- Confirmed the workflow still fails hard on invalid/missing metadata and mismatch states that have no open publish PR counterpart.
+- Confirmed release preflight ruleset policy check now fails if advisory release monitors are configured as required branch checks.
+- Confirmed canonical release-line contract (`docs/contracts/release-line.json`) is validated against README/banner/docs via `scripts/release/check_release_line_copy.sh`.
+
+Remaining risks:
+
+- Pending-state detection keys off standard publish branch naming (`chore/publish-updates-*`, `chore/publish-cli-updates-*-stable`); manual nonstandard branch names will not be recognized as in-progress publication.
+- Release-line drift check currently validates the primary release-copy surfaces and should be expanded if additional canonical version callouts are added later.
+
+## 2026-02-25 — Batch `COR-009`, `DOC-003`, `DOC-004`
+
+### Scope
+
+- `COR-009`: define explicit non-support contract for `helm tasks follow` machine mode (`--json`/`--ndjson`) with stable exit-code marker and regression tests.
+- `DOC-003`: add a website content-id guard for guide routes and enforce it in Web Build CI.
+- `DOC-004`: formalize terminology contract (`manager`/`adapter`/`task`/`service`) in architecture docs and add checklist enforcement in PR review template.
+
+### Verification
+
+Commands run:
+
+- `cd core/rust && cargo test -p helm-cli tasks_follow_`
+- `cd core/rust && cargo fmt --all`
+- `cd web && npm run check:content-ids`
+- `cd web && npm run build`
+
+Manual verification:
+
+- Confirmed `tasks follow` now returns a marked exit-code contract (`1`) in machine mode with a stable non-support error message.
+- Confirmed CLI help text for `tasks`/`tasks follow` now explicitly documents machine-mode non-support and exit-code behavior.
+- Confirmed guide id validation passes and Web Build succeeds without duplicate-id warnings for `guides/faq`, `guides/installation`, and `guides/usage`.
+- Confirmed docs terminology guidance now explicitly distinguishes user-facing `manager`/`task`/`service` terms from internal `adapter` usage and is reflected in PR checklist review criteria.
+
+Remaining risks:
+
+- The guide-id guard validates source-id uniqueness at content-file level; runtime heading-id collisions inside rendered page content remain a separate class and are still best caught by full website builds.

@@ -53,6 +53,17 @@ Helm uses a **three-layer architecture**:
 
 ```
 
+### 2.1 Terminology Contract
+
+Use terms consistently across surfaces:
+
+- **Manager**: the user-facing package/tool ecosystem (`npm`, `homebrew_formula`, `rustup`, etc.).
+- **Adapter**: the internal Rust implementation for a manager.
+- **Task**: a queued/running operation (`refresh`, `install`, `upgrade`, `search`, etc.).
+- **Service (XPC)**: the background execution boundary between UI and Rust core.
+
+User-facing docs should prefer **manager**, **task**, and **service**. Use **adapter** in architecture/developer documentation only.
+
 ---
 
 ## 3. Layer Responsibilities
