@@ -1,5 +1,35 @@
 # Remediation Log
 
+## 2026-02-26 — Batch `TEST-008A`, `TEST-008B`, `TEST-008C`
+
+### Scope
+
+- `TEST-008A`: added `docs/operations/SPARKLE_RECOVERY_SCENARIOS.md` with a deterministic Sparkle interruption/recovery matrix, expected statuses/actions, and operator-observable signal keys.
+- `TEST-008B`: added fixture-driven recovery-decision contract coverage with:
+  - `scripts/release/sparkle_recovery_decision.sh`
+  - `scripts/release/tests/sparkle_recovery_contract.sh`
+  - `scripts/release/tests/fixtures/sparkle/*`
+- `TEST-008C`: added advisory scheduled/manual workflow `.github/workflows/sparkle-recovery-contracts.yml` to execute the Sparkle recovery contract suite, validate report schema, and upload logs/report artifacts.
+
+### Verification
+
+Commands run:
+
+- `bash -n scripts/release/sparkle_recovery_decision.sh scripts/release/tests/sparkle_recovery_contract.sh`
+- `scripts/release/tests/sparkle_recovery_contract.sh --report-path /tmp/helm-sparkle-recovery-contract-report.json`
+- `ruby -e 'require "yaml"; YAML.load_file(".github/workflows/sparkle-recovery-contracts.yml"); puts "sparkle-recovery-contracts.yml: ok"'`
+
+Manual verification:
+
+- Confirmed scenario matrix includes interrupted download/apply, stale appcast mismatch, invalid appcast metadata, and invalid update metadata/signature-style error handling with stable signal identifiers.
+- Confirmed contract suite emits deterministic status/action/signal fields per scenario and writes a machine-readable report when `--report-path` is provided.
+- Confirmed advisory workflow is isolated from release mutation paths and retains contract artifacts for failure triage.
+
+Remaining risks:
+
+- Contract suite is fixture-driven and does not exercise live Sparkle binary/runtime behavior; it validates decision-state contracts only.
+- Local shell continues emitting `LC_ALL=C.UTF-8` warnings in this environment; script behavior remains deterministic.
+
 ## 2026-02-26 — Batch `TEST-009A`, `TEST-009B`, `TEST-009C`
 
 ### Scope

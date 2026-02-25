@@ -1,0 +1,63 @@
+name: Sparkle Recovery Contracts
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 6 * * 2'
+
+jobs:
+  sparkle-recovery-contracts:
+    name: Sparkle Recovery Contracts (Advisory)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Run Sparkle recovery contract suite
+        env:
+          SPARKLE_RECOVERY_REPORT_PATH: ${{ runner.temp }}/sparkle-recovery-contract-report.json
+        run: |
+          set -euo pipefail
+          scripts/release/tests/sparkle_recovery_contract.sh \
+            --report-path "${SPARKLE_RECOVERY_REPORT_PATH}" \
+            | tee "${RUNNER_TEMP}/sparkle-recovery-contract.log"
+
+      - name: Validate Sparkle recovery report contract
+        env:
+          SPARKLE_RECOVERY_REPORT_PATH: ${{ runner.temp }}/sparkle-recovery-contract-report.json
+        run: |
+          python3 - "$SPARKLE_RECOVERY_REPORT_PATH" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          report_path = pathlib.Path(sys.argv[1])
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+          assert report.get("schema") == "helm.release.sparkle_recovery_contract_report"
+          assert report.get("schema_version") == 1
+          assert report.get("overall_status") == "passed"
+          scenarios = report.get("scenario_results") or []
+          assert len(scenarios) >= 5
+          required = {
+              "interrupted_download",
+              "interrupted_apply",
+              "stale_appcast_download",
+              "invalid_appcast_metadata",
+              "invalid_update_metadata",
+          }
+          got = {entry.get("scenario") for entry in scenarios}
+          assert required.issubset(got)
+          PY
+
+      - name: Upload Sparkle recovery contract artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sparkle-recovery-contract-artifacts
+          path: |
+            ${{ runner.temp }}/sparkle-recovery-contract.log
+            ${{ runner.temp }}/sparkle-recovery-contract-report.json
+          if-no-files-found: error
