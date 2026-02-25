@@ -85,3 +85,30 @@ Remaining risks:
 
 - Atomic swap is process-local and protects in-process readers from empty windows; it does not introduce cross-process coordination semantics (not required for this item).
 - Existing unrelated local workspace changes remain outside this batch and were intentionally not modified.
+
+## 2026-02-25 — Batch `SEC-001`, `COR-004`, `COR-010`
+
+### Scope
+
+- `SEC-001`: harden elevated askpass helper trust model and disable env override by default.
+- `COR-004`: treat known Homebrew "already absent" uninstall responses as idempotent success.
+- `COR-010`: make NDJSON top-level array splitting behavior explicit for nested-array payloads and lock it with tests/docs.
+
+### Verification
+
+Commands run:
+
+- `cd core/rust && cargo fmt --all`
+- `cd core/rust && cargo test -p helm-core`
+- `cd core/rust && cargo test -p helm-cli build_json_payload_lines_`
+
+Manual verification:
+
+- Confirmed elevated command preparation rejects relative/symlink/untrusted askpass paths and blocks `HELM_SUDO_ASKPASS` unless explicit opt-in (`HELM_SUDO_ASKPASS_ALLOW_OVERRIDE=1`) is present.
+- Confirmed Homebrew uninstall now returns mutation success for "No such keg"/already-absent cases while preserving hard failures for unrelated uninstall errors.
+- Confirmed NDJSON contract behavior remains top-level-array-only splitting, with nested arrays preserved per item and object-contained arrays kept in a single envelope.
+
+Remaining risks:
+
+- Operators relying on legacy implicit `HELM_SUDO_ASKPASS` override behavior must now explicitly opt in with `HELM_SUDO_ASKPASS_ALLOW_OVERRIDE=1`.
+- Homebrew error matching is string-based for known benign "already absent" signatures and may need extension if Homebrew changes phrasing.

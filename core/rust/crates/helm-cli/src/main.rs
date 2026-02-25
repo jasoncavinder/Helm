@@ -8538,14 +8538,24 @@ fn build_json_payload_lines(
         })
     };
 
-    if ndjson_mode && let serde_json::Value::Array(items) = data {
-        if items.is_empty() {
-            return vec![build(serde_json::Value::Array(Vec::new()))];
-        }
-        return items.into_iter().map(build).collect();
+    ndjson_payload_items(data, ndjson_mode)
+        .into_iter()
+        .map(build)
+        .collect()
+}
+
+fn ndjson_payload_items(data: serde_json::Value, ndjson_mode: bool) -> Vec<serde_json::Value> {
+    if !ndjson_mode {
+        return vec![data];
     }
 
-    vec![build(data)]
+    match data {
+        serde_json::Value::Array(items) if items.is_empty() => {
+            vec![serde_json::Value::Array(Vec::new())]
+        }
+        serde_json::Value::Array(items) => items,
+        other => vec![other],
+    }
 }
 
 async fn refresh_single_manager(
@@ -12056,6 +12066,31 @@ mod tests {
         );
         assert_eq!(payloads.len(), 1);
         assert_eq!(payloads[0]["data"], json!([{"id": 1}, {"id": 2}]));
+    }
+
+    #[test]
+    fn build_json_payload_lines_preserves_nested_array_items_in_ndjson_mode() {
+        let payloads = build_json_payload_lines(
+            "helm.cli.v1.test",
+            json!([[{"id": 1}], [{"id": 2}]]),
+            true,
+            123,
+        );
+        assert_eq!(payloads.len(), 2);
+        assert_eq!(payloads[0]["data"], json!([{"id": 1}]));
+        assert_eq!(payloads[1]["data"], json!([{"id": 2}]));
+    }
+
+    #[test]
+    fn build_json_payload_lines_does_not_split_nested_arrays_inside_objects() {
+        let payloads = build_json_payload_lines(
+            "helm.cli.v1.test",
+            json!({"items": [{"id": 1}, {"id": 2}]}),
+            true,
+            123,
+        );
+        assert_eq!(payloads.len(), 1);
+        assert_eq!(payloads[0]["data"]["items"], json!([{"id": 1}, {"id": 2}]));
     }
 
     #[test]

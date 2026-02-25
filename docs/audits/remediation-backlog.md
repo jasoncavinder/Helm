@@ -19,6 +19,9 @@ Notes:
 - `COR-002` — Done (`39b6b17`)
 - `TEST-003` — Done (`ff95ae2`)
 - `DOC-001` — Done (`ff95ae2`)
+- `SEC-001` — Done (`09b7e71`)
+- `COR-004` — Done (`4fc8a86`)
+- `COR-010` — Done (`PR: TBD`)
 
 ## Prioritized Backlog
 

@@ -69,7 +69,10 @@ This document is a contract-first specification. It clarifies identifiers, JSON 
 - JSON mode emits machine-oriented payloads only (no table formatting, no prose status text in `data`).
 - `--ndjson` emits newline-delimited JSON envelopes:
   - scalar/object payloads emit one line.
-  - list payloads emit one line per list item.
+  - top-level list payloads emit one line per list item.
+  - nested lists are not flattened:
+    - if a top-level item is itself a list, that list is emitted as-is in `data`.
+    - lists nested inside object fields stay inside a single envelope.
   - empty list payloads emit one line with `data: []` (never zero lines).
 - Future mutation commands that require confirmation must be explicit in non-interactive mode:
   - fail fast without required confirmation flags (for example `--yes`) rather than prompting.
