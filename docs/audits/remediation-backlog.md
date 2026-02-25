@@ -40,6 +40,9 @@ Notes:
 - `COR-008` — Done (`7414d6e`; split parent closed via `COR-008A` + `COR-008B`)
 - `REL-003` — Done (`7414d6e`)
 - `MNT-002` — Done (`7414d6e`)
+- `COR-001` — Done (`efdb904`)
+- `REL-001` — Done (`67a8ce9`)
+- `BUILD-001` — Done (`PR: TBD`)
 
 ## Prioritized Backlog
 
@@ -50,7 +53,7 @@ Notes:
 | SEC-003 | High | Security | `core/rust/crates/helm-core/src/execution/{tokio_process.rs,task_output_store.rs}`, `core/rust/crates/helm-ffi/src/lib.rs` | Hardening | L | Med | DEC-005 | Sensitive token patterns are redacted before persistence/exposure; diagnostics export/UI/CLI never surface raw secrets; redaction tests include auth headers/tokens/API keys. |
 | SEC-004 | High | Security | `scripts/release/build_unsigned_variant.sh` | Bugfix | S | Low | None | `TAG_NAME` is validated against release regex and canonicalized output paths are enforced under expected artifact roots; traversal attempts fail with explicit errors. |
 | SEC-005 | High | Security | `core/rust/crates/helm-cli/src/main.rs` (self-update fetch path) | Hardening | M | Med | None | Redirects are followed only with per-hop allowlist validation (or disabled by policy); final URL host must pass allowlist; integration tests cover redirect-to-disallowed-host rejection. |
-| COR-001 | High | Correctness | `core/rust/crates/helm-cli/src/main.rs` (`submit_refresh_request_response` / coordinator wait path) | Bugfix | M | Med | DEC-002 | Wait-timeout behavior matches documented policy (effective manager/global timeout with explicit ceiling decision); no hard-coded 60s cap mismatch; regression tests assert policy alignment. |
+| COR-001 | High | Correctness | `core/rust/crates/helm-core/src/orchestration/adapter_runtime.rs` (`submit_refresh_request_response` wait path) | Bugfix | M | Med | DEC-002 | Wait-timeout behavior matches documented policy (effective manager/global timeout with explicit ceiling decision); no hard-coded 60s cap mismatch; regression tests assert policy alignment. |
 | COR-002 | High | Correctness | manager override sync path in CLI/FFI runtime map updates | Bugfix | M | Med | None | Selected executable + timeout profile maps update via atomic swap; no clear-then-set empty window under concurrent submissions; concurrency regression test passes. |
 | REL-001 | High | Build/Release | `web/public/updates/{appcast.xml,cli/latest.json,cli/latest-rc.json}`, `.github/workflows/cli-update-drift.yml` | Bugfix | S | Low | DEC-004 | Published stable/prerelease metadata policy is explicit and implemented; drift guard is green for chosen policy state; metadata files exist/align as required. |
 | REL-002 | High | Build/Release | `.github/workflows/release-publish-verify.yml`, release publish sequencing | Hardening | M | Med | None | Publish verification is deterministic across PR merge order; no transient red runs during normal publish PR sequencing; added contract tests/simulated order scenarios pass. |

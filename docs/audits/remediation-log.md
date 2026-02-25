@@ -1,5 +1,36 @@
 # Remediation Log
 
+## 2026-02-26 — Batch `COR-001`, `REL-001`, `BUILD-001`
+
+### Scope
+
+- `COR-001`: replace fixed request-response wait timeout in refresh/search/detect flows with policy-derived timeout bounded by operation-class orchestration caps (`min(policy_timeout, orchestration_cap)`), and add regression coverage.
+- `REL-001`: make `CLI Update Metadata Drift Guard` branch-aware so publish-truth checks run only on `main`/`release/*`, and treat prerelease metadata pointer validation as optional unless `latest-rc.json` is present.
+- `BUILD-001`: complete phase-1 immutable SHA pinning for release/security workflows and document phased pin policy.
+
+### Verification
+
+Commands run:
+
+- `cargo fmt --manifest-path core/rust/Cargo.toml --all`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-core refresh_wait_timeout_`
+- `cargo test --manifest-path core/rust/Cargo.toml -p helm-core --test orchestration_adapter_runtime submit_refresh_request_response_retries_once_on_timeout`
+- `for f in .github/workflows/release-contract-checks.yml .github/workflows/appcast-drift.yml .github/workflows/dependency-security.yml .github/workflows/codeql.yml .github/workflows/semgrep.yml; do rg -n "^\\s*uses:" "$f"; done`
+- `rg -n "IS_PUBLISH_TRUTH_BRANCH|main\\|release/\\*|Prerelease metadata file not present|non-publish branch" .github/workflows/cli-update-drift.yml`
+
+Manual verification:
+
+- Confirmed refresh request-response waits now use task-class defaults with manager override support and enforce operation caps (Detection `120s`, Search `180s`, Refresh `300s`) with unit tests for default, below-cap, and above-cap behaviors.
+- Confirmed CLI metadata drift guard exits early on non-publish refs and no longer fails when prerelease tags exist but `latest-rc.json` is intentionally absent.
+- Confirmed release/security workflows now reference immutable SHAs for third-party actions in phase 1 scope (`release-contract-checks`, `appcast-drift`, `dependency-security`, `codeql`, `semgrep`).
+- Confirmed release docs now state branch truth policy and phased SHA pinning expectations.
+
+Remaining risks:
+
+- `COR-001` currently consumes manager hard-timeout overrides when present; if per-operation policy storage is expanded later, the timeout source should be refactored to avoid conflating operation classes with a single manager hard-timeout value.
+- `REL-001` keeps prerelease metadata optional by policy; if preview channel publication becomes mandatory later, drift guard behavior and docs will need to tighten accordingly.
+- `BUILD-001` phase 2/3 pinning is still pending for non-release/non-security workflows.
+
 ## 2026-02-26 — Batch `COR-008B`, `REL-003`, `MNT-002`
 
 ### Scope
