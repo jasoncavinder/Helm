@@ -70,6 +70,49 @@ async fn timeout_kills_long_running_process() {
 }
 
 #[tokio::test]
+async fn idle_timeout_kills_silent_long_running_process() {
+    let executor = TokioProcessExecutor;
+    let request = sleep_request()
+        .timeout(Duration::from_secs(10))
+        .idle_timeout(Duration::from_millis(120));
+
+    let handle = spawn_validated(&executor, request).expect("spawn should succeed");
+    let error = handle.wait().await.expect_err("should idle-timeout");
+
+    assert_eq!(error.kind, CoreErrorKind::Timeout);
+    assert_eq!(error.manager, Some(ManagerId::HomebrewFormula));
+    assert_eq!(error.task, Some(TaskType::Refresh));
+    assert_eq!(error.action, Some(ManagerAction::Refresh));
+    assert!(
+        error.message.contains("no output"),
+        "idle timeout should mention output inactivity, got: {}",
+        error.message
+    );
+}
+
+#[tokio::test]
+async fn idle_timeout_resets_when_process_is_emitting_output() {
+    let executor = TokioProcessExecutor;
+    let request = ProcessSpawnRequest::new(
+        ManagerId::HomebrewFormula,
+        TaskType::Refresh,
+        ManagerAction::Refresh,
+        CommandSpec::new("/bin/sh")
+            .args(["-c", "for i in 1 2 3 4; do echo tick; sleep 0.05; done"]),
+    )
+    .timeout(Duration::from_secs(10))
+    .idle_timeout(Duration::from_millis(120));
+
+    let handle = spawn_validated(&executor, request).expect("spawn should succeed");
+    let output = handle.wait().await.expect("wait should succeed");
+    assert_eq!(output.status, ProcessExitStatus::ExitCode(0));
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("tick"),
+        "expected process output to be captured"
+    );
+}
+
+#[tokio::test]
 async fn immediate_terminate_kills_process() {
     let executor = TokioProcessExecutor;
     let handle = spawn_validated(&executor, sleep_request()).expect("spawn should succeed");

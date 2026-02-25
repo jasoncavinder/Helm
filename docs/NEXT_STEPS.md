@@ -175,6 +175,11 @@ Current checkpoint:
     - diagnostics summary now reports failure-class counters for faster operator triage
     - coordinator health inspection now reports stale-state reasons and request timeout handling now performs one stale-state recovery retry
     - refresh/search request-response now retries once for transient timeout/network-resolution failures, and npm list timeout is now 120s
+  - post-`v0.17.6` manager execution/timeout hardening delivered on `dev`:
+    - selected executable overrides now prepend executable parent directories to process `PATH`, and npm/pnpm/yarn script selections now add node-runtime `bin` hints so constrained-shell refresh flows resolve `#!/usr/bin/env node` correctly
+    - process execution now uses activity-aware timeout semantics (hard timeout + output-idle timeout) so long-running commands that keep emitting output avoid false timeout failures
+    - timeout defaults are global by task type (not manager-specific hardcoding) and manager-specific tuning is now configurable via inspector hard/idle timeout controls with SQLite-backed persistence (`manager_preferences` migration v8)
+    - diagnostics surfaces now include process context (`program_path`, `PATH` snippet) and explicit timeout error codes (`hard_timeout`, `idle_timeout`) for faster root-cause classification
   - GitHub governance hardening delivered on `dev`:
     - branch rulesets now explicitly enforce `main`/`dev`/`docs`/`web` with branch-specific required checks
     - `Policy Gate` now validates PR base/head/scope policy for all protected branches
