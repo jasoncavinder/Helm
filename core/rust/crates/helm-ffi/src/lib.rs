@@ -140,7 +140,8 @@ use helm_core::execution::{
 use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
     Capability, DetectionInfo, HomebrewKegPolicy, ManagerAuthority, ManagerId, OutdatedPackage,
-    PackageRef, PinKind, PinRecord, SearchQuery, TaskId, TaskLogLevel, TaskStatus, TaskType,
+    PackageRef, PinKind, PinRecord, SearchQuery, TaskId, TaskLogLevel, TaskLogRecord, TaskStatus,
+    TaskType,
 };
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
 use helm_core::orchestration::{AdapterTaskTerminalState, CancellationMode};
@@ -3333,6 +3334,167 @@ struct FfiTaskLogRecord {
     created_at_unix: i64,
 }
 
+const DIAGNOSTICS_REDACTION_PLACEHOLDER: &str = "[REDACTED]";
+const DIAGNOSTICS_ALLOWED_ENV_KEYS: &[&str] = &[
+    "PATH", "PWD", "SHELL", "TERM", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TMP", "TEMP",
+];
+
+fn diagnostics_env_key_allowed(key: &str) -> bool {
+    DIAGNOSTICS_ALLOWED_ENV_KEYS
+        .iter()
+        .any(|allowed| key.eq_ignore_ascii_case(allowed))
+}
+
+fn looks_like_env_key(key: &str) -> bool {
+    let mut chars = key.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !(first.is_ascii_alphabetic() || first == '_') {
+        return false;
+    }
+    chars.all(|character| character.is_ascii_alphanumeric() || character == '_')
+}
+
+fn normalize_sensitive_key(raw: &str) -> Option<String> {
+    let trimmed = raw.trim_matches(|character: char| {
+        !(character.is_ascii_alphanumeric() || character == '_' || character == '-')
+    });
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.to_ascii_lowercase().replace('-', "_"))
+}
+
+fn is_sensitive_key_name(key: &str) -> bool {
+    key.contains("token")
+        || key.contains("secret")
+        || key.contains("password")
+        || key.contains("passwd")
+        || key.contains("api_key")
+        || key.contains("apikey")
+        || key.contains("auth")
+        || key.contains("cookie")
+        || key.contains("session")
+        || key.contains("license_key")
+        || key.contains("private_key")
+}
+
+fn redact_env_assignment_token(token: &str) -> Option<String> {
+    let (key, value) = token.split_once('=')?;
+    if value.is_empty() || !looks_like_env_key(key) {
+        return None;
+    }
+    if diagnostics_env_key_allowed(key) {
+        return Some(token.to_string());
+    }
+    Some(format!("{key}={DIAGNOSTICS_REDACTION_PLACEHOLDER}"))
+}
+
+fn redact_sensitive_pair_token(token: &str) -> Option<String> {
+    let (key, delimiter, value) = if let Some((key, value)) = token.split_once('=') {
+        (key, '=', value)
+    } else if let Some((key, value)) = token.split_once(':') {
+        (key, ':', value)
+    } else {
+        return None;
+    };
+    if value.is_empty() {
+        return None;
+    }
+    let normalized = normalize_sensitive_key(key)?;
+    if !is_sensitive_key_name(normalized.as_str()) {
+        return None;
+    }
+    Some(format!(
+        "{key}{delimiter}{DIAGNOSTICS_REDACTION_PLACEHOLDER}"
+    ))
+}
+
+fn redact_auth_header_line(line: &str) -> Option<String> {
+    let trimmed = line.trim_start();
+    let lowercase = trimmed.to_ascii_lowercase();
+    if !(lowercase.starts_with("authorization:") || lowercase.starts_with("proxy-authorization:")) {
+        return None;
+    }
+    let indent_len = line.len().saturating_sub(trimmed.len());
+    let indent = &line[..indent_len];
+    let header_name = trimmed
+        .split_once(':')
+        .map(|(name, _)| name)
+        .unwrap_or("Authorization");
+    Some(format!(
+        "{indent}{header_name}: {DIAGNOSTICS_REDACTION_PLACEHOLDER}"
+    ))
+}
+
+fn redact_diagnostics_text(value: &str) -> String {
+    let line_redacted = value
+        .lines()
+        .map(|line| redact_auth_header_line(line).unwrap_or_else(|| line.to_string()))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut rendered = String::with_capacity(line_redacted.len());
+    let mut token = String::new();
+    for character in line_redacted.chars() {
+        if character.is_whitespace() {
+            if !token.is_empty() {
+                let redacted = redact_env_assignment_token(token.as_str())
+                    .or_else(|| redact_sensitive_pair_token(token.as_str()))
+                    .unwrap_or_else(|| token.clone());
+                rendered.push_str(redacted.as_str());
+                token.clear();
+            }
+            rendered.push(character);
+            continue;
+        }
+        token.push(character);
+    }
+    if !token.is_empty() {
+        let redacted = redact_env_assignment_token(token.as_str())
+            .or_else(|| redact_sensitive_pair_token(token.as_str()))
+            .unwrap_or(token);
+        rendered.push_str(redacted.as_str());
+    }
+    if value.ends_with('\n') && !rendered.ends_with('\n') {
+        rendered.push('\n');
+    }
+    rendered
+}
+
+fn redact_diagnostics_optional(value: Option<String>) -> Option<String> {
+    value.map(|text| redact_diagnostics_text(text.as_str()))
+}
+
+fn build_ffi_task_output_record(task_id: TaskId) -> FfiTaskOutputRecord {
+    let output = helm_core::execution::task_output(task_id);
+    FfiTaskOutputRecord {
+        task_id,
+        command: redact_diagnostics_optional(
+            output.as_ref().and_then(|entry| entry.command.clone()),
+        ),
+        stdout: redact_diagnostics_optional(output.as_ref().and_then(|entry| entry.stdout.clone())),
+        stderr: redact_diagnostics_optional(output.as_ref().and_then(|entry| entry.stderr.clone())),
+    }
+}
+
+fn map_task_log_record(entry: TaskLogRecord) -> FfiTaskLogRecord {
+    FfiTaskLogRecord {
+        id: entry.id,
+        task_id: entry.task_id,
+        manager: entry.manager,
+        task_type: entry.task_type,
+        status: entry.status.map(task_status_str),
+        level: task_log_level_str(entry.level),
+        message: redact_diagnostics_text(entry.message.as_str()),
+        created_at_unix: entry
+            .created_at
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_secs() as i64)
+            .unwrap_or(0),
+    }
+}
+
 /// Return captured stdout/stderr for a task ID as JSON.
 ///
 /// Returns `null` only on serialization/allocation failure.
@@ -3343,14 +3505,7 @@ pub extern "C" fn helm_get_task_output(task_id: i64) -> *mut c_char {
     }
 
     let task_id = TaskId(task_id as u64);
-    let output = helm_core::execution::task_output(task_id);
-
-    let record = FfiTaskOutputRecord {
-        task_id,
-        command: output.as_ref().and_then(|entry| entry.command.clone()),
-        stdout: output.as_ref().and_then(|entry| entry.stdout.clone()),
-        stderr: output.as_ref().and_then(|entry| entry.stderr.clone()),
-    };
+    let record = build_ffi_task_output_record(task_id);
 
     let json = match serde_json::to_string(&record) {
         Ok(value) => value,
@@ -3389,23 +3544,7 @@ pub extern "C" fn helm_list_task_logs(task_id: i64, limit: i64) -> *mut c_char {
         }
     };
 
-    let payload: Vec<FfiTaskLogRecord> = entries
-        .into_iter()
-        .map(|entry| FfiTaskLogRecord {
-            id: entry.id,
-            task_id: entry.task_id,
-            manager: entry.manager,
-            task_type: entry.task_type,
-            status: entry.status.map(task_status_str),
-            level: task_log_level_str(entry.level),
-            message: entry.message,
-            created_at_unix: entry
-                .created_at
-                .duration_since(UNIX_EPOCH)
-                .map(|duration| duration.as_secs() as i64)
-                .unwrap_or(0),
-        })
-        .collect();
+    let payload: Vec<FfiTaskLogRecord> = entries.into_iter().map(map_task_log_record).collect();
 
     let json = match serde_json::to_string(&payload) {
         Ok(value) => value,
@@ -6205,8 +6344,8 @@ mod tests {
         PIP_SYSTEM_UNMANAGED_REASON_CODE, RUBYGEMS_SYSTEM_UNMANAGED_REASON_CODE,
     };
     use helm_core::models::{
-        DetectionInfo, ManagerId, OutdatedPackage, PackageRef, TaskId, TaskRecord, TaskStatus,
-        TaskType,
+        DetectionInfo, ManagerId, OutdatedPackage, PackageRef, TaskId, TaskLogRecord, TaskRecord,
+        TaskStatus, TaskType,
     };
     use helm_core::persistence::ManagerPreference;
     use std::collections::HashMap;
@@ -6862,6 +7001,86 @@ mod tests {
 
         let visible = build_visible_tasks(tasks, &labels);
         assert_eq!(visible.len(), 2);
+    }
+
+    #[test]
+    fn diagnostics_redaction_masks_non_allowlisted_env_assignments() {
+        let redacted = super::redact_diagnostics_text(
+            "PATH=/usr/bin API_TOKEN=abc123 TMPDIR=/tmp HELM_LICENSE_KEY=xyz",
+        );
+        assert!(redacted.contains("PATH=/usr/bin"));
+        assert!(redacted.contains("TMPDIR=/tmp"));
+        assert!(redacted.contains("API_TOKEN=[REDACTED]"));
+        assert!(redacted.contains("HELM_LICENSE_KEY=[REDACTED]"));
+        assert!(!redacted.contains("abc123"));
+        assert!(!redacted.contains("xyz"));
+    }
+
+    #[test]
+    fn diagnostics_redaction_masks_sensitive_key_pairs_and_auth_headers() {
+        let redacted = super::redact_diagnostics_text(
+            "authorization: Bearer token-value\npassword=hunter2 cookie:abc123",
+        );
+        assert!(redacted.contains("authorization: [REDACTED]"));
+        assert!(redacted.contains("password=[REDACTED]"));
+        assert!(redacted.contains("cookie:[REDACTED]"));
+        assert!(!redacted.contains("token-value"));
+        assert!(!redacted.contains("hunter2"));
+        assert!(!redacted.contains("abc123"));
+    }
+
+    #[test]
+    fn build_ffi_task_output_record_redacts_sensitive_fields_by_default() {
+        let task_id = TaskId(9_777_001);
+        helm_core::execution::task_output_store::record_context(
+            task_id,
+            Some("API_TOKEN=abc PATH=/usr/bin helm refresh"),
+            None,
+        );
+        helm_core::execution::task_output_store::append_stdout(
+            task_id,
+            b"authorization: Bearer abc123\nPATH=/usr/bin",
+        );
+        helm_core::execution::task_output_store::append_stderr(
+            task_id,
+            b"password=hunter2 TMPDIR=/tmp",
+        );
+
+        let record = super::build_ffi_task_output_record(task_id);
+        let command = record.command.expect("command should be present");
+        let stdout = record.stdout.expect("stdout should be present");
+        let stderr = record.stderr.expect("stderr should be present");
+
+        assert!(command.contains("API_TOKEN=[REDACTED]"));
+        assert!(command.contains("PATH=/usr/bin"));
+        assert!(!command.contains("API_TOKEN=abc"));
+
+        assert!(stdout.contains("authorization: [REDACTED]"));
+        assert!(stdout.contains("PATH=/usr/bin"));
+        assert!(!stdout.contains("Bearer abc123"));
+
+        assert!(stderr.contains("password=[REDACTED]"));
+        assert!(stderr.contains("TMPDIR=/tmp"));
+        assert!(!stderr.contains("hunter2"));
+    }
+
+    #[test]
+    fn map_task_log_record_redacts_sensitive_message_payloads() {
+        let mapped = super::map_task_log_record(TaskLogRecord {
+            id: 42,
+            task_id: TaskId(9_777_002),
+            manager: ManagerId::Npm,
+            task_type: TaskType::Refresh,
+            status: Some(TaskStatus::Failed),
+            level: helm_core::models::TaskLogLevel::Error,
+            message: "AUTH_TOKEN=abc123 PATH=/usr/bin".to_string(),
+            created_at: std::time::UNIX_EPOCH + std::time::Duration::from_secs(100),
+        });
+        assert_eq!(mapped.id, 42);
+        assert_eq!(mapped.level, "error");
+        assert!(mapped.message.contains("AUTH_TOKEN=[REDACTED]"));
+        assert!(mapped.message.contains("PATH=/usr/bin"));
+        assert!(!mapped.message.contains("abc123"));
     }
 
     #[test]
