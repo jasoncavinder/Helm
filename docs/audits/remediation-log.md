@@ -1,5 +1,39 @@
 # Remediation Log
 
+## 2026-02-26 — Batch `TEST-006A`, `TEST-006B`, `TEST-006C`
+
+### Scope
+
+- `TEST-006A`: added non-destructive manager smoke contract script and deterministic stubbed contract coverage:
+  - `scripts/tests/real_manager_smoke.sh`
+  - `scripts/tests/real_manager_smoke_contract.sh`
+- `TEST-006B`: added advisory canary workflow lane:
+  - `.github/workflows/real-manager-canary.yml`
+- `TEST-006C`: added operator runbook and release-ops cross-link:
+  - `docs/operations/REAL_MANAGER_CANARY.md`
+  - `docs/operations/CLI_RELEASE_AND_CI.md`
+
+### Verification
+
+Commands run:
+
+- `bash -n scripts/tests/real_manager_smoke.sh scripts/tests/real_manager_smoke_contract.sh`
+- `scripts/tests/real_manager_smoke_contract.sh`
+- `ruby -e 'require "yaml"; YAML.load_file(".github/workflows/real-manager-canary.yml"); puts "real-manager-canary.yml: ok"'`
+- `scripts/tests/real_manager_smoke.sh --report-path /tmp/helm-real-manager-smoke-report.json`
+
+Manual verification:
+
+- Confirmed smoke script reports per-probe pass/fail details and deterministic manager-group summary (`homebrew`, `node`, `python`, `ruby`) with exit `1` when any group fails.
+- Confirmed smoke report JSON schema (`helm.tests.real_manager_smoke_report`) includes manager and probe-level records suitable for CI artifact triage.
+- Confirmed canary workflow is advisory (manual/scheduled only), independent from PR merge-gating workflows, and uploads report/log artifacts.
+- Confirmed runbook documents prerequisites, local/CI invocation, and triage flow.
+
+Remaining risks:
+
+- Real-manager smoke results are environment-dependent by design; local run in this environment failed the Python manager group (`pip3` wrapper missing `realpath`), which is now visible in report output.
+- Local shell locale warnings (`LC_ALL=C.UTF-8`) are still present but non-blocking for contract execution.
+
 ## 2026-02-26 — Batch `TEST-008A`, `TEST-008B`, `TEST-008C`
 
 ### Scope
