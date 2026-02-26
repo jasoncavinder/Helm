@@ -337,6 +337,7 @@ static AUTO_CHECK_TICKER_STARTED: AtomicBool = AtomicBool::new(false);
 const COORDINATOR_REQUEST_TIMEOUT_SECS: u64 = 30;
 const COORDINATOR_POLL_SLEEP_MS: u64 = 25;
 const AUTO_CHECK_TICK_SECS: u64 = 30;
+#[cfg(any(test, target_os = "macos"))]
 const LEGACY_FILE_COORDINATOR_IPC_ENV: &str = "HELM_LEGACY_FILE_COORDINATOR_IPC";
 const DEFAULT_CLI_UPDATE_ENDPOINT: &str = "https://helmapp.dev/updates/cli/latest.json";
 const DEFAULT_INSTALL_MARKER_RELATIVE_PATH: &str = ".config/helm/install.json";
@@ -367,6 +368,7 @@ enum CoordinatorBridge {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CoordinatorBridgeMode {
+    #[cfg(any(test, target_os = "macos"))]
     LocalXpcPreferred,
     LegacyFileIpc,
 }
@@ -2053,6 +2055,7 @@ fn manager_selected_install_method(store: &SqliteStore, manager: ManagerId) -> O
     normalize_install_method(manager, preference.selected_install_method)
 }
 
+#[cfg(any(test, target_os = "macos"))]
 fn parse_legacy_file_coordinator_ipc_flag(value: Option<&str>) -> bool {
     matches!(
         value.map(|raw| raw.trim().to_ascii_lowercase()),
@@ -2061,6 +2064,7 @@ fn parse_legacy_file_coordinator_ipc_flag(value: Option<&str>) -> bool {
     )
 }
 
+#[cfg(any(test, target_os = "macos"))]
 fn legacy_file_coordinator_ipc_opt_in() -> bool {
     parse_legacy_file_coordinator_ipc_flag(
         std::env::var(LEGACY_FILE_COORDINATOR_IPC_ENV)
