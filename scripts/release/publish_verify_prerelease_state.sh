@@ -44,6 +44,18 @@ print_state() {
   printf 'MATCHING_HEADS=%s\n' "$matching"
 }
 
+join_csv() {
+  local result=""
+  local item
+  for item in "$@"; do
+    if [ -n "$result" ]; then
+      result+=","
+    fi
+    result+="$item"
+  done
+  printf '%s' "$result"
+}
+
 if [ -n "$RC_VERSION" ] && ! is_rc_semver "$RC_VERSION"; then
   print_state "invalid" "rc metadata version is not prerelease semver" "" ""
   exit 0
@@ -84,10 +96,9 @@ while IFS= read -r head; do
 done <<< "$OPEN_HEADS_RAW"
 
 if [ "${#MATCHING_HEADS[@]}" -gt 0 ]; then
-  IFS=,
-  print_state "pending" "prerelease metadata mismatch is pending open publish PR merge" "$TARGET_VERSION" "${MATCHING_HEADS[*]}"
+  MATCHING_HEADS_CSV="$(join_csv "${MATCHING_HEADS[@]}")"
+  print_state "pending" "prerelease metadata mismatch is pending open publish PR merge" "$TARGET_VERSION" "$MATCHING_HEADS_CSV"
   exit 0
 fi
 
 print_state "mismatch" "prerelease metadata mismatch has no open publish PR counterpart" "$TARGET_VERSION" ""
-

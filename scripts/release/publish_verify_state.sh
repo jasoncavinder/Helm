@@ -38,6 +38,18 @@ print_state() {
   printf 'MATCHING_HEADS=%s\n' "$matching"
 }
 
+join_csv() {
+  local result=""
+  local item
+  for item in "$@"; do
+    if [ -n "$result" ]; then
+      result+=","
+    fi
+    result+="$item"
+  done
+  printf '%s' "$result"
+}
+
 if ! is_semver "$APPCAST_VERSION"; then
   print_state "invalid" "appcast version is not stable semver" "" ""
   exit 0
@@ -74,10 +86,9 @@ while IFS= read -r head; do
 done <<< "$OPEN_HEADS_RAW"
 
 if [ "${#MATCHING_HEADS[@]}" -gt 0 ]; then
-  IFS=,
-  print_state "pending" "stable metadata mismatch is pending open publish PR merge" "$TARGET_VERSION" "${MATCHING_HEADS[*]}"
+  MATCHING_HEADS_CSV="$(join_csv "${MATCHING_HEADS[@]}")"
+  print_state "pending" "stable metadata mismatch is pending open publish PR merge" "$TARGET_VERSION" "$MATCHING_HEADS_CSV"
   exit 0
 fi
 
 print_state "mismatch" "stable metadata mismatch has no open publish PR counterpart" "$TARGET_VERSION" ""
-
