@@ -477,6 +477,7 @@ impl AppState {
                 failed_task_ids: Vec::new(),
                 undetected_enabled_managers: Vec::new(),
                 failure_classes: BTreeMap::new(),
+                failure_class_hints: BTreeMap::new(),
                 coordinator: super::CliCoordinatorHealthSummary {
                     state_dir: String::new(),
                     ready_file_present: false,
@@ -981,7 +982,7 @@ impl AppState {
         next
     }
 
-    fn maybe_dispatch_remote_search(&mut self) -> Result<(), String> {
+    fn maybe_dispatch_remote_search(&mut self, store: &SqliteStore) -> Result<(), String> {
         if self.section != Section::Packages {
             return Ok(());
         }
@@ -1020,6 +1021,7 @@ impl AppState {
 
         for manager in target_managers {
             let response = coordinator_submit_request(
+                store,
                 manager,
                 CoordinatorSubmitRequest::Search {
                     query: query.clone(),
@@ -1075,7 +1077,7 @@ pub(crate) fn run(store: Arc<SqliteStore>, no_color: bool, _quiet: bool) -> Resu
             let _ = app.reload(store.as_ref());
         }
         if !app.splash_visible {
-            let _ = app.maybe_dispatch_remote_search();
+            let _ = app.maybe_dispatch_remote_search(store.as_ref());
         }
 
         terminal
@@ -1302,7 +1304,11 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
             }
         }
         KeyCode::Char('r') => {
-            match coordinator_start_workflow(CoordinatorWorkflowRequest::RefreshAll) {
+            match coordinator_start_workflow(
+                store,
+                CoordinatorWorkflowRequest::RefreshAll,
+                ExecutionMode::Detach,
+            ) {
                 Ok(response) => {
                     let message = response
                         .job_id
@@ -1315,7 +1321,11 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
             }
         }
         KeyCode::Char('d') => {
-            match coordinator_start_workflow(CoordinatorWorkflowRequest::DetectAll) {
+            match coordinator_start_workflow(
+                store,
+                CoordinatorWorkflowRequest::DetectAll,
+                ExecutionMode::Detach,
+            ) {
                 Ok(response) => {
                     let message = response
                         .job_id
@@ -1458,6 +1468,7 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                 && let Ok(manager_id) = manager.manager_id.parse::<ManagerId>()
             {
                 match coordinator_submit_request(
+                    store,
                     manager_id,
                     CoordinatorSubmitRequest::Detect,
                     ExecutionMode::Wait,
@@ -1691,6 +1702,7 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
             package_name,
         } => {
             let response = coordinator_submit_request(
+                store,
                 manager,
                 CoordinatorSubmitRequest::Install {
                     package_name: package_name.clone(),
@@ -1710,6 +1722,7 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
             package_name,
         } => {
             let response = coordinator_submit_request(
+                store,
                 manager,
                 CoordinatorSubmitRequest::Upgrade {
                     package_name: Some(package_name.clone()),
@@ -1728,6 +1741,7 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
             package_name,
         } => {
             let response = coordinator_submit_request(
+                store,
                 manager,
                 CoordinatorSubmitRequest::Uninstall {
                     package_name: package_name.clone(),
@@ -1748,6 +1762,7 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
         } => {
             let response = if pinned {
                 coordinator_submit_request(
+                    store,
                     manager,
                     CoordinatorSubmitRequest::Unpin {
                         package_name: package_name.clone(),
@@ -1756,6 +1771,7 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
                 )?
             } else {
                 coordinator_submit_request(
+                    store,
                     manager,
                     CoordinatorSubmitRequest::Pin {
                         package_name: package_name.clone(),
@@ -1799,8 +1815,12 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
             let (target_manager, request) =
                 build_manager_mutation_request(store, manager, subcommand)?;
             let submit_request = adapter_request_to_coordinator_submit(request)?;
-            let response =
-                coordinator_submit_request(target_manager, submit_request, ExecutionMode::Wait)?;
+            let response = coordinator_submit_request(
+                store,
+                target_manager,
+                submit_request,
+                ExecutionMode::Wait,
+            )?;
             Ok(format!(
                 "Manager '{}' {} submitted via '{}' (task #{}).",
                 manager.as_str(),
@@ -1848,11 +1868,15 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
             allow_os_updates,
             manager_scope,
         } => {
-            let response = coordinator_start_workflow(CoordinatorWorkflowRequest::UpdatesRun {
-                include_pinned,
-                allow_os_updates,
-                manager_id: manager_scope.map(|manager| manager.as_str().to_string()),
-            })?;
+            let response = coordinator_start_workflow(
+                store,
+                CoordinatorWorkflowRequest::UpdatesRun {
+                    include_pinned,
+                    allow_os_updates,
+                    manager_id: manager_scope.map(|manager| manager.as_str().to_string()),
+                },
+                ExecutionMode::Detach,
+            )?;
             Ok(response
                 .job_id
                 .map(|job| format!("Upgrade workflow submitted (job {}).", job))
@@ -1869,7 +1893,11 @@ fn execute_palette_action(app: &mut AppState, store: &SqliteStore) -> Result<(),
         .unwrap_or(PaletteAction::RefreshAll);
     match action {
         PaletteAction::RefreshAll => {
-            let response = coordinator_start_workflow(CoordinatorWorkflowRequest::RefreshAll)?;
+            let response = coordinator_start_workflow(
+                store,
+                CoordinatorWorkflowRequest::RefreshAll,
+                ExecutionMode::Detach,
+            )?;
             app.note_success(
                 response
                     .job_id
@@ -1879,7 +1907,11 @@ fn execute_palette_action(app: &mut AppState, store: &SqliteStore) -> Result<(),
             app.reload(store)?;
         }
         PaletteAction::DetectAll => {
-            let response = coordinator_start_workflow(CoordinatorWorkflowRequest::DetectAll)?;
+            let response = coordinator_start_workflow(
+                store,
+                CoordinatorWorkflowRequest::DetectAll,
+                ExecutionMode::Detach,
+            )?;
             app.note_success(
                 response
                     .job_id

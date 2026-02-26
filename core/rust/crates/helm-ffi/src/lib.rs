@@ -59,8 +59,12 @@
 //! must free returned strings via [`helm_free_string`].
 
 use std::ffi::{CStr, CString};
+use std::fs::OpenOptions;
 use std::hash::{Hash, Hasher};
+use std::io::Write;
 use std::os::raw::c_char;
+#[cfg(unix)]
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -130,13 +134,14 @@ use helm_core::adapters::{
 };
 use helm_core::execution::tokio_process::TokioProcessExecutor;
 use helm_core::execution::{
-    ManagerTimeoutProfile, clear_manager_selected_executables, clear_manager_timeout_profiles,
-    set_manager_selected_executable, set_manager_timeout_profile,
+    ManagerTimeoutProfile, clear_manager_selected_executables,
+    replace_manager_execution_preferences,
 };
 use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
     Capability, DetectionInfo, HomebrewKegPolicy, ManagerAuthority, ManagerId, OutdatedPackage,
-    PackageRef, PinKind, PinRecord, SearchQuery, TaskId, TaskLogLevel, TaskStatus, TaskType,
+    PackageRef, PinKind, PinRecord, SearchQuery, TaskId, TaskLogLevel, TaskLogRecord, TaskStatus,
+    TaskType,
 };
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
 use helm_core::orchestration::{AdapterTaskTerminalState, CancellationMode};
@@ -168,6 +173,11 @@ lazy_static! {
 }
 
 const LOCK_POISONED_ERROR_KEY: &str = "error.ffi.lock_poisoned";
+const SERVICE_ERROR_INVALID_INPUT: &str = "service.error.invalid_input";
+const SERVICE_ERROR_INTERNAL: &str = "service.error.internal";
+const SERVICE_ERROR_PROCESS_FAILURE: &str = "service.error.process_failure";
+const SERVICE_ERROR_STORAGE_FAILURE: &str = "service.error.storage_failure";
+const SERVICE_ERROR_UNSUPPORTED_CAPABILITY: &str = "service.error.unsupported_capability";
 
 fn note_lock_poisoned(context: &str) {
     eprintln!("helm-ffi: recovering from poisoned mutex: {context}");
@@ -202,6 +212,17 @@ fn return_error_bool(error_key: &str) -> bool {
 fn return_error_i64(error_key: &str) -> i64 {
     set_last_error_key(error_key);
     -1
+}
+
+fn log_manager_operation_failure(
+    operation: &'static str,
+    manager: ManagerId,
+    error: &(impl std::fmt::Display + ?Sized),
+) {
+    eprintln!(
+        "helm-ffi: operation={operation} manager={} error={error}",
+        manager.as_str()
+    );
 }
 
 fn manager_display_name(id: ManagerId) -> &'static str {
@@ -287,6 +308,8 @@ struct FfiManagerStatus {
     executable_paths: Vec<String>,
     default_executable_path: Option<String>,
     selected_executable_path: Option<String>,
+    selected_executable_differs_from_default: bool,
+    executable_path_diagnostic: String,
     selected_install_method: Option<String>,
     timeout_hard_seconds: Option<u64>,
     timeout_idle_seconds: Option<u64>,
@@ -309,10 +332,13 @@ static EXECUTABLE_DISCOVERY_CACHE: OnceLock<
 > = OnceLock::new();
 static COORDINATOR_REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
 static COORDINATOR_SERVER_STARTED: AtomicBool = AtomicBool::new(false);
+static AUTO_CHECK_TICKER_STARTED: AtomicBool = AtomicBool::new(false);
 
 const COORDINATOR_REQUEST_TIMEOUT_SECS: u64 = 30;
 const COORDINATOR_POLL_SLEEP_MS: u64 = 25;
 const AUTO_CHECK_TICK_SECS: u64 = 30;
+#[cfg(any(test, target_os = "macos"))]
+const LEGACY_FILE_COORDINATOR_IPC_ENV: &str = "HELM_LEGACY_FILE_COORDINATOR_IPC";
 const DEFAULT_CLI_UPDATE_ENDPOINT: &str = "https://helmapp.dev/updates/cli/latest.json";
 const DEFAULT_INSTALL_MARKER_RELATIVE_PATH: &str = ".config/helm/install.json";
 const AUTO_CHECK_ALLOW_INSECURE_ENV: &str = "HELM_CLI_ALLOW_INSECURE_UPDATE_URLS";
@@ -338,6 +364,13 @@ enum CoordinatorBridge {
     Disabled,
     Local,
     External(PathBuf),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CoordinatorBridgeMode {
+    #[cfg(any(test, target_os = "macos"))]
+    LocalXpcPreferred,
+    LegacyFileIpc,
 }
 
 lazy_static! {
@@ -476,6 +509,69 @@ fn next_coordinator_request_id() -> String {
     format!("{}-{nanos}-{counter}", std::process::id())
 }
 
+#[cfg(unix)]
+fn set_private_directory_permissions(path: &Path) -> Result<(), String> {
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).map_err(|error| {
+        format!(
+            "failed to set private directory permissions on '{}': {error}",
+            path.display()
+        )
+    })
+}
+
+fn ensure_private_directory(path: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(path).map_err(|error| {
+        format!(
+            "failed to create coordinator directory '{}': {error}",
+            path.display()
+        )
+    })?;
+    #[cfg(unix)]
+    {
+        set_private_directory_permissions(path)?;
+    }
+    Ok(())
+}
+
+fn write_private_json_temp_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(path)
+            .map_err(|error| {
+                format!(
+                    "failed to create private temp json file '{}': {error}",
+                    path.display()
+                )
+            })?;
+        file.write_all(bytes).map_err(|error| {
+            format!(
+                "failed to write private temp json file '{}': {error}",
+                path.display()
+            )
+        })?;
+        file.sync_all().map_err(|error| {
+            format!(
+                "failed to flush private temp json file '{}': {error}",
+                path.display()
+            )
+        })?;
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(path, bytes).map_err(|error| {
+            format!(
+                "failed to write temp json file '{}': {error}",
+                path.display()
+            )
+        })
+    }
+}
+
 fn write_json_file<T: serde::Serialize>(path: &Path, value: &T) -> Result<(), String> {
     let rendered = serde_json::to_vec(value)
         .map_err(|error| format!("failed to encode json file '{}': {error}", path.display()))?;
@@ -488,12 +584,7 @@ fn write_json_file<T: serde::Serialize>(path: &Path, value: &T) -> Result<(), St
         COORDINATOR_REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed)
     );
     let temp_path = path.with_file_name(temp_name);
-    std::fs::write(&temp_path, rendered).map_err(|error| {
-        format!(
-            "failed to write temp json file '{}': {error}",
-            temp_path.display()
-        )
-    })?;
+    write_private_json_temp_file(temp_path.as_path(), rendered.as_slice())?;
     std::fs::rename(&temp_path, path).map_err(|error| {
         format!(
             "failed to move temp json file '{}' into '{}': {error}",
@@ -841,6 +932,29 @@ fn resolve_selected_executable_path(
     default_path
 }
 
+fn selected_executable_differs_from_default(
+    default_path: Option<&str>,
+    selected_path: Option<&str>,
+) -> bool {
+    matches!(
+        (default_path, selected_path),
+        (Some(default), Some(selected)) if default != selected
+    )
+}
+
+fn manager_executable_path_diagnostic(
+    default_path: Option<&str>,
+    selected_path: Option<&str>,
+) -> &'static str {
+    match (default_path, selected_path) {
+        (Some(default), Some(selected)) if default == selected => "aligned",
+        (Some(_), Some(_)) => "diverged",
+        (None, Some(_)) => "selected_only",
+        (Some(_), None) => "default_only",
+        (None, None) => "unresolved",
+    }
+}
+
 fn resolved_manager_selected_executable_path(
     manager: ManagerId,
     detection_map: &std::collections::HashMap<ManagerId, DetectionInfo>,
@@ -860,11 +974,15 @@ fn sync_manager_executable_overrides(
     detection_map: &std::collections::HashMap<ManagerId, DetectionInfo>,
     pref_map: &std::collections::HashMap<ManagerId, ManagerPreference>,
 ) {
-    clear_manager_selected_executables();
-    clear_manager_timeout_profiles();
+    let mut executable_overrides: std::collections::HashMap<ManagerId, std::path::PathBuf> =
+        std::collections::HashMap::new();
+    let mut timeout_profiles: std::collections::HashMap<ManagerId, ManagerTimeoutProfile> =
+        std::collections::HashMap::new();
     for manager in ManagerId::ALL {
         let selected = resolved_manager_selected_executable_path(manager, detection_map, pref_map);
-        set_manager_selected_executable(manager, selected.map(std::path::PathBuf::from));
+        if let Some(path) = selected {
+            executable_overrides.insert(manager, std::path::PathBuf::from(path));
+        }
         let hard_timeout = pref_map
             .get(&manager)
             .and_then(|preference| preference.timeout_hard_seconds)
@@ -875,14 +993,15 @@ fn sync_manager_executable_overrides(
             .and_then(|preference| preference.timeout_idle_seconds)
             .filter(|value| *value > 0)
             .map(Duration::from_secs);
-        set_manager_timeout_profile(
-            manager,
-            ManagerTimeoutProfile {
-                hard_timeout,
-                idle_timeout,
-            },
-        );
+        let profile = ManagerTimeoutProfile {
+            hard_timeout,
+            idle_timeout,
+        };
+        if profile.hard_timeout.is_some() || profile.idle_timeout.is_some() {
+            timeout_profiles.insert(manager, profile);
+        }
     }
+    replace_manager_execution_preferences(executable_overrides, timeout_profiles);
 }
 
 fn build_manager_statuses(
@@ -934,6 +1053,15 @@ fn build_manager_statuses(
             let default_executable_path = default_manager_executable_path(id, &executable_paths);
             let selected_executable_path =
                 resolved_manager_selected_executable_path(id, detection_map, pref_map);
+            let selected_executable_differs_from_default = selected_executable_differs_from_default(
+                default_executable_path.as_deref(),
+                selected_executable_path.as_deref(),
+            );
+            let executable_path_diagnostic = manager_executable_path_diagnostic(
+                default_executable_path.as_deref(),
+                selected_executable_path.as_deref(),
+            )
+            .to_string();
             let eligibility = manager_enablement_eligibility(
                 id,
                 selected_executable_path
@@ -967,6 +1095,8 @@ fn build_manager_statuses(
                 executable_paths,
                 default_executable_path,
                 selected_executable_path,
+                selected_executable_differs_from_default,
+                executable_path_diagnostic,
                 selected_install_method,
                 timeout_hard_seconds,
                 timeout_idle_seconds,
@@ -1348,6 +1478,24 @@ fn manager_is_enabled(
     enabled_by_manager.get(&manager).copied().unwrap_or(true)
 }
 
+fn has_recent_refresh_or_detection(
+    store: &SqliteStore,
+    enabled_by_manager: &std::collections::HashMap<ManagerId, bool>,
+) -> bool {
+    store
+        .list_recent_tasks(TASK_RECENT_FETCH_LIMIT)
+        .ok()
+        .map(|tasks| {
+            tasks.into_iter().any(|task| {
+                manager_is_enabled(enabled_by_manager, task.manager)
+                    && is_inflight_status(task.status)
+                    && is_recent_inflight_task(&task)
+                    && matches!(task.task_type, TaskType::Refresh | TaskType::Detection)
+            })
+        })
+        .unwrap_or(false)
+}
+
 fn preseed_presence_detections(
     store: &SqliteStore,
     runtime: &AdapterRuntime,
@@ -1404,7 +1552,7 @@ fn queue_remote_search_task(
     query: &str,
 ) -> Result<helm_core::models::TaskId, &'static str> {
     if !can_submit_remote_search(runtime, manager) {
-        return Err("service.error.unsupported_capability");
+        return Err(SERVICE_ERROR_UNSUPPORTED_CAPABILITY);
     }
 
     let label_key = search_label_key_for_query(query);
@@ -1439,7 +1587,7 @@ fn queue_remote_search_task(
                 query.trim(),
                 error
             );
-            Err("service.error.process_failure")
+            Err(SERVICE_ERROR_PROCESS_FAILURE)
         }
     }
 }
@@ -1907,29 +2055,83 @@ fn manager_selected_install_method(store: &SqliteStore, manager: ManagerId) -> O
     normalize_install_method(manager, preference.selected_install_method)
 }
 
+#[cfg(any(test, target_os = "macos"))]
+fn parse_legacy_file_coordinator_ipc_flag(value: Option<&str>) -> bool {
+    matches!(
+        value.map(|raw| raw.trim().to_ascii_lowercase()),
+        Some(normalized)
+            if matches!(normalized.as_str(), "1" | "true" | "yes" | "on")
+    )
+}
+
+#[cfg(any(test, target_os = "macos"))]
+fn legacy_file_coordinator_ipc_opt_in() -> bool {
+    parse_legacy_file_coordinator_ipc_flag(
+        std::env::var(LEGACY_FILE_COORDINATOR_IPC_ENV)
+            .ok()
+            .as_deref(),
+    )
+}
+
+fn coordinator_bridge_mode() -> CoordinatorBridgeMode {
+    #[cfg(target_os = "macos")]
+    {
+        if legacy_file_coordinator_ipc_opt_in() {
+            CoordinatorBridgeMode::LegacyFileIpc
+        } else {
+            CoordinatorBridgeMode::LocalXpcPreferred
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        CoordinatorBridgeMode::LegacyFileIpc
+    }
+}
+
+fn should_use_external_file_coordinator_with_health(
+    mode: CoordinatorBridgeMode,
+    external_ready: bool,
+) -> bool {
+    mode == CoordinatorBridgeMode::LegacyFileIpc && external_ready
+}
+
+fn should_use_external_file_coordinator(mode: CoordinatorBridgeMode, state_dir: &Path) -> bool {
+    should_use_external_file_coordinator_with_health(mode, coordinator_ready(state_dir))
+}
+
 fn initialize_coordinator_bridge(
     store: Arc<SqliteStore>,
     runtime: Arc<AdapterRuntime>,
     rt_handle: tokio::runtime::Handle,
 ) {
     let state_dir = coordinator_socket_path_for_store(store.as_ref());
-    if coordinator_ready(state_dir.as_path()) {
+    let bridge_mode = coordinator_bridge_mode();
+
+    if should_use_external_file_coordinator(bridge_mode, state_dir.as_path()) {
         *lock_or_recover(&COORDINATOR_BRIDGE, "coordinator_bridge") =
             CoordinatorBridge::External(state_dir);
         return;
     }
 
-    if COORDINATOR_SERVER_STARTED
+    if bridge_mode == CoordinatorBridgeMode::LegacyFileIpc {
+        if COORDINATOR_SERVER_STARTED
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+        {
+            start_local_coordinator_server(
+                state_dir.clone(),
+                store.clone(),
+                runtime.clone(),
+                rt_handle.clone(),
+            );
+        }
+    } else if AUTO_CHECK_TICKER_STARTED
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .is_ok()
     {
-        start_local_coordinator_server(
-            state_dir.clone(),
-            store.clone(),
-            runtime.clone(),
-            rt_handle.clone(),
-        );
+        start_local_auto_check_ticker(store.clone());
     }
+
     *lock_or_recover(&COORDINATOR_BRIDGE, "coordinator_bridge") = CoordinatorBridge::Local;
 }
 
@@ -2149,6 +2351,19 @@ fn run_due_auto_check_tick(store: &SqliteStore) {
     }
 }
 
+fn start_local_auto_check_ticker(store: Arc<SqliteStore>) {
+    thread::spawn(move || {
+        let mut next_auto_check_tick = Instant::now();
+        loop {
+            if Instant::now() >= next_auto_check_tick {
+                run_due_auto_check_tick(store.as_ref());
+                next_auto_check_tick = Instant::now() + Duration::from_secs(AUTO_CHECK_TICK_SECS);
+            }
+            thread::sleep(Duration::from_millis(COORDINATOR_POLL_SLEEP_MS));
+        }
+    });
+}
+
 fn start_local_coordinator_server(
     state_dir: PathBuf,
     store: Arc<SqliteStore>,
@@ -2242,18 +2457,9 @@ fn reset_coordinator_state_dir(state_dir: &Path) -> Result<(), String> {
             )
         })?;
     }
-    std::fs::create_dir_all(coordinator_requests_dir(state_dir).as_path()).map_err(|error| {
-        format!(
-            "failed to create coordinator requests directory '{}': {error}",
-            coordinator_requests_dir(state_dir).display()
-        )
-    })?;
-    std::fs::create_dir_all(coordinator_responses_dir(state_dir).as_path()).map_err(|error| {
-        format!(
-            "failed to create coordinator responses directory '{}': {error}",
-            coordinator_responses_dir(state_dir).display()
-        )
-    })?;
+    ensure_private_directory(state_dir)?;
+    ensure_private_directory(coordinator_requests_dir(state_dir).as_path())?;
+    ensure_private_directory(coordinator_responses_dir(state_dir).as_path())?;
     Ok(())
 }
 
@@ -3115,6 +3321,16 @@ pub extern "C" fn helm_list_tasks() -> *mut c_char {
 struct FfiTaskOutputRecord {
     task_id: TaskId,
     command: Option<String>,
+    cwd: Option<String>,
+    program_path: Option<String>,
+    path_snippet: Option<String>,
+    started_at_unix_ms: Option<i64>,
+    finished_at_unix_ms: Option<i64>,
+    duration_ms: Option<u64>,
+    exit_code: Option<i32>,
+    termination_reason: Option<String>,
+    error_code: Option<String>,
+    error_message: Option<String>,
     stdout: Option<String>,
     stderr: Option<String>,
 }
@@ -3132,6 +3348,187 @@ struct FfiTaskLogRecord {
     created_at_unix: i64,
 }
 
+const DIAGNOSTICS_REDACTION_PLACEHOLDER: &str = "[REDACTED]";
+const DIAGNOSTICS_ALLOWED_ENV_KEYS: &[&str] = &[
+    "PATH", "PWD", "SHELL", "TERM", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TMP", "TEMP",
+];
+
+fn diagnostics_env_key_allowed(key: &str) -> bool {
+    DIAGNOSTICS_ALLOWED_ENV_KEYS
+        .iter()
+        .any(|allowed| key.eq_ignore_ascii_case(allowed))
+}
+
+fn looks_like_env_key(key: &str) -> bool {
+    let mut chars = key.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !(first.is_ascii_alphabetic() || first == '_') {
+        return false;
+    }
+    chars.all(|character| character.is_ascii_alphanumeric() || character == '_')
+}
+
+fn normalize_sensitive_key(raw: &str) -> Option<String> {
+    let trimmed = raw.trim_matches(|character: char| {
+        !(character.is_ascii_alphanumeric() || character == '_' || character == '-')
+    });
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.to_ascii_lowercase().replace('-', "_"))
+}
+
+fn is_sensitive_key_name(key: &str) -> bool {
+    key.contains("token")
+        || key.contains("secret")
+        || key.contains("password")
+        || key.contains("passwd")
+        || key.contains("api_key")
+        || key.contains("apikey")
+        || key.contains("auth")
+        || key.contains("cookie")
+        || key.contains("session")
+        || key.contains("license_key")
+        || key.contains("private_key")
+}
+
+fn redact_env_assignment_token(token: &str) -> Option<String> {
+    let (key, value) = token.split_once('=')?;
+    if value.is_empty() || !looks_like_env_key(key) {
+        return None;
+    }
+    if diagnostics_env_key_allowed(key) {
+        return Some(token.to_string());
+    }
+    Some(format!("{key}={DIAGNOSTICS_REDACTION_PLACEHOLDER}"))
+}
+
+fn redact_sensitive_pair_token(token: &str) -> Option<String> {
+    let (key, delimiter, value) = if let Some((key, value)) = token.split_once('=') {
+        (key, '=', value)
+    } else if let Some((key, value)) = token.split_once(':') {
+        (key, ':', value)
+    } else {
+        return None;
+    };
+    if value.is_empty() {
+        return None;
+    }
+    let normalized = normalize_sensitive_key(key)?;
+    if !is_sensitive_key_name(normalized.as_str()) {
+        return None;
+    }
+    Some(format!(
+        "{key}{delimiter}{DIAGNOSTICS_REDACTION_PLACEHOLDER}"
+    ))
+}
+
+fn redact_auth_header_line(line: &str) -> Option<String> {
+    let trimmed = line.trim_start();
+    let lowercase = trimmed.to_ascii_lowercase();
+    if !(lowercase.starts_with("authorization:") || lowercase.starts_with("proxy-authorization:")) {
+        return None;
+    }
+    let indent_len = line.len().saturating_sub(trimmed.len());
+    let indent = &line[..indent_len];
+    let header_name = trimmed
+        .split_once(':')
+        .map(|(name, _)| name)
+        .unwrap_or("Authorization");
+    Some(format!(
+        "{indent}{header_name}: {DIAGNOSTICS_REDACTION_PLACEHOLDER}"
+    ))
+}
+
+fn redact_diagnostics_text(value: &str) -> String {
+    let line_redacted = value
+        .lines()
+        .map(|line| redact_auth_header_line(line).unwrap_or_else(|| line.to_string()))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut rendered = String::with_capacity(line_redacted.len());
+    let mut token = String::new();
+    for character in line_redacted.chars() {
+        if character.is_whitespace() {
+            if !token.is_empty() {
+                let redacted = redact_env_assignment_token(token.as_str())
+                    .or_else(|| redact_sensitive_pair_token(token.as_str()))
+                    .unwrap_or_else(|| token.clone());
+                rendered.push_str(redacted.as_str());
+                token.clear();
+            }
+            rendered.push(character);
+            continue;
+        }
+        token.push(character);
+    }
+    if !token.is_empty() {
+        let redacted = redact_env_assignment_token(token.as_str())
+            .or_else(|| redact_sensitive_pair_token(token.as_str()))
+            .unwrap_or(token);
+        rendered.push_str(redacted.as_str());
+    }
+    if value.ends_with('\n') && !rendered.ends_with('\n') {
+        rendered.push('\n');
+    }
+    rendered
+}
+
+fn redact_diagnostics_optional(value: Option<String>) -> Option<String> {
+    value.map(|text| redact_diagnostics_text(text.as_str()))
+}
+
+fn build_ffi_task_output_record(task_id: TaskId) -> FfiTaskOutputRecord {
+    let output = helm_core::execution::task_output(task_id);
+    FfiTaskOutputRecord {
+        task_id,
+        command: redact_diagnostics_optional(
+            output.as_ref().and_then(|entry| entry.command.clone()),
+        ),
+        cwd: redact_diagnostics_optional(output.as_ref().and_then(|entry| entry.cwd.clone())),
+        program_path: redact_diagnostics_optional(
+            output.as_ref().and_then(|entry| entry.program_path.clone()),
+        ),
+        path_snippet: redact_diagnostics_optional(
+            output.as_ref().and_then(|entry| entry.path_snippet.clone()),
+        ),
+        started_at_unix_ms: output.as_ref().and_then(|entry| entry.started_at_unix_ms),
+        finished_at_unix_ms: output.as_ref().and_then(|entry| entry.finished_at_unix_ms),
+        duration_ms: output.as_ref().and_then(|entry| entry.duration_ms),
+        exit_code: output.as_ref().and_then(|entry| entry.exit_code),
+        termination_reason: output
+            .as_ref()
+            .and_then(|entry| entry.termination_reason.clone()),
+        error_code: output.as_ref().and_then(|entry| entry.error_code.clone()),
+        error_message: redact_diagnostics_optional(
+            output
+                .as_ref()
+                .and_then(|entry| entry.error_message.clone()),
+        ),
+        stdout: redact_diagnostics_optional(output.as_ref().and_then(|entry| entry.stdout.clone())),
+        stderr: redact_diagnostics_optional(output.as_ref().and_then(|entry| entry.stderr.clone())),
+    }
+}
+
+fn map_task_log_record(entry: TaskLogRecord) -> FfiTaskLogRecord {
+    FfiTaskLogRecord {
+        id: entry.id,
+        task_id: entry.task_id,
+        manager: entry.manager,
+        task_type: entry.task_type,
+        status: entry.status.map(task_status_str),
+        level: task_log_level_str(entry.level),
+        message: redact_diagnostics_text(entry.message.as_str()),
+        created_at_unix: entry
+            .created_at
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_secs() as i64)
+            .unwrap_or(0),
+    }
+}
+
 /// Return captured stdout/stderr for a task ID as JSON.
 ///
 /// Returns `null` only on serialization/allocation failure.
@@ -3142,14 +3539,7 @@ pub extern "C" fn helm_get_task_output(task_id: i64) -> *mut c_char {
     }
 
     let task_id = TaskId(task_id as u64);
-    let output = helm_core::execution::task_output(task_id);
-
-    let record = FfiTaskOutputRecord {
-        task_id,
-        command: output.as_ref().and_then(|entry| entry.command.clone()),
-        stdout: output.as_ref().and_then(|entry| entry.stdout.clone()),
-        stderr: output.as_ref().and_then(|entry| entry.stderr.clone()),
-    };
+    let record = build_ffi_task_output_record(task_id);
 
     let json = match serde_json::to_string(&record) {
         Ok(value) => value,
@@ -3188,23 +3578,7 @@ pub extern "C" fn helm_list_task_logs(task_id: i64, limit: i64) -> *mut c_char {
         }
     };
 
-    let payload: Vec<FfiTaskLogRecord> = entries
-        .into_iter()
-        .map(|entry| FfiTaskLogRecord {
-            id: entry.id,
-            task_id: entry.task_id,
-            manager: entry.manager,
-            task_type: entry.task_type,
-            status: entry.status.map(task_status_str),
-            level: task_log_level_str(entry.level),
-            message: entry.message,
-            created_at_unix: entry
-                .created_at
-                .duration_since(UNIX_EPOCH)
-                .map(|duration| duration.as_secs() as i64)
-                .unwrap_or(0),
-        })
-        .collect();
+    let payload: Vec<FfiTaskLogRecord> = entries.into_iter().map(map_task_log_record).collect();
 
     let json = match serde_json::to_string(&payload) {
         Ok(value) => value,
@@ -3244,25 +3618,15 @@ pub extern "C" fn helm_trigger_refresh() -> bool {
     let guard = lock_or_recover(&STATE, "state");
     let state = match guard.as_ref() {
         Some(s) => s,
-        None => return return_error_bool("service.error.internal"),
+        None => return return_error_bool(SERVICE_ERROR_INTERNAL),
     };
 
     let runtime = state.runtime.clone();
     let store = state.store.clone();
     let enabled_by_manager = manager_enabled_map(store.as_ref());
 
-    let has_refresh_or_detection = store
-        .list_recent_tasks(TASK_RECENT_FETCH_LIMIT)
-        .ok()
-        .map(|tasks| {
-            tasks.into_iter().any(|task| {
-                manager_is_enabled(&enabled_by_manager, task.manager)
-                    && is_inflight_status(task.status)
-                    && is_recent_inflight_task(&task)
-                    && matches!(task.task_type, TaskType::Refresh | TaskType::Detection)
-            })
-        })
-        .unwrap_or(false);
+    let has_refresh_or_detection =
+        has_recent_refresh_or_detection(store.as_ref(), &enabled_by_manager);
     if has_refresh_or_detection {
         return true;
     }
@@ -3271,7 +3635,7 @@ pub extern "C" fn helm_trigger_refresh() -> bool {
         let results = runtime.refresh_all_ordered().await;
         for (manager, result) in results {
             if let Err(e) = result {
-                eprintln!("Refresh failed for {manager:?}: {e}");
+                log_manager_operation_failure("refresh", manager, &e);
             }
         }
     });
@@ -3288,25 +3652,15 @@ pub extern "C" fn helm_trigger_detection() -> bool {
     let guard = lock_or_recover(&STATE, "state");
     let state = match guard.as_ref() {
         Some(s) => s,
-        None => return return_error_bool("service.error.internal"),
+        None => return return_error_bool(SERVICE_ERROR_INTERNAL),
     };
 
     let runtime = state.runtime.clone();
     let store = state.store.clone();
     let enabled_by_manager = manager_enabled_map(store.as_ref());
 
-    let has_refresh_or_detection = store
-        .list_recent_tasks(TASK_RECENT_FETCH_LIMIT)
-        .ok()
-        .map(|tasks| {
-            tasks.into_iter().any(|task| {
-                manager_is_enabled(&enabled_by_manager, task.manager)
-                    && is_inflight_status(task.status)
-                    && is_recent_inflight_task(&task)
-                    && matches!(task.task_type, TaskType::Refresh | TaskType::Detection)
-            })
-        })
-        .unwrap_or(false);
+    let has_refresh_or_detection =
+        has_recent_refresh_or_detection(store.as_ref(), &enabled_by_manager);
     if has_refresh_or_detection {
         return true;
     }
@@ -3317,7 +3671,7 @@ pub extern "C" fn helm_trigger_detection() -> bool {
         let results = runtime.detect_all_ordered().await;
         for (manager, result) in results {
             if let Err(e) = result {
-                eprintln!("Detection failed for {manager:?}: {e}");
+                log_manager_operation_failure("detection", manager, &e);
             }
         }
     });
@@ -3404,20 +3758,20 @@ pub unsafe extern "C" fn helm_search_local(query: *const c_char) -> *mut c_char 
 pub unsafe extern "C" fn helm_trigger_remote_search(query: *const c_char) -> i64 {
     clear_last_error_key();
     if query.is_null() {
-        return return_error_i64("service.error.invalid_input");
+        return return_error_i64(SERVICE_ERROR_INVALID_INPUT);
     }
 
     let c_str = unsafe { CStr::from_ptr(query) };
     let query_str = match c_str.to_str() {
         Ok(s) => s.trim(),
-        Err(_) => return return_error_i64("service.error.invalid_input"),
+        Err(_) => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
     };
 
     let (store, runtime, rt_handle) = {
         let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
-            None => return return_error_i64("service.error.internal"),
+            None => return return_error_i64(SERVICE_ERROR_INTERNAL),
         };
         (
             state.store.clone(),
@@ -3450,7 +3804,7 @@ pub unsafe extern "C" fn helm_trigger_remote_search(query: *const c_char) -> i64
 
     match first_task_id {
         Some(task_id) => task_id,
-        None => return_error_i64(last_error_key.unwrap_or("service.error.unsupported_capability")),
+        None => return_error_i64(last_error_key.unwrap_or(SERVICE_ERROR_UNSUPPORTED_CAPABILITY)),
     }
 }
 
@@ -3466,7 +3820,7 @@ pub unsafe extern "C" fn helm_trigger_remote_search_for_manager(
 ) -> i64 {
     clear_last_error_key();
     if manager_id.is_null() || query.is_null() {
-        return return_error_i64("service.error.invalid_input");
+        return return_error_i64(SERVICE_ERROR_INVALID_INPUT);
     }
 
     let manager_cstr = unsafe { CStr::from_ptr(manager_id) };
@@ -3476,20 +3830,20 @@ pub unsafe extern "C" fn helm_trigger_remote_search_for_manager(
         .and_then(|s| s.parse::<ManagerId>().ok())
     {
         Some(manager) => manager,
-        None => return return_error_i64("service.error.invalid_input"),
+        None => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
     };
 
     let query_cstr = unsafe { CStr::from_ptr(query) };
     let query_str = match query_cstr.to_str() {
         Ok(query_text) => query_text.trim(),
-        Err(_) => return return_error_i64("service.error.invalid_input"),
+        Err(_) => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
     };
 
     let (store, runtime, rt_handle) = {
         let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
-            None => return return_error_i64("service.error.internal"),
+            None => return return_error_i64(SERVICE_ERROR_INTERNAL),
         };
         (
             state.store.clone(),
@@ -3548,21 +3902,21 @@ pub extern "C" fn helm_cancel_task(task_id: i64) -> bool {
 pub extern "C" fn helm_dismiss_task(task_id: i64) -> bool {
     clear_last_error_key();
     if task_id < 0 {
-        return return_error_bool("service.error.invalid_input");
+        return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
     }
 
     let store = {
         let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
-            None => return return_error_bool("service.error.internal"),
+            None => return return_error_bool(SERVICE_ERROR_INTERNAL),
         };
         state.store.clone()
     };
 
     if store
         .delete_task(TaskId(task_id as u64))
-        .map_err(|_| set_last_error_key("service.error.storage_failure"))
+        .map_err(|_| set_last_error_key(SERVICE_ERROR_STORAGE_FAILURE))
         .is_err()
     {
         return false;
@@ -4052,7 +4406,7 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
         let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
-            None => return return_error_bool("service.error.internal"),
+            None => return return_error_bool(SERVICE_ERROR_INTERNAL),
         };
         (
             state.store.clone(),
@@ -4424,7 +4778,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
 ) -> i64 {
     clear_last_error_key();
     if manager_id.is_null() || package_name.is_null() {
-        return return_error_i64("service.error.invalid_input");
+        return return_error_i64(SERVICE_ERROR_INVALID_INPUT);
     }
 
     let manager_cstr = unsafe { CStr::from_ptr(manager_id) };
@@ -4434,13 +4788,13 @@ pub unsafe extern "C" fn helm_upgrade_package(
         .and_then(|s| s.parse::<ManagerId>().ok())
     {
         Some(manager) => manager,
-        None => return return_error_i64("service.error.invalid_input"),
+        None => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
     };
 
     let package_cstr = unsafe { CStr::from_ptr(package_name) };
     let package_name = match package_cstr.to_str() {
         Ok(name) if !name.trim().is_empty() => name.trim().to_string(),
-        _ => return return_error_i64("service.error.invalid_input"),
+        _ => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
     };
 
     let (target_manager, request, label_key, label_args): (
@@ -4454,7 +4808,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
                 let guard = lock_or_recover(&STATE, "state");
                 let state = match guard.as_ref() {
                     Some(s) => s,
-                    None => return return_error_i64("service.error.internal"),
+                    None => return return_error_i64(SERVICE_ERROR_INTERNAL),
                 };
                 effective_homebrew_keg_policy(&state.store, &package_name)
             };
@@ -4666,7 +5020,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
         }
         ManagerId::SoftwareUpdate => {
             if package_name != "__confirm_os_updates__" {
-                return return_error_i64("service.error.invalid_input");
+                return return_error_i64(SERVICE_ERROR_INVALID_INPUT);
             }
             (
                 ManagerId::SoftwareUpdate,
@@ -4680,7 +5034,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
                 Vec::new(),
             )
         }
-        _ => return return_error_i64("service.error.unsupported_capability"),
+        _ => return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
     };
     let mut label_args = label_args;
     if label_key.is_some() {
@@ -4693,14 +5047,14 @@ pub unsafe extern "C" fn helm_upgrade_package(
     if external_coordinator_state_dir().is_some() {
         let submit_request = match adapter_request_to_coordinator_submit(request.clone()) {
             Ok(request) => request,
-            Err(_) => return return_error_i64("service.error.unsupported_capability"),
+            Err(_) => return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
         };
         return match coordinator_submit_external(target_manager, submit_request, false) {
             Ok(response) => response
                 .task_id
                 .map(|task_id| task_id as i64)
-                .unwrap_or_else(|| return_error_i64("service.error.process_failure")),
-            Err(_) => return_error_i64("service.error.process_failure"),
+                .unwrap_or_else(|| return_error_i64(SERVICE_ERROR_PROCESS_FAILURE)),
+            Err(_) => return_error_i64(SERVICE_ERROR_PROCESS_FAILURE),
         };
     }
 
@@ -4708,7 +5062,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
         let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
-            None => return return_error_i64("service.error.internal"),
+            None => return return_error_i64(SERVICE_ERROR_INTERNAL),
         };
         (
             state.store.clone(),
@@ -4720,7 +5074,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
     if !runtime.is_manager_enabled(target_manager)
         || !runtime.supports_capability(target_manager, Capability::Upgrade)
     {
-        return return_error_i64("service.error.unsupported_capability");
+        return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY);
     }
 
     if let Some(existing) = find_matching_inflight_task(
@@ -4742,7 +5096,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
         }
         Err(error) => {
             eprintln!("upgrade_package: failed to queue task: {error}");
-            return_error_i64("service.error.process_failure")
+            return_error_i64(SERVICE_ERROR_PROCESS_FAILURE)
         }
     }
 }
@@ -4760,7 +5114,7 @@ pub unsafe extern "C" fn helm_install_package(
 ) -> i64 {
     clear_last_error_key();
     if manager_id.is_null() || package_name.is_null() {
-        return return_error_i64("service.error.invalid_input");
+        return return_error_i64(SERVICE_ERROR_INVALID_INPUT);
     }
 
     let manager_cstr = unsafe { CStr::from_ptr(manager_id) };
@@ -4770,13 +5124,13 @@ pub unsafe extern "C" fn helm_install_package(
         .and_then(|s| s.parse::<ManagerId>().ok())
     {
         Some(manager) => manager,
-        None => return return_error_i64("service.error.invalid_input"),
+        None => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
     };
 
     let package_cstr = unsafe { CStr::from_ptr(package_name) };
     let package_name = match package_cstr.to_str() {
         Ok(name) if !name.trim().is_empty() => name.trim().to_string(),
-        _ => return return_error_i64("service.error.invalid_input"),
+        _ => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
     };
 
     let label_key = if manager == ManagerId::HomebrewFormula {
@@ -4804,14 +5158,14 @@ pub unsafe extern "C" fn helm_install_package(
     if external_coordinator_state_dir().is_some() {
         let submit_request = match adapter_request_to_coordinator_submit(request.clone()) {
             Ok(request) => request,
-            Err(_) => return return_error_i64("service.error.unsupported_capability"),
+            Err(_) => return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
         };
         return match coordinator_submit_external(manager, submit_request, false) {
             Ok(response) => response
                 .task_id
                 .map(|task_id| task_id as i64)
-                .unwrap_or_else(|| return_error_i64("service.error.process_failure")),
-            Err(_) => return_error_i64("service.error.process_failure"),
+                .unwrap_or_else(|| return_error_i64(SERVICE_ERROR_PROCESS_FAILURE)),
+            Err(_) => return_error_i64(SERVICE_ERROR_PROCESS_FAILURE),
         };
     }
 
@@ -4819,7 +5173,7 @@ pub unsafe extern "C" fn helm_install_package(
         let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
-            None => return return_error_i64("service.error.internal"),
+            None => return return_error_i64(SERVICE_ERROR_INTERNAL),
         };
         (
             state.store.clone(),
@@ -4829,7 +5183,7 @@ pub unsafe extern "C" fn helm_install_package(
     };
 
     if !supports_individual_package_install(runtime.as_ref(), manager) {
-        return return_error_i64("service.error.unsupported_capability");
+        return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY);
     }
 
     if let Some(existing) = find_matching_inflight_task(
@@ -4849,7 +5203,7 @@ pub unsafe extern "C" fn helm_install_package(
         }
         Err(error) => {
             eprintln!("install_package: failed to queue task: {error}");
-            return_error_i64("service.error.process_failure")
+            return_error_i64(SERVICE_ERROR_PROCESS_FAILURE)
         }
     }
 }
@@ -4867,7 +5221,7 @@ pub unsafe extern "C" fn helm_uninstall_package(
 ) -> i64 {
     clear_last_error_key();
     if manager_id.is_null() || package_name.is_null() {
-        return return_error_i64("service.error.invalid_input");
+        return return_error_i64(SERVICE_ERROR_INVALID_INPUT);
     }
 
     let manager_cstr = unsafe { CStr::from_ptr(manager_id) };
@@ -4877,13 +5231,13 @@ pub unsafe extern "C" fn helm_uninstall_package(
         .and_then(|s| s.parse::<ManagerId>().ok())
     {
         Some(manager) => manager,
-        None => return return_error_i64("service.error.invalid_input"),
+        None => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
     };
 
     let package_cstr = unsafe { CStr::from_ptr(package_name) };
     let package_name = match package_cstr.to_str() {
         Ok(name) if !name.trim().is_empty() => name.trim().to_string(),
-        _ => return return_error_i64("service.error.invalid_input"),
+        _ => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
     };
 
     let label_key = if manager == ManagerId::HomebrewFormula {
@@ -4910,14 +5264,14 @@ pub unsafe extern "C" fn helm_uninstall_package(
     if external_coordinator_state_dir().is_some() {
         let submit_request = match adapter_request_to_coordinator_submit(request.clone()) {
             Ok(request) => request,
-            Err(_) => return return_error_i64("service.error.unsupported_capability"),
+            Err(_) => return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
         };
         return match coordinator_submit_external(manager, submit_request, false) {
             Ok(response) => response
                 .task_id
                 .map(|task_id| task_id as i64)
-                .unwrap_or_else(|| return_error_i64("service.error.process_failure")),
-            Err(_) => return_error_i64("service.error.process_failure"),
+                .unwrap_or_else(|| return_error_i64(SERVICE_ERROR_PROCESS_FAILURE)),
+            Err(_) => return_error_i64(SERVICE_ERROR_PROCESS_FAILURE),
         };
     }
 
@@ -4925,7 +5279,7 @@ pub unsafe extern "C" fn helm_uninstall_package(
         let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
-            None => return return_error_i64("service.error.internal"),
+            None => return return_error_i64(SERVICE_ERROR_INTERNAL),
         };
         (
             state.store.clone(),
@@ -4935,7 +5289,7 @@ pub unsafe extern "C" fn helm_uninstall_package(
     };
 
     if !supports_individual_package_uninstall(runtime.as_ref(), manager) {
-        return return_error_i64("service.error.unsupported_capability");
+        return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY);
     }
 
     if let Some(existing) = find_matching_inflight_task(
@@ -4955,7 +5309,7 @@ pub unsafe extern "C" fn helm_uninstall_package(
         }
         Err(error) => {
             eprintln!("uninstall_package: failed to queue task: {error}");
-            return_error_i64("service.error.process_failure")
+            return_error_i64(SERVICE_ERROR_PROCESS_FAILURE)
         }
     }
 }
@@ -5027,7 +5381,7 @@ pub unsafe extern "C" fn helm_pin_package(
 ) -> bool {
     clear_last_error_key();
     if manager_id.is_null() || package_name.is_null() {
-        return return_error_bool("service.error.invalid_input");
+        return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
     }
 
     let manager = {
@@ -5038,7 +5392,7 @@ pub unsafe extern "C" fn helm_pin_package(
             .and_then(|s| s.parse::<ManagerId>().ok())
         {
             Some(id) => id,
-            None => return return_error_bool("service.error.invalid_input"),
+            None => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
         }
     };
 
@@ -5046,7 +5400,7 @@ pub unsafe extern "C" fn helm_pin_package(
         let c_str = unsafe { CStr::from_ptr(package_name) };
         match c_str.to_str() {
             Ok(value) if !value.trim().is_empty() => value.to_string(),
-            _ => return return_error_bool("service.error.invalid_input"),
+            _ => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
         }
     };
 
@@ -5063,7 +5417,7 @@ pub unsafe extern "C" fn helm_pin_package(
                     Some(trimmed.to_string())
                 }
             }
-            Err(_) => return return_error_bool("service.error.invalid_input"),
+            Err(_) => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
         }
     };
 
@@ -5071,7 +5425,7 @@ pub unsafe extern "C" fn helm_pin_package(
         let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
-            None => return return_error_bool("service.error.internal"),
+            None => return return_error_bool(SERVICE_ERROR_INTERNAL),
         };
         (
             state.store.clone(),
@@ -5092,16 +5446,16 @@ pub unsafe extern "C" fn helm_pin_package(
         if external_coordinator_state_dir().is_some() {
             let submit_request = match adapter_request_to_coordinator_submit(request.clone()) {
                 Ok(request) => request,
-                Err(_) => return return_error_bool("service.error.unsupported_capability"),
+                Err(_) => return return_error_bool(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
             };
             if coordinator_submit_external(manager, submit_request, true).is_err() {
-                return return_error_bool("service.error.process_failure");
+                return return_error_bool(SERVICE_ERROR_PROCESS_FAILURE);
             }
             PinKind::Native
         } else {
             let task_id = match rt_handle.block_on(runtime.submit(manager, request)) {
                 Ok(task_id) => task_id,
-                Err(_) => return return_error_bool("service.error.process_failure"),
+                Err(_) => return return_error_bool(SERVICE_ERROR_PROCESS_FAILURE),
             };
 
             set_task_label(
@@ -5112,12 +5466,12 @@ pub unsafe extern "C" fn helm_pin_package(
 
             let snapshot = match rt_handle.block_on(runtime.wait_for_terminal(task_id, None)) {
                 Ok(snapshot) => snapshot,
-                Err(_) => return return_error_bool("service.error.process_failure"),
+                Err(_) => return return_error_bool(SERVICE_ERROR_PROCESS_FAILURE),
             };
 
             match snapshot.terminal_state {
                 Some(AdapterTaskTerminalState::Succeeded(_)) => {}
-                _ => return return_error_bool("service.error.process_failure"),
+                _ => return return_error_bool(SERVICE_ERROR_PROCESS_FAILURE),
             }
             PinKind::Native
         }
@@ -5132,7 +5486,7 @@ pub unsafe extern "C" fn helm_pin_package(
             pinned_version,
             created_at: std::time::SystemTime::now(),
         })
-        .map_err(|_| set_last_error_key("service.error.storage_failure"))
+        .map_err(|_| set_last_error_key(SERVICE_ERROR_STORAGE_FAILURE))
         .is_ok()
 }
 
@@ -5149,7 +5503,7 @@ pub unsafe extern "C" fn helm_unpin_package(
 ) -> bool {
     clear_last_error_key();
     if manager_id.is_null() || package_name.is_null() {
-        return return_error_bool("service.error.invalid_input");
+        return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
     }
 
     let manager = {
@@ -5160,7 +5514,7 @@ pub unsafe extern "C" fn helm_unpin_package(
             .and_then(|s| s.parse::<ManagerId>().ok())
         {
             Some(id) => id,
-            None => return return_error_bool("service.error.invalid_input"),
+            None => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
         }
     };
 
@@ -5168,7 +5522,7 @@ pub unsafe extern "C" fn helm_unpin_package(
         let c_str = unsafe { CStr::from_ptr(package_name) };
         match c_str.to_str() {
             Ok(value) if !value.trim().is_empty() => value.to_string(),
-            _ => return return_error_bool("service.error.invalid_input"),
+            _ => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
         }
     };
 
@@ -5176,7 +5530,7 @@ pub unsafe extern "C" fn helm_unpin_package(
         let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
-            None => return return_error_bool("service.error.internal"),
+            None => return return_error_bool(SERVICE_ERROR_INTERNAL),
         };
         (
             state.store.clone(),
@@ -5195,15 +5549,15 @@ pub unsafe extern "C" fn helm_unpin_package(
         if external_coordinator_state_dir().is_some() {
             let submit_request = match adapter_request_to_coordinator_submit(request.clone()) {
                 Ok(request) => request,
-                Err(_) => return return_error_bool("service.error.unsupported_capability"),
+                Err(_) => return return_error_bool(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
             };
             if coordinator_submit_external(manager, submit_request, true).is_err() {
-                return return_error_bool("service.error.process_failure");
+                return return_error_bool(SERVICE_ERROR_PROCESS_FAILURE);
             }
         } else {
             let task_id = match rt_handle.block_on(runtime.submit(manager, request)) {
                 Ok(task_id) => task_id,
-                Err(_) => return return_error_bool("service.error.process_failure"),
+                Err(_) => return return_error_bool(SERVICE_ERROR_PROCESS_FAILURE),
             };
 
             set_task_label(
@@ -5214,12 +5568,12 @@ pub unsafe extern "C" fn helm_unpin_package(
 
             let snapshot = match rt_handle.block_on(runtime.wait_for_terminal(task_id, None)) {
                 Ok(snapshot) => snapshot,
-                Err(_) => return return_error_bool("service.error.process_failure"),
+                Err(_) => return return_error_bool(SERVICE_ERROR_PROCESS_FAILURE),
             };
 
             match snapshot.terminal_state {
                 Some(AdapterTaskTerminalState::Succeeded(_)) => {}
-                _ => return return_error_bool("service.error.process_failure"),
+                _ => return return_error_bool(SERVICE_ERROR_PROCESS_FAILURE),
             }
         }
     }
@@ -5227,7 +5581,7 @@ pub unsafe extern "C" fn helm_unpin_package(
     let package_key = format!("{}:{}", manager.as_str(), package_name);
     store
         .remove_pin(&package_key)
-        .map_err(|_| set_last_error_key("service.error.storage_failure"))
+        .map_err(|_| set_last_error_key(SERVICE_ERROR_STORAGE_FAILURE))
         .is_ok()
 }
 
@@ -5243,25 +5597,25 @@ pub unsafe extern "C" fn helm_set_manager_enabled(
 ) -> bool {
     clear_last_error_key();
     if manager_id.is_null() {
-        return return_error_bool("service.error.invalid_input");
+        return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
     }
 
     let c_str = unsafe { CStr::from_ptr(manager_id) };
     let id_str = match c_str.to_str() {
         Ok(s) => s,
-        Err(_) => return return_error_bool("service.error.invalid_input"),
+        Err(_) => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
     };
 
     let manager = match id_str.parse::<ManagerId>() {
         Ok(m) => m,
-        Err(_) => return return_error_bool("service.error.invalid_input"),
+        Err(_) => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
     };
 
     let (store, runtime, rt_handle) = {
         let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
-            None => return return_error_bool("service.error.internal"),
+            None => return return_error_bool(SERVICE_ERROR_INTERNAL),
         };
         (
             state.store.clone(),
@@ -5293,14 +5647,14 @@ pub unsafe extern "C" fn helm_set_manager_enabled(
             return return_error_bool(
                 eligibility
                     .service_error_key
-                    .unwrap_or("service.error.unsupported_capability"),
+                    .unwrap_or(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
             );
         }
     }
 
     if store
         .set_manager_enabled(manager, enabled)
-        .map_err(|_| set_last_error_key("service.error.storage_failure"))
+        .map_err(|_| set_last_error_key(SERVICE_ERROR_STORAGE_FAILURE))
         .is_err()
     {
         return false;
@@ -5315,7 +5669,7 @@ pub unsafe extern "C" fn helm_set_manager_enabled(
             "set_manager_enabled",
         )
     {
-        return return_error_bool("service.error.storage_failure");
+        return return_error_bool(SERVICE_ERROR_STORAGE_FAILURE);
     }
 
     true
@@ -5334,18 +5688,18 @@ pub unsafe extern "C" fn helm_set_manager_selected_executable_path(
 ) -> bool {
     clear_last_error_key();
     if manager_id.is_null() {
-        return return_error_bool("service.error.invalid_input");
+        return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
     }
 
     let c_str = unsafe { CStr::from_ptr(manager_id) };
     let id_str = match c_str.to_str() {
         Ok(s) => s,
-        Err(_) => return return_error_bool("service.error.invalid_input"),
+        Err(_) => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
     };
 
     let manager = match id_str.parse::<ManagerId>() {
         Ok(m) => m,
-        Err(_) => return return_error_bool("service.error.invalid_input"),
+        Err(_) => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
     };
 
     let selected_path = if selected_path.is_null() {
@@ -5354,16 +5708,16 @@ pub unsafe extern "C" fn helm_set_manager_selected_executable_path(
         let selected_cstr = unsafe { CStr::from_ptr(selected_path) };
         let selected = match selected_cstr.to_str() {
             Ok(s) => s.trim(),
-            Err(_) => return return_error_bool("service.error.invalid_input"),
+            Err(_) => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
         };
         if selected.is_empty() {
             None
         } else {
             if !std::path::Path::new(selected).is_absolute() {
-                return return_error_bool("service.error.invalid_input");
+                return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
             }
             if !std::path::Path::new(selected).is_file() {
-                return return_error_bool("service.error.invalid_input");
+                return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
             }
             Some(selected.to_string())
         }
@@ -5372,14 +5726,14 @@ pub unsafe extern "C" fn helm_set_manager_selected_executable_path(
     let guard = lock_or_recover(&STATE, "state");
     let state = match guard.as_ref() {
         Some(s) => s,
-        None => return return_error_bool("service.error.internal"),
+        None => return return_error_bool(SERVICE_ERROR_INTERNAL),
     };
 
     if let Err(_error) = state
         .store
         .set_manager_selected_executable_path(manager, selected_path.as_deref())
     {
-        return return_error_bool("service.error.storage_failure");
+        return return_error_bool(SERVICE_ERROR_STORAGE_FAILURE);
     }
 
     let detection_map: std::collections::HashMap<_, _> = state
@@ -5413,18 +5767,18 @@ pub unsafe extern "C" fn helm_set_manager_install_method(
 ) -> bool {
     clear_last_error_key();
     if manager_id.is_null() {
-        return return_error_bool("service.error.invalid_input");
+        return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
     }
 
     let c_str = unsafe { CStr::from_ptr(manager_id) };
     let id_str = match c_str.to_str() {
         Ok(s) => s,
-        Err(_) => return return_error_bool("service.error.invalid_input"),
+        Err(_) => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
     };
 
     let manager = match id_str.parse::<ManagerId>() {
         Ok(m) => m,
-        Err(_) => return return_error_bool("service.error.invalid_input"),
+        Err(_) => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
     };
 
     let install_method = if install_method.is_null() {
@@ -5433,27 +5787,27 @@ pub unsafe extern "C" fn helm_set_manager_install_method(
         let method_cstr = unsafe { CStr::from_ptr(install_method) };
         let method = match method_cstr.to_str() {
             Ok(s) => s.trim(),
-            Err(_) => return return_error_bool("service.error.invalid_input"),
+            Err(_) => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
         };
         if method.is_empty() {
             None
         } else if manager_install_method_candidates(manager).contains(&method) {
             Some(method.to_string())
         } else {
-            return return_error_bool("service.error.invalid_input");
+            return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
         }
     };
 
     let guard = lock_or_recover(&STATE, "state");
     let state = match guard.as_ref() {
         Some(s) => s,
-        None => return return_error_bool("service.error.internal"),
+        None => return return_error_bool(SERVICE_ERROR_INTERNAL),
     };
 
     state
         .store
         .set_manager_selected_install_method(manager, install_method.as_deref())
-        .map_err(|_| set_last_error_key("service.error.storage_failure"))
+        .map_err(|_| set_last_error_key(SERVICE_ERROR_STORAGE_FAILURE))
         .is_ok()
 }
 
@@ -5472,18 +5826,18 @@ pub unsafe extern "C" fn helm_set_manager_timeout_profile(
 ) -> bool {
     clear_last_error_key();
     if manager_id.is_null() {
-        return return_error_bool("service.error.invalid_input");
+        return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
     }
 
     let c_str = unsafe { CStr::from_ptr(manager_id) };
     let id_str = match c_str.to_str() {
         Ok(s) => s,
-        Err(_) => return return_error_bool("service.error.invalid_input"),
+        Err(_) => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
     };
 
     let manager = match id_str.parse::<ManagerId>() {
         Ok(m) => m,
-        Err(_) => return return_error_bool("service.error.invalid_input"),
+        Err(_) => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
     };
 
     let hard_timeout = if hard_timeout_seconds > 0 {
@@ -5500,13 +5854,13 @@ pub unsafe extern "C" fn helm_set_manager_timeout_profile(
     let guard = lock_or_recover(&STATE, "state");
     let state = match guard.as_ref() {
         Some(s) => s,
-        None => return return_error_bool("service.error.internal"),
+        None => return return_error_bool(SERVICE_ERROR_INTERNAL),
     };
 
     if state
         .store
         .set_manager_timeout_hard_seconds(manager, hard_timeout)
-        .map_err(|_| set_last_error_key("service.error.storage_failure"))
+        .map_err(|_| set_last_error_key(SERVICE_ERROR_STORAGE_FAILURE))
         .is_err()
     {
         return false;
@@ -5514,7 +5868,7 @@ pub unsafe extern "C" fn helm_set_manager_timeout_profile(
     if state
         .store
         .set_manager_timeout_idle_seconds(manager, idle_timeout)
-        .map_err(|_| set_last_error_key("service.error.storage_failure"))
+        .map_err(|_| set_last_error_key(SERVICE_ERROR_STORAGE_FAILURE))
         .is_err()
     {
         return false;
@@ -5549,25 +5903,25 @@ pub unsafe extern "C" fn helm_set_manager_timeout_profile(
 pub unsafe extern "C" fn helm_install_manager(manager_id: *const c_char) -> i64 {
     clear_last_error_key();
     if manager_id.is_null() {
-        return return_error_i64("service.error.invalid_input");
+        return return_error_i64(SERVICE_ERROR_INVALID_INPUT);
     }
 
     let c_str = unsafe { CStr::from_ptr(manager_id) };
     let id_str = match c_str.to_str() {
         Ok(s) => s,
-        Err(_) => return return_error_i64("service.error.invalid_input"),
+        Err(_) => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
     };
 
     let manager = match id_str.parse::<ManagerId>() {
         Ok(manager) => manager,
-        Err(_) => return return_error_i64("service.error.invalid_input"),
+        Err(_) => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
     };
 
     let (store, runtime, rt_handle) = {
         let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
-            None => return return_error_i64("service.error.internal"),
+            None => return return_error_i64(SERVICE_ERROR_INTERNAL),
         };
         (
             state.store.clone(),
@@ -5581,7 +5935,7 @@ pub unsafe extern "C" fn helm_install_manager(manager_id: *const c_char) -> i64 
     let formula_name = match (manager, selected_method.as_deref()) {
         (ManagerId::Mise, Some("homebrew")) | (ManagerId::Mise, None) => "mise",
         (ManagerId::Mas, Some("homebrew")) | (ManagerId::Mas, None) => "mas",
-        _ => return return_error_i64("service.error.unsupported_capability"),
+        _ => return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
     };
 
     // `mise` and `mas` manager installation flows run via Homebrew formula install.
@@ -5602,15 +5956,15 @@ pub unsafe extern "C" fn helm_install_manager(manager_id: *const c_char) -> i64 
     if external_coordinator_state_dir().is_some() {
         let submit_request = match adapter_request_to_coordinator_submit(request.clone()) {
             Ok(request) => request,
-            Err(_) => return return_error_i64("service.error.unsupported_capability"),
+            Err(_) => return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
         };
         return match coordinator_submit_external(ManagerId::HomebrewFormula, submit_request, false)
         {
             Ok(response) => response
                 .task_id
                 .map(|task_id| task_id as i64)
-                .unwrap_or_else(|| return_error_i64("service.error.process_failure")),
-            Err(_) => return_error_i64("service.error.process_failure"),
+                .unwrap_or_else(|| return_error_i64(SERVICE_ERROR_PROCESS_FAILURE)),
+            Err(_) => return_error_i64(SERVICE_ERROR_PROCESS_FAILURE),
         };
     }
 
@@ -5635,7 +5989,7 @@ pub unsafe extern "C" fn helm_install_manager(manager_id: *const c_char) -> i64 
         }
         Err(e) => {
             eprintln!("Failed to install manager {}: {}", id_str, e);
-            return_error_i64("service.error.process_failure")
+            return_error_i64(SERVICE_ERROR_PROCESS_FAILURE)
         }
     }
 }
@@ -5655,25 +6009,25 @@ pub unsafe extern "C" fn helm_install_manager(manager_id: *const c_char) -> i64 
 pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
     clear_last_error_key();
     if manager_id.is_null() {
-        return return_error_i64("service.error.invalid_input");
+        return return_error_i64(SERVICE_ERROR_INVALID_INPUT);
     }
 
     let c_str = unsafe { CStr::from_ptr(manager_id) };
     let id_str = match c_str.to_str() {
         Ok(s) => s,
-        Err(_) => return return_error_i64("service.error.invalid_input"),
+        Err(_) => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
     };
 
     let manager = match id_str.parse::<ManagerId>() {
         Ok(manager) => manager,
-        Err(_) => return return_error_i64("service.error.invalid_input"),
+        Err(_) => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
     };
 
     let (store, runtime, rt_handle) = {
         let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
-            None => return return_error_i64("service.error.internal"),
+            None => return return_error_i64(SERVICE_ERROR_INTERNAL),
         };
         (
             state.store.clone(),
@@ -5727,7 +6081,7 @@ pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
                     vec![("package", "mise".to_string())],
                 )
             }
-            _ => return return_error_i64("service.error.unsupported_capability"),
+            _ => return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
         },
         ManagerId::Mas => match selected_method.as_deref() {
             Some("homebrew") | None => {
@@ -5744,7 +6098,7 @@ pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
                     vec![("package", "mas".to_string())],
                 )
             }
-            _ => return return_error_i64("service.error.unsupported_capability"),
+            _ => return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
         },
         ManagerId::Rustup => match selected_method.as_deref() {
             Some("homebrew") => {
@@ -5772,22 +6126,22 @@ pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
                 "service.task.label.update.rustup_self",
                 Vec::new(),
             ),
-            _ => return return_error_i64("service.error.unsupported_capability"),
+            _ => return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
         },
-        _ => return return_error_i64("service.error.unsupported_capability"),
+        _ => return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
     };
 
     if external_coordinator_state_dir().is_some() {
         let submit_request = match adapter_request_to_coordinator_submit(request.clone()) {
             Ok(request) => request,
-            Err(_) => return return_error_i64("service.error.unsupported_capability"),
+            Err(_) => return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
         };
         return match coordinator_submit_external(target_manager, submit_request, false) {
             Ok(response) => response
                 .task_id
                 .map(|task_id| task_id as i64)
-                .unwrap_or_else(|| return_error_i64("service.error.process_failure")),
-            Err(_) => return_error_i64("service.error.process_failure"),
+                .unwrap_or_else(|| return_error_i64(SERVICE_ERROR_PROCESS_FAILURE)),
+            Err(_) => return_error_i64(SERVICE_ERROR_PROCESS_FAILURE),
         };
     }
 
@@ -5808,7 +6162,7 @@ pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
         }
         Err(e) => {
             eprintln!("Failed to update manager {}: {}", id_str, e);
-            return_error_i64("service.error.process_failure")
+            return_error_i64(SERVICE_ERROR_PROCESS_FAILURE)
         }
     }
 }
@@ -5824,25 +6178,25 @@ pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
 pub unsafe extern "C" fn helm_uninstall_manager(manager_id: *const c_char) -> i64 {
     clear_last_error_key();
     if manager_id.is_null() {
-        return return_error_i64("service.error.invalid_input");
+        return return_error_i64(SERVICE_ERROR_INVALID_INPUT);
     }
 
     let c_str = unsafe { CStr::from_ptr(manager_id) };
     let id_str = match c_str.to_str() {
         Ok(s) => s,
-        Err(_) => return return_error_i64("service.error.invalid_input"),
+        Err(_) => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
     };
 
     let manager = match id_str.parse::<ManagerId>() {
         Ok(manager) => manager,
-        Err(_) => return return_error_i64("service.error.invalid_input"),
+        Err(_) => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
     };
 
     let (store, runtime, rt_handle) = {
         let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
-            None => return return_error_i64("service.error.internal"),
+            None => return return_error_i64(SERVICE_ERROR_INTERNAL),
         };
         (
             state.store.clone(),
@@ -5870,7 +6224,7 @@ pub unsafe extern "C" fn helm_uninstall_manager(manager_id: *const c_char) -> i6
                 "service.task.label.uninstall.homebrew_formula",
                 vec![("package", "mise".to_string())],
             ),
-            _ => return return_error_i64("service.error.unsupported_capability"),
+            _ => return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
         },
         ManagerId::Mas => match selected_method.as_deref() {
             Some("homebrew") | None => (
@@ -5884,7 +6238,7 @@ pub unsafe extern "C" fn helm_uninstall_manager(manager_id: *const c_char) -> i6
                 "service.task.label.uninstall.homebrew_formula",
                 vec![("package", "mas".to_string())],
             ),
-            _ => return return_error_i64("service.error.unsupported_capability"),
+            _ => return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
         },
         ManagerId::Rustup => match selected_method.as_deref() {
             Some("homebrew") => (
@@ -5909,22 +6263,22 @@ pub unsafe extern "C" fn helm_uninstall_manager(manager_id: *const c_char) -> i6
                 "service.task.label.uninstall.rustup_self",
                 Vec::new(),
             ),
-            _ => return return_error_i64("service.error.unsupported_capability"),
+            _ => return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
         },
-        _ => return return_error_i64("service.error.unsupported_capability"),
+        _ => return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
     };
 
     if external_coordinator_state_dir().is_some() {
         let submit_request = match adapter_request_to_coordinator_submit(request.clone()) {
             Ok(request) => request,
-            Err(_) => return return_error_i64("service.error.unsupported_capability"),
+            Err(_) => return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
         };
         return match coordinator_submit_external(target_manager, submit_request, false) {
             Ok(response) => response
                 .task_id
                 .map(|task_id| task_id as i64)
-                .unwrap_or_else(|| return_error_i64("service.error.process_failure")),
-            Err(_) => return_error_i64("service.error.process_failure"),
+                .unwrap_or_else(|| return_error_i64(SERVICE_ERROR_PROCESS_FAILURE)),
+            Err(_) => return_error_i64(SERVICE_ERROR_PROCESS_FAILURE),
         };
     }
 
@@ -5945,7 +6299,7 @@ pub unsafe extern "C" fn helm_uninstall_manager(manager_id: *const c_char) -> i6
         }
         Err(e) => {
             eprintln!("Failed to uninstall manager {}: {}", id_str, e);
-            return_error_i64("service.error.process_failure")
+            return_error_i64(SERVICE_ERROR_PROCESS_FAILURE)
         }
     }
 }
@@ -5958,19 +6312,19 @@ pub extern "C" fn helm_reset_database() -> bool {
     let guard = lock_or_recover(&STATE, "state");
     let state = match guard.as_ref() {
         Some(s) => s,
-        None => return return_error_bool("service.error.internal"),
+        None => return return_error_bool(SERVICE_ERROR_INTERNAL),
     };
 
     // Roll back to version 0 (drops all data tables)
     if let Err(e) = state.store.apply_migration(0) {
         eprintln!("Failed to roll back migrations: {}", e);
-        return return_error_bool("service.error.storage_failure");
+        return return_error_bool(SERVICE_ERROR_STORAGE_FAILURE);
     }
 
     // Re-apply all migrations (recreates empty tables)
     if let Err(e) = state.store.migrate_to_latest() {
         eprintln!("Failed to re-apply migrations: {}", e);
-        return return_error_bool("service.error.storage_failure");
+        return return_error_bool(SERVICE_ERROR_STORAGE_FAILURE);
     }
 
     // Final cleanup: delete any task records that in-flight persistence
@@ -6024,12 +6378,30 @@ mod tests {
         PIP_SYSTEM_UNMANAGED_REASON_CODE, RUBYGEMS_SYSTEM_UNMANAGED_REASON_CODE,
     };
     use helm_core::models::{
-        DetectionInfo, ManagerId, OutdatedPackage, PackageRef, TaskId, TaskRecord, TaskStatus,
-        TaskType,
+        DetectionInfo, ManagerId, OutdatedPackage, PackageRef, TaskId, TaskLogRecord, TaskRecord,
+        TaskStatus, TaskType,
     };
     use helm_core::persistence::ManagerPreference;
     use std::collections::HashMap;
+    use std::fs;
+    #[cfg(unix)]
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
     use std::path::Path;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[cfg(unix)]
+    fn unix_mode(path: &Path) -> u32 {
+        fs::metadata(path)
+            .expect("expected path metadata")
+            .permissions()
+            .mode()
+            & 0o777
+    }
+
+    #[cfg(unix)]
+    fn unix_uid(path: &Path) -> u32 {
+        fs::metadata(path).expect("expected path metadata").uid()
+    }
 
     #[test]
     fn parses_homebrew_version_from_config_output() {
@@ -6274,6 +6646,146 @@ mod tests {
                 .executable_paths
                 .contains(&"/tmp/helm-test-npm".to_string())
         );
+    }
+
+    #[test]
+    fn manager_status_reports_executable_path_divergence_diagnostics() {
+        let detection_map = HashMap::from([(
+            ManagerId::Npm,
+            DetectionInfo {
+                installed: true,
+                executable_path: Some(std::path::PathBuf::from("/opt/homebrew/bin/npm")),
+                version: Some("10.0.0".to_string()),
+            },
+        )]);
+        let pref_map = HashMap::from([(
+            ManagerId::Npm,
+            ManagerPreference {
+                manager: ManagerId::Npm,
+                enabled: true,
+                selected_executable_path: Some("/bin/sh".to_string()),
+                selected_install_method: None,
+                timeout_hard_seconds: None,
+                timeout_idle_seconds: None,
+            },
+        )]);
+
+        let statuses = build_manager_statuses(None, &detection_map, &pref_map);
+        let npm = status_for(&statuses, ManagerId::Npm);
+        assert!(npm.selected_executable_differs_from_default);
+        assert_eq!(npm.executable_path_diagnostic, "diverged");
+    }
+
+    #[test]
+    fn manager_status_reports_executable_path_alignment_diagnostics() {
+        let detection_map = HashMap::from([(
+            ManagerId::Npm,
+            DetectionInfo {
+                installed: true,
+                executable_path: Some(std::path::PathBuf::from("/opt/homebrew/bin/npm")),
+                version: Some("10.0.0".to_string()),
+            },
+        )]);
+        let pref_map = HashMap::from([(
+            ManagerId::Npm,
+            ManagerPreference {
+                manager: ManagerId::Npm,
+                enabled: true,
+                selected_executable_path: Some("/opt/homebrew/bin/npm".to_string()),
+                selected_install_method: None,
+                timeout_hard_seconds: None,
+                timeout_idle_seconds: None,
+            },
+        )]);
+
+        let statuses = build_manager_statuses(None, &detection_map, &pref_map);
+        let npm = status_for(&statuses, ManagerId::Npm);
+        assert!(!npm.selected_executable_differs_from_default);
+        assert_eq!(npm.executable_path_diagnostic, "aligned");
+    }
+
+    #[test]
+    fn parse_legacy_file_coordinator_ipc_flag_accepts_truthy_values() {
+        assert!(super::parse_legacy_file_coordinator_ipc_flag(Some("1")));
+        assert!(super::parse_legacy_file_coordinator_ipc_flag(Some("true")));
+        assert!(super::parse_legacy_file_coordinator_ipc_flag(Some("YES")));
+        assert!(super::parse_legacy_file_coordinator_ipc_flag(Some(" on ")));
+    }
+
+    #[test]
+    fn parse_legacy_file_coordinator_ipc_flag_rejects_missing_or_falsey_values() {
+        assert!(!super::parse_legacy_file_coordinator_ipc_flag(None));
+        assert!(!super::parse_legacy_file_coordinator_ipc_flag(Some("0")));
+        assert!(!super::parse_legacy_file_coordinator_ipc_flag(Some(
+            "false"
+        )));
+        assert!(!super::parse_legacy_file_coordinator_ipc_flag(Some("off")));
+        assert!(!super::parse_legacy_file_coordinator_ipc_flag(Some(
+            "unexpected"
+        )));
+    }
+
+    #[test]
+    fn coordinator_bridge_external_file_ipc_selection_requires_opt_in_and_ready() {
+        assert!(!super::should_use_external_file_coordinator_with_health(
+            super::CoordinatorBridgeMode::LocalXpcPreferred,
+            true,
+        ));
+        assert!(!super::should_use_external_file_coordinator_with_health(
+            super::CoordinatorBridgeMode::LegacyFileIpc,
+            false,
+        ));
+        assert!(super::should_use_external_file_coordinator_with_health(
+            super::CoordinatorBridgeMode::LegacyFileIpc,
+            true,
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn coordinator_ipc_paths_use_private_modes_and_consistent_ownership() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        let state_dir = std::env::temp_dir().join(format!("helm-ffi-coordinator-perms-{nanos}"));
+        super::reset_coordinator_state_dir(state_dir.as_path())
+            .expect("reset coordinator state dir should succeed");
+
+        let requests_dir = super::coordinator_requests_dir(state_dir.as_path());
+        let responses_dir = super::coordinator_responses_dir(state_dir.as_path());
+        assert_eq!(unix_mode(state_dir.as_path()), 0o700);
+        assert_eq!(unix_mode(requests_dir.as_path()), 0o700);
+        assert_eq!(unix_mode(responses_dir.as_path()), 0o700);
+
+        let owner_uid = unix_uid(state_dir.as_path());
+        assert_eq!(unix_uid(requests_dir.as_path()), owner_uid);
+        assert_eq!(unix_uid(responses_dir.as_path()), owner_uid);
+
+        let request_file = super::coordinator_request_file(state_dir.as_path(), "perm-check");
+        let response_file = super::coordinator_response_file(state_dir.as_path(), "perm-check");
+        let ready_file = super::coordinator_ready_file(state_dir.as_path());
+        super::write_json_file(
+            request_file.as_path(),
+            &serde_json::json!({ "kind": "ping" }),
+        )
+        .expect("request file write should succeed");
+        super::write_json_file(response_file.as_path(), &serde_json::json!({ "ok": true }))
+            .expect("response file write should succeed");
+        super::write_json_file(
+            ready_file.as_path(),
+            &serde_json::json!({ "pid": std::process::id() }),
+        )
+        .expect("ready file write should succeed");
+
+        assert_eq!(unix_mode(request_file.as_path()), 0o600);
+        assert_eq!(unix_mode(response_file.as_path()), 0o600);
+        assert_eq!(unix_mode(ready_file.as_path()), 0o600);
+        assert_eq!(unix_uid(request_file.as_path()), owner_uid);
+        assert_eq!(unix_uid(response_file.as_path()), owner_uid);
+        assert_eq!(unix_uid(ready_file.as_path()), owner_uid);
+
+        let _ = fs::remove_dir_all(state_dir);
     }
 
     #[test]
@@ -6523,6 +7035,125 @@ mod tests {
 
         let visible = build_visible_tasks(tasks, &labels);
         assert_eq!(visible.len(), 2);
+    }
+
+    #[test]
+    fn diagnostics_redaction_masks_non_allowlisted_env_assignments() {
+        let redacted = super::redact_diagnostics_text(
+            "PATH=/usr/bin API_TOKEN=abc123 TMPDIR=/tmp HELM_LICENSE_KEY=xyz",
+        );
+        assert!(redacted.contains("PATH=/usr/bin"));
+        assert!(redacted.contains("TMPDIR=/tmp"));
+        assert!(redacted.contains("API_TOKEN=[REDACTED]"));
+        assert!(redacted.contains("HELM_LICENSE_KEY=[REDACTED]"));
+        assert!(!redacted.contains("abc123"));
+        assert!(!redacted.contains("xyz"));
+    }
+
+    #[test]
+    fn diagnostics_redaction_masks_sensitive_key_pairs_and_auth_headers() {
+        let redacted = super::redact_diagnostics_text(
+            "authorization: Bearer token-value\npassword=hunter2 cookie:abc123",
+        );
+        assert!(redacted.contains("authorization: [REDACTED]"));
+        assert!(redacted.contains("password=[REDACTED]"));
+        assert!(redacted.contains("cookie:[REDACTED]"));
+        assert!(!redacted.contains("token-value"));
+        assert!(!redacted.contains("hunter2"));
+        assert!(!redacted.contains("abc123"));
+    }
+
+    #[test]
+    fn build_ffi_task_output_record_redacts_sensitive_fields_by_default() {
+        let task_id = TaskId(9_777_001);
+        helm_core::execution::task_output_store::record_context(
+            task_id,
+            Some("API_TOKEN=abc PATH=/usr/bin helm refresh"),
+            Some("/tmp/project"),
+        );
+        helm_core::execution::task_output_store::record_process_context(
+            task_id,
+            Some("/usr/bin/helm"),
+            Some("PATH=/usr/bin:/bin"),
+        );
+        let started_at = std::time::UNIX_EPOCH + std::time::Duration::from_secs(5);
+        let finished_at = std::time::UNIX_EPOCH + std::time::Duration::from_secs(8);
+        helm_core::execution::task_output_store::record_started_at(task_id, started_at);
+        helm_core::execution::task_output_store::record_terminal_metadata(
+            task_id,
+            started_at,
+            finished_at,
+            Some(1),
+            Some("error"),
+        );
+        helm_core::execution::task_output_store::record_error(
+            task_id,
+            "spawn_failed",
+            "request failed with api_key=abc123",
+            Some("error"),
+            Some(finished_at),
+        );
+        helm_core::execution::task_output_store::append_stdout(
+            task_id,
+            b"authorization: Bearer abc123\nPATH=/usr/bin",
+        );
+        helm_core::execution::task_output_store::append_stderr(
+            task_id,
+            b"password=hunter2 TMPDIR=/tmp",
+        );
+
+        let record = super::build_ffi_task_output_record(task_id);
+        let command = record.command.expect("command should be present");
+        let cwd = record.cwd.expect("cwd should be present");
+        let program_path = record.program_path.expect("program path should be present");
+        let path_snippet = record.path_snippet.expect("path snippet should be present");
+        let error_message = record
+            .error_message
+            .expect("error message should be present");
+        let stdout = record.stdout.expect("stdout should be present");
+        let stderr = record.stderr.expect("stderr should be present");
+
+        assert!(command.contains("API_TOKEN=[REDACTED]"));
+        assert!(command.contains("PATH=/usr/bin"));
+        assert!(!command.contains("API_TOKEN=abc"));
+        assert_eq!(cwd, "/tmp/project");
+        assert_eq!(program_path, "/usr/bin/helm");
+        assert_eq!(path_snippet, "PATH=/usr/bin:/bin");
+        assert_eq!(record.started_at_unix_ms, Some(5_000));
+        assert_eq!(record.finished_at_unix_ms, Some(8_000));
+        assert_eq!(record.duration_ms, Some(3_000));
+        assert_eq!(record.exit_code, Some(1));
+        assert_eq!(record.termination_reason.as_deref(), Some("error"));
+        assert_eq!(record.error_code.as_deref(), Some("spawn_failed"));
+        assert!(error_message.contains("api_key=[REDACTED]"));
+        assert!(!error_message.contains("abc123"));
+
+        assert!(stdout.contains("authorization: [REDACTED]"));
+        assert!(stdout.contains("PATH=/usr/bin"));
+        assert!(!stdout.contains("Bearer abc123"));
+
+        assert!(stderr.contains("password=[REDACTED]"));
+        assert!(stderr.contains("TMPDIR=/tmp"));
+        assert!(!stderr.contains("hunter2"));
+    }
+
+    #[test]
+    fn map_task_log_record_redacts_sensitive_message_payloads() {
+        let mapped = super::map_task_log_record(TaskLogRecord {
+            id: 42,
+            task_id: TaskId(9_777_002),
+            manager: ManagerId::Npm,
+            task_type: TaskType::Refresh,
+            status: Some(TaskStatus::Failed),
+            level: helm_core::models::TaskLogLevel::Error,
+            message: "AUTH_TOKEN=abc123 PATH=/usr/bin".to_string(),
+            created_at: std::time::UNIX_EPOCH + std::time::Duration::from_secs(100),
+        });
+        assert_eq!(mapped.id, 42);
+        assert_eq!(mapped.level, "error");
+        assert!(mapped.message.contains("AUTH_TOKEN=[REDACTED]"));
+        assert!(mapped.message.contains("PATH=/usr/bin"));
+        assert!(!mapped.message.contains("abc123"));
     }
 
     #[test]

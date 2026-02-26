@@ -106,6 +106,8 @@ struct PreparedSpawnCommand {
 }
 
 static DEFAULT_SUDO_ASKPASS_PATH: OnceLock<Result<PathBuf, String>> = OnceLock::new();
+const HELM_SUDO_ASKPASS_ENV: &str = "HELM_SUDO_ASKPASS";
+const HELM_SUDO_ASKPASS_ALLOW_OVERRIDE_ENV: &str = "HELM_SUDO_ASKPASS_ALLOW_OVERRIDE";
 
 fn prepare_command_for_spawn(
     request: &ProcessSpawnRequest,
@@ -177,12 +179,24 @@ fn resolve_sudo_askpass_path(
     askpass_override: Option<&Path>,
 ) -> ExecutionResult<PathBuf> {
     if let Some(path) = askpass_override {
+        validate_trusted_askpass_path(path, manager, task_type, action)?;
         validate_askpass_path(path, manager, task_type, action)?;
         return Ok(path.to_path_buf());
     }
 
-    if let Ok(path) = std::env::var("HELM_SUDO_ASKPASS") {
+    if let Ok(path) = std::env::var(HELM_SUDO_ASKPASS_ENV) {
+        if !sudo_askpass_override_allowed() {
+            return Err(process_failure(
+                manager,
+                task_type,
+                action,
+                format!(
+                    "{HELM_SUDO_ASKPASS_ENV} override is disabled by default; set {HELM_SUDO_ASKPASS_ALLOW_OVERRIDE_ENV}=1 to opt in"
+                ),
+            ));
+        }
         let path = PathBuf::from(path);
+        validate_trusted_askpass_path(path.as_path(), manager, task_type, action)?;
         validate_askpass_path(path.as_path(), manager, task_type, action)?;
         return Ok(path);
     }
@@ -190,11 +204,92 @@ fn resolve_sudo_askpass_path(
     let initialized = DEFAULT_SUDO_ASKPASS_PATH.get_or_init(create_default_sudo_askpass_script);
     match initialized {
         Ok(path) => {
+            validate_trusted_askpass_path(path.as_path(), manager, task_type, action)?;
             validate_askpass_path(path.as_path(), manager, task_type, action)?;
             Ok(path.clone())
         }
         Err(message) => Err(process_failure(manager, task_type, action, message.clone())),
     }
+}
+
+fn sudo_askpass_override_allowed() -> bool {
+    let Some(raw) = std::env::var_os(HELM_SUDO_ASKPASS_ALLOW_OVERRIDE_ENV) else {
+        return false;
+    };
+    let normalized = raw.to_string_lossy().trim().to_ascii_lowercase();
+    matches!(normalized.as_str(), "1" | "true" | "yes")
+}
+
+fn validate_trusted_askpass_path(
+    path: &Path,
+    manager: ManagerId,
+    task_type: TaskType,
+    action: ManagerAction,
+) -> ExecutionResult<()> {
+    if !path.is_absolute() {
+        return Err(process_failure(
+            manager,
+            task_type,
+            action,
+            format!(
+                "sudo askpass helper '{}' must be an absolute path",
+                path.display()
+            ),
+        ));
+    }
+
+    let metadata = fs::symlink_metadata(path).map_err(|error| {
+        process_failure(
+            manager,
+            task_type,
+            action,
+            format!(
+                "sudo askpass helper is unavailable at '{}': {error}",
+                path.display()
+            ),
+        )
+    })?;
+
+    if metadata.file_type().is_symlink() {
+        return Err(process_failure(
+            manager,
+            task_type,
+            action,
+            format!(
+                "sudo askpass helper '{}' must not be a symlink",
+                path.display()
+            ),
+        ));
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        if metadata.uid() != unsafe { libc::geteuid() } {
+            return Err(process_failure(
+                manager,
+                task_type,
+                action,
+                format!(
+                    "sudo askpass helper '{}' must be owned by the current user",
+                    path.display()
+                ),
+            ));
+        }
+        if metadata.permissions().mode() & 0o022 != 0 {
+            return Err(process_failure(
+                manager,
+                task_type,
+                action,
+                format!(
+                    "sudo askpass helper '{}' must not be group/world writable",
+                    path.display()
+                ),
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 fn validate_askpass_path(
@@ -727,11 +822,16 @@ fn process_failure(
 
 #[cfg(test)]
 mod tests {
-    use super::{prepare_command_for_spawn, resolve_effective_working_dir};
+    use super::{
+        HELM_SUDO_ASKPASS_ALLOW_OVERRIDE_ENV, HELM_SUDO_ASKPASS_ENV, prepare_command_for_spawn,
+        resolve_effective_working_dir,
+    };
     use crate::execution::{CommandSpec, ProcessSpawnRequest};
     use crate::models::{ManagerAction, ManagerId, TaskType};
+    use std::ffi::OsString;
     use std::fs;
     use std::path::PathBuf;
+    use std::sync::{Mutex, OnceLock};
 
     fn base_request() -> ProcessSpawnRequest {
         ProcessSpawnRequest::new(
@@ -742,6 +842,33 @@ mod tests {
                 .arg("--install")
                 .arg("--all"),
         )
+    }
+
+    static ENV_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+
+    struct ScopedEnvVar {
+        key: &'static str,
+        previous: Option<OsString>,
+    }
+
+    impl ScopedEnvVar {
+        fn set(key: &'static str, value: Option<&str>) -> Self {
+            let previous = std::env::var_os(key);
+            match value {
+                Some(raw) => unsafe { std::env::set_var(key, raw) },
+                None => unsafe { std::env::remove_var(key) },
+            }
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for ScopedEnvVar {
+        fn drop(&mut self) {
+            match self.previous.as_ref() {
+                Some(previous) => unsafe { std::env::set_var(self.key, previous) },
+                None => unsafe { std::env::remove_var(self.key) },
+            }
+        }
     }
 
     #[test]
@@ -798,6 +925,91 @@ mod tests {
         assert!(
             prepared.command_display.contains("sudo"),
             "display should include sudo wrapper"
+        );
+
+        let _ = fs::remove_file(askpass_path);
+    }
+
+    #[test]
+    fn prepare_command_rejects_relative_askpass_override_path() {
+        let request = base_request().requires_elevation(true);
+        let result =
+            prepare_command_for_spawn(&request, Some(PathBuf::from("askpass.sh").as_path()));
+        assert!(result.is_err(), "relative askpass path should be rejected");
+        let error = result
+            .err()
+            .expect("relative askpass path should produce an error");
+        assert!(
+            error.message.contains("must be an absolute path"),
+            "expected absolute path guard, got: {}",
+            error.message
+        );
+    }
+
+    #[test]
+    fn prepare_command_rejects_env_askpass_override_by_default() {
+        let _env_guard = ENV_MUTEX
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("env mutex should lock");
+        let askpass_path = std::env::temp_dir().join("helm-askpass-disabled-env.sh");
+        fs::write(&askpass_path, "#!/bin/sh\nexit 0\n").expect("should write askpass test file");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&askpass_path, fs::Permissions::from_mode(0o700))
+                .expect("should chmod askpass test file");
+        }
+
+        let _askpass_override =
+            ScopedEnvVar::set(HELM_SUDO_ASKPASS_ENV, Some(&askpass_path.to_string_lossy()));
+        let _allow_override = ScopedEnvVar::set(HELM_SUDO_ASKPASS_ALLOW_OVERRIDE_ENV, None);
+
+        let request = base_request().requires_elevation(true);
+        let result = prepare_command_for_spawn(&request, None);
+        assert!(
+            result.is_err(),
+            "env askpass override should be disabled by default"
+        );
+        let error = result
+            .err()
+            .expect("env askpass override should produce an error");
+        assert!(
+            error
+                .message
+                .contains("HELM_SUDO_ASKPASS override is disabled by default"),
+            "expected disabled-by-default error, got: {}",
+            error.message
+        );
+
+        let _ = fs::remove_file(askpass_path);
+    }
+
+    #[test]
+    fn prepare_command_allows_env_askpass_override_when_explicitly_enabled() {
+        let _env_guard = ENV_MUTEX
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("env mutex should lock");
+        let askpass_path = std::env::temp_dir().join("helm-askpass-enabled-env.sh");
+        fs::write(&askpass_path, "#!/bin/sh\nexit 0\n").expect("should write askpass test file");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&askpass_path, fs::Permissions::from_mode(0o700))
+                .expect("should chmod askpass test file");
+        }
+
+        let _askpass_override =
+            ScopedEnvVar::set(HELM_SUDO_ASKPASS_ENV, Some(&askpass_path.to_string_lossy()));
+        let _allow_override = ScopedEnvVar::set(HELM_SUDO_ASKPASS_ALLOW_OVERRIDE_ENV, Some("1"));
+
+        let request = base_request().requires_elevation(true);
+        let prepared = prepare_command_for_spawn(&request, None)
+            .expect("env askpass override should be accepted when explicitly enabled");
+        assert_eq!(
+            prepared.command.env.get("SUDO_ASKPASS"),
+            Some(&askpass_path.to_string_lossy().to_string())
         );
 
         let _ = fs::remove_file(askpass_path);

@@ -229,6 +229,16 @@ struct CoreTaskRecord: Codable {
 struct CoreTaskOutputRecord: Codable {
     let taskId: UInt64
     let command: String?
+    let cwd: String?
+    let programPath: String?
+    let pathSnippet: String?
+    let startedAtUnixMs: Int64?
+    let finishedAtUnixMs: Int64?
+    let durationMs: UInt64?
+    let exitCode: Int32?
+    let terminationReason: String?
+    let errorCode: String?
+    let errorMessage: String?
     let stdout: String?
     let stderr: String?
 }

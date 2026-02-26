@@ -111,8 +111,58 @@ jobs:
             exit 1
           fi
 
-          if [ "$APPCAST_VERSION" != "$STABLE_CLI_VERSION" ]; then
+          OPEN_PUBLISH_HEADS="$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --state open --json headRefName --jq '.[].headRefName' || true)"
+          STABLE_SYNC_STATE="$(
+            scripts/release/publish_verify_state.sh \
+              "$APPCAST_VERSION" \
+              "$STABLE_CLI_VERSION" \
+              "$OPEN_PUBLISH_HEADS"
+          )"
+
+          STABLE_SYNC_STATUS=""
+          STABLE_SYNC_REASON=""
+          STABLE_SYNC_TARGET_VERSION=""
+          STABLE_SYNC_MATCHING_HEADS=""
+          while IFS='=' read -r key value; do
+            case "$key" in
+              STATUS) STABLE_SYNC_STATUS="$value" ;;
+              REASON) STABLE_SYNC_REASON="$value" ;;
+              TARGET_VERSION) STABLE_SYNC_TARGET_VERSION="$value" ;;
+              MATCHING_HEADS) STABLE_SYNC_MATCHING_HEADS="$value" ;;
+            esac
+          done <<< "$STABLE_SYNC_STATE"
+
+          if [ "$STABLE_SYNC_STATUS" = "pending" ]; then
+            echo "::notice::Stable metadata mismatch is pending publish PR merge."
+            echo "::notice::appcast=${APPCAST_VERSION} cli_latest=${STABLE_CLI_VERSION} target=${STABLE_SYNC_TARGET_VERSION}"
+            if [ -n "$STABLE_SYNC_MATCHING_HEADS" ]; then
+              echo "::notice::open_publish_heads=${STABLE_SYNC_MATCHING_HEADS}"
+            fi
+            {
+              echo "## Release Publish Verify"
+              echo ""
+              echo "- Stable metadata status: follow-up required (pending publish PR merge)"
+              echo "- appcast version: ${APPCAST_VERSION}"
+              echo "- stable CLI metadata version: ${STABLE_CLI_VERSION}"
+              echo "- target version: ${STABLE_SYNC_TARGET_VERSION}"
+              if [ -n "$STABLE_SYNC_MATCHING_HEADS" ]; then
+                echo "- open publish branch(es): ${STABLE_SYNC_MATCHING_HEADS}"
+              fi
+              echo "- action: merge pending publish PR(s), then rerun this workflow"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "$STABLE_SYNC_STATUS" = "invalid" ]; then
+            echo "::error::Invalid stable metadata version state."
+            echo "::error::reason=${STABLE_SYNC_REASON}"
+            echo "::error::appcast=${APPCAST_VERSION} cli_latest=${STABLE_CLI_VERSION}"
+            exit 1
+          fi
+
+          if [ "$STABLE_SYNC_STATUS" != "synced" ]; then
             echo "::error::Stable publish metadata mismatch."
+            echo "::error::reason=${STABLE_SYNC_REASON}"
             echo "::error::appcast=${APPCAST_VERSION} cli_latest=${STABLE_CLI_VERSION}"
             exit 1
           fi

@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Validate guide content IDs
+        run: npm run check:content-ids
+
       - name: Build website
         env:
           ASTRO_TELEMETRY_DISABLED: "1"

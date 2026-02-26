@@ -32,6 +32,14 @@ pub trait PackageStore: Send + Sync {
 
     fn set_snapshot_pinned(&self, package: &PackageRef, pinned: bool) -> PersistenceResult<()>;
 
+    fn apply_install_result(
+        &self,
+        package: &PackageRef,
+        installed_version: Option<&str>,
+    ) -> PersistenceResult<()>;
+
+    fn apply_uninstall_result(&self, package: &PackageRef) -> PersistenceResult<()>;
+
     fn apply_upgrade_result(&self, package: &PackageRef) -> PersistenceResult<()>;
 }
 

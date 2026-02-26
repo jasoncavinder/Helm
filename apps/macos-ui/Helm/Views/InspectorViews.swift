@@ -194,7 +194,8 @@ private struct InspectorTaskDetailView: View {
                 taskDescription: task.description,
                 diagnosticsText: HelmSupport.generateTaskDiagnostics(
                     task: task,
-                    suggestedCommand: diagnosticCommandHint()
+                    suggestedCommand: diagnosticCommandHint(),
+                    output: taskOutputRecord
                 ),
                 output: taskOutputRecord,
                 isLoading: isLoadingTaskOutput,

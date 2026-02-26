@@ -6,18 +6,20 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use helm_core::adapters::{
-    AdapterRequest, AdapterResponse, AdapterResult, ManagerAdapter, RefreshRequest, SearchRequest,
+    AdapterRequest, AdapterResponse, AdapterResult, InstallRequest, ManagerAdapter, MutationResult,
+    RefreshRequest, SearchRequest, UninstallRequest,
 };
 use helm_core::models::{
     ActionSafety, Capability, CoreError, CoreErrorKind, DetectionInfo, ManagerAction,
-    ManagerAuthority, ManagerCategory, ManagerDescriptor, ManagerId, SearchQuery, TaskId,
-    TaskRecord, TaskStatus, TaskType,
+    ManagerAuthority, ManagerCategory, ManagerDescriptor, ManagerId, OutdatedPackage, PackageRef,
+    SearchQuery, TaskId, TaskRecord, TaskStatus, TaskType,
 };
 use helm_core::orchestration::{AdapterRuntime, AdapterTaskTerminalState};
-use helm_core::persistence::{DetectionStore, PersistenceResult, TaskStore};
+use helm_core::persistence::{DetectionStore, PackageStore, PersistenceResult, TaskStore};
 use helm_core::sqlite::SqliteStore;
 
 const TEST_CAPABILITIES: &[Capability] = &[Capability::Refresh, Capability::Search];
+const MUTATION_CAPABILITIES: &[Capability] = &[Capability::Install, Capability::Uninstall];
 
 fn test_db_path(test_name: &str) -> PathBuf {
     let nanos = SystemTime::now()
@@ -40,13 +42,21 @@ struct TestAdapter {
 
 impl TestAdapter {
     fn new(manager: ManagerId, behavior: AdapterBehavior) -> Self {
+        Self::with_capabilities(manager, TEST_CAPABILITIES, behavior)
+    }
+
+    fn with_capabilities(
+        manager: ManagerId,
+        capabilities: &'static [Capability],
+        behavior: AdapterBehavior,
+    ) -> Self {
         Self {
             descriptor: ManagerDescriptor {
                 id: manager,
                 display_name: "test-adapter",
                 category: ManagerCategory::Language,
                 authority: ManagerAuthority::Standard,
-                capabilities: TEST_CAPABILITIES,
+                capabilities,
             },
             behavior,
         }
@@ -207,13 +217,22 @@ impl SequencedAdapter {
         responses: Vec<AdapterResult<AdapterResponse>>,
         call_count: Arc<AtomicUsize>,
     ) -> Self {
+        Self::with_capabilities(manager, TEST_CAPABILITIES, responses, call_count)
+    }
+
+    fn with_capabilities(
+        manager: ManagerId,
+        capabilities: &'static [Capability],
+        responses: Vec<AdapterResult<AdapterResponse>>,
+        call_count: Arc<AtomicUsize>,
+    ) -> Self {
         Self {
             descriptor: ManagerDescriptor {
                 id: manager,
                 display_name: "sequenced-adapter",
                 category: ManagerCategory::Language,
                 authority: ManagerAuthority::Standard,
-                capabilities: TEST_CAPABILITIES,
+                capabilities,
             },
             responses: Mutex::new(responses),
             call_count,
@@ -625,4 +644,200 @@ async fn submit_refresh_request_response_does_not_retry_parse_failure() {
     assert_eq!(error.task, Some(TaskType::Refresh));
     assert_eq!(error.action, Some(ManagerAction::Refresh));
     assert_eq!(call_count.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn refresh_all_ordered_recomputes_enablement_after_preference_update() {
+    let path = test_db_path("orchestration-runtime-enablement-refresh-invalidation");
+    let store = Arc::new(SqliteStore::new(&path));
+    store.migrate_to_latest().unwrap();
+    store.set_manager_enabled(ManagerId::Npm, true).unwrap();
+
+    let call_count = Arc::new(AtomicUsize::new(0));
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(SequencedAdapter::with_capabilities(
+        ManagerId::Npm,
+        &[Capability::Detect],
+        vec![
+            Ok(AdapterResponse::Detection(DetectionInfo {
+                installed: true,
+                executable_path: Some(PathBuf::from("/opt/homebrew/bin/npm")),
+                version: Some("10.9.0".to_string()),
+            })),
+            Ok(AdapterResponse::Detection(DetectionInfo {
+                installed: true,
+                executable_path: Some(PathBuf::from("/opt/homebrew/bin/npm")),
+                version: Some("10.9.0".to_string()),
+            })),
+        ],
+        call_count.clone(),
+    ));
+    let runtime = AdapterRuntime::with_all_stores(
+        [adapter],
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+    )
+    .unwrap();
+
+    let first_results = runtime.refresh_all_ordered().await;
+    assert_eq!(first_results.len(), 1);
+    assert!(first_results[0].1.is_ok());
+    assert_eq!(call_count.load(Ordering::SeqCst), 1);
+
+    store.set_manager_enabled(ManagerId::Npm, false).unwrap();
+
+    let second_results = runtime.refresh_all_ordered().await;
+    assert_eq!(second_results.len(), 1);
+    assert!(second_results[0].1.is_ok());
+    assert_eq!(
+        call_count.load(Ordering::SeqCst),
+        1,
+        "disabled manager should be skipped after preference update"
+    );
+}
+
+#[tokio::test]
+async fn install_mutation_updates_cached_snapshots_without_manual_refresh() {
+    let path = test_db_path("orchestration-runtime-install-snapshot");
+    let store = Arc::new(SqliteStore::new(&path));
+    store.migrate_to_latest().unwrap();
+
+    let package = PackageRef {
+        manager: ManagerId::Npm,
+        name: "eslint".to_string(),
+    };
+    store
+        .upsert_outdated(&[OutdatedPackage {
+            package: package.clone(),
+            installed_version: Some("9.24.0".to_string()),
+            candidate_version: "9.25.0".to_string(),
+            pinned: false,
+            restart_required: false,
+        }])
+        .unwrap();
+
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(TestAdapter::with_capabilities(
+        ManagerId::Npm,
+        MUTATION_CAPABILITIES,
+        AdapterBehavior::Succeeds(AdapterResponse::Mutation(MutationResult {
+            package: package.clone(),
+            action: ManagerAction::Install,
+            before_version: Some("9.24.0".to_string()),
+            after_version: Some("9.25.0".to_string()),
+        })),
+    ));
+    let runtime = AdapterRuntime::with_all_stores(
+        [adapter],
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+    )
+    .unwrap();
+
+    runtime
+        .submit_refresh_request_response(
+            ManagerId::Npm,
+            AdapterRequest::Install(InstallRequest {
+                package: package.clone(),
+                version: Some("9.25.0".to_string()),
+            }),
+        )
+        .await
+        .unwrap();
+
+    let mut persisted = false;
+    for _ in 0..20 {
+        let installed = store.list_installed().unwrap();
+        let outdated = store.list_outdated().unwrap();
+        let installed_entry = installed.iter().find(|entry| entry.package == package);
+        if installed_entry.and_then(|entry| entry.installed_version.as_deref()) == Some("9.25.0")
+            && outdated.iter().all(|entry| entry.package != package)
+        {
+            persisted = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    assert!(
+        persisted,
+        "expected install mutation to refresh cached installed/outdated snapshots"
+    );
+}
+
+#[tokio::test]
+async fn uninstall_mutation_removes_cached_snapshots_without_manual_refresh() {
+    let path = test_db_path("orchestration-runtime-uninstall-snapshot");
+    let store = Arc::new(SqliteStore::new(&path));
+    store.migrate_to_latest().unwrap();
+
+    let package = PackageRef {
+        manager: ManagerId::Pnpm,
+        name: "typescript".to_string(),
+    };
+    store
+        .upsert_installed(&[helm_core::models::InstalledPackage {
+            package: package.clone(),
+            installed_version: Some("5.8.3".to_string()),
+            pinned: false,
+        }])
+        .unwrap();
+    store
+        .upsert_outdated(&[OutdatedPackage {
+            package: package.clone(),
+            installed_version: Some("5.8.3".to_string()),
+            candidate_version: "5.9.0".to_string(),
+            pinned: false,
+            restart_required: false,
+        }])
+        .unwrap();
+
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(TestAdapter::with_capabilities(
+        ManagerId::Pnpm,
+        MUTATION_CAPABILITIES,
+        AdapterBehavior::Succeeds(AdapterResponse::Mutation(MutationResult {
+            package: package.clone(),
+            action: ManagerAction::Uninstall,
+            before_version: Some("5.8.3".to_string()),
+            after_version: None,
+        })),
+    ));
+    let runtime = AdapterRuntime::with_all_stores(
+        [adapter],
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+    )
+    .unwrap();
+
+    runtime
+        .submit_refresh_request_response(
+            ManagerId::Pnpm,
+            AdapterRequest::Uninstall(UninstallRequest {
+                package: package.clone(),
+            }),
+        )
+        .await
+        .unwrap();
+
+    let mut persisted = false;
+    for _ in 0..20 {
+        let installed = store.list_installed().unwrap();
+        let outdated = store.list_outdated().unwrap();
+        if installed.iter().all(|entry| entry.package != package)
+            && outdated.iter().all(|entry| entry.package != package)
+        {
+            persisted = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    assert!(
+        persisted,
+        "expected uninstall mutation to remove package from cached installed/outdated snapshots"
+    );
 }

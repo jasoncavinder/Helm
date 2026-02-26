@@ -6,7 +6,7 @@ pub use task_output_store::TaskOutputRecord;
 #[cfg(unix)]
 pub use tokio_process::TokioProcessExecutor;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -223,21 +223,17 @@ pub struct ManagerTimeoutProfile {
     pub idle_timeout: Option<Duration>,
 }
 
-static MANAGER_EXECUTABLE_OVERRIDES: OnceLock<
-    RwLock<std::collections::HashMap<ManagerId, PathBuf>>,
-> = OnceLock::new();
-static MANAGER_TIMEOUT_PROFILES: OnceLock<
-    RwLock<std::collections::HashMap<ManagerId, ManagerTimeoutProfile>>,
-> = OnceLock::new();
+static MANAGER_EXECUTABLE_OVERRIDES: OnceLock<RwLock<ManagerExecutionPreferences>> =
+    OnceLock::new();
 
-fn manager_executable_overrides() -> &'static RwLock<std::collections::HashMap<ManagerId, PathBuf>>
-{
-    MANAGER_EXECUTABLE_OVERRIDES.get_or_init(|| RwLock::new(std::collections::HashMap::new()))
+#[derive(Clone, Debug, Default)]
+struct ManagerExecutionPreferences {
+    executable_overrides: HashMap<ManagerId, PathBuf>,
+    timeout_profiles: HashMap<ManagerId, ManagerTimeoutProfile>,
 }
 
-fn manager_timeout_profiles()
--> &'static RwLock<std::collections::HashMap<ManagerId, ManagerTimeoutProfile>> {
-    MANAGER_TIMEOUT_PROFILES.get_or_init(|| RwLock::new(std::collections::HashMap::new()))
+fn manager_execution_preferences() -> &'static RwLock<ManagerExecutionPreferences> {
+    MANAGER_EXECUTABLE_OVERRIDES.get_or_init(|| RwLock::new(ManagerExecutionPreferences::default()))
 }
 
 fn manager_command_aliases(manager: ManagerId) -> &'static [&'static str] {
@@ -339,10 +335,10 @@ fn prepend_manager_runtime_path_hints(
 }
 
 fn apply_manager_executable_override(request: &mut ProcessSpawnRequest) {
-    let selected = manager_executable_overrides()
+    let selected = manager_execution_preferences()
         .read()
         .ok()
-        .and_then(|guard| guard.get(&request.manager).cloned());
+        .and_then(|guard| guard.executable_overrides.get(&request.manager).cloned());
     let Some(selected_path) = selected else {
         return;
     };
@@ -433,10 +429,10 @@ fn default_idle_timeout_for_request(request: &ProcessSpawnRequest) -> Option<Dur
 }
 
 fn apply_manager_timeout_profile(request: &mut ProcessSpawnRequest) {
-    let profile = manager_timeout_profiles()
+    let profile = manager_execution_preferences()
         .read()
         .ok()
-        .and_then(|guard| guard.get(&request.manager).copied())
+        .and_then(|guard| guard.timeout_profiles.get(&request.manager).copied())
         .unwrap_or_default();
 
     let effective_hard_timeout = profile.hard_timeout.or(request.timeout);
@@ -452,51 +448,62 @@ fn apply_manager_timeout_profile(request: &mut ProcessSpawnRequest) {
 }
 
 pub fn set_manager_selected_executable(manager: ManagerId, path: Option<PathBuf>) {
-    let Ok(mut guard) = manager_executable_overrides().write() else {
+    let Ok(mut guard) = manager_execution_preferences().write() else {
         return;
     };
     if let Some(path) = path {
-        guard.insert(manager, path);
+        guard.executable_overrides.insert(manager, path);
     } else {
-        guard.remove(&manager);
+        guard.executable_overrides.remove(&manager);
     }
 }
 
 pub fn clear_manager_selected_executables() {
-    if let Ok(mut guard) = manager_executable_overrides().write() {
-        guard.clear();
+    if let Ok(mut guard) = manager_execution_preferences().write() {
+        guard.executable_overrides.clear();
     }
 }
 
 pub fn set_manager_timeout_profile(manager: ManagerId, profile: ManagerTimeoutProfile) {
-    let Ok(mut guard) = manager_timeout_profiles().write() else {
+    let Ok(mut guard) = manager_execution_preferences().write() else {
         return;
     };
     if profile.hard_timeout.is_none() && profile.idle_timeout.is_none() {
-        guard.remove(&manager);
+        guard.timeout_profiles.remove(&manager);
     } else {
-        guard.insert(manager, profile);
+        guard.timeout_profiles.insert(manager, profile);
     }
 }
 
 pub fn clear_manager_timeout_profiles() {
-    if let Ok(mut guard) = manager_timeout_profiles().write() {
-        guard.clear();
+    if let Ok(mut guard) = manager_execution_preferences().write() {
+        guard.timeout_profiles.clear();
     }
 }
 
 pub fn manager_timeout_profile(manager: ManagerId) -> Option<ManagerTimeoutProfile> {
-    manager_timeout_profiles()
+    manager_execution_preferences()
         .read()
         .ok()
-        .and_then(|guard| guard.get(&manager).copied())
+        .and_then(|guard| guard.timeout_profiles.get(&manager).copied())
 }
 
 pub fn manager_selected_executable(manager: ManagerId) -> Option<PathBuf> {
-    manager_executable_overrides()
+    manager_execution_preferences()
         .read()
         .ok()
-        .and_then(|guard| guard.get(&manager).cloned())
+        .and_then(|guard| guard.executable_overrides.get(&manager).cloned())
+}
+
+pub fn replace_manager_execution_preferences(
+    executable_overrides: HashMap<ManagerId, PathBuf>,
+    timeout_profiles: HashMap<ManagerId, ManagerTimeoutProfile>,
+) {
+    let Ok(mut guard) = manager_execution_preferences().write() else {
+        return;
+    };
+    guard.executable_overrides = executable_overrides;
+    guard.timeout_profiles = timeout_profiles;
 }
 
 pub fn spawn_validated(
@@ -534,9 +541,11 @@ fn invalid_input(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
     use std::fs;
     use std::path::{Path, PathBuf};
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex, OnceLock};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     #[derive(Default)]
@@ -991,5 +1000,76 @@ mod tests {
 
         clear_manager_selected_executables();
         clear_manager_timeout_profiles();
+    }
+
+    #[test]
+    fn replace_manager_execution_preferences_avoids_empty_read_window() {
+        let _lock = execution_test_lock()
+            .lock()
+            .expect("execution test lock poisoned");
+        clear_manager_selected_executables();
+        clear_manager_timeout_profiles();
+
+        let temp_dir = test_temp_dir("execution-preference-swap");
+        let npm_a = temp_dir.join("profile-a").join("npm");
+        let npm_b = temp_dir.join("profile-b").join("npm");
+        create_placeholder_binary(&npm_a);
+        create_placeholder_binary(&npm_b);
+
+        let mut executable_map_a = HashMap::new();
+        executable_map_a.insert(ManagerId::Npm, npm_a.clone());
+        let mut executable_map_b = HashMap::new();
+        executable_map_b.insert(ManagerId::Npm, npm_b.clone());
+
+        let mut timeout_map_a = HashMap::new();
+        timeout_map_a.insert(
+            ManagerId::Npm,
+            ManagerTimeoutProfile {
+                hard_timeout: Some(Duration::from_secs(300)),
+                idle_timeout: Some(Duration::from_secs(120)),
+            },
+        );
+        let mut timeout_map_b = HashMap::new();
+        timeout_map_b.insert(
+            ManagerId::Npm,
+            ManagerTimeoutProfile {
+                hard_timeout: Some(Duration::from_secs(500)),
+                idle_timeout: Some(Duration::from_secs(240)),
+            },
+        );
+
+        replace_manager_execution_preferences(executable_map_a.clone(), timeout_map_a.clone());
+
+        let stop_reader = Arc::new(AtomicBool::new(false));
+        let observed_empty = Arc::new(AtomicBool::new(false));
+        let reader_stop = Arc::clone(&stop_reader);
+        let reader_empty = Arc::clone(&observed_empty);
+
+        let reader = std::thread::spawn(move || {
+            while !reader_stop.load(Ordering::Relaxed) {
+                if manager_selected_executable(ManagerId::Npm).is_none()
+                    || manager_timeout_profile(ManagerId::Npm).is_none()
+                {
+                    reader_empty.store(true, Ordering::Relaxed);
+                    break;
+                }
+            }
+        });
+
+        for _ in 0..500 {
+            replace_manager_execution_preferences(executable_map_b.clone(), timeout_map_b.clone());
+            replace_manager_execution_preferences(executable_map_a.clone(), timeout_map_a.clone());
+        }
+
+        stop_reader.store(true, Ordering::Relaxed);
+        reader.join().expect("reader thread should join");
+        assert!(
+            !observed_empty.load(Ordering::Relaxed),
+            "reader observed empty executable/timeout profile window during swaps"
+        );
+
+        clear_manager_selected_executables();
+        clear_manager_timeout_profiles();
+        let _ = fs::remove_dir_all(temp_dir);
     }
 }

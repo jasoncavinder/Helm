@@ -1,5 +1,7 @@
 #![cfg(unix)]
 
+use std::fs;
+use std::path::Path;
 use std::time::Duration;
 
 use helm_core::execution::{
@@ -24,6 +26,18 @@ fn sleep_request() -> ProcessSpawnRequest {
         ManagerAction::Refresh,
         CommandSpec::new("/bin/sleep").arg("30"),
     )
+}
+
+async fn wait_for_pid_file(path: &Path) -> u32 {
+    for _ in 0..50 {
+        if let Ok(raw) = fs::read_to_string(path)
+            && let Ok(pid) = raw.trim().parse::<u32>()
+        {
+            return pid;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    panic!("timed out waiting for child pid file: {}", path.display());
 }
 
 #[tokio::test]
@@ -67,6 +81,47 @@ async fn timeout_kills_long_running_process() {
     assert_eq!(error.manager, Some(ManagerId::HomebrewFormula));
     assert_eq!(error.task, Some(TaskType::Refresh));
     assert_eq!(error.action, Some(ManagerAction::Refresh));
+}
+
+#[tokio::test]
+async fn timeout_kills_process_group_children_without_orphans() {
+    let executor = TokioProcessExecutor;
+    let pid_file = std::env::temp_dir().join(format!(
+        "helm-timeout-child-{}-{}.pid",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock should be after unix epoch")
+            .as_nanos()
+    ));
+    let pid_file_string = pid_file.to_string_lossy().to_string();
+    let request = ProcessSpawnRequest::new(
+        ManagerId::HomebrewFormula,
+        TaskType::Refresh,
+        ManagerAction::Refresh,
+        CommandSpec::new("/bin/sh").args([
+            "-c",
+            "sleep 30 & child=$!; printf '%s' \"$child\" > \"$1\"; wait \"$child\"",
+            "helm-timeout-test",
+            pid_file_string.as_str(),
+        ]),
+    )
+    .timeout(Duration::from_millis(150));
+
+    let handle = spawn_validated(&executor, request).expect("spawn should succeed");
+    let error = handle.wait().await.expect_err("should timeout");
+    assert_eq!(error.kind, CoreErrorKind::Timeout);
+
+    let child_pid = wait_for_pid_file(pid_file.as_path()).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let child_still_running = unsafe { libc::kill(child_pid as libc::pid_t, 0) == 0 };
+    fs::remove_file(pid_file).ok();
+
+    assert!(
+        !child_still_running,
+        "expected timeout to terminate child process group member pid={child_pid}"
+    );
 }
 
 #[tokio::test]

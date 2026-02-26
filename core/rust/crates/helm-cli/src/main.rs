@@ -1,9 +1,8 @@
-use std::collections::{BTreeMap, HashMap, hash_map::DefaultHasher};
+use std::collections::{BTreeMap, HashMap};
 use std::env;
 use std::fs::{self, OpenOptions};
-use std::hash::{Hash, Hasher};
 use std::io::{IsTerminal, Read, Write};
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{ExitCode, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -31,8 +30,7 @@ use helm_core::adapters::{
 };
 use helm_core::execution::{
     ManagerTimeoutProfile, TaskOutputRecord, TokioProcessExecutor,
-    clear_manager_selected_executables, clear_manager_timeout_profiles,
-    set_manager_selected_executable, set_manager_timeout_profile,
+    replace_manager_execution_preferences,
 };
 use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
@@ -52,6 +50,10 @@ use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
+mod cli_errors;
+mod command_dispatch;
+mod coordinator_transport;
+mod json_output;
 mod provenance;
 mod tui;
 
@@ -64,10 +66,9 @@ use provenance::{
 const TASK_FETCH_LIMIT: usize = 400;
 const TASK_FOLLOW_MAX_WAIT_MS: u64 = 30_000;
 const JSON_SCHEMA_VERSION: u32 = 1;
-const JSON_ERROR_EMITTED_PREFIX: &str = "__HELM_JSON_ERROR_EMITTED__:";
-const EXIT_CODE_MARKER_PREFIX: &str = "__HELM_EXIT_CODE__:";
 const CLI_ONBOARDING_REQUIRED_EXIT_CODE: u8 = 5;
 const CLI_LICENSE_ACCEPTANCE_REQUIRED_EXIT_CODE: u8 = 6;
+const TASKS_FOLLOW_MACHINE_MODE_UNSUPPORTED_ERROR: &str = "tasks follow does not support --json/--ndjson. Run without machine mode or use 'helm tasks logs <task-id>'.";
 const CLI_LICENSE_TERMS_VERSION: &str = "helm-source-available-license-v1.0-pre1.0";
 const CLI_LICENSE_TERMS_URL: &str = "https://github.com/jasoncavinder/Helm/blob/main/LICENSE";
 const CLI_ACCEPT_LICENSE_ENV: &str = "HELM_ACCEPT_LICENSE";
@@ -286,6 +287,7 @@ struct CliDiagnosticsSummary {
     failed_task_ids: Vec<u64>,
     undetected_enabled_managers: Vec<String>,
     failure_classes: BTreeMap<String, usize>,
+    failure_class_hints: BTreeMap<String, String>,
     coordinator: CliCoordinatorHealthSummary,
 }
 
@@ -326,6 +328,8 @@ struct CliTaskDiagnosticsOutput {
 struct CliTaskDiagnosticsError {
     code: String,
     message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hint: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -346,6 +350,8 @@ struct CliManagerStatus {
     supports_package_uninstall: bool,
     supports_package_upgrade: bool,
     selected_executable_path: Option<String>,
+    selected_executable_differs_from_default: bool,
+    executable_path_diagnostic: String,
     selected_install_method: Option<String>,
     is_eligible: bool,
     ineligible_reason_code: Option<String>,
@@ -385,6 +391,8 @@ struct CliManagerExecutableStatus {
     executable_paths: Vec<String>,
     default_executable_path: Option<String>,
     selected_executable_path: Option<String>,
+    selected_executable_differs_from_default: bool,
+    executable_path_diagnostic: String,
 }
 
 #[derive(Serialize)]
@@ -570,6 +578,32 @@ impl CoordinatorStateHealth {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CoordinatorClientTransport {
+    LocalInProcess,
+    ExternalFileIpc,
+}
+
+fn coordinator_transport_for_submit(execution_mode: ExecutionMode) -> CoordinatorClientTransport {
+    if execution_mode == ExecutionMode::Detach {
+        CoordinatorClientTransport::ExternalFileIpc
+    } else {
+        CoordinatorClientTransport::LocalInProcess
+    }
+}
+
+fn coordinator_transport_for_workflow(execution_mode: ExecutionMode) -> CoordinatorClientTransport {
+    if execution_mode == ExecutionMode::Detach {
+        CoordinatorClientTransport::ExternalFileIpc
+    } else {
+        CoordinatorClientTransport::LocalInProcess
+    }
+}
+
+fn coordinator_transport_for_cancel() -> CoordinatorClientTransport {
+    CoordinatorClientTransport::ExternalFileIpc
+}
+
 fn coordinator_request_kind(request: &CoordinatorRequest) -> &'static str {
     match request {
         CoordinatorRequest::Ping => "ping",
@@ -712,38 +746,22 @@ fn main() -> ExitCode {
     }
 
     let options_for_error = options.clone();
-    match command {
-        Command::Tui => cmd_tui(store.clone(), options),
-        Command::Status => cmd_status(store.as_ref(), options),
-        Command::Refresh => cmd_refresh(store.clone(), options, &command_args),
-        Command::Ls => cmd_packages(store.clone(), options, &command_args),
-        Command::Search => cmd_search(store.clone(), options, &command_args),
-        Command::Packages => cmd_packages(store.clone(), options, &command_args),
-        Command::Updates => cmd_updates(store.clone(), options, &command_args),
-        Command::Tasks => cmd_tasks(store.as_ref(), options, &command_args),
-        Command::Managers => cmd_managers(store.clone(), options, &command_args),
-        Command::Settings => cmd_settings(store.as_ref(), options, &command_args),
-        Command::Diagnostics => cmd_diagnostics(store.as_ref(), options, &command_args),
-        Command::Doctor => cmd_doctor(store.as_ref(), options, &command_args),
-        Command::Onboarding => cmd_onboarding(store.as_ref(), options, &command_args),
-        Command::SelfCmd => cmd_self(store.clone(), options, &command_args),
-        Command::InternalCoordinator => cmd_internal_coordinator(store.clone(), &command_args),
-        Command::Completion | Command::Help | Command::Version => Ok(()),
-    }
-    .map(|_| ExitCode::SUCCESS)
-    .unwrap_or_else(|error| {
-        let (json_emitted, normalized_error) = strip_json_error_marker(error.as_str());
-        let (marked_exit_code, normalized_error) = strip_exit_code_marker(normalized_error);
-        let exit_code = marked_exit_code.unwrap_or_else(|| exit_code_for_error(normalized_error));
-        if options_for_error.json {
-            if !json_emitted {
-                emit_cli_error_json("helm.cli.v1.error", normalized_error, exit_code);
+    command_dispatch::execute_command(command, store.clone(), options, &command_args)
+        .map(|_| ExitCode::SUCCESS)
+        .unwrap_or_else(|error| {
+            let (json_emitted, normalized_error) = strip_json_error_marker(error.as_str());
+            let (marked_exit_code, normalized_error) = strip_exit_code_marker(normalized_error);
+            let exit_code =
+                marked_exit_code.unwrap_or_else(|| exit_code_for_error(normalized_error));
+            if options_for_error.json {
+                if !json_emitted {
+                    emit_cli_error_json("helm.cli.v1.error", normalized_error, exit_code);
+                }
+            } else if !json_emitted {
+                eprintln!("helm: {normalized_error}");
             }
-        } else if !json_emitted {
-            eprintln!("helm: {normalized_error}");
-        }
-        ExitCode::from(exit_code)
-    })
+            ExitCode::from(exit_code)
+        })
 }
 
 fn cmd_tui(store: Arc<SqliteStore>, options: GlobalOptions) -> Result<(), String> {
@@ -904,8 +922,8 @@ fn parse_args_with_tty(
         return Ok((options, Command::Version, filtered[1..].to_vec()));
     }
 
-    let command =
-        parse_top_level_command(first).ok_or_else(|| format!("unknown command '{first}'"))?;
+    let command = parse_top_level_command(first)
+        .ok_or_else(|| format!("unknown command '{first}'. Run 'helm help' for usage."))?;
 
     Ok((options, command, filtered[1..].to_vec()))
 }
@@ -1001,41 +1019,45 @@ fn ndjson_enabled() -> bool {
 }
 
 fn coordinator_request_timeout() -> Duration {
-    Duration::from_secs(CLI_REQUEST_TIMEOUT_SECONDS.load(Ordering::Relaxed).max(1))
+    coordinator_transport::coordinator_request_timeout(
+        CLI_REQUEST_TIMEOUT_SECONDS.load(Ordering::Relaxed),
+    )
+}
+
+fn coordinator_response_poll_interval(elapsed: Duration) -> Duration {
+    coordinator_transport::coordinator_response_poll_interval(elapsed)
+}
+
+fn coordinator_server_idle_poll_interval(empty_iterations: u32) -> Duration {
+    coordinator_transport::coordinator_server_idle_poll_interval(empty_iterations)
+}
+
+fn coordinator_bootstrap_lock_poll_interval(elapsed: Duration) -> Duration {
+    coordinator_transport::coordinator_bootstrap_lock_poll_interval(elapsed)
+}
+
+fn coordinator_startup_poll_interval(elapsed: Duration) -> Duration {
+    coordinator_transport::coordinator_startup_poll_interval(elapsed)
 }
 
 fn exit_code_for_error(error: &str) -> u8 {
-    let (marked_exit_code, _) = strip_exit_code_marker(error);
-    marked_exit_code.unwrap_or(1)
+    cli_errors::exit_code_for_error(error)
 }
 
 fn mark_json_error_emitted(error: impl AsRef<str>) -> String {
-    format!("{JSON_ERROR_EMITTED_PREFIX}{}", error.as_ref())
+    cli_errors::mark_json_error_emitted(error)
 }
 
 fn strip_json_error_marker(error: &str) -> (bool, &str) {
-    if let Some(stripped) = error.strip_prefix(JSON_ERROR_EMITTED_PREFIX) {
-        (true, stripped)
-    } else {
-        (false, error)
-    }
+    cli_errors::strip_json_error_marker(error)
 }
 
 fn mark_exit_code(error: impl AsRef<str>, exit_code: u8) -> String {
-    format!("{EXIT_CODE_MARKER_PREFIX}{exit_code}:{}", error.as_ref())
+    cli_errors::mark_exit_code(error, exit_code)
 }
 
 fn strip_exit_code_marker(error: &str) -> (Option<u8>, &str) {
-    let Some(stripped) = error.strip_prefix(EXIT_CODE_MARKER_PREFIX) else {
-        return (None, error);
-    };
-    let Some((raw_code, remainder)) = stripped.split_once(':') else {
-        return (None, error);
-    };
-    match raw_code.parse::<u8>() {
-        Ok(code) => (Some(code), remainder),
-        Err(_) => (None, error),
-    }
+    cli_errors::strip_exit_code_marker(error)
 }
 
 fn parse_top_level_command(raw: &str) -> Option<Command> {
@@ -1676,12 +1698,16 @@ fn cmd_refresh(
         target, options.execution_mode
     ));
     let tokio_runtime = cli_tokio_runtime()?;
-    let runtime = build_adapter_runtime(store)?;
+    let runtime = build_adapter_runtime(store.clone())?;
 
     match target {
         ManagerTarget::All => {
             if options.execution_mode == ExecutionMode::Detach {
-                let response = coordinator_start_workflow(CoordinatorWorkflowRequest::RefreshAll)?;
+                let response = coordinator_start_workflow(
+                    store.as_ref(),
+                    CoordinatorWorkflowRequest::RefreshAll,
+                    options.execution_mode,
+                )?;
                 let job_id = response
                     .job_id
                     .ok_or_else(|| "coordinator workflow response missing job id".to_string())?;
@@ -1710,21 +1736,20 @@ fn cmd_refresh(
                 "Refresh completed",
                 rows,
             );
-            if failures > 0 {
-                let exit_code = if failures > 1 { 3 } else { 2 };
-                return Err(mark_exit_code(
-                    format!("{failures} manager refresh operations failed"),
-                    exit_code,
-                ));
+            if let Some(error) = manager_operation_failure_error("refresh", failures) {
+                return Err(error);
             }
             Ok(())
         }
         ManagerTarget::One(manager) => {
             if options.execution_mode == ExecutionMode::Detach {
-                let response =
-                    coordinator_start_workflow(CoordinatorWorkflowRequest::RefreshManager {
+                let response = coordinator_start_workflow(
+                    store.as_ref(),
+                    CoordinatorWorkflowRequest::RefreshManager {
                         manager_id: manager.as_str().to_string(),
-                    })?;
+                    },
+                    options.execution_mode,
+                )?;
                 let job_id = response
                     .job_id
                     .ok_or_else(|| "coordinator workflow response missing job id".to_string())?;
@@ -2139,6 +2164,7 @@ fn cmd_packages_mutation(
 
     let response = if let Some(request) = coordinator_request {
         Some(coordinator_submit_request(
+            store.as_ref(),
             parsed.manager,
             request,
             options.execution_mode,
@@ -2675,17 +2701,24 @@ fn cmd_updates_run(
         options.execution_mode
     ));
     if !parsed.yes {
-        return Err("updates run requires --yes".to_string());
+        return Err(
+            "updates run requires --yes. Run 'helm updates preview' first, then rerun with --yes."
+                .to_string(),
+        );
     }
 
     if options.execution_mode == ExecutionMode::Detach {
-        let response = coordinator_start_workflow(CoordinatorWorkflowRequest::UpdatesRun {
-            include_pinned: parsed.include_pinned,
-            allow_os_updates: parsed.allow_os_updates,
-            manager_id: parsed
-                .manager_filter
-                .map(|manager| manager.as_str().to_string()),
-        })?;
+        let response = coordinator_start_workflow(
+            store.as_ref(),
+            CoordinatorWorkflowRequest::UpdatesRun {
+                include_pinned: parsed.include_pinned,
+                allow_os_updates: parsed.allow_os_updates,
+                manager_id: parsed
+                    .manager_filter
+                    .map(|manager| manager.as_str().to_string()),
+            },
+            options.execution_mode,
+        )?;
         let job_id = response
             .job_id
             .ok_or_else(|| "coordinator workflow response missing job id".to_string())?;
@@ -2744,15 +2777,10 @@ fn cmd_updates_run(
 
     let mut results: Vec<CliUpgradeRunStepResult> = Vec::with_capacity(steps.len());
     for step in &steps {
-        let request_name = if step.manager == ManagerId::HomebrewFormula && step.cleanup_old_kegs {
-            encode_homebrew_upgrade_target(&step.package_name, true)
-        } else {
-            step.package_name.clone()
-        };
         let request = AdapterRequest::Upgrade(UpgradeRequest {
             package: Some(PackageRef {
                 manager: step.manager,
-                name: request_name,
+                name: upgrade_request_name(step),
             }),
         });
         let response = tokio_runtime.block_on(submit_request_wait(&runtime, step.manager, request));
@@ -2816,12 +2844,8 @@ fn cmd_updates_run(
         }
     }
 
-    if failures > 0 {
-        let exit_code = if failures > 1 { 3 } else { 2 };
-        return Err(mark_exit_code(
-            format!("{failures} upgrade steps failed"),
-            exit_code,
-        ));
+    if let Some(error) = manager_operation_failure_error("upgrade", failures) {
+        return Err(error);
     }
 
     Ok(())
@@ -3086,7 +3110,7 @@ fn cmd_tasks_follow(
     command_args: &[String],
 ) -> Result<(), String> {
     if options.json {
-        return Err("tasks follow does not support --json streaming yet".to_string());
+        return Err(tasks_follow_machine_mode_error());
     }
 
     let parsed = parse_tasks_log_options(command_args, "follow")?;
@@ -3167,6 +3191,10 @@ fn cmd_tasks_follow(
 
         thread::sleep(Duration::from_millis(poll_ms));
     }
+}
+
+fn tasks_follow_machine_mode_error() -> String {
+    mark_exit_code(TASKS_FOLLOW_MACHINE_MODE_UNSUPPORTED_ERROR, 1)
 }
 
 fn cmd_tasks_cancel(options: GlobalOptions, command_args: &[String]) -> Result<(), String> {
@@ -3251,6 +3279,14 @@ fn cmd_managers(
                 println!(
                     "  selected_executable_path: {}",
                     row.selected_executable_path.as_deref().unwrap_or("-")
+                );
+                println!(
+                    "  selected_executable_differs_from_default: {}",
+                    row.selected_executable_differs_from_default
+                );
+                println!(
+                    "  executable_path_diagnostic: {}",
+                    row.executable_path_diagnostic
                 );
                 println!(
                     "  selected_install_method: {}",
@@ -3392,8 +3428,15 @@ fn cmd_managers_list(store: &SqliteStore, options: GlobalOptions) -> Result<(), 
             }
         );
         println!(
-            "  {} [{}|{}] {} exec={} method={}{}",
-            manager.manager_id, state, detected, version, executable, method, flags
+            "  {} [{}|{}] {} exec={} method={} exec_diag={}{}",
+            manager.manager_id,
+            state,
+            detected,
+            version,
+            executable,
+            method,
+            manager.executable_path_diagnostic,
+            flags
         );
     }
     Ok(())
@@ -3413,7 +3456,11 @@ fn cmd_managers_detect(
     match target {
         ManagerTarget::All => {
             if options.execution_mode == ExecutionMode::Detach {
-                let response = coordinator_start_workflow(CoordinatorWorkflowRequest::DetectAll)?;
+                let response = coordinator_start_workflow(
+                    store.as_ref(),
+                    CoordinatorWorkflowRequest::DetectAll,
+                    options.execution_mode,
+                )?;
                 let job_id = response
                     .job_id
                     .ok_or_else(|| "coordinator workflow response missing job id".to_string())?;
@@ -3436,7 +3483,7 @@ fn cmd_managers_detect(
                 return Ok(());
             }
             let tokio_runtime = cli_tokio_runtime()?;
-            let runtime = build_adapter_runtime(store)?;
+            let runtime = build_adapter_runtime(store.clone())?;
             let rows = tokio_runtime.block_on(detect_all_no_timeout(&runtime));
             let failures = emit_manager_results(
                 options,
@@ -3444,17 +3491,14 @@ fn cmd_managers_detect(
                 "Detection completed",
                 rows,
             );
-            if failures > 0 {
-                let exit_code = if failures > 1 { 3 } else { 2 };
-                return Err(mark_exit_code(
-                    format!("{failures} manager detection operations failed"),
-                    exit_code,
-                ));
+            if let Some(error) = manager_operation_failure_error("detection", failures) {
+                return Err(error);
             }
             Ok(())
         }
         ManagerTarget::One(manager) => {
             let response = coordinator_submit_request(
+                store.as_ref(),
                 manager,
                 CoordinatorSubmitRequest::Detect,
                 options.execution_mode,
@@ -3524,8 +3568,12 @@ fn cmd_managers_mutation(
     let (target_manager, request) =
         build_manager_mutation_request(store.as_ref(), manager, subcommand)?;
     let submit_request = adapter_request_to_coordinator_submit(request)?;
-    let response =
-        coordinator_submit_request(target_manager, submit_request, options.execution_mode)?;
+    let response = coordinator_submit_request(
+        store.as_ref(),
+        target_manager,
+        submit_request,
+        options.execution_mode,
+    )?;
     let task_id = response
         .task_id
         .ok_or_else(|| "coordinator response missing task id".to_string())?;
@@ -3632,6 +3680,14 @@ fn cmd_managers_executables(
             println!(
                 "  selected_executable_path: {}",
                 details.selected_executable_path.as_deref().unwrap_or("-")
+            );
+            println!(
+                "  selected_executable_differs_from_default: {}",
+                details.selected_executable_differs_from_default
+            );
+            println!(
+                "  executable_path_diagnostic: {}",
+                details.executable_path_diagnostic
             );
             if details.executable_paths.is_empty() {
                 println!("  executable_paths: -");
@@ -4035,6 +4091,7 @@ const SELF_UPDATE_HTTP_WRITE_TIMEOUT_SECS: u64 = 30;
 const SELF_UPDATE_MAX_DOWNLOAD_BYTES_DEFAULT: usize = 64 * 1024 * 1024;
 const APP_BUNDLE_SHIM_SENTINEL: &str = "# helm-cli-shim: app-bundle";
 const DEFAULT_HELM_CLI_SHIM_RELATIVE_PATH: &str = ".local/bin/helm";
+const SELF_UPDATE_MAX_REDIRECT_HOPS: usize = 5;
 const SELF_UPDATE_ALLOWED_HOSTS: [&str; 5] = [
     "helmapp.dev",
     "github.com",
@@ -4223,6 +4280,7 @@ fn self_update_http_agent() -> ureq::Agent {
         .timeout_connect(Duration::from_secs(SELF_UPDATE_HTTP_CONNECT_TIMEOUT_SECS))
         .timeout_read(Duration::from_secs(SELF_UPDATE_HTTP_READ_TIMEOUT_SECS))
         .timeout_write(Duration::from_secs(SELF_UPDATE_HTTP_WRITE_TIMEOUT_SECS))
+        .redirects(0)
         .build()
 }
 
@@ -4292,6 +4350,85 @@ fn parse_url_scheme_host(raw: &str) -> Option<(String, String)> {
         return None;
     }
     Some((scheme.to_ascii_lowercase(), host.to_ascii_lowercase()))
+}
+
+fn parse_url_base(raw: &str) -> Option<(String, String, String)> {
+    let trimmed = raw.trim();
+    let (scheme, remainder) = trimmed.split_once("://")?;
+    if scheme.is_empty() || remainder.is_empty() {
+        return None;
+    }
+    let (authority, path_with_query) = match remainder.split_once('/') {
+        Some((authority, path)) => (authority, format!("/{}", path)),
+        None => (remainder, "/".to_string()),
+    };
+    if authority.is_empty() || authority.contains('@') {
+        return None;
+    }
+    Some((
+        scheme.to_ascii_lowercase(),
+        authority.to_string(),
+        path_with_query,
+    ))
+}
+
+fn resolve_redirect_url(current_url: &str, location: &str) -> Option<String> {
+    let location = location.trim();
+    if location.is_empty() {
+        return None;
+    }
+    if location.starts_with("http://")
+        || location.starts_with("https://")
+        || location.starts_with("file://")
+    {
+        return Some(location.to_string());
+    }
+
+    let (scheme, authority, path_with_query) = parse_url_base(current_url)?;
+    if location.starts_with("//") {
+        return Some(format!("{scheme}:{location}"));
+    }
+    if location.starts_with('/') {
+        return Some(format!("{scheme}://{authority}{location}"));
+    }
+
+    let path_only = path_with_query.split(['?', '#']).next().unwrap_or("/");
+    let base_dir = path_only.rsplit_once('/').map(|(dir, _)| dir).unwrap_or("");
+    if base_dir.is_empty() {
+        Some(format!("{scheme}://{authority}/{location}"))
+    } else {
+        Some(format!("{scheme}://{authority}{base_dir}/{location}"))
+    }
+}
+
+fn is_http_redirect_status(status: u16) -> bool {
+    matches!(status, 301 | 302 | 303 | 307 | 308)
+}
+
+fn resolve_update_redirect_target(
+    current_url: &str,
+    location: &str,
+    field_name: &'static str,
+    endpoint: Option<&str>,
+    error_kind: SelfUpdateErrorKind,
+) -> Result<String, SelfUpdateCommandError> {
+    let Some(resolved) = resolve_redirect_url(current_url, location) else {
+        let mut error = SelfUpdateCommandError::new(
+            error_kind,
+            format!(
+                "self-update {field_name} redirect location is invalid: '{}'",
+                location
+            ),
+        )
+        .with_asset_url(current_url.to_string());
+        if let Some(endpoint) = endpoint {
+            error = error.with_endpoint(endpoint.to_string());
+        }
+        return Err(error);
+    };
+
+    validate_update_url(&resolved, field_name, endpoint)?;
+    Ok(resolved)
 }
 
 fn file_url_path(url: &str) -> Option<PathBuf> {
@@ -4427,63 +4564,153 @@ fn fetch_cli_update_manifest(endpoint: &str) -> Result<CliUpdateManifest, SelfUp
         return Ok(manifest);
     }
 
-    let response = match self_update_http_agent().get(endpoint).call() {
-        Ok(response) => response,
-        Err(ureq::Error::Status(code, response)) => {
-            let body = response.into_string().unwrap_or_default();
-            let body = body.replace('\n', " ");
-            let summary = if body.len() > 200 {
-                format!("{}...", &body[..200])
-            } else {
-                body
-            };
-            return Err(SelfUpdateCommandError::new(
+    let mut current_url = endpoint.trim().to_string();
+    let mut redirect_hops = 0usize;
+    loop {
+        let response = match self_update_http_agent().get(&current_url).call() {
+            Ok(response) => response,
+            Err(ureq::Error::Status(code, response)) => {
+                if is_http_redirect_status(code) {
+                    let location = response
+                        .header("Location")
+                        .map(str::trim)
+                        .unwrap_or_default();
+                    if location.is_empty() {
+                        return Err(SelfUpdateCommandError::new(
+                            SelfUpdateErrorKind::ManifestHttp,
+                            format!(
+                                "self-update endpoint redirect from '{}' is missing Location header",
+                                current_url
+                            ),
+                        )
+                        .with_endpoint(endpoint.to_string())
+                        .with_http_status(code)
+                        .with_asset_url(current_url.clone()));
+                    }
+                    if redirect_hops >= SELF_UPDATE_MAX_REDIRECT_HOPS {
+                        return Err(SelfUpdateCommandError::new(
+                            SelfUpdateErrorKind::ManifestHttp,
+                            format!(
+                                "self-update endpoint exceeded redirect limit ({} hops)",
+                                SELF_UPDATE_MAX_REDIRECT_HOPS
+                            ),
+                        )
+                        .with_endpoint(endpoint.to_string())
+                        .with_http_status(code)
+                        .with_asset_url(current_url.clone()));
+                    }
+                    current_url = resolve_update_redirect_target(
+                        current_url.as_str(),
+                        location,
+                        "endpoint",
+                        Some(endpoint),
+                        SelfUpdateErrorKind::ManifestHttp,
+                    )?;
+                    redirect_hops += 1;
+                    continue;
+                }
+
+                let body = response.into_string().unwrap_or_default();
+                let body = body.replace('\n', " ");
+                let summary = if body.len() > 200 {
+                    format!("{}...", &body[..200])
+                } else {
+                    body
+                };
+                return Err(SelfUpdateCommandError::new(
+                    SelfUpdateErrorKind::ManifestHttp,
+                    format!(
+                        "self-update endpoint returned HTTP {} for '{}': {}",
+                        code, current_url, summary
+                    ),
+                )
+                .with_endpoint(endpoint.to_string())
+                .with_http_status(code)
+                .with_asset_url(current_url));
+            }
+            Err(error) => {
+                return Err(SelfUpdateCommandError::new(
+                    SelfUpdateErrorKind::ManifestTransport,
+                    format!(
+                        "failed to reach self-update endpoint '{}': {error}",
+                        current_url
+                    ),
+                )
+                .with_endpoint(endpoint.to_string())
+                .with_asset_url(current_url));
+            }
+        };
+
+        if is_http_redirect_status(response.status()) {
+            let status = response.status();
+            let location = response
+                .header("Location")
+                .map(str::trim)
+                .unwrap_or_default();
+            if location.is_empty() {
+                return Err(SelfUpdateCommandError::new(
+                    SelfUpdateErrorKind::ManifestHttp,
+                    format!(
+                        "self-update endpoint redirect from '{}' is missing Location header",
+                        current_url
+                    ),
+                )
+                .with_endpoint(endpoint.to_string())
+                .with_http_status(status)
+                .with_asset_url(current_url));
+            }
+            if redirect_hops >= SELF_UPDATE_MAX_REDIRECT_HOPS {
+                return Err(SelfUpdateCommandError::new(
+                    SelfUpdateErrorKind::ManifestHttp,
+                    format!(
+                        "self-update endpoint exceeded redirect limit ({} hops)",
+                        SELF_UPDATE_MAX_REDIRECT_HOPS
+                    ),
+                )
+                .with_endpoint(endpoint.to_string())
+                .with_http_status(status)
+                .with_asset_url(current_url));
+            }
+            current_url = resolve_update_redirect_target(
+                current_url.as_str(),
+                location,
+                "endpoint",
+                Some(endpoint),
                 SelfUpdateErrorKind::ManifestHttp,
+            )?;
+            redirect_hops += 1;
+            continue;
+        }
+
+        let body = response.into_string().map_err(|error| {
+            SelfUpdateCommandError::new(
+                SelfUpdateErrorKind::ManifestRead,
+                format!("failed to read self-update endpoint payload: {error}"),
+            )
+            .with_endpoint(endpoint.to_string())
+            .with_asset_url(current_url.clone())
+        })?;
+        let manifest: CliUpdateManifest = serde_json::from_str(&body).map_err(|error| {
+            SelfUpdateCommandError::new(
+                SelfUpdateErrorKind::ManifestParse,
                 format!(
-                    "self-update endpoint returned HTTP {} for '{}': {}",
-                    code, endpoint, summary
+                    "failed to parse self-update endpoint payload for '{}': {error}",
+                    current_url
                 ),
             )
             .with_endpoint(endpoint.to_string())
-            .with_http_status(code));
-        }
-        Err(error) => {
+            .with_asset_url(current_url.clone())
+        })?;
+        if manifest.version.trim().is_empty() {
             return Err(SelfUpdateCommandError::new(
-                SelfUpdateErrorKind::ManifestTransport,
-                format!(
-                    "failed to reach self-update endpoint '{}': {error}",
-                    endpoint
-                ),
+                SelfUpdateErrorKind::ManifestContract,
+                "self-update endpoint payload is missing non-empty 'version'",
             )
-            .with_endpoint(endpoint.to_string()));
+            .with_endpoint(endpoint.to_string())
+            .with_asset_url(current_url));
         }
-    };
-
-    let body = response.into_string().map_err(|error| {
-        SelfUpdateCommandError::new(
-            SelfUpdateErrorKind::ManifestRead,
-            format!("failed to read self-update endpoint payload: {error}"),
-        )
-        .with_endpoint(endpoint.to_string())
-    })?;
-    let manifest: CliUpdateManifest = serde_json::from_str(&body).map_err(|error| {
-        SelfUpdateCommandError::new(
-            SelfUpdateErrorKind::ManifestParse,
-            format!(
-                "failed to parse self-update endpoint payload for '{}': {error}",
-                endpoint
-            ),
-        )
-        .with_endpoint(endpoint.to_string())
-    })?;
-    if manifest.version.trim().is_empty() {
-        return Err(SelfUpdateCommandError::new(
-            SelfUpdateErrorKind::ManifestContract,
-            "self-update endpoint payload is missing non-empty 'version'",
-        )
-        .with_endpoint(endpoint.to_string()));
+        return Ok(manifest);
     }
-    Ok(manifest)
 }
 
 fn parse_semver_lossy(raw: &str) -> Option<Version> {
@@ -4560,27 +4787,107 @@ fn download_update_bytes(url: &str) -> Result<Vec<u8>, SelfUpdateCommandError> {
         return read_update_bytes_with_limit(file, max_bytes, url);
     }
 
-    let response = match self_update_http_agent().get(url).call() {
-        Ok(response) => response,
-        Err(ureq::Error::Status(code, _)) => {
-            return Err(SelfUpdateCommandError::new(
-                SelfUpdateErrorKind::AssetHttp,
-                format!("failed to download update binary (HTTP {})", code),
-            )
-            .with_asset_url(url.to_string())
-            .with_http_status(code));
-        }
-        Err(error) => {
-            return Err(SelfUpdateCommandError::new(
-                SelfUpdateErrorKind::AssetTransport,
-                format!("failed to download update binary: {error}"),
-            )
-            .with_asset_url(url.to_string()));
-        }
-    };
+    let mut current_url = url.trim().to_string();
+    let mut redirect_hops = 0usize;
+    loop {
+        let response = match self_update_http_agent().get(&current_url).call() {
+            Ok(response) => response,
+            Err(ureq::Error::Status(code, response)) => {
+                if is_http_redirect_status(code) {
+                    let location = response
+                        .header("Location")
+                        .map(str::trim)
+                        .unwrap_or_default();
+                    if location.is_empty() {
+                        return Err(SelfUpdateCommandError::new(
+                            SelfUpdateErrorKind::AssetHttp,
+                            format!(
+                                "update download redirect from '{}' is missing Location header",
+                                current_url
+                            ),
+                        )
+                        .with_asset_url(current_url)
+                        .with_http_status(code));
+                    }
+                    if redirect_hops >= SELF_UPDATE_MAX_REDIRECT_HOPS {
+                        return Err(SelfUpdateCommandError::new(
+                            SelfUpdateErrorKind::AssetHttp,
+                            format!(
+                                "update download exceeded redirect limit ({} hops)",
+                                SELF_UPDATE_MAX_REDIRECT_HOPS
+                            ),
+                        )
+                        .with_asset_url(current_url)
+                        .with_http_status(code));
+                    }
+                    current_url = resolve_update_redirect_target(
+                        current_url.as_str(),
+                        location,
+                        "download",
+                        None,
+                        SelfUpdateErrorKind::AssetHttp,
+                    )?;
+                    redirect_hops += 1;
+                    continue;
+                }
+                return Err(SelfUpdateCommandError::new(
+                    SelfUpdateErrorKind::AssetHttp,
+                    format!("failed to download update binary (HTTP {})", code),
+                )
+                .with_asset_url(current_url)
+                .with_http_status(code));
+            }
+            Err(error) => {
+                return Err(SelfUpdateCommandError::new(
+                    SelfUpdateErrorKind::AssetTransport,
+                    format!("failed to download update binary: {error}"),
+                )
+                .with_asset_url(current_url));
+            }
+        };
 
-    let mut reader = response.into_reader();
-    read_update_bytes_with_limit(&mut reader, max_bytes, url)
+        if is_http_redirect_status(response.status()) {
+            let status = response.status();
+            let location = response
+                .header("Location")
+                .map(str::trim)
+                .unwrap_or_default();
+            if location.is_empty() {
+                return Err(SelfUpdateCommandError::new(
+                    SelfUpdateErrorKind::AssetHttp,
+                    format!(
+                        "update download redirect from '{}' is missing Location header",
+                        current_url
+                    ),
+                )
+                .with_asset_url(current_url)
+                .with_http_status(status));
+            }
+            if redirect_hops >= SELF_UPDATE_MAX_REDIRECT_HOPS {
+                return Err(SelfUpdateCommandError::new(
+                    SelfUpdateErrorKind::AssetHttp,
+                    format!(
+                        "update download exceeded redirect limit ({} hops)",
+                        SELF_UPDATE_MAX_REDIRECT_HOPS
+                    ),
+                )
+                .with_asset_url(current_url)
+                .with_http_status(status));
+            }
+            current_url = resolve_update_redirect_target(
+                current_url.as_str(),
+                location,
+                "download",
+                None,
+                SelfUpdateErrorKind::AssetHttp,
+            )?;
+            redirect_hops += 1;
+            continue;
+        }
+
+        let mut reader = response.into_reader();
+        return read_update_bytes_with_limit(&mut reader, max_bytes, current_url.as_str());
+    }
 }
 
 fn read_update_bytes_with_limit<R: Read>(
@@ -5939,60 +6246,128 @@ fn cmd_internal_coordinator(
 }
 
 fn parse_internal_coordinator_socket_path(command_args: &[String]) -> Result<PathBuf, String> {
-    let mut socket_path: Option<PathBuf> = None;
-    let mut index = 0usize;
-    while index < command_args.len() {
-        match command_args[index].as_str() {
-            "--state-dir" | "--socket" => {
-                if index + 1 >= command_args.len() {
-                    return Err("__coordinator__ serve --state-dir requires a value".to_string());
-                }
-                socket_path = Some(PathBuf::from(command_args[index + 1].as_str()));
-                index += 2;
-            }
-            other => {
-                return Err(format!(
-                    "unsupported __coordinator__ serve argument '{}'",
-                    other
-                ));
-            }
-        }
+    let transport = coordinator_transport::parse_internal_coordinator_state_dir_arg(command_args)?
+        .map(coordinator_transport::FileIpcCoordinatorTransport::from_state_dir);
+    match transport {
+        Some(transport) => Ok(transport.state_dir().to_path_buf()),
+        None => coordinator_socket_path(),
     }
-
-    socket_path.map(Ok).unwrap_or_else(coordinator_socket_path)
 }
 
 fn coordinator_socket_path() -> Result<PathBuf, String> {
     let db_path = database_path()?;
-    let mut hasher = DefaultHasher::new();
-    db_path.hash(&mut hasher);
-    let suffix = format!("{:x}", hasher.finish());
-    let root = env::var("TMPDIR")
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/tmp"));
-    Ok(root.join(format!("helm-cli-coordinator-{suffix}")))
+    let transport = coordinator_transport::FileIpcCoordinatorTransport::for_database_path(
+        Path::new(db_path.as_str()),
+    );
+    Ok(transport.state_dir().to_path_buf())
+}
+
+fn coordinator_file_transport(
+    state_dir: &std::path::Path,
+) -> coordinator_transport::FileIpcCoordinatorTransport {
+    coordinator_transport::FileIpcCoordinatorTransport::from_state_dir(state_dir.to_path_buf())
 }
 
 fn coordinator_ready_file(state_dir: &std::path::Path) -> PathBuf {
-    state_dir.join("ready.json")
+    coordinator_file_transport(state_dir).ready_file()
 }
 
 fn coordinator_requests_dir(state_dir: &std::path::Path) -> PathBuf {
-    state_dir.join("requests")
+    coordinator_file_transport(state_dir).requests_dir()
 }
 
 fn coordinator_responses_dir(state_dir: &std::path::Path) -> PathBuf {
-    state_dir.join("responses")
+    coordinator_file_transport(state_dir).responses_dir()
 }
 
 fn coordinator_request_file(state_dir: &std::path::Path, request_id: &str) -> PathBuf {
-    coordinator_requests_dir(state_dir).join(format!("{request_id}.json"))
+    coordinator_file_transport(state_dir).request_file(request_id)
 }
 
 fn coordinator_response_file(state_dir: &std::path::Path, request_id: &str) -> PathBuf {
-    coordinator_responses_dir(state_dir).join(format!("{request_id}.json"))
+    coordinator_file_transport(state_dir).response_file(request_id)
+}
+
+const COORDINATOR_BOOTSTRAP_LOCK_WAIT_TIMEOUT_MS: u64 =
+    coordinator_transport::COORDINATOR_BOOTSTRAP_LOCK_WAIT_TIMEOUT_MS;
+const COORDINATOR_DAEMON_READY_TIMEOUT_MS: u64 =
+    coordinator_transport::COORDINATOR_DAEMON_READY_TIMEOUT_MS;
+
+fn coordinator_bootstrap_lock_file(state_dir: &std::path::Path) -> PathBuf {
+    coordinator_file_transport(state_dir).bootstrap_lock_file()
+}
+
+struct CoordinatorBootstrapLockGuard {
+    lock_file: PathBuf,
+}
+
+impl Drop for CoordinatorBootstrapLockGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(self.lock_file.as_path());
+    }
+}
+
+fn try_clear_stale_coordinator_bootstrap_lock(lock_file: &std::path::Path) -> Result<bool, String> {
+    coordinator_transport::try_clear_stale_coordinator_bootstrap_lock(lock_file)
+}
+
+fn acquire_coordinator_bootstrap_lock(
+    state_dir: &std::path::Path,
+) -> Result<CoordinatorBootstrapLockGuard, String> {
+    std::fs::create_dir_all(state_dir).map_err(|error| {
+        format!(
+            "failed to create coordinator bootstrap state directory '{}': {error}",
+            state_dir.display()
+        )
+    })?;
+    let lock_file = coordinator_bootstrap_lock_file(state_dir);
+    let started = Instant::now();
+
+    loop {
+        let open_result = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(lock_file.as_path());
+
+        match open_result {
+            Ok(mut file) => {
+                file.write_all(std::process::id().to_string().as_bytes())
+                    .map_err(|error| {
+                        format!(
+                            "failed to write coordinator bootstrap lock '{}': {error}",
+                            lock_file.display()
+                        )
+                    })?;
+                file.sync_all().map_err(|error| {
+                    format!(
+                        "failed to flush coordinator bootstrap lock '{}': {error}",
+                        lock_file.display()
+                    )
+                })?;
+                return Ok(CoordinatorBootstrapLockGuard { lock_file });
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                if try_clear_stale_coordinator_bootstrap_lock(lock_file.as_path())? {
+                    continue;
+                }
+                if started.elapsed()
+                    >= Duration::from_millis(COORDINATOR_BOOTSTRAP_LOCK_WAIT_TIMEOUT_MS)
+                {
+                    return Err(format!(
+                        "timed out waiting for coordinator bootstrap lock '{}'",
+                        lock_file.display()
+                    ));
+                }
+                thread::sleep(coordinator_bootstrap_lock_poll_interval(started.elapsed()));
+            }
+            Err(error) => {
+                return Err(format!(
+                    "failed to create coordinator bootstrap lock '{}': {error}",
+                    lock_file.display()
+                ));
+            }
+        }
+    }
 }
 
 fn next_coordinator_request_id() -> String {
@@ -6002,6 +6377,69 @@ fn next_coordinator_request_id() -> String {
         .map(|duration| duration.as_nanos())
         .unwrap_or(0);
     format!("{}-{nanos}-{counter}", std::process::id())
+}
+
+#[cfg(unix)]
+fn set_private_directory_permissions(path: &std::path::Path) -> Result<(), String> {
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).map_err(|error| {
+        format!(
+            "failed to set private directory permissions on '{}': {error}",
+            path.display()
+        )
+    })
+}
+
+fn ensure_private_directory(path: &std::path::Path) -> Result<(), String> {
+    std::fs::create_dir_all(path).map_err(|error| {
+        format!(
+            "failed to create coordinator directory '{}': {error}",
+            path.display()
+        )
+    })?;
+    #[cfg(unix)]
+    {
+        set_private_directory_permissions(path)?;
+    }
+    Ok(())
+}
+
+fn write_private_json_temp_file(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(path)
+            .map_err(|error| {
+                format!(
+                    "failed to create private temp json file '{}': {error}",
+                    path.display()
+                )
+            })?;
+        file.write_all(bytes).map_err(|error| {
+            format!(
+                "failed to write private temp json file '{}': {error}",
+                path.display()
+            )
+        })?;
+        file.sync_all().map_err(|error| {
+            format!(
+                "failed to flush private temp json file '{}': {error}",
+                path.display()
+            )
+        })?;
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(path, bytes).map_err(|error| {
+            format!(
+                "failed to write temp json file '{}': {error}",
+                path.display()
+            )
+        })
+    }
 }
 
 fn write_json_file<T: Serialize>(path: &std::path::Path, value: &T) -> Result<(), String> {
@@ -6016,12 +6454,7 @@ fn write_json_file<T: Serialize>(path: &std::path::Path, value: &T) -> Result<()
         COORDINATOR_REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed)
     );
     let temp_path = path.with_file_name(temp_name);
-    std::fs::write(&temp_path, rendered).map_err(|error| {
-        format!(
-            "failed to write temp json file '{}': {error}",
-            temp_path.display()
-        )
-    })?;
+    write_private_json_temp_file(&temp_path, rendered.as_slice())?;
     std::fs::rename(&temp_path, path).map_err(|error| {
         format!(
             "failed to move temp json file '{}' into '{}': {error}",
@@ -6040,47 +6473,15 @@ fn read_json_file<T: DeserializeOwned>(path: &std::path::Path) -> Result<T, Stri
 }
 
 fn file_modified_unix_seconds(path: &std::path::Path) -> Option<i64> {
-    let metadata = std::fs::metadata(path).ok()?;
-    let modified = metadata.modified().ok()?;
-    let duration = modified.duration_since(UNIX_EPOCH).ok()?;
-    i64::try_from(duration.as_secs()).ok()
+    coordinator_transport::file_modified_unix_seconds(path)
 }
 
 fn process_is_alive(pid: u32) -> bool {
-    let output = std::process::Command::new("ps")
-        .arg("-p")
-        .arg(pid.to_string())
-        .arg("-o")
-        .arg("pid=")
-        .output();
-    let Ok(output) = output else {
-        return false;
-    };
-    if !output.status.success() {
-        return false;
-    }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    !stdout.trim().is_empty()
+    coordinator_transport::process_is_alive(pid)
 }
 
 fn coordinator_process_looks_owned(pid: u32, state_dir: &std::path::Path) -> bool {
-    let output = std::process::Command::new("ps")
-        .arg("-p")
-        .arg(pid.to_string())
-        .arg("-o")
-        .arg("command=")
-        .output();
-    let Ok(output) = output else {
-        return false;
-    };
-    if !output.status.success() {
-        return false;
-    }
-    let command = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if command.is_empty() {
-        return false;
-    }
-    command.contains("__coordinator__") && command.contains(state_dir.to_string_lossy().as_ref())
+    coordinator_transport::coordinator_process_looks_owned(pid, state_dir)
 }
 
 fn terminate_coordinator_process_if_owned(pid: u32, state_dir: &std::path::Path) {
@@ -6174,7 +6575,19 @@ fn write_coordinator_ready_state(
 }
 
 fn is_coordinator_timeout_error(error: &str) -> bool {
-    error.contains("timed out waiting for coordinator response")
+    coordinator_transport::is_coordinator_timeout_error(error)
+}
+
+fn should_launch_coordinator_on_demand(
+    start_if_needed: bool,
+    launched_for_recovery: bool,
+    error: &str,
+) -> bool {
+    coordinator_transport::should_launch_coordinator_on_demand(
+        start_if_needed,
+        launched_for_recovery,
+        error,
+    )
 }
 
 fn reset_coordinator_state_dir(state_dir: &std::path::Path) -> Result<(), String> {
@@ -6186,18 +6599,9 @@ fn reset_coordinator_state_dir(state_dir: &std::path::Path) -> Result<(), String
             )
         })?;
     }
-    std::fs::create_dir_all(coordinator_requests_dir(state_dir).as_path()).map_err(|error| {
-        format!(
-            "failed to create coordinator requests directory '{}': {error}",
-            coordinator_requests_dir(state_dir).display()
-        )
-    })?;
-    std::fs::create_dir_all(coordinator_responses_dir(state_dir).as_path()).map_err(|error| {
-        format!(
-            "failed to create coordinator responses directory '{}': {error}",
-            coordinator_responses_dir(state_dir).display()
-        )
-    })?;
+    ensure_private_directory(state_dir)?;
+    ensure_private_directory(coordinator_requests_dir(state_dir).as_path())?;
+    ensure_private_directory(coordinator_responses_dir(state_dir).as_path())?;
     Ok(())
 }
 
@@ -6231,19 +6635,30 @@ fn spawn_coordinator_daemon(socket_path: &std::path::Path) -> Result<(), String>
         .spawn()
         .map_err(|error| format!("failed to spawn coordinator daemon: {error}"))?;
 
-    for _ in 0..60 {
+    let started = Instant::now();
+    while started.elapsed() < Duration::from_millis(COORDINATOR_DAEMON_READY_TIMEOUT_MS) {
         if let Ok(response) = send_coordinator_request_once(socket_path, &CoordinatorRequest::Ping)
             && response.ok
         {
             return Ok(());
         }
-        thread::sleep(Duration::from_millis(50));
+        thread::sleep(coordinator_startup_poll_interval(started.elapsed()));
     }
 
     Err("coordinator daemon did not become ready in time".to_string())
 }
 
-fn coordinator_send_request(
+fn ensure_coordinator_daemon_running(socket_path: &std::path::Path) -> Result<(), String> {
+    let _lock = acquire_coordinator_bootstrap_lock(socket_path)?;
+    if let Ok(response) = send_coordinator_request_once(socket_path, &CoordinatorRequest::Ping)
+        && response.ok
+    {
+        return Ok(());
+    }
+    spawn_coordinator_daemon(socket_path)
+}
+
+fn coordinator_send_request_external(
     request: &CoordinatorRequest,
     start_if_needed: bool,
 ) -> Result<CoordinatorResponse, String> {
@@ -6289,7 +6704,7 @@ fn coordinator_send_request(
                     ));
                     recover_stale_coordinator_state(socket_path.as_path(), &timeout_health)?;
                     if start_if_needed {
-                        spawn_coordinator_daemon(socket_path.as_path())?;
+                        ensure_coordinator_daemon_running(socket_path.as_path())?;
                         launched_for_recovery = true;
                     }
                     match send_coordinator_request_once(socket_path.as_path(), request) {
@@ -6310,10 +6725,11 @@ fn coordinator_send_request(
                 }
             }
 
-            if !start_if_needed {
-                return Err(effective_error);
-            }
-            if launched_for_recovery {
+            if !should_launch_coordinator_on_demand(
+                start_if_needed,
+                launched_for_recovery,
+                effective_error.as_str(),
+            ) {
                 return Err(effective_error);
             }
             verbose_log(format!(
@@ -6321,7 +6737,7 @@ fn coordinator_send_request(
                 coordinator_request_kind(request),
                 effective_error
             ));
-            spawn_coordinator_daemon(socket_path.as_path())?;
+            ensure_coordinator_daemon_running(socket_path.as_path())?;
             let response = send_coordinator_request_once(socket_path.as_path(), request)?;
             verbose_log(format!(
                 "coordinator response after launch kind='{}' ok={} task_id={:?} job_id={:?}",
@@ -6333,6 +6749,22 @@ fn coordinator_send_request(
             Ok(response)
         }
     }
+}
+
+fn coordinator_send_request_local(
+    store: &SqliteStore,
+    request: &CoordinatorRequest,
+) -> Result<CoordinatorResponse, String> {
+    let local_store = Arc::new(SqliteStore::new(store.database_path().to_path_buf()));
+    local_store
+        .migrate_to_latest()
+        .map_err(|error| format!("failed to initialize local coordinator store: {error}"))?;
+    let runtime = build_adapter_runtime(local_store.clone())?;
+    Ok(handle_coordinator_request(
+        &runtime,
+        local_store.as_ref(),
+        request.clone(),
+    ))
 }
 
 fn send_coordinator_request_once(
@@ -6361,7 +6793,7 @@ fn send_coordinator_request_once(
             let _ = std::fs::remove_file(response_file.as_path());
             return Ok(response);
         }
-        thread::sleep(Duration::from_millis(25));
+        thread::sleep(coordinator_response_poll_interval(started.elapsed()));
     }
 
     let _ = std::fs::remove_file(request_file.as_path());
@@ -6372,57 +6804,69 @@ fn send_coordinator_request_once(
 }
 
 fn coordinator_submit_request(
+    store: &SqliteStore,
     manager: ManagerId,
     request: CoordinatorSubmitRequest,
     execution_mode: ExecutionMode,
 ) -> Result<CoordinatorResponse, String> {
     let wait = execution_mode == ExecutionMode::Wait;
-    let response = coordinator_send_request(
-        &CoordinatorRequest::Submit {
-            manager_id: manager.as_str().to_string(),
-            request,
-            wait,
-        },
-        true,
-    )?;
+    let coordinator_request = CoordinatorRequest::Submit {
+        manager_id: manager.as_str().to_string(),
+        request,
+        wait,
+    };
+    let transport = coordinator_transport_for_submit(execution_mode);
+    let response = match transport {
+        CoordinatorClientTransport::LocalInProcess => {
+            coordinator_send_request_local(store, &coordinator_request)?
+        }
+        CoordinatorClientTransport::ExternalFileIpc => {
+            coordinator_send_request_external(&coordinator_request, true)?
+        }
+    };
 
-    if response.ok {
-        return Ok(response);
-    }
-
-    let message = response
-        .error
-        .unwrap_or_else(|| "coordinator submit request failed".to_string());
-    if let Some(exit_code) = response.exit_code {
-        return Err(mark_exit_code(message, exit_code));
-    }
-    Err(message)
+    coordinator_response_or_error(response, "coordinator submit request failed")
 }
 
 fn coordinator_cancel_task(task_id: u64) -> Result<(), String> {
-    let response = coordinator_send_request(&CoordinatorRequest::Cancel { task_id }, false)?;
-    if response.ok {
-        return Ok(());
-    }
-    let message = response
-        .error
-        .unwrap_or_else(|| format!("failed to cancel task '{}'", task_id));
-    if let Some(exit_code) = response.exit_code {
-        return Err(mark_exit_code(message, exit_code));
-    }
-    Err(message)
+    let response = match coordinator_transport_for_cancel() {
+        CoordinatorClientTransport::LocalInProcess => {
+            let store = open_store()?;
+            coordinator_send_request_local(store.as_ref(), &CoordinatorRequest::Cancel { task_id })?
+        }
+        CoordinatorClientTransport::ExternalFileIpc => {
+            coordinator_send_request_external(&CoordinatorRequest::Cancel { task_id }, false)?
+        }
+    };
+    coordinator_response_or_error(response, &format!("failed to cancel task '{}'", task_id))
+        .map(|_| ())
 }
 
 fn coordinator_start_workflow(
+    store: &SqliteStore,
     workflow: CoordinatorWorkflowRequest,
+    execution_mode: ExecutionMode,
 ) -> Result<CoordinatorResponse, String> {
-    let response = coordinator_send_request(&CoordinatorRequest::StartWorkflow { workflow }, true)?;
+    let coordinator_request = CoordinatorRequest::StartWorkflow { workflow };
+    let response = match coordinator_transport_for_workflow(execution_mode) {
+        CoordinatorClientTransport::LocalInProcess => {
+            coordinator_send_request_local(store, &coordinator_request)?
+        }
+        CoordinatorClientTransport::ExternalFileIpc => {
+            coordinator_send_request_external(&coordinator_request, true)?
+        }
+    };
+    coordinator_response_or_error(response, "coordinator workflow request failed")
+}
+
+fn coordinator_response_or_error(
+    response: CoordinatorResponse,
+    fallback_error: &str,
+) -> Result<CoordinatorResponse, String> {
     if response.ok {
         return Ok(response);
     }
-    let message = response
-        .error
-        .unwrap_or_else(|| "coordinator workflow request failed".to_string());
+    let message = response.error.unwrap_or_else(|| fallback_error.to_string());
     if let Some(exit_code) = response.exit_code {
         return Err(mark_exit_code(message, exit_code));
     }
@@ -6473,6 +6917,7 @@ fn run_coordinator_server(store: Arc<SqliteStore>, socket_path: PathBuf) -> Resu
     verbose_log("coordinator ready and processing requests");
     let mut next_auto_check_tick = Instant::now();
     let mut next_ready_heartbeat_tick = Instant::now() + Duration::from_secs(2);
+    let mut empty_poll_iterations = 0u32;
     loop {
         if Instant::now() >= next_ready_heartbeat_tick {
             if let Err(error) =
@@ -6502,9 +6947,11 @@ fn run_coordinator_server(store: Arc<SqliteStore>, socket_path: PathBuf) -> Resu
         entries.sort_by_key(|entry| entry.file_name());
 
         if entries.is_empty() {
-            thread::sleep(Duration::from_millis(25));
+            empty_poll_iterations = empty_poll_iterations.saturating_add(1);
+            thread::sleep(coordinator_server_idle_poll_interval(empty_poll_iterations));
             continue;
         }
+        empty_poll_iterations = 0;
 
         for entry in entries {
             let request_path = entry.path();
@@ -6763,12 +7210,8 @@ fn run_coordinator_workflow(
         CoordinatorWorkflowRequest::RefreshAll => {
             let rows = tokio_runtime.block_on(refresh_all_no_timeout(&runtime));
             let failures = rows.iter().filter(|row| !row.success).count();
-            if failures > 0 {
-                let exit_code = if failures > 1 { 3 } else { 2 };
-                return Err(mark_exit_code(
-                    format!("{failures} manager refresh operations failed"),
-                    exit_code,
-                ));
+            if let Some(error) = manager_operation_failure_error("refresh", failures) {
+                return Err(error);
             }
             Ok(())
         }
@@ -6779,12 +7222,8 @@ fn run_coordinator_workflow(
         CoordinatorWorkflowRequest::DetectAll => {
             let rows = tokio_runtime.block_on(detect_all_no_timeout(&runtime));
             let failures = rows.iter().filter(|row| !row.success).count();
-            if failures > 0 {
-                let exit_code = if failures > 1 { 3 } else { 2 };
-                return Err(mark_exit_code(
-                    format!("{failures} manager detection operations failed"),
-                    exit_code,
-                ));
+            if let Some(error) = manager_operation_failure_error("detection", failures) {
+                return Err(error);
             }
             Ok(())
         }
@@ -6801,21 +7240,19 @@ fn run_coordinator_workflow(
                 allow_os_updates,
                 manager_filter,
             )?;
-            for step in &steps {
-                let request_name =
-                    if step.manager == ManagerId::HomebrewFormula && step.cleanup_old_kegs {
-                        encode_homebrew_upgrade_target(&step.package_name, true)
-                    } else {
-                        step.package_name.clone()
-                    };
+            let failures = count_upgrade_step_failures(&steps, |step| {
                 let request = AdapterRequest::Upgrade(UpgradeRequest {
                     package: Some(PackageRef {
                         manager: step.manager,
-                        name: request_name,
+                        name: upgrade_request_name(step),
                     }),
                 });
-                let _ =
-                    tokio_runtime.block_on(submit_request_wait(&runtime, step.manager, request));
+                tokio_runtime
+                    .block_on(submit_request_wait(&runtime, step.manager, request))
+                    .map(|_| ())
+            });
+            if let Some(error) = manager_operation_failure_error("upgrade", failures) {
+                return Err(error);
             }
             Ok(())
         }
@@ -6993,7 +7430,11 @@ fn cmd_diagnostics_summary(store: &SqliteStore, options: GlobalOptions) -> Resul
     } else {
         println!("  failure_classes:");
         for (class, count) in &summary.failure_classes {
-            println!("    {class}: {count}");
+            if let Some(hint) = summary.failure_class_hints.get(class) {
+                println!("    {class}: {count} ({hint})");
+            } else {
+                println!("    {class}: {count}");
+            }
         }
     }
     println!("  coordinator:");
@@ -7110,9 +7551,11 @@ fn cmd_diagnostics_task(
     if let Some(error) = diagnostics_error {
         println!("  error_code: {}", error.code);
         println!("  error_message: {}", error.message);
+        println!("  error_hint: {}", error.hint.as_deref().unwrap_or("-"));
     } else {
         println!("  error_code: -");
         println!("  error_message: -");
+        println!("  error_hint: -");
     }
     if output_payload.available {
         println!("  output_available: true");
@@ -7432,8 +7875,10 @@ fn build_task_diagnostics_error(
         && !code.trim().is_empty()
         && !message.trim().is_empty()
     {
+        let normalized_code = code.trim().to_string();
         return Some(CliTaskDiagnosticsError {
-            code: code.clone(),
+            hint: failure_class_hint_string(normalized_code.as_str()),
+            code: normalized_code,
             message: message.clone(),
         });
     }
@@ -7462,6 +7907,7 @@ fn build_task_diagnostics_error(
         });
     let code = classify_failure_class(output, Some(fallback_message.as_str())).to_string();
     Some(CliTaskDiagnosticsError {
+        hint: failure_class_hint_string(code.as_str()),
         code,
         message: fallback_message,
     })
@@ -7497,8 +7943,10 @@ fn parse_terminal_error_from_logs(
             .map(str::trim)
             .filter(|detail| !detail.is_empty())
         {
+            let code = classify_failure_class(output, Some(unstructured)).to_string();
             return Some(CliTaskDiagnosticsError {
-                code: classify_failure_class(output, Some(unstructured)).to_string(),
+                hint: failure_class_hint_string(code.as_str()),
+                code,
                 message: unstructured.to_string(),
             });
         }
@@ -7523,6 +7971,7 @@ fn parse_structured_terminal_error_message(
         .map(str::trim)
         .filter(|value| !value.is_empty())?;
     Some(CliTaskDiagnosticsError {
+        hint: failure_class_hint_string(code),
         code: code.to_string(),
         message: detail.to_string(),
     })
@@ -7543,57 +7992,15 @@ fn classify_failure_class(
     output: Option<&TaskOutputRecord>,
     message: Option<&str>,
 ) -> &'static str {
-    if let Some(output) = output {
-        if let Some(code) = output.error_code.as_deref() {
-            match code {
-                "hard_timeout" => return "hard_timeout",
-                "idle_timeout" => return "idle_timeout",
-                _ => {}
-            }
-        }
-        if matches!(output.termination_reason.as_deref(), Some("timeout")) {
-            return "timeout";
-        }
-        if let Some(code) = output.error_code.as_deref() {
-            match code {
-                "timeout" => return "timeout",
-                "unsupported_capability" => return "unsupported_capability",
-                _ => {}
-            }
-        }
-    }
+    cli_errors::classify_failure_class(output, message)
+}
 
-    let normalized = message.unwrap_or_default().to_ascii_lowercase();
-    if normalized.contains("timed out waiting for coordinator response")
-        || normalized.contains("coordinator response")
-    {
-        return "coordinator_timeout";
-    }
-    if normalized.contains("unsupported capability") {
-        return "unsupported_capability";
-    }
-    if normalized.contains("current working directory must exist")
-        || normalized.contains("process.cwd failed")
-        || normalized.contains("could not locate working directory")
-        || normalized.contains("getcwd")
-    {
-        return "cwd_missing";
-    }
-    if normalized.contains("temporary failure in name resolution")
-        || normalized.contains("name or service not known")
-        || normalized.contains("failed to lookup address")
-        || normalized.contains("could not resolve host")
-        || normalized.contains("dns")
-    {
-        return "network_dns";
-    }
-    if normalized.contains("timed out") || normalized.contains("timeout") {
-        return "timeout";
-    }
-    if normalized.contains("no output") {
-        return "idle_timeout";
-    }
-    "other"
+fn failure_class_hint(code: &str) -> Option<&'static str> {
+    cli_errors::failure_class_hint(code)
+}
+
+fn failure_class_hint_string(code: &str) -> Option<String> {
+    cli_errors::failure_class_hint_string(code)
 }
 
 fn diagnose_failure_class_for_task(store: &SqliteStore, task_id: TaskId) -> Result<String, String> {
@@ -7673,6 +8080,7 @@ fn build_diagnostics_summary(store: &SqliteStore) -> Result<CliDiagnosticsSummar
     let mut cancelled_tasks = 0usize;
     let mut failed_task_ids = Vec::new();
     let mut failure_classes: BTreeMap<String, usize> = BTreeMap::new();
+    let mut failure_class_hints: BTreeMap<String, String> = BTreeMap::new();
     for task in tasks {
         match task.status {
             TaskStatus::Queued => queued_tasks = queued_tasks.saturating_add(1),
@@ -7682,6 +8090,11 @@ fn build_diagnostics_summary(store: &SqliteStore) -> Result<CliDiagnosticsSummar
                 failed_tasks = failed_tasks.saturating_add(1);
                 failed_task_ids.push(task.id.0);
                 let class = diagnose_failure_class_for_task(store, task.id)?;
+                if let Some(hint) = failure_class_hint(class.as_str()) {
+                    failure_class_hints
+                        .entry(class.clone())
+                        .or_insert_with(|| hint.to_string());
+                }
                 let entry = failure_classes.entry(class).or_insert(0);
                 *entry = entry.saturating_add(1);
             }
@@ -7713,6 +8126,7 @@ fn build_diagnostics_summary(store: &SqliteStore) -> Result<CliDiagnosticsSummar
         failed_task_ids,
         undetected_enabled_managers,
         failure_classes,
+        failure_class_hints,
         coordinator: build_coordinator_health_summary(),
     })
 }
@@ -8274,8 +8688,8 @@ fn sync_manager_executable_overrides(store: &SqliteStore) -> Result<(), String> 
         .map(|preference| (preference.manager, preference))
         .collect();
 
-    clear_manager_selected_executables();
-    clear_manager_timeout_profiles();
+    let mut executable_overrides: HashMap<ManagerId, PathBuf> = HashMap::new();
+    let mut timeout_profiles: HashMap<ManagerId, ManagerTimeoutProfile> = HashMap::new();
     for manager in ManagerId::ALL {
         let preferred = preferences
             .get(&manager)
@@ -8287,7 +8701,9 @@ fn sync_manager_executable_overrides(store: &SqliteStore) -> Result<(), String> 
                 .and_then(|path| normalize_nonempty(Some(path)))
         });
         let selected = preferred.or(detected);
-        set_manager_selected_executable(manager, selected.map(PathBuf::from));
+        if let Some(path) = selected {
+            executable_overrides.insert(manager, PathBuf::from(path));
+        }
 
         let hard_timeout = preferences
             .get(&manager)
@@ -8299,14 +8715,15 @@ fn sync_manager_executable_overrides(store: &SqliteStore) -> Result<(), String> 
             .and_then(|preference| preference.timeout_idle_seconds)
             .filter(|value| *value > 0)
             .map(Duration::from_secs);
-        set_manager_timeout_profile(
-            manager,
-            ManagerTimeoutProfile {
-                hard_timeout,
-                idle_timeout,
-            },
-        );
+        let profile = ManagerTimeoutProfile {
+            hard_timeout,
+            idle_timeout,
+        };
+        if profile.hard_timeout.is_some() || profile.idle_timeout.is_some() {
+            timeout_profiles.insert(manager, profile);
+        }
     }
+    replace_manager_execution_preferences(executable_overrides, timeout_profiles);
     Ok(())
 }
 
@@ -8524,23 +8941,13 @@ fn build_json_payload_lines(
     ndjson_mode: bool,
     generated_at: i64,
 ) -> Vec<serde_json::Value> {
-    let build = |item_data: serde_json::Value| {
-        json!({
-            "schema": schema,
-            "schema_version": JSON_SCHEMA_VERSION,
-            "generated_at": generated_at,
-            "data": item_data
-        })
-    };
-
-    if ndjson_mode && let serde_json::Value::Array(items) = data {
-        if items.is_empty() {
-            return vec![build(serde_json::Value::Array(Vec::new()))];
-        }
-        return items.into_iter().map(build).collect();
-    }
-
-    vec![build(data)]
+    json_output::build_json_payload_lines(
+        schema,
+        data,
+        ndjson_mode,
+        generated_at,
+        JSON_SCHEMA_VERSION,
+    )
 }
 
 async fn refresh_single_manager(
@@ -8826,7 +9233,7 @@ fn search_remote_for_enabled(
     }
 
     sync_manager_executable_overrides(store.as_ref())?;
-    let runtime = build_adapter_runtime(store)?;
+    let runtime = build_adapter_runtime(store.clone())?;
     let tokio_runtime = cli_tokio_runtime()?;
     let mut remote_results = Vec::new();
     let mut remote_errors = Vec::new();
@@ -9149,6 +9556,14 @@ fn list_managers(store: &SqliteStore) -> Result<Vec<CliManagerStatus>, String> {
     for descriptor in registry::managers() {
         let detection = detection_map.get(&descriptor.id);
         let preference = preference_map.get(&descriptor.id);
+        let active_executable_path = detection.and_then(|info| info.executable_path.as_deref());
+        let executable_paths = if detection.map(|info| info.installed).unwrap_or(false) {
+            collect_manager_executable_paths(descriptor.id, active_executable_path)
+        } else {
+            Vec::new()
+        };
+        let default_executable_path =
+            default_manager_executable_path(descriptor.id, &executable_paths);
         let configured_enabled = preference
             .map(|preference| preference.enabled)
             .unwrap_or_else(|| default_enabled_for_manager(descriptor.id));
@@ -9157,6 +9572,15 @@ fn list_managers(store: &SqliteStore) -> Result<Vec<CliManagerStatus>, String> {
             &detection_map,
             &preference_map,
         );
+        let selected_executable_differs_from_default = selected_executable_differs_from_default(
+            default_executable_path.as_deref(),
+            selected_executable_path.as_deref(),
+        );
+        let executable_path_diagnostic = manager_executable_path_diagnostic(
+            default_executable_path.as_deref(),
+            selected_executable_path.as_deref(),
+        )
+        .to_string();
         let eligibility = manager_enablement_eligibility(
             descriptor.id,
             selected_executable_path
@@ -9192,6 +9616,8 @@ fn list_managers(store: &SqliteStore) -> Result<Vec<CliManagerStatus>, String> {
             supports_package_uninstall: descriptor.capabilities.contains(&Capability::Uninstall),
             supports_package_upgrade: descriptor.capabilities.contains(&Capability::Upgrade),
             selected_executable_path,
+            selected_executable_differs_from_default,
+            executable_path_diagnostic,
             selected_install_method: preference.and_then(|preference| {
                 preference
                     .selected_install_method
@@ -9266,6 +9692,15 @@ fn manager_executable_status(
     let default_executable_path = default_manager_executable_path(manager, &executable_paths);
     let selected_executable_path =
         resolved_manager_selected_executable_path(manager, &detections, &preferences);
+    let selected_executable_differs_from_default = selected_executable_differs_from_default(
+        default_executable_path.as_deref(),
+        selected_executable_path.as_deref(),
+    );
+    let executable_path_diagnostic = manager_executable_path_diagnostic(
+        default_executable_path.as_deref(),
+        selected_executable_path.as_deref(),
+    )
+    .to_string();
 
     Ok(CliManagerExecutableStatus {
         manager_id: manager.as_str().to_string(),
@@ -9273,6 +9708,8 @@ fn manager_executable_status(
         executable_paths,
         default_executable_path,
         selected_executable_path,
+        selected_executable_differs_from_default,
+        executable_path_diagnostic,
     })
 }
 
@@ -9656,6 +10093,29 @@ fn resolve_selected_executable_path(
     default_path
 }
 
+fn selected_executable_differs_from_default(
+    default_path: Option<&str>,
+    selected_path: Option<&str>,
+) -> bool {
+    matches!(
+        (default_path, selected_path),
+        (Some(default), Some(selected)) if default != selected
+    )
+}
+
+fn manager_executable_path_diagnostic(
+    default_path: Option<&str>,
+    selected_path: Option<&str>,
+) -> &'static str {
+    match (default_path, selected_path) {
+        (Some(default), Some(selected)) if default == selected => "aligned",
+        (Some(_), Some(_)) => "diverged",
+        (None, Some(_)) => "selected_only",
+        (Some(_), None) => "default_only",
+        (None, None) => "unresolved",
+    }
+}
+
 fn normalize_install_method(id: ManagerId, method: Option<String>) -> Option<String> {
     let method = normalize_nonempty(method)?;
     if manager_install_method_candidates(id).contains(&method.as_str()) {
@@ -9929,8 +10389,9 @@ fn build_manager_mutation_request(
 }
 
 fn parse_manager_id(raw: &str) -> Result<ManagerId, String> {
-    raw.parse::<ManagerId>()
-        .map_err(|_| format!("unknown manager id '{raw}'"))
+    raw.parse::<ManagerId>().map_err(|_| {
+        format!("unknown manager id '{raw}'. Run 'helm managers list' to see supported ids.")
+    })
 }
 
 fn read_setting(store: &SqliteStore, key: &str) -> Result<String, String> {
@@ -10330,6 +10791,44 @@ fn manager_authority_key(id: ManagerId) -> &'static str {
 
 fn upgrade_plan_step_id(manager: ManagerId, package_name: &str) -> String {
     format!("{}:{}", manager.as_str(), package_name)
+}
+
+fn upgrade_request_name(step: &UpgradeExecutionStep) -> String {
+    if step.manager == ManagerId::HomebrewFormula && step.cleanup_old_kegs {
+        encode_homebrew_upgrade_target(&step.package_name, true)
+    } else {
+        step.package_name.clone()
+    }
+}
+
+fn manager_operation_failure_error(operation: &str, failures: usize) -> Option<String> {
+    if failures == 0 {
+        return None;
+    }
+    let exit_code = if failures > 1 { 3 } else { 2 };
+    Some(mark_exit_code(
+        format!("{failures} manager {operation} operations failed"),
+        exit_code,
+    ))
+}
+
+fn count_upgrade_step_failures<F>(steps: &[UpgradeExecutionStep], mut run_step: F) -> usize
+where
+    F: FnMut(&UpgradeExecutionStep) -> Result<(), String>,
+{
+    let mut failures = 0usize;
+    for step in steps {
+        if let Err(error) = run_step(step) {
+            failures += 1;
+            verbose_log(format!(
+                "upgrade step failed manager='{}' package='{}': {}",
+                step.manager.as_str(),
+                step.package_name,
+                error
+            ));
+        }
+    }
+    failures
 }
 
 fn serialize_upgrade_plan_steps(steps: &[UpgradeExecutionStep]) -> Vec<CliUpgradePlanStep> {
@@ -11230,6 +11729,9 @@ fn print_tasks_help() {
     println!();
     println!("DESCRIPTION:");
     println!("  Inspect task state/logs/output and follow lifecycle logs.");
+    println!(
+        "  tasks follow is text-stream only; --json/--ndjson are not supported (exit code 1)."
+    );
     println!("  Task cancellation routes through the shared CLI coordinator.");
 }
 
@@ -11276,6 +11778,7 @@ fn print_tasks_follow_help() {
     println!();
     println!("DESCRIPTION:");
     println!("  Poll and stream persisted lifecycle logs until terminal status or timeout.");
+    println!("  --json/--ndjson are not supported for tasks follow and return exit code 1.");
 }
 
 fn print_tasks_cancel_help() {
@@ -11719,14 +12222,21 @@ fn print_completion_help() {
 #[cfg(test)]
 mod tests {
     use super::{
-        CLI_LICENSE_TERMS_VERSION, Command, ExecutionMode, GlobalOptions, HomebrewKegPolicy,
-        InstallChannel, ManagerId, apply_manager_enablement_self_heal, build_json_payload_lines,
-        classify_failure_class, command_help_topic_exists, ensure_cli_onboarding_completed,
-        exit_code_for_error, mark_exit_code, parse_args, parse_args_with_tty,
-        parse_homebrew_keg_policy_arg, parse_search_args, parse_structured_terminal_error_message,
-        parse_updates_run_preview_args, raw_args_request_json, raw_args_request_ndjson,
-        remove_install_marker_if_channel, self_uninstall_recommended_action,
-        strip_exit_code_marker,
+        CLI_LICENSE_TERMS_VERSION, Command, CoordinatorClientTransport, ExecutionMode,
+        GlobalOptions, HomebrewKegPolicy, InstallChannel, ManagerId, SelfUpdateErrorKind,
+        UpdatePolicy, UpgradeExecutionStep, acquire_coordinator_bootstrap_lock,
+        apply_manager_enablement_self_heal, build_json_payload_lines, classify_failure_class,
+        cmd_updates_run, command_help_topic_exists, coordinator_transport_for_cancel,
+        coordinator_transport_for_submit, coordinator_transport_for_workflow,
+        count_upgrade_step_failures, ensure_cli_onboarding_completed, exit_code_for_error,
+        failure_class_hint, manager_operation_failure_error, mark_exit_code, parse_args,
+        parse_args_with_tty, parse_homebrew_keg_policy_arg, parse_manager_id, parse_search_args,
+        parse_structured_terminal_error_message, parse_updates_run_preview_args,
+        provenance_can_self_update, raw_args_request_json, raw_args_request_ndjson,
+        read_update_bytes_with_limit, remove_install_marker_if_channel, resolve_redirect_url,
+        resolve_update_redirect_target, selected_executable_differs_from_default,
+        self_uninstall_recommended_action, should_launch_coordinator_on_demand,
+        strip_exit_code_marker, upgrade_request_name,
     };
     use helm_core::execution::TaskOutputRecord;
     use helm_core::models::DetectionInfo;
@@ -11734,8 +12244,15 @@ mod tests {
     use helm_core::sqlite::SqliteStore;
     use serde_json::json;
     use std::fs;
+    use std::io::Cursor;
+    #[cfg(unix)]
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
     use std::path::{Path, PathBuf};
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::sync::Arc;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    const COORDINATOR_TRANSPORT_INVARIANTS_DOC: &str =
+        "../../../../docs/architecture/CLI_COORDINATOR_TRANSPORT_INVARIANTS.md";
 
     fn temp_file_path(name: &str) -> PathBuf {
         let nanos = SystemTime::now()
@@ -11751,6 +12268,20 @@ mod tests {
             .expect("clock should be after epoch")
             .as_nanos();
         std::env::temp_dir().join(format!("helm-cli-self-heal-{name}-{nanos}.sqlite3"))
+    }
+
+    #[cfg(unix)]
+    fn unix_mode(path: &Path) -> u32 {
+        fs::metadata(path)
+            .expect("expected path metadata")
+            .permissions()
+            .mode()
+            & 0o777
+    }
+
+    #[cfg(unix)]
+    fn unix_uid(path: &Path) -> u32 {
+        fs::metadata(path).expect("expected path metadata").uid()
     }
 
     #[test]
@@ -11788,6 +12319,246 @@ mod tests {
         let (code, message) = strip_exit_code_marker("__HELM_EXIT_CODE__:abc:bad");
         assert_eq!(code, None);
         assert_eq!(message, "__HELM_EXIT_CODE__:abc:bad");
+    }
+
+    #[test]
+    fn manager_operation_failure_error_returns_none_when_no_failures() {
+        assert_eq!(manager_operation_failure_error("upgrade", 0), None);
+    }
+
+    #[test]
+    fn manager_operation_failure_error_marks_single_and_multiple_failures() {
+        let single = manager_operation_failure_error("upgrade", 1).expect("single failure marker");
+        let (single_code, single_message) = strip_exit_code_marker(single.as_str());
+        assert_eq!(single_code, Some(2));
+        assert_eq!(single_message, "1 manager upgrade operations failed");
+
+        let multiple =
+            manager_operation_failure_error("upgrade", 2).expect("multiple failure marker");
+        let (multiple_code, multiple_message) = strip_exit_code_marker(multiple.as_str());
+        assert_eq!(multiple_code, Some(3));
+        assert_eq!(multiple_message, "2 manager upgrade operations failed");
+    }
+
+    #[test]
+    fn selected_executable_differs_from_default_reports_alignment_and_divergence() {
+        assert!(!selected_executable_differs_from_default(
+            Some("/opt/homebrew/bin/npm"),
+            Some("/opt/homebrew/bin/npm")
+        ));
+        assert!(selected_executable_differs_from_default(
+            Some("/opt/homebrew/bin/npm"),
+            Some("/Users/test/.local/bin/npm")
+        ));
+        assert!(!selected_executable_differs_from_default(
+            None,
+            Some("/tmp/npm")
+        ));
+        assert!(!selected_executable_differs_from_default(
+            Some("/tmp/npm"),
+            None
+        ));
+    }
+
+    #[test]
+    fn manager_executable_path_diagnostic_reports_expected_states() {
+        assert_eq!(
+            super::manager_executable_path_diagnostic(
+                Some("/opt/homebrew/bin/npm"),
+                Some("/opt/homebrew/bin/npm")
+            ),
+            "aligned"
+        );
+        assert_eq!(
+            super::manager_executable_path_diagnostic(
+                Some("/opt/homebrew/bin/npm"),
+                Some("/Users/test/.local/bin/npm")
+            ),
+            "diverged"
+        );
+        assert_eq!(
+            super::manager_executable_path_diagnostic(None, Some("/tmp/npm")),
+            "selected_only"
+        );
+        assert_eq!(
+            super::manager_executable_path_diagnostic(Some("/tmp/npm"), None),
+            "default_only"
+        );
+    }
+
+    #[test]
+    fn count_upgrade_step_failures_counts_errors_without_short_circuiting() {
+        let steps = vec![
+            UpgradeExecutionStep {
+                manager: ManagerId::Npm,
+                package_name: "first".to_string(),
+                cleanup_old_kegs: false,
+                pinned: false,
+                restart_required: false,
+            },
+            UpgradeExecutionStep {
+                manager: ManagerId::Pnpm,
+                package_name: "second".to_string(),
+                cleanup_old_kegs: false,
+                pinned: false,
+                restart_required: false,
+            },
+            UpgradeExecutionStep {
+                manager: ManagerId::Yarn,
+                package_name: "third".to_string(),
+                cleanup_old_kegs: false,
+                pinned: false,
+                restart_required: false,
+            },
+        ];
+
+        let mut seen = Vec::new();
+        let failures = count_upgrade_step_failures(&steps, |step| {
+            seen.push(step.package_name.clone());
+            if step.package_name == "second" || step.package_name == "third" {
+                Err("simulated failure".to_string())
+            } else {
+                Ok(())
+            }
+        });
+
+        assert_eq!(
+            seen,
+            vec![
+                "first".to_string(),
+                "second".to_string(),
+                "third".to_string()
+            ]
+        );
+        assert_eq!(failures, 2);
+    }
+
+    #[test]
+    fn upgrade_request_name_encodes_homebrew_cleanup_targets() {
+        let homebrew_step = UpgradeExecutionStep {
+            manager: ManagerId::HomebrewFormula,
+            package_name: "wget".to_string(),
+            cleanup_old_kegs: true,
+            pinned: false,
+            restart_required: false,
+        };
+        let npm_step = UpgradeExecutionStep {
+            manager: ManagerId::Npm,
+            package_name: "eslint".to_string(),
+            cleanup_old_kegs: true,
+            pinned: false,
+            restart_required: false,
+        };
+
+        assert_eq!(
+            upgrade_request_name(&homebrew_step),
+            "wget@@helm.cleanup".to_string()
+        );
+        assert_eq!(upgrade_request_name(&npm_step), "eslint".to_string());
+    }
+
+    #[test]
+    fn coordinator_launch_on_demand_is_disabled_for_timeout_errors() {
+        assert!(!should_launch_coordinator_on_demand(
+            true,
+            false,
+            "timed out waiting for coordinator response in '/tmp/helm'"
+        ));
+        assert!(!should_launch_coordinator_on_demand(
+            false,
+            false,
+            "failed to connect to coordinator"
+        ));
+        assert!(!should_launch_coordinator_on_demand(
+            true,
+            true,
+            "failed to connect to coordinator"
+        ));
+        assert!(should_launch_coordinator_on_demand(
+            true,
+            false,
+            "failed to connect to coordinator at '/tmp/helm': coordinator not ready"
+        ));
+    }
+
+    #[test]
+    fn coordinator_transport_mode_selection_matches_execution_contract() {
+        assert_eq!(
+            coordinator_transport_for_submit(ExecutionMode::Wait),
+            CoordinatorClientTransport::LocalInProcess
+        );
+        assert_eq!(
+            coordinator_transport_for_submit(ExecutionMode::Detach),
+            CoordinatorClientTransport::ExternalFileIpc
+        );
+        assert_eq!(
+            coordinator_transport_for_workflow(ExecutionMode::Wait),
+            CoordinatorClientTransport::LocalInProcess
+        );
+        assert_eq!(
+            coordinator_transport_for_workflow(ExecutionMode::Detach),
+            CoordinatorClientTransport::ExternalFileIpc
+        );
+        assert_eq!(
+            coordinator_transport_for_cancel(),
+            CoordinatorClientTransport::ExternalFileIpc
+        );
+    }
+
+    #[test]
+    fn coordinator_bootstrap_lock_serializes_parallel_acquisition() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        let state_dir =
+            std::env::temp_dir().join(format!("helm-cli-coordinator-bootstrap-lock-{nanos}"));
+        std::fs::create_dir_all(state_dir.as_path())
+            .expect("failed to create coordinator bootstrap test state dir");
+
+        let first = acquire_coordinator_bootstrap_lock(state_dir.as_path())
+            .expect("first bootstrap lock acquisition should succeed");
+        let (lock_tx, lock_rx) = std::sync::mpsc::channel();
+        let state_dir_for_thread = state_dir.clone();
+
+        let handle = std::thread::spawn(move || {
+            let second = acquire_coordinator_bootstrap_lock(state_dir_for_thread.as_path())
+                .expect("second bootstrap lock acquisition should succeed");
+            lock_tx
+                .send(())
+                .expect("bootstrap-lock notification send should succeed");
+            drop(second);
+        });
+
+        std::thread::sleep(Duration::from_millis(150));
+        assert!(
+            matches!(
+                lock_rx.try_recv(),
+                Err(std::sync::mpsc::TryRecvError::Empty)
+            ),
+            "second lock should still be blocked while first is held"
+        );
+
+        drop(first);
+        lock_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("second lock should acquire after first is released");
+        handle
+            .join()
+            .expect("bootstrap lock worker should complete");
+
+        let _ = std::fs::remove_dir_all(state_dir);
+    }
+
+    #[test]
+    fn coordinator_transport_invariants_doc_is_present() {
+        let doc_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join(COORDINATOR_TRANSPORT_INVARIANTS_DOC);
+        assert!(
+            doc_path.exists(),
+            "coordinator transport invariants doc missing at {}",
+            doc_path.display()
+        );
     }
 
     #[test]
@@ -11831,6 +12602,14 @@ mod tests {
     }
 
     #[test]
+    fn parse_args_unknown_command_includes_help_hint() {
+        let error = parse_args(vec!["not-a-command".to_string()])
+            .expect_err("unknown command should fail with hint");
+        assert!(error.contains("unknown command"));
+        assert!(error.contains("helm help"));
+    }
+
+    #[test]
     fn parse_args_keeps_non_flag_hyphenated_command_args() {
         let (_, command, args) = parse_args(vec!["search".to_string(), "-foo".to_string()])
             .expect("search query args should parse");
@@ -11857,6 +12636,126 @@ mod tests {
             Some("Error: The current working directory must exist to run brew."),
         );
         assert_eq!(class, "cwd_missing");
+    }
+
+    #[test]
+    fn coordinator_response_poll_interval_backoff_is_bounded() {
+        assert_eq!(
+            super::coordinator_response_poll_interval(Duration::from_millis(50)),
+            Duration::from_millis(10)
+        );
+        assert_eq!(
+            super::coordinator_response_poll_interval(Duration::from_millis(500)),
+            Duration::from_millis(25)
+        );
+        assert_eq!(
+            super::coordinator_response_poll_interval(Duration::from_millis(2_000)),
+            Duration::from_millis(100)
+        );
+        assert_eq!(
+            super::coordinator_response_poll_interval(Duration::from_millis(8_000)),
+            Duration::from_millis(250)
+        );
+    }
+
+    #[test]
+    fn coordinator_server_idle_poll_interval_backoff_is_bounded() {
+        assert_eq!(
+            super::coordinator_server_idle_poll_interval(1),
+            Duration::from_millis(25)
+        );
+        assert_eq!(
+            super::coordinator_server_idle_poll_interval(20),
+            Duration::from_millis(100)
+        );
+        assert_eq!(
+            super::coordinator_server_idle_poll_interval(50),
+            Duration::from_millis(250)
+        );
+    }
+
+    #[test]
+    fn coordinator_bootstrap_lock_poll_interval_backoff_is_bounded() {
+        assert_eq!(
+            super::coordinator_bootstrap_lock_poll_interval(Duration::from_millis(100)),
+            Duration::from_millis(25)
+        );
+        assert_eq!(
+            super::coordinator_bootstrap_lock_poll_interval(Duration::from_millis(1_000)),
+            Duration::from_millis(50)
+        );
+        assert_eq!(
+            super::coordinator_bootstrap_lock_poll_interval(Duration::from_millis(4_000)),
+            Duration::from_millis(100)
+        );
+    }
+
+    #[test]
+    fn coordinator_startup_poll_interval_backoff_is_bounded() {
+        assert_eq!(
+            super::coordinator_startup_poll_interval(Duration::from_millis(100)),
+            Duration::from_millis(10)
+        );
+        assert_eq!(
+            super::coordinator_startup_poll_interval(Duration::from_millis(1_000)),
+            Duration::from_millis(25)
+        );
+        assert_eq!(
+            super::coordinator_startup_poll_interval(Duration::from_millis(4_000)),
+            Duration::from_millis(50)
+        );
+    }
+
+    #[test]
+    fn classify_failure_class_detects_network_offline_pattern() {
+        let class = classify_failure_class(
+            None,
+            Some("failed to connect: network is unreachable for host registry.npmjs.org"),
+        );
+        assert_eq!(class, "network_offline");
+    }
+
+    #[test]
+    fn classify_failure_class_detects_check_internet_connection_pattern() {
+        let class = classify_failure_class(
+            None,
+            Some("request failed: check your internet connection and try again"),
+        );
+        assert_eq!(class, "network_offline");
+    }
+
+    #[test]
+    fn classify_failure_class_detects_network_proxy_pattern() {
+        let class = classify_failure_class(
+            None,
+            Some("proxy authentication required (HTTP 407) while reaching mirror"),
+        );
+        assert_eq!(class, "network_proxy");
+    }
+
+    #[test]
+    fn classify_failure_class_detects_network_captive_portal_pattern() {
+        let class = classify_failure_class(
+            None,
+            Some("network authentication required (HTTP 511): captive portal login"),
+        );
+        assert_eq!(class, "network_captive_portal");
+    }
+
+    #[test]
+    fn failure_class_hint_provides_actionable_network_guidance() {
+        assert_eq!(
+            failure_class_hint("network_dns"),
+            Some("Check DNS resolution and retry the operation.")
+        );
+        assert_eq!(
+            failure_class_hint("network_proxy"),
+            Some("Check proxy configuration and credentials, then retry.")
+        );
+        assert_eq!(
+            failure_class_hint("network_captive_portal"),
+            Some("Complete captive-portal sign-in in a browser, then retry.")
+        );
     }
 
     #[test]
@@ -11934,6 +12833,47 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(state_dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn coordinator_ipc_paths_use_private_modes_and_consistent_ownership() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        let state_dir = std::env::temp_dir().join(format!("helm-cli-coordinator-perms-{nanos}"));
+        super::reset_coordinator_state_dir(state_dir.as_path())
+            .expect("reset coordinator state dir should succeed");
+
+        let requests_dir = super::coordinator_requests_dir(state_dir.as_path());
+        let responses_dir = super::coordinator_responses_dir(state_dir.as_path());
+        assert_eq!(unix_mode(state_dir.as_path()), 0o700);
+        assert_eq!(unix_mode(requests_dir.as_path()), 0o700);
+        assert_eq!(unix_mode(responses_dir.as_path()), 0o700);
+
+        let owner_uid = unix_uid(state_dir.as_path());
+        assert_eq!(unix_uid(requests_dir.as_path()), owner_uid);
+        assert_eq!(unix_uid(responses_dir.as_path()), owner_uid);
+
+        let request_file = super::coordinator_request_file(state_dir.as_path(), "perm-check");
+        let response_file = super::coordinator_response_file(state_dir.as_path(), "perm-check");
+        super::write_json_file(request_file.as_path(), &json!({ "kind": "ping" }))
+            .expect("request file write should succeed");
+        super::write_json_file(response_file.as_path(), &json!({ "ok": true }))
+            .expect("response file write should succeed");
+        super::write_coordinator_ready_state(state_dir.as_path(), 123)
+            .expect("ready file write should succeed");
+        let ready_file = super::coordinator_ready_file(state_dir.as_path());
+
+        assert_eq!(unix_mode(request_file.as_path()), 0o600);
+        assert_eq!(unix_mode(response_file.as_path()), 0o600);
+        assert_eq!(unix_mode(ready_file.as_path()), 0o600);
+        assert_eq!(unix_uid(request_file.as_path()), owner_uid);
+        assert_eq!(unix_uid(response_file.as_path()), owner_uid);
+        assert_eq!(unix_uid(ready_file.as_path()), owner_uid);
+
+        let _ = fs::remove_dir_all(state_dir);
     }
 
     #[test]
@@ -12044,6 +12984,31 @@ mod tests {
     }
 
     #[test]
+    fn build_json_payload_lines_preserves_nested_array_items_in_ndjson_mode() {
+        let payloads = build_json_payload_lines(
+            "helm.cli.v1.test",
+            json!([[{"id": 1}], [{"id": 2}]]),
+            true,
+            123,
+        );
+        assert_eq!(payloads.len(), 2);
+        assert_eq!(payloads[0]["data"], json!([{"id": 1}]));
+        assert_eq!(payloads[1]["data"], json!([{"id": 2}]));
+    }
+
+    #[test]
+    fn build_json_payload_lines_does_not_split_nested_arrays_inside_objects() {
+        let payloads = build_json_payload_lines(
+            "helm.cli.v1.test",
+            json!({"items": [{"id": 1}, {"id": 2}]}),
+            true,
+            123,
+        );
+        assert_eq!(payloads.len(), 1);
+        assert_eq!(payloads[0]["data"]["items"], json!([{"id": 1}, {"id": 2}]));
+    }
+
+    #[test]
     fn command_help_topic_validation_covers_nested_paths() {
         assert!(command_help_topic_exists(
             Command::Packages,
@@ -12136,6 +13101,105 @@ mod tests {
     }
 
     #[test]
+    fn parse_manager_id_unknown_includes_managers_list_hint() {
+        let error = parse_manager_id("nope").expect_err("unknown manager id should fail");
+        assert!(error.contains("unknown manager id"));
+        assert!(error.contains("helm managers list"));
+    }
+
+    #[test]
+    fn updates_run_requires_yes_message_includes_preview_hint() {
+        let db_path = temp_db_path("updates-run-yes-hint");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+
+        let error = cmd_updates_run(Arc::new(store), GlobalOptions::default(), &[])
+            .expect_err("updates run should require --yes");
+        assert!(error.contains("requires --yes"));
+        assert!(error.contains("helm updates preview"));
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn updates_run_mixed_success_uses_stable_exit_code_marker() {
+        let outcomes = [true, false, true];
+        let failures = outcomes.iter().filter(|success| !**success).count();
+        let marked = manager_operation_failure_error("upgrade", failures)
+            .expect("mixed success should emit failure marker");
+        let (code, message) = strip_exit_code_marker(marked.as_str());
+        assert_eq!(code, Some(2));
+        assert_eq!(message, "1 manager upgrade operations failed");
+    }
+
+    #[test]
+    fn updates_run_json_envelope_schema_is_stable() {
+        let payloads = build_json_payload_lines(
+            "helm.cli.v1.updates.run",
+            json!({
+                "include_pinned": false,
+                "allow_os_updates": false,
+                "manager_filter": null,
+                "results": [
+                    {
+                        "step_id": "npm:eslint",
+                        "manager_id": "npm",
+                        "package_name": "eslint",
+                        "task_id": 42,
+                        "success": true,
+                        "error": null
+                    }
+                ],
+                "total_steps": 1,
+                "failed_steps": 0
+            }),
+            false,
+            123,
+        );
+        assert_eq!(payloads.len(), 1);
+        assert_eq!(payloads[0]["schema"], "helm.cli.v1.updates.run");
+        assert_eq!(payloads[0]["schema_version"], 1);
+        assert_eq!(payloads[0]["data"]["results"][0]["manager_id"], "npm");
+        assert_eq!(payloads[0]["data"]["total_steps"], 1);
+        assert_eq!(payloads[0]["data"]["failed_steps"], 0);
+    }
+
+    #[test]
+    fn tasks_follow_machine_mode_error_contract_is_stable() {
+        let marked = super::tasks_follow_machine_mode_error();
+        let (exit_code, message) = strip_exit_code_marker(marked.as_str());
+        assert_eq!(exit_code, Some(1));
+        assert_eq!(message, super::TASKS_FOLLOW_MACHINE_MODE_UNSUPPORTED_ERROR);
+        assert!(message.contains("--json/--ndjson"));
+        assert!(message.contains("helm tasks logs <task-id>"));
+    }
+
+    #[test]
+    fn cmd_tasks_follow_rejects_machine_mode_with_stable_exit_code() {
+        let db_path = temp_db_path("tasks-follow-machine-mode");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        let args = vec!["42".to_string()];
+        let options = GlobalOptions {
+            json: true,
+            ndjson: true,
+            ..GlobalOptions::default()
+        };
+
+        let error = super::cmd_tasks_follow(&store, options, &args)
+            .expect_err("tasks follow machine mode should fail deterministically");
+        let (exit_code, message) = strip_exit_code_marker(error.as_str());
+        assert_eq!(exit_code, Some(1));
+        assert_eq!(message, super::TASKS_FOLLOW_MACHINE_MODE_UNSUPPORTED_ERROR);
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
     fn parse_homebrew_keg_policy_arg_supports_expected_values() {
         assert_eq!(
             parse_homebrew_keg_policy_arg("keep").unwrap(),
@@ -12147,6 +13211,77 @@ mod tests {
         );
         assert_eq!(parse_homebrew_keg_policy_arg("default").unwrap(), None);
         assert!(parse_homebrew_keg_policy_arg("invalid").is_err());
+    }
+
+    #[test]
+    fn coordinator_ps_command_path_is_absolute() {
+        assert_eq!(super::coordinator_transport::PS_COMMAND_PATH, "/bin/ps");
+    }
+
+    #[test]
+    fn resolve_redirect_url_supports_relative_targets() {
+        let absolute_path = resolve_redirect_url(
+            "https://github.com/jasoncavinder/Helm/releases/latest",
+            "/jasoncavinder/Helm/releases/download/v0.17.6/helm",
+        )
+        .expect("absolute redirect path should resolve");
+        assert_eq!(
+            absolute_path,
+            "https://github.com/jasoncavinder/Helm/releases/download/v0.17.6/helm"
+        );
+
+        let relative_path = resolve_redirect_url(
+            "https://github.com/jasoncavinder/Helm/releases/latest?foo=bar",
+            "download/v0.17.6/helm",
+        )
+        .expect("relative redirect path should resolve");
+        assert_eq!(
+            relative_path,
+            "https://github.com/jasoncavinder/Helm/releases/download/v0.17.6/helm"
+        );
+    }
+
+    #[test]
+    fn resolve_update_redirect_target_rejects_disallowed_hosts() {
+        let error = resolve_update_redirect_target(
+            "https://github.com/jasoncavinder/Helm/releases/latest",
+            "https://evil.example.com/update.json",
+            "endpoint",
+            Some("https://github.com/jasoncavinder/Helm/releases/latest"),
+            SelfUpdateErrorKind::ManifestHttp,
+        )
+        .expect_err("disallowed redirect host must fail");
+        assert_eq!(error.kind, SelfUpdateErrorKind::UrlPolicy);
+        assert!(
+            error.message.contains("not allowlisted"),
+            "unexpected message: {}",
+            error.message
+        );
+    }
+
+    #[test]
+    fn read_update_bytes_with_limit_rejects_oversized_payload() {
+        let payload = vec![0x5Au8; 9];
+        let error = read_update_bytes_with_limit(
+            Cursor::new(payload),
+            8,
+            "https://github.com/jasoncavinder/Helm/releases/download/v0.17.6/helm",
+        )
+        .expect_err("oversized payload must fail");
+        assert_eq!(error.kind, SelfUpdateErrorKind::AssetContract);
+        assert!(
+            error.message.contains("exceeds maximum allowed size"),
+            "unexpected message: {}",
+            error.message
+        );
+    }
+
+    #[test]
+    fn self_update_policy_blocks_channel_managed_paths() {
+        assert!(!provenance_can_self_update(UpdatePolicy::ChannelManaged));
+        assert!(!provenance_can_self_update(UpdatePolicy::Managed));
+        assert!(!provenance_can_self_update(UpdatePolicy::None));
+        assert!(provenance_can_self_update(UpdatePolicy::SelfManaged));
     }
 
     #[test]
