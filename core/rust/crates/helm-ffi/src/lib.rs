@@ -4002,6 +4002,85 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
     }
 }
 
+/// Return whether shared onboarding has been completed.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_get_cli_onboarding_completed() -> bool {
+    let guard = lock_or_recover(&STATE, "state");
+    let state = match guard.as_ref() {
+        Some(s) => s,
+        None => return false,
+    };
+    state.store.cli_onboarding_completed().unwrap_or(false)
+}
+
+/// Set shared onboarding completion state. Returns true on success.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_set_cli_onboarding_completed(completed: bool) -> bool {
+    let guard = lock_or_recover(&STATE, "state");
+    let state = match guard.as_ref() {
+        Some(s) => s,
+        None => return false,
+    };
+    state.store.set_cli_onboarding_completed(completed).is_ok()
+}
+
+/// Return accepted shared license terms version.
+///
+/// Returns null when unset or unavailable.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_get_cli_accepted_license_terms_version() -> *mut c_char {
+    let guard = lock_or_recover(&STATE, "state");
+    let state = match guard.as_ref() {
+        Some(s) => s,
+        None => return std::ptr::null_mut(),
+    };
+
+    let version = match state.store.cli_accepted_license_terms_version() {
+        Ok(version) => version,
+        Err(_) => return std::ptr::null_mut(),
+    };
+    let Some(version) = version else {
+        return std::ptr::null_mut();
+    };
+
+    match CString::new(version) {
+        Ok(c) => c.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Set accepted shared license terms version.
+///
+/// Pass null to clear. Returns true on success.
+///
+/// # Safety
+///
+/// `version` may be null; when non-null, it must point to a valid NUL-terminated UTF-8 string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_set_cli_accepted_license_terms_version(version: *const c_char) -> bool {
+    let guard = lock_or_recover(&STATE, "state");
+    let state = match guard.as_ref() {
+        Some(s) => s,
+        None => return false,
+    };
+
+    let value = if version.is_null() {
+        None
+    } else {
+        let version_cstr = unsafe { CStr::from_ptr(version) };
+        let version_str = match version_cstr.to_str() {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+        Some(version_str)
+    };
+
+    state
+        .store
+        .set_cli_accepted_license_terms_version(value)
+        .is_ok()
+}
+
 /// Return whether safe mode is enabled.
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_get_safe_mode() -> bool {

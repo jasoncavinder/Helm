@@ -52,13 +52,6 @@ struct ManagersSectionView: View {
                                         context.selectedPackageId = nil
                                         context.selectedTaskId = nil
                                         context.selectedUpgradePlanStepId = nil
-                                    },
-                                    onViewPackages: {
-                                        context.selectedManagerId = manager.id
-                                        context.managerFilterId = manager.id
-                                        context.selectedTaskId = nil
-                                        context.selectedUpgradePlanStepId = nil
-                                        context.selectedSection = .packages
                                     }
                                 )
                                 .onDrag {
@@ -111,23 +104,16 @@ private struct ManagerSectionRow: View {
     let operationStatus: String?
     let isSelected: Bool
     let onSelect: () -> Void
-    let onViewPackages: () -> Void
 
     @State private var confirmAction: ConfirmAction?
 
     private enum ConfirmAction: Identifiable {
         case install
-        case update
-        case uninstall
 
         var id: String {
             switch self {
             case .install:
                 return "install"
-            case .update:
-                return "update"
-            case .uninstall:
-                return "uninstall"
             }
         }
     }
@@ -227,18 +213,6 @@ private struct ManagerSectionRow: View {
                     }
                     .helmPointer()
                 }
-                if manager.canUpdate && detected && enabled {
-                    Button(L10n.Common.update.localized) {
-                        confirmAction = .update
-                    }
-                    .helmPointer()
-                }
-                if manager.canUninstall && detected && enabled {
-                    Button(L10n.Common.uninstall.localized) {
-                        confirmAction = .uninstall
-                    }
-                    .helmPointer()
-                }
 
                 Spacer()
 
@@ -248,12 +222,6 @@ private struct ManagerSectionRow: View {
                     }
                     .helmPointer()
                 }
-
-                Button(L10n.App.Managers.Action.viewPackages.localized) {
-                    onViewPackages()
-                }
-                .disabled(packageCount == 0 || !enabled)
-                .helmPointer(enabled: packageCount > 0 && enabled)
             }
             .font(.caption)
 
@@ -272,6 +240,7 @@ private struct ManagerSectionRow: View {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .strokeBorder(isSelected ? HelmTheme.selectionStroke : Color.clear, lineWidth: 0.9)
                 )
+                .allowsHitTesting(false)
         )
         .padding(.horizontal, 20)
         .contentShape(Rectangle())
@@ -293,20 +262,6 @@ private struct ManagerSectionRow: View {
                     title: Text(L10n.App.Managers.Alert.installTitle.localized(with: ["manager": localizedManagerDisplayName(manager.id)])),
                     message: Text(L10n.App.Managers.Alert.installMessage.localized(with: ["manager_short": manager.shortName])),
                     primaryButton: .default(Text(L10n.Common.install.localized)) { core.installManager(manager.id) },
-                    secondaryButton: .cancel()
-                )
-            case .update:
-                return Alert(
-                    title: Text(L10n.App.Managers.Alert.updateTitle.localized(with: ["manager": localizedManagerDisplayName(manager.id)])),
-                    message: Text(L10n.App.Managers.Alert.updateMessage.localized),
-                    primaryButton: .default(Text(L10n.Common.update.localized)) { core.updateManager(manager.id) },
-                    secondaryButton: .cancel()
-                )
-            case .uninstall:
-                return Alert(
-                    title: Text(L10n.App.Managers.Alert.uninstallTitle.localized(with: ["manager": localizedManagerDisplayName(manager.id)])),
-                    message: Text(L10n.App.Managers.Alert.uninstallMessage.localized(with: ["manager_short": manager.shortName])),
-                    primaryButton: .destructive(Text(L10n.Common.uninstall.localized)) { core.uninstallManager(manager.id) },
                     secondaryButton: .cancel()
                 )
             }

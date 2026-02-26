@@ -82,6 +82,34 @@ bool helm_dismiss_task(int64_t task_id);
 char *helm_list_manager_status(void);
 
 /**
+ * Return whether shared onboarding has been completed.
+ */
+bool helm_get_cli_onboarding_completed(void);
+
+/**
+ * Set shared onboarding completion state. Returns true on success.
+ */
+bool helm_set_cli_onboarding_completed(bool completed);
+
+/**
+ * Return accepted shared license terms version.
+ *
+ * Returns null when unset or unavailable.
+ */
+char *helm_get_cli_accepted_license_terms_version(void);
+
+/**
+ * Set accepted shared license terms version.
+ *
+ * Pass null to clear. Returns true on success.
+ *
+ * # Safety
+ *
+ * `version` may be null; when non-null, it must point to a valid NUL-terminated UTF-8 string.
+ */
+bool helm_set_cli_accepted_license_terms_version(const char *version);
+
+/**
  * Return whether safe mode is enabled.
  */
 bool helm_get_safe_mode(void);

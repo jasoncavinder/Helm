@@ -215,6 +215,24 @@ Rules:
 - Orchestration logic must have integration tests.
 - Tests should favor determinism over realism.
 
+### 10.1 Xcode/Simulator Verification in Sandboxed Agent Runs
+
+When an agent runs inside a sandboxed environment, `xcodebuild` and `xcrun simctl`
+failures can be sandbox artifacts rather than host-toolchain failures.
+
+Required handling:
+
+- If `xcodebuild` reports package-resolution errors like `unknownArch(arch: "i386")`,
+  or `simctl` reports CoreSimulator connection failures, do **not** conclude root
+  cause from sandbox-only output.
+- Re-run verification commands outside sandbox (with approval/escalation) before
+  diagnosing host breakage:
+  - `xcrun simctl list runtimes`
+  - `xcrun simctl list devices`
+  - the exact `xcodebuild` invocation used by the task
+- Treat host-command results as authoritative for simulator/toolchain health.
+- Document whether the observed failure reproduced outside sandbox.
+
 ---
 
 ## 11. Scope Discipline

@@ -6,6 +6,11 @@ echo "Building Rust core..."
 # Ensure rustup toolchain is available in Xcode build environment
 export PATH="$HOME/.cargo/bin:$PATH"
 
+# macOS shells commonly do not support LC_ALL=C.UTF-8.
+if [ "${LC_ALL:-}" = "C.UTF-8" ]; then
+    unset LC_ALL
+fi
+
 # Go to repo root
 REPO_ROOT=$(git rev-parse --show-toplevel)
 cd "$REPO_ROOT/core/rust"
@@ -34,6 +39,48 @@ else
     PROFILE="debug"
     CARGO_FLAGS=""
 fi
+
+RUST_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-stable}"
+export RUSTUP_TOOLCHAIN="$RUST_TOOLCHAIN"
+
+validate_rust_toolchain() {
+    if ! command -v rustup >/dev/null 2>&1; then
+        return 1
+    fi
+
+    rustup run "$RUST_TOOLCHAIN" rustc -vV >/dev/null 2>&1
+}
+
+ensure_rust_toolchain() {
+    if ! command -v rustup >/dev/null 2>&1; then
+        if command -v cargo >/dev/null 2>&1; then
+            return 0
+        fi
+        echo "Rust toolchain is unavailable: neither rustup nor cargo is on PATH." >&2
+        exit 1
+    fi
+
+    if validate_rust_toolchain; then
+        return 0
+    fi
+
+    if [ "${HELM_AUTO_INSTALL_RUST_TOOLCHAIN:-1}" != "1" ]; then
+        echo "Rust toolchain '$RUST_TOOLCHAIN' is unavailable or invalid." >&2
+        echo "Set HELM_AUTO_INSTALL_RUST_TOOLCHAIN=1 to allow automatic repair." >&2
+        exit 1
+    fi
+
+    echo "Rust toolchain '$RUST_TOOLCHAIN' is unavailable or invalid; repairing..."
+    rustup toolchain uninstall "$RUST_TOOLCHAIN" >/dev/null 2>&1 || true
+    rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --no-self-update
+
+    if ! validate_rust_toolchain; then
+        echo "Rust toolchain '$RUST_TOOLCHAIN' validation failed after reinstall." >&2
+        exit 1
+    fi
+}
+
+ensure_rust_toolchain
 
 # Map Xcode architecture names to Rust target triples.
 map_arch_to_target() {
@@ -144,15 +191,15 @@ CLI_INPUTS=()
 CARGO_OUTPUT_DIR="${CARGO_TARGET_DIR:-target}"
 installed_targets=""
 if command -v rustup >/dev/null 2>&1; then
-    installed_targets=$(rustup target list --installed || true)
+    installed_targets=$(rustup target list --installed --toolchain "$RUST_TOOLCHAIN" || true)
 fi
 
 for target in "${RUST_TARGETS[@]}"; do
     if [ -n "$installed_targets" ] && ! printf '%s\n' "$installed_targets" | grep -qx "$target"; then
         if [ "${HELM_AUTO_INSTALL_RUST_TARGETS:-1}" = "1" ] && command -v rustup >/dev/null 2>&1; then
             echo "Installing missing Rust target: $target"
-            rustup target add "$target" || true
-            installed_targets=$(rustup target list --installed || true)
+            rustup target add "$target" --toolchain "$RUST_TOOLCHAIN" || true
+            installed_targets=$(rustup target list --installed --toolchain "$RUST_TOOLCHAIN" || true)
         fi
     fi
 

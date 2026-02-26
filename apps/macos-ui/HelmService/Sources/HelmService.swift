@@ -130,6 +130,35 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(String(cString: cString))
     }
 
+    func getSharedOnboardingState(withReply reply: @escaping (Bool, String?) -> Void) {
+        let completed = helm_get_cli_onboarding_completed()
+        guard let cString = helm_get_cli_accepted_license_terms_version() else {
+            reply(completed, nil)
+            return
+        }
+        defer { helm_free_string(cString) }
+        reply(completed, String(cString: cString))
+    }
+
+    func setSharedOnboardingCompleted(completed: Bool, withReply reply: @escaping (Bool) -> Void) {
+        let result = helm_set_cli_onboarding_completed(completed)
+        logger.info("helm_set_cli_onboarding_completed(\(completed)) result: \(result)")
+        reply(result)
+    }
+
+    func setSharedAcceptedLicenseTermsVersion(version: String?, withReply reply: @escaping (Bool) -> Void) {
+        let result: Bool
+        if let version {
+            result = version.withCString { versionPtr in
+                helm_set_cli_accepted_license_terms_version(versionPtr)
+            }
+        } else {
+            result = helm_set_cli_accepted_license_terms_version(nil)
+        }
+        logger.info("helm_set_cli_accepted_license_terms_version(\(version ?? "nil")) result: \(result)")
+        reply(result)
+    }
+
     func getSafeMode(withReply reply: @escaping (Bool) -> Void) {
         let enabled = helm_get_safe_mode()
         reply(enabled)

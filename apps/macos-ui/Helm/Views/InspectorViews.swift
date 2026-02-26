@@ -60,6 +60,9 @@ struct ControlCenterInspectorView: View {
                         packageCount: core.installedPackages.filter { $0.managerId == manager.id }.count,
                         outdatedCount: core.outdatedCount(forManagerId: manager.id),
                         onViewPackages: {
+                            context.selectedManagerId = manager.id
+                            context.selectedPackageId = nil
+                            context.selectedTaskId = nil
                             context.managerFilterId = manager.id
                             context.selectedUpgradePlanStepId = nil
                             context.selectedSection = .packages
@@ -1010,9 +1013,28 @@ private struct InspectorManagerDetailView: View {
     let packageCount: Int
     let outdatedCount: Int
     let onViewPackages: () -> Void
+    @State private var confirmAction: ConfirmAction?
+
+    private enum ConfirmAction: Identifiable {
+        case update
+        case uninstall
+
+        var id: String {
+            switch self {
+            case .update:
+                return "update"
+            case .uninstall:
+                return "uninstall"
+            }
+        }
+    }
 
     private var detected: Bool {
         status?.detected ?? false
+    }
+
+    private var enabled: Bool {
+        status?.enabled ?? true
     }
 
     private var activeExecutablePath: String? {
@@ -1082,6 +1104,13 @@ private struct InspectorManagerDetailView: View {
         core.activeTasks.first { task in
             task.status.lowercased() == "failed" && task.managerId == manager.id
         }
+    }
+
+    private var managerHealthIsError: Bool {
+        if case .error = health {
+            return true
+        }
+        return false
     }
 
     var body: some View {
@@ -1297,16 +1326,9 @@ private struct InspectorManagerDetailView: View {
             }
 
             Group {
-                if packageCount > 0 {
-                    Button(L10n.App.Managers.Action.viewPackages.localized) {
-                        onViewPackages()
-                    }
-                    .font(.caption)
-                    .buttonStyle(HelmSecondaryButtonStyle())
-                    .helmPointer()
-                }
+                managerActionRow
 
-                if case .error = health {
+                if managerHealthIsError {
                     if let failedTask = latestFailedTask {
                         Button(L10n.App.Inspector.viewDiagnostics.localized) {
                             context.selectedTaskId = failedTask.id
@@ -1321,6 +1343,74 @@ private struct InspectorManagerDetailView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .alert(item: $confirmAction) { action in
+            switch action {
+            case .update:
+                return Alert(
+                    title: Text(L10n.App.Managers.Alert.updateTitle.localized(with: ["manager": localizedManagerDisplayName(manager.id)])),
+                    message: Text(L10n.App.Managers.Alert.updateMessage.localized),
+                    primaryButton: .default(Text(L10n.Common.update.localized)) { core.updateManager(manager.id) },
+                    secondaryButton: .cancel()
+                )
+            case .uninstall:
+                return Alert(
+                    title: Text(L10n.App.Managers.Alert.uninstallTitle.localized(with: ["manager": localizedManagerDisplayName(manager.id)])),
+                    message: Text(L10n.App.Managers.Alert.uninstallMessage.localized(with: ["manager_short": manager.shortName])),
+                    primaryButton: .destructive(Text(L10n.Common.uninstall.localized)) { core.uninstallManager(manager.id) },
+                    secondaryButton: .cancel()
+                )
+            }
+        }
+    }
+
+    private var managerActionRow: some View {
+        HStack(spacing: 6) {
+            if manager.canUpdate && detected && enabled {
+                managerActionButton(
+                    symbol: "arrow.up.circle",
+                    tooltip: L10n.Common.update.localized,
+                    enabled: true
+                ) {
+                    confirmAction = .update
+                }
+            }
+
+            if manager.canUninstall && detected && enabled {
+                managerActionButton(
+                    symbol: "trash",
+                    tooltip: L10n.Common.uninstall.localized,
+                    enabled: true
+                ) {
+                    confirmAction = .uninstall
+                }
+            }
+
+            managerActionButton(
+                symbol: "shippingbox",
+                tooltip: L10n.App.Managers.Action.viewPackages.localized,
+                enabled: packageCount > 0 && enabled
+            ) {
+                onViewPackages()
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func managerActionButton(
+        symbol: String,
+        tooltip: String,
+        enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+        }
+        .buttonStyle(HelmIconButtonStyle())
+        .help(tooltip)
+        .accessibilityLabel(tooltip)
+        .disabled(!enabled)
+        .helmPointer(enabled: enabled)
     }
 
     private func localizedCategoryName(_ category: String) -> String {

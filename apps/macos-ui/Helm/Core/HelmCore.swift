@@ -582,6 +582,93 @@ final class HelmCore: ObservableObject {
         )
     }
 
+    private func persistSharedOnboardingCompleted(_ completed: Bool) {
+        guard let service = service() else { return }
+        service.setSharedOnboardingCompleted(completed: completed) { [weak self] success in
+            guard !success else { return }
+            self?.recordLastError(
+                source: "core.settings",
+                action: "setSharedOnboardingCompleted",
+                taskType: "settings"
+            )
+        }
+    }
+
+    private func persistSharedAcceptedLicenseTermsVersion(_ version: String?) {
+        guard let service = service() else { return }
+        service.setSharedAcceptedLicenseTermsVersion(version: version) { [weak self] success in
+            guard !success else { return }
+            self?.recordLastError(
+                source: "core.settings",
+                action: "setSharedAcceptedLicenseTermsVersion",
+                taskType: "settings"
+            )
+        }
+    }
+
+    private func applyOnboardingStateLocally(completed: Bool, acceptedVersion: String?) {
+        if completed {
+            UserDefaults.standard.set(true, forKey: Self.onboardingCompletedKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: Self.onboardingCompletedKey)
+        }
+        hasCompletedOnboarding = completed
+
+        if let acceptedVersion {
+            UserDefaults.standard.set(acceptedVersion, forKey: Self.acceptedLicenseTermsVersionKey)
+            acceptedLicenseTermsVersion = acceptedVersion
+
+            if let existing = acceptedLicenseTermsAcceptedAtUnix {
+                UserDefaults.standard.set(existing, forKey: Self.acceptedLicenseTermsAcceptedAtUnixKey)
+            } else {
+                let now = Int64(Date().timeIntervalSince1970)
+                UserDefaults.standard.set(now, forKey: Self.acceptedLicenseTermsAcceptedAtUnixKey)
+                acceptedLicenseTermsAcceptedAtUnix = now
+            }
+        } else {
+            UserDefaults.standard.removeObject(forKey: Self.acceptedLicenseTermsVersionKey)
+            UserDefaults.standard.removeObject(forKey: Self.acceptedLicenseTermsAcceptedAtUnixKey)
+            acceptedLicenseTermsVersion = nil
+            acceptedLicenseTermsAcceptedAtUnix = nil
+        }
+    }
+
+    private func syncOnboardingStateWithSharedStore() {
+        guard let service = service() else { return }
+
+        service.getSharedOnboardingState { [weak self] remoteCompleted, remoteAcceptedVersionRaw in
+            guard let self else { return }
+            DispatchQueue.main.async {
+                let localCompleted = self.hasCompletedOnboarding
+                let localAcceptedVersion = self.acceptedLicenseTermsVersion?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let normalizedLocalAcceptedVersion = (localAcceptedVersion?.isEmpty == false)
+                    ? localAcceptedVersion
+                    : nil
+                let remoteAcceptedVersion = remoteAcceptedVersionRaw?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let normalizedRemoteAcceptedVersion = (remoteAcceptedVersion?.isEmpty == false)
+                    ? remoteAcceptedVersion
+                    : nil
+                let remoteHasState = remoteCompleted || normalizedRemoteAcceptedVersion != nil
+                let localHasState = localCompleted || normalizedLocalAcceptedVersion != nil
+
+                if remoteHasState {
+                    self.applyOnboardingStateLocally(
+                        completed: remoteCompleted,
+                        acceptedVersion: normalizedRemoteAcceptedVersion
+                    )
+                    return
+                }
+
+                if localHasState {
+                    self.persistSharedOnboardingCompleted(localCompleted)
+                    self.persistSharedAcceptedLicenseTermsVersion(normalizedLocalAcceptedVersion)
+                }
+            }
+        }
+    }
+
     func setupConnection() {
         let connection = NSXPCConnection(serviceName: "app.jasoncavinder.Helm.HelmService")
         connection.remoteObjectInterface = NSXPCInterface(with: HelmServiceProtocol.self)
@@ -615,6 +702,7 @@ final class HelmCore: ObservableObject {
         fetchSafeMode()
         fetchHomebrewKegAutoCleanup()
         fetchPackageKegPolicies()
+        syncOnboardingStateWithSharedStore()
         scheduleDerivedViewStateRefresh()
     }
 
@@ -874,6 +962,7 @@ final class HelmCore: ObservableObject {
     func completeOnboarding() {
         UserDefaults.standard.set(true, forKey: Self.onboardingCompletedKey)
         hasCompletedOnboarding = true
+        persistSharedOnboardingCompleted(true)
     }
 
     func acceptCurrentLicenseTerms(acceptedAt: Date = Date()) {
@@ -888,6 +977,7 @@ final class HelmCore: ObservableObject {
         )
         acceptedLicenseTermsVersion = Self.currentLicenseTermsVersion
         acceptedLicenseTermsAcceptedAtUnix = acceptedAtUnix
+        persistSharedAcceptedLicenseTermsVersion(Self.currentLicenseTermsVersion)
     }
 
     func resetDatabase(completion: @escaping (Bool) -> Void) {

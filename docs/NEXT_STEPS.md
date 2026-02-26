@@ -30,6 +30,12 @@ Current checkpoint:
   - post-`0.17.3` `0.17.4` kickoff slice delivered: app now bundles `helm-cli` and Settings includes install/remove controls for a managed `~/.local/bin/helm` shim with app-bundle provenance marker writes.
   - post-`v0.17.6` settings CLI-shim follow-up delivered on `dev`:
     - `Helm.entitlements` and `HelmRelease.entitlements` now include home-relative read/write exceptions for `~/.local/bin/` and `~/.config/helm/` so sandboxed app builds can install/remove the managed CLI shim and marker at the real user-home paths.
+  - post-`v0.17.7` managers inspector interaction hardening follow-up delivered on `dev`:
+    - selected manager-row highlight overlays no longer intercept pointer events, and manager `Update`/`Uninstall`/`View Packages` actions now live in inspector icon controls for UI parity with package inspector actions.
+  - post-`v0.17.7` shared onboarding-state follow-up delivered on `dev`:
+    - GUI onboarding/license acceptance now syncs through shared SQLite onboarding keys (via XPC service + Rust FFI) used by `helm-cli`, with `UserDefaults` retained as a local mirror/backfill path to prevent GUI/CLI first-run-state drift.
+  - post-`v0.17.7` Rust build-toolchain resilience follow-up delivered on `dev`:
+    - `apps/macos-ui/scripts/build_rust.sh` now validates the selected rustup toolchain before running cargo, performs uninstall+reinstall auto-repair for corrupted toolchains when enabled, scopes rust-target list/add operations to the same toolchain, and clears unsupported `LC_ALL=C.UTF-8` in script context to avoid noisy locale warnings in Xcode logs.
   - `#93` `feat/v0.17-log-foundation`
   - `#95` `feat/v0.17-structured-error-export`
   - `#96` `feat/v0.17-service-health-panel`
