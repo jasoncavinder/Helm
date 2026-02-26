@@ -171,7 +171,7 @@ System integrity and tooling:
 ### **Hybrid Model**
 
 - **SwiftUI frontend:** UI rendering, immediate responses.
-- **Background service (daemon / XPC boundary):** Privileged or long-lived operations.
+- **Background service (XPC boundary):** Privileged or long-lived operations.
 - **Rust core:** Adapter modules, orchestration logic, persistence API.
 
 The core boundary is **documented and versioned**. Rust core is UI-agnostic and safe.

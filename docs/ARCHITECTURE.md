@@ -53,6 +53,17 @@ Helm uses a **three-layer architecture**:
 
 ```
 
+### 2.1 Terminology Contract
+
+Use terms consistently across surfaces:
+
+- **Manager**: the user-facing package/tool ecosystem (`npm`, `homebrew_formula`, `rustup`, etc.).
+- **Adapter**: the internal Rust implementation for a manager.
+- **Task**: a queued/running operation (`refresh`, `install`, `upgrade`, `search`, etc.).
+- **Service (XPC)**: the background execution boundary between UI and Rust core.
+
+User-facing docs should prefer **manager**, **task**, and **service**. Use **adapter** in architecture/developer documentation only.
+
 ---
 
 ## 3. Layer Responsibilities
@@ -417,6 +428,7 @@ Stage 3 (`1.4.x`) - Shared Brain:
 - The Security Advisory System (`1.3.x`) is independent of Shared Brain and remains functional without Helm-hosted services.
 - Shared Brain (`1.4.x`) is additive infrastructure that can enrich advisory outcomes but is not a prerequisite for local advisory evaluation.
 - Current releases (`<=0.17.x`) do not send package/fingerprint telemetry to a shared backend.
+- Helm `1.0` crash/error reporting posture is local-only with no automatic remote crash telemetry; operational policy and payload expectations are documented in `docs/operations/CRASH_REPORTING_POLICY.md`.
 
 ---
 

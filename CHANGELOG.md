@@ -6,6 +6,22 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.17.7] - 2026-02-26
+
+Patch `0.17.7` closes the pre-release quality audit and release-gate blockers with orchestration reliability hardening and lint/test cleanup.
+
+### Added
+- Runtime queue timeout diagnostics now emit periodic wait heartbeats and richer timeout/cancellation context for request-response orchestration waits.
+- Rust timeout-process coverage now asserts process-group child cleanup to prevent timeout/cancel orphan regressions.
+
+### Changed
+- Refresh orchestration now logs deterministic effective timeout derivation (`min(policy_timeout, orchestration_cap)`) with attempt/retry context for rustup-style request-response flows.
+- Graceful cancellation paths now re-check terminal state before forced abort handling.
+
+### Fixed
+- Removed remaining Homebrew adapter `clippy::collapsible_if` warnings and additional strict-clippy regressions in CLI/FFI touched surfaces.
+- Eliminated an intermittent runtime-queue wait-notify race that could surface as flaky timeout behavior in rustup end-to-end tests.
+
 ## [0.17.6] - 2026-02-24
 
 Patch `0.17.6` hardens refresh reliability and diagnostics after the `v0.17.5` release cycle.

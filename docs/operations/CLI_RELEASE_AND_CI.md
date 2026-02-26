@@ -23,10 +23,75 @@ Mandatory release preflight tooling:
 Reference contracts:
 
 - `docs/architecture/BUILD_VARIANTS.md`
+- `docs/operations/RELEASE_REHEARSAL_DRY_RUN.md`
+- `docs/operations/SPARKLE_RECOVERY_SCENARIOS.md`
+- `docs/operations/REAL_MANAGER_CANARY.md`
+- `docs/operations/GUARDED_OS_UPDATE_VALIDATION.md`
 - `.github/workflows/release-cli-direct.yml`
 - `.github/workflows/release-publish-verify.yml`
 - `.github/workflows/cli-installer-checks.yml`
 - `.github/workflows/release-all-variants.yml`
+- `.github/workflows/guarded-os-update-contracts.yml`
+- `docs/contracts/release-line.json`
+- `scripts/release/check_release_line_copy.sh`
+- `scripts/release/rehearsal_dry_run.sh`
+- `scripts/tests/guarded_os_update_contract.sh`
+
+Release check policy (required vs advisory):
+
+- merge-gating required checks are enforced by branch rulesets (`Policy Gate`, test/lint/build checks)
+- post-publish convergence checks remain advisory:
+  - `Release Publish Verify`
+  - `Appcast Drift Guard`
+  - `CLI Update Metadata Drift Guard`
+- advisory checks must still be monitored and resolved before release sign-off
+
+### 1.1 CI Toolchain Pin Contract (Reproducibility)
+
+Pinned versions:
+
+- Rust toolchain: `1.93.1` (all workflows using `dtolnay/rust-toolchain`)
+- SwiftLint: `0.59.1` via `portable_swiftlint.zip`
+- SwiftLint portable SHA-256: `58f9be8a4677900c945e2c618168223f4dd620a0cc65c9ccc5ea0f70433e89c1`
+
+Drift guard:
+
+- `scripts/release/tests/ci_toolchain_contract.sh`
+- executed by `.github/workflows/release-contract-checks.yml`
+
+Pin-rotation procedure:
+
+1. Choose target Rust + SwiftLint versions.
+2. Update Rust `toolchain:` values in:
+   - `.github/workflows/ci-test.yml`
+   - `.github/workflows/dependency-security.yml`
+   - `.github/workflows/release-cli-direct.yml`
+   - `.github/workflows/release-macos-dmg.yml`
+   - `.github/workflows/release-all-variants.yml`
+3. Download the target SwiftLint `portable_swiftlint.zip`, compute SHA-256, and update:
+   - `.github/workflows/swiftlint.yml` (`SWIFTLINT_VERSION`, `SWIFTLINT_PORTABLE_SHA256`)
+4. Update constants in `scripts/release/tests/ci_toolchain_contract.sh`.
+5. Run contracts locally before opening a PR:
+
+```bash
+scripts/release/tests/ci_toolchain_contract.sh
+```
+
+### 1.2 Immutable GitHub Action Pinning (Criticality-Phased)
+
+Phase 1 (pre-release required) is complete for release/security workflows:
+
+- `.github/workflows/release-contract-checks.yml`
+- `.github/workflows/appcast-drift.yml`
+- `.github/workflows/dependency-security.yml`
+- `.github/workflows/codeql.yml`
+- `.github/workflows/semgrep.yml`
+
+Policy:
+
+- release/security workflows must stay pinned to immutable action SHAs.
+- CI/test/lint and non-critical automation pinning continues in later phases.
+- new workflows must use immutable SHA pins when introduced.
 
 ---
 
@@ -43,6 +108,13 @@ Availability note:
 
 - `latest.json` is required and must stay publishable/non-404 for stable direct installs.
 - `latest-rc.json` is published only after the first prerelease tag flow (`vX.Y.Z-rc.N`).
+
+Branch truth policy:
+
+- publish-ready metadata is authoritative on `main` and `release/*` branches only.
+- `dev` is not required to carry publish-ready metadata artifacts.
+- `CLI Update Metadata Drift Guard` skips non-publish refs and enforces stable metadata only on publish-truth refs.
+- prerelease pointer validation (`latest-rc.json`) runs only when that file is present; if present, it must map to the latest published prerelease tag with `channel=rc`.
 
 Schema:
 

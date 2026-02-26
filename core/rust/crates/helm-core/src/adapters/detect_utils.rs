@@ -108,6 +108,10 @@ fn push_candidate_path(
 }
 
 fn manager_additional_bin_roots() -> Vec<PathBuf> {
+    manager_additional_bin_roots_for_home(std::env::var_os("HOME").map(PathBuf::from))
+}
+
+fn manager_additional_bin_roots_for_home(home: Option<PathBuf>) -> Vec<PathBuf> {
     let mut roots = vec![
         PathBuf::from("/opt/homebrew/bin"),
         PathBuf::from("/usr/local/bin"),
@@ -120,11 +124,12 @@ fn manager_additional_bin_roots() -> Vec<PathBuf> {
         PathBuf::from("/nix/var/nix/profiles/default/bin"),
     ];
 
-    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+    if let Some(home) = home {
         roots.push(home.join(".local/bin"));
         roots.push(home.join(".cargo/bin"));
         roots.push(home.join(".asdf/bin"));
         roots.push(home.join(".asdf/shims"));
+        roots.push(home.join(".local/share/rtx/shims"));
         roots.push(home.join(".nix-profile/bin"));
     }
 
@@ -173,6 +178,13 @@ fn discover_from_versioned_roots(
 }
 
 fn manager_versioned_install_roots(manager: ManagerId) -> Vec<PathBuf> {
+    manager_versioned_install_roots_for_home(manager, std::env::var_os("HOME").map(PathBuf::from))
+}
+
+fn manager_versioned_install_roots_for_home(
+    manager: ManagerId,
+    home: Option<PathBuf>,
+) -> Vec<PathBuf> {
     let mut roots = Vec::new();
 
     if uses_homebrew_cellar(manager) {
@@ -181,10 +193,11 @@ fn manager_versioned_install_roots(manager: ManagerId) -> Vec<PathBuf> {
     }
 
     if uses_tool_version_installs(manager)
-        && let Some(home) = std::env::var_os("HOME").map(PathBuf::from)
+        && let Some(home) = home
     {
         roots.push(home.join(".asdf/installs"));
         roots.push(home.join(".local/share/mise/installs"));
+        roots.push(home.join(".local/share/rtx/installs"));
     }
 
     roots
@@ -229,4 +242,146 @@ fn uses_tool_version_installs(manager: ManagerId) -> bool {
             | ManagerId::Cargo
             | ManagerId::CargoBinstall
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::OsString;
+    use std::path::PathBuf;
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use crate::models::ManagerId;
+
+    use super::{
+        discover_executable_path, manager_additional_bin_roots_for_home,
+        manager_versioned_install_roots_for_home,
+    };
+
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    struct EnvSnapshot {
+        path: Option<OsString>,
+        home: Option<OsString>,
+    }
+
+    impl EnvSnapshot {
+        fn capture() -> Self {
+            Self {
+                path: std::env::var_os("PATH"),
+                home: std::env::var_os("HOME"),
+            }
+        }
+    }
+
+    impl Drop for EnvSnapshot {
+        fn drop(&mut self) {
+            // SAFETY: tests restore process environment under a global mutex to avoid races.
+            unsafe {
+                match &self.path {
+                    Some(value) => std::env::set_var("PATH", value),
+                    None => std::env::remove_var("PATH"),
+                }
+                match &self.home {
+                    Some(value) => std::env::set_var("HOME", value),
+                    None => std::env::remove_var("HOME"),
+                }
+            }
+        }
+    }
+
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("helm-detect-utils-{name}-{nanos}"))
+    }
+
+    fn write_placeholder_binary(path: &std::path::Path) {
+        let parent = path.parent().expect("binary should have parent directory");
+        std::fs::create_dir_all(parent).expect("failed to create test directories");
+        std::fs::write(path, b"#!/bin/sh\nexit 0\n").expect("failed to write test binary");
+    }
+
+    #[test]
+    fn discover_executable_path_prefers_extra_paths_over_path() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("env lock should be available");
+        let _snapshot = EnvSnapshot::capture();
+
+        let root = unique_temp_dir("precedence");
+        let extra_dir = root.join("extra/bin");
+        let path_dir = root.join("path/bin");
+        let binary_name = "helm-detect-priority-bin";
+        let from_extra = extra_dir.join(binary_name);
+        let from_path = path_dir.join(binary_name);
+        write_placeholder_binary(from_extra.as_path());
+        write_placeholder_binary(from_path.as_path());
+
+        // SAFETY: test is serialized with ENV_LOCK and restored by EnvSnapshot.
+        unsafe {
+            std::env::set_var("PATH", path_dir.to_string_lossy().to_string());
+            std::env::set_var("HOME", root.to_string_lossy().to_string());
+        }
+
+        let discovered = discover_executable_path(
+            binary_name,
+            &[extra_dir.to_string_lossy().as_ref()],
+            ManagerId::Npm,
+        )
+        .expect("extra path binary should be discovered");
+
+        assert_eq!(discovered, from_extra);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn discover_executable_path_finds_rtx_versioned_installs() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("env lock should be available");
+        let _snapshot = EnvSnapshot::capture();
+
+        let root = unique_temp_dir("rtx");
+        let binary_name = "helm-rtx-versioned-tool";
+        let expected = root
+            .join(".local/share/rtx/installs/node/22.9.0/bin")
+            .join(binary_name);
+        write_placeholder_binary(expected.as_path());
+
+        // SAFETY: test is serialized with ENV_LOCK and restored by EnvSnapshot.
+        unsafe {
+            std::env::set_var("HOME", root.to_string_lossy().to_string());
+            std::env::set_var("PATH", "");
+        }
+
+        let discovered = discover_executable_path(binary_name, &[], ManagerId::Npm)
+            .expect("rtx versioned binary should be discovered");
+        assert_eq!(discovered, expected);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn additional_and_versioned_roots_include_rtx_locations() {
+        let home = PathBuf::from("/tmp/helm-test-home");
+        let additional = manager_additional_bin_roots_for_home(Some(home.clone()));
+        assert!(
+            additional
+                .iter()
+                .any(|path| path == &home.join(".local/share/rtx/shims")),
+            "rtx shims should be present in additional search roots"
+        );
+
+        let versioned = manager_versioned_install_roots_for_home(ManagerId::Npm, Some(home));
+        assert!(
+            versioned
+                .iter()
+                .any(|path| path.ends_with(".local/share/rtx/installs")),
+            "rtx installs should be present in versioned install roots"
+        );
+    }
 }

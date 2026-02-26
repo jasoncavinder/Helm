@@ -71,3 +71,21 @@ Search is progressive and non-blocking:
 ## Background tasks
 
 All operations (refresh, search, install, upgrade) run as background tasks. The task list shows real-time status: Queued, Running, Completed, or Failed. Tasks for the same manager run serially; tasks for different managers run in parallel.
+
+## CLI and TUI
+
+Helm also includes a companion CLI for terminal-based workflows.
+
+- `helm` (no args) launches the interactive TUI when stdout is a TTY.
+- In non-TTY contexts, `helm` (no args) prints help.
+- `helm --help` shows the full command tree and global flags.
+
+Common commands:
+
+```bash
+helm status
+helm refresh --detach
+helm updates preview
+helm tasks list --limit 20
+helm diagnostics summary
+```

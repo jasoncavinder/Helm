@@ -1,0 +1,9 @@
+{
+  "operation": "install_guarded_update",
+  "operation_class": "mutating",
+  "requires_confirmation": true,
+  "operator_confirmed": true,
+  "vm_isolated": true,
+  "snapshot_ready": true,
+  "simulated_result": "ready"
+}

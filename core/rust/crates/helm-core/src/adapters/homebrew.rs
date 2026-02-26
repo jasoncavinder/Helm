@@ -118,14 +118,10 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                 Ok(AdapterResponse::SearchResults(results))
             }
             AdapterRequest::Install(install_request) => {
-                if let Err(error) = self.source.install_formula(&install_request.package.name) {
-                    let lower = error.message.to_ascii_lowercase();
-                    let already_installed = error.kind == CoreErrorKind::ProcessFailure
-                        && (lower.contains("already installed")
-                            || lower.contains("is already installed"));
-                    if !already_installed {
-                        return Err(error);
-                    }
+                if let Err(error) = self.source.install_formula(&install_request.package.name)
+                    && !is_homebrew_already_installed_error(&error)
+                {
+                    return Err(error);
                 }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: install_request.package,
@@ -135,9 +131,13 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                 }))
             }
             AdapterRequest::Uninstall(uninstall_request) => {
-                let _ = self
+                if let Err(error) = self
                     .source
-                    .uninstall_formula(&uninstall_request.package.name)?;
+                    .uninstall_formula(&uninstall_request.package.name)
+                    && !is_homebrew_already_absent_uninstall_error(&error)
+                {
+                    return Err(error);
+                }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: uninstall_request.package,
                     action: ManagerAction::Uninstall,
@@ -300,6 +300,24 @@ fn split_upgrade_target(name: &str) -> (&str, bool) {
     } else {
         (name, false)
     }
+}
+
+fn is_homebrew_already_installed_error(error: &CoreError) -> bool {
+    if error.kind != CoreErrorKind::ProcessFailure {
+        return false;
+    }
+    let lower = error.message.to_ascii_lowercase();
+    lower.contains("already installed") || lower.contains("is already installed")
+}
+
+fn is_homebrew_already_absent_uninstall_error(error: &CoreError) -> bool {
+    if error.kind != CoreErrorKind::ProcessFailure {
+        return false;
+    }
+    let lower = error.message.to_ascii_lowercase();
+    lower.contains("no such keg")
+        || lower.contains("no installed formula")
+        || lower.contains("is not installed")
 }
 
 fn ensure_formula_no_longer_outdated<S: HomebrewSource>(
@@ -959,6 +977,45 @@ mod tests {
     }
 
     #[test]
+    fn adapter_treats_already_absent_as_success_for_uninstall() {
+        let source =
+            FixtureSource::with_uninstall_error("Error: No such keg: /opt/homebrew/Cellar/mas");
+        let adapter = HomebrewAdapter::new(source);
+
+        let result = adapter
+            .execute(AdapterRequest::Uninstall(
+                crate::adapters::UninstallRequest {
+                    package: crate::models::PackageRef {
+                        manager: crate::models::ManagerId::HomebrewFormula,
+                        name: "mas".to_string(),
+                    },
+                },
+            ))
+            .unwrap();
+        assert!(matches!(result, AdapterResponse::Mutation(_)));
+    }
+
+    #[test]
+    fn adapter_surfaces_uninstall_errors_that_are_not_already_absent() {
+        let source =
+            FixtureSource::with_uninstall_error("Error: uninstall failed due to lock timeout");
+        let adapter = HomebrewAdapter::new(source);
+
+        let error = adapter
+            .execute(AdapterRequest::Uninstall(
+                crate::adapters::UninstallRequest {
+                    package: crate::models::PackageRef {
+                        manager: crate::models::ManagerId::HomebrewFormula,
+                        name: "mas".to_string(),
+                    },
+                },
+            ))
+            .expect_err("non-idempotent uninstall error should be returned");
+        assert_eq!(error.kind, CoreErrorKind::ProcessFailure);
+        assert!(error.message.contains("lock timeout"));
+    }
+
+    #[test]
     fn adapter_executes_upgrade_request() {
         let source = FixtureSource::default();
         let adapter = HomebrewAdapter::new(source);
@@ -1179,6 +1236,7 @@ mod tests {
     struct FixtureSource {
         detect_calls: Arc<AtomicUsize>,
         install_error: Option<String>,
+        uninstall_error: Option<String>,
         outdated_output: String,
     }
 
@@ -1187,6 +1245,16 @@ mod tests {
             Self {
                 detect_calls: Arc::new(AtomicUsize::new(0)),
                 install_error: Some(message.to_string()),
+                uninstall_error: None,
+                outdated_output: OUTDATED_FIXTURE.to_string(),
+            }
+        }
+
+        fn with_uninstall_error(message: &str) -> Self {
+            Self {
+                detect_calls: Arc::new(AtomicUsize::new(0)),
+                install_error: None,
+                uninstall_error: Some(message.to_string()),
                 outdated_output: OUTDATED_FIXTURE.to_string(),
             }
         }
@@ -1195,6 +1263,7 @@ mod tests {
             Self {
                 detect_calls: Arc::new(AtomicUsize::new(0)),
                 install_error: None,
+                uninstall_error: None,
                 outdated_output: output.to_string(),
             }
         }
@@ -1205,6 +1274,7 @@ mod tests {
             Self {
                 detect_calls: Arc::new(AtomicUsize::new(0)),
                 install_error: None,
+                uninstall_error: None,
                 outdated_output: OUTDATED_FIXTURE.to_string(),
             }
         }
@@ -1245,6 +1315,15 @@ mod tests {
         }
 
         fn uninstall_formula(&self, _name: &str) -> AdapterResult<String> {
+            if let Some(message) = &self.uninstall_error {
+                return Err(CoreError {
+                    manager: Some(crate::models::ManagerId::HomebrewFormula),
+                    task: Some(TaskType::Uninstall),
+                    action: Some(ManagerAction::Uninstall),
+                    kind: CoreErrorKind::ProcessFailure,
+                    message: message.clone(),
+                });
+            }
             Ok(String::new())
         }
 

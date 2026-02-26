@@ -471,6 +471,82 @@ fn set_snapshot_pinned_updates_cached_rows_immediately() {
 }
 
 #[test]
+fn apply_install_result_updates_installed_snapshot_and_clears_outdated_entry() {
+    let path = test_db_path("apply-install-result");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let package = PackageRef {
+        manager: ManagerId::Npm,
+        name: "eslint".to_string(),
+    };
+
+    store
+        .upsert_outdated(&[OutdatedPackage {
+            package: package.clone(),
+            installed_version: Some("9.24.0".to_string()),
+            candidate_version: "9.25.0".to_string(),
+            pinned: false,
+            restart_required: false,
+        }])
+        .unwrap();
+
+    store
+        .apply_install_result(&package, Some("9.25.0"))
+        .unwrap();
+
+    let installed = store.list_installed().unwrap();
+    let outdated = store.list_outdated().unwrap();
+    let installed_entry = installed
+        .iter()
+        .find(|entry| entry.package == package)
+        .expect("installed snapshot should contain package after install result");
+
+    assert_eq!(installed_entry.installed_version.as_deref(), Some("9.25.0"));
+    assert!(outdated.iter().all(|entry| entry.package != package));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn apply_uninstall_result_removes_package_from_cached_snapshots() {
+    let path = test_db_path("apply-uninstall-result");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let package = PackageRef {
+        manager: ManagerId::Pnpm,
+        name: "typescript".to_string(),
+    };
+
+    store
+        .upsert_installed(&[InstalledPackage {
+            package: package.clone(),
+            installed_version: Some("5.8.3".to_string()),
+            pinned: false,
+        }])
+        .unwrap();
+    store
+        .upsert_outdated(&[OutdatedPackage {
+            package: package.clone(),
+            installed_version: Some("5.8.3".to_string()),
+            candidate_version: "5.9.0".to_string(),
+            pinned: false,
+            restart_required: false,
+        }])
+        .unwrap();
+
+    store.apply_uninstall_result(&package).unwrap();
+
+    let installed = store.list_installed().unwrap();
+    let outdated = store.list_outdated().unwrap();
+    assert!(installed.iter().all(|entry| entry.package != package));
+    assert!(outdated.iter().all(|entry| entry.package != package));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn apply_upgrade_result_promotes_package_to_installed_snapshot() {
     let path = test_db_path("apply-upgrade-result");
     let store = SqliteStore::new(&path);
@@ -591,6 +667,12 @@ fn manager_preferences_selection_fields_roundtrip() {
     store
         .set_manager_selected_install_method(ManagerId::Pip, Some("homebrew"))
         .unwrap();
+    store
+        .set_manager_timeout_hard_seconds(ManagerId::Pip, Some(600))
+        .unwrap();
+    store
+        .set_manager_timeout_idle_seconds(ManagerId::Pip, Some(180))
+        .unwrap();
 
     let prefs = store.list_manager_preferences().unwrap();
     let pip_pref = prefs
@@ -606,12 +688,20 @@ fn manager_preferences_selection_fields_roundtrip() {
         pip_pref.selected_install_method.as_deref(),
         Some("homebrew")
     );
+    assert_eq!(pip_pref.timeout_hard_seconds, Some(600));
+    assert_eq!(pip_pref.timeout_idle_seconds, Some(180));
 
     store
         .set_manager_selected_executable_path(ManagerId::Pip, None)
         .unwrap();
     store
         .set_manager_selected_install_method(ManagerId::Pip, None)
+        .unwrap();
+    store
+        .set_manager_timeout_hard_seconds(ManagerId::Pip, None)
+        .unwrap();
+    store
+        .set_manager_timeout_idle_seconds(ManagerId::Pip, None)
         .unwrap();
 
     let prefs = store.list_manager_preferences().unwrap();
@@ -621,6 +711,8 @@ fn manager_preferences_selection_fields_roundtrip() {
         .expect("pip manager preference should exist");
     assert_eq!(pip_pref.selected_executable_path, None);
     assert_eq!(pip_pref.selected_install_method, None);
+    assert_eq!(pip_pref.timeout_hard_seconds, None);
+    assert_eq!(pip_pref.timeout_idle_seconds, None);
     assert!(!pip_pref.enabled);
 
     let _ = std::fs::remove_file(path);
@@ -804,7 +896,10 @@ fn prune_completed_tasks_removes_cancelled_and_keeps_running_records() {
 
     let remaining = store.list_recent_tasks(10).unwrap();
     assert_eq!(remaining.len(), 2);
-    let statuses = remaining.into_iter().map(|task| task.status).collect::<Vec<_>>();
+    let statuses = remaining
+        .into_iter()
+        .map(|task| task.status)
+        .collect::<Vec<_>>();
     assert!(statuses.contains(&TaskStatus::Failed));
     assert!(statuses.contains(&TaskStatus::Running));
 
@@ -897,7 +992,12 @@ fn delete_tasks_for_manager_removes_only_matching_manager_rows() {
     let remaining = store.list_recent_tasks(10).unwrap();
     assert_eq!(remaining.len(), 1);
     assert_eq!(remaining[0].manager, ManagerId::Npm);
-    assert!(store.list_task_logs(homebrew_task.id, 10).unwrap().is_empty());
+    assert!(
+        store
+            .list_task_logs(homebrew_task.id, 10)
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(store.list_task_logs(npm_task.id, 10).unwrap().len(), 1);
 
     let _ = std::fs::remove_file(path);

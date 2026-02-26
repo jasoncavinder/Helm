@@ -24,7 +24,18 @@ Helm currently supports twenty-eight managers across six categories:
 
 ### Is Helm free?
 
-Helm is currently in pre-1.0 beta with all features available. Post-1.0 planning includes Helm (Consumer: Free + Pro) and Helm Business (Fleet) as a separate product lifecycle. See the [licensing page](/licensing/) for details.
+Helm is currently in pre-1.0 development with stable releases on `main`, and all current features are available. Post-1.0 planning includes Helm (Consumer: Free + Pro) and Helm Business (Fleet) as a separate product lifecycle. See the [licensing page](/licensing/) for details.
+
+### How can I support Helm?
+
+You can support Helm through any of these channels:
+
+- [GitHub Sponsors](https://github.com/sponsors/jasoncavinder)
+- [Patreon](https://www.patreon.com/cw/jasoncavinder)
+- [Buy Me a Coffee](https://buymeacoffee.com/jasoncavinder)
+- [Ko-fi](https://ko-fi.com/jasoncavinder)
+- [PayPal](https://paypal.me/jasoncavinder)
+- [Venmo](https://www.venmo.com/u/JasonCavinder)
 
 ### Is Helm Business included in the consumer app?
 
@@ -79,7 +90,7 @@ Pinning prevents a package from being included in "Upgrade All" operations. Pinn
 
 ### Can I undo an upgrade?
 
-Helm does not currently support rollback. If an upgrade causes issues, use the underlying package manager directly (e.g., `brew switch`, `pip install <package>==<version>`).
+Helm does not currently support rollback. If an upgrade causes issues, use the underlying package manager directly (for example reinstall a pinned/older version with manager-native commands such as `brew install <formula>@<version>` or `pip install <package>==<version>`).
 
 ---
 
@@ -87,7 +98,7 @@ Helm does not currently support rollback. If an upgrade causes issues, use the u
 
 ### The app won't open — macOS says it's from an unidentified developer
 
-Helm beta builds are signed and notarized with a Developer ID certificate, so Gatekeeper should allow them. If you still see a warning:
+Helm release builds are signed and notarized with a Developer ID certificate, so Gatekeeper should allow them. If you still see a warning:
 
 1. Right-click (or Control-click) the app in Finder
 2. Select **Open** from the context menu
@@ -118,8 +129,10 @@ Try running the manager's list command directly in Terminal (e.g., `npm list -g 
 If the refresh indicator spins indefinitely:
 
 1. Check if a specific manager is unresponsive — the Tasks tab shows per-manager task status
-2. Helm enforces timeouts (30s for data fetches, 300s for mutations), so stuck tasks will eventually time out
+2. Helm enforces hard and idle timeouts, and idle timeout resets on process output activity, so active long-running managers can continue while stalled tasks still time out
 3. Try quitting and reopening Helm — the XPC service reconnects automatically with exponential backoff
+
+You can tune per-manager timeout profiles from the manager inspector when a manager needs a longer execution window.
 
 ### Tasks show "Failed" status
 

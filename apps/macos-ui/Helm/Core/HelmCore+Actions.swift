@@ -742,6 +742,35 @@ extension HelmCore {
         }
     }
 
+    func setManagerTimeoutProfile(
+        _ managerId: String,
+        hardTimeoutSeconds: Int?,
+        idleTimeoutSeconds: Int?
+    ) {
+        let hardValue = Int64(hardTimeoutSeconds ?? 0)
+        let idleValue = Int64(idleTimeoutSeconds ?? 0)
+        service()?.setManagerTimeoutProfile(
+            managerId: managerId,
+            hardTimeoutSeconds: hardValue,
+            idleTimeoutSeconds: idleValue
+        ) { [weak self] success in
+            guard let self else { return }
+            if !success {
+                logger.error(
+                    "setManagerTimeoutProfile(\(managerId), hard=\(hardValue), idle=\(idleValue)) failed"
+                )
+                self.recordLastError(
+                    source: "core.actions",
+                    action: "setManagerTimeoutProfile",
+                    managerId: managerId,
+                    taskType: "settings"
+                )
+                return
+            }
+            self.fetchManagerStatus()
+        }
+    }
+
     func installManager(_ managerId: String) {
         DispatchQueue.main.async {
             self.managerOperations[managerId] = L10n.App.Managers.Operation.startingInstall.localized

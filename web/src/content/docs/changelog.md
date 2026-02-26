@@ -13,6 +13,22 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ## Unreleased
 
+## 0.17.7 — 2026-02-26
+
+Patch `0.17.7` closes the pre-release quality audit and release-gate blockers.
+
+### Added
+- Runtime queue timeout diagnostics now include heartbeat logging and richer timeout/cancellation context.
+- Timeout process coverage now verifies child process-group cleanup to prevent orphaned processes.
+
+### Changed
+- Refresh orchestration now logs effective timeout derivation as `min(policy_timeout, orchestration_cap)` with retry context.
+- Graceful cancellation now re-checks terminal state before forced abort.
+
+### Fixed
+- Removed remaining Homebrew adapter clippy blockers and strict-clippy regressions in touched CLI/FFI surfaces.
+- Hardened runtime-queue waits to remove an intermittent rustup timeout race.
+
 ## 0.17.6 — 2026-02-24
 
 Patch `0.17.6` hardens refresh reliability and diagnostics after the `v0.17.5` release cycle.

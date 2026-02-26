@@ -537,6 +537,26 @@ Capture release-process friction in `TMP_RELEASE_FRICTION` during execution, the
 - Ensures release runbook/checklist/decision docs stay aligned with observed release behavior
 
 ---
+## Decision 032 — 1.0 Crash Reporting Posture (Local-Only)
+
+**Decision:**
+For `1.0`, Helm keeps crash/error reporting local-only and does not ship automatic remote crash telemetry.
+
+**Policy details:**
+
+- Diagnostics remain user-initiated export workflows.
+- No automatic upload of diagnostics, package inventory, or environment fingerprints.
+- Expected diagnostics payload schema and privacy constraints are documented in:
+  - `docs/operations/CRASH_REPORTING_POLICY.md`
+- Operational owner is the release operator on duty (maintainer by default in current phase).
+
+**Rationale:**
+
+- Preserves Helm's local-first privacy model for pre-1.0 and 1.0 launch.
+- Reduces privacy/compliance risk before a dedicated opt-in telemetry design exists.
+- Keeps support workflows functional via explicit diagnostics export without background collection.
+
+---
 ## Summary
 
 Helm prioritizes:

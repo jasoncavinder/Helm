@@ -16,6 +16,8 @@ use helm_core::orchestration::{AdapterRuntime, AdapterTaskTerminalState};
 
 const INSTALLED_FIXTURE: &str = include_str!("fixtures/mise/ls_json.txt");
 const OUTDATED_FIXTURE: &str = include_str!("fixtures/mise/outdated_json.txt");
+const TIMEOUT_SENSITIVE_SOAK_ITERATIONS: usize = 20;
+const TIMEOUT_SENSITIVE_SOAK_FAILURE_BUDGET: usize = 0;
 
 struct MiseFakeExecutor {
     fail_all: bool,
@@ -219,4 +221,51 @@ async fn mise_not_installed_propagates_as_structured_error() {
         }
         other => panic!("expected Failed terminal state, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn mise_timeout_sensitive_orchestration_soak_budget() {
+    let mut failures = 0usize;
+
+    for _ in 0..TIMEOUT_SENSITIVE_SOAK_ITERATIONS {
+        let executor = Arc::new(MiseFakeExecutor::normal());
+        let runtime = build_runtime(executor);
+
+        let detect_id = runtime
+            .submit(ManagerId::Mise, AdapterRequest::Detect(DetectRequest))
+            .await
+            .expect("detect submit should succeed");
+        let installed_id = runtime
+            .submit(
+                ManagerId::Mise,
+                AdapterRequest::ListInstalled(ListInstalledRequest),
+            )
+            .await
+            .expect("list installed submit should succeed");
+        let outdated_id = runtime
+            .submit(
+                ManagerId::Mise,
+                AdapterRequest::ListOutdated(ListOutdatedRequest),
+            )
+            .await
+            .expect("list outdated submit should succeed");
+
+        for task_id in [detect_id, installed_id, outdated_id] {
+            let snapshot = runtime
+                .wait_for_terminal(task_id, Some(Duration::from_secs(5)))
+                .await
+                .expect("task should reach terminal state");
+            if snapshot.runtime.status != TaskStatus::Completed {
+                failures += 1;
+            }
+        }
+    }
+
+    assert!(
+        failures <= TIMEOUT_SENSITIVE_SOAK_FAILURE_BUDGET,
+        "mise soak exceeded failure budget: failures={} budget={} iterations={}",
+        failures,
+        TIMEOUT_SENSITIVE_SOAK_FAILURE_BUDGET,
+        TIMEOUT_SENSITIVE_SOAK_ITERATIONS
+    );
 }
