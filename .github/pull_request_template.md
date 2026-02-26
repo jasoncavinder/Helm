@@ -20,6 +20,7 @@
 - [ ] Relevant local validation was run (tests/lint/build as applicable).
 - [ ] Required CI checks for the target branch are expected to pass.
 - [ ] No unrelated changes were bundled.
+- [ ] If docs were changed, terminology matches contract (`manager`/`task`/`service` for user-facing docs; `adapter` reserved for architecture/developer docs).
 
 ## Release Impact
 

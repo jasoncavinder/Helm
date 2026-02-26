@@ -31,6 +31,12 @@ import Foundation
     func setManagerEnabled(managerId: String, enabled: Bool, withReply reply: @escaping (Bool) -> Void)
     func setManagerSelectedExecutablePath(managerId: String, selectedPath: String?, withReply reply: @escaping (Bool) -> Void)
     func setManagerInstallMethod(managerId: String, installMethod: String?, withReply reply: @escaping (Bool) -> Void)
+    func setManagerTimeoutProfile(
+        managerId: String,
+        hardTimeoutSeconds: Int64,
+        idleTimeoutSeconds: Int64,
+        withReply reply: @escaping (Bool) -> Void
+    )
     func installManager(managerId: String, withReply reply: @escaping (Int64) -> Void)
     func updateManager(managerId: String, withReply reply: @escaping (Int64) -> Void)
     func uninstallManager(managerId: String, withReply reply: @escaping (Int64) -> Void)

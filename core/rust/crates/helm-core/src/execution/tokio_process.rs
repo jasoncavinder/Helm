@@ -22,6 +22,7 @@ impl ProcessExecutor for TokioProcessExecutor {
         let task_type = request.task_type;
         let action = request.action;
         let command_display = prepared.command_display.clone();
+        let (program_path, path_snippet) = process_context_details(&prepared.command);
         let effective_working_dir =
             resolve_effective_working_dir(prepared.command.working_dir.as_deref());
         let working_dir_display = effective_working_dir
@@ -33,6 +34,11 @@ impl ProcessExecutor for TokioProcessExecutor {
                 task_id,
                 Some(command_display.as_str()),
                 working_dir_display.as_deref(),
+            );
+            crate::execution::task_output_store::record_process_context(
+                task_id,
+                Some(program_path.as_str()),
+                path_snippet.as_deref(),
             );
         }
 
@@ -53,7 +59,11 @@ impl ProcessExecutor for TokioProcessExecutor {
         cmd.process_group(0);
 
         let child = cmd.spawn().map_err(|error| {
-            let message = format!("failed to spawn process: {error}");
+            let message = append_error_context(
+                format!("failed to spawn process: {error}").as_str(),
+                program_path.as_str(),
+                path_snippet.as_deref(),
+            );
             if let Some(task_id) = task_id {
                 crate::execution::task_output_store::record_error(
                     task_id,
@@ -78,11 +88,14 @@ impl ProcessExecutor for TokioProcessExecutor {
             pid,
             started_at,
             timeout: request.timeout,
+            idle_timeout: request.idle_timeout,
             manager,
             task_type,
             action,
             task_id,
             command_display,
+            program_path,
+            path_snippet,
         }))
     }
 }
@@ -93,6 +106,8 @@ struct PreparedSpawnCommand {
 }
 
 static DEFAULT_SUDO_ASKPASS_PATH: OnceLock<Result<PathBuf, String>> = OnceLock::new();
+const HELM_SUDO_ASKPASS_ENV: &str = "HELM_SUDO_ASKPASS";
+const HELM_SUDO_ASKPASS_ALLOW_OVERRIDE_ENV: &str = "HELM_SUDO_ASKPASS_ALLOW_OVERRIDE";
 
 fn prepare_command_for_spawn(
     request: &ProcessSpawnRequest,
@@ -139,6 +154,24 @@ fn prepare_command_for_spawn(
     })
 }
 
+fn process_context_details(command: &CommandSpec) -> (String, Option<String>) {
+    let program_path = command.program.to_string_lossy().to_string();
+    let path_snippet = command
+        .env
+        .get("PATH")
+        .cloned()
+        .or_else(|| std::env::var("PATH").ok());
+    (program_path, path_snippet)
+}
+
+fn append_error_context(base: &str, program_path: &str, path_snippet: Option<&str>) -> String {
+    let normalized_path = path_snippet
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("<inherit>");
+    format!("{base} [program={program_path}] [PATH={normalized_path}]")
+}
+
 fn resolve_sudo_askpass_path(
     manager: ManagerId,
     task_type: TaskType,
@@ -146,12 +179,24 @@ fn resolve_sudo_askpass_path(
     askpass_override: Option<&Path>,
 ) -> ExecutionResult<PathBuf> {
     if let Some(path) = askpass_override {
+        validate_trusted_askpass_path(path, manager, task_type, action)?;
         validate_askpass_path(path, manager, task_type, action)?;
         return Ok(path.to_path_buf());
     }
 
-    if let Ok(path) = std::env::var("HELM_SUDO_ASKPASS") {
+    if let Ok(path) = std::env::var(HELM_SUDO_ASKPASS_ENV) {
+        if !sudo_askpass_override_allowed() {
+            return Err(process_failure(
+                manager,
+                task_type,
+                action,
+                format!(
+                    "{HELM_SUDO_ASKPASS_ENV} override is disabled by default; set {HELM_SUDO_ASKPASS_ALLOW_OVERRIDE_ENV}=1 to opt in"
+                ),
+            ));
+        }
         let path = PathBuf::from(path);
+        validate_trusted_askpass_path(path.as_path(), manager, task_type, action)?;
         validate_askpass_path(path.as_path(), manager, task_type, action)?;
         return Ok(path);
     }
@@ -159,11 +204,92 @@ fn resolve_sudo_askpass_path(
     let initialized = DEFAULT_SUDO_ASKPASS_PATH.get_or_init(create_default_sudo_askpass_script);
     match initialized {
         Ok(path) => {
+            validate_trusted_askpass_path(path.as_path(), manager, task_type, action)?;
             validate_askpass_path(path.as_path(), manager, task_type, action)?;
             Ok(path.clone())
         }
         Err(message) => Err(process_failure(manager, task_type, action, message.clone())),
     }
+}
+
+fn sudo_askpass_override_allowed() -> bool {
+    let Some(raw) = std::env::var_os(HELM_SUDO_ASKPASS_ALLOW_OVERRIDE_ENV) else {
+        return false;
+    };
+    let normalized = raw.to_string_lossy().trim().to_ascii_lowercase();
+    matches!(normalized.as_str(), "1" | "true" | "yes")
+}
+
+fn validate_trusted_askpass_path(
+    path: &Path,
+    manager: ManagerId,
+    task_type: TaskType,
+    action: ManagerAction,
+) -> ExecutionResult<()> {
+    if !path.is_absolute() {
+        return Err(process_failure(
+            manager,
+            task_type,
+            action,
+            format!(
+                "sudo askpass helper '{}' must be an absolute path",
+                path.display()
+            ),
+        ));
+    }
+
+    let metadata = fs::symlink_metadata(path).map_err(|error| {
+        process_failure(
+            manager,
+            task_type,
+            action,
+            format!(
+                "sudo askpass helper is unavailable at '{}': {error}",
+                path.display()
+            ),
+        )
+    })?;
+
+    if metadata.file_type().is_symlink() {
+        return Err(process_failure(
+            manager,
+            task_type,
+            action,
+            format!(
+                "sudo askpass helper '{}' must not be a symlink",
+                path.display()
+            ),
+        ));
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        if metadata.uid() != unsafe { libc::geteuid() } {
+            return Err(process_failure(
+                manager,
+                task_type,
+                action,
+                format!(
+                    "sudo askpass helper '{}' must be owned by the current user",
+                    path.display()
+                ),
+            ));
+        }
+        if metadata.permissions().mode() & 0o022 != 0 {
+            return Err(process_failure(
+                manager,
+                task_type,
+                action,
+                format!(
+                    "sudo askpass helper '{}' must not be group/world writable",
+                    path.display()
+                ),
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 fn validate_askpass_path(
@@ -277,11 +403,14 @@ struct TokioRunningProcess {
     pid: Option<u32>,
     started_at: SystemTime,
     timeout: Option<Duration>,
+    idle_timeout: Option<Duration>,
     manager: ManagerId,
     task_type: TaskType,
     action: ManagerAction,
     task_id: Option<TaskId>,
     command_display: String,
+    program_path: String,
+    path_snippet: Option<String>,
 }
 
 impl RunningProcess for TokioRunningProcess {
@@ -320,6 +449,7 @@ impl RunningProcess for TokioRunningProcess {
     fn wait(self: Box<Self>) -> ProcessWaitFuture {
         let child = self.child.into_inner().ok().flatten();
         let timeout = self.timeout;
+        let idle_timeout = self.idle_timeout;
         let started_at = self.started_at;
         let manager = self.manager;
         let task_type = self.task_type;
@@ -327,6 +457,8 @@ impl RunningProcess for TokioRunningProcess {
         let pid = self.pid;
         let task_id = self.task_id;
         let command_display = self.command_display;
+        let program_path = self.program_path;
+        let path_snippet = self.path_snippet;
 
         Box::pin(async move {
             let mut child = child.ok_or_else(|| {
@@ -348,9 +480,12 @@ impl RunningProcess for TokioRunningProcess {
                 crate::execution::task_output_store::record_command(task_id, &command_display);
             }
 
+            let (activity_tx, mut activity_rx) = tokio::sync::mpsc::unbounded_channel::<()>();
+
             let stdout_reader = {
                 let mut stdout = child.stdout.take();
                 let stream_task_id = task_id;
+                let activity_tx = activity_tx.clone();
                 tokio::spawn(async move {
                     let mut buffer = Vec::new();
                     if let Some(mut handle) = stdout.take() {
@@ -361,6 +496,7 @@ impl RunningProcess for TokioRunningProcess {
                                 Ok(read_count) => {
                                     let bytes = &chunk[..read_count];
                                     buffer.extend_from_slice(bytes);
+                                    let _ = activity_tx.send(());
                                     if let Some(task_id) = stream_task_id {
                                         crate::execution::task_output_store::append_stdout(
                                             task_id, bytes,
@@ -377,6 +513,7 @@ impl RunningProcess for TokioRunningProcess {
             let stderr_reader = {
                 let mut stderr = child.stderr.take();
                 let stream_task_id = task_id;
+                let activity_tx = activity_tx.clone();
                 tokio::spawn(async move {
                     let mut buffer = Vec::new();
                     if let Some(mut handle) = stderr.take() {
@@ -387,6 +524,7 @@ impl RunningProcess for TokioRunningProcess {
                                 Ok(read_count) => {
                                     let bytes = &chunk[..read_count];
                                     buffer.extend_from_slice(bytes);
+                                    let _ = activity_tx.send(());
                                     if let Some(task_id) = stream_task_id {
                                         crate::execution::task_output_store::append_stderr(
                                             task_id, bytes,
@@ -400,9 +538,14 @@ impl RunningProcess for TokioRunningProcess {
                     buffer
                 })
             };
+            drop(activity_tx);
 
             let wait_err = |error: std::io::Error| {
-                let message = format!("failed to wait for process: {error}");
+                let message = append_error_context(
+                    format!("failed to wait for process: {error}").as_str(),
+                    program_path.as_str(),
+                    path_snippet.as_deref(),
+                );
                 if let Some(task_id) = task_id {
                     crate::execution::task_output_store::record_error(
                         task_id,
@@ -416,55 +559,101 @@ impl RunningProcess for TokioRunningProcess {
                 process_failure(manager, task_type, action, message)
             };
 
-            // Wait for process exit first, then collect output with a short bounded read window.
-            // This avoids hanging forever when descendant processes inherit stdout/stderr fds.
-            let status = if let Some(timeout_duration) = timeout {
-                match tokio::time::timeout(timeout_duration, child.wait()).await {
-                    Ok(result) => result.map_err(wait_err)?,
-                    Err(_) => {
-                        if let Some(pid) = pid {
-                            let pgid = -(pid as libc::pid_t);
-                            unsafe {
-                                libc::kill(pgid, libc::SIGKILL);
+            let mut wait_future = Box::pin(child.wait());
+            let started_instant = tokio::time::Instant::now();
+            let mut last_activity_instant = started_instant;
+            let mut activity_channel_open = true;
+
+            let status = loop {
+                tokio::select! {
+                    result = &mut wait_future => {
+                        break result.map_err(wait_err)?;
+                    }
+                    activity = activity_rx.recv(), if activity_channel_open => {
+                        match activity {
+                            Some(_) => {
+                                last_activity_instant = tokio::time::Instant::now();
+                            }
+                            None => {
+                                activity_channel_open = false;
                             }
                         }
-                        let _ = tokio::time::timeout(Duration::from_secs(1), child.wait()).await;
-                        stdout_reader.abort();
-                        stderr_reader.abort();
-                        let finished_at = SystemTime::now();
-                        let message =
-                            format!("process timed out after {}ms", timeout_duration.as_millis());
-                        if let Some(task_id) = task_id {
-                            crate::execution::task_output_store::record_terminal_metadata(
-                                task_id,
-                                started_at,
-                                finished_at,
-                                None,
-                                Some("timeout"),
-                            );
-                            crate::execution::task_output_store::record_error(
-                                task_id,
-                                "timeout",
-                                message.as_str(),
-                                Some("timeout"),
-                                Some(finished_at),
-                            );
-                            crate::execution::task_output_store::append_stderr(
-                                task_id,
-                                message.as_bytes(),
-                            );
-                        }
-                        return Err(CoreError {
-                            manager: Some(manager),
-                            task: Some(task_type),
-                            action: Some(action),
-                            kind: CoreErrorKind::Timeout,
-                            message,
-                        });
                     }
+                    _ = tokio::time::sleep(Duration::from_millis(200)) => {}
                 }
-            } else {
-                child.wait().await.map_err(wait_err)?
+
+                let now = tokio::time::Instant::now();
+                let timeout_state = timeout
+                    .filter(|duration| now.duration_since(started_instant) >= *duration)
+                    .map(|duration| {
+                        (
+                            "hard_timeout",
+                            format!(
+                                "process reached hard timeout after {}ms",
+                                duration.as_millis()
+                            ),
+                        )
+                    })
+                    .or_else(|| {
+                        idle_timeout
+                            .filter(|duration| {
+                                now.duration_since(last_activity_instant) >= *duration
+                            })
+                            .map(|duration| {
+                                (
+                                    "idle_timeout",
+                                    format!(
+                                        "process produced no output for {}ms",
+                                        duration.as_millis()
+                                    ),
+                                )
+                            })
+                    });
+
+                if let Some((timeout_code, timeout_reason)) = timeout_state {
+                    if let Some(pid) = pid {
+                        let pgid = -(pid as libc::pid_t);
+                        unsafe {
+                            libc::kill(pgid, libc::SIGKILL);
+                        }
+                    }
+                    let _ = tokio::time::timeout(Duration::from_secs(1), &mut wait_future).await;
+                    stdout_reader.abort();
+                    stderr_reader.abort();
+                    let finished_at = SystemTime::now();
+                    let message = append_error_context(
+                        timeout_reason.as_str(),
+                        program_path.as_str(),
+                        path_snippet.as_deref(),
+                    );
+                    if let Some(task_id) = task_id {
+                        crate::execution::task_output_store::record_terminal_metadata(
+                            task_id,
+                            started_at,
+                            finished_at,
+                            None,
+                            Some("timeout"),
+                        );
+                        crate::execution::task_output_store::record_error(
+                            task_id,
+                            timeout_code,
+                            message.as_str(),
+                            Some("timeout"),
+                            Some(finished_at),
+                        );
+                        crate::execution::task_output_store::append_stderr(
+                            task_id,
+                            message.as_bytes(),
+                        );
+                    }
+                    return Err(CoreError {
+                        manager: Some(manager),
+                        task: Some(task_type),
+                        action: Some(action),
+                        kind: CoreErrorKind::Timeout,
+                        message,
+                    });
+                }
             };
 
             let read_deadline = Duration::from_millis(250);
@@ -633,11 +822,16 @@ fn process_failure(
 
 #[cfg(test)]
 mod tests {
-    use super::{prepare_command_for_spawn, resolve_effective_working_dir};
+    use super::{
+        HELM_SUDO_ASKPASS_ALLOW_OVERRIDE_ENV, HELM_SUDO_ASKPASS_ENV, prepare_command_for_spawn,
+        resolve_effective_working_dir,
+    };
     use crate::execution::{CommandSpec, ProcessSpawnRequest};
     use crate::models::{ManagerAction, ManagerId, TaskType};
+    use std::ffi::OsString;
     use std::fs;
     use std::path::PathBuf;
+    use std::sync::{Mutex, OnceLock};
 
     fn base_request() -> ProcessSpawnRequest {
         ProcessSpawnRequest::new(
@@ -648,6 +842,33 @@ mod tests {
                 .arg("--install")
                 .arg("--all"),
         )
+    }
+
+    static ENV_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+
+    struct ScopedEnvVar {
+        key: &'static str,
+        previous: Option<OsString>,
+    }
+
+    impl ScopedEnvVar {
+        fn set(key: &'static str, value: Option<&str>) -> Self {
+            let previous = std::env::var_os(key);
+            match value {
+                Some(raw) => unsafe { std::env::set_var(key, raw) },
+                None => unsafe { std::env::remove_var(key) },
+            }
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for ScopedEnvVar {
+        fn drop(&mut self) {
+            match self.previous.as_ref() {
+                Some(previous) => unsafe { std::env::set_var(self.key, previous) },
+                None => unsafe { std::env::remove_var(self.key) },
+            }
+        }
     }
 
     #[test]
@@ -704,6 +925,91 @@ mod tests {
         assert!(
             prepared.command_display.contains("sudo"),
             "display should include sudo wrapper"
+        );
+
+        let _ = fs::remove_file(askpass_path);
+    }
+
+    #[test]
+    fn prepare_command_rejects_relative_askpass_override_path() {
+        let request = base_request().requires_elevation(true);
+        let result =
+            prepare_command_for_spawn(&request, Some(PathBuf::from("askpass.sh").as_path()));
+        assert!(result.is_err(), "relative askpass path should be rejected");
+        let error = result
+            .err()
+            .expect("relative askpass path should produce an error");
+        assert!(
+            error.message.contains("must be an absolute path"),
+            "expected absolute path guard, got: {}",
+            error.message
+        );
+    }
+
+    #[test]
+    fn prepare_command_rejects_env_askpass_override_by_default() {
+        let _env_guard = ENV_MUTEX
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("env mutex should lock");
+        let askpass_path = std::env::temp_dir().join("helm-askpass-disabled-env.sh");
+        fs::write(&askpass_path, "#!/bin/sh\nexit 0\n").expect("should write askpass test file");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&askpass_path, fs::Permissions::from_mode(0o700))
+                .expect("should chmod askpass test file");
+        }
+
+        let _askpass_override =
+            ScopedEnvVar::set(HELM_SUDO_ASKPASS_ENV, Some(&askpass_path.to_string_lossy()));
+        let _allow_override = ScopedEnvVar::set(HELM_SUDO_ASKPASS_ALLOW_OVERRIDE_ENV, None);
+
+        let request = base_request().requires_elevation(true);
+        let result = prepare_command_for_spawn(&request, None);
+        assert!(
+            result.is_err(),
+            "env askpass override should be disabled by default"
+        );
+        let error = result
+            .err()
+            .expect("env askpass override should produce an error");
+        assert!(
+            error
+                .message
+                .contains("HELM_SUDO_ASKPASS override is disabled by default"),
+            "expected disabled-by-default error, got: {}",
+            error.message
+        );
+
+        let _ = fs::remove_file(askpass_path);
+    }
+
+    #[test]
+    fn prepare_command_allows_env_askpass_override_when_explicitly_enabled() {
+        let _env_guard = ENV_MUTEX
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("env mutex should lock");
+        let askpass_path = std::env::temp_dir().join("helm-askpass-enabled-env.sh");
+        fs::write(&askpass_path, "#!/bin/sh\nexit 0\n").expect("should write askpass test file");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&askpass_path, fs::Permissions::from_mode(0o700))
+                .expect("should chmod askpass test file");
+        }
+
+        let _askpass_override =
+            ScopedEnvVar::set(HELM_SUDO_ASKPASS_ENV, Some(&askpass_path.to_string_lossy()));
+        let _allow_override = ScopedEnvVar::set(HELM_SUDO_ASKPASS_ALLOW_OVERRIDE_ENV, Some("1"));
+
+        let request = base_request().requires_elevation(true);
+        let prepared = prepare_command_for_spawn(&request, None)
+            .expect("env askpass override should be accepted when explicitly enabled");
+        assert_eq!(
+            prepared.command.env.get("SUDO_ASKPASS"),
+            Some(&askpass_path.to_string_lossy().to_string())
         );
 
         let _ = fs::remove_file(askpass_path);

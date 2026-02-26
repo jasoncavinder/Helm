@@ -7,6 +7,8 @@ pub struct ManagerPreference {
     pub enabled: bool,
     pub selected_executable_path: Option<String>,
     pub selected_install_method: Option<String>,
+    pub timeout_hard_seconds: Option<u64>,
+    pub timeout_idle_seconds: Option<u64>,
 }
 
 pub trait DetectionStore: Send + Sync {
@@ -26,6 +28,18 @@ pub trait DetectionStore: Send + Sync {
         &self,
         manager: ManagerId,
         method: Option<&str>,
+    ) -> PersistenceResult<()>;
+
+    fn set_manager_timeout_hard_seconds(
+        &self,
+        manager: ManagerId,
+        seconds: Option<u64>,
+    ) -> PersistenceResult<()>;
+
+    fn set_manager_timeout_idle_seconds(
+        &self,
+        manager: ManagerId,
+        seconds: Option<u64>,
     ) -> PersistenceResult<()>;
 
     fn list_manager_preferences(&self) -> PersistenceResult<Vec<ManagerPreference>>;

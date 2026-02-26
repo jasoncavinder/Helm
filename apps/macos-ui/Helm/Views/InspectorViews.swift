@@ -194,7 +194,8 @@ private struct InspectorTaskDetailView: View {
                 taskDescription: task.description,
                 diagnosticsText: HelmSupport.generateTaskDiagnostics(
                     task: task,
-                    suggestedCommand: diagnosticCommandHint()
+                    suggestedCommand: diagnosticCommandHint(),
+                    output: taskOutputRecord
                 ),
                 output: taskOutputRecord,
                 isLoading: isLoadingTaskOutput,
@@ -1061,6 +1062,22 @@ private struct InspectorManagerDetailView: View {
         )
     }
 
+    private var selectedHardTimeoutSeconds: Int? {
+        status?.timeoutHardSeconds
+    }
+
+    private var selectedIdleTimeoutSeconds: Int? {
+        status?.timeoutIdleSeconds
+    }
+
+    private var hardTimeoutOptions: [Int?] {
+        [nil, 120, 300, 600, 900, 1200, 1800]
+    }
+
+    private var idleTimeoutOptions: [Int?] {
+        [nil, 30, 60, 90, 120, 180, 300, 600]
+    }
+
     private var latestFailedTask: TaskItem? {
         core.activeTasks.first { task in
             task.status.lowercased() == "failed" && task.managerId == manager.id
@@ -1208,6 +1225,68 @@ private struct InspectorManagerDetailView: View {
                 .menuStyle(.borderlessButton)
             }
 
+            InspectorField(label: L10n.App.Inspector.timeoutHard.localized) {
+                Menu {
+                    ForEach(hardTimeoutOptions, id: \.self) { seconds in
+                        Button {
+                            core.setManagerTimeoutProfile(
+                                manager.id,
+                                hardTimeoutSeconds: seconds,
+                                idleTimeoutSeconds: selectedIdleTimeoutSeconds
+                            )
+                        } label: {
+                            HStack(spacing: 8) {
+                                Text(timeoutMenuLabel(seconds))
+                                if seconds == selectedHardTimeoutSeconds {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(timeoutMenuLabel(selectedHardTimeoutSeconds))
+                            .font(.callout.monospacedDigit())
+                        Image(systemName: "chevron.down")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .menuStyle(.borderlessButton)
+            }
+
+            InspectorField(label: L10n.App.Inspector.timeoutIdle.localized) {
+                Menu {
+                    ForEach(idleTimeoutOptions, id: \.self) { seconds in
+                        Button {
+                            core.setManagerTimeoutProfile(
+                                manager.id,
+                                hardTimeoutSeconds: selectedHardTimeoutSeconds,
+                                idleTimeoutSeconds: seconds
+                            )
+                        } label: {
+                            HStack(spacing: 8) {
+                                Text(timeoutMenuLabel(seconds))
+                                if seconds == selectedIdleTimeoutSeconds {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(timeoutMenuLabel(selectedIdleTimeoutSeconds))
+                            .font(.callout.monospacedDigit())
+                        Image(systemName: "chevron.down")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .menuStyle(.borderlessButton)
+            }
+
             InspectorField(label: L10n.App.Inspector.capabilities.localized) {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(manager.capabilities, id: \.self) { capabilityKey in
@@ -1217,24 +1296,28 @@ private struct InspectorManagerDetailView: View {
                 }
             }
 
-            if packageCount > 0 {
-                Button(L10n.App.Managers.Action.viewPackages.localized) {
-                    onViewPackages()
+            Group {
+                if packageCount > 0 {
+                    Button(L10n.App.Managers.Action.viewPackages.localized) {
+                        onViewPackages()
+                    }
+                    .font(.caption)
+                    .buttonStyle(HelmSecondaryButtonStyle())
+                    .helmPointer()
                 }
-                .font(.caption)
-                .buttonStyle(HelmSecondaryButtonStyle())
-                .helmPointer()
-            }
 
-            if health == .error, let failedTask = latestFailedTask {
-                Button(L10n.App.Inspector.viewDiagnostics.localized) {
-                    context.selectedTaskId = failedTask.id
-                    context.selectedPackageId = nil
-                    context.selectedUpgradePlanStepId = nil
+                if case .error = health {
+                    if let failedTask = latestFailedTask {
+                        Button(L10n.App.Inspector.viewDiagnostics.localized) {
+                            context.selectedTaskId = failedTask.id
+                            context.selectedPackageId = nil
+                            context.selectedUpgradePlanStepId = nil
+                        }
+                        .font(.caption)
+                        .buttonStyle(HelmSecondaryButtonStyle())
+                        .helmPointer()
+                    }
                 }
-                .font(.caption)
-                .buttonStyle(HelmSecondaryButtonStyle())
-                .helmPointer()
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1294,6 +1377,13 @@ private struct InspectorManagerDetailView: View {
             value += " (\(L10n.App.Inspector.installMethodTagRecommended.localized))"
         }
         return value
+    }
+
+    private func timeoutMenuLabel(_ seconds: Int?) -> String {
+        guard let seconds else {
+            return L10n.App.Inspector.timeoutUseDefault.localized
+        }
+        return L10n.App.Inspector.timeoutSeconds.localized(with: ["seconds": seconds])
     }
 
     private func localizedDetectionReason(_ reason: ManagerDetectionDiagnosticReason) -> String {

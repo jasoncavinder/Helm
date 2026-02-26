@@ -308,3 +308,26 @@ async fn graceful_cancel_times_out_and_cancels_long_running_task() {
         .unwrap();
     assert_eq!(snapshot.status, TaskStatus::Cancelled);
 }
+
+#[tokio::test]
+async fn wait_for_terminal_is_stable_for_fast_completing_tasks() {
+    let queue = InMemoryAsyncTaskQueue::new();
+
+    for _ in 0..200 {
+        let task = queue
+            .spawn(
+                submission(ManagerId::Rustup, TaskType::Detection),
+                operation(move |_| async move { Ok(()) }),
+            )
+            .await
+            .unwrap();
+
+        tokio::task::yield_now().await;
+
+        let snapshot = queue
+            .wait_for_terminal(task, Some(Duration::from_millis(250)))
+            .await
+            .expect("fast task should reach terminal state without timeout");
+        assert_eq!(snapshot.status, TaskStatus::Completed);
+    }
+}

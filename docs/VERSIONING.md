@@ -111,6 +111,20 @@ Required checks by protected branch:
 - `docs`: `Policy Gate`, `Docs Checks`
 - `web`: `Policy Gate`, `Web Build`
 
+Advisory (non-required) release monitors:
+
+- `Release Publish Verify`
+- `Appcast Drift Guard`
+- `CLI Update Metadata Drift Guard`
+
+Metadata truth policy:
+
+- publish-ready metadata artifacts are authoritative on `main` and `release/*` branches only.
+- `dev` is an integration branch and is not required to carry publish-ready metadata files.
+- preview/prerelease metadata (when used) must remain separate from stable production pointers.
+
+These workflows validate post-merge publication convergence and should stay advisory so release publish PR merge order does not block unrelated PR merges.
+
 Operational settings:
 
 - auto-merge enabled
@@ -146,6 +160,7 @@ Operational settings:
 12. If the workflow reports follow-up required (publish PR still open), merge the publish PR and rerun the workflow to confirm metadata sync.
 13. Confirm post-merge publish verification is green (`Release Publish Verify`).
 14. Confirm drift checks remain green (`Appcast Drift Guard`, `CLI Update Metadata Drift Guard`).
+    - `CLI Update Metadata Drift Guard` enforces publish-truth checks on `main`/`release/*` refs; non-publish refs are explicitly skipped.
 
 Release checklist document:
 - `docs/RELEASE_CHECKLIST.md`

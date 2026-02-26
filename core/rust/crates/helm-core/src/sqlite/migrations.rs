@@ -194,7 +194,29 @@ ALTER TABLE manager_preferences_backup RENAME TO manager_preferences;
 "#,
 };
 
-const MIGRATIONS: [SqliteMigration; 7] = [
+const MIGRATION_0008: SqliteMigration = SqliteMigration {
+    version: 8,
+    name: "add_manager_timeout_preferences",
+    up_sql: r#"
+ALTER TABLE manager_preferences ADD COLUMN timeout_hard_seconds INTEGER;
+ALTER TABLE manager_preferences ADD COLUMN timeout_idle_seconds INTEGER;
+"#,
+    down_sql: r#"
+CREATE TABLE manager_preferences_backup (
+    manager_id TEXT PRIMARY KEY,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    selected_executable_path TEXT,
+    selected_install_method TEXT
+);
+INSERT INTO manager_preferences_backup
+    SELECT manager_id, enabled, selected_executable_path, selected_install_method
+    FROM manager_preferences;
+DROP TABLE manager_preferences;
+ALTER TABLE manager_preferences_backup RENAME TO manager_preferences;
+"#,
+};
+
+const MIGRATIONS: [SqliteMigration; 8] = [
     MIGRATION_0001,
     MIGRATION_0002,
     MIGRATION_0003,
@@ -202,6 +224,7 @@ const MIGRATIONS: [SqliteMigration; 7] = [
     MIGRATION_0005,
     MIGRATION_0006,
     MIGRATION_0007,
+    MIGRATION_0008,
 ];
 
 pub fn migrations() -> &'static [SqliteMigration] {

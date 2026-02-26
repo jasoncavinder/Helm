@@ -1,0 +1,9 @@
+{
+  "operation": "refresh_catalog",
+  "operation_class": "read_only",
+  "requires_confirmation": false,
+  "operator_confirmed": false,
+  "vm_isolated": false,
+  "snapshot_ready": false,
+  "simulated_result": "ready"
+}

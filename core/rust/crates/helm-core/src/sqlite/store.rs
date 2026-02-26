@@ -347,6 +347,70 @@ WHERE manager_id = ?1 AND package_name = ?2
         })
     }
 
+    fn apply_install_result(
+        &self,
+        package: &PackageRef,
+        installed_version: Option<&str>,
+    ) -> PersistenceResult<()> {
+        self.with_connection("apply_install_result", |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction = connection.transaction()?;
+
+            transaction.execute(
+                "
+INSERT INTO installed_packages (
+    manager_id, package_name, installed_version, pinned, updated_at_unix
+) VALUES (?1, ?2, ?3, 0, strftime('%s', 'now'))
+ON CONFLICT(manager_id, package_name) DO UPDATE SET
+    installed_version = COALESCE(excluded.installed_version, installed_packages.installed_version),
+    updated_at_unix = excluded.updated_at_unix
+",
+                params![
+                    package.manager.as_str(),
+                    package.name.as_str(),
+                    installed_version
+                ],
+            )?;
+
+            transaction.execute(
+                "
+DELETE FROM outdated_packages
+WHERE manager_id = ?1 AND package_name = ?2
+",
+                params![package.manager.as_str(), package.name.as_str()],
+            )?;
+
+            transaction.commit()?;
+            Ok(())
+        })
+    }
+
+    fn apply_uninstall_result(&self, package: &PackageRef) -> PersistenceResult<()> {
+        self.with_connection("apply_uninstall_result", |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction = connection.transaction()?;
+
+            transaction.execute(
+                "
+DELETE FROM installed_packages
+WHERE manager_id = ?1 AND package_name = ?2
+",
+                params![package.manager.as_str(), package.name.as_str()],
+            )?;
+
+            transaction.execute(
+                "
+DELETE FROM outdated_packages
+WHERE manager_id = ?1 AND package_name = ?2
+",
+                params![package.manager.as_str(), package.name.as_str()],
+            )?;
+
+            transaction.commit()?;
+            Ok(())
+        })
+    }
+
     fn apply_upgrade_result(&self, package: &PackageRef) -> PersistenceResult<()> {
         self.with_connection("apply_upgrade_result", |connection| {
             ensure_schema_ready(connection)?;
@@ -1003,12 +1067,67 @@ ON CONFLICT(manager_id) DO UPDATE SET
         })
     }
 
+    fn set_manager_timeout_hard_seconds(
+        &self,
+        manager: ManagerId,
+        seconds: Option<u64>,
+    ) -> PersistenceResult<()> {
+        self.with_connection("set_manager_timeout_hard_seconds", |connection| {
+            ensure_schema_ready(connection)?;
+            let seconds = seconds.and_then(|value| i64::try_from(value).ok());
+            connection.execute(
+                "
+INSERT INTO manager_preferences (manager_id, enabled, timeout_hard_seconds)
+VALUES (
+    ?1,
+    COALESCE((SELECT enabled FROM manager_preferences WHERE manager_id = ?1), 1),
+    ?2
+)
+ON CONFLICT(manager_id) DO UPDATE SET
+    timeout_hard_seconds = excluded.timeout_hard_seconds
+",
+                params![manager.as_str(), seconds],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn set_manager_timeout_idle_seconds(
+        &self,
+        manager: ManagerId,
+        seconds: Option<u64>,
+    ) -> PersistenceResult<()> {
+        self.with_connection("set_manager_timeout_idle_seconds", |connection| {
+            ensure_schema_ready(connection)?;
+            let seconds = seconds.and_then(|value| i64::try_from(value).ok());
+            connection.execute(
+                "
+INSERT INTO manager_preferences (manager_id, enabled, timeout_idle_seconds)
+VALUES (
+    ?1,
+    COALESCE((SELECT enabled FROM manager_preferences WHERE manager_id = ?1), 1),
+    ?2
+)
+ON CONFLICT(manager_id) DO UPDATE SET
+    timeout_idle_seconds = excluded.timeout_idle_seconds
+",
+                params![manager.as_str(), seconds],
+            )?;
+            Ok(())
+        })
+    }
+
     fn list_manager_preferences(&self) -> PersistenceResult<Vec<ManagerPreference>> {
         self.with_connection("list_manager_preferences", |connection| {
             ensure_schema_ready(connection)?;
             let mut statement = connection.prepare(
                 "
-SELECT manager_id, enabled, selected_executable_path, selected_install_method
+SELECT manager_id,
+       enabled,
+       selected_executable_path,
+       selected_install_method,
+       timeout_hard_seconds,
+       timeout_idle_seconds
 FROM manager_preferences
 ORDER BY manager_id
 ",
@@ -1019,6 +1138,8 @@ ORDER BY manager_id
                 let enabled_int: i64 = row.get(1)?;
                 let selected_executable_path: Option<String> = row.get(2)?;
                 let selected_install_method: Option<String> = row.get(3)?;
+                let timeout_hard_seconds_raw: Option<i64> = row.get(4)?;
+                let timeout_idle_seconds_raw: Option<i64> = row.get(5)?;
 
                 let manager = parse_manager_id(&manager_raw)?;
                 Ok(ManagerPreference {
@@ -1026,6 +1147,12 @@ ORDER BY manager_id
                     enabled: sqlite_to_bool(enabled_int),
                     selected_executable_path,
                     selected_install_method,
+                    timeout_hard_seconds: timeout_hard_seconds_raw
+                        .and_then(|value| u64::try_from(value).ok())
+                        .filter(|value| *value > 0),
+                    timeout_idle_seconds: timeout_idle_seconds_raw
+                        .and_then(|value| u64::try_from(value).ok())
+                        .filter(|value| *value > 0),
                 })
             })?;
 

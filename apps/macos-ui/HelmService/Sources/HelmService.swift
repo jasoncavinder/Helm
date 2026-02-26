@@ -299,6 +299,21 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(result)
     }
 
+    func setManagerTimeoutProfile(
+        managerId: String,
+        hardTimeoutSeconds: Int64,
+        idleTimeoutSeconds: Int64,
+        withReply reply: @escaping (Bool) -> Void
+    ) {
+        let result = managerId.withCString { manager in
+            helm_set_manager_timeout_profile(manager, hardTimeoutSeconds, idleTimeoutSeconds)
+        }
+        logger.info(
+            "helm_set_manager_timeout_profile(\(managerId), hard=\(hardTimeoutSeconds), idle=\(idleTimeoutSeconds)) result: \(result)"
+        )
+        reply(result)
+    }
+
     func installManager(managerId: String, withReply reply: @escaping (Int64) -> Void) {
         let taskId = managerId.withCString { helm_install_manager($0) }
         logger.info("helm_install_manager(\(managerId)) result: \(taskId)")

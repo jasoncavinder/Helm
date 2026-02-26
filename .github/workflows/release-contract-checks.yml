@@ -1,0 +1,97 @@
+name: Release Contract Checks
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+jobs:
+  release-contracts:
+    name: Release Contract Checks
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Validate unsigned build script safety contracts
+        run: scripts/release/tests/build_unsigned_variant_contract.sh
+
+      - name: Validate release publish verify merge-order contracts
+        run: scripts/release/tests/publish_verify_state_contract.sh
+
+      - name: Validate prerelease publish verify merge-order contracts
+        run: scripts/release/tests/publish_verify_prerelease_state_contract.sh
+
+      - name: Validate release-line copy drift contracts
+        run: scripts/release/check_release_line_copy.sh
+
+      - name: Validate CI toolchain pin contracts
+        run: scripts/release/tests/ci_toolchain_contract.sh
+
+      - name: Validate release provenance manifest contracts
+        run: scripts/release/tests/provenance_manifest_contract.sh
+
+      - name: Run release preflight contract (non-destructive)
+        run: >
+          scripts/release/preflight.sh
+          --allow-non-main
+          --allow-dirty
+          --no-fetch
+          --skip-secrets
+          --skip-workflows
+          --skip-ruleset-policy
+
+      - name: Run release runbook contract (non-destructive prepare)
+        run: >
+          scripts/release/runbook.sh prepare
+          --allow-non-main
+          --allow-dirty
+          --no-fetch
+          --skip-secrets
+          --skip-workflows
+          --skip-ruleset-policy
+
+      - name: Run release rehearsal dry-run contract
+        env:
+          REHEARSAL_TAG: v99.99.${{ github.run_id }}
+          REHEARSAL_REPORT_PATH: ${{ runner.temp }}/release-rehearsal-report.json
+        run: >
+          scripts/release/rehearsal_dry_run.sh
+          --tag "${REHEARSAL_TAG}"
+          --report-path "${REHEARSAL_REPORT_PATH}"
+
+      - name: Validate release rehearsal report contract
+        env:
+          REHEARSAL_REPORT_PATH: ${{ runner.temp }}/release-rehearsal-report.json
+        run: |
+          python3 - "$REHEARSAL_REPORT_PATH" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          report_path = pathlib.Path(sys.argv[1])
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+          assert report.get("schema") == "helm.release.rehearsal_report"
+          assert report.get("schema_version") == 1
+          assert report.get("dry_run") is True
+          assert report.get("overall_status") == "passed"
+
+          steps = report.get("steps") or []
+          names = [step.get("name") for step in steps]
+          assert names == ["preflight", "prepare", "verify"]
+          for step in steps:
+              assert step.get("status") == "passed"
+              assert step.get("exit_code") == 0
+          PY
+
+      - name: Upload release rehearsal report artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-rehearsal-report
+          path: ${{ runner.temp }}/release-rehearsal-report.json
+          if-no-files-found: error

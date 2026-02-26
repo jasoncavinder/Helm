@@ -364,32 +364,73 @@ extension HelmCore {
         }
     }
 
+    func decodeCorePayload<T: Decodable>(
+        _ type: T.Type,
+        from data: Data,
+        decodeContext: String,
+        source: String,
+        action: String,
+        managerId: String? = nil,
+        taskType: String,
+        keyDecodingStrategy: JSONDecoder.KeyDecodingStrategy = .convertFromSnakeCase
+    ) -> T? {
+        do {
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = keyDecodingStrategy
+            return try decoder.decode(type, from: data)
+        } catch {
+            logger.error("\(decodeContext): decode failed (\(data.count) bytes): \(error)")
+            recordLastError(
+                source: source,
+                action: action,
+                managerId: managerId,
+                taskType: taskType
+            )
+            return nil
+        }
+    }
+
+    private func decodeSettingsPayload<T: Decodable>(
+        _ type: T.Type,
+        from data: Data,
+        decodeContext: String,
+        action: String,
+        managerId: String? = nil,
+        taskType: String
+    ) -> T? {
+        decodeCorePayload(
+            type,
+            from: data,
+            decodeContext: decodeContext,
+            source: "core.settings",
+            action: action,
+            managerId: managerId,
+            taskType: taskType
+        )
+    }
+
     // MARK: - Keg Policies
 
     func fetchPackageKegPolicies() {
         service()?.listPackageKegPolicies { [weak self] jsonString in
-            guard let jsonString = jsonString, let data = jsonString.data(using: .utf8) else { return }
-
-            do {
-                let decoder = JSONDecoder()
-                decoder.keyDecodingStrategy = .convertFromSnakeCase
-                let entries = try decoder.decode([CorePackageKegPolicy].self, from: data)
-
-                DispatchQueue.main.async {
-                    var overrides: [String: HomebrewKegPolicyOverride] = [:]
-                    for entry in entries where entry.managerId == "homebrew_formula" {
-                        overrides["\(entry.managerId):\(entry.packageName)"] = entry.policy
-                    }
-                    self?.packageKegPolicyOverrides = overrides
-                }
-            } catch {
-                logger.error("Failed to decode package keg policies: \(error)")
-                self?.recordLastError(
-                    source: "core.settings",
+            guard let self = self,
+                  let jsonString = jsonString,
+                  let data = jsonString.data(using: .utf8),
+                  let entries: [CorePackageKegPolicy] = self.decodeSettingsPayload(
+                    [CorePackageKegPolicy].self,
+                    from: data,
+                    decodeContext: "fetchPackageKegPolicies",
                     action: "listPackageKegPolicies.decode",
                     managerId: "homebrew_formula",
                     taskType: "settings"
-                )
+                  ) else { return }
+
+            DispatchQueue.main.async {
+                var overrides: [String: HomebrewKegPolicyOverride] = [:]
+                for entry in entries where entry.managerId == "homebrew_formula" {
+                    overrides["\(entry.managerId):\(entry.packageName)"] = entry.policy
+                }
+                self.packageKegPolicyOverrides = overrides
             }
         }
     }
@@ -497,27 +538,23 @@ extension HelmCore {
         }
         service.previewUpgradePlan(includePinned: includePinned, allowOsUpdates: allowOsUpdates) { [weak self] jsonString in
             guard let self = self else { return }
-            guard let jsonString, let data = jsonString.data(using: .utf8) else { return }
-
-            do {
-                let decoder = JSONDecoder()
-                decoder.keyDecodingStrategy = .convertFromSnakeCase
-                let steps = try decoder.decode([CoreUpgradePlanStep].self, from: data)
-                DispatchQueue.main.async {
-                    self.upgradePlanIncludePinned = includePinned
-                    self.upgradePlanAllowOsUpdates = allowOsUpdates
-                    self.upgradePlanSteps = steps.sorted { lhs, rhs in
-                        lhs.orderIndex < rhs.orderIndex
-                    }
-                    self.syncUpgradePlanProjection(from: self.latestCoreTasksSnapshot)
-                }
-            } catch {
-                logger.error("refreshUpgradePlan: decode failed (\(data.count) bytes): \(error)")
-                self.recordLastError(
-                    source: "core.settings",
+            guard let jsonString,
+                  let data = jsonString.data(using: .utf8),
+                  let steps: [CoreUpgradePlanStep] = self.decodeSettingsPayload(
+                    [CoreUpgradePlanStep].self,
+                    from: data,
+                    decodeContext: "refreshUpgradePlan",
                     action: "previewUpgradePlan.decode",
                     taskType: "upgrade"
-                )
+                  ) else { return }
+
+            DispatchQueue.main.async {
+                self.upgradePlanIncludePinned = includePinned
+                self.upgradePlanAllowOsUpdates = allowOsUpdates
+                self.upgradePlanSteps = steps.sorted { lhs, rhs in
+                    lhs.orderIndex < rhs.orderIndex
+                }
+                self.syncUpgradePlanProjection(from: self.latestCoreTasksSnapshot)
             }
         }
     }
@@ -1640,7 +1677,11 @@ struct HelmSupport {
         return redactor.redactString(raw)
     }
 
-    static func generateTaskDiagnostics(task: TaskItem, suggestedCommand: String?) -> String {
+    static func generateTaskDiagnostics(
+        task: TaskItem,
+        suggestedCommand: String?,
+        output: CoreTaskOutputRecord? = nil
+    ) -> String {
         var info = generateDiagnostics()
         info += "\nTask Focus:\n"
         info += "- Task ID: \(task.id)\n"
@@ -1662,6 +1703,41 @@ struct HelmSupport {
         }
         if let suggestedCommand, !suggestedCommand.isEmpty {
             info += "- Suggested Repro Command: \(suggestedCommand)\n"
+        }
+        if let output {
+            if let command = output.command, !command.isEmpty {
+                info += "- Command: \(command)\n"
+            }
+            if let cwd = output.cwd, !cwd.isEmpty {
+                info += "- CWD: \(cwd)\n"
+            }
+            if let programPath = output.programPath, !programPath.isEmpty {
+                info += "- Program Path: \(programPath)\n"
+            }
+            if let pathSnippet = output.pathSnippet, !pathSnippet.isEmpty {
+                info += "- PATH Snippet: \(pathSnippet)\n"
+            }
+            if let startedAtUnixMs = output.startedAtUnixMs {
+                info += "- Started At (unix ms): \(startedAtUnixMs)\n"
+            }
+            if let finishedAtUnixMs = output.finishedAtUnixMs {
+                info += "- Finished At (unix ms): \(finishedAtUnixMs)\n"
+            }
+            if let durationMs = output.durationMs {
+                info += "- Duration (ms): \(durationMs)\n"
+            }
+            if let exitCode = output.exitCode {
+                info += "- Exit Code: \(exitCode)\n"
+            }
+            if let terminationReason = output.terminationReason, !terminationReason.isEmpty {
+                info += "- Termination Reason: \(terminationReason)\n"
+            }
+            if let errorCode = output.errorCode, !errorCode.isEmpty {
+                info += "- Error Code: \(errorCode)\n"
+            }
+            if let errorMessage = output.errorMessage, !errorMessage.isEmpty {
+                info += "- Error Message: \(errorMessage)\n"
+            }
         }
         return info
     }

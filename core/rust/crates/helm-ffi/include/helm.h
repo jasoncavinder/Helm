@@ -240,6 +240,19 @@ bool helm_set_manager_selected_executable_path(const char *manager_id, const cha
 bool helm_set_manager_install_method(const char *manager_id, const char *install_method);
 
 /**
+ * Set manager timeout profile overrides in seconds.
+ *
+ * Positive values set an override; zero/negative values clear the override.
+ *
+ * # Safety
+ *
+ * `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ */
+bool helm_set_manager_timeout_profile(const char *manager_id,
+                                      int64_t hard_timeout_seconds,
+                                      int64_t idle_timeout_seconds);
+
+/**
  * Install a manager tool via Homebrew. Returns the task ID, or -1 on error.
  *
  * Supported manager IDs: "mise", "mas".

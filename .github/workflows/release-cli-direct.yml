@@ -92,7 +92,7 @@ jobs:
       - name: Install Rust toolchain (macOS targets)
         uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
-          toolchain: stable
+          toolchain: 1.93.1
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Build CLI binaries (arm64, x86_64, universal)
@@ -183,6 +183,21 @@ jobs:
           fi
           echo "[verify] CLI version matches tag: ${ACTUAL_VERSION}"
 
+      - name: Generate CLI release provenance manifest
+        env:
+          ASSET_DIR: ${{ github.workspace }}/build/cli-release
+        run: |
+          set -euo pipefail
+          PROVENANCE_PATH="$ASSET_DIR/provenance-${TAG_NAME}.json"
+          scripts/release/generate_provenance_manifest.sh \
+            --output "$PROVENANCE_PATH" \
+            --subject "$ASSET_DIR/helm-cli-${TAG_NAME}-darwin-arm64" \
+            --subject "$ASSET_DIR/helm-cli-${TAG_NAME}-darwin-x86_64" \
+            --subject "$ASSET_DIR/helm-cli-${TAG_NAME}-darwin-universal" \
+            --subject "$ASSET_DIR/helm-cli-${TAG_NAME}-checksums.txt" \
+            --subject "$ASSET_DIR/latest.json" \
+            --tag "$TAG_NAME"
+
       - name: Upload CLI artifacts to workflow run
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -193,6 +208,7 @@ jobs:
             build/cli-release/helm-cli-${{ env.TAG_NAME }}-darwin-universal
             build/cli-release/helm-cli-${{ env.TAG_NAME }}-checksums.txt
             build/cli-release/latest.json
+            build/cli-release/provenance-${{ env.TAG_NAME }}.json
 
       - name: Upload CLI binaries to GitHub release
         if: ${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
@@ -206,6 +222,7 @@ jobs:
             "$ASSET_DIR/helm-cli-${TAG_NAME}-darwin-x86_64#helm-cli-${TAG_NAME}-darwin-x86_64" \
             "$ASSET_DIR/helm-cli-${TAG_NAME}-darwin-universal#helm-cli-${TAG_NAME}-darwin-universal" \
             "$ASSET_DIR/helm-cli-${TAG_NAME}-checksums.txt#helm-cli-${TAG_NAME}-checksums.txt" \
+            "$ASSET_DIR/provenance-${TAG_NAME}.json#provenance-${TAG_NAME}.json" \
             --clobber
           echo "RELEASE_ARTIFACTS_UPLOADED=yes" >> "$GITHUB_ENV"
 
