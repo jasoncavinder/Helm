@@ -278,6 +278,15 @@ check_pre_tag_metadata_snapshot() {
     return
   fi
 
+  if ! git rev-parse --verify --quiet origin/main >/dev/null; then
+    if [ "$FETCH_REMOTE" -eq 0 ]; then
+      warn "origin/main is unavailable in --no-fetch mode; skipping stable metadata snapshot ordering checks"
+      return
+    fi
+    fail "origin/main is unavailable; cannot validate stable metadata snapshot ordering"
+    return
+  fi
+
   local expected_version appcast_version cli_version compare_result
   expected_version="${TAG_NAME#v}"
   appcast_version="$(extract_appcast_version_from_origin_main)"
