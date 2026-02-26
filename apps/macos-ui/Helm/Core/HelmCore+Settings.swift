@@ -1047,9 +1047,13 @@ private enum HelmCliShimInstaller {
                 filePermissions: 0o755,
                 disallowSymlinkTarget: false
             )
+            let quarantineCleared = try removeQuarantineAttributeIfPresent(at: shimURL)
             try writeInstallMarker(
                 markerURL: markerURL,
                 version: bundleVersion(bundle: bundle)
+            )
+            logger.info(
+                "Helm CLI shim post-install attributes. shim=\(shimURL.path, privacy: .public), quarantine_cleared=\(quarantineCleared, privacy: .public)"
             )
         } catch {
             throw Error.ioFailure(description: error.localizedDescription)
@@ -1224,6 +1228,34 @@ private enum HelmCliShimInstaller {
             to: markerURL,
             filePermissions: 0o644,
             disallowSymlinkTarget: true
+        )
+    }
+
+    @discardableResult
+    private static func removeQuarantineAttributeIfPresent(at url: URL) throws -> Bool {
+        let attributeName = "com.apple.quarantine"
+        let result = url.path.withCString { pathPointer in
+            attributeName.withCString { attributePointer in
+                removexattr(pathPointer, attributePointer, 0)
+            }
+        }
+        if result == 0 {
+            return true
+        }
+
+        let errorCode = errno
+        if errorCode == ENOATTR {
+            return false
+        }
+
+        let errorMessage = String(cString: strerror(errorCode))
+        throw NSError(
+            domain: "HelmCliShimInstaller",
+            code: Int(errorCode),
+            userInfo: [
+                NSLocalizedDescriptionKey:
+                    "Failed to clear \(attributeName) from \(url.path): \(errorMessage)"
+            ]
         )
     }
 
