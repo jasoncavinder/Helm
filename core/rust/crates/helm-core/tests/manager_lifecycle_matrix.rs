@@ -1,13 +1,13 @@
 use std::path::PathBuf;
 
+use helm_core::adapters::asdf::AsdfDetectOutput;
+use helm_core::adapters::homebrew::HomebrewDetectOutput;
+use helm_core::adapters::npm::NpmDetectOutput;
 use helm_core::adapters::{
     AdapterRequest, AdapterResponse, AdapterResult, AsdfAdapter, AsdfSource, HomebrewAdapter,
     HomebrewSource, InstallRequest, ManagerAdapter, NpmAdapter, NpmSource, PinRequest,
     UninstallRequest, UnpinRequest, UpgradeRequest,
 };
-use helm_core::adapters::asdf::AsdfDetectOutput;
-use helm_core::adapters::homebrew::HomebrewDetectOutput;
-use helm_core::adapters::npm::NpmDetectOutput;
 use helm_core::models::{CoreError, CoreErrorKind, ManagerAction, ManagerId, PackageRef};
 
 fn package(manager: ManagerId, name: &str) -> PackageRef {

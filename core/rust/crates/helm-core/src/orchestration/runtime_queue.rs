@@ -3,7 +3,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use tokio::sync::{Mutex, Notify};
 use tokio::task::AbortHandle;
@@ -11,6 +11,9 @@ use tokio::time::timeout;
 
 use crate::models::{CoreError, CoreErrorKind, ManagerId, TaskId, TaskStatus, TaskType};
 use crate::orchestration::{CancellationMode, OrchestrationResult, TaskSubmission};
+
+const WAIT_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(1);
+const WAIT_HEARTBEAT_LOG_EVERY: u64 = 5;
 
 pub type TaskOperation = Box<
     dyn FnOnce(
@@ -177,13 +180,15 @@ impl InMemoryAsyncTaskQueue {
     }
 
     pub async fn cancel(&self, task_id: TaskId, mode: CancellationMode) -> OrchestrationResult<()> {
-        let (abort_handle, notify, prior_status) = {
+        let (abort_handle, notify, prior_status, manager, task_type) = {
             let mut state = self.inner.lock().await;
-            let prior_status = state
+            let task = state
                 .tasks
                 .get(&task_id)
-                .map(|task| task.status)
                 .ok_or_else(|| task_lookup_error(task_id))?;
+            let prior_status = task.status;
+            let manager = task.manager;
+            let task_type = task.task_type;
             if is_terminal(prior_status) {
                 return Ok(());
             }
@@ -209,8 +214,17 @@ impl InMemoryAsyncTaskQueue {
                 .cloned()
                 .ok_or_else(|| task_lookup_error(task_id))?;
 
-            (abort_handle, notify, prior_status)
+            (abort_handle, notify, prior_status, manager, task_type)
         };
+
+        tracing::debug!(
+            task_id = task_id.0,
+            manager = ?manager,
+            task_type = ?task_type,
+            mode = ?mode,
+            prior_status = ?prior_status,
+            "cancellation requested"
+        );
 
         let mut force_cancelled_state = false;
         match mode {
@@ -219,21 +233,59 @@ impl InMemoryAsyncTaskQueue {
                     handle.abort();
                 }
                 force_cancelled_state = true;
+                tracing::warn!(
+                    task_id = task_id.0,
+                    manager = ?manager,
+                    task_type = ?task_type,
+                    cancellation_path = "immediate_abort",
+                    "task cancellation forced via immediate abort"
+                );
             }
             CancellationMode::Graceful { grace_period } => {
                 if prior_status == TaskStatus::Running {
                     let wait = notify.notified();
-                    if timeout(grace_period, wait).await.is_err()
-                        && let Some(handle) = abort_handle.clone()
-                    {
-                        handle.abort();
-                        force_cancelled_state = true;
+                    if timeout(grace_period, wait).await.is_err() {
+                        let terminal_after_grace = {
+                            let state = self.inner.lock().await;
+                            state
+                                .tasks
+                                .get(&task_id)
+                                .map(|task| is_terminal(task.status))
+                                .unwrap_or(true)
+                        };
+                        if terminal_after_grace {
+                            tracing::debug!(
+                                task_id = task_id.0,
+                                manager = ?manager,
+                                task_type = ?task_type,
+                                cancellation_path = "graceful_terminal_race",
+                                "graceful cancellation observed terminal completion before abort"
+                            );
+                        } else if let Some(handle) = abort_handle.clone() {
+                            handle.abort();
+                            force_cancelled_state = true;
+                            tracing::warn!(
+                                task_id = task_id.0,
+                                manager = ?manager,
+                                task_type = ?task_type,
+                                cancellation_path = "graceful_timeout_abort",
+                                grace_period_ms = grace_period.as_millis(),
+                                "graceful cancellation timed out; forcing abort"
+                            );
+                        }
                     }
                 } else if prior_status == TaskStatus::Queued {
                     if let Some(handle) = abort_handle.clone() {
                         handle.abort();
                     }
                     force_cancelled_state = true;
+                    tracing::warn!(
+                        task_id = task_id.0,
+                        manager = ?manager,
+                        task_type = ?task_type,
+                        cancellation_path = "graceful_queued_abort",
+                        "graceful cancellation aborted queued task"
+                    );
                 }
             }
         }
@@ -250,6 +302,8 @@ impl InMemoryAsyncTaskQueue {
         task_id: TaskId,
         timeout_duration: Option<std::time::Duration>,
     ) -> OrchestrationResult<TaskRuntimeSnapshot> {
+        let wait_started = tokio::time::Instant::now();
+        let mut heartbeat_count = 0_u64;
         loop {
             let (snapshot, notify) = {
                 let state = self.inner.lock().await;
@@ -270,18 +324,51 @@ impl InMemoryAsyncTaskQueue {
                 return Ok(snapshot);
             }
 
-            if let Some(duration) = timeout_duration {
-                timeout(duration, notify.notified())
-                    .await
-                    .map_err(|_| CoreError {
-                        manager: Some(snapshot.manager),
-                        task: Some(snapshot.task_type),
-                        action: None,
-                        kind: CoreErrorKind::Timeout,
-                        message: format!("timed out waiting for task '{}' to complete", task_id.0),
-                    })?;
-            } else {
-                notify.notified().await;
+            let wait_slice = match timeout_duration {
+                Some(limit) => {
+                    let elapsed = wait_started.elapsed();
+                    let Some(remaining) = limit.checked_sub(elapsed) else {
+                        return Err(wait_timeout_error(
+                            task_id,
+                            snapshot.manager,
+                            snapshot.task_type,
+                            limit,
+                            elapsed,
+                        ));
+                    };
+                    remaining.min(WAIT_HEARTBEAT_INTERVAL)
+                }
+                None => WAIT_HEARTBEAT_INTERVAL,
+            };
+
+            if timeout(wait_slice, notify.notified()).await.is_err() {
+                heartbeat_count = heartbeat_count.saturating_add(1);
+                let elapsed = wait_started.elapsed();
+
+                if let Some(limit) = timeout_duration
+                    && elapsed >= limit
+                {
+                    return Err(wait_timeout_error(
+                        task_id,
+                        snapshot.manager,
+                        snapshot.task_type,
+                        limit,
+                        elapsed,
+                    ));
+                }
+
+                if heartbeat_count.is_multiple_of(WAIT_HEARTBEAT_LOG_EVERY) {
+                    tracing::debug!(
+                        task_id = task_id.0,
+                        manager = ?snapshot.manager,
+                        task_type = ?snapshot.task_type,
+                        status = ?snapshot.status,
+                        elapsed_ms = elapsed.as_millis(),
+                        timeout_ms = timeout_duration.map(|value| value.as_millis()),
+                        heartbeat_count,
+                        "still waiting for task terminal state"
+                    );
+                }
             }
         }
     }
@@ -367,5 +454,26 @@ fn task_lookup_error(task_id: TaskId) -> CoreError {
         action: None,
         kind: CoreErrorKind::InvalidInput,
         message: format!("unknown task id '{}'", task_id.0),
+    }
+}
+
+fn wait_timeout_error(
+    task_id: TaskId,
+    manager: ManagerId,
+    task_type: TaskType,
+    timeout_duration: Duration,
+    elapsed: Duration,
+) -> CoreError {
+    CoreError {
+        manager: Some(manager),
+        task: Some(task_type),
+        action: None,
+        kind: CoreErrorKind::Timeout,
+        message: format!(
+            "timed out waiting for task '{}' to complete after {}ms (timeout={}ms)",
+            task_id.0,
+            elapsed.as_millis(),
+            timeout_duration.as_millis()
+        ),
     }
 }

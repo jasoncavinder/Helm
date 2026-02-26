@@ -8,22 +8,19 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.17.6 stable publication complete** with post-release hardening follow-ups merged on `dev`.
+Current documentation baseline: **0.17.7 stable publication complete** with post-release hardening follow-ups merged on `dev`.
 
-Implementation baseline: **0.17.6 stable + post-release hardening follow-ups** with diagnostics/logging delivery, TUI + bundled-CLI parity closure, manager-selection/enablement and onboarding/detection hardening, release-process hardening phases 1-5, and post-`v0.17.5` refresh reliability/diagnostics hardening.
+Implementation baseline: **0.17.7 stable + post-release hardening follow-ups** with diagnostics/logging delivery, TUI + bundled-CLI parity closure, manager-selection/enablement and onboarding/detection hardening, release-process hardening phases 1-5, and post-`v0.17.5` refresh reliability/diagnostics hardening.
 
 See:
 - CHANGELOG.md
 
 Active milestone:
-- latest stable release currently published on `main`: **0.17.6** (release-process hardening promotion + fallback publish-path validation + metadata publication)
+- latest stable release currently published on `main`: **0.17.7** (pre-1.0 quality-audit remediation + release-gate hardening publication)
 - next integration target after stable publication: **0.18.x** (local security groundwork planning + delivery setup)
-- stable publication cut completed for `v0.17.6`:
-  - fallback release publish PRs merged on `main`: `#204` (CLI metadata), `#206` (appcast + release notes)
-  - latest successful release workflows:
-    - `Release CLI Direct Installer` run `22376375473` (`release`, success)
-    - `Release macOS DMG` run `22376375456` (`release`, success)
-  - release workflows now report fallback publish PR outcomes as follow-up-required (non-red) when publication PR merges are still pending
+- stable publication cut completed for `v0.17.7`:
+  - release artifacts, publish-metadata PRs, and post-publish verification checks are complete on `main`.
+  - release workflows continue to report fallback publish PR outcomes as follow-up-required (non-red) when publication PR merges are still pending.
 - 0.17.x — Diagnostics & Logging (**stable released on `main`**, RC lineage `v0.17.0-rc.1` through `v0.17.0-rc.5`)
   - delivered: `feat/v0.17-log-foundation` (SQLite-backed task lifecycle logs + retrieval plumbing)
   - delivered: `feat/v0.17-task-log-viewer` (inspector diagnostics logs tab with level/status filters + load-more pagination)
@@ -67,8 +64,9 @@ Active milestone:
   - delivered: post-`v0.17.5` refresh reliability + diagnostics hardening follow-up (on `dev`): task output records now persist effective working-directory/timing/exit metadata with structured error details; diagnostics summary now includes failure-class counters; coordinator health diagnostics now report stale-state reasons and recover stale local coordinator state on timeout with one retry; and refresh/search request-response flows now retry once for transient network/timeout failures (with npm list timeout increased to 120s).
   - delivered: post-`v0.17.6` manager execution/timeout hardening follow-up (on `dev`): manager-selected executable overrides now prepend executable-parent `PATH` and apply node-runtime path hints for npm/pnpm/yarn script targets (`npm-cli.js`/`pnpm.cjs`/`yarn*.js`) so constrained-shell refresh runs no longer fail on missing shebang runtime resolution; process execution now supports activity-aware timeout behavior (hard timeout + idle timeout reset by stdout/stderr activity) with global defaults by task type and per-manager override profiles persisted in `manager_preferences` (migration v8) and exposed in manager inspector controls; and task diagnostics now persist process-context fields (`program_path`, `PATH` snippet) plus explicit timeout classes (`hard_timeout`, `idle_timeout`) for triage.
   - delivered: post-`v0.17.6` settings CLI-shim follow-up (on `dev`): sandbox entitlements now include home-relative write exceptions for `~/.local/bin/` and `~/.config/helm/`, allowing `Install Helm CLI`/`Remove Helm CLI` settings actions to manage the shim and install marker at the real POSIX home path in sandboxed builds.
+  - delivered: pre-`v0.17.7` release-gate closure follow-up (on `dev`): runtime queue terminal waits now avoid missed-notify timeout races and emit periodic heartbeat diagnostics while waiting; graceful cancellation now re-checks terminal state before forced abort; request/response orchestration now logs start timestamp, effective timeout (`min(policy_timeout, orchestration_cap)`), retry attempts, terminal status, and cancellation path; Homebrew adapter `clippy::collapsible_if` warnings were removed; process-timeout coverage now verifies timeout termination does not leave child process-group orphans; and rustup orchestration reliability was re-validated with repeated stress runs.
   - delivered: GitHub governance hardening follow-up (on `dev`): per-branch rulesets are now explicit for `main`/`dev`/`docs`/`web` with branch-specific required checks; new `Policy Gate` + `Docs Checks` + `Web Build` workflows enforce branch targeting/scope policy; repository merge settings keep auto-merge/update-branch enabled while delete-branch-on-merge stays off to protect primary branches; blocking ruleset `update` enforcement was removed after protected-ref merge-block diagnostics; CodeQL is now main-focused (push/schedule/manual) to avoid PR gate friction.
-  - `v0.17.6` stable release execution status: complete (validation green + stable tag + GitHub release published)
+  - `v0.17.7` stable release execution status: complete (validation green + stable tag + GitHub release published)
 
 Security rollout staging status:
 - Stage 0 (`<=0.16.x`): planning/docs only (active in `0.16.1`)
@@ -951,4 +949,4 @@ Helm is a **functional control plane for 28 implemented managers** with:
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-0.13.x through 0.17.6 stable checkpoints are complete on `main`; `v0.17.0-rc.1` through `v0.17.0-rc.5` served as the completed RC validation path into stable `0.17.0`, followed by stable patch releases `v0.17.1`, `v0.17.2`, `v0.17.3`, `v0.17.4`, `v0.17.5`, and `v0.17.6`.
+0.13.x through 0.17.7 stable checkpoints are complete on `main`; `v0.17.0-rc.1` through `v0.17.0-rc.5` served as the completed RC validation path into stable `0.17.0`, followed by stable patch releases `v0.17.1`, `v0.17.2`, `v0.17.3`, `v0.17.4`, `v0.17.5`, `v0.17.6`, and `v0.17.7`.

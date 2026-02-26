@@ -6429,7 +6429,7 @@ fn write_private_json_temp_file(path: &std::path::Path, bytes: &[u8]) -> Result<
                 path.display()
             )
         })?;
-        return Ok(());
+        Ok(())
     }
     #[cfg(not(unix))]
     {
@@ -6475,8 +6475,6 @@ fn read_json_file<T: DeserializeOwned>(path: &std::path::Path) -> Result<T, Stri
 fn file_modified_unix_seconds(path: &std::path::Path) -> Option<i64> {
     coordinator_transport::file_modified_unix_seconds(path)
 }
-
-const PS_COMMAND_PATH: &str = coordinator_transport::PS_COMMAND_PATH;
 
 fn process_is_alive(pid: u32) -> bool {
     coordinator_transport::process_is_alive(pid)
@@ -12226,10 +12224,9 @@ mod tests {
     use super::{
         CLI_LICENSE_TERMS_VERSION, Command, CoordinatorClientTransport, ExecutionMode,
         GlobalOptions, HomebrewKegPolicy, InstallChannel, ManagerId, SelfUpdateErrorKind,
-        TASKS_FOLLOW_MACHINE_MODE_UNSUPPORTED_ERROR, UpdatePolicy, UpgradeExecutionStep,
-        acquire_coordinator_bootstrap_lock, apply_manager_enablement_self_heal,
-        build_json_payload_lines, classify_failure_class, cmd_tasks_follow, cmd_updates_run,
-        command_help_topic_exists, coordinator_transport_for_cancel,
+        UpdatePolicy, UpgradeExecutionStep, acquire_coordinator_bootstrap_lock,
+        apply_manager_enablement_self_heal, build_json_payload_lines, classify_failure_class,
+        cmd_updates_run, command_help_topic_exists, coordinator_transport_for_cancel,
         coordinator_transport_for_submit, coordinator_transport_for_workflow,
         count_upgrade_step_failures, ensure_cli_onboarding_completed, exit_code_for_error,
         failure_class_hint, manager_operation_failure_error, mark_exit_code, parse_args,
@@ -12239,7 +12236,7 @@ mod tests {
         read_update_bytes_with_limit, remove_install_marker_if_channel, resolve_redirect_url,
         resolve_update_redirect_target, selected_executable_differs_from_default,
         self_uninstall_recommended_action, should_launch_coordinator_on_demand,
-        strip_exit_code_marker, tasks_follow_machine_mode_error, upgrade_request_name,
+        strip_exit_code_marker, upgrade_request_name,
     };
     use helm_core::execution::TaskOutputRecord;
     use helm_core::models::DetectionInfo;
@@ -13218,7 +13215,7 @@ mod tests {
 
     #[test]
     fn coordinator_ps_command_path_is_absolute() {
-        assert_eq!(super::PS_COMMAND_PATH, "/bin/ps");
+        assert_eq!(super::coordinator_transport::PS_COMMAND_PATH, "/bin/ps");
     }
 
     #[test]

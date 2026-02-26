@@ -118,10 +118,10 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                 Ok(AdapterResponse::SearchResults(results))
             }
             AdapterRequest::Install(install_request) => {
-                if let Err(error) = self.source.install_formula(&install_request.package.name) {
-                    if !is_homebrew_already_installed_error(&error) {
-                        return Err(error);
-                    }
+                if let Err(error) = self.source.install_formula(&install_request.package.name)
+                    && !is_homebrew_already_installed_error(&error)
+                {
+                    return Err(error);
                 }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: install_request.package,
@@ -134,10 +134,9 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                 if let Err(error) = self
                     .source
                     .uninstall_formula(&uninstall_request.package.name)
+                    && !is_homebrew_already_absent_uninstall_error(&error)
                 {
-                    if !is_homebrew_already_absent_uninstall_error(&error) {
-                        return Err(error);
-                    }
+                    return Err(error);
                 }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: uninstall_request.package,

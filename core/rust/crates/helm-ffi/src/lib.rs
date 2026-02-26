@@ -134,7 +134,7 @@ use helm_core::adapters::{
 };
 use helm_core::execution::tokio_process::TokioProcessExecutor;
 use helm_core::execution::{
-    ManagerTimeoutProfile, clear_manager_selected_executables, clear_manager_timeout_profiles,
+    ManagerTimeoutProfile, clear_manager_selected_executables,
     replace_manager_execution_preferences,
 };
 use helm_core::manager_policy::manager_enablement_eligibility;
@@ -557,7 +557,7 @@ fn write_private_json_temp_file(path: &Path, bytes: &[u8]) -> Result<(), String>
                 path.display()
             )
         })?;
-        return Ok(());
+        Ok(())
     }
     #[cfg(not(unix))]
     {

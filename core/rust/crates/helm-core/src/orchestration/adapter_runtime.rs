@@ -63,6 +63,13 @@ struct RefreshCapabilityPlan {
     list_outdated: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RefreshWaitBudget {
+    policy_timeout: Duration,
+    orchestration_cap: Duration,
+    effective_timeout: Duration,
+}
+
 impl AdapterRuntime {
     pub fn new(
         adapters: impl IntoIterator<Item = Arc<dyn ManagerAdapter>>,
@@ -421,44 +428,139 @@ impl AdapterRuntime {
     ) -> OrchestrationResult<AdapterResponse> {
         let action = request.action();
         let task_type = task_type_for_action(action);
-        let wait_timeout = refresh_wait_timeout(manager, task_type);
+        let wait_budget = refresh_wait_budget(manager, task_type);
         let mut attempt = 0u8;
         loop {
             attempt = attempt.saturating_add(1);
+            let wait_started_at = SystemTime::now();
             let started_at = Instant::now();
+
+            tracing::debug!(
+                manager = ?manager,
+                task_type = ?task_type,
+                action = ?action,
+                attempt,
+                wait_started_at = ?wait_started_at,
+                policy_timeout_ms = wait_budget.policy_timeout.as_millis(),
+                orchestration_cap_ms = wait_budget.orchestration_cap.as_millis(),
+                effective_timeout_ms = wait_budget.effective_timeout.as_millis(),
+                "starting request-response orchestration attempt"
+            );
 
             let task_id = self
                 .submit_with_enablement(manager, request.clone(), enablement_snapshot)
                 .await
                 .map_err(|error| attribute_error(error, manager, task_type, action))?;
-            let snapshot = self
-                .wait_for_terminal(task_id, Some(wait_timeout))
+
+            let terminal_result = match self
+                .wait_for_terminal(task_id, Some(wait_budget.effective_timeout))
                 .await
-                .map_err(|error| attribute_error(error, manager, task_type, action))?;
+            {
+                Ok(snapshot) => {
+                    if task_type == TaskType::Detection {
+                        log_detection_timing(manager, task_id, started_at.elapsed(), &snapshot);
+                    }
 
-            if task_type == TaskType::Detection {
-                log_detection_timing(manager, task_id, started_at.elapsed(), &snapshot);
-            }
-
-            let terminal_result = match snapshot.terminal_state {
-                Some(AdapterTaskTerminalState::Succeeded(response)) => Ok(response),
-                Some(AdapterTaskTerminalState::Failed(e)) => {
-                    Err(attribute_error(e, manager, task_type, action))
+                    match snapshot.terminal_state {
+                        Some(AdapterTaskTerminalState::Succeeded(response)) => {
+                            tracing::debug!(
+                                manager = ?manager,
+                                task_type = ?task_type,
+                                action = ?action,
+                                task_id = task_id.0,
+                                attempt,
+                                elapsed_ms = started_at.elapsed().as_millis(),
+                                status = ?snapshot.runtime.status,
+                                terminal = "succeeded",
+                                "request-response orchestration attempt completed"
+                            );
+                            Ok(response)
+                        }
+                        Some(AdapterTaskTerminalState::Failed(error)) => {
+                            let attributed = attribute_error(error, manager, task_type, action);
+                            tracing::warn!(
+                                manager = ?manager,
+                                task_type = ?task_type,
+                                action = ?action,
+                                task_id = task_id.0,
+                                attempt,
+                                elapsed_ms = started_at.elapsed().as_millis(),
+                                status = ?snapshot.runtime.status,
+                                terminal = "failed",
+                                kind = ?attributed.kind,
+                                message = %attributed.message,
+                                "request-response orchestration attempt failed"
+                            );
+                            Err(attributed)
+                        }
+                        Some(AdapterTaskTerminalState::Cancelled(error)) => {
+                            let cancellation_path = if error.is_some() {
+                                "adapter_cancelled"
+                            } else {
+                                "runtime_cancelled"
+                            };
+                            let attributed = error.unwrap_or(CoreError {
+                                manager: Some(manager),
+                                task: Some(task_type),
+                                action: Some(action),
+                                kind: CoreErrorKind::Cancelled,
+                                message: "task was cancelled".to_string(),
+                            });
+                            tracing::warn!(
+                                manager = ?manager,
+                                task_type = ?task_type,
+                                action = ?action,
+                                task_id = task_id.0,
+                                attempt,
+                                elapsed_ms = started_at.elapsed().as_millis(),
+                                status = ?snapshot.runtime.status,
+                                terminal = "cancelled",
+                                cancellation_path,
+                                kind = ?attributed.kind,
+                                message = %attributed.message,
+                                "request-response orchestration attempt cancelled"
+                            );
+                            Err(attributed)
+                        }
+                        None => {
+                            let error = CoreError {
+                                manager: Some(manager),
+                                task: Some(task_type),
+                                action: Some(action),
+                                kind: CoreErrorKind::Internal,
+                                message: "task reached terminal state with no result".to_string(),
+                            };
+                            tracing::error!(
+                                manager = ?manager,
+                                task_type = ?task_type,
+                                action = ?action,
+                                task_id = task_id.0,
+                                attempt,
+                                elapsed_ms = started_at.elapsed().as_millis(),
+                                status = ?snapshot.runtime.status,
+                                terminal = "missing_terminal_state",
+                                "request-response orchestration attempt ended without terminal payload"
+                            );
+                            Err(error)
+                        }
+                    }
                 }
-                Some(AdapterTaskTerminalState::Cancelled(e)) => Err(e.unwrap_or(CoreError {
-                    manager: Some(manager),
-                    task: Some(task_type),
-                    action: Some(action),
-                    kind: CoreErrorKind::Cancelled,
-                    message: "task was cancelled".to_string(),
-                })),
-                None => Err(CoreError {
-                    manager: Some(manager),
-                    task: Some(task_type),
-                    action: Some(action),
-                    kind: CoreErrorKind::Internal,
-                    message: "task reached terminal state with no result".to_string(),
-                }),
+                Err(error) => {
+                    let attributed = attribute_error(error, manager, task_type, action);
+                    tracing::warn!(
+                        manager = ?manager,
+                        task_type = ?task_type,
+                        action = ?action,
+                        task_id = task_id.0,
+                        attempt,
+                        elapsed_ms = started_at.elapsed().as_millis(),
+                        terminal = "wait_error",
+                        kind = ?attributed.kind,
+                        message = %attributed.message,
+                        "request-response orchestration wait failed"
+                    );
+                    Err(attributed)
+                }
             };
 
             match terminal_result {
@@ -474,6 +576,7 @@ impl AdapterRuntime {
                         kind = ?error.kind,
                         message = %error.message,
                         attempt = attempt,
+                        max_attempts = 2,
                         "retrying transient refresh/search request once"
                     );
                     continue;
@@ -618,9 +721,45 @@ impl AdapterRuntime {
         task_id: TaskId,
         timeout_duration: Option<Duration>,
     ) -> OrchestrationResult<AdapterTaskSnapshot> {
-        self.execution
+        let wait_started_at = SystemTime::now();
+        let wait_started = Instant::now();
+        let timeout_ms = timeout_duration.map(|value| value.as_millis() as u64);
+        let result = self
+            .execution
             .wait_for_terminal(task_id, timeout_duration)
-            .await
+            .await;
+
+        match &result {
+            Ok(snapshot) => {
+                tracing::debug!(
+                    task_id = task_id.0,
+                    manager = ?snapshot.runtime.manager,
+                    task_type = ?snapshot.runtime.task_type,
+                    status = ?snapshot.runtime.status,
+                    terminal = terminal_state_label(snapshot.terminal_state.as_ref()),
+                    cancellation_path = cancellation_path_label(snapshot.terminal_state.as_ref()),
+                    timeout_ms,
+                    elapsed_ms = wait_started.elapsed().as_millis() as u64,
+                    wait_started_at = ?wait_started_at,
+                    "task reached terminal state"
+                );
+            }
+            Err(error) => {
+                tracing::warn!(
+                    task_id = task_id.0,
+                    manager = ?error.manager,
+                    task = ?error.task,
+                    kind = ?error.kind,
+                    message = %error.message,
+                    timeout_ms,
+                    elapsed_ms = wait_started.elapsed().as_millis() as u64,
+                    wait_started_at = ?wait_started_at,
+                    "wait_for_terminal failed"
+                );
+            }
+        }
+
+        result
     }
 }
 
@@ -1267,11 +1406,33 @@ fn refresh_wait_orchestration_cap(task_type: TaskType) -> Duration {
     }
 }
 
-fn refresh_wait_timeout(manager: ManagerId, task_type: TaskType) -> Duration {
+fn refresh_wait_budget(manager: ManagerId, task_type: TaskType) -> RefreshWaitBudget {
     let policy_timeout = crate::execution::manager_timeout_profile(manager)
         .and_then(|profile| profile.hard_timeout)
         .unwrap_or_else(|| default_refresh_wait_policy_timeout(task_type));
-    policy_timeout.min(refresh_wait_orchestration_cap(task_type))
+    let orchestration_cap = refresh_wait_orchestration_cap(task_type);
+    RefreshWaitBudget {
+        policy_timeout,
+        orchestration_cap,
+        effective_timeout: policy_timeout.min(orchestration_cap),
+    }
+}
+
+fn terminal_state_label(state: Option<&AdapterTaskTerminalState>) -> &'static str {
+    match state {
+        Some(AdapterTaskTerminalState::Succeeded(_)) => "succeeded",
+        Some(AdapterTaskTerminalState::Failed(_)) => "failed",
+        Some(AdapterTaskTerminalState::Cancelled(_)) => "cancelled",
+        None => "none",
+    }
+}
+
+fn cancellation_path_label(state: Option<&AdapterTaskTerminalState>) -> &'static str {
+    match state {
+        Some(AdapterTaskTerminalState::Cancelled(Some(_))) => "adapter_cancelled",
+        Some(AdapterTaskTerminalState::Cancelled(None)) => "runtime_cancelled",
+        _ => "n/a",
+    }
 }
 
 fn log_detection_timing(
@@ -1376,7 +1537,7 @@ fn task_type_for_action(action: ManagerAction) -> TaskType {
 mod tests {
     use super::{
         TaskType, build_manager_enablement_map, build_refresh_capability_plan,
-        reduce_detect_request_result, refresh_wait_timeout, should_skip_refresh_lists_after_detect,
+        reduce_detect_request_result, refresh_wait_budget, should_skip_refresh_lists_after_detect,
     };
     use crate::adapters::AdapterResponse;
     use crate::execution::{
@@ -1402,15 +1563,15 @@ mod tests {
         clear_manager_timeout_profiles();
 
         assert_eq!(
-            refresh_wait_timeout(ManagerId::Npm, TaskType::Detection),
+            refresh_wait_budget(ManagerId::Npm, TaskType::Detection).effective_timeout,
             Duration::from_secs(90)
         );
         assert_eq!(
-            refresh_wait_timeout(ManagerId::Npm, TaskType::Search),
+            refresh_wait_budget(ManagerId::Npm, TaskType::Search).effective_timeout,
             Duration::from_secs(120)
         );
         assert_eq!(
-            refresh_wait_timeout(ManagerId::Npm, TaskType::Refresh),
+            refresh_wait_budget(ManagerId::Npm, TaskType::Refresh).effective_timeout,
             Duration::from_secs(180)
         );
     }
@@ -1428,15 +1589,15 @@ mod tests {
         );
 
         assert_eq!(
-            refresh_wait_timeout(ManagerId::Npm, TaskType::Detection),
+            refresh_wait_budget(ManagerId::Npm, TaskType::Detection).effective_timeout,
             Duration::from_secs(120)
         );
         assert_eq!(
-            refresh_wait_timeout(ManagerId::Npm, TaskType::Search),
+            refresh_wait_budget(ManagerId::Npm, TaskType::Search).effective_timeout,
             Duration::from_secs(180)
         );
         assert_eq!(
-            refresh_wait_timeout(ManagerId::Npm, TaskType::Refresh),
+            refresh_wait_budget(ManagerId::Npm, TaskType::Refresh).effective_timeout,
             Duration::from_secs(300)
         );
 
@@ -1456,7 +1617,7 @@ mod tests {
         );
 
         assert_eq!(
-            refresh_wait_timeout(ManagerId::Npm, TaskType::Refresh),
+            refresh_wait_budget(ManagerId::Npm, TaskType::Refresh).effective_timeout,
             Duration::from_secs(75)
         );
 

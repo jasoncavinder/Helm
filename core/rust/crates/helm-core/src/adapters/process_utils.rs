@@ -143,8 +143,8 @@ mod tests {
             },
         });
 
-        let stdout =
-            run_and_collect_stdout(executor.as_ref(), make_request()).expect("stdout should decode");
+        let stdout = run_and_collect_stdout(executor.as_ref(), make_request())
+            .expect("stdout should decode");
         assert!(
             stdout.contains("fo"),
             "decoded output should preserve readable prefix: {stdout}"
