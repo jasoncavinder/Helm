@@ -1582,17 +1582,15 @@ private struct InspectorManagerDetailView: View {
                 }
             }
 
-            if managerHealthIsError {
-                if let failedTask = latestFailedTask {
-                    Button(L10n.App.Inspector.viewDiagnostics.localized) {
-                        context.selectedTaskId = failedTask.id
-                        context.selectedPackageId = nil
-                        context.selectedUpgradePlanStepId = nil
-                    }
-                    .font(.caption)
-                    .buttonStyle(HelmSecondaryButtonStyle())
-                    .helmPointer()
+            if managerHealthIsError, let failedTask = latestFailedTask {
+                Button(L10n.App.Inspector.viewDiagnostics.localized) {
+                    context.selectedTaskId = failedTask.id
+                    context.selectedPackageId = nil
+                    context.selectedUpgradePlanStepId = nil
                 }
+                .font(.caption)
+                .buttonStyle(HelmSecondaryButtonStyle())
+                .helmPointer()
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

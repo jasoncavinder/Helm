@@ -35,15 +35,37 @@ extension HelmCore {
     }
 
     private func legacyLoginItemIsEnabled() -> Bool {
-        if let jobs = SMCopyAllJobDictionaries(kSMDomainUserLaunchd)?.takeRetainedValue()
-            as? [[String: Any]]
-        {
-            if jobs.contains(where: { ($0["Label"] as? String) == Self.legacyLoginItemBundleIdentifier })
-            {
-                return true
-            }
+        if launchctlJobIsLoaded(
+            arguments: [
+                "print",
+                "gui/\(getuid())/\(Self.legacyLoginItemBundleIdentifier)",
+            ]
+        ) {
+            return true
         }
+
+        if launchctlJobIsLoaded(arguments: ["list", Self.legacyLoginItemBundleIdentifier]) {
+            return true
+        }
+
         return UserDefaults.standard.bool(forKey: Self.launchAtLoginEnabledKey)
+    }
+
+    private func launchctlJobIsLoaded(arguments: [String]) -> Bool {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        task.arguments = arguments
+        task.standardOutput = Pipe()
+        task.standardError = Pipe()
+
+        do {
+            try task.run()
+            task.waitUntilExit()
+            return task.terminationStatus == 0
+        } catch {
+            logger.debug("launchctl status query failed: \(error.localizedDescription)")
+            return false
+        }
     }
 
     func refreshLaunchAtLogin() {
