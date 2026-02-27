@@ -214,6 +214,16 @@ int64_t helm_install_package(const char *manager_id, const char *package_name);
 int64_t helm_uninstall_package(const char *manager_id, const char *package_name);
 
 /**
+ * Preview package uninstall blast radius as JSON.
+ *
+ * # Safety
+ *
+ * `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
+ * strings.
+ */
+char *helm_preview_package_uninstall(const char *manager_id, const char *package_name);
+
+/**
  * List pin records as JSON.
  */
 char *helm_list_pins(void);
@@ -296,9 +306,11 @@ int64_t helm_install_manager(const char *manager_id);
  *
  * Supported manager IDs:
  * - "homebrew_formula" -> `brew update`
- * - "mise" -> `brew upgrade mise`
- * - "mas" -> `brew upgrade mas`
- * - "rustup" -> `rustup self update`
+ * - "rustup" -> provenance-driven (`brew upgrade rustup` or `rustup self update`)
+ * - Homebrew one-to-one managers -> provenance-driven (`asdf`, `mise`, `mas`, `pnpm`,
+ *   `yarn`, `pipx`, `poetry`, `cargo-binstall`, `podman`, `colima`)
+ * - Homebrew parent-formula managers -> provenance-driven (`npm`, `pip`, `rubygems`,
+ *   `bundler`, `cargo`) when active install-instance formula ownership can be resolved.
  *
  * # Safety
  *
@@ -309,13 +321,45 @@ int64_t helm_update_manager(const char *manager_id);
 /**
  * Uninstall a manager tool. Returns the task ID, or -1 on error.
  *
- * Supported manager IDs: "mise", "mas" (via Homebrew), "rustup" (self uninstall).
+ * Supported manager IDs include rustup and Homebrew-routed manager adapters where
+ * provenance strategy is supported.
+ *
+ * This is a strict compatibility wrapper over `helm_uninstall_manager_with_options` with
+ * `allow_unknown_provenance=false`.
  *
  * # Safety
  *
  * `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
  */
 int64_t helm_uninstall_manager(const char *manager_id);
+
+/**
+ * Preview manager uninstall blast radius and strategy as JSON.
+ *
+ * `allow_unknown_provenance` controls whether unknown-provenance routing uses override mode.
+ * For preview-only UI flows, callers typically pass `false` and rely on `unknown_override_required`
+ * in the JSON response to gate destructive execution.
+ *
+ * # Safety
+ *
+ * `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ */
+char *helm_preview_manager_uninstall(const char *manager_id, bool allow_unknown_provenance);
+
+/**
+ * Uninstall a manager tool. Returns the task ID, or -1 on error.
+ *
+ * Supported manager IDs include rustup and Homebrew-routed manager adapters where
+ * provenance strategy is supported.
+ *
+ * `allow_unknown_provenance` enables explicit override for ambiguous manager provenance where
+ * uninstall routing supports override-based fallback.
+ *
+ * # Safety
+ *
+ * `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ */
+int64_t helm_uninstall_manager_with_options(const char *manager_id, bool allow_unknown_provenance);
 
 /**
  * Reset the database by rolling back all migrations and re-applying them.

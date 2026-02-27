@@ -24,15 +24,17 @@ use super::{
     CoordinatorSubmitRequest, CoordinatorWorkflowRequest, ExecutionMode, InstalledPackage,
     ManagerId, OutdatedPackage, PackageRef, SELF_UPDATE_ALLOW_ROOT_ENV, SqliteStore,
     TASK_FETCH_LIMIT, TaskId, adapter_request_to_coordinator_submit, build_diagnostics_summary,
-    build_manager_mutation_request, cancel_inflight_tasks_for_manager,
+    build_manager_mutation_request, build_manager_uninstall_plan,
+    build_package_uninstall_preview_for_package, cancel_inflight_tasks_for_manager,
     channel_managed_check_status, coordinator_cancel_task, coordinator_start_workflow,
     coordinator_submit_request, current_cli_version, database_path, detect_install_provenance,
     direct_update_apply, direct_update_check_status, env_flag_enabled, is_running_as_root,
     list_installed_for_enabled, list_managers, list_outdated_for_enabled, list_tasks_for_enabled,
     manager_enabled_map, manager_enablement_eligibility_for_store, manager_executable_status,
     manager_install_methods_status, manager_priority_entries, provenance_can_self_update,
-    provenance_recommended_action, search_local_for_enabled, set_manager_priority_rank,
-    task_log_to_cli_record, task_to_cli_task, write_setting,
+    provenance_recommended_action, resolve_install_method_override_for_tui,
+    search_local_for_enabled, set_manager_priority_rank, task_log_to_cli_record, task_to_cli_task,
+    write_setting,
 };
 use helm_core::models::HomebrewKegPolicy;
 
@@ -142,6 +144,7 @@ enum ConfirmAction {
     UninstallPackage {
         manager: ManagerId,
         package_name: String,
+        uninstall_preview_summary: Option<String>,
     },
     TogglePin {
         manager: ManagerId,
@@ -155,6 +158,8 @@ enum ConfirmAction {
     ManagerMutation {
         manager: ManagerId,
         subcommand: &'static str,
+        allow_unknown_provenance: bool,
+        uninstall_preview_summary: Option<String>,
     },
     CancelTask {
         task_id: u64,
@@ -195,11 +200,16 @@ impl ConfirmAction {
             Self::UninstallPackage {
                 manager,
                 package_name,
-            } => format!(
-                "Uninstall '{}@{}'? [Enter confirm / Esc cancel]",
-                package_name,
-                manager.as_str()
-            ),
+                uninstall_preview_summary,
+            } => {
+                let mut prompt = format!("Uninstall '{}@{}'?", package_name, manager.as_str());
+                if let Some(summary) = uninstall_preview_summary.as_deref() {
+                    prompt.push(' ');
+                    prompt.push_str(summary);
+                }
+                prompt.push_str(" [Enter confirm / Esc cancel]");
+                prompt
+            }
             Self::TogglePin {
                 manager,
                 package_name,
@@ -228,11 +238,20 @@ impl ConfirmAction {
             Self::ManagerMutation {
                 manager,
                 subcommand,
-            } => format!(
-                "{} manager '{}' ? [Enter confirm / Esc cancel]",
-                subcommand,
-                manager.as_str()
-            ),
+                allow_unknown_provenance,
+                uninstall_preview_summary,
+            } => {
+                let mut prompt = format!("{} manager '{}' ?", subcommand, manager.as_str());
+                if let Some(summary) = uninstall_preview_summary.as_deref() {
+                    prompt.push(' ');
+                    prompt.push_str(summary);
+                }
+                if *allow_unknown_provenance {
+                    prompt.push_str(" [unknown-provenance override]");
+                }
+                prompt.push_str(" [Enter confirm / Esc cancel]");
+                prompt
+            }
             Self::CancelTask { task_id } => {
                 format!("Cancel task #{}? [Enter confirm / Esc cancel]", task_id)
             }
@@ -1363,6 +1382,8 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                     app.confirm_action = Some(ConfirmAction::ManagerMutation {
                         manager: manager_id,
                         subcommand: "update",
+                        allow_unknown_provenance: false,
+                        uninstall_preview_summary: None,
                     });
                 }
             }
@@ -1376,24 +1397,39 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                 if let Some(package) = app.selected_package()
                     && package.kind == PackageRowKind::Installed
                 {
-                    app.confirm_action = Some(ConfirmAction::UninstallPackage {
-                        manager: package.manager,
-                        package_name: package.package_name.clone(),
-                    });
+                    match prepare_package_uninstall_confirm_action(
+                        store,
+                        package.manager,
+                        package.package_name.clone(),
+                    ) {
+                        Ok(action) => app.confirm_action = Some(action),
+                        Err(error) => app.note_error(error),
+                    }
                 }
             }
             Section::Managers => {
                 if let Some(manager) = app.selected_manager()
                     && let Ok(manager_id) = manager.manager_id.parse::<ManagerId>()
                 {
-                    app.confirm_action = Some(ConfirmAction::ManagerMutation {
-                        manager: manager_id,
-                        subcommand: "uninstall",
-                    });
+                    match prepare_manager_uninstall_confirm_action(store, manager_id, false) {
+                        Ok(action) => app.confirm_action = Some(action),
+                        Err(error) => app.note_error(error),
+                    }
                 }
             }
             _ => {}
         },
+        KeyCode::Char('X') => {
+            if app.section == Section::Managers
+                && let Some(manager) = app.selected_manager()
+                && let Ok(manager_id) = manager.manager_id.parse::<ManagerId>()
+            {
+                match prepare_manager_uninstall_confirm_action(store, manager_id, true) {
+                    Ok(action) => app.confirm_action = Some(action),
+                    Err(error) => app.note_error(error),
+                }
+            }
+        }
         KeyCode::Char('p') => {
             if app.section == Section::Packages
                 && let Some(package) = app.selected_package()
@@ -1459,6 +1495,8 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                 app.confirm_action = Some(ConfirmAction::ManagerMutation {
                     manager: manager_id,
                     subcommand: "install",
+                    allow_unknown_provenance: false,
+                    uninstall_preview_summary: None,
                 });
             }
         }
@@ -1739,6 +1777,7 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
         ConfirmAction::UninstallPackage {
             manager,
             package_name,
+            uninstall_preview_summary: _,
         } => {
             let response = coordinator_submit_request(
                 store,
@@ -1811,9 +1850,41 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
         ConfirmAction::ManagerMutation {
             manager,
             subcommand,
+            allow_unknown_provenance,
+            uninstall_preview_summary: _,
         } => {
-            let (target_manager, request) =
-                build_manager_mutation_request(store, manager, subcommand)?;
+            if subcommand == "uninstall" {
+                let plan =
+                    build_manager_uninstall_plan(store, manager, allow_unknown_provenance, false)?;
+                let submit_request = adapter_request_to_coordinator_submit(plan.request)?;
+                let response = coordinator_submit_request(
+                    store,
+                    plan.target_manager,
+                    submit_request,
+                    ExecutionMode::Wait,
+                )?;
+                return Ok(format!(
+                    "Manager '{}' uninstall submitted via '{}' (task #{}). strategy={} blast_radius={} requires_confirmation={}",
+                    manager.as_str(),
+                    plan.target_manager.as_str(),
+                    response.task_id.unwrap_or(0),
+                    plan.preview.strategy,
+                    plan.preview.blast_radius_score,
+                    plan.preview.requires_yes
+                ));
+            }
+
+            let install_method_override = if subcommand == "install" {
+                resolve_install_method_override_for_tui(store, manager)?
+            } else {
+                None
+            };
+            let (target_manager, request) = build_manager_mutation_request(
+                store,
+                manager,
+                subcommand,
+                install_method_override,
+            )?;
             let submit_request = adapter_request_to_coordinator_submit(request)?;
             let response = coordinator_submit_request(
                 store,
@@ -1884,6 +1955,62 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
         }
         ConfirmAction::SelfUpdate { force } => apply_self_update(force),
     }
+}
+
+fn prepare_manager_uninstall_confirm_action(
+    store: &SqliteStore,
+    manager: ManagerId,
+    allow_unknown_provenance: bool,
+) -> Result<ConfirmAction, String> {
+    let plan = build_manager_uninstall_plan(store, manager, allow_unknown_provenance, true)?;
+    let summary = format!(
+        "[strategy={} provenance={} confidence={} blast_radius={}]",
+        plan.preview.strategy,
+        plan.preview.provenance.as_deref().unwrap_or("-"),
+        plan.preview
+            .confidence
+            .map(|value| format!("{value:.2}"))
+            .unwrap_or_else(|| "-".to_string()),
+        plan.preview.blast_radius_score
+    );
+    Ok(ConfirmAction::ManagerMutation {
+        manager,
+        subcommand: "uninstall",
+        allow_unknown_provenance,
+        uninstall_preview_summary: Some(summary),
+    })
+}
+
+fn prepare_package_uninstall_confirm_action(
+    store: &SqliteStore,
+    manager: ManagerId,
+    package_name: String,
+) -> Result<ConfirmAction, String> {
+    let package = PackageRef {
+        manager,
+        name: package_name.clone(),
+    };
+    let preview = build_package_uninstall_preview_for_package(store, &package)?;
+
+    if preview.manager_automation_level.as_deref() == Some("read_only") {
+        return Err(format!(
+            "package uninstall is blocked because manager '{}' automation is read-only",
+            manager.as_str()
+        ));
+    }
+
+    let summary = format!(
+        "[manager_strategy={} manager_provenance={} blast_radius={} requires_confirmation={}]",
+        preview.manager_uninstall_strategy.as_deref().unwrap_or("-"),
+        preview.manager_provenance.as_deref().unwrap_or("-"),
+        preview.blast_radius_score,
+        preview.requires_yes
+    );
+    Ok(ConfirmAction::UninstallPackage {
+        manager,
+        package_name,
+        uninstall_preview_summary: Some(summary),
+    })
 }
 
 fn execute_palette_action(app: &mut AppState, store: &SqliteStore) -> Result<(), String> {
@@ -2796,7 +2923,7 @@ fn render_detail_pane(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState
                 }
                 lines.push(Line::from(""));
                 lines.push(Line::from(
-                    "Actions: [e] enable/disable  [i] install  [u] update  [x] uninstall",
+                    "Actions: [e] enable/disable  [i] install  [u] update  [x] uninstall  [X] uninstall+override",
                 ));
                 lines.push(Line::from(
                     "         [D] detect  [o/O] cycle executable  [m/M] cycle install method",
@@ -2966,7 +3093,9 @@ fn render_footer(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState) {
         }
         Section::Packages => "i install | u upgrade | x uninstall | p pin/unpin | K keg policy",
         Section::Tasks => "c cancel task",
-        Section::Managers => "e toggle | i install | u update | x uninstall | D detect | o/m cycle",
+        Section::Managers => {
+            "e toggle | i install | u update | x uninstall | X uninstall+override | D detect | o/m cycle"
+        }
         Section::Settings => {
             "e toggle selected bool | +/- auto-check frequency | K check self update | u update"
         }
@@ -3077,6 +3206,7 @@ fn render_help_overlay(frame: &mut ratatui::Frame<'_>, app: &AppState) {
         Line::from("             K cycle Homebrew keg policy override"),
         Line::from("  Tasks:     c cancel task"),
         Line::from("  Managers:  e enable/disable, i install, u update, x uninstall"),
+        Line::from("             X uninstall with unknown-provenance override"),
         Line::from("             D detect selected, o/O executable cycle, m/M method cycle"),
         Line::from("             [ and ] priority shift within authority"),
         Line::from("  Settings:  e toggle selected bool, +/- frequency"),
@@ -3437,8 +3567,10 @@ fn apply_filter_backspace(app: &mut AppState) {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppState, InputMode, apply_filter_backspace, next_choice_index, normalized_nonempty,
+        AppState, ConfirmAction, InputMode, apply_filter_backspace, next_choice_index,
+        normalized_nonempty,
     };
+    use crate::ManagerId;
 
     #[test]
     fn next_choice_index_wraps_forward() {
@@ -3485,5 +3617,53 @@ mod tests {
         app.filter_query.clear();
         apply_filter_backspace(&mut app);
         assert_eq!(app.input_mode, InputMode::Normal);
+    }
+
+    #[test]
+    fn manager_uninstall_confirm_prompt_includes_preview_summary() {
+        let prompt = ConfirmAction::ManagerMutation {
+            manager: ManagerId::Rustup,
+            subcommand: "uninstall",
+            allow_unknown_provenance: false,
+            uninstall_preview_summary: Some(
+                "[strategy=rustup_self provenance=rustup_init confidence=0.92 blast_radius=8]"
+                    .to_string(),
+            ),
+        }
+        .prompt();
+        assert!(prompt.contains("uninstall manager 'rustup' ?"));
+        assert!(prompt.contains("strategy=rustup_self"));
+        assert!(prompt.contains("blast_radius=8"));
+    }
+
+    #[test]
+    fn manager_uninstall_confirm_prompt_marks_unknown_override() {
+        let prompt = ConfirmAction::ManagerMutation {
+            manager: ManagerId::Rustup,
+            subcommand: "uninstall",
+            allow_unknown_provenance: true,
+            uninstall_preview_summary: Some(
+                "[strategy=homebrew_formula provenance=unknown confidence=0.49 blast_radius=9]"
+                    .to_string(),
+            ),
+        }
+        .prompt();
+        assert!(prompt.contains("unknown-provenance override"));
+    }
+
+    #[test]
+    fn package_uninstall_confirm_prompt_includes_preview_summary() {
+        let prompt = ConfirmAction::UninstallPackage {
+            manager: ManagerId::Rustup,
+            package_name: "stable".to_string(),
+            uninstall_preview_summary: Some(
+                "[manager_strategy=rustup_self manager_provenance=rustup_init blast_radius=5 requires_confirmation=true]"
+                    .to_string(),
+            ),
+        }
+        .prompt();
+        assert!(prompt.contains("Uninstall 'stable@rustup'?"));
+        assert!(prompt.contains("manager_strategy=rustup_self"));
+        assert!(prompt.contains("blast_radius=5"));
     }
 }

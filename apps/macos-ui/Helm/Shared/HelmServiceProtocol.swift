@@ -28,6 +28,7 @@ import Foundation
     func upgradePackage(managerId: String, packageName: String, withReply reply: @escaping (Int64) -> Void)
     func installPackage(managerId: String, packageName: String, withReply reply: @escaping (Int64) -> Void)
     func uninstallPackage(managerId: String, packageName: String, withReply reply: @escaping (Int64) -> Void)
+    func previewPackageUninstall(managerId: String, packageName: String, withReply reply: @escaping (String?) -> Void)
     func listPins(withReply reply: @escaping (String?) -> Void)
     func pinPackage(managerId: String, packageName: String, version: String?, withReply reply: @escaping (Bool) -> Void)
     func unpinPackage(managerId: String, packageName: String, withReply reply: @escaping (Bool) -> Void)
@@ -40,9 +41,19 @@ import Foundation
         idleTimeoutSeconds: Int64,
         withReply reply: @escaping (Bool) -> Void
     )
+    func previewManagerUninstall(
+        managerId: String,
+        allowUnknownProvenance: Bool,
+        withReply reply: @escaping (String?) -> Void
+    )
     func installManager(managerId: String, withReply reply: @escaping (Int64) -> Void)
     func updateManager(managerId: String, withReply reply: @escaping (Int64) -> Void)
     func uninstallManager(managerId: String, withReply reply: @escaping (Int64) -> Void)
+    func uninstallManagerWithOptions(
+        managerId: String,
+        allowUnknownProvenance: Bool,
+        withReply reply: @escaping (Int64) -> Void
+    )
     func resetDatabase(withReply reply: @escaping (Bool) -> Void)
     func takeLastErrorKey(withReply reply: @escaping (String?) -> Void)
 }

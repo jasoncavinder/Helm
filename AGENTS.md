@@ -188,6 +188,11 @@ Rules:
   - task
   - action
 - Prefer explicit errors over silent failure.
+- For provenance/evidence probes against external managers (for example `brew`, `pkgutil`):
+  - require bounded timeouts
+  - run lazily only when needed for ambiguity resolution
+  - cache results per detection run
+  - fail closed to conservative `Unknown` provenance when probes fail or time out
 
 ---
 

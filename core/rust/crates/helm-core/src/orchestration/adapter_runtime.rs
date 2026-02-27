@@ -9,6 +9,7 @@ use crate::adapters::{
     AdapterRequest, AdapterResponse, DetectRequest, ListInstalledRequest, ListOutdatedRequest,
     ManagerAdapter,
 };
+use crate::install_instances::collect_manager_install_instances;
 use crate::manager_policy::manager_enablement_eligibility;
 use crate::models::{
     Capability, CoreError, CoreErrorKind, DetectionInfo, ManagerAction, ManagerId,
@@ -1051,7 +1052,11 @@ async fn persist_detection_response(
     let response = response.clone();
 
     tokio::task::spawn_blocking(move || match response {
-        AdapterResponse::Detection(info) => detection_store.upsert_detection(manager, &info),
+        AdapterResponse::Detection(info) => {
+            detection_store.upsert_detection(manager, &info)?;
+            let instances = collect_manager_install_instances(manager, &info);
+            detection_store.replace_install_instances(manager, &instances)
+        }
         _ => Ok(()),
     })
     .await

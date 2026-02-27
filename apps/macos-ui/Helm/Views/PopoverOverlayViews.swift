@@ -4,11 +4,25 @@ import AppKit
 struct PopoverSearchOverlayContent: View {
     @ObservedObject private var core = HelmCore.shared
     @EnvironmentObject private var context: ControlCenterContext
+    @State private var loadingPackageUninstallPreviewIds: Set<String> = []
+    @State private var pendingPackageUninstall: PendingPackageUninstall?
     @Binding var popoverSearchQuery: String
     let searchResults: [ConsolidatedPackageItem]
     let onSyncSearchQuery: (String) -> Void
     let onOpenControlCenter: () -> Void
     let onClose: () -> Void
+
+    private struct PendingPackageUninstall: Identifiable {
+        let package: PackageItem
+        let preview: PackageUninstallPreview?
+
+        var id: String {
+            if let preview {
+                return "uninstall-\(package.id)-\(preview.blastRadiusScore)"
+            }
+            return "uninstall-\(package.id)-fallback"
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -132,6 +146,55 @@ struct PopoverSearchOverlayContent: View {
                 .helmPointer(enabled: !popoverSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
+        .alert(item: $pendingPackageUninstall) { pending in
+            let package = pending.package
+            if let preview = pending.preview {
+                let message = packageUninstallAlertMessage(package: package, preview: preview)
+                if preview.managerAutomationLevel == "read_only" {
+                    return Alert(
+                        title: Text(
+                            L10n.App.Packages.Alert.uninstallTitle.localized(
+                                with: ["package": package.name]
+                            )
+                        ),
+                        message: Text(message),
+                        dismissButton: .default(Text(L10n.Common.ok.localized))
+                    )
+                }
+                return Alert(
+                    title: Text(
+                        L10n.App.Packages.Alert.uninstallTitle.localized(
+                            with: ["package": package.name]
+                        )
+                    ),
+                    message: Text(message),
+                    primaryButton: .destructive(Text(L10n.Common.uninstall.localized)) {
+                        core.uninstallPackage(package)
+                    },
+                    secondaryButton: .cancel()
+                )
+            }
+
+            return Alert(
+                title: Text(
+                    L10n.App.Packages.Alert.uninstallTitle.localized(
+                        with: ["package": package.name]
+                    )
+                ),
+                message: Text(
+                    L10n.App.Packages.Alert.uninstallMessage.localized(
+                        with: [
+                            "package": package.name,
+                            "manager": localizedManagerDisplayName(package.managerId),
+                        ]
+                    )
+                ),
+                primaryButton: .destructive(Text(L10n.Common.uninstall.localized)) {
+                    core.uninstallPackage(package)
+                },
+                secondaryButton: .cancel()
+            )
+        }
     }
 
     @ViewBuilder
@@ -152,8 +215,9 @@ struct PopoverSearchOverlayContent: View {
                     symbol: "trash",
                     tooltip: L10n.App.Packages.Action.uninstall.localized,
                     enabled: !core.uninstallActionPackageIds.contains(package.id)
+                        && !loadingPackageUninstallPreviewIds.contains(package.id)
                 ) {
-                    core.uninstallPackage(package)
+                    requestPackageUninstallConfirmation(package)
                 }
             }
 
@@ -184,6 +248,39 @@ struct PopoverSearchOverlayContent: View {
                 }
             }
         }
+    }
+
+    private func requestPackageUninstallConfirmation(_ package: PackageItem) {
+        loadingPackageUninstallPreviewIds.insert(package.id)
+        core.previewPackageUninstall(package) { preview in
+            loadingPackageUninstallPreviewIds.remove(package.id)
+            pendingPackageUninstall = PendingPackageUninstall(package: package, preview: preview)
+        }
+    }
+
+    private func packageUninstallAlertMessage(
+        package: PackageItem,
+        preview: PackageUninstallPreview
+    ) -> String {
+        var sections = [
+            L10n.App.Packages.Alert.uninstallMessage.localized(
+                with: [
+                    "package": package.name,
+                    "manager": localizedManagerDisplayName(package.managerId),
+                ]
+            )
+        ]
+
+        if !preview.summaryLines.isEmpty {
+            sections.append(preview.summaryLines.joined(separator: "\n"))
+        }
+
+        if !preview.secondaryEffects.isEmpty {
+            let effects = preview.secondaryEffects.prefix(3).map { "• \($0)" }
+            sections.append(effects.joined(separator: "\n"))
+        }
+
+        return sections.joined(separator: "\n\n")
     }
 
     private func iconActionButton(
