@@ -179,24 +179,28 @@ extension HelmCore {
             && (managerStatuses[package.managerId]?.supportsPackageUpgrade ?? false)
             && !package.pinned
             && isManagerEnabled(package.managerId)
+            && !isManagerUninstalling(package.managerId)
     }
 
     func canInstallPackage(_ package: PackageItem) -> Bool {
         package.status == .available
             && (managerStatuses[package.managerId]?.supportsPackageInstall ?? false)
             && isManagerEnabled(package.managerId)
+            && !isManagerUninstalling(package.managerId)
     }
 
     func canUninstallPackage(_ package: PackageItem) -> Bool {
         package.status != .available
             && (managerStatuses[package.managerId]?.supportsPackageUninstall ?? false)
             && isManagerEnabled(package.managerId)
+            && !isManagerUninstalling(package.managerId)
     }
 
     func canPinPackage(_ package: PackageItem) -> Bool {
         package.status != .available
             && package.managerId == "homebrew_formula"
             && isManagerEnabled(package.managerId)
+            && !isManagerUninstalling(package.managerId)
     }
 
     func supportsRemoteSearch(managerId: String) -> Bool {
@@ -205,6 +209,16 @@ extension HelmCore {
 
     func isManagerEnabled(_ managerId: String) -> Bool {
         managerStatuses[managerId]?.enabled ?? true
+    }
+
+    func isManagerUninstalling(_ managerId: String) -> Bool {
+        if let taskId = managerActionTaskByManager[managerId] {
+            let taskType = managerActionTaskTypes[taskId]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if taskType == "manager_uninstall" {
+                return true
+            }
+        }
+        return false
     }
 
     func syncManagerOperations(from coreTasks: [CoreTaskRecord]) {
@@ -216,11 +230,13 @@ extension HelmCore {
             guard let status = statusById[taskId] else {
                 managerOperations.removeValue(forKey: managerId)
                 managerActionTaskByManager.removeValue(forKey: managerId)
+                managerActionTaskTypes.removeValue(forKey: taskId)
                 continue
             }
             if !inFlightStates.contains(status) {
                 managerOperations.removeValue(forKey: managerId)
                 managerActionTaskByManager.removeValue(forKey: managerId)
+                managerActionTaskTypes.removeValue(forKey: taskId)
             }
         }
     }

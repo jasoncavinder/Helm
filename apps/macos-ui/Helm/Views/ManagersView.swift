@@ -46,6 +46,7 @@ struct ManagersSectionView: View {
                                     outdatedCount: managersState.outdatedCountByManager[manager.id, default: 0],
                                     packageCount: managersState.installedCountByManager[manager.id, default: 0],
                                     operationStatus: managersState.managerOperationsById[manager.id],
+                                    isManagerUninstalling: core.isManagerUninstalling(manager.id),
                                     isSelected: context.selectedManagerId == manager.id,
                                     onSelect: {
                                         context.selectedManagerId = manager.id
@@ -103,6 +104,7 @@ private struct ManagerSectionRow: View {
     let outdatedCount: Int
     let packageCount: Int
     let operationStatus: String?
+    let isManagerUninstalling: Bool
     let isSelected: Bool
     let onSelect: () -> Void
 
@@ -232,7 +234,7 @@ private struct ManagerSectionRow: View {
                     .toggleStyle(.switch)
                     .labelsHidden()
                     .scaleEffect(0.75)
-                    .disabled(enableToggleDisabled)
+                    .disabled(enableToggleDisabled || isManagerUninstalling)
                 }
             }
 
@@ -241,8 +243,8 @@ private struct ManagerSectionRow: View {
                     Button(L10n.Common.install.localized) {
                         prepareInstallMethodSelection()
                     }
-                    .disabled(installSubmissionInFlight || !hasAllowedInstallMethodOption)
-                    .helmPointer()
+                    .disabled(installSubmissionInFlight || !hasAllowedInstallMethodOption || isManagerUninstalling)
+                    .helmPointer(enabled: !isManagerUninstalling)
                 }
 
                 Spacer()
@@ -251,7 +253,8 @@ private struct ManagerSectionRow: View {
                     Button(L10n.App.Settings.Action.upgradeAll.localized) {
                         core.upgradeAllPackages(forManagerId: manager.id)
                     }
-                    .helmPointer()
+                    .disabled(isManagerUninstalling)
+                    .helmPointer(enabled: !isManagerUninstalling)
                 }
             }
             .font(.caption)

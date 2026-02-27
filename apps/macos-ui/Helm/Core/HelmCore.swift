@@ -610,6 +610,7 @@ final class HelmCore: ObservableObject {
     var activeRemoteSearchTaskIds: Set<Int64> = []
     var managerActionTaskDescriptions: [UInt64: String] = [:]
     var managerActionTaskByManager: [String: UInt64] = [:]
+    var managerActionTaskTypes: [UInt64: String] = [:]
     var upgradeActionTaskByPackage: [String: UInt64] = [:]
     var installActionTaskByPackage: [String: UInt64] = [:]
     var uninstallActionTaskByPackage: [String: UInt64] = [:]

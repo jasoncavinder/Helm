@@ -1272,6 +1272,10 @@ private struct InspectorManagerDetailView: View {
         return false
     }
 
+    private var managerIsUninstalling: Bool {
+        core.isManagerUninstalling(manager.id)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
@@ -1301,6 +1305,8 @@ private struct InspectorManagerDetailView: View {
                     .font(.caption)
                     .foregroundColor(outdatedCount == 0 ? HelmTheme.textSecondary : HelmTheme.stateAttention)
             }
+
+            managerActionRow
 
             InspectorField(label: L10n.App.Inspector.category.localized) {
                 Text(localizedCategoryName(manager.category))
@@ -1469,6 +1475,7 @@ private struct InspectorManagerDetailView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .menuStyle(.borderlessButton)
+                    .disabled(managerIsUninstalling)
                 }
 
             }
@@ -1499,6 +1506,7 @@ private struct InspectorManagerDetailView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .menuStyle(.borderlessButton)
+                .disabled(managerIsUninstalling)
             }
 
             InspectorField(label: L10n.App.Inspector.timeoutHard.localized) {
@@ -1530,6 +1538,7 @@ private struct InspectorManagerDetailView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .menuStyle(.borderlessButton)
+                .disabled(managerIsUninstalling)
             }
 
             InspectorField(label: L10n.App.Inspector.timeoutIdle.localized) {
@@ -1561,6 +1570,7 @@ private struct InspectorManagerDetailView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .menuStyle(.borderlessButton)
+                .disabled(managerIsUninstalling)
             }
 
             InspectorField(label: L10n.App.Inspector.capabilities.localized) {
@@ -1572,20 +1582,16 @@ private struct InspectorManagerDetailView: View {
                 }
             }
 
-            Group {
-                managerActionRow
-
-                if managerHealthIsError {
-                    if let failedTask = latestFailedTask {
-                        Button(L10n.App.Inspector.viewDiagnostics.localized) {
-                            context.selectedTaskId = failedTask.id
-                            context.selectedPackageId = nil
-                            context.selectedUpgradePlanStepId = nil
-                        }
-                        .font(.caption)
-                        .buttonStyle(HelmSecondaryButtonStyle())
-                        .helmPointer()
+            if managerHealthIsError {
+                if let failedTask = latestFailedTask {
+                    Button(L10n.App.Inspector.viewDiagnostics.localized) {
+                        context.selectedTaskId = failedTask.id
+                        context.selectedPackageId = nil
+                        context.selectedUpgradePlanStepId = nil
                     }
+                    .font(.caption)
+                    .buttonStyle(HelmSecondaryButtonStyle())
+                    .helmPointer()
                 }
             }
         }
@@ -1643,7 +1649,7 @@ private struct InspectorManagerDetailView: View {
                 managerActionButton(
                     symbol: "arrow.up.circle",
                     tooltip: L10n.Common.update.localized,
-                    enabled: true
+                    enabled: !managerIsUninstalling
                 ) {
                     confirmAction = .update
                 }
@@ -1653,7 +1659,7 @@ private struct InspectorManagerDetailView: View {
                 managerActionButton(
                     symbol: "trash",
                     tooltip: L10n.Common.uninstall.localized,
-                    enabled: !loadingManagerUninstallPreview
+                    enabled: !loadingManagerUninstallPreview && !managerIsUninstalling
                 ) {
                     requestManagerUninstallConfirmation(allowUnknownProvenance: false)
                 }
@@ -1662,7 +1668,7 @@ private struct InspectorManagerDetailView: View {
             managerActionButton(
                 symbol: "shippingbox",
                 tooltip: L10n.App.Managers.Action.viewPackages.localized,
-                enabled: packageCount > 0 && enabled
+                enabled: packageCount > 0 && enabled && !managerIsUninstalling
             ) {
                 onViewPackages()
             }

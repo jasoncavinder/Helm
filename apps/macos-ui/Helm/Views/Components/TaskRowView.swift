@@ -110,32 +110,31 @@ private struct TaskRowLiveOutputView: View {
     @ObservedObject private var core = HelmCore.shared
     @EnvironmentObject private var context: ControlCenterContext
     private static let outputAnchorId = "task-output-bottom"
+    private static let taskLogFetchLimit = 80
+    private static let timestampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .medium
+        return formatter
+    }()
     private let refreshTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
     let task: TaskItem
     let outputSurface: TaskOutputSurface
 
-    @State private var isLoadingOutput = false
-    @State private var taskOutputLoadFailed = false
-    @State private var taskOutputRecord: CoreTaskOutputRecord?
-    @State private var lastOutputRefreshAt: Date = .distantPast
+    @State private var isLoadingTaskLogs = false
+    @State private var taskLogsLoadFailed = false
+    @State private var taskLogRecords: [CoreTaskLogRecord] = []
+    @State private var lastLogsRefreshAt: Date = .distantPast
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(L10n.App.Inspector.taskCommand.localized)
-                .font(.caption.weight(.semibold))
-                .foregroundColor(.secondary)
-
-            Text(commandText)
-                .font(.system(size: 12, weight: .regular, design: .monospaced))
-                .foregroundColor(commandIsUnavailable ? .secondary : .primary)
-
-            Text(L10n.App.Inspector.taskOutputStdout.localized)
+            Text(L10n.App.Inspector.taskOutputLogs.localized)
                 .font(.caption.weight(.semibold))
                 .foregroundColor(.secondary)
 
             ScrollViewReader { proxy in
                 ScrollView {
-                    Text(outputText)
+                    Text(logOutputText)
                         .font(.system(size: 12, weight: .regular, design: .monospaced))
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Color.clear
@@ -155,27 +154,27 @@ private struct TaskRowLiveOutputView: View {
                 .onAppear {
                     scrollToBottom(using: proxy)
                 }
-                .onChange(of: outputText) { _ in
+                .onChange(of: logOutputText) { _ in
                     scrollToBottom(using: proxy)
                 }
             }
         }
         .onAppear {
-            loadTaskOutput(force: true)
+            loadTaskLogs(force: true)
         }
         .onChange(of: context.selectedSection) { _ in
-            if shouldPollOutput {
-                loadTaskOutput(force: true)
+            if shouldPollLogs {
+                loadTaskLogs(force: true)
             }
         }
         .onReceive(refreshTimer) { _ in
             guard task.isRunning else { return }
-            guard shouldPollOutput else { return }
-            loadTaskOutput(force: false)
+            guard shouldPollLogs else { return }
+            loadTaskLogs(force: false)
         }
     }
 
-    private var shouldPollOutput: Bool {
+    private var shouldPollLogs: Bool {
         switch outputSurface {
         case .popover:
             return true
@@ -189,86 +188,67 @@ private struct TaskRowLiveOutputView: View {
         Int64(task.id) != nil
     }
 
-    private var commandText: String {
-        if let command = taskOutputRecord?.command?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !command.isEmpty {
-            return command
+    private var sortedTaskLogRecords: [CoreTaskLogRecord] {
+        taskLogRecords.sorted { lhs, rhs in
+            if lhs.createdAtUnix == rhs.createdAtUnix {
+                return lhs.id < rhs.id
+            }
+            return lhs.createdAtUnix < rhs.createdAtUnix
         }
-        return core.diagnosticCommandHint(for: task) ?? L10n.App.Inspector.taskCommandUnavailable.localized
     }
 
-    private var hasCapturedCommand: Bool {
-        if let command = taskOutputRecord?.command?.trimmingCharacters(in: .whitespacesAndNewlines) {
-            return !command.isEmpty
+    private var logOutputText: String {
+        if let logsText = taskLogsText(), !logsText.isEmpty {
+            return logsText
         }
-        return false
-    }
-
-    private var hasDiagnosticCommandHint: Bool {
-        core.diagnosticCommandHint(for: task) != nil
-    }
-
-    private var commandIsUnavailable: Bool {
-        commandText == L10n.App.Inspector.taskCommandUnavailable.localized
-    }
-
-    private var outputText: String {
-        if let output = taskOutputText(), !output.isEmpty {
-            return output
-        }
-        if isLoadingOutput {
+        if isLoadingTaskLogs {
             return L10n.App.Inspector.taskOutputLoading.localized
         }
-        if task.isRunning, hasCapturedCommand || hasDiagnosticCommandHint {
-            return L10n.App.Inspector.taskOutputLoading.localized
-        }
-        if taskOutputLoadFailed {
+        if taskLogsLoadFailed {
             return L10n.App.Inspector.taskOutputLoadFailed.localized
         }
-        return L10n.App.Inspector.taskOutputUnavailable.localized
+        return L10n.App.Inspector.taskLogsEmpty.localized
     }
 
-    private func taskOutputText() -> String? {
-        var segments: [String] = []
-
-        if let stdout = taskOutputRecord?.stdout?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !stdout.isEmpty {
-            segments.append("\(L10n.App.Inspector.taskOutputStdout.localized):\n\(stdout)")
-        }
-
-        if let stderr = taskOutputRecord?.stderr?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !stderr.isEmpty {
-            segments.append("\(L10n.App.Inspector.taskOutputStderr.localized):\n\(stderr)")
-        }
-
-        guard !segments.isEmpty else { return nil }
-        return segments.joined(separator: "\n\n")
+    private func taskLogsText() -> String? {
+        guard !sortedTaskLogRecords.isEmpty else { return nil }
+        return sortedTaskLogRecords
+            .map(formatTaskLogLine)
+            .joined(separator: "\n")
     }
 
-    private func loadTaskOutput(force: Bool) {
+    private func formatTaskLogLine(_ entry: CoreTaskLogRecord) -> String {
+        let timestamp = Self.timestampFormatter.string(from: entry.createdAtDate)
+        let level = entry.level.uppercased()
+        let status = entry.status?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let statusSegment = status.isEmpty ? "" : " [\(status.uppercased())]"
+        return "[\(timestamp)] [\(level)]\(statusSegment) \(entry.message)"
+    }
+
+    private func loadTaskLogs(force: Bool) {
         guard hasNumericTaskId else { return }
         let now = Date()
-        if !force && now.timeIntervalSince(lastOutputRefreshAt) < 1.0 {
+        if !force && now.timeIntervalSince(lastLogsRefreshAt) < 1.0 {
             return
         }
-        if isLoadingOutput {
+        if isLoadingTaskLogs {
             return
         }
-        if taskOutputRecord != nil && !force && !task.isRunning {
+        if !task.isRunning && !force && !taskLogRecords.isEmpty {
             return
         }
 
-        isLoadingOutput = true
-        lastOutputRefreshAt = now
-        taskOutputLoadFailed = false
-        core.fetchTaskOutput(taskId: task.id) { output in
+        isLoadingTaskLogs = true
+        lastLogsRefreshAt = now
+        taskLogsLoadFailed = false
+        core.fetchTaskLogs(taskId: task.id, limit: Self.taskLogFetchLimit) { logs in
             DispatchQueue.main.async {
-                self.isLoadingOutput = false
-                if let output {
-                    self.taskOutputRecord = output
-                    self.taskOutputLoadFailed = false
-                } else if self.taskOutputRecord == nil {
-                    self.taskOutputLoadFailed = true
+                self.isLoadingTaskLogs = false
+                if let logs {
+                    self.taskLogRecords = logs
+                    self.taskLogsLoadFailed = false
+                } else if self.taskLogRecords.isEmpty {
+                    self.taskLogsLoadFailed = true
                 }
             }
         }

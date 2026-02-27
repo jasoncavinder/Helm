@@ -111,6 +111,7 @@ extension HelmCore {
                 self.registerManagerActionTask(
                     managerId: package.managerId,
                     taskId: UInt64(taskId),
+                    taskType: "package_upgrade",
                     description: self.upgradeActionDescription(for: package),
                     inProgressText: L10n.App.Managers.Operation.upgrading.localized
                 )
@@ -493,6 +494,7 @@ extension HelmCore {
     }
 
     func pinPackage(_ package: PackageItem) {
+        guard canPinPackage(package), !pinActionPackageIds.contains(package.id) else { return }
         DispatchQueue.main.async {
             self.pinActionPackageIds.insert(package.id)
         }
@@ -531,6 +533,7 @@ extension HelmCore {
     }
 
     func unpinPackage(_ package: PackageItem) {
+        guard canPinPackage(package), !pinActionPackageIds.contains(package.id) else { return }
         DispatchQueue.main.async {
             self.pinActionPackageIds.insert(package.id)
         }
@@ -568,6 +571,10 @@ extension HelmCore {
     }
 
     func setManagerEnabled(_ managerId: String, enabled: Bool) {
+        if isManagerUninstalling(managerId) {
+            return
+        }
+
         if enabled,
            let status = managerStatuses[managerId],
            status.isEligible == false
@@ -673,6 +680,7 @@ extension HelmCore {
         managerOperations.removeValue(forKey: managerId)
         if let taskId = managerActionTaskByManager.removeValue(forKey: managerId) {
             managerActionTaskDescriptions.removeValue(forKey: taskId)
+            managerActionTaskTypes.removeValue(forKey: taskId)
         }
 
         upgradeActionTaskByPackage = upgradeActionTaskByPackage.filter { !$0.key.hasPrefix(packageIdPrefix) }
@@ -709,6 +717,9 @@ extension HelmCore {
     }
 
     func setManagerSelectedExecutablePath(_ managerId: String, selectedPath: String?) {
+        if isManagerUninstalling(managerId) {
+            return
+        }
         service()?.setManagerSelectedExecutablePath(managerId: managerId, selectedPath: selectedPath) { [weak self] success in
             guard let self else { return }
             if !success {
@@ -730,6 +741,12 @@ extension HelmCore {
         installMethod: String?,
         completion: ((Bool) -> Void)? = nil
     ) {
+        if isManagerUninstalling(managerId) {
+            DispatchQueue.main.async {
+                completion?(false)
+            }
+            return
+        }
         service()?.setManagerInstallMethod(managerId: managerId, installMethod: installMethod) { [weak self] success in
             guard let self else { return }
             if !success {
@@ -757,6 +774,9 @@ extension HelmCore {
         hardTimeoutSeconds: Int?,
         idleTimeoutSeconds: Int?
     ) {
+        if isManagerUninstalling(managerId) {
+            return
+        }
         let hardValue = Int64(hardTimeoutSeconds ?? 0)
         let idleValue = Int64(idleTimeoutSeconds ?? 0)
         service()?.setManagerTimeoutProfile(
@@ -782,6 +802,9 @@ extension HelmCore {
     }
 
     func installManager(_ managerId: String) {
+        if isManagerUninstalling(managerId) {
+            return
+        }
         DispatchQueue.main.async {
             self.managerOperations[managerId] = L10n.App.Managers.Operation.startingInstall.localized
         }
@@ -822,6 +845,7 @@ extension HelmCore {
                 self.registerManagerActionTask(
                     managerId: managerId,
                     taskId: UInt64(taskId),
+                    taskType: "manager_install",
                     description: self.managerActionDescription(action: "Install", managerId: managerId),
                     inProgressText: L10n.App.Managers.Operation.installing.localized
                 )
@@ -830,6 +854,9 @@ extension HelmCore {
     }
 
     func updateManager(_ managerId: String) {
+        if isManagerUninstalling(managerId) {
+            return
+        }
         DispatchQueue.main.async {
             self.managerOperations[managerId] = L10n.App.Managers.Operation.startingUpdate.localized
         }
@@ -870,6 +897,7 @@ extension HelmCore {
                 self.registerManagerActionTask(
                     managerId: managerId,
                     taskId: UInt64(taskId),
+                    taskType: "manager_update",
                     description: self.managerActionDescription(action: "Update", managerId: managerId),
                     inProgressText: L10n.App.Managers.Operation.updating.localized
                 )
@@ -989,6 +1017,9 @@ extension HelmCore {
     }
 
     func uninstallManager(_ managerId: String, allowUnknownProvenance: Bool = false) {
+        if isManagerUninstalling(managerId) {
+            return
+        }
         DispatchQueue.main.async {
             self.managerOperations[managerId] = L10n.App.Managers.Operation.startingUninstall.localized
         }
@@ -1032,6 +1063,7 @@ extension HelmCore {
                 self.registerManagerActionTask(
                     managerId: managerId,
                     taskId: UInt64(taskId),
+                    taskType: "manager_uninstall",
                     description: self.managerActionDescription(action: "Uninstall", managerId: managerId),
                     inProgressText: L10n.App.Managers.Operation.uninstalling.localized
                 )
@@ -1042,11 +1074,13 @@ extension HelmCore {
     func registerManagerActionTask(
         managerId: String,
         taskId: UInt64,
+        taskType: String,
         description: String,
         inProgressText: String
     ) {
         managerActionTaskDescriptions[taskId] = description
         managerActionTaskByManager[managerId] = taskId
+        managerActionTaskTypes[taskId] = taskType
         managerOperations[managerId] = inProgressText
 
         let idString = "\(taskId)"
