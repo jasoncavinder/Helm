@@ -435,7 +435,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .updateAndUninstall,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(
                     .rustupInstaller,
