@@ -121,6 +121,10 @@ private struct TaskRowLiveOutputView: View {
     let task: TaskItem
     let outputSurface: TaskOutputSurface
 
+    @State private var isLoadingTaskOutput = false
+    @State private var taskOutputLoadFailed = false
+    @State private var taskOutputRecord: CoreTaskOutputRecord?
+    @State private var lastOutputRefreshAt: Date = .distantPast
     @State private var isLoadingTaskLogs = false
     @State private var taskLogsLoadFailed = false
     @State private var taskLogRecords: [CoreTaskLogRecord] = []
@@ -134,7 +138,7 @@ private struct TaskRowLiveOutputView: View {
 
             ScrollViewReader { proxy in
                 ScrollView {
-                    Text(logOutputText)
+                    Text(liveOutputText)
                         .font(.system(size: 12, weight: .regular, design: .monospaced))
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Color.clear
@@ -154,22 +158,25 @@ private struct TaskRowLiveOutputView: View {
                 .onAppear {
                     scrollToBottom(using: proxy)
                 }
-                .onChange(of: logOutputText) { _ in
+                .onChange(of: liveOutputText) { _ in
                     scrollToBottom(using: proxy)
                 }
             }
         }
         .onAppear {
+            loadTaskOutput(force: true)
             loadTaskLogs(force: true)
         }
         .onChange(of: context.selectedSection) { _ in
             if shouldPollLogs {
+                loadTaskOutput(force: true)
                 loadTaskLogs(force: true)
             }
         }
         .onReceive(refreshTimer) { _ in
             guard task.isRunning else { return }
             guard shouldPollLogs else { return }
+            loadTaskOutput(force: false)
             loadTaskLogs(force: false)
         }
     }
@@ -197,17 +204,53 @@ private struct TaskRowLiveOutputView: View {
         }
     }
 
-    private var logOutputText: String {
-        if let logsText = taskLogsText(), !logsText.isEmpty {
-            return logsText
+    private var liveOutputText: String {
+        let sections = renderedOutputSections()
+        if !sections.isEmpty {
+            return sections.joined(separator: "\n\n")
         }
-        if isLoadingTaskLogs {
+        if isLoadingTaskOutput || isLoadingTaskLogs {
             return L10n.App.Inspector.taskOutputLoading.localized
         }
-        if taskLogsLoadFailed {
+        if taskOutputLoadFailed || taskLogsLoadFailed {
             return L10n.App.Inspector.taskOutputLoadFailed.localized
         }
         return L10n.App.Inspector.taskLogsEmpty.localized
+    }
+
+    private func renderedOutputSections() -> [String] {
+        var sections: [String] = []
+        if let logsText = taskLogsText(), !logsText.isEmpty {
+            sections.append(formattedSection(
+                title: L10n.App.Inspector.taskOutputLogs.localized.uppercased(),
+                body: logsText
+            ))
+        }
+        if let stderrText = normalizedOutputText(taskOutputRecord?.stderr) {
+            sections.append(formattedSection(
+                title: L10n.App.Inspector.taskOutputStderr.localized.uppercased(),
+                body: stderrText
+            ))
+        }
+        if let stdoutText = normalizedOutputText(taskOutputRecord?.stdout) {
+            sections.append(formattedSection(
+                title: L10n.App.Inspector.taskOutputStdout.localized.uppercased(),
+                body: stdoutText
+            ))
+        }
+        return sections
+    }
+
+    private func formattedSection(title: String, body: String) -> String {
+        "[\(title)]\n\(body)"
+    }
+
+    private func normalizedOutputText(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trimmed, !trimmed.isEmpty {
+            return trimmed
+        }
+        return nil
     }
 
     private func taskLogsText() -> String? {
@@ -223,6 +266,35 @@ private struct TaskRowLiveOutputView: View {
         let status = entry.status?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let statusSegment = status.isEmpty ? "" : " [\(status.uppercased())]"
         return "[\(timestamp)] [\(level)]\(statusSegment) \(entry.message)"
+    }
+
+    private func loadTaskOutput(force: Bool) {
+        guard hasNumericTaskId else { return }
+        let now = Date()
+        if !force && now.timeIntervalSince(lastOutputRefreshAt) < 1.0 {
+            return
+        }
+        if isLoadingTaskOutput {
+            return
+        }
+        if !task.isRunning && !force && taskOutputRecord != nil {
+            return
+        }
+
+        isLoadingTaskOutput = true
+        lastOutputRefreshAt = now
+        taskOutputLoadFailed = false
+        core.fetchTaskOutput(taskId: task.id) { output in
+            DispatchQueue.main.async {
+                self.isLoadingTaskOutput = false
+                if let output {
+                    self.taskOutputRecord = output
+                    self.taskOutputLoadFailed = false
+                } else if self.taskOutputRecord == nil {
+                    self.taskOutputLoadFailed = true
+                }
+            }
+        }
     }
 
     private func loadTaskLogs(force: Bool) {

@@ -30,7 +30,8 @@ const RUSTUP_COMMAND: &str = "rustup";
 const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
 const LIST_TIMEOUT: Duration = Duration::from_secs(60);
 
-const UNINSTALL_TIMEOUT: Duration = Duration::from_secs(60);
+const UNINSTALL_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+const UNINSTALL_IDLE_TIMEOUT: Duration = Duration::from_secs(180);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RustupDetectOutput {
@@ -170,6 +171,7 @@ pub fn rustup_self_uninstall_request(task_id: Option<TaskId>) -> ProcessSpawnReq
         CommandSpec::new(RUSTUP_COMMAND).args(["self", "uninstall", "-y"]),
         UNINSTALL_TIMEOUT,
     )
+    .idle_timeout(UNINSTALL_IDLE_TIMEOUT)
 }
 
 pub fn rustup_self_update_request(task_id: Option<TaskId>) -> ProcessSpawnRequest {
@@ -323,8 +325,9 @@ mod tests {
     use crate::models::{CoreErrorKind, ManagerAction, ManagerId, TaskId, TaskType};
 
     use super::{
-        RustupAdapter, RustupDetectOutput, RustupSource, parse_rustup_check, parse_rustup_version,
-        parse_toolchain_list, rustup_check_request, rustup_detect_request,
+        RustupAdapter, RustupDetectOutput, RustupSource, UNINSTALL_IDLE_TIMEOUT,
+        UNINSTALL_TIMEOUT, parse_rustup_check, parse_rustup_version, parse_toolchain_list,
+        rustup_check_request, rustup_detect_request, rustup_self_uninstall_request,
         rustup_self_update_request, rustup_toolchain_list_request, rustup_toolchain_update_request,
     };
 
@@ -520,6 +523,22 @@ mod tests {
         );
         assert_eq!(request.action, ManagerAction::Upgrade);
         assert_eq!(request.task_type, TaskType::Upgrade);
+    }
+
+    #[test]
+    fn self_uninstall_request_sets_hard_and_idle_timeouts() {
+        let request = rustup_self_uninstall_request(Some(TaskId(7)));
+        assert_eq!(request.task_id, Some(TaskId(7)));
+        assert_eq!(
+            request.command.args,
+            vec![
+                "self".to_string(),
+                "uninstall".to_string(),
+                "-y".to_string()
+            ]
+        );
+        assert_eq!(request.timeout, Some(UNINSTALL_TIMEOUT));
+        assert_eq!(request.idle_timeout, Some(UNINSTALL_IDLE_TIMEOUT));
     }
 
     #[test]

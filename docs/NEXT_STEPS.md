@@ -251,6 +251,10 @@ Current checkpoint:
     - added orchestration diagnostics for request/response waits (start timestamp, effective timeout derived via `min(policy_timeout, orchestration_cap)`, retry attempts, terminal status, cancellation path)
     - removed remaining Rust lint blockers (`clippy::collapsible_if` in Homebrew adapter) and added timeout-orphan regression coverage to ensure child process-group cleanup on timeout
     - revalidated rustup reliability with repeated stress runs and restored the Rust release-gate commands to green (`cargo clippy --workspace -- -D warnings`, `cargo test --workspace`)
+  - post-`v0.17.7` task-progress monitoring + live-feedback follow-up delivered on `dev`:
+    - process idle-timeout tracking now resets on stdout/stderr output and sampled process CPU progress (`proc_pid_rusage` on macOS, `/proc/<pid>/stat` on Linux) so silent-but-active tasks are less likely to false-timeout
+    - rustup self-uninstall now runs with explicit timeout profile tuning (15m hard timeout, 180s idle timeout)
+    - Control Center running-task dropdown now polls and shows both Helm-generated task logs and task stdout/stderr output in a combined live stream
   - GitHub governance hardening delivered on `dev`:
     - branch rulesets now explicitly enforce `main`/`dev`/`docs`/`web` with branch-specific required checks
     - `Policy Gate` now validates PR base/head/scope policy for all protected branches

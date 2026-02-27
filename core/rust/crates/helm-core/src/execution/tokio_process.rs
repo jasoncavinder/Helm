@@ -1,5 +1,7 @@
 use std::fs;
 use std::io::Write;
+#[cfg(target_os = "macos")]
+use std::mem::MaybeUninit;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime};
@@ -108,6 +110,8 @@ struct PreparedSpawnCommand {
 static DEFAULT_SUDO_ASKPASS_PATH: OnceLock<Result<PathBuf, String>> = OnceLock::new();
 const HELM_SUDO_ASKPASS_ENV: &str = "HELM_SUDO_ASKPASS";
 const HELM_SUDO_ASKPASS_ALLOW_OVERRIDE_ENV: &str = "HELM_SUDO_ASKPASS_ALLOW_OVERRIDE";
+const WAIT_LOOP_POLL_INTERVAL: Duration = Duration::from_millis(200);
+const CPU_PROGRESS_SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
 
 fn prepare_command_for_spawn(
     request: &ProcessSpawnRequest,
@@ -413,6 +417,142 @@ struct TokioRunningProcess {
     path_snippet: Option<String>,
 }
 
+struct ProcessCpuProgressProbe {
+    pid: Option<u32>,
+    last_sampled_total_cpu: Option<Duration>,
+    last_sampled_at: Option<tokio::time::Instant>,
+}
+
+impl ProcessCpuProgressProbe {
+    fn new(pid: Option<u32>, now: tokio::time::Instant) -> Self {
+        Self {
+            pid,
+            last_sampled_total_cpu: pid.and_then(sample_process_total_cpu_time),
+            last_sampled_at: Some(now),
+        }
+    }
+
+    fn observe_progress(&mut self, now: tokio::time::Instant) -> bool {
+        let Some(pid) = self.pid else {
+            return false;
+        };
+        if let Some(last_sampled_at) = self.last_sampled_at
+            && now.duration_since(last_sampled_at) < CPU_PROGRESS_SAMPLE_INTERVAL
+        {
+            return false;
+        }
+        self.last_sampled_at = Some(now);
+        let Some(total_cpu) = sample_process_total_cpu_time(pid) else {
+            return false;
+        };
+        let has_progress = self
+            .last_sampled_total_cpu
+            .is_some_and(|previous| total_cpu > previous);
+        self.last_sampled_total_cpu = Some(total_cpu);
+        has_progress
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[repr(C)]
+struct RusageInfoV2 {
+    _ri_uuid: [u8; 16],
+    ri_user_time: u64,
+    ri_system_time: u64,
+    _ri_pkg_idle_wkups: u64,
+    _ri_interrupt_wkups: u64,
+    _ri_pageins: u64,
+    _ri_wired_size: u64,
+    _ri_resident_size: u64,
+    _ri_phys_footprint: u64,
+    _ri_proc_start_abstime: u64,
+    _ri_proc_exit_abstime: u64,
+    ri_child_user_time: u64,
+    ri_child_system_time: u64,
+    _ri_child_pkg_idle_wkups: u64,
+    _ri_child_interrupt_wkups: u64,
+    _ri_child_pageins: u64,
+    _ri_child_elapsed_abstime: u64,
+    _ri_diskio_bytesread: u64,
+    _ri_diskio_byteswritten: u64,
+}
+
+#[cfg(target_os = "macos")]
+unsafe extern "C" {
+    fn proc_pid_rusage(
+        pid: libc::c_int,
+        flavor: libc::c_int,
+        buffer: *mut libc::c_void,
+    ) -> libc::c_int;
+}
+
+#[cfg(target_os = "macos")]
+fn sample_process_total_cpu_time(pid: u32) -> Option<Duration> {
+    let mut info = MaybeUninit::<RusageInfoV2>::zeroed();
+    let result = unsafe {
+        proc_pid_rusage(
+            pid as libc::c_int,
+            libc::RUSAGE_INFO_V2,
+            info.as_mut_ptr().cast::<libc::c_void>(),
+        )
+    };
+    if result != 0 {
+        return None;
+    }
+    let info = unsafe { info.assume_init() };
+    let total_nanos = info
+        .ri_user_time
+        .saturating_add(info.ri_system_time)
+        .saturating_add(info.ri_child_user_time)
+        .saturating_add(info.ri_child_system_time);
+    Some(Duration::from_nanos(total_nanos))
+}
+
+#[cfg(target_os = "linux")]
+fn sample_process_total_cpu_time(pid: u32) -> Option<Duration> {
+    let stat_path = format!("/proc/{pid}/stat");
+    let stat_raw = fs::read_to_string(stat_path).ok()?;
+    let close_paren_index = stat_raw.rfind(')')?;
+    let stat_fields: Vec<&str> = stat_raw
+        .get((close_paren_index + 2)..)?
+        .split_whitespace()
+        .collect();
+    if stat_fields.len() <= 14 {
+        return None;
+    }
+
+    let utime = stat_fields.get(11)?.parse::<u64>().ok()?;
+    let stime = stat_fields.get(12)?.parse::<u64>().ok()?;
+    let cutime = stat_fields
+        .get(13)?
+        .parse::<i64>()
+        .ok()
+        .map(|value| value.max(0) as u64)?;
+    let cstime = stat_fields
+        .get(14)?
+        .parse::<i64>()
+        .ok()
+        .map(|value| value.max(0) as u64)?;
+    let ticks = utime
+        .saturating_add(stime)
+        .saturating_add(cutime)
+        .saturating_add(cstime);
+    let ticks_per_second = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
+    if ticks_per_second <= 0 {
+        return None;
+    }
+    let ticks_per_second = ticks_per_second as u64;
+    let total_nanos = ticks
+        .saturating_mul(1_000_000_000)
+        .checked_div(ticks_per_second)?;
+    Some(Duration::from_nanos(total_nanos))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn sample_process_total_cpu_time(_pid: u32) -> Option<Duration> {
+    None
+}
+
 impl RunningProcess for TokioRunningProcess {
     fn pid(&self) -> Option<u32> {
         self.pid
@@ -562,6 +702,8 @@ impl RunningProcess for TokioRunningProcess {
             let mut wait_future = Box::pin(child.wait());
             let started_instant = tokio::time::Instant::now();
             let mut last_activity_instant = started_instant;
+            let mut last_output_activity_instant = started_instant;
+            let mut cpu_probe = ProcessCpuProgressProbe::new(pid, started_instant);
             let mut activity_channel_open = true;
 
             let status = loop {
@@ -572,17 +714,22 @@ impl RunningProcess for TokioRunningProcess {
                     activity = activity_rx.recv(), if activity_channel_open => {
                         match activity {
                             Some(_) => {
-                                last_activity_instant = tokio::time::Instant::now();
+                                let now = tokio::time::Instant::now();
+                                last_output_activity_instant = now;
+                                last_activity_instant = now;
                             }
                             None => {
                                 activity_channel_open = false;
                             }
                         }
                     }
-                    _ = tokio::time::sleep(Duration::from_millis(200)) => {}
+                    _ = tokio::time::sleep(WAIT_LOOP_POLL_INTERVAL) => {}
                 }
 
                 let now = tokio::time::Instant::now();
+                if cpu_probe.observe_progress(now) {
+                    last_activity_instant = now;
+                }
                 let timeout_state = timeout
                     .filter(|duration| now.duration_since(started_instant) >= *duration)
                     .map(|duration| {
@@ -603,8 +750,9 @@ impl RunningProcess for TokioRunningProcess {
                                 (
                                     "idle_timeout",
                                     format!(
-                                        "process produced no output for {}ms",
-                                        duration.as_millis()
+                                        "process produced no output or CPU progress for {}ms (last output {}ms ago)",
+                                        duration.as_millis(),
+                                        now.duration_since(last_output_activity_instant).as_millis()
                                     ),
                                 )
                             })
