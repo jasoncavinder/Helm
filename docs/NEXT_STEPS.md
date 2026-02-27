@@ -255,6 +255,10 @@ Current checkpoint:
     - process idle-timeout tracking now resets on stdout/stderr output and sampled process CPU progress (`proc_pid_rusage` on macOS, `/proc/<pid>/stat` on Linux) so silent-but-active tasks are less likely to false-timeout
     - rustup self-uninstall now runs with explicit timeout profile tuning (15m hard timeout, 180s idle timeout)
     - Control Center running-task dropdown now polls and shows both Helm-generated task logs and task stdout/stderr output in a combined live stream
+  - post-`v0.17.7` manager install-flow UX follow-up delivered on `dev`:
+    - non-installed managers in inspector now surface an install action instead of a disabled `View Packages` button
+    - manager install flows (Managers list and inspector) now require a confirmation sheet with explicit install-method selection
+    - install confirmation now includes a collapsible advanced section for hard-timeout and idle-timeout profile selection; inspector no longer shows install-method/timeout controls inline
   - GitHub governance hardening delivered on `dev`:
     - branch rulesets now explicitly enforce `main`/`dev`/`docs`/`web` with branch-specific required checks
     - `Policy Gate` now validates PR base/head/scope policy for all protected branches

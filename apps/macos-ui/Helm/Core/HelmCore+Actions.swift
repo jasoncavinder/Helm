@@ -747,7 +747,13 @@ extension HelmCore {
             }
             return
         }
-        service()?.setManagerInstallMethod(managerId: managerId, installMethod: installMethod) { [weak self] success in
+        guard let service = service() else {
+            DispatchQueue.main.async {
+                completion?(false)
+            }
+            return
+        }
+        service.setManagerInstallMethod(managerId: managerId, installMethod: installMethod) { [weak self] success in
             guard let self else { return }
             if !success {
                 logger.error("setManagerInstallMethod(\(managerId), \(installMethod ?? "nil")) failed")
@@ -772,14 +778,24 @@ extension HelmCore {
     func setManagerTimeoutProfile(
         _ managerId: String,
         hardTimeoutSeconds: Int?,
-        idleTimeoutSeconds: Int?
+        idleTimeoutSeconds: Int?,
+        completion: ((Bool) -> Void)? = nil
     ) {
         if isManagerUninstalling(managerId) {
+            DispatchQueue.main.async {
+                completion?(false)
+            }
             return
         }
         let hardValue = Int64(hardTimeoutSeconds ?? 0)
         let idleValue = Int64(idleTimeoutSeconds ?? 0)
-        service()?.setManagerTimeoutProfile(
+        guard let service = service() else {
+            DispatchQueue.main.async {
+                completion?(false)
+            }
+            return
+        }
+        service.setManagerTimeoutProfile(
             managerId: managerId,
             hardTimeoutSeconds: hardValue,
             idleTimeoutSeconds: idleValue
@@ -795,9 +811,15 @@ extension HelmCore {
                     managerId: managerId,
                     taskType: "settings"
                 )
+                DispatchQueue.main.async {
+                    completion?(false)
+                }
                 return
             }
             self.fetchManagerStatus()
+            DispatchQueue.main.async {
+                completion?(true)
+            }
         }
     }
 

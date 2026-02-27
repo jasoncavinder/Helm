@@ -111,6 +111,9 @@ private struct ManagerSectionRow: View {
     @State private var showInstallOptionsSheet = false
     @State private var pendingInstallMethodRawValue: String?
     @State private var pendingInstallMethodOptions: [ManagerInstallMethodOption] = []
+    @State private var pendingHardTimeoutSeconds: Int?
+    @State private var pendingIdleTimeoutSeconds: Int?
+    @State private var showAdvancedInstallOptions = false
     @State private var installSubmissionInFlight = false
 
     private var detected: Bool {
@@ -179,6 +182,14 @@ private struct ManagerSectionRow: View {
 
     private var hasAllowedInstallMethodOption: Bool {
         sortedHelmSupportedInstallMethodOptions.contains(where: installMethodOptionAllowed)
+    }
+
+    private var hardTimeoutOptions: [Int?] {
+        [nil, 120, 300, 600, 900, 1200, 1800]
+    }
+
+    private var idleTimeoutOptions: [Int?] {
+        [nil, 30, 60, 90, 120, 180, 300, 600]
     }
 
     var body: some View {
@@ -306,20 +317,48 @@ private struct ManagerSectionRow: View {
                 .font(.callout)
                 .foregroundColor(.secondary)
 
-                Picker(
-                    L10n.App.Inspector.installMethod.localized,
-                    selection: Binding(
-                        get: { pendingInstallMethodRawValue ?? "" },
-                        set: { pendingInstallMethodRawValue = $0 }
-                    )
-                ) {
-                    ForEach(pendingInstallMethodOptions) { option in
-                        Text(installMethodLabel(option))
-                            .tag(option.method.rawValue)
-                            .disabled(!installMethodOptionAllowed(option))
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L10n.App.Inspector.installMethod.localized)
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.secondary)
+                    Picker(
+                        L10n.App.Inspector.installMethod.localized,
+                        selection: Binding(
+                            get: { pendingInstallMethodRawValue ?? "" },
+                            set: { pendingInstallMethodRawValue = $0 }
+                        )
+                    ) {
+                        ForEach(pendingInstallMethodOptions) { option in
+                            Text(installMethodLabel(option))
+                                .tag(option.method.rawValue)
+                                .disabled(!installMethodOptionAllowed(option))
+                        }
                     }
+                    .pickerStyle(.inline)
                 }
-                .pickerStyle(.inline)
+
+                DisclosureGroup(
+                    L10n.App.Settings.Section.advanced.localized,
+                    isExpanded: $showAdvancedInstallOptions
+                ) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        timeoutSelectionRow(
+                            label: L10n.App.Inspector.timeoutHard.localized,
+                            options: hardTimeoutOptions,
+                            selected: pendingHardTimeoutSeconds
+                        ) { selection in
+                            pendingHardTimeoutSeconds = selection
+                        }
+                        timeoutSelectionRow(
+                            label: L10n.App.Inspector.timeoutIdle.localized,
+                            options: idleTimeoutOptions,
+                            selected: pendingIdleTimeoutSeconds
+                        ) { selection in
+                            pendingIdleTimeoutSeconds = selection
+                        }
+                    }
+                    .padding(.top, 6)
+                }
 
                 HStack(spacing: 8) {
                     Spacer()
@@ -353,6 +392,9 @@ private struct ManagerSectionRow: View {
         }
 
         pendingInstallMethodOptions = supportedOptions
+        pendingHardTimeoutSeconds = status?.timeoutHardSeconds
+        pendingIdleTimeoutSeconds = status?.timeoutIdleSeconds
+        showAdvancedInstallOptions = false
         let allowedOptions = supportedOptions.filter(installMethodOptionAllowed)
         if let selectedRaw = status?.selectedInstallMethod,
            allowedOptions.contains(where: { $0.method.rawValue == selectedRaw }) {
@@ -376,10 +418,58 @@ private struct ManagerSectionRow: View {
         }
         installSubmissionInFlight = true
         core.setManagerInstallMethod(manager.id, installMethod: installMethod) { success in
-            installSubmissionInFlight = false
-            guard success else { return }
-            showInstallOptionsSheet = false
-            core.installManager(manager.id)
+            guard success else {
+                installSubmissionInFlight = false
+                return
+            }
+            core.setManagerTimeoutProfile(
+                manager.id,
+                hardTimeoutSeconds: pendingHardTimeoutSeconds,
+                idleTimeoutSeconds: pendingIdleTimeoutSeconds
+            ) { timeoutApplied in
+                installSubmissionInFlight = false
+                guard timeoutApplied else { return }
+                showInstallOptionsSheet = false
+                core.installManager(manager.id)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func timeoutSelectionRow(
+        label: String,
+        options: [Int?],
+        selected: Int?,
+        onSelect: @escaping (Int?) -> Void
+    ) -> some View {
+        HStack(spacing: 8) {
+            Text(label)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            Spacer(minLength: 8)
+            Menu {
+                ForEach(options, id: \.self) { seconds in
+                    Button {
+                        onSelect(seconds)
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text(timeoutMenuLabel(seconds))
+                            if seconds == selected {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Text(timeoutMenuLabel(selected))
+                        .font(.caption.monospacedDigit())
+                    Image(systemName: "chevron.down")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .menuStyle(.borderlessButton)
         }
     }
 
@@ -435,6 +525,13 @@ private struct ManagerSectionRow: View {
             value += " (\(tags.joined(separator: ", ")))"
         }
         return value
+    }
+
+    private func timeoutMenuLabel(_ seconds: Int?) -> String {
+        guard let seconds else {
+            return L10n.App.Inspector.timeoutUseDefault.localized
+        }
+        return L10n.App.Inspector.timeoutSeconds.localized(with: ["seconds": seconds])
     }
 }
 

@@ -1116,6 +1116,13 @@ private struct InspectorManagerDetailView: View {
     let onViewPackages: () -> Void
     @State private var confirmAction: ConfirmAction?
     @State private var loadingManagerUninstallPreview = false
+    @State private var showInstallOptionsSheet = false
+    @State private var pendingInstallMethodRawValue: String?
+    @State private var pendingInstallMethodOptions: [ManagerInstallMethodOption] = []
+    @State private var pendingHardTimeoutSeconds: Int?
+    @State private var pendingIdleTimeoutSeconds: Int?
+    @State private var showAdvancedInstallOptions = false
+    @State private var installSubmissionInFlight = false
 
     private enum ConfirmAction: Identifiable {
         case update
@@ -1189,12 +1196,41 @@ private struct InspectorManagerDetailView: View {
         )
     }
 
-    private var selectedHardTimeoutSeconds: Int? {
-        status?.timeoutHardSeconds
+    private var helmSupportedInstallMethodRawValues: Set<String> {
+        switch manager.id {
+        case "mise", "mas":
+            return ["homebrew"]
+        default:
+            return Set(manager.installMethodOptions.map(\.method.rawValue))
+        }
     }
 
-    private var selectedIdleTimeoutSeconds: Int? {
-        status?.timeoutIdleSeconds
+    private var sortedHelmSupportedInstallMethodOptions: [ManagerInstallMethodOption] {
+        manager.installMethodOptions
+            .filter { helmSupportedInstallMethodRawValues.contains($0.method.rawValue) }
+            .sorted { lhs, rhs in
+                let lhsRank = lhs.recommendationRank
+                let rhsRank = rhs.recommendationRank
+                if lhsRank != rhsRank {
+                    return lhsRank < rhsRank
+                }
+                return localizedInstallMethod(lhs.method)
+                    .localizedCaseInsensitiveCompare(localizedInstallMethod(rhs.method)) == .orderedAscending
+            }
+    }
+
+    private var selectedPendingInstallMethodIsAllowed: Bool {
+        guard let pendingInstallMethodRawValue,
+              let option = pendingInstallMethodOptions.first(where: {
+                  $0.method.rawValue == pendingInstallMethodRawValue
+              }) else {
+            return false
+        }
+        return installMethodOptionAllowed(option)
+    }
+
+    private var hasAllowedInstallMethodOption: Bool {
+        sortedHelmSupportedInstallMethodOptions.contains(where: installMethodOptionAllowed)
     }
 
     private var hardTimeoutOptions: [Int?] {
@@ -1481,99 +1517,6 @@ private struct InspectorManagerDetailView: View {
             }
 
             Group {
-                InspectorField(label: L10n.App.Inspector.installMethod.localized) {
-                    Menu {
-                        ForEach(manager.installMethodOptions) { option in
-                            Button {
-                                core.setManagerInstallMethod(manager.id, installMethod: option.method.rawValue)
-                            } label: {
-                                HStack(spacing: 8) {
-                                    Text(installMethodLabel(option, includeTag: true))
-                                    if option.method == selectedInstallMethodOption.method {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                            .disabled(!installMethodOptionAllowed(option))
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Text(installMethodLabel(selectedInstallMethodOption, includeTag: true))
-                                .font(.callout)
-                            Image(systemName: "chevron.down")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .menuStyle(.borderlessButton)
-                    .disabled(managerIsUninstalling)
-                }
-
-                InspectorField(label: L10n.App.Inspector.timeoutHard.localized) {
-                    Menu {
-                        ForEach(hardTimeoutOptions, id: \.self) { seconds in
-                            Button {
-                                core.setManagerTimeoutProfile(
-                                    manager.id,
-                                    hardTimeoutSeconds: seconds,
-                                    idleTimeoutSeconds: selectedIdleTimeoutSeconds
-                                )
-                            } label: {
-                                HStack(spacing: 8) {
-                                    Text(timeoutMenuLabel(seconds))
-                                    if seconds == selectedHardTimeoutSeconds {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Text(timeoutMenuLabel(selectedHardTimeoutSeconds))
-                                .font(.callout.monospacedDigit())
-                            Image(systemName: "chevron.down")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .menuStyle(.borderlessButton)
-                    .disabled(managerIsUninstalling)
-                }
-
-                InspectorField(label: L10n.App.Inspector.timeoutIdle.localized) {
-                    Menu {
-                        ForEach(idleTimeoutOptions, id: \.self) { seconds in
-                            Button {
-                                core.setManagerTimeoutProfile(
-                                    manager.id,
-                                    hardTimeoutSeconds: selectedHardTimeoutSeconds,
-                                    idleTimeoutSeconds: seconds
-                                )
-                            } label: {
-                                HStack(spacing: 8) {
-                                    Text(timeoutMenuLabel(seconds))
-                                    if seconds == selectedIdleTimeoutSeconds {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Text(timeoutMenuLabel(selectedIdleTimeoutSeconds))
-                                .font(.callout.monospacedDigit())
-                            Image(systemName: "chevron.down")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .menuStyle(.borderlessButton)
-                    .disabled(managerIsUninstalling)
-                }
-
                 InspectorField(label: L10n.App.Inspector.capabilities.localized) {
                     VStack(alignment: .leading, spacing: 2) {
                         ForEach(manager.capabilities, id: \.self) { capabilityKey in
@@ -1596,6 +1539,89 @@ private struct InspectorManagerDetailView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .sheet(isPresented: $showInstallOptionsSheet) {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(
+                    L10n.App.Managers.Alert.installTitle.localized(
+                        with: ["manager": localizedManagerDisplayName(manager.id)]
+                    )
+                )
+                .font(.title3.weight(.semibold))
+
+                Text(
+                    L10n.App.Managers.Alert.installMessage.localized(
+                        with: ["manager_short": manager.shortName]
+                    )
+                )
+                .font(.callout)
+                .foregroundColor(.secondary)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L10n.App.Inspector.installMethod.localized)
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.secondary)
+                    Picker(
+                        L10n.App.Inspector.installMethod.localized,
+                        selection: Binding(
+                            get: { pendingInstallMethodRawValue ?? "" },
+                            set: { pendingInstallMethodRawValue = $0 }
+                        )
+                    ) {
+                        ForEach(pendingInstallMethodOptions) { option in
+                            Text(installMethodLabel(option, includeTag: true))
+                                .tag(option.method.rawValue)
+                                .disabled(!installMethodOptionAllowed(option))
+                        }
+                    }
+                    .pickerStyle(.inline)
+                }
+
+                DisclosureGroup(
+                    L10n.App.Settings.Section.advanced.localized,
+                    isExpanded: $showAdvancedInstallOptions
+                ) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        timeoutSelectionRow(
+                            label: L10n.App.Inspector.timeoutHard.localized,
+                            options: hardTimeoutOptions,
+                            selected: pendingHardTimeoutSeconds
+                        ) { selection in
+                            pendingHardTimeoutSeconds = selection
+                        }
+
+                        timeoutSelectionRow(
+                            label: L10n.App.Inspector.timeoutIdle.localized,
+                            options: idleTimeoutOptions,
+                            selected: pendingIdleTimeoutSeconds
+                        ) { selection in
+                            pendingIdleTimeoutSeconds = selection
+                        }
+                    }
+                    .padding(.top, 6)
+                }
+
+                HStack(spacing: 8) {
+                    Spacer()
+                    Button(L10n.Common.cancel.localized) {
+                        showInstallOptionsSheet = false
+                    }
+                    .keyboardShortcut(.cancelAction)
+
+                    Button(L10n.Common.install.localized) {
+                        submitInstallWithSelectedMethod()
+                    }
+                    .buttonStyle(HelmPrimaryButtonStyle())
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(
+                        installSubmissionInFlight
+                            || pendingInstallMethodRawValue?.isEmpty != false
+                            || !selectedPendingInstallMethodIsAllowed
+                    )
+                }
+            }
+            .padding(20)
+            .frame(minWidth: 420)
+        }
         .alert(item: $confirmAction) { action in
             switch action {
             case .update:
@@ -1665,12 +1691,24 @@ private struct InspectorManagerDetailView: View {
                 }
             }
 
-            managerActionButton(
-                symbol: "shippingbox",
-                tooltip: L10n.App.Managers.Action.viewPackages.localized,
-                enabled: packageCount > 0 && enabled && !managerIsUninstalling
-            ) {
-                onViewPackages()
+            if manager.canInstall && !detected {
+                managerActionButton(
+                    symbol: "arrow.down.circle",
+                    tooltip: L10n.Common.install.localized,
+                    enabled: !installSubmissionInFlight
+                        && hasAllowedInstallMethodOption
+                        && !managerIsUninstalling
+                ) {
+                    prepareInstallMethodSelection()
+                }
+            } else if detected {
+                managerActionButton(
+                    symbol: "shippingbox",
+                    tooltip: L10n.App.Managers.Action.viewPackages.localized,
+                    enabled: packageCount > 0 && enabled && !managerIsUninstalling
+                ) {
+                    onViewPackages()
+                }
             }
 
             Spacer(minLength: 0)
@@ -1691,6 +1729,97 @@ private struct InspectorManagerDetailView: View {
         .accessibilityLabel(tooltip)
         .disabled(!enabled)
         .helmPointer(enabled: enabled)
+    }
+
+    private func prepareInstallMethodSelection() {
+        let supportedOptions = sortedHelmSupportedInstallMethodOptions
+        guard !supportedOptions.isEmpty else {
+            core.installManager(manager.id)
+            return
+        }
+
+        pendingInstallMethodOptions = supportedOptions
+        pendingHardTimeoutSeconds = status?.timeoutHardSeconds
+        pendingIdleTimeoutSeconds = status?.timeoutIdleSeconds
+        showAdvancedInstallOptions = false
+
+        let allowedOptions = supportedOptions.filter(installMethodOptionAllowed)
+        let selectedMethodRaw = selectedInstallMethodOption.method.rawValue
+        if allowedOptions.contains(where: { $0.method.rawValue == selectedMethodRaw }) {
+            pendingInstallMethodRawValue = selectedMethodRaw
+        } else {
+            pendingInstallMethodRawValue =
+                allowedOptions.first(where: \.isRecommended)?.method.rawValue
+                ?? allowedOptions.first(where: \.isPreferred)?.method.rawValue
+                ?? allowedOptions.first?.method.rawValue
+        }
+        showInstallOptionsSheet = true
+    }
+
+    private func submitInstallWithSelectedMethod() {
+        guard let installMethod = pendingInstallMethodRawValue, !installMethod.isEmpty else {
+            return
+        }
+        guard let option = pendingInstallMethodOptions.first(where: { $0.method.rawValue == installMethod }),
+              installMethodOptionAllowed(option) else {
+            return
+        }
+
+        installSubmissionInFlight = true
+        core.setManagerInstallMethod(manager.id, installMethod: installMethod) { success in
+            guard success else {
+                installSubmissionInFlight = false
+                return
+            }
+            core.setManagerTimeoutProfile(
+                manager.id,
+                hardTimeoutSeconds: pendingHardTimeoutSeconds,
+                idleTimeoutSeconds: pendingIdleTimeoutSeconds
+            ) { timeoutApplied in
+                installSubmissionInFlight = false
+                guard timeoutApplied else { return }
+                showInstallOptionsSheet = false
+                core.installManager(manager.id)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func timeoutSelectionRow(
+        label: String,
+        options: [Int?],
+        selected: Int?,
+        onSelect: @escaping (Int?) -> Void
+    ) -> some View {
+        HStack(spacing: 8) {
+            Text(label)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            Spacer(minLength: 8)
+            Menu {
+                ForEach(options, id: \.self) { seconds in
+                    Button {
+                        onSelect(seconds)
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text(timeoutMenuLabel(seconds))
+                            if seconds == selected {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Text(timeoutMenuLabel(selected))
+                        .font(.caption.monospacedDigit())
+                    Image(systemName: "chevron.down")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .menuStyle(.borderlessButton)
+        }
     }
 
     private func requestManagerUninstallConfirmation(allowUnknownProvenance: Bool) {
