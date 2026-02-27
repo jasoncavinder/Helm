@@ -201,6 +201,12 @@ Policy-driven manageability is distinct from detection:
 - Example: RubyGems/Bundler/pip mapped to macOS base-system executables are detected but treated as non-manageable (enablement/actions blocked).
 - Policy matrix source: `docs/architecture/MANAGER_ELIGIBILITY_POLICY.md`.
 
+Install provenance is also distinct from install-method preference:
+
+- Helm persists per-manager install instances (identity + aliases + provenance confidence/margin + explainability) separately from manager preferences.
+- Install-method selection expresses user/operator preference for future install actions.
+- Provenance detection expresses observed install origin for existing instances and drives confidence-based safety policy.
+
 ---
 
 ### 4.3 Authority Model

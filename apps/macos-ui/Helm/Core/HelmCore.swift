@@ -359,6 +359,94 @@ struct ManagerStatus: Codable {
     let ineligibleReasonCode: String?
     let ineligibleReasonMessage: String?
     let ineligibleServiceErrorKey: String?
+    let installInstances: [ManagerInstallInstanceStatus]?
+    let installInstanceCount: Int?
+    let activeProvenance: String?
+    let activeConfidence: Double?
+    let activeDecisionMargin: Double?
+    let activeAutomationLevel: String?
+    let activeUninstallStrategy: String?
+    let activeUpdateStrategy: String?
+    let activeRemediationStrategy: String?
+    let activeExplanationPrimary: String?
+    let activeExplanationSecondary: String?
+    let competingProvenance: String?
+    let competingConfidence: Double?
+}
+
+struct ManagerInstallInstanceStatus: Codable, Identifiable {
+    let instanceId: String
+    let identityKind: String
+    let identityValue: String
+    let displayPath: String
+    let canonicalPath: String?
+    let aliasPaths: [String]
+    let isActive: Bool
+    let version: String?
+    let provenance: String
+    let confidence: Double
+    let decisionMargin: Double?
+    let automationLevel: String
+    let uninstallStrategy: String
+    let updateStrategy: String
+    let remediationStrategy: String
+    let explanationPrimary: String?
+    let explanationSecondary: String?
+    let competingProvenance: String?
+    let competingConfidence: Double?
+
+    var id: String { instanceId }
+}
+
+struct ManagerUninstallImpactPath: Codable {
+    let path: String
+    let exists: Bool
+}
+
+struct ManagerUninstallPreview: Codable {
+    let requestedManagerId: String
+    let targetManagerId: String
+    let packageName: String
+    let strategy: String
+    let provenance: String?
+    let automationLevel: String?
+    let confidence: Double?
+    let decisionMargin: Double?
+    let explanationPrimary: String?
+    let explanationSecondary: String?
+    let competingProvenance: String?
+    let competingConfidence: Double?
+    let filesRemoved: [ManagerUninstallImpactPath]
+    let directoriesRemoved: [ManagerUninstallImpactPath]
+    let secondaryEffects: [String]
+    let summaryLines: [String]
+    let blastRadiusScore: Int
+    let requiresYes: Bool
+    let confidenceRequiresConfirmation: Bool
+    let unknownProvenance: Bool
+    let unknownOverrideRequired: Bool
+    let usedUnknownOverride: Bool
+    let legacyFallbackUsed: Bool
+    let readOnlyBlocked: Bool
+}
+
+struct PackageUninstallPreview: Codable {
+    let managerId: String
+    let packageName: String
+    let filesRemoved: [ManagerUninstallImpactPath]
+    let directoriesRemoved: [ManagerUninstallImpactPath]
+    let secondaryEffects: [String]
+    let summaryLines: [String]
+    let blastRadiusScore: Int
+    let requiresYes: Bool
+    let confidenceRequiresConfirmation: Bool
+    let managerProvenance: String?
+    let managerAutomationLevel: String?
+    let managerUninstallStrategy: String?
+    let explanationPrimary: String?
+    let explanationSecondary: String?
+    let competingProvenance: String?
+    let competingConfidence: Double?
 }
 
 final class HelmOverviewState: ObservableObject {

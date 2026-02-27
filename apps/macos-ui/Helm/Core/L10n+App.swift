@@ -63,6 +63,10 @@ extension L10n {
                 static let unpin = "app.packages.action.unpin"
                 static let upgradePackage = "app.packages.action.upgrade_package"
             }
+            struct Alert {
+                static let uninstallTitle = "app.packages.alert.uninstall.title"
+                static let uninstallMessage = "app.packages.alert.uninstall.message"
+            }
             struct KegPolicy {
                 static let useGlobal = "app.packages.keg_policy.use_global"
                 static let keepOld = "app.packages.keg_policy.keep_old"
@@ -453,12 +457,20 @@ extension L10n {
             static let disabled = "app.inspector.disabled"
             static let category = "app.inspector.category"
             static let installMethod = "app.inspector.install_method"
+            static let installInstanceCount = "app.inspector.install_instance_count"
+            static let provenance = "app.inspector.provenance"
+            static let confidence = "app.inspector.confidence"
+            static let decisionMargin = "app.inspector.decision_margin"
+            static let explanation = "app.inspector.explanation"
+            static let competingProvenance = "app.inspector.competing_provenance"
             static let timeoutHard = "app.inspector.timeout_hard"
             static let timeoutIdle = "app.inspector.timeout_idle"
             static let timeoutUseDefault = "app.inspector.timeout.use_default"
             static let timeoutSeconds = "app.inspector.timeout.seconds"
             static let installMethodTagRecommended = "app.inspector.install_method.tag.recommended"
             static let installMethodTagPreferred = "app.inspector.install_method.tag.preferred"
+            static let installMethodTagManagedRestricted = "app.inspector.install_method.tag.managed_restricted"
+            static let installMethodTagBlocked = "app.inspector.install_method.tag.blocked"
             static let viewManager = "app.inspector.view_manager"
             struct InstallMethod {
                 static let automatable = "app.inspector.install_method.automatable"

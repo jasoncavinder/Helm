@@ -244,3 +244,238 @@ pub struct DetectionInfo {
     pub executable_path: Option<PathBuf>,
     pub version: Option<String>,
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallInstanceIdentityKind {
+    DevInode,
+    CanonicalPath,
+    FallbackHash,
+}
+
+impl InstallInstanceIdentityKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::DevInode => "dev_inode",
+            Self::CanonicalPath => "canonical_path",
+            Self::FallbackHash => "fallback_hash",
+        }
+    }
+}
+
+impl std::str::FromStr for InstallInstanceIdentityKind {
+    type Err = ();
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "dev_inode" => Ok(Self::DevInode),
+            "canonical_path" => Ok(Self::CanonicalPath),
+            "fallback_hash" => Ok(Self::FallbackHash),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallProvenance {
+    Unknown,
+    System,
+    Homebrew,
+    Macports,
+    Nix,
+    Asdf,
+    Mise,
+    RustupInit,
+    EnterpriseManaged,
+    SourceBuild,
+}
+
+impl InstallProvenance {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::System => "system",
+            Self::Homebrew => "homebrew",
+            Self::Macports => "macports",
+            Self::Nix => "nix",
+            Self::Asdf => "asdf",
+            Self::Mise => "mise",
+            Self::RustupInit => "rustup_init",
+            Self::EnterpriseManaged => "enterprise_managed",
+            Self::SourceBuild => "source_build",
+        }
+    }
+}
+
+impl std::str::FromStr for InstallProvenance {
+    type Err = ();
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "unknown" => Ok(Self::Unknown),
+            "system" => Ok(Self::System),
+            "homebrew" => Ok(Self::Homebrew),
+            "macports" => Ok(Self::Macports),
+            "nix" => Ok(Self::Nix),
+            "asdf" => Ok(Self::Asdf),
+            "mise" => Ok(Self::Mise),
+            "rustup_init" => Ok(Self::RustupInit),
+            "enterprise_managed" => Ok(Self::EnterpriseManaged),
+            "source_build" => Ok(Self::SourceBuild),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AutomationLevel {
+    Automatic,
+    NeedsConfirmation,
+    ReadOnly,
+}
+
+impl AutomationLevel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Automatic => "automatic",
+            Self::NeedsConfirmation => "needs_confirmation",
+            Self::ReadOnly => "read_only",
+        }
+    }
+}
+
+impl std::str::FromStr for AutomationLevel {
+    type Err = ();
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "automatic" => Ok(Self::Automatic),
+            "needs_confirmation" => Ok(Self::NeedsConfirmation),
+            "read_only" => Ok(Self::ReadOnly),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StrategyKind {
+    Unknown,
+    InteractivePrompt,
+    ReadOnly,
+    RustupSelf,
+    HomebrewFormula,
+    ManualRemediation,
+}
+
+impl StrategyKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::InteractivePrompt => "interactive_prompt",
+            Self::ReadOnly => "read_only",
+            Self::RustupSelf => "rustup_self",
+            Self::HomebrewFormula => "homebrew_formula",
+            Self::ManualRemediation => "manual_remediation",
+        }
+    }
+}
+
+impl std::str::FromStr for StrategyKind {
+    type Err = ();
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "unknown" => Ok(Self::Unknown),
+            "interactive_prompt" => Ok(Self::InteractivePrompt),
+            "read_only" => Ok(Self::ReadOnly),
+            "rustup_self" => Ok(Self::RustupSelf),
+            "homebrew_formula" => Ok(Self::HomebrewFormula),
+            "manual_remediation" => Ok(Self::ManualRemediation),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ManagerInstallInstance {
+    pub manager: ManagerId,
+    pub instance_id: String,
+    pub identity_kind: InstallInstanceIdentityKind,
+    pub identity_value: String,
+    pub display_path: PathBuf,
+    pub canonical_path: Option<PathBuf>,
+    pub alias_paths: Vec<PathBuf>,
+    pub is_active: bool,
+    pub version: Option<String>,
+    pub provenance: InstallProvenance,
+    pub confidence: f64,
+    pub decision_margin: Option<f64>,
+    pub automation_level: AutomationLevel,
+    pub uninstall_strategy: StrategyKind,
+    pub update_strategy: StrategyKind,
+    pub remediation_strategy: StrategyKind,
+    pub explanation_primary: Option<String>,
+    pub explanation_secondary: Option<String>,
+    pub competing_provenance: Option<InstallProvenance>,
+    pub competing_confidence: Option<f64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UninstallImpactPath {
+    pub path: String,
+    pub exists: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagerUninstallPreview {
+    pub requested_manager_id: String,
+    pub target_manager_id: String,
+    pub package_name: String,
+    pub strategy: String,
+    pub provenance: Option<String>,
+    pub automation_level: Option<String>,
+    pub confidence: Option<f64>,
+    pub decision_margin: Option<f64>,
+    pub explanation_primary: Option<String>,
+    pub explanation_secondary: Option<String>,
+    pub competing_provenance: Option<String>,
+    pub competing_confidence: Option<f64>,
+    pub files_removed: Vec<UninstallImpactPath>,
+    pub directories_removed: Vec<UninstallImpactPath>,
+    pub secondary_effects: Vec<String>,
+    pub summary_lines: Vec<String>,
+    pub blast_radius_score: u32,
+    pub requires_yes: bool,
+    pub confidence_requires_confirmation: bool,
+    pub unknown_provenance: bool,
+    pub unknown_override_required: bool,
+    pub used_unknown_override: bool,
+    pub legacy_fallback_used: bool,
+    pub read_only_blocked: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackageUninstallPreview {
+    pub manager_id: String,
+    pub package_name: String,
+    pub files_removed: Vec<UninstallImpactPath>,
+    pub directories_removed: Vec<UninstallImpactPath>,
+    pub secondary_effects: Vec<String>,
+    pub summary_lines: Vec<String>,
+    pub blast_radius_score: u32,
+    pub requires_yes: bool,
+    pub confidence_requires_confirmation: bool,
+    pub manager_provenance: Option<String>,
+    pub manager_automation_level: Option<String>,
+    pub manager_uninstall_strategy: Option<String>,
+    pub explanation_primary: Option<String>,
+    pub explanation_secondary: Option<String>,
+    pub competing_provenance: Option<String>,
+    pub competing_confidence: Option<f64>,
+}

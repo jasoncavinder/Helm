@@ -95,6 +95,7 @@ struct ManagersSectionView: View {
 
 private struct ManagerSectionRow: View {
     private let core = HelmCore.shared
+    private let installMethodPolicyContext = ManagerInstallMethodPolicyContext.fromEnvironment()
 
     let manager: ManagerInfo
     let status: ManagerStatus?
@@ -105,18 +106,10 @@ private struct ManagerSectionRow: View {
     let isSelected: Bool
     let onSelect: () -> Void
 
-    @State private var confirmAction: ConfirmAction?
-
-    private enum ConfirmAction: Identifiable {
-        case install
-
-        var id: String {
-            switch self {
-            case .install:
-                return "install"
-            }
-        }
-    }
+    @State private var showInstallOptionsSheet = false
+    @State private var pendingInstallMethodRawValue: String?
+    @State private var pendingInstallMethodOptions: [ManagerInstallMethodOption] = []
+    @State private var installSubmissionInFlight = false
 
     private var detected: Bool {
         status?.detected ?? false
@@ -147,6 +140,43 @@ private struct ManagerSectionRow: View {
 
     private var enableToggleDisabled: Bool {
         ineligibleReason != nil && !enabled
+    }
+
+    private var helmSupportedInstallMethodRawValues: Set<String> {
+        switch manager.id {
+        case "mise", "mas":
+            return ["homebrew"]
+        default:
+            return Set(manager.installMethodOptions.map(\.method.rawValue))
+        }
+    }
+
+    private var sortedHelmSupportedInstallMethodOptions: [ManagerInstallMethodOption] {
+        manager.installMethodOptions
+            .filter { helmSupportedInstallMethodRawValues.contains($0.method.rawValue) }
+            .sorted { lhs, rhs in
+                let lhsRank = installMethodSortRank(lhs)
+                let rhsRank = installMethodSortRank(rhs)
+                if lhsRank != rhsRank {
+                    return lhsRank < rhsRank
+                }
+                return localizedInstallMethod(lhs.method)
+                    .localizedCaseInsensitiveCompare(localizedInstallMethod(rhs.method)) == .orderedAscending
+            }
+    }
+
+    private var selectedPendingInstallMethodIsAllowed: Bool {
+        guard let pendingInstallMethodRawValue,
+              let option = pendingInstallMethodOptions.first(where: {
+                  $0.method.rawValue == pendingInstallMethodRawValue
+              }) else {
+            return false
+        }
+        return installMethodOptionAllowed(option)
+    }
+
+    private var hasAllowedInstallMethodOption: Bool {
+        sortedHelmSupportedInstallMethodOptions.contains(where: installMethodOptionAllowed)
     }
 
     var body: some View {
@@ -209,8 +239,9 @@ private struct ManagerSectionRow: View {
             HStack(spacing: 8) {
                 if manager.canInstall && !detected {
                     Button(L10n.Common.install.localized) {
-                        confirmAction = .install
+                        prepareInstallMethodSelection()
                     }
+                    .disabled(installSubmissionInFlight || !hasAllowedInstallMethodOption)
                     .helmPointer()
                 }
 
@@ -255,17 +286,152 @@ private struct ManagerSectionRow: View {
             detected ? (enabled ? L10n.App.Managers.State.enabled.localized : L10n.App.Managers.State.disabled.localized) : L10n.App.Managers.State.notInstalled.localized,
             L10n.App.Managers.Label.packageCount.localized(with: ["count": packageCount])
         ].joined(separator: ", "))
-        .alert(item: $confirmAction) { action in
-            switch action {
-            case .install:
-                return Alert(
-                    title: Text(L10n.App.Managers.Alert.installTitle.localized(with: ["manager": localizedManagerDisplayName(manager.id)])),
-                    message: Text(L10n.App.Managers.Alert.installMessage.localized(with: ["manager_short": manager.shortName])),
-                    primaryButton: .default(Text(L10n.Common.install.localized)) { core.installManager(manager.id) },
-                    secondaryButton: .cancel()
+        .sheet(isPresented: $showInstallOptionsSheet) {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(
+                    L10n.App.Managers.Alert.installTitle.localized(
+                        with: ["manager": localizedManagerDisplayName(manager.id)]
+                    )
                 )
+                .font(.title3.weight(.semibold))
+
+                Text(
+                    L10n.App.Managers.Alert.installMessage.localized(
+                        with: ["manager_short": manager.shortName]
+                    )
+                )
+                .font(.callout)
+                .foregroundColor(.secondary)
+
+                Picker(
+                    L10n.App.Inspector.installMethod.localized,
+                    selection: Binding(
+                        get: { pendingInstallMethodRawValue ?? "" },
+                        set: { pendingInstallMethodRawValue = $0 }
+                    )
+                ) {
+                    ForEach(pendingInstallMethodOptions) { option in
+                        Text(installMethodLabel(option))
+                            .tag(option.method.rawValue)
+                            .disabled(!installMethodOptionAllowed(option))
+                    }
+                }
+                .pickerStyle(.inline)
+
+                HStack(spacing: 8) {
+                    Spacer()
+                    Button(L10n.Common.cancel.localized) {
+                        showInstallOptionsSheet = false
+                    }
+                    .keyboardShortcut(.cancelAction)
+
+                    Button(L10n.Common.install.localized) {
+                        submitInstallWithSelectedMethod()
+                    }
+                    .buttonStyle(HelmPrimaryButtonStyle())
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(
+                        installSubmissionInFlight
+                            || pendingInstallMethodRawValue?.isEmpty != false
+                            || !selectedPendingInstallMethodIsAllowed
+                    )
+                }
             }
+            .padding(20)
+            .frame(minWidth: 420)
         }
+    }
+
+    private func prepareInstallMethodSelection() {
+        let supportedOptions = sortedHelmSupportedInstallMethodOptions
+        guard !supportedOptions.isEmpty else {
+            core.installManager(manager.id)
+            return
+        }
+
+        pendingInstallMethodOptions = supportedOptions
+        let allowedOptions = supportedOptions.filter(installMethodOptionAllowed)
+        if let selectedRaw = status?.selectedInstallMethod,
+           allowedOptions.contains(where: { $0.method.rawValue == selectedRaw }) {
+            pendingInstallMethodRawValue = selectedRaw
+        } else {
+            pendingInstallMethodRawValue =
+                allowedOptions.first(where: \.isRecommended)?.method.rawValue
+                ?? allowedOptions.first(where: \.isPreferred)?.method.rawValue
+                ?? allowedOptions.first?.method.rawValue
+        }
+        showInstallOptionsSheet = true
+    }
+
+    private func submitInstallWithSelectedMethod() {
+        guard let installMethod = pendingInstallMethodRawValue, !installMethod.isEmpty else {
+            return
+        }
+        guard let option = pendingInstallMethodOptions.first(where: { $0.method.rawValue == installMethod }),
+              installMethodOptionAllowed(option) else {
+            return
+        }
+        installSubmissionInFlight = true
+        core.setManagerInstallMethod(manager.id, installMethod: installMethod) { success in
+            installSubmissionInFlight = false
+            guard success else { return }
+            showInstallOptionsSheet = false
+            core.installManager(manager.id)
+        }
+    }
+
+    private func installMethodSortRank(_ option: ManagerInstallMethodOption) -> Int {
+        option.recommendationRank
+    }
+
+    private func installMethodOptionAllowed(_ option: ManagerInstallMethodOption) -> Bool {
+        option.isAllowed(in: installMethodPolicyContext)
+    }
+
+    private func localizedInstallMethod(_ method: ManagerDistributionMethod) -> String {
+        switch method {
+        case .homebrew: return L10n.App.Inspector.InstallMethod.homebrew.localized
+        case .macports: return L10n.App.Inspector.InstallMethod.macports.localized
+        case .appStore: return L10n.App.Inspector.InstallMethod.appStore.localized
+        case .setapp: return L10n.App.Inspector.InstallMethod.setapp.localized
+        case .officialInstaller: return L10n.App.Inspector.InstallMethod.officialInstaller.localized
+        case .scriptInstaller: return L10n.App.Inspector.InstallMethod.scriptInstaller.localized
+        case .corepack: return L10n.App.Inspector.InstallMethod.corepack.localized
+        case .rustupInstaller: return L10n.App.Inspector.InstallMethod.rustupInstaller.localized
+        case .xcodeSelect: return L10n.App.Inspector.InstallMethod.xcodeSelect.localized
+        case .softwareUpdate: return L10n.App.Inspector.InstallMethod.softwareUpdate.localized
+        case .systemProvided: return L10n.App.Inspector.InstallMethod.systemProvided.localized
+        case .npm: return L10n.App.Inspector.InstallMethod.npm.localized
+        case .pip: return L10n.App.Inspector.InstallMethod.pip.localized
+        case .pipx: return L10n.App.Inspector.InstallMethod.pipx.localized
+        case .gem: return L10n.App.Inspector.InstallMethod.gem.localized
+        case .cargoInstall: return L10n.App.Inspector.InstallMethod.cargoInstall.localized
+        case .asdf: return L10n.App.Inspector.InstallMethod.asdf.localized
+        case .mise: return L10n.App.Inspector.InstallMethod.mise.localized
+        case .notManageable: return L10n.App.Inspector.InstallMethod.notManageable.localized
+        }
+    }
+
+    private func installMethodLabel(_ option: ManagerInstallMethodOption) -> String {
+        var value = localizedInstallMethod(option.method)
+        var tags: [String] = []
+        if option.isRecommended {
+            tags.append(L10n.App.Inspector.installMethodTagRecommended.localized)
+        } else if option.isPreferred {
+            tags.append(L10n.App.Inspector.installMethodTagPreferred.localized)
+        }
+        switch option.policyTag {
+        case .managedRestricted:
+            tags.append(L10n.App.Inspector.installMethodTagManagedRestricted.localized)
+        case .blockedByPolicy:
+            tags.append(L10n.App.Inspector.installMethodTagBlocked.localized)
+        case .allowed:
+            break
+        }
+        if !tags.isEmpty {
+            value += " (\(tags.joined(separator: ", ")))"
+        }
+        return value
     }
 }
 

@@ -698,6 +698,58 @@ async fn refresh_all_ordered_recomputes_enablement_after_preference_update() {
 }
 
 #[tokio::test]
+async fn detect_persists_install_instances_alongside_detection_rows() {
+    let path = test_db_path("orchestration-runtime-detect-install-instances");
+    let store = Arc::new(SqliteStore::new(&path));
+    store.migrate_to_latest().unwrap();
+
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(TestAdapter::with_capabilities(
+        ManagerId::Rustup,
+        &[Capability::Detect, Capability::Refresh],
+        AdapterBehavior::Succeeds(AdapterResponse::Detection(DetectionInfo {
+            installed: true,
+            executable_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+            version: Some("1.28.2".to_string()),
+        })),
+    ));
+    let runtime = AdapterRuntime::with_all_stores(
+        [adapter],
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+    )
+    .unwrap();
+
+    runtime
+        .submit_refresh_request_response(ManagerId::Rustup, AdapterRequest::Refresh(RefreshRequest))
+        .await
+        .unwrap();
+
+    let mut persisted = false;
+    for _ in 0..20 {
+        let detections = store.list_detections().unwrap();
+        let instances = store
+            .list_install_instances(Some(ManagerId::Rustup))
+            .unwrap();
+        if detections
+            .iter()
+            .any(|(manager, info)| *manager == ManagerId::Rustup && info.installed)
+            && !instances.is_empty()
+        {
+            persisted = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    assert!(
+        persisted,
+        "expected rustup detection and install instances to persist"
+    );
+}
+
+#[tokio::test]
 async fn install_mutation_updates_cached_snapshots_without_manual_refresh() {
     let path = test_db_path("orchestration-runtime-install-snapshot");
     let store = Arc::new(SqliteStore::new(&path));

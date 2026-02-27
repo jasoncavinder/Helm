@@ -73,10 +73,76 @@ enum ManagerDistributionMethod: String, CaseIterable {
     }
 }
 
+enum InstallMethodRecommendationReason: String {
+    case upstreamRecommended
+    case helmPreferredDefault
+}
+
+enum InstallMethodPolicyTag: String {
+    case allowed
+    case managedRestricted
+    case blockedByPolicy
+}
+
+private let managedInstallMethodPolicyEnv = "HELM_MANAGED_INSTALL_METHOD_POLICY"
+private let managedInstallMethodPolicyAllowRestrictedEnv = "HELM_MANAGED_INSTALL_METHOD_POLICY_ALLOW_RESTRICTED"
+
+struct ManagerInstallMethodPolicyContext {
+    let managedEnvironment: Bool
+    let allowRestrictedMethods: Bool
+
+    static func fromEnvironment(
+        _ environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> ManagerInstallMethodPolicyContext {
+        ManagerInstallMethodPolicyContext(
+            managedEnvironment: envFlagEnabled(
+                key: managedInstallMethodPolicyEnv,
+                environment: environment
+            ),
+            allowRestrictedMethods: envFlagEnabled(
+                key: managedInstallMethodPolicyAllowRestrictedEnv,
+                environment: environment
+            )
+        )
+    }
+}
+
+extension ManagerInstallMethodOption {
+    func isAllowed(in context: ManagerInstallMethodPolicyContext) -> Bool {
+        switch policyTag {
+        case .allowed:
+            return true
+        case .managedRestricted:
+            return !context.managedEnvironment || context.allowRestrictedMethods
+        case .blockedByPolicy:
+            return false
+        }
+    }
+}
+
+private func envFlagEnabled(
+    key: String,
+    environment: [String: String]
+) -> Bool {
+    guard let value = environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !value.isEmpty else {
+        return false
+    }
+    switch value.lowercased() {
+    case "1", "true", "yes", "on":
+        return true
+    default:
+        return false
+    }
+}
+
 struct ManagerInstallMethodOption: Identifiable, Equatable {
     let method: ManagerDistributionMethod
     let isRecommended: Bool
     let isPreferred: Bool
+    let recommendationRank: Int
+    let recommendationReason: InstallMethodRecommendationReason?
+    let policyTag: InstallMethodPolicyTag
     let executablePathHints: [String]
     let packageHints: [String]
 
@@ -87,13 +153,44 @@ private func methodOption(
     _ method: ManagerDistributionMethod,
     recommended: Bool = false,
     preferred: Bool = false,
+    recommendationRank: Int? = nil,
+    recommendationReason: InstallMethodRecommendationReason? = nil,
+    policyTag: InstallMethodPolicyTag = .allowed,
     executablePathHints: [String] = [],
     packageHints: [String] = []
 ) -> ManagerInstallMethodOption {
-    ManagerInstallMethodOption(
+    let resolvedPolicyTag: InstallMethodPolicyTag = {
+        if method == .notManageable && policyTag == .allowed {
+            return .blockedByPolicy
+        }
+        return policyTag
+    }()
+    let resolvedRank = recommendationRank ?? {
+        if recommended {
+            return 0
+        }
+        if preferred {
+            return 10
+        }
+        return 50
+    }()
+    let resolvedReason = recommendationReason ?? {
+        if recommended {
+            return .upstreamRecommended
+        }
+        if preferred {
+            return .helmPreferredDefault
+        }
+        return nil
+    }()
+
+    return ManagerInstallMethodOption(
         method: method,
         isRecommended: recommended,
         isPreferred: preferred,
+        recommendationRank: resolvedRank,
+        recommendationReason: resolvedReason,
+        policyTag: resolvedPolicyTag,
         executablePathHints: executablePathHints,
         packageHints: packageHints
     )
@@ -243,7 +340,13 @@ struct ManagerInfo: Identifiable {
         if let preferred = installMethodOptions.first(where: { $0.isPreferred }) {
             return preferred
         }
-        return installMethodOptions.first ?? methodOption(.notManageable)
+        let rankedFallback = installMethodOptions.sorted { lhs, rhs in
+            if lhs.recommendationRank != rhs.recommendationRank {
+                return lhs.recommendationRank < rhs.recommendationRank
+            }
+            return lhs.method.rawValue < rhs.method.rawValue
+        }.first
+        return rankedFallback ?? methodOption(.notManageable)
     }
 
     func recommendedExecutablePath(from executablePaths: [String]) -> String? {
@@ -252,10 +355,12 @@ struct ManagerInfo: Identifiable {
             .filter { !$0.isEmpty }
         guard !normalizedPaths.isEmpty else { return nil }
 
-        let recommendedOption =
-            installMethodOptions.first(where: { $0.isRecommended })
-            ?? installMethodOptions.first(where: { $0.isPreferred })
-            ?? installMethodOptions.first
+        let recommendedOption = installMethodOptions.sorted { lhs, rhs in
+            if lhs.recommendationRank != rhs.recommendationRank {
+                return lhs.recommendationRank < rhs.recommendationRank
+            }
+            return lhs.method.rawValue < rhs.method.rawValue
+        }.first
 
         if let recommendedOption {
             for path in normalizedPaths {
@@ -290,9 +395,13 @@ struct ManagerInfo: Identifiable {
                     executablePathHints: ["/opt/homebrew/bin/mise", "/usr/local/bin/mise"],
                     packageHints: ["mise"]
                 ),
-                methodOption(.scriptInstaller, executablePathHints: [".local/bin/mise"]),
-                methodOption(.macports),
-                methodOption(.cargoInstall)
+                methodOption(
+                    .scriptInstaller,
+                    policyTag: .managedRestricted,
+                    executablePathHints: [".local/bin/mise"]
+                ),
+                methodOption(.macports, policyTag: .managedRestricted),
+                methodOption(.cargoInstall, policyTag: .managedRestricted)
             ]
         ),
         ManagerInfo(
@@ -590,9 +699,9 @@ struct ManagerInfo: Identifiable {
             installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.homebrew, recommended: true, preferred: true, packageHints: ["mas"]),
-                methodOption(.macports),
-                methodOption(.appStore),
-                methodOption(.officialInstaller)
+                methodOption(.macports, policyTag: .managedRestricted),
+                methodOption(.appStore, policyTag: .managedRestricted),
+                methodOption(.officialInstaller, policyTag: .managedRestricted)
             ]
         ),
         ManagerInfo(

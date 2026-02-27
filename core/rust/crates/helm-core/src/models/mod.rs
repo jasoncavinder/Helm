@@ -10,8 +10,10 @@ pub mod task_log;
 pub use error::{CoreError, CoreErrorKind};
 pub use keg_policy::{HomebrewKegPolicy, PackageKegPolicy};
 pub use manager::{
-    ActionSafety, Capability, DetectionInfo, ManagerAction, ManagerAuthority, ManagerCategory,
-    ManagerDescriptor, ManagerId,
+    ActionSafety, AutomationLevel, Capability, DetectionInfo, InstallInstanceIdentityKind,
+    InstallProvenance, ManagerAction, ManagerAuthority, ManagerCategory, ManagerDescriptor,
+    ManagerId, ManagerInstallInstance, ManagerUninstallPreview, PackageUninstallPreview,
+    StrategyKind, UninstallImpactPath,
 };
 pub use package::{InstalledPackage, OutdatedPackage, PackageCandidate, PackageRef};
 pub use pin::{PinKind, PinRecord};

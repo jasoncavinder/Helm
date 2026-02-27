@@ -123,6 +123,8 @@
   "app.packages.action.pin": "Paket pinnen",
   "app.packages.action.unpin": "Paket entpinnen",
   "app.packages.action.upgrade_package": "Paket aktualisieren",
+  "app.packages.alert.uninstall.title": "Uninstall {package}?",
+  "app.packages.alert.uninstall.message": "This will remove {package} via {manager}.",
   "app.packages.keg_policy.use_global": "Global verwenden",
   "app.packages.keg_policy.keep_old": "Alte Kegs behalten",
   "app.packages.keg_policy.cleanup_old": "Alte Kegs bereinigen",
@@ -385,6 +387,8 @@
   "app.inspector.executable_path.tag.default": "Standard",
   "app.inspector.install_method.tag.recommended": "Empfohlen",
   "app.inspector.install_method.tag.preferred": "Bevorzugt",
+  "app.inspector.install_method.tag.managed_restricted": "Managed Restricted",
+  "app.inspector.install_method.tag.blocked": "Blocked",
   "app.settings.action.restore_manager_priority": "Manager-Priorität zurücksetzen",
   "app.inspector.install_method.homebrew": "Homebrew",
   "app.inspector.install_method.macports": "MacPorts",
@@ -435,5 +439,11 @@
   "app.settings.cli.message.remove_failed": "Failed to remove Helm CLI shim.",
   "app.settings.cli.message.bundle_unavailable": "Bundled Helm CLI is unavailable in this app build.",
   "app.settings.cli.message.existing_install_conflict": "A non-Helm executable already exists at ~/.local/bin/helm. Remove it first.",
-  "app.settings.cli.message.remove_blocked_not_managed": "Refusing to remove ~/.local/bin/helm because it is not a Helm-managed shim."
+  "app.settings.cli.message.remove_blocked_not_managed": "Refusing to remove ~/.local/bin/helm because it is not a Helm-managed shim.",
+  "app.inspector.install_instance_count": "Install Instances",
+  "app.inspector.provenance": "Provenance",
+  "app.inspector.confidence": "Confidence",
+  "app.inspector.decision_margin": "Decision Margin",
+  "app.inspector.explanation": "Explanation",
+  "app.inspector.competing_provenance": "Competing Provenance"
 }

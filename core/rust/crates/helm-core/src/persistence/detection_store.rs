@@ -1,4 +1,7 @@
-use crate::models::{DetectionInfo, HomebrewKegPolicy, ManagerId, PackageKegPolicy, PackageRef};
+use crate::models::{
+    DetectionInfo, HomebrewKegPolicy, ManagerId, ManagerInstallInstance, PackageKegPolicy,
+    PackageRef,
+};
 use crate::persistence::PersistenceResult;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -15,6 +18,17 @@ pub trait DetectionStore: Send + Sync {
     fn upsert_detection(&self, manager: ManagerId, info: &DetectionInfo) -> PersistenceResult<()>;
 
     fn list_detections(&self) -> PersistenceResult<Vec<(ManagerId, DetectionInfo)>>;
+
+    fn replace_install_instances(
+        &self,
+        manager: ManagerId,
+        instances: &[ManagerInstallInstance],
+    ) -> PersistenceResult<()>;
+
+    fn list_install_instances(
+        &self,
+        manager: Option<ManagerId>,
+    ) -> PersistenceResult<Vec<ManagerInstallInstance>>;
 
     fn set_manager_enabled(&self, manager: ManagerId, enabled: bool) -> PersistenceResult<()>;
 

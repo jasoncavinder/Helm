@@ -725,7 +725,11 @@ extension HelmCore {
         }
     }
 
-    func setManagerInstallMethod(_ managerId: String, installMethod: String?) {
+    func setManagerInstallMethod(
+        _ managerId: String,
+        installMethod: String?,
+        completion: ((Bool) -> Void)? = nil
+    ) {
         service()?.setManagerInstallMethod(managerId: managerId, installMethod: installMethod) { [weak self] success in
             guard let self else { return }
             if !success {
@@ -736,9 +740,15 @@ extension HelmCore {
                     managerId: managerId,
                     taskType: "settings"
                 )
+                DispatchQueue.main.async {
+                    completion?(false)
+                }
                 return
             }
             self.fetchManagerStatus()
+            DispatchQueue.main.async {
+                completion?(true)
+            }
         }
     }
 
@@ -867,7 +877,118 @@ extension HelmCore {
         }
     }
 
-    func uninstallManager(_ managerId: String) {
+    func previewManagerUninstall(
+        _ managerId: String,
+        allowUnknownProvenance: Bool = false,
+        completion: @escaping (ManagerUninstallPreview?) -> Void
+    ) {
+        guard let svc = service() else {
+            recordLastError(
+                source: "core.actions",
+                action: "previewManagerUninstall.service_unavailable",
+                managerId: managerId,
+                taskType: "uninstall"
+            )
+            DispatchQueue.main.async {
+                completion(nil)
+            }
+            return
+        }
+
+        withTimeout(
+            120,
+            source: "core.actions",
+            action: "previewManagerUninstall",
+            managerId: managerId,
+            taskType: "uninstall",
+            operation: { timeoutCompletion in
+                svc.previewManagerUninstall(
+                    managerId: managerId,
+                    allowUnknownProvenance: allowUnknownProvenance
+                ) { timeoutCompletion($0) }
+            },
+            fallback: String?.none
+        ) { [weak self] jsonString in
+            guard let self else { return }
+            guard let jsonString,
+                  let data = jsonString.data(using: .utf8),
+                  let preview: ManagerUninstallPreview = self.decodeCorePayload(
+                    ManagerUninstallPreview.self,
+                    from: data,
+                    decodeContext: "previewManagerUninstall",
+                    source: "core.actions",
+                    action: "previewManagerUninstall.decode",
+                    managerId: managerId,
+                    taskType: "uninstall"
+                  ) else {
+                DispatchQueue.main.async {
+                    completion(nil)
+                }
+                return
+            }
+
+            DispatchQueue.main.async {
+                completion(preview)
+            }
+        }
+    }
+
+    func previewPackageUninstall(
+        _ package: PackageItem,
+        completion: @escaping (PackageUninstallPreview?) -> Void
+    ) {
+        guard let svc = service() else {
+            recordLastError(
+                source: "core.actions",
+                action: "previewPackageUninstall.service_unavailable",
+                managerId: package.managerId,
+                taskType: "uninstall"
+            )
+            DispatchQueue.main.async {
+                completion(nil)
+            }
+            return
+        }
+
+        withTimeout(
+            120,
+            source: "core.actions",
+            action: "previewPackageUninstall",
+            managerId: package.managerId,
+            taskType: "uninstall",
+            operation: { timeoutCompletion in
+                svc.previewPackageUninstall(
+                    managerId: package.managerId,
+                    packageName: package.name
+                ) { timeoutCompletion($0) }
+            },
+            fallback: String?.none
+        ) { [weak self] jsonString in
+            guard let self else { return }
+            guard let jsonString,
+                  let data = jsonString.data(using: .utf8),
+                  let preview: PackageUninstallPreview = self.decodeCorePayload(
+                    PackageUninstallPreview.self,
+                    from: data,
+                    decodeContext: "previewPackageUninstall",
+                    source: "core.actions",
+                    action: "previewPackageUninstall.decode",
+                    managerId: package.managerId,
+                    taskType: "uninstall"
+                  ) else {
+                DispatchQueue.main.async {
+                    completion(nil)
+                }
+                return
+            }
+
+            DispatchQueue.main.async {
+                completion(preview)
+            }
+        }
+    }
+
+    func uninstallManager(_ managerId: String, allowUnknownProvenance: Bool = false) {
         DispatchQueue.main.async {
             self.managerOperations[managerId] = L10n.App.Managers.Operation.startingUninstall.localized
         }
@@ -887,7 +1008,10 @@ extension HelmCore {
             managerId: managerId,
             taskType: "uninstall",
             operation: { completion in
-            svc.uninstallManager(managerId: managerId) { completion($0) }
+                svc.uninstallManagerWithOptions(
+                    managerId: managerId,
+                    allowUnknownProvenance: allowUnknownProvenance
+                ) { completion($0) }
         }, fallback: Int64(-1)) { [weak self] taskId in
             DispatchQueue.main.async {
                 guard let self = self, let taskId = taskId else { return }

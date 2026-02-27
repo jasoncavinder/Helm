@@ -2,9 +2,10 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use helm_core::models::{
-    CachedSearchResult, CoreErrorKind, HomebrewKegPolicy, InstalledPackage, ManagerId,
-    NewTaskLogRecord, OutdatedPackage, PackageCandidate, PackageRef, PinKind, PinRecord, TaskId,
-    TaskLogLevel, TaskRecord, TaskStatus, TaskType,
+    AutomationLevel, CachedSearchResult, CoreErrorKind, HomebrewKegPolicy,
+    InstallInstanceIdentityKind, InstallProvenance, InstalledPackage, ManagerId,
+    ManagerInstallInstance, NewTaskLogRecord, OutdatedPackage, PackageCandidate, PackageRef,
+    PinKind, PinRecord, StrategyKind, TaskId, TaskLogLevel, TaskRecord, TaskStatus, TaskType,
 };
 use helm_core::persistence::{
     DetectionStore, MigrationStore, PackageStore, PinStore, SearchCacheStore, TaskStore,
@@ -650,6 +651,166 @@ fn upsert_detection_treats_empty_version_as_missing() {
         .find(|(manager, _)| *manager == ManagerId::HomebrewFormula)
         .expect("homebrew detection should exist");
     assert_eq!(homebrew.1.version, None);
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn replace_install_instances_roundtrip_and_filtering() {
+    let path = test_db_path("install-instances-roundtrip");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let rustup_instance = ManagerInstallInstance {
+        manager: ManagerId::Rustup,
+        instance_id: "rustup-a".to_string(),
+        identity_kind: InstallInstanceIdentityKind::DevInode,
+        identity_value: "16777230:42".to_string(),
+        display_path: PathBuf::from("/Users/test/.cargo/bin/rustup"),
+        canonical_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+        alias_paths: vec![
+            PathBuf::from("/Users/test/.cargo/bin/rustup"),
+            PathBuf::from("/usr/local/bin/rustup"),
+        ],
+        is_active: true,
+        version: Some("1.28.2".to_string()),
+        provenance: InstallProvenance::RustupInit,
+        confidence: 0.91,
+        decision_margin: Some(0.49),
+        automation_level: AutomationLevel::Automatic,
+        uninstall_strategy: StrategyKind::RustupSelf,
+        update_strategy: StrategyKind::RustupSelf,
+        remediation_strategy: StrategyKind::ManualRemediation,
+        explanation_primary: Some("path is in ~/.cargo/bin".to_string()),
+        explanation_secondary: Some("no Homebrew cellar evidence".to_string()),
+        competing_provenance: Some(InstallProvenance::Homebrew),
+        competing_confidence: Some(0.42),
+    };
+    let brew_instance = ManagerInstallInstance {
+        manager: ManagerId::HomebrewFormula,
+        instance_id: "brew-a".to_string(),
+        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+        identity_value: "/opt/homebrew/bin/brew".to_string(),
+        display_path: PathBuf::from("/opt/homebrew/bin/brew"),
+        canonical_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+        alias_paths: vec![PathBuf::from("/opt/homebrew/bin/brew")],
+        is_active: true,
+        version: Some("4.6.0".to_string()),
+        provenance: InstallProvenance::Homebrew,
+        confidence: 1.0,
+        decision_margin: Some(1.0),
+        automation_level: AutomationLevel::Automatic,
+        uninstall_strategy: StrategyKind::HomebrewFormula,
+        update_strategy: StrategyKind::HomebrewFormula,
+        remediation_strategy: StrategyKind::ManualRemediation,
+        explanation_primary: Some("brew canonical path detected".to_string()),
+        explanation_secondary: None,
+        competing_provenance: None,
+        competing_confidence: None,
+    };
+
+    store
+        .replace_install_instances(ManagerId::Rustup, std::slice::from_ref(&rustup_instance))
+        .unwrap();
+    store
+        .replace_install_instances(
+            ManagerId::HomebrewFormula,
+            std::slice::from_ref(&brew_instance),
+        )
+        .unwrap();
+
+    let all = store.list_install_instances(None).unwrap();
+    assert_eq!(all.len(), 2);
+
+    let rustup_only = store
+        .list_install_instances(Some(ManagerId::Rustup))
+        .unwrap();
+    assert_eq!(rustup_only.len(), 1);
+    assert_eq!(rustup_only[0].manager, ManagerId::Rustup);
+    assert_eq!(rustup_only[0].provenance, InstallProvenance::RustupInit);
+    assert_eq!(rustup_only[0].automation_level, AutomationLevel::Automatic);
+    assert_eq!(rustup_only[0].alias_paths.len(), 2);
+    assert_eq!(rustup_only[0].decision_margin, Some(0.49));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn replace_install_instances_replaces_previous_rows_for_manager() {
+    let path = test_db_path("install-instances-replace");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let first = ManagerInstallInstance {
+        manager: ManagerId::Rustup,
+        instance_id: "rustup-first".to_string(),
+        identity_kind: InstallInstanceIdentityKind::DevInode,
+        identity_value: "1:1".to_string(),
+        display_path: PathBuf::from("/Users/test/.cargo/bin/rustup"),
+        canonical_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+        alias_paths: vec![PathBuf::from("/Users/test/.cargo/bin/rustup")],
+        is_active: true,
+        version: Some("1.28.2".to_string()),
+        provenance: InstallProvenance::RustupInit,
+        confidence: 0.9,
+        decision_margin: Some(0.4),
+        automation_level: AutomationLevel::Automatic,
+        uninstall_strategy: StrategyKind::RustupSelf,
+        update_strategy: StrategyKind::RustupSelf,
+        remediation_strategy: StrategyKind::ManualRemediation,
+        explanation_primary: None,
+        explanation_secondary: None,
+        competing_provenance: None,
+        competing_confidence: None,
+    };
+    let second = ManagerInstallInstance {
+        manager: ManagerId::Rustup,
+        instance_id: "rustup-second".to_string(),
+        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+        identity_value: "/opt/homebrew/bin/rustup".to_string(),
+        display_path: PathBuf::from("/opt/homebrew/bin/rustup"),
+        canonical_path: Some(PathBuf::from(
+            "/opt/homebrew/Cellar/rustup/1.28.2/bin/rustup",
+        )),
+        alias_paths: vec![
+            PathBuf::from("/opt/homebrew/bin/rustup"),
+            PathBuf::from("/opt/homebrew/Cellar/rustup/1.28.2/bin/rustup"),
+        ],
+        is_active: true,
+        version: Some("1.28.2".to_string()),
+        provenance: InstallProvenance::Homebrew,
+        confidence: 0.94,
+        decision_margin: Some(0.7),
+        automation_level: AutomationLevel::Automatic,
+        uninstall_strategy: StrategyKind::HomebrewFormula,
+        update_strategy: StrategyKind::HomebrewFormula,
+        remediation_strategy: StrategyKind::ManualRemediation,
+        explanation_primary: Some("cellar target".to_string()),
+        explanation_secondary: None,
+        competing_provenance: None,
+        competing_confidence: None,
+    };
+
+    store
+        .replace_install_instances(ManagerId::Rustup, std::slice::from_ref(&first))
+        .unwrap();
+    assert_eq!(
+        store
+            .list_install_instances(Some(ManagerId::Rustup))
+            .unwrap()
+            .len(),
+        1
+    );
+
+    store
+        .replace_install_instances(ManagerId::Rustup, std::slice::from_ref(&second))
+        .unwrap();
+    let rows = store
+        .list_install_instances(Some(ManagerId::Rustup))
+        .unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].instance_id, "rustup-second");
+    assert_eq!(rows[0].provenance, InstallProvenance::Homebrew);
 
     let _ = std::fs::remove_file(path);
 }

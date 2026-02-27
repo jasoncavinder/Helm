@@ -557,6 +557,50 @@ For `1.0`, Helm keeps crash/error reporting local-only and does not ship automat
 - Keeps support workflows functional via explicit diagnostics export without background collection.
 
 ---
+## Decision 033 — Manager Install-Instance Provenance Model (Phase 1)
+
+**Decision:**
+Introduce a dedicated per-manager install-instance model for provenance analysis while preserving existing single-path detection compatibility.
+
+**Policy details:**
+
+- Persist install instances in a dedicated table (`manager_install_instances`, migration v9; `decision_margin` added in migration v10).
+- Each instance uses a deterministic identity model with ordered fallback:
+  - `DevInode` (`dev:ino`) when available
+  - `CanonicalPath` when canonical path is available but inode identity is unavailable
+  - `FallbackHash` (canonical/display path + stable file metadata)
+- Persist identity metadata (`identity_kind`, `identity_value`) and deterministic `instance_id` for continuity across runs even if alias paths change.
+- External ownership evidence (for example `brew`, `pkgutil`) must be:
+  - timeout-bounded
+  - lazy/invoked only for ambiguity resolution
+  - cached per detection run
+  - optional (signal boost only; detection must fail closed and continue)
+- Persist explainability and policy outputs per instance:
+  - `provenance`, `confidence`
+  - `decision_margin` between top and competing provenance scores (when a competing score exists)
+  - top evidence factors
+  - competing provenance and score when relevant
+  - derived `automation_level`, `uninstall_strategy`, `update_strategy`, `remediation_strategy`
+- Managed-policy controls are evaluated at lifecycle runtime/surface projection time (not persisted into provenance records):
+  - install-method policy context: `HELM_MANAGED_INSTALL_METHOD_POLICY`, `HELM_MANAGED_INSTALL_METHOD_POLICY_ALLOW_RESTRICTED`
+  - automation ceiling policy context: `HELM_MANAGED_AUTOMATION_POLICY` (`automatic|needs_confirmation|read_only`)
+  - managed-policy automation ceilings clamp effective automation/strategy behavior conservatively without rewriting stored provenance evidence.
+- Route provenance classification through adapter-level spec hooks:
+  - `rustup` uses explicit scoring rules in Phase 2
+  - non-rustup managers remain explicit `Unknown` stubs with `TODO(provenance-spec)` markers until adapter rules are implemented
+- Non-rustup managers default to `Unknown` provenance in Phase 1 with explicit `TODO(provenance-spec)` markers.
+- Rollout gate:
+  - do not switch manager uninstall routing to provenance-first until instance/provenance stability and multi-install ambiguity tests are validated.
+  - phase 3 controlled exception: rustup manager uninstall is now provenance-first in CLI (with structured blast-radius preview, `--yes` confirmation gate, and explicit unknown-provenance override); non-rustup uninstall remains compatibility-routed until adapter specs are implemented.
+
+**Rationale:**
+
+- Decouples install-method preference from actual provenance detection.
+- Improves safety for multi-install and ambiguous-manager environments.
+- Enables confidence-based automation policy instead of path-only assumptions.
+- Keeps adoption low-risk by preserving existing detection compatibility and delaying routing switch-over.
+
+---
 ## Summary
 
 Helm prioritizes:
