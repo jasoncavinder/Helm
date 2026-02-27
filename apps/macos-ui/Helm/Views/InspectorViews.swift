@@ -1480,117 +1480,119 @@ private struct InspectorManagerDetailView: View {
 
             }
 
-            InspectorField(label: L10n.App.Inspector.installMethod.localized) {
-                Menu {
-                    ForEach(manager.installMethodOptions) { option in
-                        Button {
-                            core.setManagerInstallMethod(manager.id, installMethod: option.method.rawValue)
-                        } label: {
-                            HStack(spacing: 8) {
-                                Text(installMethodLabel(option, includeTag: true))
-                                if option.method == selectedInstallMethodOption.method {
-                                    Image(systemName: "checkmark")
+            Group {
+                InspectorField(label: L10n.App.Inspector.installMethod.localized) {
+                    Menu {
+                        ForEach(manager.installMethodOptions) { option in
+                            Button {
+                                core.setManagerInstallMethod(manager.id, installMethod: option.method.rawValue)
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Text(installMethodLabel(option, includeTag: true))
+                                    if option.method == selectedInstallMethodOption.method {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                            .disabled(!installMethodOptionAllowed(option))
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(installMethodLabel(selectedInstallMethodOption, includeTag: true))
+                                .font(.callout)
+                            Image(systemName: "chevron.down")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .disabled(managerIsUninstalling)
+                }
+
+                InspectorField(label: L10n.App.Inspector.timeoutHard.localized) {
+                    Menu {
+                        ForEach(hardTimeoutOptions, id: \.self) { seconds in
+                            Button {
+                                core.setManagerTimeoutProfile(
+                                    manager.id,
+                                    hardTimeoutSeconds: seconds,
+                                    idleTimeoutSeconds: selectedIdleTimeoutSeconds
+                                )
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Text(timeoutMenuLabel(seconds))
+                                    if seconds == selectedHardTimeoutSeconds {
+                                        Image(systemName: "checkmark")
+                                    }
                                 }
                             }
                         }
-                        .disabled(!installMethodOptionAllowed(option))
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(timeoutMenuLabel(selectedHardTimeoutSeconds))
+                                .font(.callout.monospacedDigit())
+                            Image(systemName: "chevron.down")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                } label: {
-                    HStack(spacing: 6) {
-                        Text(installMethodLabel(selectedInstallMethodOption, includeTag: true))
-                            .font(.callout)
-                        Image(systemName: "chevron.down")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .menuStyle(.borderlessButton)
+                    .disabled(managerIsUninstalling)
                 }
-                .menuStyle(.borderlessButton)
-                .disabled(managerIsUninstalling)
-            }
 
-            InspectorField(label: L10n.App.Inspector.timeoutHard.localized) {
-                Menu {
-                    ForEach(hardTimeoutOptions, id: \.self) { seconds in
-                        Button {
-                            core.setManagerTimeoutProfile(
-                                manager.id,
-                                hardTimeoutSeconds: seconds,
-                                idleTimeoutSeconds: selectedIdleTimeoutSeconds
-                            )
-                        } label: {
-                            HStack(spacing: 8) {
-                                Text(timeoutMenuLabel(seconds))
-                                if seconds == selectedHardTimeoutSeconds {
-                                    Image(systemName: "checkmark")
+                InspectorField(label: L10n.App.Inspector.timeoutIdle.localized) {
+                    Menu {
+                        ForEach(idleTimeoutOptions, id: \.self) { seconds in
+                            Button {
+                                core.setManagerTimeoutProfile(
+                                    manager.id,
+                                    hardTimeoutSeconds: selectedHardTimeoutSeconds,
+                                    idleTimeoutSeconds: seconds
+                                )
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Text(timeoutMenuLabel(seconds))
+                                    if seconds == selectedIdleTimeoutSeconds {
+                                        Image(systemName: "checkmark")
+                                    }
                                 }
                             }
                         }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(timeoutMenuLabel(selectedIdleTimeoutSeconds))
+                                .font(.callout.monospacedDigit())
+                            Image(systemName: "chevron.down")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                } label: {
-                    HStack(spacing: 6) {
-                        Text(timeoutMenuLabel(selectedHardTimeoutSeconds))
-                            .font(.callout.monospacedDigit())
-                        Image(systemName: "chevron.down")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .menuStyle(.borderlessButton)
+                    .disabled(managerIsUninstalling)
                 }
-                .menuStyle(.borderlessButton)
-                .disabled(managerIsUninstalling)
-            }
 
-            InspectorField(label: L10n.App.Inspector.timeoutIdle.localized) {
-                Menu {
-                    ForEach(idleTimeoutOptions, id: \.self) { seconds in
-                        Button {
-                            core.setManagerTimeoutProfile(
-                                manager.id,
-                                hardTimeoutSeconds: selectedHardTimeoutSeconds,
-                                idleTimeoutSeconds: seconds
-                            )
-                        } label: {
-                            HStack(spacing: 8) {
-                                Text(timeoutMenuLabel(seconds))
-                                if seconds == selectedIdleTimeoutSeconds {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
+                InspectorField(label: L10n.App.Inspector.capabilities.localized) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(manager.capabilities, id: \.self) { capabilityKey in
+                            Text(capabilityKey.localized)
+                                .font(.caption)
                         }
                     }
-                } label: {
-                    HStack(spacing: 6) {
-                        Text(timeoutMenuLabel(selectedIdleTimeoutSeconds))
-                            .font(.callout.monospacedDigit())
-                        Image(systemName: "chevron.down")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .menuStyle(.borderlessButton)
-                .disabled(managerIsUninstalling)
-            }
 
-            InspectorField(label: L10n.App.Inspector.capabilities.localized) {
-                VStack(alignment: .leading, spacing: 2) {
-                    ForEach(manager.capabilities, id: \.self) { capabilityKey in
-                        Text(capabilityKey.localized)
-                            .font(.caption)
+                if managerHealthIsError, let failedTask = latestFailedTask {
+                    Button(L10n.App.Inspector.viewDiagnostics.localized) {
+                        context.selectedTaskId = failedTask.id
+                        context.selectedPackageId = nil
+                        context.selectedUpgradePlanStepId = nil
                     }
+                    .font(.caption)
+                    .buttonStyle(HelmSecondaryButtonStyle())
+                    .helmPointer()
                 }
-            }
-
-            if managerHealthIsError, let failedTask = latestFailedTask {
-                Button(L10n.App.Inspector.viewDiagnostics.localized) {
-                    context.selectedTaskId = failedTask.id
-                    context.selectedPackageId = nil
-                    context.selectedUpgradePlanStepId = nil
-                }
-                .font(.caption)
-                .buttonStyle(HelmSecondaryButtonStyle())
-                .helmPointer()
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
