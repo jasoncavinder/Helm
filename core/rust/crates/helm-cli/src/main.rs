@@ -10948,7 +10948,7 @@ fn install_method_allowed_by_policy(
 
 fn manager_helm_supported_install_methods(id: ManagerId) -> &'static [&'static str] {
     match id {
-        ManagerId::Mise | ManagerId::Mas | ManagerId::Asdf => &["homebrew"],
+        ManagerId::Mise | ManagerId::Mas | ManagerId::Asdf | ManagerId::Rustup => &["homebrew"],
         _ => &[],
     }
 }
@@ -11163,6 +11163,25 @@ fn build_manager_mutation_request(
                         package: PackageRef {
                             manager: ManagerId::HomebrewFormula,
                             name: "mas".to_string(),
+                        },
+                        version: None,
+                    }),
+                ),
+                _ => {
+                    return Err(format!(
+                        "manager '{}' install is unsupported for selected method '{}'",
+                        manager.as_str(),
+                        selected_method.as_deref().unwrap_or("unknown")
+                    ));
+                }
+            },
+            ManagerId::Rustup => match selected_method.as_deref() {
+                Some("homebrew") | None => (
+                    ManagerId::HomebrewFormula,
+                    AdapterRequest::Install(InstallRequest {
+                        package: PackageRef {
+                            manager: ManagerId::HomebrewFormula,
+                            name: "rustup".to_string(),
                         },
                         version: None,
                     }),
@@ -16859,6 +16878,41 @@ mod tests {
             super::AdapterRequest::Install(install) => {
                 assert_eq!(install.package.manager, ManagerId::HomebrewFormula);
                 assert_eq!(install.package.name, "asdf");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn rustup_install_request_prefers_homebrew_method() {
+        let db_path = temp_db_path("rustup-install-method-routing");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .set_manager_selected_install_method(ManagerId::Rustup, Some("rustupInstaller"))
+            .expect("persisting unsupported rustup preference for install should succeed");
+
+        let error =
+            super::build_manager_mutation_request(&store, ManagerId::Rustup, "install", None)
+                .expect_err("saved unsupported method should fail rustup install request");
+        assert!(error.contains("unsupported"));
+
+        let (target_manager, request) = super::build_manager_mutation_request(
+            &store,
+            ManagerId::Rustup,
+            "install",
+            Some("homebrew".to_string()),
+        )
+        .expect("cli method override should recover rustup install route");
+        assert_eq!(target_manager, ManagerId::HomebrewFormula);
+        match request {
+            super::AdapterRequest::Install(install) => {
+                assert_eq!(install.package.manager, ManagerId::HomebrewFormula);
+                assert_eq!(install.package.name, "rustup");
             }
             other => panic!("unexpected request: {other:?}"),
         }

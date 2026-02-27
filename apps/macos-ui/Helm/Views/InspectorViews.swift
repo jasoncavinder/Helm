@@ -1214,7 +1214,7 @@ private struct InspectorManagerDetailView: View {
 
     private var helmSupportedInstallMethodRawValues: Set<String> {
         switch manager.id {
-        case "mise", "mas":
+        case "mise", "mas", "rustup":
             return ["homebrew"]
         default:
             return Set(manager.installMethodOptions.map(\.method.rawValue))

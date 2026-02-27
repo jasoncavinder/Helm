@@ -293,7 +293,7 @@ bool helm_set_manager_timeout_profile(const char *manager_id,
 /**
  * Install a manager tool via Homebrew. Returns the task ID, or -1 on error.
  *
- * Supported manager IDs: "mise", "mas".
+ * Supported manager IDs: "mise", "mas", "rustup".
  *
  * # Safety
  *

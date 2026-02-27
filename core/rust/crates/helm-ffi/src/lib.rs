@@ -6927,7 +6927,7 @@ pub unsafe extern "C" fn helm_set_manager_timeout_profile(
 
 /// Install a manager tool via Homebrew. Returns the task ID, or -1 on error.
 ///
-/// Supported manager IDs: "mise", "mas".
+/// Supported manager IDs: "mise", "mas", "rustup".
 ///
 /// # Safety
 ///
@@ -6968,6 +6968,7 @@ pub unsafe extern "C" fn helm_install_manager(manager_id: *const c_char) -> i64 
     let formula_name = match (manager, selected_method.as_deref()) {
         (ManagerId::Mise, Some("homebrew")) | (ManagerId::Mise, None) => "mise",
         (ManagerId::Mas, Some("homebrew")) | (ManagerId::Mas, None) => "mas",
+        (ManagerId::Rustup, Some("homebrew")) | (ManagerId::Rustup, None) => "rustup",
         _ => return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
     };
 
