@@ -1115,6 +1115,8 @@ private struct InspectorManagerDetailView: View {
     let outdatedCount: Int
     let onViewPackages: () -> Void
     @State private var confirmAction: ConfirmAction?
+    @State private var uninstallConfirmation: UninstallConfirmationContext?
+    @State private var showUninstallDetails = false
     @State private var loadingManagerUninstallPreview = false
     @State private var showInstallOptionsSheet = false
     @State private var pendingInstallMethodRawValue: String?
@@ -1126,18 +1128,32 @@ private struct InspectorManagerDetailView: View {
 
     private enum ConfirmAction: Identifiable {
         case update
-        case uninstall(preview: ManagerUninstallPreview, allowUnknownProvenance: Bool)
-        case uninstallFallback(allowUnknownProvenance: Bool)
 
         var id: String {
             switch self {
             case .update:
                 return "update"
-            case let .uninstall(preview, allowUnknownProvenance):
-                return "uninstall-\(preview.strategy)-\(preview.blastRadiusScore)-\(allowUnknownProvenance)"
-            case let .uninstallFallback(allowUnknownProvenance):
-                return "uninstall-fallback-\(allowUnknownProvenance)"
             }
+        }
+    }
+
+    private struct UninstallConfirmationContext: Identifiable {
+        let preview: ManagerUninstallPreview?
+        let allowUnknownProvenance: Bool
+
+        var id: String {
+            if let preview {
+                return "preview-\(preview.strategy)-\(preview.blastRadiusScore)-\(allowUnknownProvenance)"
+            }
+            return "fallback-\(allowUnknownProvenance)"
+        }
+
+        var readOnlyBlocked: Bool {
+            preview?.readOnlyBlocked ?? false
+        }
+
+        var resolvedAllowUnknownProvenance: Bool {
+            allowUnknownProvenance || (preview?.unknownOverrideRequired ?? false)
         }
     }
 
@@ -1259,33 +1275,6 @@ private struct InspectorManagerDetailView: View {
             }
             return left.displayPath.localizedStandardCompare(right.displayPath) == .orderedAscending
         }
-    }
-
-    private var activeProvenance: String? {
-        status?.activeProvenance?.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var activeConfidence: Double? {
-        status?.activeConfidence
-    }
-
-    private var activeDecisionMargin: Double? {
-        status?.activeDecisionMargin
-    }
-
-    private var activeExplanation: String? {
-        status?.activeExplanationPrimary?.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var competingProvenanceSummary: String? {
-        guard let provenance = status?.competingProvenance?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !provenance.isEmpty else {
-            return nil
-        }
-        if let confidence = status?.competingConfidence {
-            return "\(provenance) (\(formatConfidence(confidence)))"
-        }
-        return provenance
     }
 
     private func competingProvenanceSummary(
@@ -1434,98 +1423,9 @@ private struct InspectorManagerDetailView: View {
                     }
                 }
 
-                if let activeProvenance, !activeProvenance.isEmpty {
-                    InspectorField(label: L10n.App.Inspector.provenance.localized) {
-                        Text(activeProvenance)
-                            .font(.callout)
-                    }
-                }
-
-                if let activeConfidence {
-                    InspectorField(label: L10n.App.Inspector.confidence.localized) {
-                        Text(formatConfidence(activeConfidence))
-                            .font(.callout.monospacedDigit())
-                    }
-                }
-
-                if let activeDecisionMargin {
-                    InspectorField(label: L10n.App.Inspector.decisionMargin.localized) {
-                        Text(formatConfidence(activeDecisionMargin))
-                            .font(.callout.monospacedDigit())
-                    }
-                }
-
-                if let activeExplanation, !activeExplanation.isEmpty {
-                    InspectorField(label: L10n.App.Inspector.explanation.localized) {
-                        Text(activeExplanation)
-                            .font(.callout)
-                    }
-                }
-
-                if let competingProvenanceSummary {
-                    InspectorField(label: L10n.App.Inspector.competingProvenance.localized) {
-                        Text(competingProvenanceSummary)
-                            .font(.callout)
-                    }
-                }
-
-                InspectorField(label: L10n.App.Inspector.executablePath.localized) {
-                    Menu {
-                        Button {
-                            core.setManagerSelectedExecutablePath(manager.id, selectedPath: nil)
-                        } label: {
-                            HStack(spacing: 8) {
-                                Text(L10n.App.Inspector.executablePathUseDefault.localized)
-                                if selectedExecutablePath == defaultExecutablePath {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
-                        .disabled(defaultExecutablePath == nil)
-
-                        if !executablePaths.isEmpty {
-                            Divider()
-                        }
-
-                        ForEach(executablePaths, id: \.self) { path in
-                            Button {
-                                core.setManagerSelectedExecutablePath(manager.id, selectedPath: path)
-                            } label: {
-                                HStack(spacing: 8) {
-                                    Text(executablePathLabel(path))
-                                    if path == selectedExecutablePath {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Text(selectedExecutablePath ?? L10n.App.Inspector.notDetected.localized)
-                                .font(.callout.monospacedDigit())
-                                .lineLimit(2)
-                            Image(systemName: "chevron.down")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .menuStyle(.borderlessButton)
-                    .disabled(managerIsUninstalling)
-                }
-
             }
 
             Group {
-                InspectorField(label: L10n.App.Inspector.capabilities.localized) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        ForEach(manager.capabilities, id: \.self) { capabilityKey in
-                            Text(capabilityKey.localized)
-                                .font(.caption)
-                        }
-                    }
-                }
-
                 if managerHealthIsError, let failedTask = latestFailedTask {
                     Button(L10n.App.Inspector.viewDiagnostics.localized) {
                         context.selectedTaskId = failedTask.id
@@ -1622,6 +1522,9 @@ private struct InspectorManagerDetailView: View {
             .padding(20)
             .frame(minWidth: 420)
         }
+        .sheet(item: $uninstallConfirmation) { confirmation in
+            uninstallConfirmationSheet(confirmation)
+        }
         .alert(item: $confirmAction) { action in
             switch action {
             case .update:
@@ -1629,40 +1532,6 @@ private struct InspectorManagerDetailView: View {
                     title: Text(L10n.App.Managers.Alert.updateTitle.localized(with: ["manager": localizedManagerDisplayName(manager.id)])),
                     message: Text(L10n.App.Managers.Alert.updateMessage.localized),
                     primaryButton: .default(Text(L10n.Common.update.localized)) { core.updateManager(manager.id) },
-                    secondaryButton: .cancel()
-                )
-            case let .uninstall(preview, allowUnknownProvenance):
-                let message = managerUninstallAlertMessage(preview)
-                if preview.readOnlyBlocked {
-                    return Alert(
-                        title: Text(L10n.App.Managers.Alert.uninstallTitle.localized(with: ["manager": localizedManagerDisplayName(manager.id)])),
-                        message: Text(message),
-                        dismissButton: .default(Text(L10n.Common.ok.localized))
-                    )
-                }
-
-                let useUnknownOverride = allowUnknownProvenance || preview.unknownOverrideRequired
-                return Alert(
-                    title: Text(L10n.App.Managers.Alert.uninstallTitle.localized(with: ["manager": localizedManagerDisplayName(manager.id)])),
-                    message: Text(message),
-                    primaryButton: .destructive(Text(L10n.Common.uninstall.localized)) {
-                        core.uninstallManager(
-                            manager.id,
-                            allowUnknownProvenance: useUnknownOverride
-                        )
-                    },
-                    secondaryButton: .cancel()
-                )
-            case let .uninstallFallback(allowUnknownProvenance):
-                return Alert(
-                    title: Text(L10n.App.Managers.Alert.uninstallTitle.localized(with: ["manager": localizedManagerDisplayName(manager.id)])),
-                    message: Text(L10n.App.Managers.Alert.uninstallMessage.localized(with: ["manager_short": manager.shortName])),
-                    primaryButton: .destructive(Text(L10n.Common.uninstall.localized)) {
-                        core.uninstallManager(
-                            manager.id,
-                            allowUnknownProvenance: allowUnknownProvenance
-                        )
-                    },
                     secondaryButton: .cancel()
                 )
             }
@@ -1829,34 +1698,126 @@ private struct InspectorManagerDetailView: View {
             allowUnknownProvenance: allowUnknownProvenance
         ) { preview in
             loadingManagerUninstallPreview = false
-            if let preview {
-                confirmAction = .uninstall(
-                    preview: preview,
-                    allowUnknownProvenance: allowUnknownProvenance
-                )
-                return
-            }
-            confirmAction = .uninstallFallback(
+            uninstallConfirmation = UninstallConfirmationContext(
+                preview: preview,
                 allowUnknownProvenance: allowUnknownProvenance
             )
+            showUninstallDetails = false
         }
     }
 
-    private func managerUninstallAlertMessage(_ preview: ManagerUninstallPreview) -> String {
-        var sections = [
-            L10n.App.Managers.Alert.uninstallMessage.localized(with: ["manager_short": manager.shortName])
-        ]
+    private func uninstallImpactSummary(_ context: UninstallConfirmationContext) -> String {
+        let filesCount = context.preview?.filesRemoved.count ?? 0
+        let directoriesCount = context.preview?.directoriesRemoved.count ?? 0
+        let effectsCount = uninstallSecondaryEffects(context).count
+        return L10n.App.Managers.Uninstall.Details.impactCounts.localized(with: [
+            "files": filesCount,
+            "directories": directoriesCount,
+            "effects": effectsCount
+        ])
+    }
 
-        if !preview.summaryLines.isEmpty {
-            sections.append(preview.summaryLines.joined(separator: "\n"))
+    private func uninstallSecondaryEffects(_ context: UninstallConfirmationContext) -> [String] {
+        guard let preview = context.preview else {
+            return []
         }
+        return preview.secondaryEffects
+    }
 
-        if !preview.secondaryEffects.isEmpty {
-            let effects = preview.secondaryEffects.prefix(3).map { "• \($0)" }
-            sections.append(effects.joined(separator: "\n"))
+    @ViewBuilder
+    private func uninstallConfirmationSheet(_ context: UninstallConfirmationContext) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(
+                L10n.App.Managers.Alert.uninstallTitle.localized(
+                    with: ["manager": localizedManagerDisplayName(manager.id)]
+                )
+            )
+            .font(.title3.weight(.semibold))
+
+            Text(
+                L10n.App.Managers.Alert.uninstallMessage.localized(
+                    with: ["manager_short": manager.shortName]
+                )
+            )
+            .font(.callout)
+            .foregroundColor(.secondary)
+
+            let effects = uninstallSecondaryEffects(context)
+            if !effects.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(effects, id: \.self) { effect in
+                        HStack(alignment: .top, spacing: 8) {
+                            Circle()
+                                .fill(HelmTheme.stateAttention)
+                                .frame(width: 6, height: 6)
+                                .padding(.top, 6)
+                            Text(effect)
+                                .font(.callout)
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+
+            DisclosureGroup(
+                L10n.App.Managers.Uninstall.Details.toggle.localized,
+                isExpanded: $showUninstallDetails
+            ) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .top, spacing: 8) {
+                        Text("\(L10n.App.Managers.Uninstall.Details.strategy.localized):")
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(.secondary)
+                        Text(context.preview?.strategy ?? "legacy")
+                            .font(.caption.monospacedDigit())
+                            .foregroundColor(.secondary)
+                    }
+
+                    HStack(alignment: .top, spacing: 8) {
+                        Text("\(L10n.App.Managers.Uninstall.Details.impacts.localized):")
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(.secondary)
+                        Text(uninstallImpactSummary(context))
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.top, 6)
+            }
+
+            HStack(spacing: 8) {
+                Spacer()
+                if context.readOnlyBlocked {
+                    Button(L10n.Common.ok.localized) {
+                        uninstallConfirmation = nil
+                    }
+                    .buttonStyle(HelmPrimaryButtonStyle())
+                    .keyboardShortcut(.defaultAction)
+                } else {
+                    Button(L10n.Common.cancel.localized) {
+                        uninstallConfirmation = nil
+                    }
+                    .keyboardShortcut(.cancelAction)
+
+                    Button(L10n.Common.uninstall.localized) {
+                        uninstallConfirmation = nil
+                        core.uninstallManager(
+                            manager.id,
+                            allowUnknownProvenance: context.resolvedAllowUnknownProvenance
+                        )
+                    }
+                    .buttonStyle(HelmPrimaryButtonStyle())
+                    .keyboardShortcut(.defaultAction)
+                }
+            }
         }
-
-        return sections.joined(separator: "\n\n")
+        .padding(20)
+        .frame(minWidth: 460)
+        .onAppear {
+            showUninstallDetails = false
+        }
     }
 
     private func localizedCategoryName(_ category: String) -> String {
@@ -1918,17 +1879,6 @@ private struct InspectorManagerDetailView: View {
 
     private func installMethodOptionAllowed(_ option: ManagerInstallMethodOption) -> Bool {
         option.isAllowed(in: installMethodPolicyContext)
-    }
-
-    private func executablePathLabel(_ path: String) -> String {
-        var value = path
-        if path == defaultExecutablePath {
-            value += " (\(L10n.App.Inspector.executablePathTagDefault.localized))"
-        }
-        if path == recommendedExecutablePath {
-            value += " (\(L10n.App.Inspector.installMethodTagRecommended.localized))"
-        }
-        return value
     }
 
     private func formatConfidence(_ value: Double) -> String {

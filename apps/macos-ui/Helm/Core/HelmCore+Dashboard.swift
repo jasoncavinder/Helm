@@ -225,6 +225,7 @@ extension HelmCore {
         let statusById = Dictionary(uniqueKeysWithValues: coreTasks.map { ($0.id, $0.status.lowercased()) })
         let inFlightStates = Set(["queued", "running"])
         let mutationTaskTypesRequiringDetectionResync = Set(["manager_install", "manager_uninstall"])
+        var completedManagerUninstalls: [String] = []
         var shouldTriggerDetectionResync = false
 
         for managerId in Array(managerActionTaskByManager.keys) {
@@ -247,15 +248,57 @@ extension HelmCore {
                    mutationTaskTypesRequiringDetectionResync.contains(trackedTaskType) {
                     shouldTriggerDetectionResync = true
                 }
+                if trackedTaskType == "manager_uninstall" && status == "completed" {
+                    completedManagerUninstalls.append(managerId)
+                }
                 managerOperations.removeValue(forKey: managerId)
                 managerActionTaskByManager.removeValue(forKey: managerId)
                 managerActionTaskTypes.removeValue(forKey: taskId)
             }
         }
 
+        for managerId in completedManagerUninstalls {
+            reconcileManagerAfterSuccessfulUninstall(managerId: managerId)
+        }
+
         if shouldTriggerDetectionResync {
             triggerDetection()
         }
+    }
+
+    private func reconcileManagerAfterSuccessfulUninstall(managerId: String) {
+        // Keep multi-install managers in place until detection confirms instance state.
+        if expectedRemainingInstallInstancesAfterUninstall(for: managerId) > 0 {
+            return
+        }
+
+        installedPackages.removeAll { $0.managerId == managerId }
+        outdatedPackages.removeAll { $0.managerId == managerId }
+        searchResults.removeAll { $0.managerId == managerId }
+        cachedAvailablePackages.removeAll { $0.managerId == managerId }
+
+        if selectedManagerFilter == managerId {
+            selectedManagerFilter = nil
+        }
+
+        detectedManagers.remove(managerId)
+        managerStatuses.removeValue(forKey: managerId)
+    }
+
+    private func expectedRemainingInstallInstancesAfterUninstall(for managerId: String) -> Int {
+        guard let status = managerStatuses[managerId] else {
+            return 0
+        }
+
+        if let count = status.installInstanceCount {
+            return max(count - 1, 0)
+        }
+
+        if let instances = status.installInstances, !instances.isEmpty {
+            return max(instances.count - 1, 0)
+        }
+
+        return 0
     }
 
     func syncUpgradeActions(from coreTasks: [CoreTaskRecord]) {

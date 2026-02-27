@@ -147,6 +147,14 @@ extension L10n {
                 static let uninstallTitle = "app.managers.alert.uninstall.title"
                 static let uninstallMessage = "app.managers.alert.uninstall.message"
             }
+            struct Uninstall {
+                struct Details {
+                    static let toggle = "app.managers.uninstall.details.toggle"
+                    static let strategy = "app.managers.uninstall.details.strategy"
+                    static let impacts = "app.managers.uninstall.details.impacts"
+                    static let impactCounts = "app.managers.uninstall.details.impact_counts"
+                }
+            }
             struct Operation {
                 static let startingInstall = "app.managers.operation.starting_install"
                 static let startingUpdate = "app.managers.operation.starting_update"
