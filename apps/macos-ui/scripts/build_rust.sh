@@ -11,6 +11,12 @@ if [ "${LC_ALL:-}" = "C.UTF-8" ]; then
     unset LC_ALL
 fi
 
+# Some environments also export LC_CTYPE=C.UTF-8, which triggers noisy Perl
+# locale warnings during cargo/rustup invocations on macOS.
+if [ "${LC_CTYPE:-}" = "C.UTF-8" ]; then
+    unset LC_CTYPE
+fi
+
 # Go to repo root
 REPO_ROOT=$(git rev-parse --show-toplevel)
 cd "$REPO_ROOT/core/rust"
@@ -40,7 +46,12 @@ else
     CARGO_FLAGS=""
 fi
 
+# Keep macOS 11 links on a toolchain whose prebuilt stdlib still supports that
+# baseline. Newer stable toolchains currently emit std objects with minos 12.0.
 RUST_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-stable}"
+if [ "${MACOSX_DEPLOYMENT_TARGET%%.*}" -le 11 ] && [ "$RUST_TOOLCHAIN" = "stable" ]; then
+    RUST_TOOLCHAIN="1.92.0"
+fi
 export RUSTUP_TOOLCHAIN="$RUST_TOOLCHAIN"
 
 validate_rust_toolchain() {
@@ -81,6 +92,22 @@ ensure_rust_toolchain() {
 }
 
 ensure_rust_toolchain
+
+resolve_rustc_signature() {
+    if command -v rustup >/dev/null 2>&1; then
+        rustup run "$RUST_TOOLCHAIN" rustc -vV 2>/dev/null | tr '\n' '|'
+        return 0
+    fi
+
+    if command -v rustc >/dev/null 2>&1; then
+        rustc -vV 2>/dev/null | tr '\n' '|'
+        return 0
+    fi
+
+    printf 'unavailable'
+}
+
+RUSTC_SIGNATURE="$(resolve_rustc_signature)"
 
 # Map Xcode architecture names to Rust target triples.
 map_arch_to_target() {
@@ -129,6 +156,7 @@ fi
 
 echo "Requested Xcode ARCHS: $REQUESTED_ARCHS"
 echo "Rust targets: ${RUST_TARGETS[*]}"
+echo "Rust toolchain: $RUST_TOOLCHAIN"
 
 DEST_DIR="$REPO_ROOT/apps/macos-ui/Generated"
 mkdir -p "$DEST_DIR"
@@ -161,6 +189,8 @@ compute_inputs_fingerprint() {
         echo "target_suffix=$TARGET_SUFFIX"
         echo "requested_archs=$REQUESTED_ARCHS"
         echo "rust_targets=${RUST_TARGETS[*]}"
+        echo "rust_toolchain=$RUST_TOOLCHAIN"
+        echo "rustc_signature=$RUSTC_SIGNATURE"
         echo "distribution_channel=${HELM_DISTRIBUTION_CHANNEL:-developer_id}"
         while IFS= read -r relative; do
             [ -z "$relative" ] && continue

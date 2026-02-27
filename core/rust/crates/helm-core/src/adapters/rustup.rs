@@ -168,7 +168,7 @@ pub fn rustup_self_uninstall_request(task_id: Option<TaskId>) -> ProcessSpawnReq
         task_id,
         TaskType::Uninstall,
         ManagerAction::Uninstall,
-        CommandSpec::new(RUSTUP_COMMAND).args(["self", "uninstall", "-y"]),
+        CommandSpec::new(RUSTUP_COMMAND).args(["--verbose", "self", "uninstall", "-y"]),
         UNINSTALL_TIMEOUT,
     )
     .idle_timeout(UNINSTALL_IDLE_TIMEOUT)

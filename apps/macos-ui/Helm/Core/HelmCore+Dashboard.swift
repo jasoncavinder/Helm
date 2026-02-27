@@ -224,20 +224,37 @@ extension HelmCore {
     func syncManagerOperations(from coreTasks: [CoreTaskRecord]) {
         let statusById = Dictionary(uniqueKeysWithValues: coreTasks.map { ($0.id, $0.status.lowercased()) })
         let inFlightStates = Set(["queued", "running"])
+        let mutationTaskTypesRequiringDetectionResync = Set(["manager_install", "manager_uninstall"])
+        var shouldTriggerDetectionResync = false
 
         for managerId in Array(managerActionTaskByManager.keys) {
             guard let taskId = managerActionTaskByManager[managerId] else { continue }
+            let trackedTaskType = managerActionTaskTypes[taskId]?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
             guard let status = statusById[taskId] else {
+                if let trackedTaskType,
+                   mutationTaskTypesRequiringDetectionResync.contains(trackedTaskType) {
+                    shouldTriggerDetectionResync = true
+                }
                 managerOperations.removeValue(forKey: managerId)
                 managerActionTaskByManager.removeValue(forKey: managerId)
                 managerActionTaskTypes.removeValue(forKey: taskId)
                 continue
             }
             if !inFlightStates.contains(status) {
+                if let trackedTaskType,
+                   mutationTaskTypesRequiringDetectionResync.contains(trackedTaskType) {
+                    shouldTriggerDetectionResync = true
+                }
                 managerOperations.removeValue(forKey: managerId)
                 managerActionTaskByManager.removeValue(forKey: managerId)
                 managerActionTaskTypes.removeValue(forKey: taskId)
             }
+        }
+
+        if shouldTriggerDetectionResync {
+            triggerDetection()
         }
     }
 
