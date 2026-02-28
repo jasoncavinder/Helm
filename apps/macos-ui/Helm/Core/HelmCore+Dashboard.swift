@@ -4,6 +4,11 @@ import os.log
 private let taskSyncLogger = Logger(subsystem: "com.jasoncavinder.Helm", category: "core.tasks")
 
 extension HelmCore {
+    static let managerActionTaskMissingGraceSeconds: TimeInterval = 12
+    static let localManagerActionTaskIdPrefix = "local-manager-action-"
+    static let localManagerActionTaskRetentionSeconds: TimeInterval = 180
+    static let managerVerificationTimeoutSeconds: TimeInterval = 120
+
     var allKnownPackages: [PackageItem] {
         let enabledOutdated = outdatedPackages.filter { isManagerEnabled($0.managerId) }
         let outdatedIds = Set(enabledOutdated.map(\.id))
@@ -84,12 +89,15 @@ extension HelmCore {
 
         if !trimmed.isEmpty {
             let localMatches = base.filter {
-                $0.name.lowercased().contains(trimmed)
+                packageManagerParticipatesInSearch($0.managerId)
+                    && ($0.name.lowercased().contains(trimmed)
                     || $0.manager.lowercased().contains(trimmed)
-                    || ($0.summary?.lowercased().contains(trimmed) ?? false)
+                    || ($0.summary?.lowercased().contains(trimmed) ?? false))
             }
             var mergedById = Dictionary(uniqueKeysWithValues: localMatches.map { ($0.id, $0) })
-            for remote in searchResults where isManagerEnabled(remote.managerId) {
+            for remote in searchResults
+            where isManagerEnabled(remote.managerId)
+                && packageManagerParticipatesInSearch(remote.managerId) {
                 if var existing = mergedById[remote.id] {
                     mergeSummary(into: &existing, from: remote.summary)
                     if existing.latestVersion == nil {
@@ -132,6 +140,10 @@ extension HelmCore {
         return base
     }
 
+    private func packageManagerParticipatesInSearch(_ managerId: String) -> Bool {
+        managerId != "rustup"
+    }
+
     func outdatedCount(forManagerId managerId: String) -> Int {
         managersState.outdatedCountByManager[managerId, default: 0]
     }
@@ -146,6 +158,9 @@ extension HelmCore {
     }
 
     func health(forManagerId managerId: String) -> OperationalHealth {
+        if isManagerVerifying(managerId) {
+            return .notInstalled
+        }
         if let precomputed = overviewState.managerHealthById[managerId] {
             return precomputed
         }
@@ -221,10 +236,25 @@ extension HelmCore {
         return false
     }
 
+    func isManagerVerifying(_ managerId: String) -> Bool {
+        verifyingManagerIds.contains(managerId)
+    }
+
+    func isManagerDetected(_ managerId: String) -> Bool {
+        if isManagerVerifying(managerId) {
+            return false
+        }
+        if let status = managerStatuses[managerId] {
+            return status.detected
+        }
+        return detectedManagers.contains(managerId)
+    }
+
     func syncManagerOperations(from coreTasks: [CoreTaskRecord]) {
         let statusById = Dictionary(uniqueKeysWithValues: coreTasks.map { ($0.id, $0.status.lowercased()) })
         let inFlightStates = Set(["queued", "running"])
         let mutationTaskTypesRequiringDetectionResync = Set(["manager_install", "manager_uninstall"])
+        var completedManagerInstalls: [String] = []
         var completedManagerUninstalls: [String] = []
         var shouldTriggerDetectionResync = false
 
@@ -234,35 +264,154 @@ extension HelmCore {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .lowercased()
             guard let status = statusById[taskId] else {
+                let submittedAt = managerActionTaskSubmittedAt[taskId] ?? .distantPast
+                if Date().timeIntervalSince(submittedAt) < Self.managerActionTaskMissingGraceSeconds {
+                    continue
+                }
                 if let trackedTaskType,
                    mutationTaskTypesRequiringDetectionResync.contains(trackedTaskType) {
                     shouldTriggerDetectionResync = true
                 }
-                managerOperations.removeValue(forKey: managerId)
+                if let fallback = managerActionMissingTaskFailureText(for: trackedTaskType) {
+                    managerOperations[managerId] = fallback
+                    taskSyncLogger.warning(
+                        "Tracked manager action task disappeared before visibility (manager=\(managerId), task_id=\(taskId), task_type=\(trackedTaskType ?? "unknown"))"
+                    )
+                } else {
+                    managerOperations.removeValue(forKey: managerId)
+                }
                 managerActionTaskByManager.removeValue(forKey: managerId)
                 managerActionTaskTypes.removeValue(forKey: taskId)
+                managerActionTaskSubmittedAt.removeValue(forKey: taskId)
                 continue
             }
             if !inFlightStates.contains(status) {
-                if let trackedTaskType,
-                   mutationTaskTypesRequiringDetectionResync.contains(trackedTaskType) {
+                if trackedTaskType == "manager_install" && status == "completed" {
+                    completedManagerInstalls.append(managerId)
+                } else if trackedTaskType == "manager_uninstall" && status == "completed" {
+                    completedManagerUninstalls.append(managerId)
+                } else if let trackedTaskType,
+                          mutationTaskTypesRequiringDetectionResync.contains(trackedTaskType) {
                     shouldTriggerDetectionResync = true
                 }
-                if trackedTaskType == "manager_uninstall" && status == "completed" {
-                    completedManagerUninstalls.append(managerId)
+                if trackedTaskType != "manager_install" || status != "completed" {
+                    managerOperations.removeValue(forKey: managerId)
                 }
-                managerOperations.removeValue(forKey: managerId)
                 managerActionTaskByManager.removeValue(forKey: managerId)
                 managerActionTaskTypes.removeValue(forKey: taskId)
+                managerActionTaskSubmittedAt.removeValue(forKey: taskId)
             }
         }
 
         for managerId in completedManagerUninstalls {
             reconcileManagerAfterSuccessfulUninstall(managerId: managerId)
+            startManagerVerification(managerId: managerId, coreTasks: coreTasks)
+        }
+
+        for managerId in completedManagerInstalls {
+            startManagerVerification(managerId: managerId, coreTasks: coreTasks)
         }
 
         if shouldTriggerDetectionResync {
             triggerDetection()
+        }
+
+        syncManagerVerificationState(from: coreTasks)
+    }
+
+    private func startManagerVerification(managerId: String, coreTasks: [CoreTaskRecord]) {
+        let latestDetectionTaskId = coreTasks
+            .filter { task in
+                task.manager == managerId && task.taskType.lowercased() == "detection"
+            }
+            .map(\.id)
+            .max() ?? lastObservedTaskId
+
+        verifyingManagerIds.insert(managerId)
+        managerOperations[managerId] = L10n.App.Managers.Operation.verifying.localized
+        managerVerificationAnchorTaskIdByManager[managerId] = latestDetectionTaskId
+        managerVerificationStartedAtByManager[managerId] = Date()
+
+        triggerDetection(for: managerId) { [weak self] success in
+            guard let self else { return }
+            guard self.verifyingManagerIds.contains(managerId) else { return }
+            if success {
+                return
+            }
+
+            taskSyncLogger.warning(
+                "Manager-scoped verification detection trigger failed; falling back to full detection (manager=\(managerId, privacy: .public))"
+            )
+            self.finishManagerVerification(managerId: managerId, refreshSnapshots: false)
+            self.triggerDetection()
+        }
+    }
+
+    private func syncManagerVerificationState(from coreTasks: [CoreTaskRecord]) {
+        guard !verifyingManagerIds.isEmpty else { return }
+
+        let inFlightStatuses = Set(["queued", "running"])
+        let terminalStatuses = Set(["completed", "failed", "cancelled"])
+        let now = Date()
+
+        for managerId in Array(verifyingManagerIds) {
+            let anchorTaskId = managerVerificationAnchorTaskIdByManager[managerId] ?? 0
+            let latestManagerDetectionTask = coreTasks
+                .filter { task in
+                    task.manager == managerId
+                        && task.taskType.lowercased() == "detection"
+                        && task.id > anchorTaskId
+                }
+                .max { lhs, rhs in
+                    lhs.id < rhs.id
+                }
+
+            guard let latestManagerDetectionTask else {
+                let startedAt = managerVerificationStartedAtByManager[managerId] ?? .distantPast
+                if now.timeIntervalSince(startedAt) > Self.managerVerificationTimeoutSeconds {
+                    taskSyncLogger.warning(
+                        "Manager verification timed out waiting for manager-scoped detection task; falling back to full detection (manager=\(managerId, privacy: .public))"
+                    )
+                    finishManagerVerification(managerId: managerId, refreshSnapshots: false)
+                    triggerDetection()
+                }
+                continue
+            }
+
+            let detectionStatus = latestManagerDetectionTask.status.lowercased()
+            if inFlightStatuses.contains(detectionStatus) {
+                continue
+            }
+            if terminalStatuses.contains(detectionStatus) {
+                finishManagerVerification(managerId: managerId, refreshSnapshots: true)
+            }
+        }
+    }
+
+    private func finishManagerVerification(managerId: String, refreshSnapshots: Bool) {
+        verifyingManagerIds.remove(managerId)
+        managerOperations.removeValue(forKey: managerId)
+        managerVerificationAnchorTaskIdByManager.removeValue(forKey: managerId)
+        managerVerificationStartedAtByManager.removeValue(forKey: managerId)
+
+        guard refreshSnapshots else { return }
+
+        fetchManagerStatus()
+        fetchPackages()
+        fetchOutdatedPackages()
+        refreshCachedAvailablePackages()
+    }
+
+    private func managerActionMissingTaskFailureText(for taskType: String?) -> String? {
+        switch taskType {
+        case "manager_install":
+            return L10n.App.Managers.Operation.installFailed.localized
+        case "manager_update":
+            return L10n.App.Managers.Operation.updateFailed.localized
+        case "manager_uninstall":
+            return L10n.App.Managers.Operation.uninstallFailed.localized
+        default:
+            return nil
         }
     }
 
@@ -519,7 +668,7 @@ extension HelmCore {
         let status = managerStatuses[managerId]
         let isImplemented = status?.isImplemented ?? managerInfo?.isImplemented ?? true
         let isEnabled = status?.enabled ?? true
-        let isDetected = status?.detected ?? false
+        let isDetected = isManagerDetected(managerId)
         let latestTask = latestDetectionTask(for: managerId)
         let latestStatus = latestTask?.status.lowercased()
 

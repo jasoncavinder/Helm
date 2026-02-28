@@ -8,6 +8,7 @@ import Foundation
     func listTaskLogs(taskId: Int64, limit: Int64, withReply reply: @escaping (String?) -> Void)
     func triggerRefresh(withReply reply: @escaping (Bool) -> Void)
     func triggerDetection(withReply reply: @escaping (Bool) -> Void)
+    func triggerDetectionForManager(managerId: String, withReply reply: @escaping (Bool) -> Void)
     func searchLocal(query: String, withReply reply: @escaping (String?) -> Void)
     func triggerRemoteSearch(query: String, withReply reply: @escaping (Int64) -> Void)
     func triggerRemoteSearchForManager(managerId: String, query: String, withReply reply: @escaping (Int64) -> Void)
@@ -45,6 +46,11 @@ import Foundation
         managerId: String,
         allowUnknownProvenance: Bool,
         withReply reply: @escaping (String?) -> Void
+    )
+    func installManagerWithOptions(
+        managerId: String,
+        optionsJson: String?,
+        withReply reply: @escaping (Int64) -> Void
     )
     func installManager(managerId: String, withReply reply: @escaping (Int64) -> Void)
     func updateManager(managerId: String, withReply reply: @escaping (Int64) -> Void)

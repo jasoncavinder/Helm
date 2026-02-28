@@ -165,6 +165,7 @@ extension L10n {
                 static let installing = "app.managers.operation.installing"
                 static let updating = "app.managers.operation.updating"
                 static let uninstalling = "app.managers.operation.uninstalling"
+                static let verifying = "app.managers.operation.verifying"
                 static let upgrading = "app.managers.operation.upgrading"
             }
         }
@@ -465,6 +466,7 @@ extension L10n {
             static let disabled = "app.inspector.disabled"
             static let category = "app.inspector.category"
             static let installMethod = "app.inspector.install_method"
+            static let installSource = "app.inspector.install_source"
             static let installInstanceCount = "app.inspector.install_instance_count"
             static let provenance = "app.inspector.provenance"
             static let confidence = "app.inspector.confidence"
@@ -504,6 +506,12 @@ extension L10n {
                 static let asdf = "app.inspector.install_method.asdf"
                 static let mise = "app.inspector.install_method.mise"
                 static let notManageable = "app.inspector.install_method.not_manageable"
+            }
+            struct InstallSource {
+                static let officialDownload = "app.inspector.install_source.official_download"
+                static let existingBinaryPath = "app.inspector.install_source.existing_binary_path"
+                static let binaryPathPlaceholder = "app.inspector.install_source.binary_path_placeholder"
+                static let selectBinary = "app.inspector.install_source.select_binary"
             }
         }
         struct Overlay {

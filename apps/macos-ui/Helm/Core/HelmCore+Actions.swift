@@ -40,6 +40,13 @@ extension HelmCore {
     }
 
     func dismissTask(_ task: TaskItem) {
+        if task.id.hasPrefix(Self.localManagerActionTaskIdPrefix) {
+            localManagerActionTasks.removeValue(forKey: task.id)
+            localManagerActionTaskCreatedAt.removeValue(forKey: task.id)
+            activeTasks.removeAll { $0.id == task.id }
+            return
+        }
+
         guard !task.isRunning,
               task.status.lowercased() == "failed",
               let taskId = Int64(task.id) else { return }
@@ -681,6 +688,7 @@ extension HelmCore {
         if let taskId = managerActionTaskByManager.removeValue(forKey: managerId) {
             managerActionTaskDescriptions.removeValue(forKey: taskId)
             managerActionTaskTypes.removeValue(forKey: taskId)
+            managerActionTaskSubmittedAt.removeValue(forKey: taskId)
         }
 
         upgradeActionTaskByPackage = upgradeActionTaskByPackage.filter { !$0.key.hasPrefix(packageIdPrefix) }
@@ -823,7 +831,10 @@ extension HelmCore {
         }
     }
 
-    func installManager(_ managerId: String) {
+    func installManager(
+        _ managerId: String,
+        options: ManagerInstallActionOptions? = nil
+    ) {
         if isManagerUninstalling(managerId) {
             return
         }
@@ -846,7 +857,33 @@ extension HelmCore {
             managerId: managerId,
             taskType: "install",
             operation: { completion in
-            svc.installManager(managerId: managerId) { completion($0) }
+            let encodedOptions: String?
+            if let options {
+                do {
+                    let data = try JSONEncoder().encode(options)
+                    encodedOptions = String(data: data, encoding: .utf8)
+                } catch {
+                    logger.error(
+                        "installManager(\(managerId)) failed to encode install options: \(error.localizedDescription)"
+                    )
+                    self.recordLastError(
+                        source: "core.actions",
+                        action: "installManager.options_encode_failed",
+                        managerId: managerId,
+                        taskType: "install"
+                    )
+                    completion(-1)
+                    return
+                }
+            } else {
+                encodedOptions = nil
+            }
+            svc.installManagerWithOptions(
+                managerId: managerId,
+                optionsJson: encodedOptions
+            ) {
+                completion($0)
+            }
         }, fallback: Int64(-1)) { [weak self] taskId in
             DispatchQueue.main.async {
                 guard let self = self, let taskId = taskId else { return }
@@ -861,6 +898,11 @@ extension HelmCore {
                     self.consumeLastServiceErrorKey { serviceErrorKey in
                         self.managerOperations[managerId] =
                             serviceErrorKey?.localized ?? L10n.App.Managers.Operation.installFailed.localized
+                        self.registerLocalManagerActionFailureTask(
+                            managerId: managerId,
+                            taskType: "install",
+                            description: self.managerActionDescription(action: "Install", managerId: managerId)
+                        )
                     }
                     return
                 }
@@ -1103,6 +1145,7 @@ extension HelmCore {
         managerActionTaskDescriptions[taskId] = description
         managerActionTaskByManager[managerId] = taskId
         managerActionTaskTypes[taskId] = taskType
+        managerActionTaskSubmittedAt[taskId] = Date()
         managerOperations[managerId] = inProgressText
 
         let idString = "\(taskId)"
@@ -1122,6 +1165,28 @@ extension HelmCore {
         }
     }
 
+    private func registerLocalManagerActionFailureTask(
+        managerId: String,
+        taskType: String?,
+        description: String
+    ) {
+        let localTaskId = Self.localManagerActionTaskIdPrefix + UUID().uuidString
+        let failedTask = TaskItem(
+            id: localTaskId,
+            description: description,
+            status: "Failed",
+            managerId: managerId,
+            taskType: taskType,
+            labelKey: nil,
+            labelArgs: nil
+        )
+
+        localManagerActionTasks[localTaskId] = failedTask
+        localManagerActionTaskCreatedAt[localTaskId] = Date()
+        activeTasks.removeAll { $0.id == localTaskId }
+        activeTasks.insert(failedTask, at: 0)
+    }
+
     // MARK: - Search Orchestration
 
     func remoteSearchManagerIds() -> [String] {
@@ -1130,7 +1195,7 @@ extension HelmCore {
                 return ManagerInfo.all
                     .map(\.id)
                     .filter { supportsRemoteSearch(managerId: $0) }
-                    .filter { detectedManagers.contains($0) }
+                    .filter { isManagerDetected($0) }
             }
             return []
         }
@@ -1140,8 +1205,7 @@ extension HelmCore {
             .filter { supportsRemoteSearch(managerId: $0) }
             .filter { managerStatuses[$0]?.isImplemented ?? true }
             .filter { managerStatuses[$0]?.enabled ?? true }
-            .filter { managerStatuses[$0]?.detected ?? true }
-            .filter { detectedManagers.isEmpty || detectedManagers.contains($0) }
+            .filter { isManagerDetected($0) }
     }
 
     func onSearchTextChanged(_ query: String) {
