@@ -19,6 +19,7 @@ Focus:
 - maintain release-process hardening guardrails now that phases 1-5 are complete (preflight, publish verification, drift prevention)
 - begin execution planning and branch setup for `0.18.x` local security groundwork after stable publication
 - keep launch-at-login scoped to GUI only (no CLI/TUI parity target)
+- track post-mise lifecycle follow-ups: plugin-as-package modeling evaluation and managed-environment install-source policy controls
 
 Current checkpoint:
 - `v0.17.7` is the current stable release on `main`; pre-1.0 quality-audit remediation and release-gate hardening are now included in stable publication:
@@ -95,6 +96,9 @@ Current checkpoint:
   - post-`v0.17.7` mise provenance calibration follow-up delivered on `dev`:
     - `mise` install-instance classification now uses a dedicated adapter scorer (no longer Homebrew-formula-only), with explicit heuristics for Homebrew, script-installer (`~/.local/bin/mise`), cargo-home, npm-global `@jdxcode/mise`, MacPorts, Nix, system, and enterprise-managed prefixes.
     - ambiguous ownership paths now use bounded optional `brew --prefix mise` and `pkgutil --file-info` evidence as lazy scoring boosts (fail-closed) to avoid detection-pipeline blocking while improving provenance confidence.
+  - post-`v0.17.7` mise lifecycle parity follow-up delivered on `dev`:
+    - `mise` install now supports `scriptInstaller` (recommended/default), `homebrew`, `macports`, and `cargoInstall` across shared lifecycle planning in CLI/FFI/UI.
+    - `mise` uninstall now supports structured cleanup/config options with manager-only default and explicit full-cleanup config choice requirements across CLI/TUI/GUI confirmation flows.
   - `#93` `feat/v0.17-log-foundation`
   - `#95` `feat/v0.17-structured-error-export`
   - `#96` `feat/v0.17-service-health-panel`
