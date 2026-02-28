@@ -24,7 +24,7 @@ use super::{
     CoordinatorSubmitRequest, CoordinatorWorkflowRequest, ExecutionMode, InstalledPackage,
     ManagerId, OutdatedPackage, PackageRef, SELF_UPDATE_ALLOW_ROOT_ENV, SqliteStore,
     TASK_FETCH_LIMIT, TaskId, adapter_request_to_coordinator_submit, build_diagnostics_summary,
-    build_manager_mutation_request, build_manager_uninstall_plan,
+    build_manager_mutation_request, build_manager_uninstall_plan_with_options,
     build_package_uninstall_preview_for_package, cancel_inflight_tasks_for_manager,
     channel_managed_check_status, coordinator_cancel_task, coordinator_start_workflow,
     coordinator_submit_request, current_cli_version, database_path, detect_install_provenance,
@@ -44,6 +44,38 @@ const REMOTE_SEARCH_DEBOUNCE_MS: u64 = 350;
 
 const SPLASH_LARGE: &str = include_str!("assets/splash_large.txt");
 const SPLASH_COMPACT: &str = include_str!("assets/splash_compact.txt");
+
+fn mise_uninstall_options_label(
+    options: &helm_core::manager_lifecycle::ManagerUninstallOptions,
+) -> Option<&'static str> {
+    use helm_core::manager_lifecycle::{MiseUninstallCleanupMode, MiseUninstallConfigRemoval};
+
+    match (options.mise_cleanup_mode, options.mise_config_removal) {
+        (
+            Some(MiseUninstallCleanupMode::FullCleanup),
+            Some(MiseUninstallConfigRemoval::KeepConfig),
+        ) => Some("mode=full_cleanup config=keep"),
+        (
+            Some(MiseUninstallCleanupMode::FullCleanup),
+            Some(MiseUninstallConfigRemoval::RemoveConfig),
+        ) => Some("mode=full_cleanup config=remove"),
+        (Some(MiseUninstallCleanupMode::ManagerOnly), _) | (None, None) => {
+            Some("mode=manager_only")
+        }
+        _ => None,
+    }
+}
+
+fn mise_uninstall_options_full_cleanup(
+    config_removal: helm_core::manager_lifecycle::MiseUninstallConfigRemoval,
+) -> helm_core::manager_lifecycle::ManagerUninstallOptions {
+    helm_core::manager_lifecycle::ManagerUninstallOptions {
+        mise_cleanup_mode: Some(
+            helm_core::manager_lifecycle::MiseUninstallCleanupMode::FullCleanup,
+        ),
+        mise_config_removal: Some(config_removal),
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Section {
@@ -159,6 +191,7 @@ enum ConfirmAction {
         manager: ManagerId,
         subcommand: &'static str,
         allow_unknown_provenance: bool,
+        uninstall_options: helm_core::manager_lifecycle::ManagerUninstallOptions,
         uninstall_preview_summary: Option<String>,
     },
     CancelTask {
@@ -239,12 +272,22 @@ impl ConfirmAction {
                 manager,
                 subcommand,
                 allow_unknown_provenance,
+                uninstall_options,
                 uninstall_preview_summary,
             } => {
                 let mut prompt = format!("{} manager '{}' ?", subcommand, manager.as_str());
                 if let Some(summary) = uninstall_preview_summary.as_deref() {
                     prompt.push(' ');
                     prompt.push_str(summary);
+                }
+                if *subcommand == "uninstall"
+                    && *manager == ManagerId::Mise
+                    && let Some(summary) = mise_uninstall_options_label(uninstall_options)
+                {
+                    prompt.push(' ');
+                    prompt.push('[');
+                    prompt.push_str(summary);
+                    prompt.push(']');
                 }
                 if *allow_unknown_provenance {
                     prompt.push_str(" [unknown-provenance override]");
@@ -1391,6 +1434,8 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                         manager: manager_id,
                         subcommand: "update",
                         allow_unknown_provenance: false,
+                        uninstall_options:
+                            helm_core::manager_lifecycle::ManagerUninstallOptions::default(),
                         uninstall_preview_summary: None,
                     });
                 }
@@ -1419,7 +1464,12 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                 if let Some(manager) = app.selected_manager()
                     && let Ok(manager_id) = manager.manager_id.parse::<ManagerId>()
                 {
-                    match prepare_manager_uninstall_confirm_action(store, manager_id, false) {
+                    match prepare_manager_uninstall_confirm_action(
+                        store,
+                        manager_id,
+                        false,
+                        helm_core::manager_lifecycle::ManagerUninstallOptions::default(),
+                    ) {
                         Ok(action) => app.confirm_action = Some(action),
                         Err(error) => app.note_error(error),
                     }
@@ -1432,9 +1482,60 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                 && let Some(manager) = app.selected_manager()
                 && let Ok(manager_id) = manager.manager_id.parse::<ManagerId>()
             {
-                match prepare_manager_uninstall_confirm_action(store, manager_id, true) {
+                match prepare_manager_uninstall_confirm_action(
+                    store,
+                    manager_id,
+                    true,
+                    helm_core::manager_lifecycle::ManagerUninstallOptions::default(),
+                ) {
                     Ok(action) => app.confirm_action = Some(action),
                     Err(error) => app.note_error(error),
+                }
+            }
+        }
+        KeyCode::Char('z') => {
+            if app.section == Section::Managers
+                && let Some(manager) = app.selected_manager()
+                && let Ok(manager_id) = manager.manager_id.parse::<ManagerId>()
+            {
+                if manager_id != ManagerId::Mise {
+                    app.note_error(
+                        "full-cleanup uninstall shortcuts are currently only supported for mise"
+                            .to_string(),
+                    );
+                } else {
+                    let options = mise_uninstall_options_full_cleanup(
+                        helm_core::manager_lifecycle::MiseUninstallConfigRemoval::KeepConfig,
+                    );
+                    match prepare_manager_uninstall_confirm_action(
+                        store, manager_id, false, options,
+                    ) {
+                        Ok(action) => app.confirm_action = Some(action),
+                        Err(error) => app.note_error(error),
+                    }
+                }
+            }
+        }
+        KeyCode::Char('Z') => {
+            if app.section == Section::Managers
+                && let Some(manager) = app.selected_manager()
+                && let Ok(manager_id) = manager.manager_id.parse::<ManagerId>()
+            {
+                if manager_id != ManagerId::Mise {
+                    app.note_error(
+                        "full-cleanup uninstall shortcuts are currently only supported for mise"
+                            .to_string(),
+                    );
+                } else {
+                    let options = mise_uninstall_options_full_cleanup(
+                        helm_core::manager_lifecycle::MiseUninstallConfigRemoval::RemoveConfig,
+                    );
+                    match prepare_manager_uninstall_confirm_action(
+                        store, manager_id, false, options,
+                    ) {
+                        Ok(action) => app.confirm_action = Some(action),
+                        Err(error) => app.note_error(error),
+                    }
                 }
             }
         }
@@ -1504,6 +1605,8 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                     manager: manager_id,
                     subcommand: "install",
                     allow_unknown_provenance: false,
+                    uninstall_options:
+                        helm_core::manager_lifecycle::ManagerUninstallOptions::default(),
                     uninstall_preview_summary: None,
                 });
             }
@@ -1859,11 +1962,17 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
             manager,
             subcommand,
             allow_unknown_provenance,
+            uninstall_options,
             uninstall_preview_summary: _,
         } => {
             if subcommand == "uninstall" {
-                let plan =
-                    build_manager_uninstall_plan(store, manager, allow_unknown_provenance, false)?;
+                let plan = build_manager_uninstall_plan_with_options(
+                    store,
+                    manager,
+                    allow_unknown_provenance,
+                    false,
+                    uninstall_options,
+                )?;
                 let submit_request = adapter_request_to_coordinator_submit(plan.request)?;
                 let response = coordinator_submit_request(
                     store,
@@ -1969,8 +2078,15 @@ fn prepare_manager_uninstall_confirm_action(
     store: &SqliteStore,
     manager: ManagerId,
     allow_unknown_provenance: bool,
+    uninstall_options: helm_core::manager_lifecycle::ManagerUninstallOptions,
 ) -> Result<ConfirmAction, String> {
-    let plan = build_manager_uninstall_plan(store, manager, allow_unknown_provenance, true)?;
+    let plan = build_manager_uninstall_plan_with_options(
+        store,
+        manager,
+        allow_unknown_provenance,
+        true,
+        uninstall_options.clone(),
+    )?;
     let summary = format!(
         "[strategy={} provenance={} confidence={} blast_radius={}]",
         plan.preview.strategy,
@@ -1985,6 +2101,7 @@ fn prepare_manager_uninstall_confirm_action(
         manager,
         subcommand: "uninstall",
         allow_unknown_provenance,
+        uninstall_options,
         uninstall_preview_summary: Some(summary),
     })
 }
@@ -2934,6 +3051,9 @@ fn render_detail_pane(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState
                     "Actions: [e] enable/disable  [i] install  [u] update  [x] uninstall  [X] uninstall+override",
                 ));
                 lines.push(Line::from(
+                    "         [z] mise full-cleanup (keep config)  [Z] mise full-cleanup (remove config)",
+                ));
+                lines.push(Line::from(
                     "         [D] detect  [o/O] cycle executable  [m/M] cycle install method",
                 ));
                 lines.push(Line::from(
@@ -3102,7 +3222,7 @@ fn render_footer(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState) {
         Section::Packages => "i install | u upgrade | x uninstall | p pin/unpin | K keg policy",
         Section::Tasks => "c cancel task",
         Section::Managers => {
-            "e toggle | i install | u update | x uninstall | X uninstall+override | D detect | o/m cycle"
+            "e toggle | i install | u update | x uninstall | X uninstall+override | z/Z mise full-cleanup | D detect | o/m cycle"
         }
         Section::Settings => {
             "e toggle selected bool | +/- auto-check frequency | K check self update | u update"
@@ -3215,6 +3335,9 @@ fn render_help_overlay(frame: &mut ratatui::Frame<'_>, app: &AppState) {
         Line::from("  Tasks:     c cancel task"),
         Line::from("  Managers:  e enable/disable, i install, u update, x uninstall"),
         Line::from("             X uninstall with unknown-provenance override"),
+        Line::from(
+            "             z full-cleanup (keep config), Z full-cleanup (remove config) [mise]",
+        ),
         Line::from("             D detect selected, o/O executable cycle, m/M method cycle"),
         Line::from("             [ and ] priority shift within authority"),
         Line::from("  Settings:  e toggle selected bool, +/- frequency"),
@@ -3637,6 +3760,7 @@ mod tests {
             manager: ManagerId::Rustup,
             subcommand: "uninstall",
             allow_unknown_provenance: false,
+            uninstall_options: helm_core::manager_lifecycle::ManagerUninstallOptions::default(),
             uninstall_preview_summary: Some(
                 "[strategy=rustup_self provenance=rustup_init confidence=0.92 blast_radius=8]"
                     .to_string(),
@@ -3654,6 +3778,7 @@ mod tests {
             manager: ManagerId::Rustup,
             subcommand: "uninstall",
             allow_unknown_provenance: true,
+            uninstall_options: helm_core::manager_lifecycle::ManagerUninstallOptions::default(),
             uninstall_preview_summary: Some(
                 "[strategy=homebrew_formula provenance=unknown confidence=0.49 blast_radius=9]"
                     .to_string(),
@@ -3661,6 +3786,25 @@ mod tests {
         }
         .prompt();
         assert!(prompt.contains("unknown-provenance override"));
+    }
+
+    #[test]
+    fn manager_uninstall_confirm_prompt_shows_mise_cleanup_mode() {
+        let prompt = ConfirmAction::ManagerMutation {
+            manager: ManagerId::Mise,
+            subcommand: "uninstall",
+            allow_unknown_provenance: false,
+            uninstall_options: super::mise_uninstall_options_full_cleanup(
+                helm_core::manager_lifecycle::MiseUninstallConfigRemoval::RemoveConfig,
+            ),
+            uninstall_preview_summary: Some(
+                "[strategy=mise_self provenance=source_build confidence=0.93 blast_radius=10]"
+                    .to_string(),
+            ),
+        }
+        .prompt();
+        assert!(prompt.contains("mode=full_cleanup"));
+        assert!(prompt.contains("config=remove"));
     }
 
     #[test]
