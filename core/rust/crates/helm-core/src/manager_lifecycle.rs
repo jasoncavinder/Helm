@@ -121,6 +121,7 @@ pub fn plan_manager_install(
     selected_method: Option<&str>,
     options: &ManagerInstallOptions,
 ) -> Result<ManagerInstallPlan, ManagerInstallPlanError> {
+    let selected_method = effective_manager_install_method(manager, selected_method, options);
     match manager {
         ManagerId::Mise => match selected_method {
             Some("homebrew") => Ok(homebrew_manager_install_plan("mise")),
@@ -153,6 +154,29 @@ pub fn plan_manager_install(
             Some(_) => Err(ManagerInstallPlanError::UnsupportedMethod),
         },
         _ => Err(ManagerInstallPlanError::UnsupportedManager),
+    }
+}
+
+fn effective_manager_install_method<'a>(
+    manager: ManagerId,
+    selected_method: Option<&'a str>,
+    options: &ManagerInstallOptions,
+) -> Option<&'a str> {
+    match manager {
+        // Explicit install-source options are request-scoped intent and take precedence over any
+        // persisted selection. This prevents stale preferences from routing install tasks through
+        // the wrong manager/label.
+        ManagerId::Mise
+            if options.mise_install_source.is_some() || options.mise_binary_path.is_some() =>
+        {
+            Some("scriptInstaller")
+        }
+        ManagerId::Rustup
+            if options.rustup_install_source.is_some() || options.rustup_binary_path.is_some() =>
+        {
+            Some("rustupInstaller")
+        }
+        _ => selected_method,
     }
 }
 
@@ -1041,6 +1065,51 @@ mod tests {
                     install.version.as_deref(),
                     Some("scriptInstaller:existingBinaryPath:/tmp/mise")
                 );
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn manager_install_plan_prefers_mise_options_over_stale_homebrew_selection() {
+        let plan = plan_manager_install(
+            ManagerId::Mise,
+            Some("homebrew"),
+            &ManagerInstallOptions {
+                mise_install_source: Some(MiseInstallSource::OfficialDownload),
+                ..ManagerInstallOptions::default()
+            },
+        )
+        .expect("mise install options should override stale selected method");
+        assert_eq!(plan.target_manager, ManagerId::Mise);
+        match plan.request {
+            crate::adapters::AdapterRequest::Install(install) => {
+                assert_eq!(install.package.manager, ManagerId::Mise);
+                assert_eq!(
+                    install.version.as_deref(),
+                    Some("scriptInstaller:officialDownload")
+                );
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn manager_install_plan_prefers_rustup_options_over_stale_homebrew_selection() {
+        let plan = plan_manager_install(
+            ManagerId::Rustup,
+            Some("homebrew"),
+            &ManagerInstallOptions {
+                rustup_install_source: Some(RustupInstallSource::OfficialDownload),
+                ..ManagerInstallOptions::default()
+            },
+        )
+        .expect("rustup install options should override stale selected method");
+        assert_eq!(plan.target_manager, ManagerId::Rustup);
+        match plan.request {
+            crate::adapters::AdapterRequest::Install(install) => {
+                assert_eq!(install.package.manager, ManagerId::Rustup);
+                assert_eq!(install.version.as_deref(), Some("officialDownload"));
             }
             other => panic!("unexpected request: {other:?}"),
         }
