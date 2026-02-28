@@ -470,16 +470,15 @@ struct ManagerInfo: Identifiable {
             installMethod: .automatable,
             installMethodOptions: [
                 methodOption(
-                    .homebrew,
+                    .scriptInstaller,
                     recommended: true,
                     preferred: true,
-                    executablePathHints: ["/opt/homebrew/bin/mise", "/usr/local/bin/mise"],
-                    packageHints: ["mise"]
+                    executablePathHints: [".local/bin/mise"]
                 ),
                 methodOption(
-                    .scriptInstaller,
-                    policyTag: .managedRestricted,
-                    executablePathHints: [".local/bin/mise"]
+                    .homebrew,
+                    executablePathHints: ["/opt/homebrew/bin/mise", "/usr/local/bin/mise"],
+                    packageHints: ["mise"]
                 ),
                 methodOption(.macports, policyTag: .managedRestricted),
                 methodOption(.cargoInstall, policyTag: .managedRestricted)

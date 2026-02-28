@@ -1127,6 +1127,13 @@ private struct InspectorManagerDetailView: View {
     @State private var installSubmissionInFlight = false
     @State private var pendingRustupInstallSource: ManagerRustupInstallSource = .officialDownload
     @State private var pendingRustupBinaryPath = ""
+    @State private var pendingMiseInstallSource: ManagerMiseInstallSource = .officialDownload
+    @State private var pendingMiseBinaryPath = ""
+    @State private var pendingUninstallOptions = ManagerUninstallActionOptions(
+        allowUnknownProvenance: false,
+        miseCleanupMode: nil,
+        miseConfigRemoval: nil
+    )
 
     private enum ConfirmAction: Identifiable {
         case update
@@ -1238,7 +1245,7 @@ private struct InspectorManagerDetailView: View {
 
     private var helmSupportedInstallMethodRawValues: Set<String> {
         switch manager.id {
-        case "mise", "mas":
+        case "mas":
             return ["homebrew"]
         default:
             return Set(resolvedInstallMethodOptions.map(\.method.rawValue))
@@ -1277,8 +1284,17 @@ private struct InspectorManagerDetailView: View {
         pendingInstallMethodRawValue == ManagerDistributionMethod.rustupInstaller.rawValue
     }
 
+    private var miseScriptInstallMethodSelected: Bool {
+        manager.id == "mise"
+            && pendingInstallMethodRawValue == ManagerDistributionMethod.scriptInstaller.rawValue
+    }
+
     private var rustupInstallSourceRequiresBinaryPath: Bool {
         rustupInstallMethodSelected && pendingRustupInstallSource == .existingBinaryPath
+    }
+
+    private var miseInstallSourceRequiresBinaryPath: Bool {
+        miseScriptInstallMethodSelected && pendingMiseInstallSource == .existingBinaryPath
     }
 
     private var rustupInstallSourceSelectionValid: Bool {
@@ -1286,6 +1302,28 @@ private struct InspectorManagerDetailView: View {
             return true
         }
         return !pendingRustupBinaryPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var miseInstallSourceSelectionValid: Bool {
+        guard miseInstallSourceRequiresBinaryPath else {
+            return true
+        }
+        return !pendingMiseBinaryPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var miseUninstallCleanupModeSelection: ManagerMiseUninstallCleanupMode {
+        pendingUninstallOptions.miseCleanupMode ?? .managerOnly
+    }
+
+    private var miseRequiresConfigRemovalSelection: Bool {
+        manager.id == "mise" && miseUninstallCleanupModeSelection == .fullCleanup
+    }
+
+    private var uninstallConfigSelectionValid: Bool {
+        if !miseRequiresConfigRemovalSelection {
+            return true
+        }
+        return pendingUninstallOptions.miseConfigRemoval != nil
     }
 
     private var hardTimeoutOptions: [Int?] {
@@ -1549,6 +1587,40 @@ private struct InspectorManagerDetailView: View {
                     }
                 }
 
+                if miseScriptInstallMethodSelected {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(L10n.App.Inspector.installSource.localized)
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(.secondary)
+                        Picker(
+                            L10n.App.Inspector.installSource.localized,
+                            selection: $pendingMiseInstallSource
+                        ) {
+                            Text(L10n.App.Inspector.InstallSource.officialDownload.localized)
+                                .tag(ManagerMiseInstallSource.officialDownload)
+                            Text("app.inspector.install_source.existing_mise_binary_path".localized)
+                                .tag(ManagerMiseInstallSource.existingBinaryPath)
+                        }
+                        .pickerStyle(.menu)
+
+                        if pendingMiseInstallSource == .existingBinaryPath {
+                            HStack(spacing: 8) {
+                                TextField(
+                                    "app.inspector.install_source.binary_path_placeholder_mise".localized,
+                                    text: $pendingMiseBinaryPath
+                                )
+                                .textFieldStyle(.roundedBorder)
+                                .frame(minWidth: 260)
+
+                                Button(L10n.App.Inspector.InstallSource.selectBinary.localized) {
+                                    pickMiseBinaryPath()
+                                }
+                                .buttonStyle(HelmSecondaryButtonStyle())
+                            }
+                        }
+                    }
+                }
+
                 DisclosureGroup(
                     L10n.App.Settings.Section.advanced.localized,
                     isExpanded: $showAdvancedInstallOptions
@@ -1590,6 +1662,7 @@ private struct InspectorManagerDetailView: View {
                             || pendingInstallMethodRawValue?.isEmpty != false
                             || !selectedPendingInstallMethodIsAllowed
                             || !rustupInstallSourceSelectionValid
+                            || !miseInstallSourceSelectionValid
                     )
                 }
             }
@@ -1689,6 +1762,8 @@ private struct InspectorManagerDetailView: View {
         showAdvancedInstallOptions = false
         pendingRustupInstallSource = .officialDownload
         pendingRustupBinaryPath = ""
+        pendingMiseInstallSource = .officialDownload
+        pendingMiseBinaryPath = ""
 
         let allowedOptions = supportedOptions.filter(installMethodOptionAllowed)
         let selectedMethodRaw = selectedInstallMethodOption.method.rawValue
@@ -1740,12 +1815,24 @@ private struct InspectorManagerDetailView: View {
     private func installActionOptions(for installMethod: String) -> ManagerInstallActionOptions? {
         guard manager.id == "rustup",
               installMethod == ManagerDistributionMethod.rustupInstaller.rawValue else {
+            if manager.id == "mise",
+               installMethod == ManagerDistributionMethod.scriptInstaller.rawValue {
+                let binaryPath = pendingMiseBinaryPath.trimmingCharacters(in: .whitespacesAndNewlines)
+                return ManagerInstallActionOptions(
+                    rustupInstallSource: nil,
+                    rustupBinaryPath: nil,
+                    miseInstallSource: pendingMiseInstallSource,
+                    miseBinaryPath: binaryPath.isEmpty ? nil : binaryPath
+                )
+            }
             return nil
         }
         let binaryPath = pendingRustupBinaryPath.trimmingCharacters(in: .whitespacesAndNewlines)
         return ManagerInstallActionOptions(
             rustupInstallSource: pendingRustupInstallSource,
-            rustupBinaryPath: binaryPath.isEmpty ? nil : binaryPath
+            rustupBinaryPath: binaryPath.isEmpty ? nil : binaryPath,
+            miseInstallSource: nil,
+            miseBinaryPath: nil
         )
     }
 
@@ -1758,6 +1845,18 @@ private struct InspectorManagerDetailView: View {
         panel.prompt = L10n.Common.ok.localized
         if panel.runModal() == .OK, let url = panel.url {
             pendingRustupBinaryPath = url.path
+        }
+    }
+
+    private func pickMiseBinaryPath() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.resolvesAliases = true
+        panel.prompt = L10n.Common.ok.localized
+        if panel.runModal() == .OK, let url = panel.url {
+            pendingMiseBinaryPath = url.path
         }
     }
 
@@ -1800,18 +1899,59 @@ private struct InspectorManagerDetailView: View {
     }
 
     private func requestManagerUninstallConfirmation(allowUnknownProvenance: Bool) {
+        pendingUninstallOptions = defaultUninstallOptions(
+            allowUnknownProvenance: allowUnknownProvenance
+        )
+        showUninstallDetails = false
+        fetchManagerUninstallPreview(allowUnknownProvenance: allowUnknownProvenance)
+    }
+
+    private func defaultUninstallOptions(allowUnknownProvenance: Bool) -> ManagerUninstallActionOptions {
+        if manager.id == "mise" {
+            return ManagerUninstallActionOptions(
+                allowUnknownProvenance: allowUnknownProvenance,
+                miseCleanupMode: .managerOnly,
+                miseConfigRemoval: nil
+            )
+        }
+        return ManagerUninstallActionOptions(
+            allowUnknownProvenance: allowUnknownProvenance,
+            miseCleanupMode: nil,
+            miseConfigRemoval: nil
+        )
+    }
+
+    private func fetchManagerUninstallPreview(allowUnknownProvenance: Bool) {
         loadingManagerUninstallPreview = true
+        let options = ManagerUninstallActionOptions(
+            allowUnknownProvenance: allowUnknownProvenance,
+            miseCleanupMode: pendingUninstallOptions.miseCleanupMode,
+            miseConfigRemoval: pendingUninstallOptions.miseConfigRemoval
+        )
         core.previewManagerUninstall(
             manager.id,
-            allowUnknownProvenance: allowUnknownProvenance
+            options: options
         ) { preview in
             loadingManagerUninstallPreview = false
             uninstallConfirmation = UninstallConfirmationContext(
                 preview: preview,
                 allowUnknownProvenance: allowUnknownProvenance
             )
-            showUninstallDetails = false
         }
+    }
+
+    private func refreshManagerUninstallPreviewForCurrentOptions() {
+        guard let context = uninstallConfirmation else { return }
+        guard uninstallConfigSelectionValid else {
+            uninstallConfirmation = UninstallConfirmationContext(
+                preview: nil,
+                allowUnknownProvenance: context.allowUnknownProvenance
+            )
+            return
+        }
+        fetchManagerUninstallPreview(
+            allowUnknownProvenance: context.allowUnknownProvenance
+        )
     }
 
     private func uninstallImpactSummary(_ context: UninstallConfirmationContext) -> String {
@@ -1868,6 +2008,72 @@ private struct InspectorManagerDetailView: View {
                 }
             }
 
+            if manager.id == "mise" {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("app.managers.uninstall.scope".localized)
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.secondary)
+                    Picker(
+                        "app.managers.uninstall.scope".localized,
+                        selection: Binding(
+                            get: { miseUninstallCleanupModeSelection },
+                            set: { mode in
+                                if mode == .managerOnly {
+                                    pendingUninstallOptions = ManagerUninstallActionOptions(
+                                        allowUnknownProvenance: pendingUninstallOptions.allowUnknownProvenance,
+                                        miseCleanupMode: .managerOnly,
+                                        miseConfigRemoval: nil
+                                    )
+                                } else {
+                                    pendingUninstallOptions = ManagerUninstallActionOptions(
+                                        allowUnknownProvenance: pendingUninstallOptions.allowUnknownProvenance,
+                                        miseCleanupMode: .fullCleanup,
+                                        miseConfigRemoval: pendingUninstallOptions.miseConfigRemoval
+                                    )
+                                }
+                                refreshManagerUninstallPreviewForCurrentOptions()
+                            }
+                        )
+                    ) {
+                        Text("app.managers.uninstall.scope.manager_only".localized)
+                            .tag(ManagerMiseUninstallCleanupMode.managerOnly)
+                        Text("app.managers.uninstall.scope.full_cleanup".localized)
+                            .tag(ManagerMiseUninstallCleanupMode.fullCleanup)
+                    }
+                    .pickerStyle(.segmented)
+
+                    if miseRequiresConfigRemovalSelection {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("app.managers.uninstall.config".localized)
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(.secondary)
+                            Picker(
+                                "app.managers.uninstall.config".localized,
+                                selection: Binding<ManagerMiseUninstallConfigRemoval?>(
+                                    get: { pendingUninstallOptions.miseConfigRemoval },
+                                    set: { selection in
+                                        pendingUninstallOptions = ManagerUninstallActionOptions(
+                                            allowUnknownProvenance: pendingUninstallOptions.allowUnknownProvenance,
+                                            miseCleanupMode: .fullCleanup,
+                                            miseConfigRemoval: selection
+                                        )
+                                        refreshManagerUninstallPreviewForCurrentOptions()
+                                    }
+                                )
+                            ) {
+                                Text("app.managers.uninstall.config.required".localized)
+                                    .tag(Optional<ManagerMiseUninstallConfigRemoval>.none)
+                                Text("app.managers.uninstall.config.keep".localized)
+                                    .tag(Optional(ManagerMiseUninstallConfigRemoval.keepConfig))
+                                Text("app.managers.uninstall.config.remove".localized)
+                                    .tag(Optional(ManagerMiseUninstallConfigRemoval.removeConfig))
+                            }
+                            .pickerStyle(.menu)
+                        }
+                    }
+                }
+            }
+
             DisclosureGroup(
                 L10n.App.Managers.Uninstall.Details.toggle.localized,
                 isExpanded: $showUninstallDetails
@@ -1912,14 +2118,17 @@ private struct InspectorManagerDetailView: View {
                     .keyboardShortcut(.cancelAction)
 
                     Button(L10n.Common.uninstall.localized) {
-                        uninstallConfirmation = nil
-                        core.uninstallManager(
-                            manager.id,
-                            allowUnknownProvenance: context.resolvedAllowUnknownProvenance
+                        let effectiveOptions = ManagerUninstallActionOptions(
+                            allowUnknownProvenance: context.resolvedAllowUnknownProvenance,
+                            miseCleanupMode: pendingUninstallOptions.miseCleanupMode,
+                            miseConfigRemoval: pendingUninstallOptions.miseConfigRemoval
                         )
+                        uninstallConfirmation = nil
+                        core.uninstallManager(manager.id, options: effectiveOptions)
                     }
                     .buttonStyle(HelmPrimaryButtonStyle())
                     .keyboardShortcut(.defaultAction)
+                    .disabled(loadingManagerUninstallPreview || !uninstallConfigSelectionValid)
                 }
             }
         }

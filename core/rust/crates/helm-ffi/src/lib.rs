@@ -2500,6 +2500,7 @@ fn build_manager_uninstall_request_legacy(
     Ok(plan)
 }
 
+#[cfg(test)]
 fn build_manager_uninstall_plan(
     store: &SqliteStore,
     manager: ManagerId,

@@ -445,9 +445,32 @@ enum ManagerRustupInstallSource: String, Codable {
     case existingBinaryPath
 }
 
+enum ManagerMiseInstallSource: String, Codable {
+    case officialDownload
+    case existingBinaryPath
+}
+
+enum ManagerMiseUninstallCleanupMode: String, Codable {
+    case managerOnly
+    case fullCleanup
+}
+
+enum ManagerMiseUninstallConfigRemoval: String, Codable {
+    case keepConfig
+    case removeConfig
+}
+
 struct ManagerInstallActionOptions: Codable {
     let rustupInstallSource: ManagerRustupInstallSource?
     let rustupBinaryPath: String?
+    let miseInstallSource: ManagerMiseInstallSource?
+    let miseBinaryPath: String?
+}
+
+struct ManagerUninstallActionOptions: Codable {
+    let allowUnknownProvenance: Bool?
+    let miseCleanupMode: ManagerMiseUninstallCleanupMode?
+    let miseConfigRemoval: ManagerMiseUninstallConfigRemoval?
 }
 
 struct PackageUninstallPreview: Codable {

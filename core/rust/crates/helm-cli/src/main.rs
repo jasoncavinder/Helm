@@ -11607,6 +11607,7 @@ fn parse_manager_mutation_args(
     })
 }
 
+#[cfg(test)]
 fn build_manager_uninstall_plan(
     store: &SqliteStore,
     manager: ManagerId,
