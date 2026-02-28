@@ -1125,6 +1125,8 @@ private struct InspectorManagerDetailView: View {
     @State private var pendingIdleTimeoutSeconds: Int?
     @State private var showAdvancedInstallOptions = false
     @State private var installSubmissionInFlight = false
+    @State private var pendingRustupInstallSource: ManagerRustupInstallSource = .officialDownload
+    @State private var pendingRustupBinaryPath = ""
 
     private enum ConfirmAction: Identifiable {
         case update
@@ -1158,7 +1160,7 @@ private struct InspectorManagerDetailView: View {
     }
 
     private var detected: Bool {
-        status?.detected ?? false
+        core.isManagerDetected(manager.id)
     }
 
     private var enabled: Bool {
@@ -1201,15 +1203,37 @@ private struct InspectorManagerDetailView: View {
     }
 
     private var recommendedExecutablePath: String? {
-        manager.recommendedExecutablePath(from: executablePaths) ?? defaultExecutablePath
+        manager.recommendedExecutablePath(
+            from: executablePaths,
+            methodOptions: resolvedInstallMethodOptions
+        ) ?? defaultExecutablePath
     }
 
     private var selectedInstallMethodOption: ManagerInstallMethodOption {
         manager.selectedInstallMethodOption(
             selectedMethodRawValue: status?.selectedInstallMethod,
             executablePath: selectedExecutablePath ?? activeExecutablePath,
-            installedPackages: core.installedPackages
+            installedPackages: core.installedPackages,
+            methodOptions: resolvedInstallMethodOptions
         )
+    }
+
+    private var resolvedInstallMethodOptions: [ManagerInstallMethodOption] {
+        guard let coreOptions = status?.installMethodOptions,
+              !coreOptions.isEmpty else {
+            return manager.installMethodOptions
+        }
+
+        let fallbackByMethod = Dictionary(
+            uniqueKeysWithValues: manager.installMethodOptions.map { ($0.method.rawValue, $0) }
+        )
+        let mapped = coreOptions.compactMap { option in
+            ManagerInstallMethodOption.fromCoreStatus(
+                option,
+                fallback: fallbackByMethod[option.methodId]
+            )
+        }
+        return mapped.isEmpty ? manager.installMethodOptions : mapped
     }
 
     private var helmSupportedInstallMethodRawValues: Set<String> {
@@ -1217,12 +1241,12 @@ private struct InspectorManagerDetailView: View {
         case "mise", "mas":
             return ["homebrew"]
         default:
-            return Set(manager.installMethodOptions.map(\.method.rawValue))
+            return Set(resolvedInstallMethodOptions.map(\.method.rawValue))
         }
     }
 
     private var sortedHelmSupportedInstallMethodOptions: [ManagerInstallMethodOption] {
-        manager.installMethodOptions
+        resolvedInstallMethodOptions
             .filter { helmSupportedInstallMethodRawValues.contains($0.method.rawValue) }
             .sorted { lhs, rhs in
                 let lhsRank = lhs.recommendationRank
@@ -1247,6 +1271,21 @@ private struct InspectorManagerDetailView: View {
 
     private var hasAllowedInstallMethodOption: Bool {
         sortedHelmSupportedInstallMethodOptions.contains(where: installMethodOptionAllowed)
+    }
+
+    private var rustupInstallMethodSelected: Bool {
+        pendingInstallMethodRawValue == ManagerDistributionMethod.rustupInstaller.rawValue
+    }
+
+    private var rustupInstallSourceRequiresBinaryPath: Bool {
+        rustupInstallMethodSelected && pendingRustupInstallSource == .existingBinaryPath
+    }
+
+    private var rustupInstallSourceSelectionValid: Bool {
+        guard rustupInstallSourceRequiresBinaryPath else {
+            return true
+        }
+        return !pendingRustupBinaryPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var hardTimeoutOptions: [Int?] {
@@ -1476,6 +1515,40 @@ private struct InspectorManagerDetailView: View {
                     .pickerStyle(.inline)
                 }
 
+                if rustupInstallMethodSelected {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(L10n.App.Inspector.installSource.localized)
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(.secondary)
+                        Picker(
+                            L10n.App.Inspector.installSource.localized,
+                            selection: $pendingRustupInstallSource
+                        ) {
+                            Text(L10n.App.Inspector.InstallSource.officialDownload.localized)
+                                .tag(ManagerRustupInstallSource.officialDownload)
+                            Text(L10n.App.Inspector.InstallSource.existingBinaryPath.localized)
+                                .tag(ManagerRustupInstallSource.existingBinaryPath)
+                        }
+                        .pickerStyle(.menu)
+
+                        if pendingRustupInstallSource == .existingBinaryPath {
+                            HStack(spacing: 8) {
+                                TextField(
+                                    L10n.App.Inspector.InstallSource.binaryPathPlaceholder.localized,
+                                    text: $pendingRustupBinaryPath
+                                )
+                                .textFieldStyle(.roundedBorder)
+                                .frame(minWidth: 260)
+
+                                Button(L10n.App.Inspector.InstallSource.selectBinary.localized) {
+                                    pickRustupBinaryPath()
+                                }
+                                .buttonStyle(HelmSecondaryButtonStyle())
+                            }
+                        }
+                    }
+                }
+
                 DisclosureGroup(
                     L10n.App.Settings.Section.advanced.localized,
                     isExpanded: $showAdvancedInstallOptions
@@ -1516,6 +1589,7 @@ private struct InspectorManagerDetailView: View {
                         installSubmissionInFlight
                             || pendingInstallMethodRawValue?.isEmpty != false
                             || !selectedPendingInstallMethodIsAllowed
+                            || !rustupInstallSourceSelectionValid
                     )
                 }
             }
@@ -1540,6 +1614,16 @@ private struct InspectorManagerDetailView: View {
 
     private var managerActionRow: some View {
         HStack(spacing: 6) {
+            if detected {
+                managerActionButton(
+                    symbol: "shippingbox",
+                    tooltip: L10n.App.Managers.Action.viewPackages.localized,
+                    enabled: packageCount > 0 && enabled && !managerIsUninstalling
+                ) {
+                    onViewPackages()
+                }
+            }
+
             if manager.canUpdate && detected && enabled {
                 managerActionButton(
                     symbol: "arrow.up.circle",
@@ -1569,14 +1653,6 @@ private struct InspectorManagerDetailView: View {
                         && !managerIsUninstalling
                 ) {
                     prepareInstallMethodSelection()
-                }
-            } else if detected {
-                managerActionButton(
-                    symbol: "shippingbox",
-                    tooltip: L10n.App.Managers.Action.viewPackages.localized,
-                    enabled: packageCount > 0 && enabled && !managerIsUninstalling
-                ) {
-                    onViewPackages()
                 }
             }
 
@@ -1611,6 +1687,8 @@ private struct InspectorManagerDetailView: View {
         pendingHardTimeoutSeconds = status?.timeoutHardSeconds
         pendingIdleTimeoutSeconds = status?.timeoutIdleSeconds
         showAdvancedInstallOptions = false
+        pendingRustupInstallSource = .officialDownload
+        pendingRustupBinaryPath = ""
 
         let allowedOptions = supportedOptions.filter(installMethodOptionAllowed)
         let selectedMethodRaw = selectedInstallMethodOption.method.rawValue
@@ -1633,6 +1711,9 @@ private struct InspectorManagerDetailView: View {
               installMethodOptionAllowed(option) else {
             return
         }
+        guard rustupInstallSourceSelectionValid else {
+            return
+        }
 
         installSubmissionInFlight = true
         core.setManagerInstallMethod(manager.id, installMethod: installMethod) { success in
@@ -1648,8 +1729,35 @@ private struct InspectorManagerDetailView: View {
                 installSubmissionInFlight = false
                 guard timeoutApplied else { return }
                 showInstallOptionsSheet = false
-                core.installManager(manager.id)
+                core.installManager(
+                    manager.id,
+                    options: installActionOptions(for: installMethod)
+                )
             }
+        }
+    }
+
+    private func installActionOptions(for installMethod: String) -> ManagerInstallActionOptions? {
+        guard manager.id == "rustup",
+              installMethod == ManagerDistributionMethod.rustupInstaller.rawValue else {
+            return nil
+        }
+        let binaryPath = pendingRustupBinaryPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        return ManagerInstallActionOptions(
+            rustupInstallSource: pendingRustupInstallSource,
+            rustupBinaryPath: binaryPath.isEmpty ? nil : binaryPath
+        )
+    }
+
+    private func pickRustupBinaryPath() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.resolvesAliases = true
+        panel.prompt = L10n.Common.ok.localized
+        if panel.runModal() == .OK, let url = panel.url {
+            pendingRustupBinaryPath = url.path
         }
     }
 
@@ -1785,7 +1893,9 @@ private struct InspectorManagerDetailView: View {
                     }
                 }
                 .padding(.top, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 8) {
                 Spacer()

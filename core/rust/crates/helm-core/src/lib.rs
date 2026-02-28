@@ -2,6 +2,7 @@ pub mod adapters;
 pub mod execution;
 pub(crate) mod install_instances;
 pub mod managed_automation_policy;
+pub mod manager_lifecycle;
 pub mod manager_policy;
 pub mod models;
 pub mod orchestration;

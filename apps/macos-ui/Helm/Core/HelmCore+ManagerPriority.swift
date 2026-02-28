@@ -21,8 +21,8 @@ extension HelmCore {
 
     func sortedManagersByPriority(_ managers: [ManagerInfo]) -> [ManagerInfo] {
         managers.sorted { lhs, rhs in
-            let lhsDetected = managerStatuses[lhs.id]?.detected ?? false
-            let rhsDetected = managerStatuses[rhs.id]?.detected ?? false
+            let lhsDetected = isManagerDetected(lhs.id)
+            let rhsDetected = isManagerDetected(rhs.id)
             if lhsDetected != rhsDetected {
                 return lhsDetected && !rhsDetected
             }
@@ -49,8 +49,8 @@ extension HelmCore {
               dragged.authority == authority,
               target.authority == authority else { return }
 
-        let draggedDetected = managerStatuses[draggedManagerId]?.detected ?? false
-        let targetDetected = managerStatuses[targetManagerId]?.detected ?? false
+        let draggedDetected = isManagerDetected(draggedManagerId)
+        let targetDetected = isManagerDetected(targetManagerId)
         guard draggedDetected == targetDetected else { return }
 
         var installedOrder = priorityOrderedIds(for: authority, detected: true)
@@ -85,7 +85,7 @@ extension HelmCore {
     private func priorityOrderedIds(for authority: ManagerAuthority, detected: Bool) -> [String] {
         let managers = ManagerInfo.all
             .filter { $0.authority == authority }
-            .filter { managerStatuses[$0.id]?.detected ?? false == detected }
+            .filter { isManagerDetected($0.id) == detected }
         return sortedManagersByPriority(managers).map(\.id)
     }
 

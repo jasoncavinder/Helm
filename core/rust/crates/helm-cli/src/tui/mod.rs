@@ -764,6 +764,11 @@ impl AppState {
             .iter()
             .enumerate()
             .filter(|(_, pkg)| {
+                if self.is_filter_active()
+                    && !manager_participates_in_package_search(pkg.package.manager)
+                {
+                    return false;
+                }
                 if self.updates_manager_scope.is_some()
                     && self.updates_manager_scope != Some(pkg.package.manager)
                 {
@@ -787,6 +792,9 @@ impl AppState {
             .iter()
             .enumerate()
             .filter(|(_, row)| {
+                if self.is_filter_active() && !manager_participates_in_package_search(row.manager) {
+                    return false;
+                }
                 matches_query(
                     self.filter_query.as_str(),
                     &[
@@ -3552,6 +3560,10 @@ fn matches_query(query: &str, fields: &[&str]) -> bool {
         .any(|field| field.to_ascii_lowercase().contains(&needle))
 }
 
+fn manager_participates_in_package_search(manager: ManagerId) -> bool {
+    manager != ManagerId::Rustup
+}
+
 fn apply_filter_backspace(app: &mut AppState) {
     if app.filter_query.is_empty() {
         app.input_mode = InputMode::Normal;
@@ -3567,8 +3579,8 @@ fn apply_filter_backspace(app: &mut AppState) {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppState, ConfirmAction, InputMode, apply_filter_backspace, next_choice_index,
-        normalized_nonempty,
+        AppState, ConfirmAction, InputMode, apply_filter_backspace,
+        manager_participates_in_package_search, next_choice_index, normalized_nonempty,
     };
     use crate::ManagerId;
 
@@ -3665,5 +3677,13 @@ mod tests {
         assert!(prompt.contains("Uninstall 'stable@rustup'?"));
         assert!(prompt.contains("manager_strategy=rustup_self"));
         assert!(prompt.contains("blast_radius=5"));
+    }
+
+    #[test]
+    fn package_search_excludes_rustup_manager() {
+        assert!(!manager_participates_in_package_search(ManagerId::Rustup));
+        assert!(manager_participates_in_package_search(
+            ManagerId::HomebrewFormula
+        ));
     }
 }

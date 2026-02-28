@@ -37,10 +37,10 @@ use helm_core::managed_automation_policy::{
 };
 use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
-    CachedSearchResult, Capability, DetectionInfo, HomebrewKegPolicy, InstallProvenance,
-    InstalledPackage, ManagerAuthority, ManagerId, ManagerInstallInstance, ManagerUninstallPreview,
-    OutdatedPackage, PackageRef, PackageUninstallPreview, PinKind, PinRecord, SearchQuery,
-    StrategyKind, TaskId, TaskLogLevel, TaskRecord, TaskStatus,
+    CachedSearchResult, Capability, DetectionInfo, HomebrewKegPolicy, InstalledPackage,
+    ManagerAuthority, ManagerId, ManagerInstallInstance, ManagerUninstallPreview, OutdatedPackage,
+    PackageRef, PackageUninstallPreview, PinKind, PinRecord, SearchQuery, StrategyKind, TaskId,
+    TaskLogLevel, TaskRecord, TaskStatus,
 };
 use helm_core::orchestration::{AdapterRuntime, AdapterTaskTerminalState, CancellationMode};
 use helm_core::persistence::{DetectionStore, PackageStore, PinStore, SearchCacheStore, TaskStore};
@@ -464,6 +464,7 @@ struct ParsedManagerMutationArgs {
     yes: bool,
     allow_unknown_provenance: bool,
     install_method_override: Option<String>,
+    install_options: helm_core::manager_lifecycle::ManagerInstallOptions,
 }
 
 #[derive(Debug, Clone)]
@@ -471,20 +472,6 @@ struct ManagerUninstallPlan {
     target_manager: ManagerId,
     request: AdapterRequest,
     preview: ManagerUninstallPreview,
-}
-
-#[derive(Clone, Copy, Debug)]
-struct RustupUninstallResolution {
-    strategy: StrategyKind,
-    unknown_override_required: bool,
-    used_unknown_override: bool,
-}
-
-#[derive(Clone, Copy, Debug)]
-struct HomebrewManagerUninstallResolution {
-    strategy: StrategyKind,
-    unknown_override_required: bool,
-    used_unknown_override: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -3806,11 +3793,12 @@ fn cmd_managers_mutation(
 
         (plan.target_manager, plan.request, Some(plan.preview))
     } else {
-        let (target_manager, request) = build_manager_mutation_request(
+        let (target_manager, request) = build_manager_mutation_request_with_options(
             store.as_ref(),
             manager,
             subcommand,
             install_method_override,
+            parsed.install_options.clone(),
         )?;
         (target_manager, request, None)
     };
@@ -9711,10 +9699,12 @@ fn search_local_for_enabled(
     Ok(results
         .into_iter()
         .filter(|result| {
-            enabled_map
-                .get(&result.result.package.manager)
-                .copied()
-                .unwrap_or(true)
+            manager_participates_in_package_search(result.result.package.manager)
+                && manager_participates_in_package_search(result.source_manager)
+                && enabled_map
+                    .get(&result.result.package.manager)
+                    .copied()
+                    .unwrap_or(true)
                 && enabled_map
                     .get(&result.source_manager)
                     .copied()
@@ -9762,11 +9752,18 @@ fn search_remote_for_enabled(
     manager_filter: Option<ManagerId>,
     enabled_map: &HashMap<ManagerId, bool>,
 ) -> Result<(Vec<CachedSearchResult>, Vec<String>), String> {
+    if manager_filter.is_some_and(|manager| !manager_participates_in_package_search(manager)) {
+        return Ok((Vec::new(), Vec::new()));
+    }
+
     let managers = list_managers(store.as_ref())?;
     let mut target_managers = managers
         .into_iter()
         .filter_map(|row| {
             let manager_id = row.manager_id.parse::<ManagerId>().ok()?;
+            if !manager_participates_in_package_search(manager_id) {
+                return None;
+            }
             if manager_filter.is_some() && manager_filter != Some(manager_id) {
                 return None;
             }
@@ -9820,6 +9817,10 @@ fn search_remote_for_enabled(
     }
 
     Ok((remote_results, remote_errors))
+}
+
+fn manager_participates_in_package_search(manager: ManagerId) -> bool {
+    helm_core::registry::manager_participates_in_package_search(manager)
 }
 
 fn list_tasks_for_enabled(
@@ -10527,36 +10528,7 @@ fn manager_executable_candidates(id: ManagerId) -> &'static [&'static str] {
 }
 
 fn manager_install_method_candidates(id: ManagerId) -> &'static [&'static str] {
-    match id {
-        ManagerId::Mise => &["homebrew", "scriptInstaller", "macports", "cargoInstall"],
-        ManagerId::Asdf => &["scriptInstaller", "homebrew"],
-        ManagerId::Rustup => &["rustupInstaller", "homebrew"],
-        ManagerId::HomebrewFormula => &["homebrew", "scriptInstaller"],
-        ManagerId::SoftwareUpdate => &["softwareUpdate"],
-        ManagerId::MacPorts => &["macports", "officialInstaller"],
-        ManagerId::NixDarwin => &["scriptInstaller", "homebrew"],
-        ManagerId::Npm => &["mise", "asdf", "homebrew", "officialInstaller"],
-        ManagerId::Pnpm => &["corepack", "homebrew", "npm", "scriptInstaller"],
-        ManagerId::Yarn => &["corepack", "homebrew", "npm", "scriptInstaller"],
-        ManagerId::Poetry => &["pipx", "homebrew", "pip", "officialInstaller"],
-        ManagerId::RubyGems => &["systemProvided", "homebrew", "asdf", "mise"],
-        ManagerId::Bundler => &["gem", "systemProvided", "homebrew", "asdf", "mise"],
-        ManagerId::Pip => &["systemProvided", "homebrew", "asdf", "mise"],
-        ManagerId::Pipx => &["homebrew", "pip"],
-        ManagerId::Cargo => &["rustupInstaller", "homebrew"],
-        ManagerId::CargoBinstall => &["scriptInstaller", "cargoInstall", "homebrew"],
-        ManagerId::Mas => &["homebrew", "macports", "appStore", "officialInstaller"],
-        ManagerId::Sparkle => &["notManageable"],
-        ManagerId::Setapp => &["setapp", "notManageable"],
-        ManagerId::HomebrewCask => &["homebrew"],
-        ManagerId::DockerDesktop => &["officialInstaller", "homebrew", "setapp"],
-        ManagerId::Podman => &["officialInstaller", "homebrew", "macports"],
-        ManagerId::Colima => &["homebrew", "macports", "mise"],
-        ManagerId::ParallelsDesktop => &["officialInstaller", "setapp", "notManageable"],
-        ManagerId::XcodeCommandLineTools => &["xcodeSelect", "appStore"],
-        ManagerId::Rosetta2 => &["softwareUpdate"],
-        ManagerId::FirmwareUpdates => &["systemProvided"],
-    }
+    helm_core::registry::manager_install_method_candidates(id)
 }
 
 fn normalize_path_string(path: &std::path::Path) -> Option<String> {
@@ -10949,6 +10921,7 @@ fn install_method_allowed_by_policy(
 fn manager_helm_supported_install_methods(id: ManagerId) -> &'static [&'static str] {
     match id {
         ManagerId::Mise | ManagerId::Mas | ManagerId::Asdf => &["homebrew"],
+        ManagerId::Rustup => &["rustupInstaller", "homebrew"],
         _ => &[],
     }
 }
@@ -11103,175 +11076,70 @@ fn build_manager_mutation_request(
     subcommand: &str,
     install_method_override: Option<String>,
 ) -> Result<(ManagerId, AdapterRequest), String> {
+    build_manager_mutation_request_with_options(
+        store,
+        manager,
+        subcommand,
+        install_method_override,
+        helm_core::manager_lifecycle::ManagerInstallOptions::default(),
+    )
+}
+
+fn build_manager_mutation_request_with_options(
+    store: &SqliteStore,
+    manager: ManagerId,
+    subcommand: &str,
+    install_method_override: Option<String>,
+    install_options: helm_core::manager_lifecycle::ManagerInstallOptions,
+) -> Result<(ManagerId, AdapterRequest), String> {
     let selected_method = normalize_install_method(manager, install_method_override)
         .or_else(|| manager_selected_install_method(store, manager));
-    let homebrew_upgrade_request = |package_name: &str| {
-        let policy = effective_homebrew_keg_policy(store, package_name);
-        let cleanup_old_kegs = policy == HomebrewKegPolicy::Cleanup;
-        AdapterRequest::Upgrade(UpgradeRequest {
-            package: Some(PackageRef {
-                manager: ManagerId::HomebrewFormula,
-                name: encode_homebrew_upgrade_target(package_name, cleanup_old_kegs),
-            }),
-        })
-    };
-
     let (target_manager, request) = match subcommand {
-        "install" => match manager {
-            ManagerId::Mise => match selected_method.as_deref() {
-                Some("homebrew") | None => (
-                    ManagerId::HomebrewFormula,
-                    AdapterRequest::Install(InstallRequest {
-                        package: PackageRef {
-                            manager: ManagerId::HomebrewFormula,
-                            name: "mise".to_string(),
-                        },
-                        version: None,
-                    }),
-                ),
-                _ => {
-                    return Err(format!(
-                        "manager '{}' install is unsupported for selected method '{}'",
-                        manager.as_str(),
-                        selected_method.as_deref().unwrap_or("unknown")
-                    ));
-                }
-            },
-            ManagerId::Asdf => match selected_method.as_deref() {
-                Some("homebrew") | None => (
-                    ManagerId::HomebrewFormula,
-                    AdapterRequest::Install(InstallRequest {
-                        package: PackageRef {
-                            manager: ManagerId::HomebrewFormula,
-                            name: "asdf".to_string(),
-                        },
-                        version: None,
-                    }),
-                ),
-                _ => {
-                    return Err(format!(
-                        "manager '{}' install is unsupported for selected method '{}'",
-                        manager.as_str(),
-                        selected_method.as_deref().unwrap_or("unknown")
-                    ));
-                }
-            },
-            ManagerId::Mas => match selected_method.as_deref() {
-                Some("homebrew") | None => (
-                    ManagerId::HomebrewFormula,
-                    AdapterRequest::Install(InstallRequest {
-                        package: PackageRef {
-                            manager: ManagerId::HomebrewFormula,
-                            name: "mas".to_string(),
-                        },
-                        version: None,
-                    }),
-                ),
-                _ => {
-                    return Err(format!(
-                        "manager '{}' install is unsupported for selected method '{}'",
-                        manager.as_str(),
-                        selected_method.as_deref().unwrap_or("unknown")
-                    ));
-                }
-            },
-            _ => {
-                return Err(format!(
-                    "manager '{}' does not currently support install",
-                    manager.as_str()
-                ));
-            }
-        },
+        "install" => {
+            let install_plan = helm_core::manager_lifecycle::plan_manager_install(
+                manager,
+                selected_method.as_deref(),
+                &install_options,
+            )
+            .map_err(|error| {
+                manager_install_plan_error_message(manager, selected_method.as_deref(), error)
+            })?;
+            (install_plan.target_manager, install_plan.request)
+        }
         "update" => match manager {
-            ManagerId::HomebrewFormula => {
-                let active_instance =
-                    active_manager_install_instance(store, ManagerId::HomebrewFormula)?;
-                let strategy = resolve_homebrew_manager_update_strategy(
-                    ManagerId::HomebrewFormula,
-                    active_instance.as_ref(),
-                )?;
-                match strategy {
-                    StrategyKind::HomebrewFormula => (
-                        ManagerId::HomebrewFormula,
-                        AdapterRequest::Upgrade(UpgradeRequest {
-                            package: Some(PackageRef {
-                                manager: ManagerId::HomebrewFormula,
-                                name: "__self__".to_string(),
-                            }),
-                        }),
-                    ),
-                    _ => {
-                        return Err(
-                            "manager 'homebrew_formula' update strategy resolution returned an unsupported strategy"
-                                .to_string(),
-                        );
-                    }
-                }
-            }
-            ManagerId::Rustup => {
-                let active_instance = active_manager_install_instance(store, ManagerId::Rustup)?;
-                let strategy = resolve_rustup_update_strategy(active_instance.as_ref())?;
-                match strategy {
-                    StrategyKind::HomebrewFormula => (
-                        ManagerId::HomebrewFormula,
-                        homebrew_upgrade_request("rustup"),
-                    ),
-                    StrategyKind::RustupSelf => (
-                        ManagerId::Rustup,
-                        AdapterRequest::Upgrade(UpgradeRequest {
-                            package: Some(PackageRef {
-                                manager: ManagerId::Rustup,
-                                name: "__self__".to_string(),
-                            }),
-                        }),
-                    ),
-                    _ => {
-                        return Err(
-                            "manager 'rustup' update strategy resolution returned an unsupported strategy"
-                                .to_string(),
-                        );
-                    }
-                }
-            }
             _ => {
-                if manager_supports_homebrew_update_strategy_routing(manager) {
-                    let active_instance = active_manager_install_instance(store, manager)?;
-                    let strategy = resolve_homebrew_manager_update_strategy(
-                        manager,
-                        active_instance.as_ref(),
-                    )?;
-                    match strategy {
-                        StrategyKind::HomebrewFormula => {
-                            let formula_name =
-                                resolve_homebrew_formula_name_for_manager(
-                                    manager,
-                                    active_instance.as_ref(),
-                                )
-                                .ok_or_else(|| {
-                                    format!(
-                                        "manager '{}' update provenance resolved to homebrew but formula ownership could not be determined from active install instance; inspect with `helm managers instances {}` and refresh detection before retrying.",
-                                        manager.as_str(),
-                                        manager.as_str(),
-                                    )
-                                })?;
-                            (
-                                ManagerId::HomebrewFormula,
-                                homebrew_upgrade_request(formula_name.as_str()),
-                            )
-                        }
-                        _ => {
-                            return Err(format!(
-                                "manager '{}' update strategy resolution returned an unsupported strategy",
-                                manager.as_str(),
-                            ));
-                        }
+                let active_instance = active_manager_install_instance(store, manager)?;
+                let update_plan = helm_core::manager_lifecycle::plan_manager_update(
+                    manager,
+                    active_instance.as_ref(),
+                )
+                .map_err(|error| manager_update_plan_error_message(manager, error))?;
+
+                let request = match &update_plan.target {
+                    helm_core::manager_lifecycle::ManagerUpdateTarget::ManagerSelf => {
+                        helm_core::manager_lifecycle::build_update_request(&update_plan, None)
                     }
-                } else {
-                    return Err(format!(
-                        "manager '{}' does not currently support update",
-                        manager.as_str()
-                    ));
+                    helm_core::manager_lifecycle::ManagerUpdateTarget::HomebrewFormula {
+                        formula_name,
+                    } => {
+                        let policy = effective_homebrew_keg_policy(store, formula_name);
+                        let cleanup_old_kegs = policy == HomebrewKegPolicy::Cleanup;
+                        let target_name =
+                            encode_homebrew_upgrade_target(formula_name, cleanup_old_kegs);
+                        helm_core::manager_lifecycle::build_update_request(
+                            &update_plan,
+                            Some(target_name),
+                        )
+                    }
                 }
+                .ok_or_else(|| {
+                    format!(
+                        "manager '{}' update strategy resolution returned an unsupported strategy",
+                        manager.as_str(),
+                    )
+                })?;
+
+                (update_plan.target_manager, request)
             }
         },
         "uninstall" => match manager {
@@ -11321,6 +11189,83 @@ fn build_manager_mutation_request(
     Ok((target_manager, request))
 }
 
+fn manager_install_plan_error_message(
+    manager: ManagerId,
+    selected_method: Option<&str>,
+    error: helm_core::manager_lifecycle::ManagerInstallPlanError,
+) -> String {
+    match error {
+        helm_core::manager_lifecycle::ManagerInstallPlanError::UnsupportedManager => {
+            format!(
+                "manager '{}' does not currently support install",
+                manager.as_str()
+            )
+        }
+        helm_core::manager_lifecycle::ManagerInstallPlanError::UnsupportedMethod => {
+            format!(
+                "manager '{}' install is unsupported for selected method '{}'",
+                manager.as_str(),
+                selected_method.unwrap_or("unknown")
+            )
+        }
+        helm_core::manager_lifecycle::ManagerInstallPlanError::InvalidRustupBinaryPath => {
+            "rustup install source 'existingBinaryPath' requires a non-empty absolute binary path"
+                .to_string()
+        }
+    }
+}
+
+fn manager_update_plan_error_message(
+    manager: ManagerId,
+    error: helm_core::manager_lifecycle::ManagerUpdatePlanError,
+) -> String {
+    match error {
+        helm_core::manager_lifecycle::ManagerUpdatePlanError::UnsupportedManager => {
+            format!(
+                "manager '{}' does not currently support update",
+                manager.as_str()
+            )
+        }
+        helm_core::manager_lifecycle::ManagerUpdatePlanError::ReadOnly => {
+            format!(
+                "manager '{}' update is blocked because active provenance is read-only",
+                manager.as_str(),
+            )
+        }
+        helm_core::manager_lifecycle::ManagerUpdatePlanError::AmbiguousProvenance => {
+            format!(
+                "manager '{}' update provenance is ambiguous; inspect with `helm managers instances {}` and choose an explicit path before updating.",
+                manager.as_str(),
+                manager.as_str(),
+            )
+        }
+        helm_core::manager_lifecycle::ManagerUpdatePlanError::FormulaUnresolved => {
+            format!(
+                "manager '{}' update provenance resolved to homebrew but formula ownership could not be determined from active install instance; inspect with `helm managers instances {}` and refresh detection before retrying.",
+                manager.as_str(),
+                manager.as_str(),
+            )
+        }
+    }
+}
+
+fn parse_rustup_install_source_arg(
+    raw: &str,
+) -> Result<helm_core::manager_lifecycle::RustupInstallSource, String> {
+    match raw.trim() {
+        "officialDownload" | "official-download" | "official_download" => {
+            Ok(helm_core::manager_lifecycle::RustupInstallSource::OfficialDownload)
+        }
+        "existingBinaryPath" | "existing-binary-path" | "existing_binary_path" => {
+            Ok(helm_core::manager_lifecycle::RustupInstallSource::ExistingBinaryPath)
+        }
+        other => Err(format!(
+            "unsupported rustup install source '{}'; supported: officialDownload, existingBinaryPath",
+            other
+        )),
+    }
+}
+
 fn parse_manager_mutation_args(
     subcommand: &str,
     command_args: &[String],
@@ -11330,6 +11275,8 @@ fn parse_manager_mutation_args(
     let mut yes = false;
     let mut allow_unknown_provenance = false;
     let mut install_method_raw: Option<String> = None;
+    let mut rustup_install_source: Option<helm_core::manager_lifecycle::RustupInstallSource> = None;
+    let mut rustup_binary_path: Option<String> = None;
 
     let uninstall_command = subcommand == "uninstall";
     let install_command = subcommand == "install";
@@ -11358,6 +11305,39 @@ fn parse_manager_mutation_args(
                 install_method_raw = Some(command_args[index + 1].clone());
                 index += 2;
             }
+            "--rustup-install-source" if install_command => {
+                if index + 1 >= command_args.len() {
+                    return Err(
+                        "managers install --rustup-install-source requires a source value"
+                            .to_string(),
+                    );
+                }
+                if rustup_install_source.is_some() {
+                    return Err(
+                        "managers install --rustup-install-source specified multiple times"
+                            .to_string(),
+                    );
+                }
+                rustup_install_source = Some(parse_rustup_install_source_arg(
+                    command_args[index + 1].as_str(),
+                )?);
+                index += 2;
+            }
+            "--rustup-binary-path" if install_command => {
+                if index + 1 >= command_args.len() {
+                    return Err(
+                        "managers install --rustup-binary-path requires a file path".to_string()
+                    );
+                }
+                if rustup_binary_path.is_some() {
+                    return Err(
+                        "managers install --rustup-binary-path specified multiple times"
+                            .to_string(),
+                    );
+                }
+                rustup_binary_path = Some(command_args[index + 1].clone());
+                index += 2;
+            }
             flag if flag.starts_with("--") => {
                 if uninstall_command {
                     return Err(format!(
@@ -11367,7 +11347,7 @@ fn parse_manager_mutation_args(
                 }
                 if install_command {
                     return Err(format!(
-                        "unsupported managers install argument '{}'; supported: <manager-id>, --method <method-id>",
+                        "unsupported managers install argument '{}'; supported: <manager-id>, --method <method-id>, --rustup-install-source <officialDownload|existingBinaryPath>, --rustup-binary-path <path>",
                         flag
                     ));
                 }
@@ -11395,6 +11375,44 @@ fn parse_manager_mutation_args(
         .map(|raw| parse_selected_install_method_arg(manager, raw.as_str()))
         .transpose()?
         .flatten();
+    let install_options = if install_command {
+        if manager != ManagerId::Rustup
+            && (rustup_install_source.is_some() || rustup_binary_path.is_some())
+        {
+            return Err(
+                "managers install rustup install-source flags are only supported for manager 'rustup'"
+                    .to_string(),
+            );
+        }
+
+        let mut source = rustup_install_source;
+        if rustup_binary_path.is_some() {
+            match source {
+                Some(helm_core::manager_lifecycle::RustupInstallSource::OfficialDownload) => {
+                    return Err(
+                        "managers install --rustup-binary-path is incompatible with --rustup-install-source officialDownload"
+                            .to_string(),
+                    );
+                }
+                Some(helm_core::manager_lifecycle::RustupInstallSource::ExistingBinaryPath) => {}
+                None => {
+                    source =
+                        Some(helm_core::manager_lifecycle::RustupInstallSource::ExistingBinaryPath);
+                }
+            }
+        }
+
+        if manager == ManagerId::Rustup {
+            helm_core::manager_lifecycle::ManagerInstallOptions {
+                rustup_install_source: source,
+                rustup_binary_path,
+            }
+        } else {
+            helm_core::manager_lifecycle::ManagerInstallOptions::default()
+        }
+    } else {
+        helm_core::manager_lifecycle::ManagerInstallOptions::default()
+    };
 
     Ok(ParsedManagerMutationArgs {
         manager,
@@ -11402,6 +11420,7 @@ fn parse_manager_mutation_args(
         yes,
         allow_unknown_provenance,
         install_method_override,
+        install_options,
     })
 }
 
@@ -11412,67 +11431,104 @@ fn build_manager_uninstall_plan(
     preview_only: bool,
 ) -> Result<ManagerUninstallPlan, String> {
     let active_instance = active_manager_install_instance(store, manager)?;
-
-    if manager == ManagerId::Rustup {
-        return build_rustup_uninstall_plan(
+    match helm_core::manager_lifecycle::plan_manager_uninstall_route(
+        manager,
+        active_instance.as_ref(),
+        allow_unknown_provenance,
+        preview_only,
+    ) {
+        Ok(route) => build_provenance_manager_uninstall_plan(
             store,
             manager,
             active_instance,
-            allow_unknown_provenance,
             preview_only,
-        );
-    }
+            route,
+        ),
+        Err(helm_core::manager_lifecycle::ManagerUninstallRouteError::UnsupportedManager) => {
+            // Remaining managers stay intentionally gated here until their uninstall strategy
+            // can be proven safe and deterministic for provenance-first routing.
+            let (target_manager, request) =
+                build_manager_mutation_request(store, manager, "uninstall", None)?;
+            let strategy = active_instance
+                .as_ref()
+                .map(|instance| instance.uninstall_strategy)
+                .unwrap_or(StrategyKind::InteractivePrompt);
+            let preview = build_manager_uninstall_preview(
+                store,
+                ManagerUninstallPreviewContext {
+                    requested_manager: manager,
+                    target_manager,
+                    request: &request,
+                    strategy,
+                    active_instance: active_instance.as_ref(),
+                    unknown_override_required: false,
+                    used_unknown_override: false,
+                    legacy_fallback_used: true,
+                },
+                DEFAULT_MANAGER_UNINSTALL_SAFE_BLAST_RADIUS_THRESHOLD,
+            );
 
-    if let Some(formula_name) = manager_homebrew_formula_name(manager) {
-        return build_homebrew_manager_uninstall_plan(
-            store,
-            manager,
-            formula_name,
-            active_instance,
-            allow_unknown_provenance,
-            preview_only,
-        );
-    }
+            if preview.read_only_blocked && !preview_only {
+                return Err(
+                    "manager uninstall is blocked because active provenance is read-only"
+                        .to_string(),
+                );
+            }
+            if target_manager == ManagerId::HomebrewFormula
+                && !homebrew_dependency_available(store)
+                && !preview_only
+            {
+                return Err(
+                    "homebrew is required for this manager operation but was not detected on this system"
+                        .to_string(),
+                );
+            }
 
-    if manager_supports_homebrew_formula_from_instance(manager) {
-        return build_homebrew_parent_formula_manager_uninstall_plan(
-            store,
-            manager,
-            active_instance,
-            allow_unknown_provenance,
-            preview_only,
-        );
+            Ok(ManagerUninstallPlan {
+                target_manager,
+                request,
+                preview,
+            })
+        }
+        Err(error) => Err(manager_uninstall_route_error_message(manager, error)),
     }
+}
 
-    // Remaining managers stay intentionally gated here until their uninstall strategy
-    // can be proven safe and deterministic for provenance-first routing.
-    let (target_manager, request) =
-        build_manager_mutation_request(store, manager, "uninstall", None)?;
-    let strategy = active_instance
-        .as_ref()
-        .map(|instance| instance.uninstall_strategy)
-        .unwrap_or(StrategyKind::InteractivePrompt);
+fn build_provenance_manager_uninstall_plan(
+    store: &SqliteStore,
+    manager: ManagerId,
+    active_instance: Option<ManagerInstallInstance>,
+    preview_only: bool,
+    route: helm_core::manager_lifecycle::ManagerUninstallRoutePlan,
+) -> Result<ManagerUninstallPlan, String> {
     let preview = build_manager_uninstall_preview(
         store,
         ManagerUninstallPreviewContext {
             requested_manager: manager,
-            target_manager,
-            request: &request,
-            strategy,
+            target_manager: route.target_manager,
+            request: &route.request,
+            strategy: route.strategy,
             active_instance: active_instance.as_ref(),
-            unknown_override_required: false,
-            used_unknown_override: false,
-            legacy_fallback_used: true,
+            unknown_override_required: route.unknown_override_required,
+            used_unknown_override: route.used_unknown_override,
+            legacy_fallback_used: false,
         },
         DEFAULT_MANAGER_UNINSTALL_SAFE_BLAST_RADIUS_THRESHOLD,
     );
 
     if preview.read_only_blocked && !preview_only {
-        return Err(
-            "manager uninstall is blocked because active provenance is read-only".to_string(),
-        );
+        return Err(format!(
+            "manager '{}' uninstall is blocked because active provenance is read-only",
+            manager.as_str(),
+        ));
     }
-    if target_manager == ManagerId::HomebrewFormula
+    if preview.unknown_override_required && !route.used_unknown_override && !preview_only {
+        return Err(format!(
+            "manager '{}' uninstall provenance is ambiguous; rerun with --preview to inspect blast radius, then pass --allow-unknown-provenance --yes to continue.",
+            manager.as_str(),
+        ));
+    }
+    if route.target_manager == ManagerId::HomebrewFormula
         && !homebrew_dependency_available(store)
         && !preview_only
     {
@@ -11483,303 +11539,46 @@ fn build_manager_uninstall_plan(
     }
 
     Ok(ManagerUninstallPlan {
-        target_manager,
-        request,
+        target_manager: route.target_manager,
+        request: route.request,
         preview,
     })
 }
 
-fn manager_homebrew_formula_name(manager: ManagerId) -> Option<&'static str> {
-    match manager {
-        ManagerId::Asdf => Some("asdf"),
-        ManagerId::Mise => Some("mise"),
-        ManagerId::Mas => Some("mas"),
-        ManagerId::Pnpm => Some("pnpm"),
-        ManagerId::Yarn => Some("yarn"),
-        ManagerId::Pipx => Some("pipx"),
-        ManagerId::Poetry => Some("poetry"),
-        ManagerId::CargoBinstall => Some("cargo-binstall"),
-        ManagerId::Podman => Some("podman"),
-        ManagerId::Colima => Some("colima"),
-        _ => None,
-    }
-}
-
-fn manager_supports_homebrew_formula_from_instance(manager: ManagerId) -> bool {
-    matches!(
-        manager,
-        ManagerId::Npm
-            | ManagerId::Pip
-            | ManagerId::RubyGems
-            | ManagerId::Bundler
-            | ManagerId::Cargo
-    )
-}
-
-fn manager_supports_homebrew_update_strategy_routing(manager: ManagerId) -> bool {
-    manager_homebrew_formula_name(manager).is_some()
-        || manager_supports_homebrew_formula_from_instance(manager)
-}
-
-fn resolve_homebrew_formula_name_for_manager(
+fn manager_uninstall_route_error_message(
     manager: ManagerId,
-    active_instance: Option<&ManagerInstallInstance>,
-) -> Option<String> {
-    if let Some(formula_name) = manager_homebrew_formula_name(manager) {
-        return Some(formula_name.to_string());
-    }
-
-    if manager_supports_homebrew_formula_from_instance(manager)
-        && let Some(instance) = active_instance
-    {
-        return homebrew_formula_name_from_instance(instance);
-    }
-
-    None
-}
-
-fn homebrew_formula_name_from_instance(instance: &ManagerInstallInstance) -> Option<String> {
-    let path = instance
-        .canonical_path
-        .as_ref()
-        .unwrap_or(&instance.display_path);
-    homebrew_formula_name_from_path(path.as_path())
-}
-
-fn homebrew_formula_name_from_path(path: &Path) -> Option<String> {
-    let components = path
-        .components()
-        .map(|component| component.as_os_str().to_string_lossy().to_string())
-        .collect::<Vec<_>>();
-    components
-        .iter()
-        .position(|component| component.eq_ignore_ascii_case("cellar"))
-        .and_then(|index| components.get(index + 1))
-        .map(|formula_name| formula_name.trim())
-        .filter(|formula_name| !formula_name.is_empty())
-        .map(|formula_name| formula_name.to_string())
-}
-
-fn build_homebrew_manager_uninstall_plan(
-    store: &SqliteStore,
-    manager: ManagerId,
-    formula_name: &str,
-    active_instance: Option<ManagerInstallInstance>,
-    allow_unknown_provenance: bool,
-    preview_only: bool,
-) -> Result<ManagerUninstallPlan, String> {
-    let resolution = resolve_homebrew_manager_uninstall_strategy(
-        manager,
-        active_instance.as_ref(),
-        allow_unknown_provenance,
-        preview_only,
-    )?;
-    if resolution.strategy == StrategyKind::ReadOnly {
-        return build_read_only_manager_uninstall_plan(
-            store,
-            manager,
-            active_instance,
-            preview_only,
-        );
-    }
-    build_homebrew_manager_uninstall_plan_with_resolution(
-        store,
-        manager,
-        formula_name,
-        active_instance,
-        preview_only,
-        resolution,
-    )
-}
-
-fn build_homebrew_parent_formula_manager_uninstall_plan(
-    store: &SqliteStore,
-    manager: ManagerId,
-    active_instance: Option<ManagerInstallInstance>,
-    allow_unknown_provenance: bool,
-    preview_only: bool,
-) -> Result<ManagerUninstallPlan, String> {
-    let resolution = resolve_homebrew_manager_uninstall_strategy(
-        manager,
-        active_instance.as_ref(),
-        allow_unknown_provenance,
-        preview_only,
-    )?;
-
-    if resolution.strategy == StrategyKind::ReadOnly {
-        return build_read_only_manager_uninstall_plan(
-            store,
-            manager,
-            active_instance,
-            preview_only,
-        );
-    }
-
-    let formula_name = resolve_homebrew_formula_name_for_manager(manager, active_instance.as_ref())
-        .ok_or_else(|| {
+    error: helm_core::manager_lifecycle::ManagerUninstallRouteError,
+) -> String {
+    match error {
+        helm_core::manager_lifecycle::ManagerUninstallRouteError::UnsupportedManager => {
+            format!(
+                "manager '{}' does not currently support uninstall",
+                manager.as_str()
+            )
+        }
+        helm_core::manager_lifecycle::ManagerUninstallRouteError::AmbiguousProvenance => {
+            format!(
+                "manager '{}' uninstall provenance is ambiguous; rerun with --preview to inspect blast radius, then pass --allow-unknown-provenance --yes to continue.",
+                manager.as_str(),
+            )
+        }
+        helm_core::manager_lifecycle::ManagerUninstallRouteError::FormulaUnresolved => {
             format!(
                 "manager '{}' uninstall provenance resolved to homebrew but formula ownership could not be determined from active install instance; inspect with `helm managers instances {}` and refresh detection before retrying.",
                 manager.as_str(),
                 manager.as_str(),
             )
-        })?;
-
-    build_homebrew_manager_uninstall_plan_with_resolution(
-        store,
-        manager,
-        formula_name.as_str(),
-        active_instance,
-        preview_only,
-        resolution,
-    )
-}
-
-fn build_homebrew_manager_uninstall_plan_with_resolution(
-    store: &SqliteStore,
-    manager: ManagerId,
-    formula_name: &str,
-    active_instance: Option<ManagerInstallInstance>,
-    preview_only: bool,
-    resolution: HomebrewManagerUninstallResolution,
-) -> Result<ManagerUninstallPlan, String> {
-    let request = AdapterRequest::Uninstall(UninstallRequest {
-        package: PackageRef {
-            manager: ManagerId::HomebrewFormula,
-            name: formula_name.to_string(),
-        },
-    });
-    let target_manager = ManagerId::HomebrewFormula;
-    let preview = build_manager_uninstall_preview(
-        store,
-        ManagerUninstallPreviewContext {
-            requested_manager: manager,
-            target_manager,
-            request: &request,
-            strategy: resolution.strategy,
-            active_instance: active_instance.as_ref(),
-            unknown_override_required: resolution.unknown_override_required,
-            used_unknown_override: resolution.used_unknown_override,
-            legacy_fallback_used: false,
-        },
-        DEFAULT_MANAGER_UNINSTALL_SAFE_BLAST_RADIUS_THRESHOLD,
-    );
-
-    if preview.read_only_blocked && !preview_only {
-        return Err(format!(
-            "manager '{}' uninstall is blocked because active provenance is read-only",
-            manager.as_str(),
-        ));
-    }
-    if preview.unknown_override_required && !resolution.used_unknown_override && !preview_only {
-        return Err(format!(
-            "manager '{}' uninstall provenance is ambiguous; rerun with --preview to inspect blast radius, then pass --allow-unknown-provenance --yes to continue.",
-            manager.as_str(),
-        ));
-    }
-    if !homebrew_dependency_available(store) && !preview_only {
-        return Err(
-            "homebrew is required for this manager operation but was not detected on this system"
-                .to_string(),
-        );
-    }
-
-    Ok(ManagerUninstallPlan {
-        target_manager,
-        request,
-        preview,
-    })
-}
-
-fn build_read_only_manager_uninstall_plan(
-    store: &SqliteStore,
-    manager: ManagerId,
-    active_instance: Option<ManagerInstallInstance>,
-    preview_only: bool,
-) -> Result<ManagerUninstallPlan, String> {
-    let target_manager = manager;
-    let request = AdapterRequest::Uninstall(UninstallRequest {
-        package: PackageRef {
-            manager,
-            name: "__self__".to_string(),
-        },
-    });
-    let preview = build_manager_uninstall_preview(
-        store,
-        ManagerUninstallPreviewContext {
-            requested_manager: manager,
-            target_manager,
-            request: &request,
-            strategy: StrategyKind::ReadOnly,
-            active_instance: active_instance.as_ref(),
-            unknown_override_required: false,
-            used_unknown_override: false,
-            legacy_fallback_used: false,
-        },
-        DEFAULT_MANAGER_UNINSTALL_SAFE_BLAST_RADIUS_THRESHOLD,
-    );
-
-    if !preview_only {
-        return Err(format!(
-            "manager '{}' uninstall is blocked because active provenance is read-only",
-            manager.as_str(),
-        ));
-    }
-
-    Ok(ManagerUninstallPlan {
-        target_manager,
-        request,
-        preview,
-    })
-}
-
-fn resolve_homebrew_manager_uninstall_strategy(
-    manager: ManagerId,
-    active_instance: Option<&ManagerInstallInstance>,
-    allow_unknown_provenance: bool,
-    preview_only: bool,
-) -> Result<HomebrewManagerUninstallResolution, String> {
-    let Some(instance) = active_instance else {
-        return Ok(HomebrewManagerUninstallResolution {
-            strategy: StrategyKind::HomebrewFormula,
-            unknown_override_required: false,
-            used_unknown_override: false,
-        });
-    };
-
-    match instance.uninstall_strategy {
-        StrategyKind::HomebrewFormula | StrategyKind::ReadOnly => {
-            Ok(HomebrewManagerUninstallResolution {
-                strategy: instance.uninstall_strategy,
-                unknown_override_required: false,
-                used_unknown_override: false,
-            })
-        }
-        StrategyKind::InteractivePrompt
-        | StrategyKind::Unknown
-        | StrategyKind::ManualRemediation
-        | StrategyKind::RustupSelf => {
-            if allow_unknown_provenance {
-                return Ok(HomebrewManagerUninstallResolution {
-                    strategy: StrategyKind::HomebrewFormula,
-                    unknown_override_required: true,
-                    used_unknown_override: true,
-                });
-            }
-
-            if preview_only {
-                return Ok(HomebrewManagerUninstallResolution {
-                    strategy: StrategyKind::HomebrewFormula,
-                    unknown_override_required: true,
-                    used_unknown_override: false,
-                });
-            }
-
-            Err(format!(
-                "manager '{}' uninstall provenance is ambiguous; rerun with --preview to inspect blast radius, then pass --allow-unknown-provenance --yes to continue.",
-                manager.as_str(),
-            ))
         }
     }
+}
+
+fn manager_homebrew_formula_name(manager: ManagerId) -> Option<&'static str> {
+    helm_core::manager_lifecycle::manager_homebrew_formula_name(manager)
+}
+
+#[cfg(test)]
+fn homebrew_formula_name_from_path(path: &Path) -> Option<String> {
+    helm_core::manager_lifecycle::homebrew_formula_name_from_path(path)
 }
 
 fn active_manager_install_instance(
@@ -11813,214 +11612,6 @@ fn build_package_uninstall_preview_for_package(
         },
         DEFAULT_MANAGER_UNINSTALL_SAFE_BLAST_RADIUS_THRESHOLD,
     ))
-}
-
-fn build_rustup_uninstall_plan(
-    store: &SqliteStore,
-    manager: ManagerId,
-    active_instance: Option<ManagerInstallInstance>,
-    allow_unknown_provenance: bool,
-    preview_only: bool,
-) -> Result<ManagerUninstallPlan, String> {
-    let resolution = resolve_rustup_uninstall_strategy(
-        active_instance.as_ref(),
-        allow_unknown_provenance,
-        preview_only,
-    )?;
-    let resolved_strategy = resolution.strategy;
-
-    let (target_manager, request, legacy_fallback_used) = match resolved_strategy {
-        StrategyKind::HomebrewFormula => (
-            ManagerId::HomebrewFormula,
-            AdapterRequest::Uninstall(UninstallRequest {
-                package: PackageRef {
-                    manager: ManagerId::HomebrewFormula,
-                    name: "rustup".to_string(),
-                },
-            }),
-            false,
-        ),
-        StrategyKind::RustupSelf => (
-            ManagerId::Rustup,
-            AdapterRequest::Uninstall(UninstallRequest {
-                package: PackageRef {
-                    manager: ManagerId::Rustup,
-                    name: "__self__".to_string(),
-                },
-            }),
-            false,
-        ),
-        StrategyKind::ReadOnly => (
-            ManagerId::Rustup,
-            AdapterRequest::Uninstall(UninstallRequest {
-                package: PackageRef {
-                    manager: ManagerId::Rustup,
-                    name: "__self__".to_string(),
-                },
-            }),
-            false,
-        ),
-        _ => {
-            let (target, request) =
-                build_manager_mutation_request(store, manager, "uninstall", None)?;
-            (target, request, true)
-        }
-    };
-
-    let preview = build_manager_uninstall_preview(
-        store,
-        ManagerUninstallPreviewContext {
-            requested_manager: manager,
-            target_manager,
-            request: &request,
-            strategy: resolved_strategy,
-            active_instance: active_instance.as_ref(),
-            unknown_override_required: resolution.unknown_override_required,
-            used_unknown_override: resolution.used_unknown_override,
-            legacy_fallback_used,
-        },
-        DEFAULT_MANAGER_UNINSTALL_SAFE_BLAST_RADIUS_THRESHOLD,
-    );
-
-    if preview.read_only_blocked && !preview_only {
-        return Err(
-            "manager 'rustup' uninstall is blocked because active provenance is read-only"
-                .to_string(),
-        );
-    }
-    if preview.unknown_override_required && !resolution.used_unknown_override && !preview_only {
-        return Err(
-            "manager 'rustup' uninstall provenance is ambiguous; rerun with --preview to inspect blast radius, then pass --allow-unknown-provenance --yes to continue."
-                .to_string(),
-        );
-    }
-    if target_manager == ManagerId::HomebrewFormula
-        && !homebrew_dependency_available(store)
-        && !preview_only
-    {
-        return Err(
-            "homebrew is required for this manager operation but was not detected on this system"
-                .to_string(),
-        );
-    }
-
-    Ok(ManagerUninstallPlan {
-        target_manager,
-        request,
-        preview,
-    })
-}
-
-fn resolve_rustup_uninstall_strategy(
-    active_instance: Option<&ManagerInstallInstance>,
-    allow_unknown_provenance: bool,
-    preview_only: bool,
-) -> Result<RustupUninstallResolution, String> {
-    let Some(instance) = active_instance else {
-        return Ok(RustupUninstallResolution {
-            strategy: StrategyKind::RustupSelf,
-            unknown_override_required: false,
-            used_unknown_override: false,
-        });
-    };
-
-    match instance.uninstall_strategy {
-        StrategyKind::HomebrewFormula | StrategyKind::RustupSelf | StrategyKind::ReadOnly => {
-            Ok(RustupUninstallResolution {
-                strategy: instance.uninstall_strategy,
-                unknown_override_required: false,
-                used_unknown_override: false,
-            })
-        }
-        StrategyKind::InteractivePrompt
-        | StrategyKind::Unknown
-        | StrategyKind::ManualRemediation => {
-            let fallback = if instance.competing_provenance == Some(InstallProvenance::Homebrew)
-                || rustup_instance_path_looks_homebrew(instance)
-            {
-                StrategyKind::HomebrewFormula
-            } else {
-                StrategyKind::RustupSelf
-            };
-
-            if allow_unknown_provenance {
-                return Ok(RustupUninstallResolution {
-                    strategy: fallback,
-                    unknown_override_required: true,
-                    used_unknown_override: true,
-                });
-            }
-
-            if preview_only {
-                return Ok(RustupUninstallResolution {
-                    strategy: fallback,
-                    unknown_override_required: true,
-                    used_unknown_override: false,
-                });
-            }
-
-            Err(
-                "manager 'rustup' uninstall provenance is ambiguous; rerun with --preview to inspect blast radius, then pass --allow-unknown-provenance --yes to continue."
-                    .to_string(),
-            )
-        }
-    }
-}
-
-fn resolve_rustup_update_strategy(
-    active_instance: Option<&ManagerInstallInstance>,
-) -> Result<StrategyKind, String> {
-    let Some(instance) = active_instance else {
-        return Ok(StrategyKind::RustupSelf);
-    };
-
-    match instance.update_strategy {
-        StrategyKind::HomebrewFormula | StrategyKind::RustupSelf => Ok(instance.update_strategy),
-        StrategyKind::ReadOnly => Err(
-            "manager 'rustup' update is blocked because active provenance is read-only"
-                .to_string(),
-        ),
-        StrategyKind::InteractivePrompt
-        | StrategyKind::Unknown
-        | StrategyKind::ManualRemediation => Err(
-            "manager 'rustup' update provenance is ambiguous; inspect with `helm managers instances rustup` and choose an explicit path before updating."
-                .to_string(),
-        ),
-    }
-}
-
-fn resolve_homebrew_manager_update_strategy(
-    manager: ManagerId,
-    active_instance: Option<&ManagerInstallInstance>,
-) -> Result<StrategyKind, String> {
-    let Some(instance) = active_instance else {
-        return Ok(StrategyKind::HomebrewFormula);
-    };
-
-    match instance.update_strategy {
-        StrategyKind::HomebrewFormula => Ok(StrategyKind::HomebrewFormula),
-        StrategyKind::ReadOnly => Err(format!(
-            "manager '{}' update is blocked because active provenance is read-only",
-            manager.as_str(),
-        )),
-        StrategyKind::InteractivePrompt
-        | StrategyKind::Unknown
-        | StrategyKind::ManualRemediation
-        | StrategyKind::RustupSelf => Err(format!(
-            "manager '{}' update provenance is ambiguous; inspect with `helm managers instances {}` and choose an explicit path before updating.",
-            manager.as_str(),
-            manager.as_str(),
-        )),
-    }
-}
-
-fn rustup_instance_path_looks_homebrew(instance: &ManagerInstallInstance) -> bool {
-    instance
-        .canonical_path
-        .as_ref()
-        .is_some_and(|path| path.starts_with("/opt/homebrew/") || path.starts_with("/usr/local/"))
-        || instance.display_path.starts_with("/opt/homebrew/")
-        || instance.display_path.starts_with("/usr/local/")
 }
 
 fn parse_manager_id(raw: &str) -> Result<ManagerId, String> {
@@ -13500,13 +13091,18 @@ fn print_managers_disable_help() {
 
 fn print_managers_install_help() {
     println!("USAGE:");
-    println!("  helm managers install <manager-id> [--method <method-id>]");
+    println!(
+        "  helm managers install <manager-id> [--method <method-id>] [--rustup-install-source <officialDownload|existingBinaryPath>] [--rustup-binary-path <path>]"
+    );
     println!();
     println!("DESCRIPTION:");
     println!("  Install a supported manager.");
     println!("  Use --method for a one-off method override without changing saved preferences.");
     println!(
         "  If method choice is ambiguous, interactive TTY prompts; non-interactive mode requires --method."
+    );
+    println!(
+        "  rustup-only: --rustup-install-source selects official download vs existing binary path. --rustup-binary-path implies existingBinaryPath when source is omitted."
     );
 }
 
@@ -14277,6 +13873,16 @@ mod tests {
             .expect("search query args should parse");
         assert_eq!(command, Command::Search);
         assert_eq!(args, vec!["-foo".to_string()]);
+    }
+
+    #[test]
+    fn package_search_excludes_rustup_manager() {
+        assert!(!super::manager_participates_in_package_search(
+            ManagerId::Rustup
+        ));
+        assert!(super::manager_participates_in_package_search(
+            ManagerId::HomebrewFormula
+        ));
     }
 
     #[test]
@@ -15140,6 +14746,8 @@ mod tests {
         assert!(!parsed.preview);
         assert!(!parsed.yes);
         assert!(!parsed.allow_unknown_provenance);
+        assert_eq!(parsed.install_options.rustup_install_source, None);
+        assert_eq!(parsed.install_options.rustup_binary_path, None);
     }
 
     #[test]
@@ -15170,6 +14778,81 @@ mod tests {
         )
         .expect_err("uninstall should reject install-method override");
         assert!(error.contains("unsupported managers uninstall argument '--method'"));
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_install_accepts_rustup_source_options() {
+        let parsed = parse_manager_mutation_args(
+            "install",
+            &[
+                "rustup".to_string(),
+                "--rustup-install-source".to_string(),
+                "existingBinaryPath".to_string(),
+                "--rustup-binary-path".to_string(),
+                "/tmp/rustup-init".to_string(),
+            ],
+        )
+        .expect("rustup install source options should parse");
+
+        assert_eq!(parsed.manager, ManagerId::Rustup);
+        assert_eq!(
+            parsed.install_options.rustup_install_source,
+            Some(helm_core::manager_lifecycle::RustupInstallSource::ExistingBinaryPath)
+        );
+        assert_eq!(
+            parsed.install_options.rustup_binary_path.as_deref(),
+            Some("/tmp/rustup-init")
+        );
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_install_infers_existing_binary_source_from_path() {
+        let parsed = parse_manager_mutation_args(
+            "install",
+            &[
+                "rustup".to_string(),
+                "--rustup-binary-path".to_string(),
+                "/tmp/rustup-init".to_string(),
+            ],
+        )
+        .expect("rustup binary path should imply existing-binary source");
+
+        assert_eq!(
+            parsed.install_options.rustup_install_source,
+            Some(helm_core::manager_lifecycle::RustupInstallSource::ExistingBinaryPath)
+        );
+        assert_eq!(
+            parsed.install_options.rustup_binary_path.as_deref(),
+            Some("/tmp/rustup-init")
+        );
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_install_rejects_rustup_source_flags_for_non_rustup_manager() {
+        let error = parse_manager_mutation_args(
+            "install",
+            &[
+                "mise".to_string(),
+                "--rustup-install-source".to_string(),
+                "officialDownload".to_string(),
+            ],
+        )
+        .expect_err("non-rustup managers should reject rustup install-source flags");
+        assert!(error.contains("only supported for manager 'rustup'"));
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_install_rejects_invalid_rustup_source_value() {
+        let error = parse_manager_mutation_args(
+            "install",
+            &[
+                "rustup".to_string(),
+                "--rustup-install-source".to_string(),
+                "invalid".to_string(),
+            ],
+        )
+        .expect_err("invalid rustup source should fail");
+        assert!(error.contains("unsupported rustup install source"));
     }
 
     #[test]
@@ -16859,6 +16542,72 @@ mod tests {
             super::AdapterRequest::Install(install) => {
                 assert_eq!(install.package.manager, ManagerId::HomebrewFormula);
                 assert_eq!(install.package.name, "asdf");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn rustup_install_request_defaults_to_rustup_installer_and_allows_homebrew_override() {
+        let db_path = temp_db_path("rustup-install-method-routing");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .set_manager_selected_install_method(ManagerId::Rustup, Some("rustupInstaller"))
+            .expect("persisting rustup preferred method should succeed");
+
+        let (target_manager, request) =
+            super::build_manager_mutation_request(&store, ManagerId::Rustup, "install", None)
+                .expect("saved rustup installer preference should resolve install request");
+        assert_eq!(target_manager, ManagerId::Rustup);
+        match request {
+            super::AdapterRequest::Install(install) => {
+                assert_eq!(install.package.manager, ManagerId::Rustup);
+                assert_eq!(install.package.name, "__self__");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        let (target_manager, request) = super::build_manager_mutation_request(
+            &store,
+            ManagerId::Rustup,
+            "install",
+            Some("homebrew".to_string()),
+        )
+        .expect("cli method override should recover rustup install route");
+        assert_eq!(target_manager, ManagerId::HomebrewFormula);
+        match request {
+            super::AdapterRequest::Install(install) => {
+                assert_eq!(install.package.manager, ManagerId::HomebrewFormula);
+                assert_eq!(install.package.name, "rustup");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        let (target_manager, request) = super::build_manager_mutation_request_with_options(
+            &store,
+            ManagerId::Rustup,
+            "install",
+            Some("rustupInstaller".to_string()),
+            helm_core::manager_lifecycle::ManagerInstallOptions {
+                rustup_install_source: Some(
+                    helm_core::manager_lifecycle::RustupInstallSource::ExistingBinaryPath,
+                ),
+                rustup_binary_path: Some("/tmp/rustup-init".to_string()),
+            },
+        )
+        .expect("rustup existing-binary install source should map into install request");
+        assert_eq!(target_manager, ManagerId::Rustup);
+        match request {
+            super::AdapterRequest::Install(install) => {
+                assert_eq!(
+                    install.version.as_deref(),
+                    Some("existingBinaryPath:/tmp/rustup-init")
+                );
             }
             other => panic!("unexpected request: {other:?}"),
         }

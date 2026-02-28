@@ -109,7 +109,6 @@ struct TaskRowView: View {
 private struct TaskRowLiveOutputView: View {
     @ObservedObject private var core = HelmCore.shared
     @EnvironmentObject private var context: ControlCenterContext
-    private static let outputAnchorId = "task-output-bottom"
     private static let taskLogFetchLimit = 80
     private static let timestampFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -136,17 +135,8 @@ private struct TaskRowLiveOutputView: View {
                 .font(.caption.weight(.semibold))
                 .foregroundColor(.secondary)
 
-            ScrollViewReader { proxy in
-                ScrollView {
-                    Text(liveOutputText)
-                        .font(.system(size: 12, weight: .regular, design: .monospaced))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Color.clear
-                        .frame(height: 1)
-                        .id(Self.outputAnchorId)
-                }
+            TaskSelectableMonospacedTextArea(text: liveOutputText)
                 .frame(minHeight: 88, maxHeight: 140)
-                .padding(8)
                 .background(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(HelmTheme.surfacePanel)
@@ -155,13 +145,6 @@ private struct TaskRowLiveOutputView: View {
                                 .strokeBorder(HelmTheme.borderSubtle.opacity(0.9), lineWidth: 0.8)
                         )
                 )
-                .onAppear {
-                    scrollToBottom(using: proxy)
-                }
-                .onChange(of: liveOutputText) { _ in
-                    scrollToBottom(using: proxy)
-                }
-            }
         }
         .onAppear {
             loadTaskOutput(force: true)
@@ -325,10 +308,52 @@ private struct TaskRowLiveOutputView: View {
             }
         }
     }
+}
 
-    private func scrollToBottom(using proxy: ScrollViewProxy) {
+private struct TaskSelectableMonospacedTextArea: NSViewRepresentable {
+    let text: String
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.borderType = .noBorder
+        scrollView.drawsBackground = false
+
+        let textView = NSTextView()
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.drawsBackground = false
+        textView.isRichText = false
+        textView.usesFindBar = true
+        textView.font = NSFont.monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+        textView.textColor = NSColor.labelColor
+        textView.textContainerInset = NSSize(width: 8, height: 8)
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.isHorizontallyResizable = true
+        textView.isVerticallyResizable = true
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.textContainer?.containerSize = NSSize(
+            width: CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.textContainer?.widthTracksTextView = false
+        textView.textContainer?.heightTracksTextView = false
+        textView.string = text
+
+        scrollView.documentView = textView
         DispatchQueue.main.async {
-            proxy.scrollTo(Self.outputAnchorId, anchor: .bottom)
+            textView.scrollToEndOfDocument(nil)
+        }
+        return scrollView
+    }
+
+    func updateNSView(_ nsView: NSScrollView, context: Context) {
+        guard let textView = nsView.documentView as? NSTextView else { return }
+        if textView.string != text {
+            textView.string = text
+            textView.scrollToEndOfDocument(nil)
         }
     }
 }

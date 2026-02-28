@@ -82,6 +82,14 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(result)
     }
 
+    func triggerDetectionForManager(managerId: String, withReply reply: @escaping (Bool) -> Void) {
+        let result = managerId.withCString { manager in
+            helm_trigger_detection_for_manager(manager)
+        }
+        logger.info("helm_trigger_detection_for_manager(\(managerId)) result: \(result)")
+        reply(result)
+    }
+
     func searchLocal(query: String, withReply reply: @escaping (String?) -> Void) {
         guard let cString = query.withCString({ helm_search_local($0) }) else {
             logger.warning("helm_search_local returned nil")
@@ -376,8 +384,33 @@ class HelmService: NSObject, HelmServiceProtocol {
     }
 
     func installManager(managerId: String, withReply reply: @escaping (Int64) -> Void) {
-        let taskId = managerId.withCString { helm_install_manager($0) }
-        logger.info("helm_install_manager(\(managerId)) result: \(taskId)")
+        installManagerWithOptions(
+            managerId: managerId,
+            optionsJson: nil,
+            withReply: reply
+        )
+    }
+
+    func installManagerWithOptions(
+        managerId: String,
+        optionsJson: String?,
+        withReply reply: @escaping (Int64) -> Void
+    ) {
+        let taskId: Int64
+        if let optionsJson {
+            taskId = managerId.withCString { manager in
+                optionsJson.withCString { options in
+                    helm_install_manager_with_options(manager, options)
+                }
+            }
+        } else {
+            taskId = managerId.withCString { manager in
+                helm_install_manager_with_options(manager, nil)
+            }
+        }
+        logger.info(
+            "helm_install_manager_with_options(\(managerId), options=\(optionsJson ?? "nil")) result: \(taskId)"
+        )
         reply(taskId)
     }
 
