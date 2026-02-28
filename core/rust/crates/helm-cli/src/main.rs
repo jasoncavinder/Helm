@@ -465,6 +465,7 @@ struct ParsedManagerMutationArgs {
     allow_unknown_provenance: bool,
     install_method_override: Option<String>,
     install_options: helm_core::manager_lifecycle::ManagerInstallOptions,
+    uninstall_options: helm_core::manager_lifecycle::ManagerUninstallOptions,
 }
 
 #[derive(Debug, Clone)]
@@ -3759,11 +3760,12 @@ fn cmd_managers_mutation(
 
     let (target_manager, request, uninstall_preview) = if subcommand == "uninstall" {
         if parsed.preview {
-            let preview_plan = build_manager_uninstall_plan(
+            let preview_plan = build_manager_uninstall_plan_with_options(
                 store.as_ref(),
                 manager,
                 parsed.allow_unknown_provenance,
                 true,
+                parsed.uninstall_options.clone(),
             )?;
             if options.json {
                 emit_json_payload(
@@ -3778,11 +3780,12 @@ fn cmd_managers_mutation(
             }
         }
 
-        let plan = build_manager_uninstall_plan(
+        let plan = build_manager_uninstall_plan_with_options(
             store.as_ref(),
             manager,
             parsed.allow_unknown_provenance,
             false,
+            parsed.uninstall_options.clone(),
         )?;
         if plan.preview.requires_yes && !parsed.yes {
             return Err(
@@ -10920,7 +10923,8 @@ fn install_method_allowed_by_policy(
 
 fn manager_helm_supported_install_methods(id: ManagerId) -> &'static [&'static str] {
     match id {
-        ManagerId::Mise | ManagerId::Mas | ManagerId::Asdf => &["homebrew"],
+        ManagerId::Mise => &["scriptInstaller", "homebrew", "macports", "cargoInstall"],
+        ManagerId::Mas | ManagerId::Asdf => &["homebrew"],
         ManagerId::Rustup => &["rustupInstaller", "homebrew"],
         _ => &[],
     }
@@ -11212,6 +11216,10 @@ fn manager_install_plan_error_message(
             "rustup install source 'existingBinaryPath' requires a non-empty absolute binary path"
                 .to_string()
         }
+        helm_core::manager_lifecycle::ManagerInstallPlanError::InvalidMiseBinaryPath => {
+            "mise install source 'existingBinaryPath' requires a non-empty absolute binary path"
+                .to_string()
+        }
     }
 }
 
@@ -11266,6 +11274,57 @@ fn parse_rustup_install_source_arg(
     }
 }
 
+fn parse_mise_install_source_arg(
+    raw: &str,
+) -> Result<helm_core::manager_lifecycle::MiseInstallSource, String> {
+    match raw.trim() {
+        "officialDownload" | "official-download" | "official_download" => {
+            Ok(helm_core::manager_lifecycle::MiseInstallSource::OfficialDownload)
+        }
+        "existingBinaryPath" | "existing-binary-path" | "existing_binary_path" => {
+            Ok(helm_core::manager_lifecycle::MiseInstallSource::ExistingBinaryPath)
+        }
+        other => Err(format!(
+            "unsupported mise install source '{}'; supported: officialDownload, existingBinaryPath",
+            other
+        )),
+    }
+}
+
+fn parse_mise_cleanup_mode_arg(
+    raw: &str,
+) -> Result<helm_core::manager_lifecycle::MiseUninstallCleanupMode, String> {
+    match raw.trim() {
+        "managerOnly" | "manager-only" | "manager_only" => {
+            Ok(helm_core::manager_lifecycle::MiseUninstallCleanupMode::ManagerOnly)
+        }
+        "fullCleanup" | "full-cleanup" | "full_cleanup" => {
+            Ok(helm_core::manager_lifecycle::MiseUninstallCleanupMode::FullCleanup)
+        }
+        other => Err(format!(
+            "unsupported mise cleanup mode '{}'; supported: managerOnly, fullCleanup",
+            other
+        )),
+    }
+}
+
+fn parse_mise_config_removal_arg(
+    raw: &str,
+) -> Result<helm_core::manager_lifecycle::MiseUninstallConfigRemoval, String> {
+    match raw.trim() {
+        "keepConfig" | "keep-config" | "keep_config" => {
+            Ok(helm_core::manager_lifecycle::MiseUninstallConfigRemoval::KeepConfig)
+        }
+        "removeConfig" | "remove-config" | "remove_config" => {
+            Ok(helm_core::manager_lifecycle::MiseUninstallConfigRemoval::RemoveConfig)
+        }
+        other => Err(format!(
+            "unsupported mise config removal mode '{}'; supported: keepConfig, removeConfig",
+            other
+        )),
+    }
+}
+
 fn parse_manager_mutation_args(
     subcommand: &str,
     command_args: &[String],
@@ -11277,6 +11336,12 @@ fn parse_manager_mutation_args(
     let mut install_method_raw: Option<String> = None;
     let mut rustup_install_source: Option<helm_core::manager_lifecycle::RustupInstallSource> = None;
     let mut rustup_binary_path: Option<String> = None;
+    let mut mise_install_source: Option<helm_core::manager_lifecycle::MiseInstallSource> = None;
+    let mut mise_binary_path: Option<String> = None;
+    let mut mise_cleanup_mode: Option<helm_core::manager_lifecycle::MiseUninstallCleanupMode> =
+        None;
+    let mut mise_config_removal: Option<helm_core::manager_lifecycle::MiseUninstallConfigRemoval> =
+        None;
 
     let uninstall_command = subcommand == "uninstall";
     let install_command = subcommand == "install";
@@ -11294,6 +11359,41 @@ fn parse_manager_mutation_args(
             "--allow-unknown-provenance" if uninstall_command => {
                 allow_unknown_provenance = true;
                 index += 1;
+            }
+            "--mise-cleanup-mode" if uninstall_command => {
+                if index + 1 >= command_args.len() {
+                    return Err(
+                        "managers uninstall --mise-cleanup-mode requires a mode value".to_string(),
+                    );
+                }
+                if mise_cleanup_mode.is_some() {
+                    return Err(
+                        "managers uninstall --mise-cleanup-mode specified multiple times"
+                            .to_string(),
+                    );
+                }
+                mise_cleanup_mode = Some(parse_mise_cleanup_mode_arg(
+                    command_args[index + 1].as_str(),
+                )?);
+                index += 2;
+            }
+            "--mise-config-removal" if uninstall_command => {
+                if index + 1 >= command_args.len() {
+                    return Err(
+                        "managers uninstall --mise-config-removal requires a mode value"
+                            .to_string(),
+                    );
+                }
+                if mise_config_removal.is_some() {
+                    return Err(
+                        "managers uninstall --mise-config-removal specified multiple times"
+                            .to_string(),
+                    );
+                }
+                mise_config_removal = Some(parse_mise_config_removal_arg(
+                    command_args[index + 1].as_str(),
+                )?);
+                index += 2;
             }
             "--method" if install_command => {
                 if index + 1 >= command_args.len() {
@@ -11338,16 +11438,48 @@ fn parse_manager_mutation_args(
                 rustup_binary_path = Some(command_args[index + 1].clone());
                 index += 2;
             }
+            "--mise-install-source" if install_command => {
+                if index + 1 >= command_args.len() {
+                    return Err(
+                        "managers install --mise-install-source requires a source value"
+                            .to_string(),
+                    );
+                }
+                if mise_install_source.is_some() {
+                    return Err(
+                        "managers install --mise-install-source specified multiple times"
+                            .to_string(),
+                    );
+                }
+                mise_install_source = Some(parse_mise_install_source_arg(
+                    command_args[index + 1].as_str(),
+                )?);
+                index += 2;
+            }
+            "--mise-binary-path" if install_command => {
+                if index + 1 >= command_args.len() {
+                    return Err(
+                        "managers install --mise-binary-path requires a file path".to_string()
+                    );
+                }
+                if mise_binary_path.is_some() {
+                    return Err(
+                        "managers install --mise-binary-path specified multiple times".to_string(),
+                    );
+                }
+                mise_binary_path = Some(command_args[index + 1].clone());
+                index += 2;
+            }
             flag if flag.starts_with("--") => {
                 if uninstall_command {
                     return Err(format!(
-                        "unsupported managers uninstall argument '{}'; supported: <manager-id>, --preview, --yes, --allow-unknown-provenance",
+                        "unsupported managers uninstall argument '{}'; supported: <manager-id>, --preview, --yes, --allow-unknown-provenance, --mise-cleanup-mode <managerOnly|fullCleanup>, --mise-config-removal <keepConfig|removeConfig>",
                         flag
                     ));
                 }
                 if install_command {
                     return Err(format!(
-                        "unsupported managers install argument '{}'; supported: <manager-id>, --method <method-id>, --rustup-install-source <officialDownload|existingBinaryPath>, --rustup-binary-path <path>",
+                        "unsupported managers install argument '{}'; supported: <manager-id>, --method <method-id>, --rustup-install-source <officialDownload|existingBinaryPath>, --rustup-binary-path <path>, --mise-install-source <officialDownload|existingBinaryPath>, --mise-binary-path <path>",
                         flag
                     ));
                 }
@@ -11384,6 +11516,14 @@ fn parse_manager_mutation_args(
                     .to_string(),
             );
         }
+        if manager != ManagerId::Mise
+            && (mise_install_source.is_some() || mise_binary_path.is_some())
+        {
+            return Err(
+                "managers install mise install-source flags are only supported for manager 'mise'"
+                    .to_string(),
+            );
+        }
 
         let mut source = rustup_install_source;
         if rustup_binary_path.is_some() {
@@ -11402,16 +11542,58 @@ fn parse_manager_mutation_args(
             }
         }
 
+        let mut mise_source = mise_install_source;
+        if mise_binary_path.is_some() {
+            match mise_source {
+                Some(helm_core::manager_lifecycle::MiseInstallSource::OfficialDownload) => {
+                    return Err(
+                        "managers install --mise-binary-path is incompatible with --mise-install-source officialDownload"
+                            .to_string(),
+                    );
+                }
+                Some(helm_core::manager_lifecycle::MiseInstallSource::ExistingBinaryPath) => {}
+                None => {
+                    mise_source =
+                        Some(helm_core::manager_lifecycle::MiseInstallSource::ExistingBinaryPath);
+                }
+            }
+        }
+
         if manager == ManagerId::Rustup {
             helm_core::manager_lifecycle::ManagerInstallOptions {
                 rustup_install_source: source,
                 rustup_binary_path,
+                ..helm_core::manager_lifecycle::ManagerInstallOptions::default()
+            }
+        } else if manager == ManagerId::Mise {
+            helm_core::manager_lifecycle::ManagerInstallOptions {
+                mise_install_source: mise_source,
+                mise_binary_path,
+                ..helm_core::manager_lifecycle::ManagerInstallOptions::default()
             }
         } else {
             helm_core::manager_lifecycle::ManagerInstallOptions::default()
         }
     } else {
         helm_core::manager_lifecycle::ManagerInstallOptions::default()
+    };
+
+    if uninstall_command
+        && manager != ManagerId::Mise
+        && (mise_cleanup_mode.is_some() || mise_config_removal.is_some())
+    {
+        return Err(
+            "managers uninstall mise cleanup flags are only supported for manager 'mise'"
+                .to_string(),
+        );
+    }
+    let uninstall_options = if uninstall_command && manager == ManagerId::Mise {
+        helm_core::manager_lifecycle::ManagerUninstallOptions {
+            mise_cleanup_mode,
+            mise_config_removal,
+        }
+    } else {
+        helm_core::manager_lifecycle::ManagerUninstallOptions::default()
     };
 
     Ok(ParsedManagerMutationArgs {
@@ -11421,6 +11603,7 @@ fn parse_manager_mutation_args(
         allow_unknown_provenance,
         install_method_override,
         install_options,
+        uninstall_options,
     })
 }
 
@@ -11430,12 +11613,29 @@ fn build_manager_uninstall_plan(
     allow_unknown_provenance: bool,
     preview_only: bool,
 ) -> Result<ManagerUninstallPlan, String> {
+    build_manager_uninstall_plan_with_options(
+        store,
+        manager,
+        allow_unknown_provenance,
+        preview_only,
+        helm_core::manager_lifecycle::ManagerUninstallOptions::default(),
+    )
+}
+
+fn build_manager_uninstall_plan_with_options(
+    store: &SqliteStore,
+    manager: ManagerId,
+    allow_unknown_provenance: bool,
+    preview_only: bool,
+    uninstall_options: helm_core::manager_lifecycle::ManagerUninstallOptions,
+) -> Result<ManagerUninstallPlan, String> {
     let active_instance = active_manager_install_instance(store, manager)?;
-    match helm_core::manager_lifecycle::plan_manager_uninstall_route(
+    match helm_core::manager_lifecycle::plan_manager_uninstall_route_with_options(
         manager,
         active_instance.as_ref(),
         allow_unknown_provenance,
         preview_only,
+        &uninstall_options,
     ) {
         Ok(route) => build_provenance_manager_uninstall_plan(
             store,
@@ -11567,6 +11767,12 @@ fn manager_uninstall_route_error_message(
                 "manager '{}' uninstall provenance resolved to homebrew but formula ownership could not be determined from active install instance; inspect with `helm managers instances {}` and refresh detection before retrying.",
                 manager.as_str(),
                 manager.as_str(),
+            )
+        }
+        helm_core::manager_lifecycle::ManagerUninstallRouteError::InvalidOptions => {
+            format!(
+                "manager '{}' uninstall options are invalid for the selected strategy; review mise cleanup/config flags and retry.",
+                manager.as_str()
             )
         }
     }
@@ -13092,7 +13298,7 @@ fn print_managers_disable_help() {
 fn print_managers_install_help() {
     println!("USAGE:");
     println!(
-        "  helm managers install <manager-id> [--method <method-id>] [--rustup-install-source <officialDownload|existingBinaryPath>] [--rustup-binary-path <path>]"
+        "  helm managers install <manager-id> [--method <method-id>] [--rustup-install-source <officialDownload|existingBinaryPath>] [--rustup-binary-path <path>] [--mise-install-source <officialDownload|existingBinaryPath>] [--mise-binary-path <path>]"
     );
     println!();
     println!("DESCRIPTION:");
@@ -13103,6 +13309,9 @@ fn print_managers_install_help() {
     );
     println!(
         "  rustup-only: --rustup-install-source selects official download vs existing binary path. --rustup-binary-path implies existingBinaryPath when source is omitted."
+    );
+    println!(
+        "  mise-only: --mise-install-source selects script installer source mode. --mise-binary-path implies existingBinaryPath when source is omitted."
     );
 }
 
@@ -13117,13 +13326,15 @@ fn print_managers_update_help() {
 fn print_managers_uninstall_help() {
     println!("USAGE:");
     println!(
-        "  helm managers uninstall <manager-id> [--preview] [--yes] [--allow-unknown-provenance]"
+        "  helm managers uninstall <manager-id> [--preview] [--yes] [--allow-unknown-provenance] [--mise-cleanup-mode <managerOnly|fullCleanup>] [--mise-config-removal <keepConfig|removeConfig>]"
     );
     println!();
     println!("DESCRIPTION:");
     println!(
         "  Uninstall a supported manager via detected provenance strategy with blast-radius preview."
     );
+    println!("  mise-only: --mise-cleanup-mode defaults to managerOnly.");
+    println!("  mise-only: fullCleanup requires --mise-config-removal keepConfig|removeConfig.");
 }
 
 fn print_managers_executables_help() {
@@ -14689,6 +14900,78 @@ mod tests {
         assert!(parsed.yes);
         assert!(parsed.allow_unknown_provenance);
         assert_eq!(parsed.install_method_override, None);
+        assert_eq!(
+            parsed.uninstall_options,
+            helm_core::manager_lifecycle::ManagerUninstallOptions::default()
+        );
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_uninstall_accepts_mise_cleanup_options() {
+        let parsed = parse_manager_mutation_args(
+            "uninstall",
+            &[
+                "mise".to_string(),
+                "--preview".to_string(),
+                "--mise-cleanup-mode".to_string(),
+                "fullCleanup".to_string(),
+                "--mise-config-removal".to_string(),
+                "removeConfig".to_string(),
+            ],
+        )
+        .expect("mise uninstall cleanup options should parse");
+
+        assert_eq!(parsed.manager, ManagerId::Mise);
+        assert_eq!(
+            parsed.uninstall_options.mise_cleanup_mode,
+            Some(helm_core::manager_lifecycle::MiseUninstallCleanupMode::FullCleanup)
+        );
+        assert_eq!(
+            parsed.uninstall_options.mise_config_removal,
+            Some(helm_core::manager_lifecycle::MiseUninstallConfigRemoval::RemoveConfig)
+        );
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_uninstall_rejects_mise_cleanup_flags_for_non_mise_manager() {
+        let error = parse_manager_mutation_args(
+            "uninstall",
+            &[
+                "rustup".to_string(),
+                "--mise-cleanup-mode".to_string(),
+                "fullCleanup".to_string(),
+            ],
+        )
+        .expect_err("non-mise managers should reject mise cleanup flags");
+        assert!(error.contains("only supported for manager 'mise'"));
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_uninstall_rejects_invalid_mise_cleanup_mode() {
+        let error = parse_manager_mutation_args(
+            "uninstall",
+            &[
+                "mise".to_string(),
+                "--mise-cleanup-mode".to_string(),
+                "invalid".to_string(),
+            ],
+        )
+        .expect_err("invalid mise cleanup mode should fail");
+        assert!(error.contains("unsupported mise cleanup mode"));
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_uninstall_rejects_invalid_mise_config_removal_mode() {
+        let error = parse_manager_mutation_args(
+            "uninstall",
+            &[
+                "mise".to_string(),
+                "--mise-config-removal".to_string(),
+                "invalid".to_string(),
+            ],
+        )
+        .expect_err("invalid mise config-removal mode should fail");
+        assert!(error.contains("unsupported mise config removal mode"));
     }
 
     #[test]
@@ -14748,6 +15031,8 @@ mod tests {
         assert!(!parsed.allow_unknown_provenance);
         assert_eq!(parsed.install_options.rustup_install_source, None);
         assert_eq!(parsed.install_options.rustup_binary_path, None);
+        assert_eq!(parsed.install_options.mise_install_source, None);
+        assert_eq!(parsed.install_options.mise_binary_path, None);
     }
 
     #[test]
@@ -14853,6 +15138,81 @@ mod tests {
         )
         .expect_err("invalid rustup source should fail");
         assert!(error.contains("unsupported rustup install source"));
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_install_accepts_mise_source_options() {
+        let parsed = parse_manager_mutation_args(
+            "install",
+            &[
+                "mise".to_string(),
+                "--mise-install-source".to_string(),
+                "existingBinaryPath".to_string(),
+                "--mise-binary-path".to_string(),
+                "/tmp/mise".to_string(),
+            ],
+        )
+        .expect("mise install source options should parse");
+
+        assert_eq!(parsed.manager, ManagerId::Mise);
+        assert_eq!(
+            parsed.install_options.mise_install_source,
+            Some(helm_core::manager_lifecycle::MiseInstallSource::ExistingBinaryPath)
+        );
+        assert_eq!(
+            parsed.install_options.mise_binary_path.as_deref(),
+            Some("/tmp/mise")
+        );
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_install_infers_mise_existing_binary_source_from_path() {
+        let parsed = parse_manager_mutation_args(
+            "install",
+            &[
+                "mise".to_string(),
+                "--mise-binary-path".to_string(),
+                "/tmp/mise".to_string(),
+            ],
+        )
+        .expect("mise binary path should imply existing-binary source");
+
+        assert_eq!(
+            parsed.install_options.mise_install_source,
+            Some(helm_core::manager_lifecycle::MiseInstallSource::ExistingBinaryPath)
+        );
+        assert_eq!(
+            parsed.install_options.mise_binary_path.as_deref(),
+            Some("/tmp/mise")
+        );
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_install_rejects_mise_source_flags_for_non_mise_manager() {
+        let error = parse_manager_mutation_args(
+            "install",
+            &[
+                "rustup".to_string(),
+                "--mise-install-source".to_string(),
+                "officialDownload".to_string(),
+            ],
+        )
+        .expect_err("non-mise managers should reject mise install-source flags");
+        assert!(error.contains("only supported for manager 'mise'"));
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_install_rejects_invalid_mise_source_value() {
+        let error = parse_manager_mutation_args(
+            "install",
+            &[
+                "mise".to_string(),
+                "--mise-install-source".to_string(),
+                "invalid".to_string(),
+            ],
+        )
+        .expect_err("invalid mise source should fail");
+        assert!(error.contains("unsupported mise install source"));
     }
 
     #[test]
@@ -16489,25 +16849,37 @@ mod tests {
             .migrate_to_latest()
             .expect("store migration should succeed");
         store
-            .set_manager_selected_install_method(ManagerId::Mise, Some("scriptInstaller"))
-            .expect("persisting unsupported mise preference for install should succeed");
+            .set_manager_selected_install_method(ManagerId::Mise, Some("homebrew"))
+            .expect("persisting mise install preference should succeed");
 
-        let error = super::build_manager_mutation_request(&store, ManagerId::Mise, "install", None)
-            .expect_err("saved unsupported method should fail install request");
-        assert!(error.contains("unsupported"));
-
-        let (target_manager, request) = super::build_manager_mutation_request(
-            &store,
-            ManagerId::Mise,
-            "install",
-            Some("homebrew".to_string()),
-        )
-        .expect("cli method override should recover to supported route");
+        let (target_manager, request) =
+            super::build_manager_mutation_request(&store, ManagerId::Mise, "install", None)
+                .expect("saved method should drive install route");
         assert_eq!(target_manager, ManagerId::HomebrewFormula);
         match request {
             super::AdapterRequest::Install(install) => {
                 assert_eq!(install.package.manager, ManagerId::HomebrewFormula);
                 assert_eq!(install.package.name, "mise");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        let (target_manager, request) = super::build_manager_mutation_request(
+            &store,
+            ManagerId::Mise,
+            "install",
+            Some("scriptInstaller".to_string()),
+        )
+        .expect("cli method override should supersede saved preference");
+        assert_eq!(target_manager, ManagerId::Mise);
+        match request {
+            super::AdapterRequest::Install(install) => {
+                assert_eq!(install.package.manager, ManagerId::Mise);
+                assert_eq!(install.package.name, "__self__");
+                assert_eq!(
+                    install.version.as_deref(),
+                    Some("scriptInstaller:officialDownload")
+                );
             }
             other => panic!("unexpected request: {other:?}"),
         }
@@ -16598,6 +16970,7 @@ mod tests {
                     helm_core::manager_lifecycle::RustupInstallSource::ExistingBinaryPath,
                 ),
                 rustup_binary_path: Some("/tmp/rustup-init".to_string()),
+                ..helm_core::manager_lifecycle::ManagerInstallOptions::default()
             },
         )
         .expect("rustup existing-binary install source should map into install request");
@@ -16624,12 +16997,12 @@ mod tests {
             .expect("store migration should succeed");
         store
             .set_manager_selected_install_method(ManagerId::Mise, Some("scriptInstaller"))
-            .expect("persisting unsupported mise method should succeed");
+            .expect("persisting mise method should succeed");
 
         let override_method =
             super::resolve_install_method_override_for_tui(&store, ManagerId::Mise)
                 .expect("tui method resolution should succeed");
-        assert_eq!(override_method.as_deref(), Some("homebrew"));
+        assert_eq!(override_method.as_deref(), Some("scriptInstaller"));
 
         let _ = fs::remove_file(db_path);
     }
@@ -16654,6 +17027,37 @@ mod tests {
                 },
             )
             .expect("homebrew detection should persist");
+        store
+            .replace_install_instances(
+                ManagerId::Mise,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Mise,
+                    instance_id: "mise-homebrew-active-preference-ignored".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/opt/homebrew/Cellar/mise/2026.2.8/bin/mise".to_string(),
+                    display_path: PathBuf::from("/opt/homebrew/bin/mise"),
+                    canonical_path: Some(PathBuf::from(
+                        "/opt/homebrew/Cellar/mise/2026.2.8/bin/mise",
+                    )),
+                    alias_paths: vec![PathBuf::from("/opt/homebrew/bin/mise")],
+                    is_active: true,
+                    version: Some("2026.2.8".to_string()),
+                    provenance: InstallProvenance::Homebrew,
+                    confidence: 0.94,
+                    decision_margin: Some(0.32),
+                    automation_level: AutomationLevel::Automatic,
+                    uninstall_strategy: StrategyKind::HomebrewFormula,
+                    update_strategy: StrategyKind::HomebrewFormula,
+                    remediation_strategy: StrategyKind::HomebrewFormula,
+                    explanation_primary: Some(
+                        "canonical path is inside Homebrew Cellar for mise".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::SourceBuild),
+                    competing_confidence: Some(0.22),
+                }],
+            )
+            .expect("mise install instance should persist");
 
         let plan = super::build_manager_uninstall_plan(&store, ManagerId::Mise, false, false)
             .expect("uninstall plan should not depend on saved install method");
@@ -17091,11 +17495,11 @@ mod tests {
 
         let plan = super::build_manager_uninstall_plan(&store, ManagerId::Mise, false, true)
             .expect("preview path should allow ambiguous uninstall routing");
-        assert_eq!(plan.target_manager, ManagerId::HomebrewFormula);
+        assert_eq!(plan.target_manager, ManagerId::Mise);
         assert!(plan.preview.unknown_provenance);
         assert!(plan.preview.unknown_override_required);
         assert!(!plan.preview.used_unknown_override);
-        assert_eq!(plan.preview.strategy, "homebrew_formula");
+        assert_eq!(plan.preview.strategy, "interactive_prompt");
         assert!(!plan.preview.legacy_fallback_used);
 
         let _ = fs::remove_file(db_path);

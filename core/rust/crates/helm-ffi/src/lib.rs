@@ -234,11 +234,44 @@ enum RustupInstallSourcePayload {
     ExistingBinaryPath,
 }
 
+#[derive(Clone, Copy, Debug, Default, serde::Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+enum MiseInstallSourcePayload {
+    #[default]
+    OfficialDownload,
+    ExistingBinaryPath,
+}
+
 #[derive(Clone, Debug, Default, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ManagerInstallOptionsPayload {
     rustup_install_source: Option<RustupInstallSourcePayload>,
     rustup_binary_path: Option<String>,
+    mise_install_source: Option<MiseInstallSourcePayload>,
+    mise_binary_path: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Default, serde::Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+enum MiseUninstallCleanupModePayload {
+    #[default]
+    ManagerOnly,
+    FullCleanup,
+}
+
+#[derive(Clone, Copy, Debug, serde::Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+enum MiseUninstallConfigRemovalPayload {
+    KeepConfig,
+    RemoveConfig,
+}
+
+#[derive(Clone, Debug, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ManagerUninstallOptionsPayload {
+    allow_unknown_provenance: Option<bool>,
+    mise_cleanup_mode: Option<MiseUninstallCleanupModePayload>,
+    mise_config_removal: Option<MiseUninstallConfigRemovalPayload>,
 }
 
 fn parse_install_options_payload(
@@ -262,10 +295,70 @@ fn parse_install_options_payload(
             helm_core::manager_lifecycle::RustupInstallSource::ExistingBinaryPath
         }
     });
+    let mise_install_source = payload.mise_install_source.map(|source| match source {
+        MiseInstallSourcePayload::OfficialDownload => {
+            helm_core::manager_lifecycle::MiseInstallSource::OfficialDownload
+        }
+        MiseInstallSourcePayload::ExistingBinaryPath => {
+            helm_core::manager_lifecycle::MiseInstallSource::ExistingBinaryPath
+        }
+    });
     Ok(helm_core::manager_lifecycle::ManagerInstallOptions {
         rustup_install_source,
         rustup_binary_path: payload.rustup_binary_path,
+        mise_install_source,
+        mise_binary_path: payload.mise_binary_path,
     })
+}
+
+fn parse_uninstall_options_payload(
+    options_json: *const c_char,
+    fallback_allow_unknown_provenance: bool,
+) -> Result<(bool, helm_core::manager_lifecycle::ManagerUninstallOptions), &'static str> {
+    if options_json.is_null() {
+        return Ok((
+            fallback_allow_unknown_provenance,
+            helm_core::manager_lifecycle::ManagerUninstallOptions::default(),
+        ));
+    }
+    let raw = unsafe { CStr::from_ptr(options_json) };
+    let raw = raw.to_str().map_err(|_| SERVICE_ERROR_INVALID_INPUT)?;
+    if raw.trim().is_empty() {
+        return Ok((
+            fallback_allow_unknown_provenance,
+            helm_core::manager_lifecycle::ManagerUninstallOptions::default(),
+        ));
+    }
+
+    let payload: ManagerUninstallOptionsPayload =
+        serde_json::from_str(raw).map_err(|_| SERVICE_ERROR_INVALID_INPUT)?;
+    let allow_unknown_provenance = payload
+        .allow_unknown_provenance
+        .unwrap_or(fallback_allow_unknown_provenance);
+    let mise_cleanup_mode = payload.mise_cleanup_mode.map(|value| match value {
+        MiseUninstallCleanupModePayload::ManagerOnly => {
+            helm_core::manager_lifecycle::MiseUninstallCleanupMode::ManagerOnly
+        }
+        MiseUninstallCleanupModePayload::FullCleanup => {
+            helm_core::manager_lifecycle::MiseUninstallCleanupMode::FullCleanup
+        }
+    });
+    let mise_config_removal = payload.mise_config_removal.map(|value| match value {
+        MiseUninstallConfigRemovalPayload::KeepConfig => {
+            helm_core::manager_lifecycle::MiseUninstallConfigRemoval::KeepConfig
+        }
+        MiseUninstallConfigRemovalPayload::RemoveConfig => {
+            helm_core::manager_lifecycle::MiseUninstallConfigRemoval::RemoveConfig
+        }
+    });
+
+    Ok((
+        allow_unknown_provenance,
+        helm_core::manager_lifecycle::ManagerUninstallOptions {
+            mise_cleanup_mode,
+            mise_config_removal,
+        },
+    ))
 }
 
 fn manager_install_plan_error_key(
@@ -277,6 +370,9 @@ fn manager_install_plan_error_key(
             SERVICE_ERROR_UNSUPPORTED_CAPABILITY
         }
         helm_core::manager_lifecycle::ManagerInstallPlanError::InvalidRustupBinaryPath => {
+            SERVICE_ERROR_INVALID_INPUT
+        }
+        helm_core::manager_lifecycle::ManagerInstallPlanError::InvalidMiseBinaryPath => {
             SERVICE_ERROR_INVALID_INPUT
         }
     }
@@ -2410,13 +2506,30 @@ fn build_manager_uninstall_plan(
     allow_unknown_provenance: bool,
     preview_only: bool,
 ) -> Result<ManagerUninstallPlan, &'static str> {
+    build_manager_uninstall_plan_with_options(
+        store,
+        manager,
+        allow_unknown_provenance,
+        preview_only,
+        &helm_core::manager_lifecycle::ManagerUninstallOptions::default(),
+    )
+}
+
+fn build_manager_uninstall_plan_with_options(
+    store: &SqliteStore,
+    manager: ManagerId,
+    allow_unknown_provenance: bool,
+    preview_only: bool,
+    uninstall_options: &helm_core::manager_lifecycle::ManagerUninstallOptions,
+) -> Result<ManagerUninstallPlan, &'static str> {
     let active_instance = active_manager_install_instance(store, manager)?;
 
-    match helm_core::manager_lifecycle::plan_manager_uninstall_route(
+    match helm_core::manager_lifecycle::plan_manager_uninstall_route_with_options(
         manager,
         active_instance.as_ref(),
         allow_unknown_provenance,
         preview_only,
+        uninstall_options,
     ) {
         Ok(route) => build_provenance_manager_uninstall_plan(
             store,
@@ -2523,9 +2636,14 @@ fn build_provenance_manager_uninstall_plan(
 }
 
 fn manager_uninstall_route_error_key(
-    _error: helm_core::manager_lifecycle::ManagerUninstallRouteError,
+    error: helm_core::manager_lifecycle::ManagerUninstallRouteError,
 ) -> &'static str {
-    SERVICE_ERROR_UNSUPPORTED_CAPABILITY
+    match error {
+        helm_core::manager_lifecycle::ManagerUninstallRouteError::InvalidOptions => {
+            SERVICE_ERROR_INVALID_INPUT
+        }
+        _ => SERVICE_ERROR_UNSUPPORTED_CAPABILITY,
+    }
 }
 
 fn manager_uninstall_label_for_route(
@@ -2548,6 +2666,30 @@ fn manager_uninstall_label_for_route(
         return (
             "service.task.label.uninstall.homebrew_formula",
             vec![("package", package_name)],
+        );
+    }
+
+    if target_manager == ManagerId::MacPorts {
+        let package_name = match request {
+            AdapterRequest::Uninstall(uninstall) => uninstall.package.name.clone(),
+            _ => requested_manager.as_str().to_string(),
+        };
+        return (
+            "service.task.label.uninstall.package",
+            vec![
+                ("package", package_name),
+                ("manager", ManagerId::MacPorts.as_str().to_string()),
+            ],
+        );
+    }
+
+    if target_manager == ManagerId::Mise {
+        return (
+            "service.task.label.uninstall.package",
+            vec![
+                ("package", "mise".to_string()),
+                ("manager", ManagerId::Mise.as_str().to_string()),
+            ],
         );
     }
 
@@ -6670,7 +6812,7 @@ pub unsafe extern "C" fn helm_set_manager_timeout_profile(
 /// Install a manager tool. Returns the task ID, or -1 on error.
 ///
 /// Supported manager IDs:
-/// - "mise" -> Homebrew
+/// - "mise" -> script installer (default), Homebrew, MacPorts, or cargo install
 /// - "asdf" -> Homebrew
 /// - "mas" -> Homebrew
 /// - "rustup" -> rustup-init (default) or Homebrew, based on selected install method
@@ -6686,14 +6828,16 @@ pub unsafe extern "C" fn helm_install_manager(manager_id: *const c_char) -> i64 
 /// Install a manager tool with optional JSON options. Returns the task ID, or -1 on error.
 ///
 /// Supported manager IDs:
-/// - "mise" -> Homebrew
+/// - "mise" -> script installer (default), Homebrew, MacPorts, or cargo install
 /// - "asdf" -> Homebrew
 /// - "mas" -> Homebrew
 /// - "rustup" -> rustup-init (default) or Homebrew, based on selected install method
 ///
-/// Supported options (when selected method is `rustupInstaller`):
+/// Supported options (method-specific):
 /// - `rustupInstallSource`: `officialDownload` (default) or `existingBinaryPath`
 /// - `rustupBinaryPath`: absolute path used when `rustupInstallSource=existingBinaryPath`
+/// - `miseInstallSource`: `officialDownload` (default) or `existingBinaryPath`
+/// - `miseBinaryPath`: absolute path used when `miseInstallSource=existingBinaryPath`
 ///
 /// # Safety
 ///
@@ -6979,6 +7123,54 @@ pub unsafe extern "C" fn helm_preview_manager_uninstall(
     manager_id: *const c_char,
     allow_unknown_provenance: bool,
 ) -> *mut c_char {
+    let uninstall_options = helm_core::manager_lifecycle::ManagerUninstallOptions::default();
+    unsafe {
+        helm_preview_manager_uninstall_internal(
+            manager_id,
+            allow_unknown_provenance,
+            &uninstall_options,
+        )
+    }
+}
+
+/// Preview manager uninstall blast radius and strategy as JSON with structured options.
+///
+/// `options_json` supports:
+/// - `allowUnknownProvenance` (bool)
+/// - `miseCleanupMode` (`managerOnly` | `fullCleanup`)
+/// - `miseConfigRemoval` (`keepConfig` | `removeConfig`)
+///
+/// # Safety
+///
+/// `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+/// `options_json` must be null or a valid pointer to a NUL-terminated UTF-8 JSON string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_preview_manager_uninstall_with_options(
+    manager_id: *const c_char,
+    options_json: *const c_char,
+) -> *mut c_char {
+    let (allow_unknown_provenance, uninstall_options) =
+        match parse_uninstall_options_payload(options_json, false) {
+            Ok(parsed) => parsed,
+            Err(error_key) => {
+                set_last_error_key(error_key);
+                return std::ptr::null_mut();
+            }
+        };
+    unsafe {
+        helm_preview_manager_uninstall_internal(
+            manager_id,
+            allow_unknown_provenance,
+            &uninstall_options,
+        )
+    }
+}
+
+unsafe fn helm_preview_manager_uninstall_internal(
+    manager_id: *const c_char,
+    allow_unknown_provenance: bool,
+    uninstall_options: &helm_core::manager_lifecycle::ManagerUninstallOptions,
+) -> *mut c_char {
     clear_last_error_key();
     if manager_id.is_null() {
         set_last_error_key(SERVICE_ERROR_INVALID_INPUT);
@@ -7013,15 +7205,19 @@ pub unsafe extern "C" fn helm_preview_manager_uninstall(
         }
     };
 
-    let plan =
-        match build_manager_uninstall_plan(store.as_ref(), manager, allow_unknown_provenance, true)
-        {
-            Ok(plan) => plan,
-            Err(error_key) => {
-                set_last_error_key(error_key);
-                return std::ptr::null_mut();
-            }
-        };
+    let plan = match build_manager_uninstall_plan_with_options(
+        store.as_ref(),
+        manager,
+        allow_unknown_provenance,
+        true,
+        uninstall_options,
+    ) {
+        Ok(plan) => plan,
+        Err(error_key) => {
+            set_last_error_key(error_key);
+            return std::ptr::null_mut();
+        }
+    };
 
     let json = match serde_json::to_string(&plan.preview) {
         Ok(json) => json,
@@ -7053,6 +7249,51 @@ pub unsafe extern "C" fn helm_uninstall_manager_with_options(
     manager_id: *const c_char,
     allow_unknown_provenance: bool,
 ) -> i64 {
+    let uninstall_options = helm_core::manager_lifecycle::ManagerUninstallOptions::default();
+    unsafe {
+        helm_uninstall_manager_with_options_internal(
+            manager_id,
+            allow_unknown_provenance,
+            &uninstall_options,
+        )
+    }
+}
+
+/// Uninstall a manager tool with structured options. Returns the task ID, or -1 on error.
+///
+/// `options_json` supports:
+/// - `allowUnknownProvenance` (bool)
+/// - `miseCleanupMode` (`managerOnly` | `fullCleanup`)
+/// - `miseConfigRemoval` (`keepConfig` | `removeConfig`)
+///
+/// # Safety
+///
+/// `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+/// `options_json` must be null or a valid pointer to a NUL-terminated UTF-8 JSON string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_uninstall_manager_with_uninstall_options(
+    manager_id: *const c_char,
+    options_json: *const c_char,
+) -> i64 {
+    let (allow_unknown_provenance, uninstall_options) =
+        match parse_uninstall_options_payload(options_json, false) {
+            Ok(parsed) => parsed,
+            Err(error_key) => return return_error_i64(error_key),
+        };
+    unsafe {
+        helm_uninstall_manager_with_options_internal(
+            manager_id,
+            allow_unknown_provenance,
+            &uninstall_options,
+        )
+    }
+}
+
+unsafe fn helm_uninstall_manager_with_options_internal(
+    manager_id: *const c_char,
+    allow_unknown_provenance: bool,
+    uninstall_options: &helm_core::manager_lifecycle::ManagerUninstallOptions,
+) -> i64 {
     clear_last_error_key();
     if manager_id.is_null() {
         return return_error_i64(SERVICE_ERROR_INVALID_INPUT);
@@ -7082,11 +7323,12 @@ pub unsafe extern "C" fn helm_uninstall_manager_with_options(
         )
     };
 
-    let plan = match build_manager_uninstall_plan(
+    let plan = match build_manager_uninstall_plan_with_options(
         store.as_ref(),
         manager,
         allow_unknown_provenance,
         false,
+        uninstall_options,
     ) {
         Ok(plan) => plan,
         Err(error_key) => return return_error_i64(error_key),

@@ -439,9 +439,9 @@ impl ProvenanceSpec for MiseProvenanceSpec {
     fn classify(
         &self,
         instance: &mut ManagerInstallInstance,
-        _context: &mut ExternalEvidenceContext,
+        context: &mut ExternalEvidenceContext,
     ) {
-        classify_homebrew_formula_manager_instance(instance, "mise");
+        classify_mise_instance(instance, context);
     }
 }
 
@@ -1423,6 +1423,272 @@ fn classify_homebrew_formula_manager_instance(
     );
 
     finalize_scored_instance_provenance(instance, &scores, &factors, formula_name);
+}
+
+fn classify_mise_instance(
+    instance: &mut ManagerInstallInstance,
+    context: &mut ExternalEvidenceContext,
+) {
+    let mut scores: HashMap<InstallProvenance, f64> = HashMap::new();
+    let mut factors: Vec<ScoreFactor> = Vec::new();
+
+    let display = instance.display_path.to_string_lossy().to_string();
+    let canonical = instance
+        .canonical_path
+        .as_ref()
+        .unwrap_or(&instance.display_path)
+        .to_string_lossy()
+        .to_string();
+    let display_lower = display.to_lowercase();
+    let canonical_lower = canonical.to_lowercase();
+    let canonical_matches_exec = path_matches_exec_name(canonical_lower.as_str(), "mise");
+    let display_matches_exec = path_matches_exec_name(display_lower.as_str(), "mise");
+    let canonical_matches_bin_exec = path_matches_bin_exec_name(canonical_lower.as_str(), "mise");
+    let display_matches_bin_exec = path_matches_bin_exec_name(display_lower.as_str(), "mise");
+
+    add_score(
+        &mut scores,
+        &mut factors,
+        canonical_lower.contains("/cellar/mise/"),
+        InstallProvenance::Homebrew,
+        0.95,
+        "canonical path is inside Homebrew Cellar for mise",
+    );
+
+    add_score(
+        &mut scores,
+        &mut factors,
+        canonical_lower.starts_with("/opt/homebrew/bin/mise")
+            || canonical_lower.starts_with("/usr/local/bin/mise")
+            || canonical_lower.starts_with("/opt/homebrew/opt/mise/bin/mise")
+            || canonical_lower.starts_with("/usr/local/opt/mise/bin/mise")
+            || display_lower.starts_with("/opt/homebrew/bin/mise")
+            || display_lower.starts_with("/usr/local/bin/mise")
+            || display_lower.starts_with("/opt/homebrew/opt/mise/bin/mise")
+            || display_lower.starts_with("/usr/local/opt/mise/bin/mise"),
+        InstallProvenance::Homebrew,
+        0.65,
+        "mise path is inside a Homebrew binary prefix",
+    );
+
+    add_score(
+        &mut scores,
+        &mut factors,
+        (canonical_lower.contains("/.local/bin/mise") && canonical_matches_exec)
+            || (display_lower.contains("/.local/bin/mise") && display_matches_exec),
+        InstallProvenance::SourceBuild,
+        0.90,
+        "mise path matches the default upstream script-installer location (~/.local/bin/mise)",
+    );
+
+    add_score(
+        &mut scores,
+        &mut factors,
+        (canonical_lower.contains("/.cargo/bin/mise") && canonical_matches_exec)
+            || (display_lower.contains("/.cargo/bin/mise") && display_matches_exec),
+        InstallProvenance::SourceBuild,
+        0.82,
+        "mise executable is in a cargo-home bin layout",
+    );
+
+    if let Some(cargo_home_mise_hint) = std::env::var_os("CARGO_HOME")
+        .map(PathBuf::from)
+        .map(|path| path.join("bin").join("mise"))
+        .map(|path| path.to_string_lossy().to_lowercase())
+    {
+        add_score(
+            &mut scores,
+            &mut factors,
+            canonical_lower == cargo_home_mise_hint
+                || display_lower == cargo_home_mise_hint
+                || canonical_lower.ends_with(cargo_home_mise_hint.as_str())
+                || display_lower.ends_with(cargo_home_mise_hint.as_str()),
+            InstallProvenance::SourceBuild,
+            0.25,
+            "mise executable path matches CARGO_HOME/bin/mise",
+        );
+    }
+
+    add_score(
+        &mut scores,
+        &mut factors,
+        (canonical_lower.contains("/node_modules/@jdxcode/mise/")
+            && (canonical_matches_exec || canonical_matches_bin_exec))
+            || (display_lower.contains("/node_modules/@jdxcode/mise/")
+                && (display_matches_exec || display_matches_bin_exec)),
+        InstallProvenance::SourceBuild,
+        0.80,
+        "mise path indicates npm global package layout (@jdxcode/mise)",
+    );
+
+    add_score(
+        &mut scores,
+        &mut factors,
+        (canonical_lower.starts_with("/opt/local/bin/") && canonical_matches_exec)
+            || (display_lower.starts_with("/opt/local/bin/") && display_matches_exec),
+        InstallProvenance::Macports,
+        0.92,
+        "mise executable is in MacPorts prefix",
+    );
+
+    add_score(
+        &mut scores,
+        &mut factors,
+        (canonical_lower.contains("/nix/store/")
+            || canonical_lower.contains("/.nix-profile/")
+            || display_lower.contains("/nix/store/")
+            || display_lower.contains("/.nix-profile/"))
+            && (canonical_matches_exec
+                || display_matches_exec
+                || canonical_matches_bin_exec
+                || display_matches_bin_exec),
+        InstallProvenance::Nix,
+        0.85,
+        "mise executable path indicates a Nix-managed install",
+    );
+
+    add_score(
+        &mut scores,
+        &mut factors,
+        (canonical_lower.starts_with("/usr/bin/") && canonical_matches_exec)
+            || (display_lower.starts_with("/usr/bin/") && display_matches_exec),
+        InstallProvenance::System,
+        0.95,
+        "mise executable is in a system path",
+    );
+
+    add_score(
+        &mut scores,
+        &mut factors,
+        ((canonical_lower.starts_with("/usr/local/bin/") && canonical_matches_exec)
+            || (display_lower.starts_with("/usr/local/bin/") && display_matches_exec))
+            && !canonical_lower.contains("/cellar/")
+            && !display_lower.contains("/cellar/")
+            && !canonical_lower.contains("/opt/")
+            && !display_lower.contains("/opt/"),
+        InstallProvenance::SourceBuild,
+        0.40,
+        "mise path is under /usr/local/bin without package-owner fingerprints",
+    );
+
+    add_score(
+        &mut scores,
+        &mut factors,
+        (canonical_lower.starts_with("/opt/") || display_lower.starts_with("/opt/"))
+            && (canonical_matches_exec
+                || display_matches_exec
+                || canonical_matches_bin_exec
+                || display_matches_bin_exec)
+            && !canonical_lower.contains("/homebrew/")
+            && !display_lower.contains("/homebrew/")
+            && !canonical_lower.contains("/nix/store/")
+            && !display_lower.contains("/nix/store/"),
+        InstallProvenance::EnterpriseManaged,
+        0.35,
+        "mise path is in a non-default /opt prefix, possibly enterprise-managed",
+    );
+
+    let homebrew_ambiguous = provenance_score(&scores, InstallProvenance::Homebrew)
+        .filter(|score| *score < PROVENANCE_CONFIDENCE_THRESHOLD)
+        .is_some();
+    let close_race = score_gap(
+        &scores,
+        InstallProvenance::Homebrew,
+        InstallProvenance::SourceBuild,
+    )
+    .is_some_and(|gap| gap < 0.25);
+
+    if (homebrew_ambiguous || close_race)
+        && let Some(prefix) = context.brew_prefix("mise")
+    {
+        let prefix_lower = prefix.to_lowercase();
+        add_score(
+            &mut scores,
+            &mut factors,
+            canonical_lower.starts_with(prefix_lower.as_str())
+                || display_lower.starts_with(prefix_lower.as_str()),
+            InstallProvenance::Homebrew,
+            0.30,
+            "brew ownership query matched mise prefix",
+        );
+    }
+
+    let pkgutil_probe_candidate = canonical_lower.starts_with("/usr/bin/")
+        || canonical_lower.starts_with("/usr/local/")
+        || canonical_lower.starts_with("/opt/");
+    let pkgutil_ambiguous = rank_scores(&scores)
+        .first()
+        .map(|(_, score)| *score < PROVENANCE_CONFIDENCE_THRESHOLD)
+        .unwrap_or(true);
+
+    if pkgutil_probe_candidate
+        && pkgutil_ambiguous
+        && let Some(path_owner) = context.pkgutil_file_owner(
+            instance
+                .canonical_path
+                .as_deref()
+                .unwrap_or(&instance.display_path),
+        )
+    {
+        match path_owner {
+            PkgutilFileOwner::Owned(pkgid) => {
+                let pkgid_lower = pkgid.to_lowercase();
+                if pkgid_lower.starts_with("com.apple.") {
+                    add_score(
+                        &mut scores,
+                        &mut factors,
+                        true,
+                        InstallProvenance::System,
+                        0.90,
+                        "pkgutil ownership receipt indicates system-managed mise",
+                    );
+                } else if pkgid_lower.contains("homebrew") {
+                    add_score(
+                        &mut scores,
+                        &mut factors,
+                        true,
+                        InstallProvenance::Homebrew,
+                        0.35,
+                        "pkgutil ownership receipt indicates Homebrew-managed mise",
+                    );
+                } else if pkgid_lower.contains("macports") {
+                    add_score(
+                        &mut scores,
+                        &mut factors,
+                        true,
+                        InstallProvenance::Macports,
+                        0.70,
+                        "pkgutil ownership receipt indicates MacPorts-managed mise",
+                    );
+                } else {
+                    add_score(
+                        &mut scores,
+                        &mut factors,
+                        true,
+                        InstallProvenance::EnterpriseManaged,
+                        0.70,
+                        format!(
+                            "pkgutil ownership receipt ({}) indicates managed package install",
+                            pkgid
+                        ),
+                    );
+                }
+            }
+            PkgutilFileOwner::NotOwned => {
+                add_score(
+                    &mut scores,
+                    &mut factors,
+                    canonical_lower.starts_with("/usr/local/")
+                        || canonical_lower.starts_with("/opt/"),
+                    InstallProvenance::SourceBuild,
+                    0.20,
+                    "pkgutil reports no owning receipt for mise path",
+                );
+            }
+        }
+    }
+
+    finalize_scored_instance_provenance(instance, &scores, &factors, "mise");
 }
 
 fn classify_rustup_instance(
@@ -2427,21 +2693,114 @@ mod tests {
     }
 
     #[test]
-    fn mise_usr_local_bin_classifies_homebrew_with_confirmation() {
+    fn mise_usr_local_bin_defaults_to_unknown_when_ambiguous() {
         let mut instance = manager_instance(
             ManagerId::Mise,
             "/usr/local/bin/mise",
             "/usr/local/bin/mise",
         );
-        classify_homebrew_formula_manager_instance(&mut instance, "mise");
+        classify_mise_instance(
+            &mut instance,
+            &mut ExternalEvidenceContext::without_external_queries(),
+        );
+
+        assert_eq!(instance.provenance, InstallProvenance::Unknown);
+        assert_eq!(
+            instance.automation_level,
+            AutomationLevel::NeedsConfirmation
+        );
+        assert_eq!(instance.uninstall_strategy, StrategyKind::InteractivePrompt);
+        assert!(
+            instance
+                .explanation_primary
+                .as_deref()
+                .is_some_and(|text| text.contains("mise provenance evidence"))
+        );
+    }
+
+    #[test]
+    fn mise_usr_local_bin_resolves_homebrew_when_brew_prefix_matches() {
+        fn brew_runner(program: &str, args: &[&str], _timeout: Duration) -> Option<String> {
+            if program == "brew" && args == ["--prefix", "mise"] {
+                return Some("/usr/local".to_string());
+            }
+            None
+        }
+
+        let mut instance = manager_instance(
+            ManagerId::Mise,
+            "/usr/local/bin/mise",
+            "/usr/local/bin/mise",
+        );
+        classify_mise_instance(
+            &mut instance,
+            &mut ExternalEvidenceContext::with_runner(brew_runner),
+        );
 
         assert_eq!(instance.provenance, InstallProvenance::Homebrew);
+        assert!(instance.confidence >= AUTOMATIC_CONFIDENCE_THRESHOLD);
+        assert_eq!(instance.automation_level, AutomationLevel::Automatic);
+        assert_eq!(
+            instance.competing_provenance,
+            Some(InstallProvenance::SourceBuild)
+        );
+        assert_eq!(instance.uninstall_strategy, StrategyKind::HomebrewFormula);
+    }
+
+    #[test]
+    fn mise_default_script_path_classifies_as_source_build() {
+        let instance = classify_manager_path(ManagerId::Mise, "/Users/test/.local/bin/mise");
+        assert_eq!(instance.provenance, InstallProvenance::SourceBuild);
+        assert!(instance.confidence >= AUTOMATIC_CONFIDENCE_THRESHOLD);
+        assert_eq!(instance.automation_level, AutomationLevel::Automatic);
+        assert_eq!(instance.uninstall_strategy, StrategyKind::InteractivePrompt);
+    }
+
+    #[test]
+    fn mise_cargo_home_path_classifies_as_source_build() {
+        let instance = classify_manager_path(ManagerId::Mise, "/Users/test/.cargo/bin/mise");
+        assert_eq!(instance.provenance, InstallProvenance::SourceBuild);
         assert!(instance.confidence >= PROVENANCE_CONFIDENCE_THRESHOLD);
         assert_eq!(
             instance.automation_level,
             AutomationLevel::NeedsConfirmation
         );
-        assert_eq!(instance.uninstall_strategy, StrategyKind::HomebrewFormula);
+        assert_eq!(instance.uninstall_strategy, StrategyKind::InteractivePrompt);
+    }
+
+    #[test]
+    fn mise_npm_global_path_classifies_as_source_build() {
+        let path = "/usr/local/lib/node_modules/@jdxcode/mise/bin/mise";
+        let instance = classify_manager_path(ManagerId::Mise, path);
+        assert_eq!(instance.provenance, InstallProvenance::SourceBuild);
+        assert!(instance.confidence >= PROVENANCE_CONFIDENCE_THRESHOLD);
+        assert_eq!(
+            instance.automation_level,
+            AutomationLevel::NeedsConfirmation
+        );
+        assert_eq!(instance.uninstall_strategy, StrategyKind::InteractivePrompt);
+    }
+
+    #[test]
+    fn mise_macports_path_classifies_as_macports() {
+        let instance = classify_manager_path(ManagerId::Mise, "/opt/local/bin/mise");
+        assert_eq!(instance.provenance, InstallProvenance::Macports);
+        assert!(instance.confidence >= PROVENANCE_CONFIDENCE_THRESHOLD);
+        assert_eq!(
+            instance.automation_level,
+            AutomationLevel::NeedsConfirmation
+        );
+        assert_eq!(instance.uninstall_strategy, StrategyKind::InteractivePrompt);
+    }
+
+    #[test]
+    fn mise_nix_store_path_classifies_as_nix() {
+        let path = "/nix/store/abc123-mise-2026.2.7/bin/mise";
+        let instance = classify_manager_path(ManagerId::Mise, path);
+        assert_eq!(instance.provenance, InstallProvenance::Nix);
+        assert!(instance.confidence >= PROVENANCE_CONFIDENCE_THRESHOLD);
+        assert_eq!(instance.automation_level, AutomationLevel::ReadOnly);
+        assert_eq!(instance.uninstall_strategy, StrategyKind::ReadOnly);
     }
 
     #[test]

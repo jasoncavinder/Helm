@@ -70,6 +70,16 @@ pub fn build_manager_uninstall_preview(
             &mut seen_directories,
             context.active_instance,
         );
+    } else if context.target_manager == ManagerId::Mise {
+        append_mise_uninstall_impact(
+            &mut files_removed,
+            &mut directories_removed,
+            &mut secondary_effects,
+            &mut seen_files,
+            &mut seen_directories,
+            context.active_instance,
+            uninstall_request_package_name(context.request),
+        );
     } else if context.target_manager == ManagerId::HomebrewFormula {
         if let Some(path) = context
             .active_instance
@@ -88,6 +98,11 @@ pub fn build_manager_uninstall_preview(
                     .to_string(),
             );
         }
+    } else if context.target_manager == ManagerId::MacPorts {
+        secondary_effects.push(format!(
+            "MacPorts port '{}' will be uninstalled.",
+            uninstall_request_package_name(context.request).unwrap_or("unknown")
+        ));
     }
 
     if files_removed.is_empty() && directories_removed.is_empty() && secondary_effects.is_empty() {
@@ -274,6 +289,92 @@ fn uninstall_request_package_name(request: &AdapterRequest) -> Option<&str> {
     match request {
         AdapterRequest::Uninstall(uninstall) => Some(uninstall.package.name.as_str()),
         _ => None,
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MiseUninstallPreviewMode {
+    ManagerOnlyKeepConfig,
+    FullCleanupKeepConfig,
+    FullCleanupRemoveConfig,
+}
+
+fn parse_mise_uninstall_preview_mode(package_name: Option<&str>) -> MiseUninstallPreviewMode {
+    match package_name.unwrap_or("__self__").trim() {
+        "__self__:fullCleanup:keepConfig" => MiseUninstallPreviewMode::FullCleanupKeepConfig,
+        "__self__:fullCleanup:removeConfig" => MiseUninstallPreviewMode::FullCleanupRemoveConfig,
+        _ => MiseUninstallPreviewMode::ManagerOnlyKeepConfig,
+    }
+}
+
+fn append_mise_uninstall_impact(
+    files_removed: &mut Vec<UninstallImpactPath>,
+    directories_removed: &mut Vec<UninstallImpactPath>,
+    secondary_effects: &mut Vec<String>,
+    seen_files: &mut HashSet<String>,
+    seen_directories: &mut HashSet<String>,
+    active_instance: Option<&ManagerInstallInstance>,
+    package_name: Option<&str>,
+) {
+    if let Some(instance) = active_instance {
+        push_impact_path(files_removed, seen_files, instance.display_path.clone());
+        if let Some(path) = instance.canonical_path.clone() {
+            push_impact_path(files_removed, seen_files, path);
+        }
+    }
+
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("~"));
+    let mise_state_dir = home.join(".local/share/mise");
+    let mise_cache_dir = home.join(".cache/mise");
+    let mise_config_dir = home.join(".config/mise");
+
+    match parse_mise_uninstall_preview_mode(package_name) {
+        MiseUninstallPreviewMode::ManagerOnlyKeepConfig => {
+            secondary_effects.push(
+                "Manager-only uninstall keeps mise tool installs, cache, and config.".to_string(),
+            );
+        }
+        MiseUninstallPreviewMode::FullCleanupKeepConfig => {
+            push_impact_path(
+                directories_removed,
+                seen_directories,
+                mise_state_dir.clone(),
+            );
+            push_impact_path(
+                directories_removed,
+                seen_directories,
+                mise_cache_dir.clone(),
+            );
+            secondary_effects.push(format!(
+                "Mise state and cache directories under '{}' may be removed.",
+                home.display()
+            ));
+            secondary_effects
+                .push("Mise config files are preserved in this uninstall mode.".to_string());
+        }
+        MiseUninstallPreviewMode::FullCleanupRemoveConfig => {
+            push_impact_path(
+                directories_removed,
+                seen_directories,
+                mise_state_dir.clone(),
+            );
+            push_impact_path(
+                directories_removed,
+                seen_directories,
+                mise_cache_dir.clone(),
+            );
+            push_impact_path(
+                directories_removed,
+                seen_directories,
+                mise_config_dir.clone(),
+            );
+            secondary_effects.push(format!(
+                "Mise state, cache, and config directories under '{}' may be removed.",
+                home.display()
+            ));
+        }
     }
 }
 
