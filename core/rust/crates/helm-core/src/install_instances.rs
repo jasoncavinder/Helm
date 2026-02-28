@@ -109,7 +109,7 @@ enum PkgutilFileOwner {
 }
 
 struct ExternalEvidenceContext {
-    brew_prefix_rustup: Option<Option<String>>,
+    brew_prefix_by_formula: HashMap<String, Option<String>>,
     pkgutil_file_owner: HashMap<String, Option<PkgutilFileOwner>>,
     allow_external: bool,
     runner: ExternalCommandRunner,
@@ -118,7 +118,7 @@ struct ExternalEvidenceContext {
 impl ExternalEvidenceContext {
     fn new() -> Self {
         Self {
-            brew_prefix_rustup: None,
+            brew_prefix_by_formula: HashMap::new(),
             pkgutil_file_owner: HashMap::new(),
             allow_external: true,
             runner: run_command_with_timeout,
@@ -128,7 +128,7 @@ impl ExternalEvidenceContext {
     #[cfg(test)]
     fn without_external_queries() -> Self {
         Self {
-            brew_prefix_rustup: None,
+            brew_prefix_by_formula: HashMap::new(),
             pkgutil_file_owner: HashMap::new(),
             allow_external: false,
             runner: run_command_with_timeout,
@@ -138,17 +138,22 @@ impl ExternalEvidenceContext {
     #[cfg(test)]
     fn with_runner(runner: ExternalCommandRunner) -> Self {
         Self {
-            brew_prefix_rustup: None,
+            brew_prefix_by_formula: HashMap::new(),
             pkgutil_file_owner: HashMap::new(),
             allow_external: true,
             runner,
         }
     }
 
-    fn brew_prefix_rustup(&mut self) -> Option<String> {
-        if let Some(cached) = &self.brew_prefix_rustup {
+    fn brew_prefix(&mut self, formula: &str) -> Option<String> {
+        let key = formula.trim().to_ascii_lowercase();
+        if key.is_empty() {
+            return None;
+        }
+        if let Some(cached) = self.brew_prefix_by_formula.get(&key) {
             debug!(
-                probe = "brew_prefix_rustup",
+                probe = "brew_prefix",
+                formula = %key,
                 cache_hit = true,
                 result_present = cached.is_some(),
                 "using cached external provenance evidence"
@@ -156,9 +161,10 @@ impl ExternalEvidenceContext {
             return cached.clone();
         }
         if !self.allow_external {
-            self.brew_prefix_rustup = Some(None);
+            self.brew_prefix_by_formula.insert(key.clone(), None);
             debug!(
-                probe = "brew_prefix_rustup",
+                probe = "brew_prefix",
+                formula = %key,
                 cache_hit = false,
                 allowed = false,
                 "skipping external provenance evidence query"
@@ -166,22 +172,27 @@ impl ExternalEvidenceContext {
             return None;
         }
 
-        let value = (self.runner)("brew", &["--prefix", "rustup"], EXTERNAL_EVIDENCE_TIMEOUT)
-            .and_then(|output| {
-                let trimmed = output.trim();
-                if trimmed.is_empty() {
-                    None
-                } else {
-                    Some(trimmed.to_string())
-                }
-            });
+        let value = (self.runner)(
+            "brew",
+            &["--prefix", key.as_str()],
+            EXTERNAL_EVIDENCE_TIMEOUT,
+        )
+        .and_then(|output| {
+            let trimmed = output.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        });
         debug!(
-            probe = "brew_prefix_rustup",
+            probe = "brew_prefix",
+            formula = %key,
             cache_hit = false,
             result_present = value.is_some(),
             "resolved external provenance evidence"
         );
-        self.brew_prefix_rustup = Some(value.clone());
+        self.brew_prefix_by_formula.insert(key, value.clone());
         value
     }
 
@@ -1311,69 +1322,7 @@ fn classify_runtime_manager_instance(
         ),
     );
 
-    let ranked = rank_scores(&scores);
-    let best = ranked.first().copied();
-    let second = ranked.get(1).copied();
-    let decision_margin = match (best, second) {
-        (Some((_, best_score)), Some((_, second_score))) => {
-            Some((best_score - second_score).abs().clamp(0.0, 1.0))
-        }
-        _ => None,
-    };
-
-    let (selected_provenance, confidence) = match (best, second) {
-        (Some((best_provenance, best_score)), Some((_, second_score))) => {
-            let margin = best_score - second_score;
-            if best_score >= PROVENANCE_CONFIDENCE_THRESHOLD
-                && margin >= PROVENANCE_MARGIN_THRESHOLD
-            {
-                (best_provenance, best_score)
-            } else {
-                (InstallProvenance::Unknown, best_score)
-            }
-        }
-        (Some((best_provenance, best_score)), None)
-            if best_score >= PROVENANCE_CONFIDENCE_THRESHOLD =>
-        {
-            (best_provenance, best_score)
-        }
-        (Some((_, best_score)), None) => (InstallProvenance::Unknown, best_score),
-        _ => (InstallProvenance::Unknown, 0.0),
-    };
-
-    let clamped_confidence = confidence.clamp(0.0, 1.0);
-    instance.provenance = selected_provenance;
-    instance.confidence = clamped_confidence;
-    instance.decision_margin = decision_margin;
-    instance.automation_level = automation_level_for(selected_provenance, clamped_confidence);
-    instance.uninstall_strategy = uninstall_strategy_for(selected_provenance);
-    instance.update_strategy = update_strategy_for(selected_provenance);
-    instance.remediation_strategy = remediation_strategy_for(selected_provenance);
-
-    if let Some((provenance, score)) = second {
-        instance.competing_provenance = Some(provenance);
-        instance.competing_confidence = Some(score.clamp(0.0, 1.0));
-    }
-
-    let selected_factors = factors_for_provenance(&factors, selected_provenance);
-    if let Some(primary) = selected_factors.first() {
-        instance.explanation_primary = Some(primary.reason.clone());
-    }
-    if let Some(secondary) = selected_factors.get(1) {
-        instance.explanation_secondary = Some(secondary.reason.clone());
-    }
-
-    if instance.explanation_primary.is_none() {
-        if selected_provenance == InstallProvenance::Unknown {
-            instance.explanation_primary = Some(format!(
-                "insufficient or conflicting {} provenance evidence; defaulting to unknown",
-                manager_label
-            ));
-        } else {
-            instance.explanation_primary =
-                Some("provenance selected from weak evidence set".to_string());
-        }
-    }
+    finalize_scored_instance_provenance(instance, &scores, &factors, manager_label);
 }
 
 fn classify_homebrew_formula_manager_instance(
@@ -1473,69 +1422,7 @@ fn classify_homebrew_formula_manager_instance(
         ),
     );
 
-    let ranked = rank_scores(&scores);
-    let best = ranked.first().copied();
-    let second = ranked.get(1).copied();
-    let decision_margin = match (best, second) {
-        (Some((_, best_score)), Some((_, second_score))) => {
-            Some((best_score - second_score).abs().clamp(0.0, 1.0))
-        }
-        _ => None,
-    };
-
-    let (selected_provenance, confidence) = match (best, second) {
-        (Some((best_provenance, best_score)), Some((_, second_score))) => {
-            let margin = best_score - second_score;
-            if best_score >= PROVENANCE_CONFIDENCE_THRESHOLD
-                && margin >= PROVENANCE_MARGIN_THRESHOLD
-            {
-                (best_provenance, best_score)
-            } else {
-                (InstallProvenance::Unknown, best_score)
-            }
-        }
-        (Some((best_provenance, best_score)), None)
-            if best_score >= PROVENANCE_CONFIDENCE_THRESHOLD =>
-        {
-            (best_provenance, best_score)
-        }
-        (Some((_, best_score)), None) => (InstallProvenance::Unknown, best_score),
-        _ => (InstallProvenance::Unknown, 0.0),
-    };
-
-    let clamped_confidence = confidence.clamp(0.0, 1.0);
-    instance.provenance = selected_provenance;
-    instance.confidence = clamped_confidence;
-    instance.decision_margin = decision_margin;
-    instance.automation_level = automation_level_for(selected_provenance, clamped_confidence);
-    instance.uninstall_strategy = uninstall_strategy_for(selected_provenance);
-    instance.update_strategy = update_strategy_for(selected_provenance);
-    instance.remediation_strategy = remediation_strategy_for(selected_provenance);
-
-    if let Some((provenance, score)) = second {
-        instance.competing_provenance = Some(provenance);
-        instance.competing_confidence = Some(score.clamp(0.0, 1.0));
-    }
-
-    let selected_factors = factors_for_provenance(&factors, selected_provenance);
-    if let Some(primary) = selected_factors.first() {
-        instance.explanation_primary = Some(primary.reason.clone());
-    }
-    if let Some(secondary) = selected_factors.get(1) {
-        instance.explanation_secondary = Some(secondary.reason.clone());
-    }
-
-    if instance.explanation_primary.is_none() {
-        if selected_provenance == InstallProvenance::Unknown {
-            instance.explanation_primary = Some(format!(
-                "insufficient or conflicting {} provenance evidence; defaulting to unknown",
-                formula_name
-            ));
-        } else {
-            instance.explanation_primary =
-                Some("provenance selected from weak evidence set".to_string());
-        }
-    }
+    finalize_scored_instance_provenance(instance, &scores, &factors, formula_name);
 }
 
 fn classify_rustup_instance(
@@ -1696,7 +1583,7 @@ fn classify_rustup_instance(
     .is_some_and(|gap| gap < 0.25);
 
     if (homebrew_ambiguous || close_race)
-        && let Some(prefix) = context.brew_prefix_rustup()
+        && let Some(prefix) = context.brew_prefix("rustup")
     {
         let prefix_lower = prefix.to_lowercase();
         add_score(
@@ -1776,7 +1663,16 @@ fn classify_rustup_instance(
         }
     }
 
-    let ranked = rank_scores(&scores);
+    finalize_scored_instance_provenance(instance, &scores, &factors, "rustup");
+}
+
+fn finalize_scored_instance_provenance(
+    instance: &mut ManagerInstallInstance,
+    scores: &HashMap<InstallProvenance, f64>,
+    factors: &[ScoreFactor],
+    subject_label: &str,
+) {
+    let ranked = rank_scores(scores);
     let best = ranked.first().copied();
     let second = ranked.get(1).copied();
     let decision_margin = match (best, second) {
@@ -1820,7 +1716,7 @@ fn classify_rustup_instance(
         instance.competing_confidence = Some(score.clamp(0.0, 1.0));
     }
 
-    let selected_factors = factors_for_provenance(&factors, selected_provenance);
+    let selected_factors = factors_for_provenance(factors, selected_provenance);
     if let Some(primary) = selected_factors.first() {
         instance.explanation_primary = Some(primary.reason.clone());
     }
@@ -1830,10 +1726,10 @@ fn classify_rustup_instance(
 
     if instance.explanation_primary.is_none() {
         if selected_provenance == InstallProvenance::Unknown {
-            instance.explanation_primary = Some(
-                "insufficient or conflicting rustup provenance evidence; defaulting to unknown"
-                    .to_string(),
-            );
+            instance.explanation_primary = Some(format!(
+                "insufficient or conflicting {} provenance evidence; defaulting to unknown",
+                subject_label
+            ));
         } else {
             instance.explanation_primary =
                 Some("provenance selected from weak evidence set".to_string());
@@ -2934,11 +2830,11 @@ mod tests {
         CALLS.store(0, Ordering::SeqCst);
         let mut context = ExternalEvidenceContext::with_runner(fake_runner);
         assert_eq!(
-            context.brew_prefix_rustup().as_deref(),
+            context.brew_prefix("rustup").as_deref(),
             Some("/opt/homebrew/opt/rustup")
         );
         assert_eq!(
-            context.brew_prefix_rustup().as_deref(),
+            context.brew_prefix("rustup").as_deref(),
             Some("/opt/homebrew/opt/rustup")
         );
         assert_eq!(CALLS.load(Ordering::SeqCst), 1);

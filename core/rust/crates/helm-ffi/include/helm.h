@@ -40,6 +40,15 @@ bool helm_trigger_refresh(void);
 bool helm_trigger_detection(void);
 
 /**
+ * Trigger detection/refresh for a single manager.
+ *
+ * # Safety
+ *
+ * `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ */
+bool helm_trigger_detection_for_manager(const char *manager_id);
+
+/**
  * Query the local search cache synchronously and return JSON results.
  *
  * # Safety
@@ -291,15 +300,39 @@ bool helm_set_manager_timeout_profile(const char *manager_id,
                                       int64_t idle_timeout_seconds);
 
 /**
- * Install a manager tool via Homebrew. Returns the task ID, or -1 on error.
+ * Install a manager tool. Returns the task ID, or -1 on error.
  *
- * Supported manager IDs: "mise", "mas", "rustup".
+ * Supported manager IDs:
+ * - "mise" -> Homebrew
+ * - "asdf" -> Homebrew
+ * - "mas" -> Homebrew
+ * - "rustup" -> rustup-init (default) or Homebrew, based on selected install method
  *
  * # Safety
  *
  * `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
  */
 int64_t helm_install_manager(const char *manager_id);
+
+/**
+ * Install a manager tool with optional JSON options. Returns the task ID, or -1 on error.
+ *
+ * Supported manager IDs:
+ * - "mise" -> Homebrew
+ * - "asdf" -> Homebrew
+ * - "mas" -> Homebrew
+ * - "rustup" -> rustup-init (default) or Homebrew, based on selected install method
+ *
+ * Supported options (when selected method is `rustupInstaller`):
+ * - `rustupInstallSource`: `officialDownload` (default) or `existingBinaryPath`
+ * - `rustupBinaryPath`: absolute path used when `rustupInstallSource=existingBinaryPath`
+ *
+ * # Safety
+ *
+ * `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ * `options_json` may be null.
+ */
+int64_t helm_install_manager_with_options(const char *manager_id, const char *options_json);
 
 /**
  * Update a manager tool. Returns the task ID, or -1 on error.

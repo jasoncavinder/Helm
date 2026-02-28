@@ -84,6 +84,42 @@ enum InstallMethodPolicyTag: String {
     case blockedByPolicy
 }
 
+extension InstallMethodRecommendationReason {
+    init?(storageRawValue rawValue: String?) {
+        guard let normalized = rawValue?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !normalized.isEmpty else {
+            return nil
+        }
+        switch normalized {
+        case InstallMethodRecommendationReason.upstreamRecommended.rawValue,
+             "upstream_recommended":
+            self = .upstreamRecommended
+        case InstallMethodRecommendationReason.helmPreferredDefault.rawValue,
+             "helm_preferred_default":
+            self = .helmPreferredDefault
+        default:
+            return nil
+        }
+    }
+}
+
+extension InstallMethodPolicyTag {
+    init(storageRawValue rawValue: String?) {
+        let normalized = rawValue?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        switch normalized {
+        case InstallMethodPolicyTag.blockedByPolicy.rawValue.lowercased(), "blocked_by_policy":
+            self = .blockedByPolicy
+        case InstallMethodPolicyTag.managedRestricted.rawValue.lowercased(), "managed_restricted":
+            self = .managedRestricted
+        default:
+            self = .allowed
+        }
+    }
+}
+
 private let managedInstallMethodPolicyEnv = "HELM_MANAGED_INSTALL_METHOD_POLICY"
 private let managedInstallMethodPolicyAllowRestrictedEnv = "HELM_MANAGED_INSTALL_METHOD_POLICY_ALLOW_RESTRICTED"
 
@@ -147,6 +183,45 @@ struct ManagerInstallMethodOption: Identifiable, Equatable {
     let packageHints: [String]
 
     var id: String { method.rawValue }
+}
+
+extension ManagerInstallMethodOption {
+    static func fromCoreStatus(
+        _ status: ManagerInstallMethodStatus,
+        fallback: ManagerInstallMethodOption?
+    ) -> ManagerInstallMethodOption? {
+        guard let method = ManagerDistributionMethod(rawValue: status.methodId) else {
+            return nil
+        }
+
+        let recommendationReason = InstallMethodRecommendationReason(
+            storageRawValue: status.recommendationReason
+        )
+        let isRecommended = recommendationReason == .upstreamRecommended
+        let isPreferred = recommendationReason == .helmPreferredDefault
+        let policyTag = InstallMethodPolicyTag(storageRawValue: status.policyTag)
+        let coreExecutableHints = (status.executablePathHints ?? [])
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let corePackageHints = (status.packageHints ?? [])
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        return ManagerInstallMethodOption(
+            method: method,
+            isRecommended: isRecommended,
+            isPreferred: isPreferred,
+            recommendationRank: status.recommendationRank,
+            recommendationReason: recommendationReason,
+            policyTag: policyTag,
+            executablePathHints: coreExecutableHints.isEmpty
+                ? (fallback?.executablePathHints ?? [])
+                : coreExecutableHints,
+            packageHints: corePackageHints.isEmpty
+                ? (fallback?.packageHints ?? [])
+                : corePackageHints
+        )
+    }
 }
 
 private func methodOption(
@@ -309,16 +384,18 @@ struct ManagerInfo: Identifiable {
     func selectedInstallMethodOption(
         selectedMethodRawValue: String?,
         executablePath: String?,
-        installedPackages: [PackageItem]
+        installedPackages: [PackageItem],
+        methodOptions: [ManagerInstallMethodOption]? = nil
     ) -> ManagerInstallMethodOption {
+        let resolvedMethodOptions = methodOptions ?? installMethodOptions
         if let selectedMethodRawValue,
-           let explicit = installMethodOptions.first(where: { $0.method.rawValue == selectedMethodRawValue }) {
+           let explicit = resolvedMethodOptions.first(where: { $0.method.rawValue == selectedMethodRawValue }) {
             return explicit
         }
 
         if let executablePath {
             let normalizedPath = executablePath.lowercased()
-            if let pathMatch = installMethodOptions.first(where: { option in
+            if let pathMatch = resolvedMethodOptions.first(where: { option in
                 option.executablePathHints.contains(where: { hint in
                     normalizedPath.contains(hint.lowercased())
                 })
@@ -328,19 +405,19 @@ struct ManagerInfo: Identifiable {
         }
 
         let installedPackageNames = Set(installedPackages.map { $0.name.lowercased() })
-        if let packageMatch = installMethodOptions.first(where: { option in
+        if let packageMatch = resolvedMethodOptions.first(where: { option in
             option.packageHints.contains(where: { installedPackageNames.contains($0.lowercased()) })
         }) {
             return packageMatch
         }
 
-        if let recommended = installMethodOptions.first(where: { $0.isRecommended }) {
+        if let recommended = resolvedMethodOptions.first(where: { $0.isRecommended }) {
             return recommended
         }
-        if let preferred = installMethodOptions.first(where: { $0.isPreferred }) {
+        if let preferred = resolvedMethodOptions.first(where: { $0.isPreferred }) {
             return preferred
         }
-        let rankedFallback = installMethodOptions.sorted { lhs, rhs in
+        let rankedFallback = resolvedMethodOptions.sorted { lhs, rhs in
             if lhs.recommendationRank != rhs.recommendationRank {
                 return lhs.recommendationRank < rhs.recommendationRank
             }
@@ -349,13 +426,17 @@ struct ManagerInfo: Identifiable {
         return rankedFallback ?? methodOption(.notManageable)
     }
 
-    func recommendedExecutablePath(from executablePaths: [String]) -> String? {
+    func recommendedExecutablePath(
+        from executablePaths: [String],
+        methodOptions: [ManagerInstallMethodOption]? = nil
+    ) -> String? {
+        let resolvedMethodOptions = methodOptions ?? installMethodOptions
         let normalizedPaths = executablePaths
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         guard !normalizedPaths.isEmpty else { return nil }
 
-        let recommendedOption = installMethodOptions.sorted { lhs, rhs in
+        let recommendedOption = resolvedMethodOptions.sorted { lhs, rhs in
             if lhs.recommendationRank != rhs.recommendationRank {
                 return lhs.recommendationRank < rhs.recommendationRank
             }

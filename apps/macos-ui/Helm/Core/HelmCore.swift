@@ -345,6 +345,7 @@ struct ManagerStatus: Codable {
     let defaultExecutablePath: String?
     let selectedExecutablePath: String?
     let selectedInstallMethod: String?
+    let installMethodOptions: [ManagerInstallMethodStatus]?
     let timeoutHardSeconds: Int?
     let timeoutIdleSeconds: Int?
     let enabled: Bool
@@ -372,6 +373,15 @@ struct ManagerStatus: Codable {
     let activeExplanationSecondary: String?
     let competingProvenance: String?
     let competingConfidence: Double?
+}
+
+struct ManagerInstallMethodStatus: Codable {
+    let methodId: String
+    let recommendationRank: Int
+    let recommendationReason: String?
+    let policyTag: String
+    let executablePathHints: [String]?
+    let packageHints: [String]?
 }
 
 struct ManagerInstallInstanceStatus: Codable, Identifiable {
@@ -428,6 +438,16 @@ struct ManagerUninstallPreview: Codable {
     let usedUnknownOverride: Bool
     let legacyFallbackUsed: Bool
     let readOnlyBlocked: Bool
+}
+
+enum ManagerRustupInstallSource: String, Codable {
+    case officialDownload
+    case existingBinaryPath
+}
+
+struct ManagerInstallActionOptions: Codable {
+    let rustupInstallSource: ManagerRustupInstallSource?
+    let rustupBinaryPath: String?
 }
 
 struct PackageUninstallPreview: Codable {
@@ -565,6 +585,9 @@ final class HelmCore: ObservableObject {
     @Published var managerOperations: [String: String] = [:] {
         didSet { scheduleDerivedViewStateRefresh() }
     }
+    @Published var verifyingManagerIds: Set<String> = [] {
+        didSet { scheduleDerivedViewStateRefresh() }
+    }
     @Published var pinActionPackageIds: Set<String> = []
     @Published var upgradeActionPackageIds: Set<String> = []
     @Published var installActionPackageIds: Set<String> = []
@@ -611,6 +634,11 @@ final class HelmCore: ObservableObject {
     var managerActionTaskDescriptions: [UInt64: String] = [:]
     var managerActionTaskByManager: [String: UInt64] = [:]
     var managerActionTaskTypes: [UInt64: String] = [:]
+    var managerActionTaskSubmittedAt: [UInt64: Date] = [:]
+    var managerVerificationAnchorTaskIdByManager: [String: UInt64] = [:]
+    var managerVerificationStartedAtByManager: [String: Date] = [:]
+    var localManagerActionTasks: [String: TaskItem] = [:]
+    var localManagerActionTaskCreatedAt: [String: Date] = [:]
     var upgradeActionTaskByPackage: [String: UInt64] = [:]
     var installActionTaskByPackage: [String: UInt64] = [:]
     var uninstallActionTaskByPackage: [String: UInt64] = [:]
@@ -1007,6 +1035,27 @@ final class HelmCore: ObservableObject {
         }
     }
 
+    func triggerDetection(for managerId: String, completion: ((Bool) -> Void)? = nil) {
+        logger.info("triggerDetectionForManager called (manager=\(managerId, privacy: .public))")
+        self.lastTaskSnapshotRefreshAt = .distantPast
+        self.lastFullSnapshotRefreshAt = .distantPast
+
+        service()?.triggerDetectionForManager(managerId: managerId) { success in
+            if !success {
+                logger.error("triggerDetectionForManager failed (manager=\(managerId, privacy: .public))")
+                self.recordLastError(
+                    source: "core",
+                    action: "triggerDetectionForManager",
+                    managerId: managerId,
+                    taskType: "detection"
+                )
+            }
+            DispatchQueue.main.async {
+                completion?(success)
+            }
+        }
+    }
+
     func setInteractiveSurfaceVisibility(
         popoverVisible: Bool,
         controlCenterVisible: Bool
@@ -1086,6 +1135,8 @@ final class HelmCore: ObservableObject {
                     self?.cachedAvailablePackages = []
                     self?.detectedManagers = []
                     self?.managerStatuses = [:]
+                    self?.managerOperations = [:]
+                    self?.verifyingManagerIds = []
                     self?.packageKegPolicyOverrides = [:]
                     self?.homebrewKegAutoCleanupEnabled = false
                     self?.searchText = ""
@@ -1103,6 +1154,14 @@ final class HelmCore: ObservableObject {
                     self?.descriptionLookupTaskIdsByPackage = [:]
                     self?.descriptionLookupLastAttemptByPackage = [:]
                     self?.activeRemoteSearchTaskIds = []
+                    self?.managerActionTaskDescriptions = [:]
+                    self?.managerActionTaskByManager = [:]
+                    self?.managerActionTaskTypes = [:]
+                    self?.managerActionTaskSubmittedAt = [:]
+                    self?.managerVerificationAnchorTaskIdByManager = [:]
+                    self?.managerVerificationStartedAtByManager = [:]
+                    self?.localManagerActionTasks = [:]
+                    self?.localManagerActionTaskCreatedAt = [:]
                     self?.lastObservedTaskId = 0
                     self?.onboardingDetectionAnchorTaskId = 0
                     self?.onboardingDetectionPendingManagers = []
@@ -1178,7 +1237,7 @@ final class HelmCore: ObservableObject {
             let status = managerStatuses[manager.id]
             let isImplemented = status?.isImplemented ?? manager.isImplemented
             let isEnabled = status?.enabled ?? true
-            let isDetected = status?.detected ?? false
+            let isDetected = isManagerDetected(manager.id)
             return isImplemented && isEnabled && isDetected
         }
 

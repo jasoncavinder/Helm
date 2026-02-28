@@ -84,6 +84,14 @@ Current checkpoint:
     - manager automation managed-policy ceilings now also flow through shared policy context (`HELM_MANAGED_AUTOMATION_POLICY` with `automatic|needs_confirmation|read_only`, defaulting to `needs_confirmation` when managed-install policy is active) and are applied consistently in CLI + FFI manager-status/instance surfaces and manager lifecycle planning so managed environments can conservatively clamp automation without changing provenance storage
     - rustup provenance fixtures now include ambiguous `/usr/local` mixed-environment calibration cases that verify bounded external evidence (`brew --prefix rustup`, `pkgutil --file-info`) correctly resolves Homebrew-vs-System ownership outcomes
     - FFI manager lifecycle routing now matches CLI provenance-first behavior for Homebrew strategy managers: uninstall preview/execute now route `pnpm`/`yarn`/`pipx`/`poetry`/`cargo-binstall`/`podman`/`colima` plus dynamic parent-formula managers (`npm`/`pip`/`rubygems`/`bundler`/`cargo`) through the same strategy/override gates, update routing now uses the same provenance strategy checks, and manager-status install-instance fallback ordering now uses `is_active` then `instance_id` for deterministic CLI/GUI no-active parity; FFI regression coverage now includes one-to-one and parent-formula manager loops plus unresolved-formula and read-only uninstall path assertions.
+  - adapter generalization follow-up delivered on `dev`:
+    - install-method candidates and package-search participation policy now resolve from shared `helm-core` registry metadata (removing duplicated maps in CLI/FFI)
+    - manager-status payloads now include core install-method metadata (`id`, rank/reason, policy tags, hints), and GUI inspector install-method options now resolve from that payload with local hint fallback to avoid per-surface drift
+    - manager install planning now resolves through shared `helm-core::manager_lifecycle::plan_manager_install` so CLI + FFI use one install-method routing/validation path (including rustup install-source payload validation)
+    - manager update/uninstall routing now also resolves through shared `helm-core::manager_lifecycle` planners (`plan_manager_update`, `plan_manager_uninstall_route`) so CLI + FFI consume the same provenance-route outputs and safety gating
+    - provenance score rank/threshold/margin/explainability finalization in `install_instances` now uses one shared helper path
+    - external evidence context now supports generic keyed Homebrew prefix probes (`brew --prefix <formula>`) with lazy per-run caching, timeout bounds, and fail-closed behavior
+    - Homebrew/rustup lifecycle routing helpers (`formula ownership`, `update strategy`, `uninstall strategy`) now live in `helm-core::manager_lifecycle` and are consumed by CLI/FFI wrappers
   - `#93` `feat/v0.17-log-foundation`
   - `#95` `feat/v0.17-structured-error-export`
   - `#96` `feat/v0.17-service-health-panel`
@@ -259,6 +267,16 @@ Current checkpoint:
     - non-installed managers in inspector now surface an install action instead of a disabled `View Packages` button
     - manager install flows (Managers list and inspector) now require a confirmation sheet with explicit install-method selection
     - install confirmation now includes a collapsible advanced section for hard-timeout and idle-timeout profile selection; inspector no longer shows install-method/timeout controls inline
+  - post-`v0.17.7` manager install verification follow-up delivered on `dev`:
+    - successful manager installs now set manager operation state to `Verifying` immediately after the install task completes
+    - verification uses manager-scoped detection/refresh (`triggerDetectionForManager` over XPC/FFI) instead of full detection by default
+    - while verifying, manager state is treated as effectively not installed for manager action/visibility gating until new detection completes
+    - manager verification clears only after a new detection task for that manager reaches terminal state; fallback is full detection if manager-scoped trigger fails or times out
+  - post-`v0.17.7` rustup install-source follow-up delivered on `dev`:
+    - rustup inspector install now exposes `Install Source` when `rustup-init` is selected (`Official Download` default, optional existing `rustup-init` binary path)
+    - manager install transport now supports optional install-options payloads through service + FFI (`helm_install_manager_with_options`)
+    - CLI manager install now supports rustup source/path flags (`--rustup-install-source`, `--rustup-binary-path`) and routes through the same shared install planner validation
+    - rustup manager install now supports official bootstrap-script download execution when no local `rustup-init` binary is available
   - GitHub governance hardening delivered on `dev`:
     - branch rulesets now explicitly enforce `main`/`dev`/`docs`/`web` with branch-specific required checks
     - `Policy Gate` now validates PR base/head/scope policy for all protected branches
