@@ -473,6 +473,15 @@ extension L10n {
             static let decisionMargin = "app.inspector.decision_margin"
             static let explanation = "app.inspector.explanation"
             static let competingProvenance = "app.inspector.competing_provenance"
+            struct MultiInstance {
+                static let attentionTitle = "app.inspector.multi_instance.attention_title"
+                static let attentionMessage = "app.inspector.multi_instance.attention_message"
+                static let acknowledgedTitle = "app.inspector.multi_instance.acknowledged_title"
+                static let acknowledgedMessage = "app.inspector.multi_instance.acknowledged_message"
+                static let keepMultiple = "app.inspector.multi_instance.keep_multiple"
+                static let reevaluate = "app.inspector.multi_instance.reevaluate"
+                static let manageInstance = "app.inspector.multi_instance.manage_instance"
+            }
             static let timeoutHard = "app.inspector.timeout_hard"
             static let timeoutIdle = "app.inspector.timeout_idle"
             static let timeoutUseDefault = "app.inspector.timeout.use_default"

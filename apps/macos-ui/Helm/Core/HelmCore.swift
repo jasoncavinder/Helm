@@ -362,6 +362,9 @@ struct ManagerStatus: Codable {
     let ineligibleServiceErrorKey: String?
     let installInstances: [ManagerInstallInstanceStatus]?
     let installInstanceCount: Int?
+    let multiInstanceState: String?
+    let multiInstanceAcknowledged: Bool?
+    let multiInstanceFingerprint: String?
     let activeProvenance: String?
     let activeConfidence: Double?
     let activeDecisionMargin: Double?
@@ -1279,16 +1282,20 @@ final class HelmCore: ObservableObject {
         var managerHealthById: [String: OperationalHealth] = [:]
         managerHealthById.reserveCapacity(visibleManagers.count)
         for manager in visibleManagers {
+            let multiInstanceAttentionNeeded =
+                managerStatuses[manager.id]?.multiInstanceState == "attention_needed"
             if failedManagerIds.contains(manager.id) {
                 managerHealthById[manager.id] = .error
             } else if runningManagerIds.contains(manager.id) {
                 managerHealthById[manager.id] = .running
-            } else if outdatedManagerIds.contains(manager.id) {
+            } else if outdatedManagerIds.contains(manager.id) || multiInstanceAttentionNeeded {
                 managerHealthById[manager.id] = .attention
             } else {
                 managerHealthById[manager.id] = .healthy
             }
         }
+
+        let hasManagerAttention = managerHealthById.values.contains(.attention)
 
         let popoverManagerRows = visibleManagers
             .sorted { lhs, rhs in
@@ -1310,7 +1317,7 @@ final class HelmCore: ObservableObject {
             if runningTaskCount > 0 || isRefreshing {
                 return .running
             }
-            if !outdatedPackages.isEmpty {
+            if !outdatedPackages.isEmpty || hasManagerAttention {
                 return .attention
             }
             return .healthy

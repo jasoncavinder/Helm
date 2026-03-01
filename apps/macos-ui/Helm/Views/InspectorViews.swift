@@ -1129,6 +1129,7 @@ private struct InspectorManagerDetailView: View {
     @State private var pendingRustupBinaryPath = ""
     @State private var pendingMiseInstallSource: ManagerMiseInstallSource = .officialDownload
     @State private var pendingMiseBinaryPath = ""
+    @State private var activeInstanceUpdateInFlightId: String?
     @State private var pendingUninstallOptions = ManagerUninstallActionOptions(
         allowUnknownProvenance: false,
         miseCleanupMode: nil,
@@ -1354,6 +1355,18 @@ private struct InspectorManagerDetailView: View {
         }
     }
 
+    private var multiInstanceState: String {
+        status?.multiInstanceState?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "none"
+    }
+
+    private var multiInstanceAttentionNeeded: Bool {
+        multiInstanceState == "attention_needed" && installInstanceCount > 1
+    }
+
+    private var multiInstanceAcknowledged: Bool {
+        multiInstanceState == "acknowledged" && installInstanceCount > 1
+    }
+
     private func competingProvenanceSummary(
         for instance: ManagerInstallInstanceStatus
     ) -> String? {
@@ -1409,6 +1422,36 @@ private struct InspectorManagerDetailView: View {
             }
 
             managerActionRow
+
+            if multiInstanceAttentionNeeded {
+                multiInstanceBanner(
+                    icon: "exclamationmark.triangle.fill",
+                    tint: HelmTheme.stateAttention,
+                    title: L10n.App.Inspector.MultiInstance.attentionTitle.localized,
+                    message: L10n.App.Inspector.MultiInstance.attentionMessage.localized
+                ) {
+                    Button(L10n.App.Inspector.MultiInstance.keepMultiple.localized) {
+                        core.acknowledgeManagerMultiInstanceState(manager.id)
+                    }
+                    .buttonStyle(HelmSecondaryButtonStyle())
+                    .disabled(managerIsUninstalling)
+                    .helmPointer(enabled: !managerIsUninstalling)
+                }
+            } else if multiInstanceAcknowledged {
+                multiInstanceBanner(
+                    icon: "checkmark.seal.fill",
+                    tint: HelmTheme.stateHealthy,
+                    title: L10n.App.Inspector.MultiInstance.acknowledgedTitle.localized,
+                    message: L10n.App.Inspector.MultiInstance.acknowledgedMessage.localized
+                ) {
+                    Button(L10n.App.Inspector.MultiInstance.reevaluate.localized) {
+                        core.clearManagerMultiInstanceAck(manager.id)
+                    }
+                    .buttonStyle(HelmSecondaryButtonStyle())
+                    .disabled(managerIsUninstalling)
+                    .helmPointer(enabled: !managerIsUninstalling)
+                }
+            }
 
             InspectorField(label: L10n.App.Inspector.category.localized) {
                 Text(localizedCategoryName(manager.category))
@@ -1487,6 +1530,19 @@ private struct InspectorManagerDetailView: View {
                                         Text("\(L10n.App.Inspector.competingProvenance.localized): \(competing)")
                                             .font(.caption)
                                             .foregroundColor(.secondary)
+                                    }
+                                    if !instance.isActive {
+                                        let managingThisInstance = activeInstanceUpdateInFlightId == instance.instanceId
+                                        Button(L10n.App.Inspector.MultiInstance.manageInstance.localized) {
+                                            activeInstanceUpdateInFlightId = instance.instanceId
+                                            core.setManagerActiveInstallInstance(manager.id, instanceId: instance.instanceId) { _ in
+                                                activeInstanceUpdateInFlightId = nil
+                                            }
+                                        }
+                                        .font(.caption)
+                                        .buttonStyle(HelmSecondaryButtonStyle())
+                                        .disabled(managerIsUninstalling || managingThisInstance)
+                                        .helmPointer(enabled: !(managerIsUninstalling || managingThisInstance))
                                     }
                                 }
                                 .padding(8)
@@ -1731,6 +1787,40 @@ private struct InspectorManagerDetailView: View {
 
             Spacer(minLength: 0)
         }
+    }
+
+    private func multiInstanceBanner<Actions: View>(
+        icon: String,
+        tint: Color,
+        title: String,
+        message: String,
+        @ViewBuilder actions: () -> Actions
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: icon)
+                    .foregroundColor(tint)
+                    .padding(.top, 2)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.callout.weight(.semibold))
+                    Text(message)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 8) {
+                actions()
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(HelmTheme.surfaceElevated)
+        )
     }
 
     private func managerActionButton(

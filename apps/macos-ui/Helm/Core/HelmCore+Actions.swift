@@ -769,7 +769,7 @@ extension HelmCore {
                 return
             }
             self.fetchManagerStatus()
-            self.triggerDetectionForManager(managerId)
+            self.triggerDetection(for: managerId)
             DispatchQueue.main.async {
                 completion?(true)
             }

@@ -183,6 +183,9 @@ extension HelmCore {
         }) {
             return .running
         }
+        if managerStatuses[managerId]?.multiInstanceState == "attention_needed" {
+            return .attention
+        }
         if outdatedPackages.contains(where: { $0.managerId == managerId }) {
             return .attention
         }
