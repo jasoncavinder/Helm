@@ -2792,7 +2792,17 @@ fn manager_uninstall_label_for_route(
 
     if target_manager == ManagerId::HomebrewFormula {
         let package_name = match request {
-            AdapterRequest::Uninstall(uninstall) => uninstall.package.name.clone(),
+            AdapterRequest::Uninstall(uninstall) => {
+                if let Some(parsed) =
+                    helm_core::manager_lifecycle::parse_homebrew_manager_uninstall_package_name(
+                        uninstall.package.name.as_str(),
+                    )
+                {
+                    parsed.formula_name
+                } else {
+                    uninstall.package.name.clone()
+                }
+            }
             _ => requested_manager.as_str().to_string(),
         };
         return (
@@ -7738,6 +7748,7 @@ mod tests {
         build_manager_uninstall_plan, build_manager_uninstall_preview, build_visible_tasks,
         collect_upgrade_all_targets, homebrew_probe_candidates,
         manager_allows_individual_package_install, manager_authority_key,
+        manager_uninstall_label_for_route,
         manager_participates_in_package_search, parse_homebrew_config_version,
         push_upgrade_plan_step, resolve_homebrew_manager_update_strategy,
         resolve_rustup_uninstall_strategy, search_label_args, search_label_key_for_query,
@@ -7844,6 +7855,31 @@ mod tests {
         assert!(manager_participates_in_package_search(
             ManagerId::HomebrewFormula
         ));
+    }
+
+    #[test]
+    fn homebrew_uninstall_label_decodes_internal_cleanup_marker() {
+        let encoded = helm_core::manager_lifecycle::encode_homebrew_manager_uninstall_package_name(
+            "rustup",
+            ManagerId::Rustup,
+            helm_core::manager_lifecycle::HomebrewUninstallCleanupMode::FullCleanup,
+        );
+        let request = AdapterRequest::Uninstall(UninstallRequest {
+            package: PackageRef {
+                manager: ManagerId::HomebrewFormula,
+                name: encoded,
+            },
+        });
+
+        let (label_key, label_args) = manager_uninstall_label_for_route(
+            ManagerId::Rustup,
+            ManagerId::HomebrewFormula,
+            &request,
+            StrategyKind::HomebrewFormula,
+        );
+
+        assert_eq!(label_key, "service.task.label.uninstall.homebrew_formula");
+        assert_eq!(label_args, vec![("package", "rustup".to_string())]);
     }
 
     #[test]
