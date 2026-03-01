@@ -281,6 +281,7 @@ extension HelmCore {
                     managerOperations.removeValue(forKey: managerId)
                 }
                 managerActionTaskByManager.removeValue(forKey: managerId)
+                managerActionTaskDescriptions.removeValue(forKey: taskId)
                 managerActionTaskTypes.removeValue(forKey: taskId)
                 managerActionTaskSubmittedAt.removeValue(forKey: taskId)
                 continue
@@ -298,6 +299,7 @@ extension HelmCore {
                     managerOperations.removeValue(forKey: managerId)
                 }
                 managerActionTaskByManager.removeValue(forKey: managerId)
+                managerActionTaskDescriptions.removeValue(forKey: taskId)
                 managerActionTaskTypes.removeValue(forKey: taskId)
                 managerActionTaskSubmittedAt.removeValue(forKey: taskId)
             }

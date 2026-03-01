@@ -123,8 +123,8 @@ extension HelmCore {
                     let taskLabel = self.localizedTaskLabel(from: task)
                     return TaskItem(
                         id: "\(task.id)",
-                        description: overrideDescription
-                            ?? taskLabel
+                        description: taskLabel
+                            ?? overrideDescription
                             ?? L10n.App.Tasks.fallbackDescription.localized(with: [
                                 "task_type": self.localizedTaskType(task.taskType),
                                 "manager": managerName
