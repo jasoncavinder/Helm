@@ -744,6 +744,82 @@ extension HelmCore {
         }
     }
 
+    func setManagerActiveInstallInstance(
+        _ managerId: String,
+        instanceId: String,
+        completion: ((Bool) -> Void)? = nil
+    ) {
+        if isManagerUninstalling(managerId) {
+            completion?(false)
+            return
+        }
+        service()?.setManagerActiveInstallInstance(managerId: managerId, instanceId: instanceId) { [weak self] success in
+            guard let self else { return }
+            if !success {
+                logger.error("setManagerActiveInstallInstance(\(managerId), \(instanceId)) failed")
+                self.recordLastError(
+                    source: "core.actions",
+                    action: "setManagerActiveInstallInstance",
+                    managerId: managerId,
+                    taskType: "settings"
+                )
+                DispatchQueue.main.async {
+                    completion?(false)
+                }
+                return
+            }
+            self.fetchManagerStatus()
+            self.triggerDetectionForManager(managerId)
+            DispatchQueue.main.async {
+                completion?(true)
+            }
+        }
+    }
+
+    func acknowledgeManagerMultiInstanceState(
+        _ managerId: String,
+        completion: ((Bool) -> Void)? = nil
+    ) {
+        service()?.acknowledgeManagerMultiInstanceState(managerId: managerId) { [weak self] success in
+            guard let self else { return }
+            if !success {
+                logger.error("acknowledgeManagerMultiInstanceState(\(managerId)) failed")
+                self.recordLastError(
+                    source: "core.actions",
+                    action: "acknowledgeManagerMultiInstanceState",
+                    managerId: managerId,
+                    taskType: "settings"
+                )
+            }
+            self.fetchManagerStatus()
+            DispatchQueue.main.async {
+                completion?(success)
+            }
+        }
+    }
+
+    func clearManagerMultiInstanceAck(
+        _ managerId: String,
+        completion: ((Bool) -> Void)? = nil
+    ) {
+        service()?.clearManagerMultiInstanceAck(managerId: managerId) { [weak self] success in
+            guard let self else { return }
+            if !success {
+                logger.error("clearManagerMultiInstanceAck(\(managerId)) failed")
+                self.recordLastError(
+                    source: "core.actions",
+                    action: "clearManagerMultiInstanceAck",
+                    managerId: managerId,
+                    taskType: "settings"
+                )
+            }
+            self.fetchManagerStatus()
+            DispatchQueue.main.async {
+                completion?(success)
+            }
+        }
+    }
+
     func setManagerInstallMethod(
         _ managerId: String,
         installMethod: String?,

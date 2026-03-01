@@ -333,6 +333,32 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(result)
     }
 
+    func setManagerActiveInstallInstance(managerId: String, instanceId: String, withReply reply: @escaping (Bool) -> Void) {
+        let result = managerId.withCString { manager in
+            instanceId.withCString { instance in
+                helm_set_manager_active_install_instance(manager, instance)
+            }
+        }
+        logger.info("helm_set_manager_active_install_instance(\(managerId), \(instanceId)) result: \(result)")
+        reply(result)
+    }
+
+    func acknowledgeManagerMultiInstanceState(managerId: String, withReply reply: @escaping (Bool) -> Void) {
+        let result = managerId.withCString { manager in
+            helm_ack_manager_multi_instance_state(manager)
+        }
+        logger.info("helm_ack_manager_multi_instance_state(\(managerId)) result: \(result)")
+        reply(result)
+    }
+
+    func clearManagerMultiInstanceAck(managerId: String, withReply reply: @escaping (Bool) -> Void) {
+        let result = managerId.withCString { manager in
+            helm_clear_manager_multi_instance_ack(manager)
+        }
+        logger.info("helm_clear_manager_multi_instance_ack(\(managerId)) result: \(result)")
+        reply(result)
+    }
+
     func setManagerInstallMethod(managerId: String, installMethod: String?, withReply reply: @escaping (Bool) -> Void) {
         let result: Bool
         if let installMethod {

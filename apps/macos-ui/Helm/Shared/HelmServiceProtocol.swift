@@ -35,6 +35,9 @@ import Foundation
     func unpinPackage(managerId: String, packageName: String, withReply reply: @escaping (Bool) -> Void)
     func setManagerEnabled(managerId: String, enabled: Bool, withReply reply: @escaping (Bool) -> Void)
     func setManagerSelectedExecutablePath(managerId: String, selectedPath: String?, withReply reply: @escaping (Bool) -> Void)
+    func setManagerActiveInstallInstance(managerId: String, instanceId: String, withReply reply: @escaping (Bool) -> Void)
+    func acknowledgeManagerMultiInstanceState(managerId: String, withReply reply: @escaping (Bool) -> Void)
+    func clearManagerMultiInstanceAck(managerId: String, withReply reply: @escaping (Bool) -> Void)
     func setManagerInstallMethod(managerId: String, installMethod: String?, withReply reply: @escaping (Bool) -> Void)
     func setManagerTimeoutProfile(
         managerId: String,

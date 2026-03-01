@@ -143,6 +143,7 @@ use helm_core::execution::{
 use helm_core::managed_automation_policy::{
     ManagedAutomationPolicyMode, apply_managed_automation_policy,
 };
+use helm_core::manager_instances::install_instance_fingerprint;
 use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
     Capability, DetectionInfo, HomebrewKegPolicy, ManagerAuthority, ManagerId,
@@ -359,6 +360,30 @@ fn parse_uninstall_options_payload(
             mise_config_removal,
         },
     ))
+}
+
+unsafe fn parse_manager_id_arg(manager_id: *const c_char) -> Result<ManagerId, &'static str> {
+    if manager_id.is_null() {
+        return Err(SERVICE_ERROR_INVALID_INPUT);
+    }
+    let c_str = unsafe { CStr::from_ptr(manager_id) };
+    let id_str = c_str.to_str().map_err(|_| SERVICE_ERROR_INVALID_INPUT)?;
+    id_str
+        .parse::<ManagerId>()
+        .map_err(|_| SERVICE_ERROR_INVALID_INPUT)
+}
+
+unsafe fn parse_required_cstr_arg(raw: *const c_char) -> Result<String, &'static str> {
+    if raw.is_null() {
+        return Err(SERVICE_ERROR_INVALID_INPUT);
+    }
+    let c_str = unsafe { CStr::from_ptr(raw) };
+    let value = c_str.to_str().map_err(|_| SERVICE_ERROR_INVALID_INPUT)?;
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(SERVICE_ERROR_INVALID_INPUT);
+    }
+    Ok(value.to_string())
 }
 
 fn manager_install_plan_error_key(
@@ -2431,11 +2456,27 @@ fn apply_manager_automation_policy(instance: &ManagerInstallInstance) -> Manager
     apply_managed_automation_policy(instance, manager_automation_policy_context().mode)
 }
 
+fn manager_install_instances_for(
+    store: &SqliteStore,
+    manager: ManagerId,
+) -> Result<Vec<ManagerInstallInstance>, &'static str> {
+    let mut instances = store
+        .list_install_instances(Some(manager))
+        .map_err(|_| SERVICE_ERROR_STORAGE_FAILURE)?;
+    instances.sort_by(|left, right| {
+        right
+            .is_active
+            .cmp(&left.is_active)
+            .then_with(|| left.instance_id.cmp(&right.instance_id))
+    });
+    Ok(instances)
+}
+
 fn active_manager_install_instance(
     store: &SqliteStore,
     manager: ManagerId,
 ) -> Result<Option<ManagerInstallInstance>, &'static str> {
-    let mut instances = match store.list_install_instances(Some(manager)) {
+    let instances = match manager_install_instances_for(store, manager) {
         Ok(instances) => instances,
         Err(error) => {
             eprintln!(
@@ -2445,12 +2486,6 @@ fn active_manager_install_instance(
             return Err(SERVICE_ERROR_STORAGE_FAILURE);
         }
     };
-    instances.sort_by(|left, right| {
-        right
-            .is_active
-            .cmp(&left.is_active)
-            .then_with(|| left.instance_id.cmp(&right.instance_id))
-    });
     Ok(instances
         .into_iter()
         .next()
@@ -6605,19 +6640,9 @@ pub unsafe extern "C" fn helm_set_manager_selected_executable_path(
     selected_path: *const c_char,
 ) -> bool {
     clear_last_error_key();
-    if manager_id.is_null() {
-        return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
-    }
-
-    let c_str = unsafe { CStr::from_ptr(manager_id) };
-    let id_str = match c_str.to_str() {
-        Ok(s) => s,
-        Err(_) => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
-    };
-
-    let manager = match id_str.parse::<ManagerId>() {
-        Ok(m) => m,
-        Err(_) => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
+    let manager = match unsafe { parse_manager_id_arg(manager_id) } {
+        Ok(manager) => manager,
+        Err(error_key) => return return_error_bool(error_key),
     };
 
     let selected_path = if selected_path.is_null() {
@@ -6668,6 +6693,168 @@ pub unsafe extern "C" fn helm_set_manager_selected_executable_path(
         .map(|pref| (pref.manager, pref))
         .collect();
     sync_manager_executable_overrides(&detection_map, &pref_map);
+
+    true
+}
+
+/// Set the managed install instance for a manager by stable `instance_id`.
+///
+/// This updates selected executable-path preference, marks the selected instance active,
+/// clears multi-instance acknowledgement, and refreshes in-memory executable overrides.
+///
+/// # Safety
+///
+/// `manager_id` and `instance_id` must be valid, non-null pointers to NUL-terminated UTF-8
+/// C strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_set_manager_active_install_instance(
+    manager_id: *const c_char,
+    instance_id: *const c_char,
+) -> bool {
+    clear_last_error_key();
+    let manager = match unsafe { parse_manager_id_arg(manager_id) } {
+        Ok(manager) => manager,
+        Err(error_key) => return return_error_bool(error_key),
+    };
+    let instance_id = match unsafe { parse_required_cstr_arg(instance_id) } {
+        Ok(value) => value,
+        Err(error_key) => return return_error_bool(error_key),
+    };
+
+    let guard = lock_or_recover(&STATE, "state");
+    let state = match guard.as_ref() {
+        Some(state) => state,
+        None => return return_error_bool(SERVICE_ERROR_INTERNAL),
+    };
+
+    let mut instances = match manager_install_instances_for(state.store.as_ref(), manager) {
+        Ok(instances) => instances,
+        Err(error_key) => return return_error_bool(error_key),
+    };
+    if instances.is_empty() {
+        return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
+    }
+
+    let selected_path = match instances
+        .iter()
+        .find(|instance| instance.instance_id == instance_id)
+    {
+        Some(instance) => instance.display_path.to_string_lossy().to_string(),
+        None => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
+    };
+
+    for instance in &mut instances {
+        instance.is_active = instance.instance_id == instance_id;
+    }
+
+    if state
+        .store
+        .replace_install_instances(manager, &instances)
+        .is_err()
+    {
+        return return_error_bool(SERVICE_ERROR_STORAGE_FAILURE);
+    }
+    if state
+        .store
+        .set_manager_selected_executable_path(manager, Some(selected_path.as_str()))
+        .is_err()
+    {
+        return return_error_bool(SERVICE_ERROR_STORAGE_FAILURE);
+    }
+    if state
+        .store
+        .set_manager_multi_instance_ack_fingerprint(manager, None)
+        .is_err()
+    {
+        return return_error_bool(SERVICE_ERROR_STORAGE_FAILURE);
+    }
+
+    let detection_map: std::collections::HashMap<_, _> = state
+        .store
+        .list_detections()
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+    let pref_map: std::collections::HashMap<_, _> = state
+        .store
+        .list_manager_preferences()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|pref| (pref.manager, pref))
+        .collect();
+    sync_manager_executable_overrides(&detection_map, &pref_map);
+
+    true
+}
+
+/// Acknowledge current multi-instance install set for a manager.
+///
+/// Stores the active install-set fingerprint so manager health can be considered acknowledged.
+///
+/// # Safety
+///
+/// `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_ack_manager_multi_instance_state(manager_id: *const c_char) -> bool {
+    clear_last_error_key();
+    let manager = match unsafe { parse_manager_id_arg(manager_id) } {
+        Ok(manager) => manager,
+        Err(error_key) => return return_error_bool(error_key),
+    };
+
+    let guard = lock_or_recover(&STATE, "state");
+    let state = match guard.as_ref() {
+        Some(state) => state,
+        None => return return_error_bool(SERVICE_ERROR_INTERNAL),
+    };
+
+    let instances = match manager_install_instances_for(state.store.as_ref(), manager) {
+        Ok(instances) => instances,
+        Err(error_key) => return return_error_bool(error_key),
+    };
+    let Some(fingerprint) = install_instance_fingerprint(&instances) else {
+        return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
+    };
+
+    if state
+        .store
+        .set_manager_multi_instance_ack_fingerprint(manager, Some(fingerprint.as_str()))
+        .is_err()
+    {
+        return return_error_bool(SERVICE_ERROR_STORAGE_FAILURE);
+    }
+
+    true
+}
+
+/// Clear multi-instance acknowledgement state for a manager.
+///
+/// # Safety
+///
+/// `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_clear_manager_multi_instance_ack(
+    manager_id: *const c_char,
+) -> bool {
+    clear_last_error_key();
+    let manager = match unsafe { parse_manager_id_arg(manager_id) } {
+        Ok(manager) => manager,
+        Err(error_key) => return return_error_bool(error_key),
+    };
+
+    let guard = lock_or_recover(&STATE, "state");
+    let state = match guard.as_ref() {
+        Some(state) => state,
+        None => return return_error_bool(SERVICE_ERROR_INTERNAL),
+    };
+
+    if state
+        .store
+        .set_manager_multi_instance_ack_fingerprint(manager, None)
+        .is_err()
+    {
+        return return_error_bool(SERVICE_ERROR_STORAGE_FAILURE);
+    }
 
     true
 }

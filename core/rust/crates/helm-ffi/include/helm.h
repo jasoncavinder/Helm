@@ -277,6 +277,39 @@ bool helm_set_manager_enabled(const char *manager_id, bool enabled);
 bool helm_set_manager_selected_executable_path(const char *manager_id, const char *selected_path);
 
 /**
+ * Set the managed install instance for a manager by stable `instance_id`.
+ *
+ * This updates selected executable-path preference, marks the selected instance active,
+ * clears multi-instance acknowledgement, and refreshes in-memory executable overrides.
+ *
+ * # Safety
+ *
+ * `manager_id` and `instance_id` must be valid, non-null pointers to NUL-terminated UTF-8
+ * C strings.
+ */
+bool helm_set_manager_active_install_instance(const char *manager_id, const char *instance_id);
+
+/**
+ * Acknowledge current multi-instance install set for a manager.
+ *
+ * Stores the active install-set fingerprint so manager health can be considered acknowledged.
+ *
+ * # Safety
+ *
+ * `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ */
+bool helm_ack_manager_multi_instance_state(const char *manager_id);
+
+/**
+ * Clear multi-instance acknowledgement state for a manager.
+ *
+ * # Safety
+ *
+ * `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ */
+bool helm_clear_manager_multi_instance_ack(const char *manager_id);
+
+/**
  * Set (or clear) the selected install method for a manager.
  *
  * # Safety
