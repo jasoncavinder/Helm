@@ -344,7 +344,22 @@ CREATE INDEX IF NOT EXISTS idx_manager_install_instances_identity
 "#,
 };
 
-const MIGRATIONS: [SqliteMigration; 10] = [
+const MIGRATION_0011: SqliteMigration = SqliteMigration {
+    version: 11,
+    name: "add_manager_multi_instance_ack",
+    up_sql: r#"
+CREATE TABLE IF NOT EXISTS manager_multi_instance_ack (
+    manager_id TEXT PRIMARY KEY,
+    instances_fingerprint TEXT NOT NULL,
+    acknowledged_at_unix INTEGER NOT NULL
+);
+"#,
+    down_sql: r#"
+DROP TABLE IF EXISTS manager_multi_instance_ack;
+"#,
+};
+
+const MIGRATIONS: [SqliteMigration; 11] = [
     MIGRATION_0001,
     MIGRATION_0002,
     MIGRATION_0003,
@@ -355,6 +370,7 @@ const MIGRATIONS: [SqliteMigration; 10] = [
     MIGRATION_0008,
     MIGRATION_0009,
     MIGRATION_0010,
+    MIGRATION_0011,
 ];
 
 pub fn migrations() -> &'static [SqliteMigration] {
