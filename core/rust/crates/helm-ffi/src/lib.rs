@@ -143,7 +143,7 @@ use helm_core::execution::{
 use helm_core::managed_automation_policy::{
     ManagedAutomationPolicyMode, apply_managed_automation_policy,
 };
-use helm_core::manager_instances::install_instance_fingerprint;
+use helm_core::manager_instances::{install_instance_fingerprint, resolve_multi_instance_state};
 use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
     Capability, DetectionInfo, HomebrewKegPolicy, ManagerAuthority, ManagerId,
@@ -523,6 +523,9 @@ struct FfiManagerStatus {
     ineligible_service_error_key: Option<String>,
     install_instances: Vec<FfiManagerInstallInstanceSummary>,
     install_instance_count: usize,
+    multi_instance_state: String,
+    multi_instance_acknowledged: bool,
+    multi_instance_fingerprint: Option<String>,
     active_provenance: Option<String>,
     active_confidence: Option<f64>,
     active_decision_margin: Option<f64>,
@@ -1264,6 +1267,8 @@ fn build_manager_statuses(
         ManagerId,
         Vec<ManagerInstallInstance>,
     > = std::collections::HashMap::new();
+    let mut multi_instance_ack_fingerprints: std::collections::HashMap<ManagerId, Option<String>> =
+        std::collections::HashMap::new();
     if let Some(store) = store
         && let Ok(instances) = store.list_install_instances(None)
     {
@@ -1281,6 +1286,13 @@ fn build_manager_statuses(
                 }
                 left.instance_id.cmp(&right.instance_id)
             });
+        }
+        for manager in ManagerId::ALL {
+            let fingerprint = store
+                .manager_multi_instance_ack_fingerprint(manager)
+                .ok()
+                .and_then(normalize_nonempty);
+            multi_instance_ack_fingerprints.insert(manager, fingerprint);
         }
     }
 
@@ -1371,6 +1383,18 @@ fn build_manager_statuses(
             let active_instance = manager_install_instances
                 .and_then(|instances| instances.iter().find(|instance| instance.is_active))
                 .or_else(|| manager_install_instances.and_then(|instances| instances.first()));
+            let acknowledged_fingerprint = multi_instance_ack_fingerprints
+                .get(&id)
+                .and_then(|value| value.as_deref());
+            let (multi_instance_state, multi_instance_fingerprint, multi_instance_acknowledged) =
+                resolve_multi_instance_state(
+                    manager_install_instances.into_iter().flat_map(|instances| {
+                        instances
+                            .iter()
+                            .map(|instance| instance.instance_id.as_str())
+                    }),
+                    acknowledged_fingerprint,
+                );
 
             FfiManagerStatus {
                 manager_id: id.as_str().to_string(),
@@ -1400,6 +1424,9 @@ fn build_manager_statuses(
                 ineligible_service_error_key: eligibility.service_error_key.map(str::to_string),
                 install_instances,
                 install_instance_count,
+                multi_instance_state: multi_instance_state.as_str().to_string(),
+                multi_instance_acknowledged,
+                multi_instance_fingerprint,
                 active_provenance: active_instance
                     .map(|instance| instance.provenance.as_str().to_string()),
                 active_confidence: active_instance.map(|instance| instance.confidence),
@@ -6833,9 +6860,7 @@ pub unsafe extern "C" fn helm_ack_manager_multi_instance_state(manager_id: *cons
 ///
 /// `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn helm_clear_manager_multi_instance_ack(
-    manager_id: *const c_char,
-) -> bool {
+pub unsafe extern "C" fn helm_clear_manager_multi_instance_ack(manager_id: *const c_char) -> bool {
     clear_last_error_key();
     let manager = match unsafe { parse_manager_id_arg(manager_id) } {
         Ok(manager) => manager,
@@ -8706,6 +8731,84 @@ mod tests {
         assert_eq!(
             pnpm.active_uninstall_strategy.as_deref(),
             Some("homebrew_formula")
+        );
+
+        let _ = fs::remove_file(store.database_path());
+    }
+
+    #[test]
+    fn manager_status_reports_multi_instance_state_transitions() {
+        let store = temp_sqlite_store("manager-status-multi-instance-state");
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+
+        let mut homebrew = sample_rustup_install_instance(
+            StrategyKind::HomebrewFormula,
+            InstallProvenance::Homebrew,
+            "/opt/homebrew/bin/rustup",
+        );
+        homebrew.instance_id = "rustup-homebrew".to_string();
+        homebrew.identity_value = "rustup-homebrew".to_string();
+        homebrew.is_active = false;
+
+        let mut user = sample_rustup_install_instance(
+            StrategyKind::RustupSelf,
+            InstallProvenance::RustupInit,
+            "/Users/test/.cargo/bin/rustup",
+        );
+        user.instance_id = "rustup-user".to_string();
+        user.identity_value = "rustup-user".to_string();
+        user.is_active = true;
+
+        store
+            .replace_install_instances(ManagerId::Rustup, &[homebrew.clone(), user.clone()])
+            .expect("install instances should persist");
+
+        let statuses = build_manager_statuses(None, Some(&store), &HashMap::new(), &HashMap::new());
+        let rustup = status_for(&statuses, ManagerId::Rustup);
+        assert_eq!(rustup.multi_instance_state, "attention_needed");
+        assert!(!rustup.multi_instance_acknowledged);
+        let acknowledged_fingerprint = rustup
+            .multi_instance_fingerprint
+            .as_deref()
+            .expect("multi-instance fingerprint should be present")
+            .to_string();
+
+        store
+            .set_manager_multi_instance_ack_fingerprint(
+                ManagerId::Rustup,
+                Some(acknowledged_fingerprint.as_str()),
+            )
+            .expect("multi-instance fingerprint should persist");
+
+        let statuses = build_manager_statuses(None, Some(&store), &HashMap::new(), &HashMap::new());
+        let rustup = status_for(&statuses, ManagerId::Rustup);
+        assert_eq!(rustup.multi_instance_state, "acknowledged");
+        assert!(rustup.multi_instance_acknowledged);
+        assert_eq!(
+            rustup.multi_instance_fingerprint.as_deref(),
+            Some(acknowledged_fingerprint.as_str())
+        );
+
+        let mut extra = user;
+        extra.instance_id = "rustup-extra".to_string();
+        extra.identity_value = "rustup-extra".to_string();
+        extra.display_path = std::path::PathBuf::from("/Users/test/.local/bin/rustup");
+        extra.canonical_path = Some(std::path::PathBuf::from("/Users/test/.local/bin/rustup"));
+        extra.is_active = false;
+
+        store
+            .replace_install_instances(ManagerId::Rustup, &[homebrew, extra])
+            .expect("updated install instances should persist");
+
+        let statuses = build_manager_statuses(None, Some(&store), &HashMap::new(), &HashMap::new());
+        let rustup = status_for(&statuses, ManagerId::Rustup);
+        assert_eq!(rustup.multi_instance_state, "attention_needed");
+        assert!(!rustup.multi_instance_acknowledged);
+        assert_ne!(
+            rustup.multi_instance_fingerprint.as_deref(),
+            Some(acknowledged_fingerprint.as_str())
         );
 
         let _ = fs::remove_file(store.database_path());
