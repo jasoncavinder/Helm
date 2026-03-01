@@ -419,6 +419,7 @@ char *helm_preview_manager_uninstall(const char *manager_id, bool allow_unknown_
  *
  * `options_json` supports:
  * - `allowUnknownProvenance` (bool)
+ * - `homebrewCleanupMode` (`managerOnly` | `fullCleanup`)
  * - `miseCleanupMode` (`managerOnly` | `fullCleanup`)
  * - `miseConfigRemoval` (`keepConfig` | `removeConfig`)
  *
@@ -449,6 +450,7 @@ int64_t helm_uninstall_manager_with_options(const char *manager_id, bool allow_u
  *
  * `options_json` supports:
  * - `allowUnknownProvenance` (bool)
+ * - `homebrewCleanupMode` (`managerOnly` | `fullCleanup`)
  * - `miseCleanupMode` (`managerOnly` | `fullCleanup`)
  * - `miseConfigRemoval` (`keepConfig` | `removeConfig`)
  *

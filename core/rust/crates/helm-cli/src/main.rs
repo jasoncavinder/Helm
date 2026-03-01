@@ -11562,6 +11562,23 @@ fn parse_mise_config_removal_arg(
     }
 }
 
+fn parse_homebrew_cleanup_mode_arg(
+    raw: &str,
+) -> Result<helm_core::manager_lifecycle::HomebrewUninstallCleanupMode, String> {
+    match raw.trim() {
+        "managerOnly" | "manager-only" | "manager_only" => {
+            Ok(helm_core::manager_lifecycle::HomebrewUninstallCleanupMode::ManagerOnly)
+        }
+        "fullCleanup" | "full-cleanup" | "full_cleanup" => {
+            Ok(helm_core::manager_lifecycle::HomebrewUninstallCleanupMode::FullCleanup)
+        }
+        other => Err(format!(
+            "unsupported homebrew cleanup mode '{}'; supported: managerOnly, fullCleanup",
+            other
+        )),
+    }
+}
+
 fn parse_manager_mutation_args(
     subcommand: &str,
     command_args: &[String],
@@ -11575,6 +11592,9 @@ fn parse_manager_mutation_args(
     let mut rustup_binary_path: Option<String> = None;
     let mut mise_install_source: Option<helm_core::manager_lifecycle::MiseInstallSource> = None;
     let mut mise_binary_path: Option<String> = None;
+    let mut homebrew_cleanup_mode: Option<
+        helm_core::manager_lifecycle::HomebrewUninstallCleanupMode,
+    > = None;
     let mut mise_cleanup_mode: Option<helm_core::manager_lifecycle::MiseUninstallCleanupMode> =
         None;
     let mut mise_config_removal: Option<helm_core::manager_lifecycle::MiseUninstallConfigRemoval> =
@@ -11596,6 +11616,24 @@ fn parse_manager_mutation_args(
             "--allow-unknown-provenance" if uninstall_command => {
                 allow_unknown_provenance = true;
                 index += 1;
+            }
+            "--homebrew-cleanup-mode" if uninstall_command => {
+                if index + 1 >= command_args.len() {
+                    return Err(
+                        "managers uninstall --homebrew-cleanup-mode requires a mode value"
+                            .to_string(),
+                    );
+                }
+                if homebrew_cleanup_mode.is_some() {
+                    return Err(
+                        "managers uninstall --homebrew-cleanup-mode specified multiple times"
+                            .to_string(),
+                    );
+                }
+                homebrew_cleanup_mode = Some(parse_homebrew_cleanup_mode_arg(
+                    command_args[index + 1].as_str(),
+                )?);
+                index += 2;
             }
             "--mise-cleanup-mode" if uninstall_command => {
                 if index + 1 >= command_args.len() {
@@ -11710,7 +11748,7 @@ fn parse_manager_mutation_args(
             flag if flag.starts_with("--") => {
                 if uninstall_command {
                     return Err(format!(
-                        "unsupported managers uninstall argument '{}'; supported: <manager-id>, --preview, --yes, --allow-unknown-provenance, --mise-cleanup-mode <managerOnly|fullCleanup>, --mise-config-removal <keepConfig|removeConfig>",
+                        "unsupported managers uninstall argument '{}'; supported: <manager-id>, --preview, --yes, --allow-unknown-provenance, --homebrew-cleanup-mode <managerOnly|fullCleanup>, --mise-cleanup-mode <managerOnly|fullCleanup>, --mise-config-removal <keepConfig|removeConfig>",
                         flag
                     ));
                 }
@@ -11826,8 +11864,14 @@ fn parse_manager_mutation_args(
     }
     let uninstall_options = if uninstall_command && manager == ManagerId::Mise {
         helm_core::manager_lifecycle::ManagerUninstallOptions {
+            homebrew_cleanup_mode,
             mise_cleanup_mode,
             mise_config_removal,
+        }
+    } else if uninstall_command {
+        helm_core::manager_lifecycle::ManagerUninstallOptions {
+            homebrew_cleanup_mode,
+            ..helm_core::manager_lifecycle::ManagerUninstallOptions::default()
         }
     } else {
         helm_core::manager_lifecycle::ManagerUninstallOptions::default()
@@ -13582,13 +13626,14 @@ fn print_managers_update_help() {
 fn print_managers_uninstall_help() {
     println!("USAGE:");
     println!(
-        "  helm managers uninstall <manager-id> [--preview] [--yes] [--allow-unknown-provenance] [--mise-cleanup-mode <managerOnly|fullCleanup>] [--mise-config-removal <keepConfig|removeConfig>]"
+        "  helm managers uninstall <manager-id> [--preview] [--yes] [--allow-unknown-provenance] [--homebrew-cleanup-mode <managerOnly|fullCleanup>] [--mise-cleanup-mode <managerOnly|fullCleanup>] [--mise-config-removal <keepConfig|removeConfig>]"
     );
     println!();
     println!("DESCRIPTION:");
     println!(
         "  Uninstall a supported manager via detected provenance strategy with blast-radius preview."
     );
+    println!("  homebrew-routed managers: --homebrew-cleanup-mode defaults to managerOnly.");
     println!("  mise-only: --mise-cleanup-mode defaults to managerOnly.");
     println!("  mise-only: fullCleanup requires --mise-config-removal keepConfig|removeConfig.");
 }
@@ -15470,6 +15515,25 @@ mod tests {
     }
 
     #[test]
+    fn parse_manager_mutation_args_uninstall_accepts_homebrew_cleanup_options() {
+        let parsed = parse_manager_mutation_args(
+            "uninstall",
+            &[
+                "rustup".to_string(),
+                "--homebrew-cleanup-mode".to_string(),
+                "fullCleanup".to_string(),
+            ],
+        )
+        .expect("homebrew cleanup options should parse");
+
+        assert_eq!(parsed.manager, ManagerId::Rustup);
+        assert_eq!(
+            parsed.uninstall_options.homebrew_cleanup_mode,
+            Some(helm_core::manager_lifecycle::HomebrewUninstallCleanupMode::FullCleanup)
+        );
+    }
+
+    #[test]
     fn parse_manager_mutation_args_uninstall_accepts_mise_cleanup_options() {
         let parsed = parse_manager_mutation_args(
             "uninstall",
@@ -15521,6 +15585,20 @@ mod tests {
         )
         .expect_err("invalid mise cleanup mode should fail");
         assert!(error.contains("unsupported mise cleanup mode"));
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_uninstall_rejects_invalid_homebrew_cleanup_mode() {
+        let error = parse_manager_mutation_args(
+            "uninstall",
+            &[
+                "rustup".to_string(),
+                "--homebrew-cleanup-mode".to_string(),
+                "invalid".to_string(),
+            ],
+        )
+        .expect_err("invalid homebrew cleanup mode should fail");
+        assert!(error.contains("unsupported homebrew cleanup mode"));
     }
 
     #[test]

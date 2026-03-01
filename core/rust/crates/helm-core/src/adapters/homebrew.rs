@@ -1,9 +1,13 @@
 use std::collections::HashSet;
+use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::adapters::manager::{AdapterRequest, AdapterResponse, AdapterResult, ManagerAdapter};
 use crate::execution::{CommandSpec, ProcessSpawnRequest};
+use crate::manager_lifecycle::{
+    HomebrewUninstallCleanupMode, parse_homebrew_manager_uninstall_package_name,
+};
 use crate::models::{
     ActionSafety, CachedSearchResult, Capability, CoreError, CoreErrorKind, DetectionInfo,
     InstalledPackage, ManagerAction, ManagerAuthority, ManagerCategory, ManagerDescriptor,
@@ -131,12 +135,31 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                 }))
             }
             AdapterRequest::Uninstall(uninstall_request) => {
-                if let Err(error) = self
-                    .source
-                    .uninstall_formula(&uninstall_request.package.name)
+                let parsed_uninstall = parse_homebrew_manager_uninstall_package_name(
+                    uninstall_request.package.name.as_str(),
+                );
+                let formula_name = parsed_uninstall
+                    .as_ref()
+                    .map(|spec| spec.formula_name.as_str())
+                    .unwrap_or_else(|| uninstall_request.package.name.as_str());
+                let mut uninstall_output = self.source.uninstall_formula(formula_name);
+                if let Err(error) = uninstall_output.as_ref()
                     && !is_homebrew_already_absent_uninstall_error(&error)
                 {
-                    return Err(error);
+                    return Err(error.clone());
+                }
+                if let Some(spec) = parsed_uninstall
+                    && matches!(spec.cleanup_mode, HomebrewUninstallCleanupMode::FullCleanup)
+                {
+                    let cleanup_output = perform_manager_full_cleanup(spec.requested_manager)?;
+                    let mut merged = uninstall_output.unwrap_or_default();
+                    if !cleanup_output.is_empty() {
+                        if !merged.trim().is_empty() {
+                            merged.push('\n');
+                        }
+                        merged.push_str(cleanup_output.as_str());
+                    }
+                    uninstall_output = Ok(merged);
                 }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: uninstall_request.package,
@@ -736,6 +759,143 @@ fn is_no_results_diagnostic(line: &str) -> bool {
     let lowered = line.to_ascii_lowercase();
     lowered.starts_with("no formulae or casks found for")
         || lowered.starts_with("no formula or cask found for")
+}
+
+fn perform_manager_full_cleanup(manager: ManagerId) -> AdapterResult<String> {
+    match manager {
+        ManagerId::Rustup => cleanup_rustup_artifacts(),
+        ManagerId::Mise => cleanup_mise_artifacts(),
+        _ => Ok(format!(
+            "Helm full-cleanup: no additional manager-owned artifacts are currently defined for '{}'.",
+            manager.as_str()
+        )),
+    }
+}
+
+fn cleanup_rustup_artifacts() -> AdapterResult<String> {
+    let mut lines: Vec<String> = Vec::new();
+    let rustup_home = resolve_rustup_home();
+    let cargo_home = resolve_cargo_home();
+    let cargo_bin = cargo_home.join("bin");
+
+    let removed_rustup_home = remove_directory_if_exists(rustup_home.as_path())?;
+    if removed_rustup_home {
+        lines.push(format!(
+            "Helm full-cleanup: removed rustup home directory '{}'.",
+            rustup_home.display()
+        ));
+    } else {
+        lines.push(format!(
+            "Helm full-cleanup: rustup home directory '{}' was not present.",
+            rustup_home.display()
+        ));
+    }
+
+    let mut removed_proxy_count = 0usize;
+    for binary in [
+        "rustup",
+        "cargo",
+        "rustc",
+        "rustdoc",
+        "rustfmt",
+        "clippy-driver",
+        "rust-gdb",
+        "rust-gdbgui",
+        "rust-lldb",
+    ] {
+        let path = cargo_bin.join(binary);
+        if remove_file_if_exists(path.as_path())? {
+            removed_proxy_count += 1;
+        }
+    }
+    lines.push(format!(
+        "Helm full-cleanup: removed {} rustup proxy binaries under '{}'.",
+        removed_proxy_count,
+        cargo_bin.display()
+    ));
+
+    Ok(lines.join("\n"))
+}
+
+fn cleanup_mise_artifacts() -> AdapterResult<String> {
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("~"));
+    let state_dir = home.join(".local/share/mise");
+    let cache_dir = home.join(".cache/mise");
+
+    let removed_state = remove_directory_if_exists(state_dir.as_path())?;
+    let removed_cache = remove_directory_if_exists(cache_dir.as_path())?;
+
+    Ok(format!(
+        "Helm full-cleanup: state_dir={} ({}) cache_dir={} ({})",
+        state_dir.display(),
+        if removed_state {
+            "removed"
+        } else {
+            "not_present"
+        },
+        cache_dir.display(),
+        if removed_cache {
+            "removed"
+        } else {
+            "not_present"
+        }
+    ))
+}
+
+fn remove_directory_if_exists(path: &std::path::Path) -> AdapterResult<bool> {
+    if !path.exists() {
+        return Ok(false);
+    }
+    fs::remove_dir_all(path).map_err(|error| CoreError {
+        manager: Some(ManagerId::HomebrewFormula),
+        task: Some(TaskType::Uninstall),
+        action: Some(ManagerAction::Uninstall),
+        kind: CoreErrorKind::ProcessFailure,
+        message: format!(
+            "homebrew full-cleanup failed to remove directory '{}': {error}",
+            path.display()
+        ),
+    })?;
+    Ok(true)
+}
+
+fn remove_file_if_exists(path: &std::path::Path) -> AdapterResult<bool> {
+    if !path.exists() {
+        return Ok(false);
+    }
+    fs::remove_file(path).map_err(|error| CoreError {
+        manager: Some(ManagerId::HomebrewFormula),
+        task: Some(TaskType::Uninstall),
+        action: Some(ManagerAction::Uninstall),
+        kind: CoreErrorKind::ProcessFailure,
+        message: format!(
+            "homebrew full-cleanup failed to remove file '{}': {error}",
+            path.display()
+        ),
+    })?;
+    Ok(true)
+}
+
+fn resolve_cargo_home() -> PathBuf {
+    if let Some(raw) = std::env::var_os("CARGO_HOME").filter(|value| !value.is_empty()) {
+        return PathBuf::from(raw);
+    }
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .map(|home| home.join(".cargo"))
+        .unwrap_or_else(|| PathBuf::from("~/.cargo"))
+}
+
+fn resolve_rustup_home() -> PathBuf {
+    if let Some(raw) = std::env::var_os("RUSTUP_HOME").filter(|value| !value.is_empty()) {
+        return PathBuf::from(raw);
+    }
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .map(|home| home.join(".rustup"))
+        .unwrap_or_else(|| PathBuf::from("~/.rustup"))
 }
 
 fn parse_error(message: &str) -> CoreError {

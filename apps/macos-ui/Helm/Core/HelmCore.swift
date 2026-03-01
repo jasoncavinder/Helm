@@ -463,6 +463,11 @@ enum ManagerMiseUninstallConfigRemoval: String, Codable {
     case removeConfig
 }
 
+enum ManagerHomebrewUninstallCleanupMode: String, Codable {
+    case managerOnly
+    case fullCleanup
+}
+
 struct ManagerInstallActionOptions: Codable {
     let rustupInstallSource: ManagerRustupInstallSource?
     let rustupBinaryPath: String?
@@ -472,6 +477,7 @@ struct ManagerInstallActionOptions: Codable {
 
 struct ManagerUninstallActionOptions: Codable {
     let allowUnknownProvenance: Bool?
+    let homebrewCleanupMode: ManagerHomebrewUninstallCleanupMode?
     let miseCleanupMode: ManagerMiseUninstallCleanupMode?
     let miseConfigRemoval: ManagerMiseUninstallConfigRemoval?
 }

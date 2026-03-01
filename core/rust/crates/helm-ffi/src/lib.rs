@@ -267,10 +267,19 @@ enum MiseUninstallConfigRemovalPayload {
     RemoveConfig,
 }
 
+#[derive(Clone, Copy, Debug, Default, serde::Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+enum HomebrewUninstallCleanupModePayload {
+    #[default]
+    ManagerOnly,
+    FullCleanup,
+}
+
 #[derive(Clone, Debug, Default, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ManagerUninstallOptionsPayload {
     allow_unknown_provenance: Option<bool>,
+    homebrew_cleanup_mode: Option<HomebrewUninstallCleanupModePayload>,
     mise_cleanup_mode: Option<MiseUninstallCleanupModePayload>,
     mise_config_removal: Option<MiseUninstallConfigRemovalPayload>,
 }
@@ -336,6 +345,14 @@ fn parse_uninstall_options_payload(
     let allow_unknown_provenance = payload
         .allow_unknown_provenance
         .unwrap_or(fallback_allow_unknown_provenance);
+    let homebrew_cleanup_mode = payload.homebrew_cleanup_mode.map(|value| match value {
+        HomebrewUninstallCleanupModePayload::ManagerOnly => {
+            helm_core::manager_lifecycle::HomebrewUninstallCleanupMode::ManagerOnly
+        }
+        HomebrewUninstallCleanupModePayload::FullCleanup => {
+            helm_core::manager_lifecycle::HomebrewUninstallCleanupMode::FullCleanup
+        }
+    });
     let mise_cleanup_mode = payload.mise_cleanup_mode.map(|value| match value {
         MiseUninstallCleanupModePayload::ManagerOnly => {
             helm_core::manager_lifecycle::MiseUninstallCleanupMode::ManagerOnly
@@ -356,6 +373,7 @@ fn parse_uninstall_options_payload(
     Ok((
         allow_unknown_provenance,
         helm_core::manager_lifecycle::ManagerUninstallOptions {
+            homebrew_cleanup_mode,
             mise_cleanup_mode,
             mise_config_removal,
         },
@@ -7350,6 +7368,7 @@ pub unsafe extern "C" fn helm_preview_manager_uninstall(
 ///
 /// `options_json` supports:
 /// - `allowUnknownProvenance` (bool)
+/// - `homebrewCleanupMode` (`managerOnly` | `fullCleanup`)
 /// - `miseCleanupMode` (`managerOnly` | `fullCleanup`)
 /// - `miseConfigRemoval` (`keepConfig` | `removeConfig`)
 ///
@@ -7476,6 +7495,7 @@ pub unsafe extern "C" fn helm_uninstall_manager_with_options(
 ///
 /// `options_json` supports:
 /// - `allowUnknownProvenance` (bool)
+/// - `homebrewCleanupMode` (`managerOnly` | `fullCleanup`)
 /// - `miseCleanupMode` (`managerOnly` | `fullCleanup`)
 /// - `miseConfigRemoval` (`keepConfig` | `removeConfig`)
 ///

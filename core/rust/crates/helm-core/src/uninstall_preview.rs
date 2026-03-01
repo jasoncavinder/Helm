@@ -1,4 +1,7 @@
 use crate::adapters::AdapterRequest;
+use crate::manager_lifecycle::{
+    HomebrewUninstallCleanupMode, parse_homebrew_manager_uninstall_package_name,
+};
 use crate::models::{
     AutomationLevel, InstallProvenance, ManagerId, ManagerInstallInstance, ManagerUninstallPreview,
     PackageRef, PackageUninstallPreview, StrategyKind, UninstallImpactPath,
@@ -59,6 +62,8 @@ pub fn build_manager_uninstall_preview(
     let mut secondary_effects = Vec::new();
     let mut seen_files = HashSet::new();
     let mut seen_directories = HashSet::new();
+    let homebrew_uninstall_spec = uninstall_request_package_name(context.request)
+        .and_then(parse_homebrew_manager_uninstall_package_name);
 
     if context.target_manager == ManagerId::Rustup || context.strategy == StrategyKind::RustupSelf {
         append_rustup_uninstall_impact(
@@ -81,6 +86,11 @@ pub fn build_manager_uninstall_preview(
             uninstall_request_package_name(context.request),
         );
     } else if context.target_manager == ManagerId::HomebrewFormula {
+        let formula_name = homebrew_uninstall_spec
+            .as_ref()
+            .map(|spec| spec.formula_name.as_str())
+            .or_else(|| uninstall_request_package_name(context.request))
+            .unwrap_or("unknown");
         if let Some(path) = context
             .active_instance
             .map(|instance| instance.display_path.as_path())
@@ -90,12 +100,30 @@ pub fn build_manager_uninstall_preview(
         }
         secondary_effects.push(format!(
             "Homebrew formula '{}' will be uninstalled.",
-            uninstall_request_package_name(context.request).unwrap_or("unknown")
+            formula_name
         ));
-        if context.requested_manager == ManagerId::Rustup {
-            secondary_effects.push(
-                "Rustup toolchain directories are usually retained by Homebrew uninstall."
-                    .to_string(),
+        if context.requested_manager == ManagerId::Rustup
+            && homebrew_uninstall_spec
+                .as_ref()
+                .map(|spec| spec.cleanup_mode)
+                .unwrap_or(HomebrewUninstallCleanupMode::ManagerOnly)
+                == HomebrewUninstallCleanupMode::ManagerOnly
+        {
+            secondary_effects.push(format!(
+                "Manager-only uninstall keeps rustup state/toolchains under '{}'.",
+                resolve_rustup_home().display()
+            ));
+        }
+        if let Some(spec) = homebrew_uninstall_spec.as_ref()
+            && spec.cleanup_mode == HomebrewUninstallCleanupMode::FullCleanup
+        {
+            append_homebrew_full_cleanup_impact(
+                &mut files_removed,
+                &mut directories_removed,
+                &mut secondary_effects,
+                &mut seen_files,
+                &mut seen_directories,
+                spec.requested_manager,
             );
         }
     } else if context.target_manager == ManagerId::MacPorts {
@@ -445,6 +473,64 @@ fn append_rustup_uninstall_impact(
         "Cargo proxy binaries under '{}' may be removed or relinked.",
         cargo_bin.display()
     ));
+}
+
+fn append_homebrew_full_cleanup_impact(
+    files_removed: &mut Vec<UninstallImpactPath>,
+    directories_removed: &mut Vec<UninstallImpactPath>,
+    secondary_effects: &mut Vec<String>,
+    seen_files: &mut HashSet<String>,
+    seen_directories: &mut HashSet<String>,
+    requested_manager: ManagerId,
+) {
+    match requested_manager {
+        ManagerId::Rustup => {
+            let rustup_home = resolve_rustup_home();
+            let cargo_bin = resolve_cargo_home().join("bin");
+            push_impact_path(directories_removed, seen_directories, rustup_home.clone());
+            for binary in [
+                "rustup",
+                "cargo",
+                "rustc",
+                "rustdoc",
+                "rustfmt",
+                "clippy-driver",
+                "rust-gdb",
+                "rust-gdbgui",
+                "rust-lldb",
+            ] {
+                push_impact_path(files_removed, seen_files, cargo_bin.join(binary));
+            }
+            secondary_effects.push(format!(
+                "Full cleanup removes rustup state/toolchains under '{}'.",
+                rustup_home.display()
+            ));
+            secondary_effects.push(format!(
+                "Full cleanup removes rustup proxy binaries under '{}'.",
+                cargo_bin.display()
+            ));
+        }
+        ManagerId::Mise => {
+            let home = std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("~"));
+            let mise_state = home.join(".local/share/mise");
+            let mise_cache = home.join(".cache/mise");
+            push_impact_path(directories_removed, seen_directories, mise_state.clone());
+            push_impact_path(directories_removed, seen_directories, mise_cache.clone());
+            secondary_effects.push(format!(
+                "Full cleanup removes mise state/cache under '{}' and '{}'.",
+                mise_state.display(),
+                mise_cache.display()
+            ));
+        }
+        _ => {
+            secondary_effects.push(format!(
+                "Full cleanup selected; no additional manager-owned cleanup paths are currently defined for '{}'.",
+                requested_manager.as_str()
+            ));
+        }
+    }
 }
 
 fn resolve_cargo_home() -> PathBuf {

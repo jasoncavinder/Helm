@@ -69,14 +69,37 @@ fn mise_uninstall_options_label(
     }
 }
 
+fn homebrew_uninstall_options_label(
+    options: &helm_core::manager_lifecycle::ManagerUninstallOptions,
+) -> Option<&'static str> {
+    use helm_core::manager_lifecycle::HomebrewUninstallCleanupMode;
+
+    match options.homebrew_cleanup_mode {
+        Some(HomebrewUninstallCleanupMode::ManagerOnly) => Some("homebrew_mode=manager_only"),
+        Some(HomebrewUninstallCleanupMode::FullCleanup) => Some("homebrew_mode=full_cleanup"),
+        None => None,
+    }
+}
+
 fn mise_uninstall_options_full_cleanup(
     config_removal: helm_core::manager_lifecycle::MiseUninstallConfigRemoval,
 ) -> helm_core::manager_lifecycle::ManagerUninstallOptions {
     helm_core::manager_lifecycle::ManagerUninstallOptions {
+        homebrew_cleanup_mode: None,
         mise_cleanup_mode: Some(
             helm_core::manager_lifecycle::MiseUninstallCleanupMode::FullCleanup,
         ),
         mise_config_removal: Some(config_removal),
+    }
+}
+
+fn homebrew_uninstall_options_full_cleanup() -> helm_core::manager_lifecycle::ManagerUninstallOptions
+{
+    helm_core::manager_lifecycle::ManagerUninstallOptions {
+        homebrew_cleanup_mode: Some(
+            helm_core::manager_lifecycle::HomebrewUninstallCleanupMode::FullCleanup,
+        ),
+        ..helm_core::manager_lifecycle::ManagerUninstallOptions::default()
     }
 }
 
@@ -283,14 +306,21 @@ impl ConfirmAction {
                     prompt.push(' ');
                     prompt.push_str(summary);
                 }
-                if *subcommand == "uninstall"
-                    && *manager == ManagerId::Mise
-                    && let Some(summary) = mise_uninstall_options_label(uninstall_options)
-                {
-                    prompt.push(' ');
-                    prompt.push('[');
-                    prompt.push_str(summary);
-                    prompt.push(']');
+                if *subcommand == "uninstall" {
+                    if let Some(summary) = homebrew_uninstall_options_label(uninstall_options) {
+                        prompt.push(' ');
+                        prompt.push('[');
+                        prompt.push_str(summary);
+                        prompt.push(']');
+                    }
+                    if *manager == ManagerId::Mise
+                        && let Some(summary) = mise_uninstall_options_label(uninstall_options)
+                    {
+                        prompt.push(' ');
+                        prompt.push('[');
+                        prompt.push_str(summary);
+                        prompt.push(']');
+                    }
                 }
                 if *allow_unknown_provenance {
                     prompt.push_str(" [unknown-provenance override]");
@@ -1506,15 +1536,18 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                 && let Some(manager) = app.selected_manager()
                 && let Ok(manager_id) = manager.manager_id.parse::<ManagerId>()
             {
-                if manager_id != ManagerId::Mise {
-                    app.note_error(
-                        "full-cleanup uninstall shortcuts are currently only supported for mise"
-                            .to_string(),
-                    );
-                } else {
+                if manager_id == ManagerId::Mise {
                     let options = mise_uninstall_options_full_cleanup(
                         helm_core::manager_lifecycle::MiseUninstallConfigRemoval::KeepConfig,
                     );
+                    match prepare_manager_uninstall_confirm_action(
+                        store, manager_id, false, options,
+                    ) {
+                        Ok(action) => app.confirm_action = Some(action),
+                        Err(error) => app.note_error(error),
+                    }
+                } else {
+                    let options = homebrew_uninstall_options_full_cleanup();
                     match prepare_manager_uninstall_confirm_action(
                         store, manager_id, false, options,
                     ) {
@@ -1529,15 +1562,18 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                 && let Some(manager) = app.selected_manager()
                 && let Ok(manager_id) = manager.manager_id.parse::<ManagerId>()
             {
-                if manager_id != ManagerId::Mise {
-                    app.note_error(
-                        "full-cleanup uninstall shortcuts are currently only supported for mise"
-                            .to_string(),
-                    );
-                } else {
+                if manager_id == ManagerId::Mise {
                     let options = mise_uninstall_options_full_cleanup(
                         helm_core::manager_lifecycle::MiseUninstallConfigRemoval::RemoveConfig,
                     );
+                    match prepare_manager_uninstall_confirm_action(
+                        store, manager_id, false, options,
+                    ) {
+                        Ok(action) => app.confirm_action = Some(action),
+                        Err(error) => app.note_error(error),
+                    }
+                } else {
+                    let options = homebrew_uninstall_options_full_cleanup();
                     match prepare_manager_uninstall_confirm_action(
                         store, manager_id, false, options,
                     ) {
@@ -3184,7 +3220,7 @@ fn render_detail_pane(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState
                     "Actions: [e] enable/disable  [i] install  [u] update  [x] uninstall  [X] uninstall+override",
                 ));
                 lines.push(Line::from(
-                    "         [z] mise full-cleanup (keep config)  [Z] mise full-cleanup (remove config)",
+                    "         [z] full-cleanup (homebrew / mise keep config)  [Z] mise full-cleanup (remove config)",
                 ));
                 lines.push(Line::from(
                     "         [D] detect  [o/O] cycle executable  [m/M] cycle install method  [v/V] cycle active instance",
@@ -3358,7 +3394,7 @@ fn render_footer(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState) {
         Section::Packages => "i install | u upgrade | x uninstall | p pin/unpin | K keg policy",
         Section::Tasks => "c cancel task",
         Section::Managers => {
-            "e toggle | i/u/x/X lifecycle | z/Z mise full-cleanup | D detect | o/O exec | m/M method | v/V active | a/A ack"
+            "e toggle | i/u/x/X lifecycle | z/Z full-cleanup | D detect | o/O exec | m/M method | v/V active | a/A ack"
         }
         Section::Settings => {
             "e toggle selected bool | +/- auto-check frequency | K check self update | u update"
@@ -3472,7 +3508,7 @@ fn render_help_overlay(frame: &mut ratatui::Frame<'_>, app: &AppState) {
         Line::from("  Managers:  e enable/disable, i install, u update, x uninstall"),
         Line::from("             X uninstall with unknown-provenance override"),
         Line::from(
-            "             z full-cleanup (keep config), Z full-cleanup (remove config) [mise]",
+            "             z full-cleanup (homebrew / mise keep config), Z mise full-cleanup (remove config)",
         ),
         Line::from("             D detect selected, o/O executable cycle, m/M method cycle"),
         Line::from("             v/V cycle active install instance"),
@@ -3943,6 +3979,22 @@ mod tests {
         .prompt();
         assert!(prompt.contains("mode=full_cleanup"));
         assert!(prompt.contains("config=remove"));
+    }
+
+    #[test]
+    fn manager_uninstall_confirm_prompt_shows_homebrew_cleanup_mode() {
+        let prompt = ConfirmAction::ManagerMutation {
+            manager: ManagerId::Rustup,
+            subcommand: "uninstall",
+            allow_unknown_provenance: false,
+            uninstall_options: super::homebrew_uninstall_options_full_cleanup(),
+            uninstall_preview_summary: Some(
+                "[strategy=homebrew_formula provenance=homebrew confidence=0.99 blast_radius=11]"
+                    .to_string(),
+            ),
+        }
+        .prompt();
+        assert!(prompt.contains("homebrew_mode=full_cleanup"));
     }
 
     #[test]

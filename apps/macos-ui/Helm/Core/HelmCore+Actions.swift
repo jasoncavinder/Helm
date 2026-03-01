@@ -1054,6 +1054,7 @@ extension HelmCore {
             managerId,
             options: ManagerUninstallActionOptions(
                 allowUnknownProvenance: allowUnknownProvenance,
+                homebrewCleanupMode: nil,
                 miseCleanupMode: nil,
                 miseConfigRemoval: nil
             ),
@@ -1198,6 +1199,7 @@ extension HelmCore {
             managerId,
             options: ManagerUninstallActionOptions(
                 allowUnknownProvenance: allowUnknownProvenance,
+                homebrewCleanupMode: nil,
                 miseCleanupMode: nil,
                 miseConfigRemoval: nil
             )
