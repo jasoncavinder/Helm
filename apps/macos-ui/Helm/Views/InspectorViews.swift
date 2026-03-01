@@ -1130,11 +1130,35 @@ private struct InspectorManagerDetailView: View {
 
     private enum ConfirmAction: Identifiable {
         case update
+        case enableRequiredManagerForInstance(
+            parentManagerId: String,
+            instanceId: String,
+            followUp: ManagedInstanceFollowUpAction
+        )
 
         var id: String {
             switch self {
             case .update:
                 return "update"
+            case let .enableRequiredManagerForInstance(parentManagerId, instanceId, followUp):
+                return "enable-required-\(parentManagerId)-\(instanceId)-\(followUp.id)"
+            }
+        }
+    }
+
+    private enum ManagedInstanceFollowUpAction {
+        case none
+        case update
+        case uninstall(allowUnknownProvenance: Bool)
+
+        var id: String {
+            switch self {
+            case .none:
+                return "none"
+            case .update:
+                return "update"
+            case let .uninstall(allowUnknownProvenance):
+                return "uninstall-\(allowUnknownProvenance)"
             }
         }
     }
@@ -1631,7 +1655,7 @@ private struct InspectorManagerDetailView: View {
                                                 tooltip: L10n.App.Inspector.MultiInstance.manageInstance.localized,
                                                 enabled: !managerIsUninstalling && !anyInstanceSwitchInFlight
                                             ) {
-                                                performWithManagedInstance(instance) { }
+                                                performWithManagedInstance(instance, followUp: .none)
                                             }
                                         }
 
@@ -1641,9 +1665,7 @@ private struct InspectorManagerDetailView: View {
                                                 tooltip: L10n.Common.update.localized,
                                                 enabled: !managerIsUninstalling && !anyInstanceSwitchInFlight
                                             ) {
-                                                performWithManagedInstance(instance) {
-                                                    confirmAction = .update
-                                                }
+                                                performWithManagedInstance(instance, followUp: .update)
                                             }
                                         }
 
@@ -1655,11 +1677,10 @@ private struct InspectorManagerDetailView: View {
                                                     && !managerIsUninstalling
                                                     && !anyInstanceSwitchInFlight
                                             ) {
-                                                performWithManagedInstance(instance) {
-                                                    requestManagerUninstallConfirmation(
-                                                        allowUnknownProvenance: false
-                                                    )
-                                                }
+                                                performWithManagedInstance(
+                                                    instance,
+                                                    followUp: .uninstall(allowUnknownProvenance: false)
+                                                )
                                             }
                                         }
 
@@ -1862,6 +1883,32 @@ private struct InspectorManagerDetailView: View {
                     primaryButton: .default(Text(L10n.Common.update.localized)) { core.updateManager(manager.id) },
                     secondaryButton: .cancel()
                 )
+            case let .enableRequiredManagerForInstance(parentManagerId, instanceId, followUp):
+                return Alert(
+                    title: Text(
+                        L10n.App.Managers.Alert.enableRequiresParentTitle.localized(
+                            with: ["manager": localizedManagerDisplayName(manager.id)]
+                        )
+                    ),
+                    message: Text(
+                        L10n.App.Managers.Alert.enableRequiresParentMessage.localized(
+                            with: [
+                                "manager": localizedManagerDisplayName(manager.id),
+                                "parent": localizedManagerDisplayName(parentManagerId)
+                            ]
+                        )
+                    ),
+                    primaryButton: .default(Text(L10n.Common.continue.localized)) {
+                        core.setManagerEnabled(parentManagerId, enabled: true) { success in
+                            guard success else { return }
+                            guard let instance = installInstances.first(where: { $0.instanceId == instanceId }) else {
+                                return
+                            }
+                            performManagedInstanceSwitch(instance, followUp: followUp)
+                        }
+                    },
+                    secondaryButton: .cancel(Text(L10n.Common.cancel.localized))
+                )
             }
         }
         .onAppear {
@@ -1934,17 +1981,52 @@ private struct InspectorManagerDetailView: View {
 
     private func performWithManagedInstance(
         _ instance: ManagerInstallInstanceStatus,
-        action: @escaping () -> Void
+        followUp: ManagedInstanceFollowUpAction
     ) {
         guard !instance.isActive else {
-            action()
+            executeManagedInstanceFollowUp(followUp)
             return
         }
+
+        if let parentManagerId = requiredDependencyManagerId(for: instance),
+           let parentStatus = core.managersState.managerStatusesById[parentManagerId],
+           !parentStatus.enabled
+        {
+            confirmAction = .enableRequiredManagerForInstance(
+                parentManagerId: parentManagerId,
+                instanceId: instance.instanceId,
+                followUp: followUp
+            )
+            return
+        }
+
+        performManagedInstanceSwitch(instance, followUp: followUp)
+    }
+
+    private func requiredDependencyManagerId(for instance: ManagerInstallInstanceStatus) -> String? {
+        ManagerDependencyResolver.dependencyManagerId(for: manager.id, provenance: instance.provenance)
+    }
+
+    private func performManagedInstanceSwitch(
+        _ instance: ManagerInstallInstanceStatus,
+        followUp: ManagedInstanceFollowUpAction
+    ) {
         activeInstanceUpdateInFlightId = instance.instanceId
         core.setManagerActiveInstallInstance(manager.id, instanceId: instance.instanceId) { success in
             activeInstanceUpdateInFlightId = nil
             guard success else { return }
-            action()
+            executeManagedInstanceFollowUp(followUp)
+        }
+    }
+
+    private func executeManagedInstanceFollowUp(_ followUp: ManagedInstanceFollowUpAction) {
+        switch followUp {
+        case .none:
+            return
+        case .update:
+            confirmAction = .update
+        case let .uninstall(allowUnknownProvenance):
+            requestManagerUninstallConfirmation(allowUnknownProvenance: allowUnknownProvenance)
         }
     }
 
