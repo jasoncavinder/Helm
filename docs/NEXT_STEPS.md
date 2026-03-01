@@ -93,6 +93,12 @@ Current checkpoint:
     - provenance score rank/threshold/margin/explainability finalization in `install_instances` now uses one shared helper path
     - external evidence context now supports generic keyed Homebrew prefix probes (`brew --prefix <formula>`) with lazy per-run caching, timeout bounds, and fail-closed behavior
     - Homebrew/rustup lifecycle routing helpers (`formula ownership`, `update strategy`, `uninstall strategy`) now live in `helm-core::manager_lifecycle` and are consumed by CLI/FFI wrappers
+  - multi-instance manager attention/override follow-up delivered on `dev`:
+    - manager status now includes shared multi-instance fields (`multi_instance_state`, `multi_instance_acknowledged`, `multi_instance_fingerprint`) in both CLI and FFI/XPC projections.
+    - persisted multi-instance acknowledgements are now keyed by manager and validated against deterministic install-set fingerprints so acknowledgements auto-clear when instance sets change.
+    - active managed install instance can now be explicitly switched by `instance_id` through shared core/FFI/service actions; switching clears stale acknowledgement.
+    - CLI/TUI parity now includes instance-level controls to acknowledge, clear acknowledgement, and set active instance (`helm managers instances ack|clear-ack|set-active` plus TUI keybindings).
+    - GUI inspector now surfaces multi-instance attention and acknowledgement banners with `Keep Multiple`/`Re-evaluate` actions, per-instance `Manage This Instance` actions, and attention health-state signaling when duplicate installs are unacknowledged.
   - post-`v0.17.7` mise provenance calibration follow-up delivered on `dev`:
     - `mise` install-instance classification now uses a dedicated adapter scorer (no longer Homebrew-formula-only), with explicit heuristics for Homebrew, script-installer (`~/.local/bin/mise`), cargo-home, npm-global `@jdxcode/mise`, MacPorts, Nix, system, and enterprise-managed prefixes.
     - ambiguous ownership paths now use bounded optional `brew --prefix mise` and `pkgutil --file-info` evidence as lazy scoring boosts (fail-closed) to avoid detection-pipeline blocking while improving provenance confidence.
