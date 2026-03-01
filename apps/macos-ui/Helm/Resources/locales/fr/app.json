@@ -455,5 +455,14 @@
   "app.inspector.confidence": "Confidence",
   "app.inspector.decision_margin": "Decision Margin",
   "app.inspector.explanation": "Explanation",
-  "app.inspector.competing_provenance": "Competing Provenance"
+  "app.inspector.competing_provenance": "Competing Provenance",
+  "app.inspector.install_source.existing_mise_binary_path": "Use Existing mise Binary",
+  "app.inspector.install_source.binary_path_placeholder_mise": "/path/to/mise",
+  "app.managers.uninstall.scope": "Uninstall scope",
+  "app.managers.uninstall.scope.manager_only": "Manager only",
+  "app.managers.uninstall.scope.full_cleanup": "Full cleanup",
+  "app.managers.uninstall.config": "Config files",
+  "app.managers.uninstall.config.required": "Choose config handling",
+  "app.managers.uninstall.config.keep": "Keep config files",
+  "app.managers.uninstall.config.remove": "Remove config files"
 }

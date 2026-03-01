@@ -974,6 +974,22 @@ extension HelmCore {
         allowUnknownProvenance: Bool = false,
         completion: @escaping (ManagerUninstallPreview?) -> Void
     ) {
+        previewManagerUninstall(
+            managerId,
+            options: ManagerUninstallActionOptions(
+                allowUnknownProvenance: allowUnknownProvenance,
+                miseCleanupMode: nil,
+                miseConfigRemoval: nil
+            ),
+            completion: completion
+        )
+    }
+
+    func previewManagerUninstall(
+        _ managerId: String,
+        options: ManagerUninstallActionOptions?,
+        completion: @escaping (ManagerUninstallPreview?) -> Void
+    ) {
         guard let svc = service() else {
             recordLastError(
                 source: "core.actions",
@@ -994,9 +1010,30 @@ extension HelmCore {
             managerId: managerId,
             taskType: "uninstall",
             operation: { timeoutCompletion in
-                svc.previewManagerUninstall(
+                let encodedOptions: String?
+                if let options {
+                    do {
+                        let data = try JSONEncoder().encode(options)
+                        encodedOptions = String(data: data, encoding: .utf8)
+                    } catch {
+                        logger.error(
+                            "previewManagerUninstall(\(managerId)) failed to encode options: \(error.localizedDescription)"
+                        )
+                        self.recordLastError(
+                            source: "core.actions",
+                            action: "previewManagerUninstall.options_encode_failed",
+                            managerId: managerId,
+                            taskType: "uninstall"
+                        )
+                        timeoutCompletion(nil)
+                        return
+                    }
+                } else {
+                    encodedOptions = nil
+                }
+                svc.previewManagerUninstallWithOptions(
                     managerId: managerId,
-                    allowUnknownProvenance: allowUnknownProvenance
+                    optionsJson: encodedOptions
                 ) { timeoutCompletion($0) }
             },
             fallback: String?.none
@@ -1081,6 +1118,17 @@ extension HelmCore {
     }
 
     func uninstallManager(_ managerId: String, allowUnknownProvenance: Bool = false) {
+        uninstallManager(
+            managerId,
+            options: ManagerUninstallActionOptions(
+                allowUnknownProvenance: allowUnknownProvenance,
+                miseCleanupMode: nil,
+                miseConfigRemoval: nil
+            )
+        )
+    }
+
+    func uninstallManager(_ managerId: String, options: ManagerUninstallActionOptions?) {
         if isManagerUninstalling(managerId) {
             return
         }
@@ -1103,9 +1151,30 @@ extension HelmCore {
             managerId: managerId,
             taskType: "uninstall",
             operation: { completion in
-                svc.uninstallManagerWithOptions(
+                let encodedOptions: String?
+                if let options {
+                    do {
+                        let data = try JSONEncoder().encode(options)
+                        encodedOptions = String(data: data, encoding: .utf8)
+                    } catch {
+                        logger.error(
+                            "uninstallManager(\(managerId)) failed to encode uninstall options: \(error.localizedDescription)"
+                        )
+                        self.recordLastError(
+                            source: "core.actions",
+                            action: "uninstallManager.options_encode_failed",
+                            managerId: managerId,
+                            taskType: "uninstall"
+                        )
+                        completion(-1)
+                        return
+                    }
+                } else {
+                    encodedOptions = nil
+                }
+                svc.uninstallManagerWithUninstallOptions(
                     managerId: managerId,
-                    allowUnknownProvenance: allowUnknownProvenance
+                    optionsJson: encodedOptions
                 ) { completion($0) }
         }, fallback: Int64(-1)) { [weak self] taskId in
             DispatchQueue.main.async {

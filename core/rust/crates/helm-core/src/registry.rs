@@ -317,20 +317,15 @@ const ALL_MANAGERS: [ManagerDescriptor; 28] = [
 ];
 
 const MISE_INSTALL_METHOD_IDS: &[&str] =
-    &["homebrew", "scriptInstaller", "macports", "cargoInstall"];
+    &["scriptInstaller", "homebrew", "macports", "cargoInstall"];
 const MISE_INSTALL_METHODS: &[ManagerInstallMethodSpec] = &[
     method_spec(
-        "homebrew",
+        "scriptInstaller",
         0,
-        Some(InstallMethodRecommendationReason::HelmPreferredDefault),
+        Some(InstallMethodRecommendationReason::UpstreamRecommended),
         InstallMethodPolicyTag::Allowed,
     ),
-    method_spec(
-        "scriptInstaller",
-        10,
-        None,
-        InstallMethodPolicyTag::ManagedRestricted,
-    ),
+    method_spec("homebrew", 10, None, InstallMethodPolicyTag::Allowed),
     method_spec(
         "macports",
         20,

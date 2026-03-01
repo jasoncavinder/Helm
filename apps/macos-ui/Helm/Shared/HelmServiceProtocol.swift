@@ -47,6 +47,11 @@ import Foundation
         allowUnknownProvenance: Bool,
         withReply reply: @escaping (String?) -> Void
     )
+    func previewManagerUninstallWithOptions(
+        managerId: String,
+        optionsJson: String?,
+        withReply reply: @escaping (String?) -> Void
+    )
     func installManagerWithOptions(
         managerId: String,
         optionsJson: String?,
@@ -58,6 +63,11 @@ import Foundation
     func uninstallManagerWithOptions(
         managerId: String,
         allowUnknownProvenance: Bool,
+        withReply reply: @escaping (Int64) -> Void
+    )
+    func uninstallManagerWithUninstallOptions(
+        managerId: String,
+        optionsJson: String?,
         withReply reply: @escaping (Int64) -> Void
     )
     func resetDatabase(withReply reply: @escaping (Bool) -> Void)

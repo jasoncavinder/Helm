@@ -56,6 +56,7 @@ pub enum ManagerUninstallRouteError {
     UnsupportedManager,
     AmbiguousProvenance,
     FormulaUnresolved,
+    InvalidOptions,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
@@ -65,10 +66,38 @@ pub enum RustupInstallSource {
     ExistingBinaryPath,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
+pub enum MiseInstallSource {
+    #[default]
+    OfficialDownload,
+    ExistingBinaryPath,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
+pub enum MiseUninstallCleanupMode {
+    #[default]
+    ManagerOnly,
+    FullCleanup,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MiseUninstallConfigRemoval {
+    KeepConfig,
+    RemoveConfig,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct ManagerInstallOptions {
     pub rustup_install_source: Option<RustupInstallSource>,
     pub rustup_binary_path: Option<String>,
+    pub mise_install_source: Option<MiseInstallSource>,
+    pub mise_binary_path: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub struct ManagerUninstallOptions {
+    pub mise_cleanup_mode: Option<MiseUninstallCleanupMode>,
+    pub mise_config_removal: Option<MiseUninstallConfigRemoval>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -84,6 +113,7 @@ pub enum ManagerInstallPlanError {
     UnsupportedManager,
     UnsupportedMethod,
     InvalidRustupBinaryPath,
+    InvalidMiseBinaryPath,
 }
 
 pub fn plan_manager_install(
@@ -91,14 +121,15 @@ pub fn plan_manager_install(
     selected_method: Option<&str>,
     options: &ManagerInstallOptions,
 ) -> Result<ManagerInstallPlan, ManagerInstallPlanError> {
+    let selected_method = effective_manager_install_method(manager, selected_method, options);
     match manager {
-        ManagerId::Mise => {
-            if matches!(selected_method, Some("homebrew") | None) {
-                Ok(homebrew_manager_install_plan("mise"))
-            } else {
-                Err(ManagerInstallPlanError::UnsupportedMethod)
-            }
-        }
+        ManagerId::Mise => match selected_method {
+            Some("homebrew") => Ok(homebrew_manager_install_plan("mise")),
+            Some("scriptInstaller") | None => Ok(mise_manager_install_plan(options)?),
+            Some("macports") => Ok(package_manager_install_plan(ManagerId::MacPorts, "mise")),
+            Some("cargoInstall") => Ok(package_manager_install_plan(ManagerId::Cargo, "mise")),
+            Some(_) => Err(ManagerInstallPlanError::UnsupportedMethod),
+        },
         ManagerId::Asdf => {
             if matches!(selected_method, Some("homebrew") | None) {
                 Ok(homebrew_manager_install_plan("asdf"))
@@ -123,6 +154,29 @@ pub fn plan_manager_install(
             Some(_) => Err(ManagerInstallPlanError::UnsupportedMethod),
         },
         _ => Err(ManagerInstallPlanError::UnsupportedManager),
+    }
+}
+
+fn effective_manager_install_method<'a>(
+    manager: ManagerId,
+    selected_method: Option<&'a str>,
+    options: &ManagerInstallOptions,
+) -> Option<&'a str> {
+    match manager {
+        // Explicit install-source options are request-scoped intent and take precedence over any
+        // persisted selection. This prevents stale preferences from routing install tasks through
+        // the wrong manager/label.
+        ManagerId::Mise
+            if options.mise_install_source.is_some() || options.mise_binary_path.is_some() =>
+        {
+            Some("scriptInstaller")
+        }
+        ManagerId::Rustup
+            if options.rustup_install_source.is_some() || options.rustup_binary_path.is_some() =>
+        {
+            Some("rustupInstaller")
+        }
+        _ => selected_method,
     }
 }
 
@@ -193,6 +247,80 @@ pub fn plan_manager_uninstall_route(
     allow_unknown_provenance: bool,
     preview_only: bool,
 ) -> Result<ManagerUninstallRoutePlan, ManagerUninstallRouteError> {
+    plan_manager_uninstall_route_with_options(
+        manager,
+        active_instance,
+        allow_unknown_provenance,
+        preview_only,
+        &ManagerUninstallOptions::default(),
+    )
+}
+
+pub fn plan_manager_uninstall_route_with_options(
+    manager: ManagerId,
+    active_instance: Option<&ManagerInstallInstance>,
+    allow_unknown_provenance: bool,
+    preview_only: bool,
+    options: &ManagerUninstallOptions,
+) -> Result<ManagerUninstallRoutePlan, ManagerUninstallRouteError> {
+    if manager == ManagerId::Mise {
+        let resolution = resolve_mise_uninstall_strategy(
+            active_instance,
+            allow_unknown_provenance,
+            preview_only,
+        )
+        .map_err(|_| ManagerUninstallRouteError::AmbiguousProvenance)?;
+        let (target_manager, request) = match resolution.target {
+            MiseUninstallTarget::HomebrewFormula => (
+                ManagerId::HomebrewFormula,
+                AdapterRequest::Uninstall(UninstallRequest {
+                    package: PackageRef {
+                        manager: ManagerId::HomebrewFormula,
+                        name: "mise".to_string(),
+                    },
+                }),
+            ),
+            MiseUninstallTarget::MacPortsPort => (
+                ManagerId::MacPorts,
+                AdapterRequest::Uninstall(UninstallRequest {
+                    package: PackageRef {
+                        manager: ManagerId::MacPorts,
+                        name: "mise".to_string(),
+                    },
+                }),
+            ),
+            MiseUninstallTarget::SelfManaged | MiseUninstallTarget::ReadOnly => {
+                let package_name = mise_uninstall_package_name(options)
+                    .ok_or(ManagerUninstallRouteError::InvalidOptions)?;
+                (
+                    ManagerId::Mise,
+                    AdapterRequest::Uninstall(UninstallRequest {
+                        package: PackageRef {
+                            manager: ManagerId::Mise,
+                            name: package_name,
+                        },
+                    }),
+                )
+            }
+        };
+
+        if matches!(
+            resolution.target,
+            MiseUninstallTarget::HomebrewFormula | MiseUninstallTarget::MacPortsPort
+        ) && !mise_uninstall_options_are_default(options)
+        {
+            return Err(ManagerUninstallRouteError::InvalidOptions);
+        }
+
+        return Ok(ManagerUninstallRoutePlan {
+            target_manager,
+            request,
+            strategy: resolution.strategy,
+            unknown_override_required: resolution.unknown_override_required,
+            used_unknown_override: resolution.used_unknown_override,
+        });
+    }
+
     if manager == ManagerId::Rustup {
         let resolution = resolve_rustup_uninstall_strategy(
             active_instance,
@@ -325,6 +453,48 @@ fn homebrew_manager_install_plan(formula_name: &'static str) -> ManagerInstallPl
     }
 }
 
+fn package_manager_install_plan(
+    target_manager: ManagerId,
+    package_name: &'static str,
+) -> ManagerInstallPlan {
+    ManagerInstallPlan {
+        target_manager,
+        request: AdapterRequest::Install(InstallRequest {
+            package: PackageRef {
+                manager: target_manager,
+                name: package_name.to_string(),
+            },
+            version: None,
+        }),
+        label_key: "service.task.label.install.package",
+        label_args: vec![
+            ("package", package_name.to_string()),
+            ("manager", target_manager.as_str().to_string()),
+        ],
+    }
+}
+
+fn mise_manager_install_plan(
+    options: &ManagerInstallOptions,
+) -> Result<ManagerInstallPlan, ManagerInstallPlanError> {
+    let version = mise_install_request_version(options)?;
+    Ok(ManagerInstallPlan {
+        target_manager: ManagerId::Mise,
+        request: AdapterRequest::Install(InstallRequest {
+            package: PackageRef {
+                manager: ManagerId::Mise,
+                name: "__self__".to_string(),
+            },
+            version,
+        }),
+        label_key: "service.task.label.install.package",
+        label_args: vec![
+            ("package", "mise".to_string()),
+            ("manager", "mise".to_string()),
+        ],
+    })
+}
+
 fn rustup_manager_install_plan(
     options: &ManagerInstallOptions,
 ) -> Result<ManagerInstallPlan, ManagerInstallPlanError> {
@@ -344,6 +514,29 @@ fn rustup_manager_install_plan(
             ("manager", "rustup".to_string()),
         ],
     })
+}
+
+fn mise_install_request_version(
+    options: &ManagerInstallOptions,
+) -> Result<Option<String>, ManagerInstallPlanError> {
+    let source = options
+        .mise_install_source
+        .unwrap_or(MiseInstallSource::OfficialDownload);
+    match source {
+        MiseInstallSource::OfficialDownload => Ok(Some("scriptInstaller:officialDownload".into())),
+        MiseInstallSource::ExistingBinaryPath => {
+            let path = options
+                .mise_binary_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or(ManagerInstallPlanError::InvalidMiseBinaryPath)?;
+            if !Path::new(path).is_absolute() {
+                return Err(ManagerInstallPlanError::InvalidMiseBinaryPath);
+            }
+            Ok(Some(format!("scriptInstaller:existingBinaryPath:{path}")))
+        }
+    }
 }
 
 fn rustup_install_request_version(
@@ -366,6 +559,117 @@ fn rustup_install_request_version(
     }
 }
 
+fn mise_uninstall_options_are_default(options: &ManagerUninstallOptions) -> bool {
+    options.mise_cleanup_mode.is_none() && options.mise_config_removal.is_none()
+}
+
+fn mise_uninstall_package_name(options: &ManagerUninstallOptions) -> Option<String> {
+    let cleanup_mode = options
+        .mise_cleanup_mode
+        .unwrap_or(MiseUninstallCleanupMode::ManagerOnly);
+    match cleanup_mode {
+        MiseUninstallCleanupMode::ManagerOnly => {
+            if options.mise_config_removal.is_some() {
+                return None;
+            }
+            Some("__self__".to_string())
+        }
+        MiseUninstallCleanupMode::FullCleanup => match options.mise_config_removal {
+            Some(MiseUninstallConfigRemoval::KeepConfig) => {
+                Some("__self__:fullCleanup:keepConfig".to_string())
+            }
+            Some(MiseUninstallConfigRemoval::RemoveConfig) => {
+                Some("__self__:fullCleanup:removeConfig".to_string())
+            }
+            None => None,
+        },
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MiseUninstallTarget {
+    HomebrewFormula,
+    MacPortsPort,
+    SelfManaged,
+    ReadOnly,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct MiseUninstallResolution {
+    target: MiseUninstallTarget,
+    strategy: StrategyKind,
+    unknown_override_required: bool,
+    used_unknown_override: bool,
+}
+
+fn resolve_mise_uninstall_strategy(
+    active_instance: Option<&ManagerInstallInstance>,
+    allow_unknown_provenance: bool,
+    preview_only: bool,
+) -> Result<MiseUninstallResolution, UninstallStrategyResolutionError> {
+    let Some(instance) = active_instance else {
+        return Ok(MiseUninstallResolution {
+            target: MiseUninstallTarget::SelfManaged,
+            strategy: StrategyKind::InteractivePrompt,
+            unknown_override_required: false,
+            used_unknown_override: false,
+        });
+    };
+
+    match instance.provenance {
+        InstallProvenance::Homebrew => Ok(MiseUninstallResolution {
+            target: MiseUninstallTarget::HomebrewFormula,
+            strategy: StrategyKind::HomebrewFormula,
+            unknown_override_required: false,
+            used_unknown_override: false,
+        }),
+        InstallProvenance::Macports => Ok(MiseUninstallResolution {
+            target: MiseUninstallTarget::MacPortsPort,
+            strategy: StrategyKind::InteractivePrompt,
+            unknown_override_required: false,
+            used_unknown_override: false,
+        }),
+        InstallProvenance::System
+        | InstallProvenance::EnterpriseManaged
+        | InstallProvenance::Nix => Ok(MiseUninstallResolution {
+            target: MiseUninstallTarget::ReadOnly,
+            strategy: StrategyKind::ReadOnly,
+            unknown_override_required: false,
+            used_unknown_override: false,
+        }),
+        InstallProvenance::Unknown => {
+            if allow_unknown_provenance {
+                return Ok(MiseUninstallResolution {
+                    target: MiseUninstallTarget::SelfManaged,
+                    strategy: StrategyKind::InteractivePrompt,
+                    unknown_override_required: true,
+                    used_unknown_override: true,
+                });
+            }
+
+            if preview_only {
+                return Ok(MiseUninstallResolution {
+                    target: MiseUninstallTarget::SelfManaged,
+                    strategy: StrategyKind::InteractivePrompt,
+                    unknown_override_required: true,
+                    used_unknown_override: false,
+                });
+            }
+
+            Err(UninstallStrategyResolutionError::AmbiguousProvenance)
+        }
+        InstallProvenance::SourceBuild
+        | InstallProvenance::Asdf
+        | InstallProvenance::Mise
+        | InstallProvenance::RustupInit => Ok(MiseUninstallResolution {
+            target: MiseUninstallTarget::SelfManaged,
+            strategy: StrategyKind::InteractivePrompt,
+            unknown_override_required: false,
+            used_unknown_override: false,
+        }),
+    }
+}
+
 pub fn build_update_request(
     plan: &ManagerUpdatePlan,
     homebrew_package_name: Option<String>,
@@ -383,6 +687,14 @@ pub fn build_update_request(
             Some(AdapterRequest::Upgrade(UpgradeRequest {
                 package: Some(PackageRef {
                     manager: ManagerId::Rustup,
+                    name: "__self__".to_string(),
+                }),
+            }))
+        }
+        (ManagerUpdateTarget::ManagerSelf, ManagerId::Mise) => {
+            Some(AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Mise,
                     name: "__self__".to_string(),
                 }),
             }))
@@ -616,9 +928,12 @@ fn rustup_instance_path_looks_homebrew(instance: &ManagerInstallInstance) -> boo
 #[cfg(test)]
 mod tests {
     use super::{
-        ManagerInstallOptions, ManagerInstallPlanError, RustupInstallSource,
-        UpdateStrategyResolutionError, manager_homebrew_formula_name, plan_manager_install,
-        resolve_homebrew_manager_update_strategy, resolve_rustup_uninstall_strategy,
+        ManagerInstallOptions, ManagerInstallPlanError, ManagerUninstallOptions,
+        ManagerUninstallRouteError, MiseInstallSource, MiseUninstallCleanupMode,
+        MiseUninstallConfigRemoval, RustupInstallSource, UpdateStrategyResolutionError,
+        manager_homebrew_formula_name, plan_manager_install,
+        plan_manager_uninstall_route_with_options, resolve_homebrew_manager_update_strategy,
+        resolve_rustup_uninstall_strategy,
     };
     use crate::models::{
         AutomationLevel, InstallInstanceIdentityKind, InstallProvenance, ManagerId,
@@ -684,6 +999,7 @@ mod tests {
             &ManagerInstallOptions {
                 rustup_install_source: Some(RustupInstallSource::ExistingBinaryPath),
                 rustup_binary_path: Some("/tmp/rustup-init".to_string()),
+                ..ManagerInstallOptions::default()
             },
         )
         .expect("rustup install plan should support existing binary source");
@@ -706,10 +1022,97 @@ mod tests {
             &ManagerInstallOptions {
                 rustup_install_source: Some(RustupInstallSource::ExistingBinaryPath),
                 rustup_binary_path: Some("   ".to_string()),
+                ..ManagerInstallOptions::default()
             },
         )
         .expect_err("blank rustup binary path should fail");
         assert_eq!(error, ManagerInstallPlanError::InvalidRustupBinaryPath);
+    }
+
+    #[test]
+    fn manager_install_plan_defaults_mise_to_script_installer() {
+        let plan = plan_manager_install(ManagerId::Mise, None, &ManagerInstallOptions::default())
+            .expect("mise install plan should resolve");
+        assert_eq!(plan.target_manager, ManagerId::Mise);
+        match plan.request {
+            crate::adapters::AdapterRequest::Install(install) => {
+                assert_eq!(install.package.manager, ManagerId::Mise);
+                assert_eq!(install.package.name, "__self__");
+                assert_eq!(
+                    install.version.as_deref(),
+                    Some("scriptInstaller:officialDownload")
+                );
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn manager_install_plan_supports_mise_existing_binary_path() {
+        let plan = plan_manager_install(
+            ManagerId::Mise,
+            Some("scriptInstaller"),
+            &ManagerInstallOptions {
+                mise_install_source: Some(MiseInstallSource::ExistingBinaryPath),
+                mise_binary_path: Some("/tmp/mise".to_string()),
+                ..ManagerInstallOptions::default()
+            },
+        )
+        .expect("mise existing binary install should resolve");
+        match plan.request {
+            crate::adapters::AdapterRequest::Install(install) => {
+                assert_eq!(
+                    install.version.as_deref(),
+                    Some("scriptInstaller:existingBinaryPath:/tmp/mise")
+                );
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn manager_install_plan_prefers_mise_options_over_stale_homebrew_selection() {
+        let plan = plan_manager_install(
+            ManagerId::Mise,
+            Some("homebrew"),
+            &ManagerInstallOptions {
+                mise_install_source: Some(MiseInstallSource::OfficialDownload),
+                ..ManagerInstallOptions::default()
+            },
+        )
+        .expect("mise install options should override stale selected method");
+        assert_eq!(plan.target_manager, ManagerId::Mise);
+        match plan.request {
+            crate::adapters::AdapterRequest::Install(install) => {
+                assert_eq!(install.package.manager, ManagerId::Mise);
+                assert_eq!(
+                    install.version.as_deref(),
+                    Some("scriptInstaller:officialDownload")
+                );
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn manager_install_plan_prefers_rustup_options_over_stale_homebrew_selection() {
+        let plan = plan_manager_install(
+            ManagerId::Rustup,
+            Some("homebrew"),
+            &ManagerInstallOptions {
+                rustup_install_source: Some(RustupInstallSource::OfficialDownload),
+                ..ManagerInstallOptions::default()
+            },
+        )
+        .expect("rustup install options should override stale selected method");
+        assert_eq!(plan.target_manager, ManagerId::Rustup);
+        match plan.request {
+            crate::adapters::AdapterRequest::Install(install) => {
+                assert_eq!(install.package.manager, ManagerId::Rustup);
+                assert_eq!(install.version.as_deref(), Some("officialDownload"));
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
     }
 
     #[test]
@@ -728,5 +1131,59 @@ mod tests {
         let error = resolve_homebrew_manager_update_strategy(Some(&instance))
             .expect_err("read-only should block updates");
         assert_eq!(error, UpdateStrategyResolutionError::ReadOnly);
+    }
+
+    #[test]
+    fn mise_uninstall_full_cleanup_requires_explicit_config_choice() {
+        let error = plan_manager_uninstall_route_with_options(
+            ManagerId::Mise,
+            None,
+            false,
+            false,
+            &ManagerUninstallOptions {
+                mise_cleanup_mode: Some(MiseUninstallCleanupMode::FullCleanup),
+                mise_config_removal: None,
+            },
+        )
+        .expect_err("full cleanup should require config selection");
+        assert_eq!(error, ManagerUninstallRouteError::InvalidOptions);
+    }
+
+    #[test]
+    fn mise_uninstall_manager_only_rejects_config_choice() {
+        let error = plan_manager_uninstall_route_with_options(
+            ManagerId::Mise,
+            None,
+            false,
+            false,
+            &ManagerUninstallOptions {
+                mise_cleanup_mode: Some(MiseUninstallCleanupMode::ManagerOnly),
+                mise_config_removal: Some(MiseUninstallConfigRemoval::RemoveConfig),
+            },
+        )
+        .expect_err("manager-only uninstall should not accept config removal options");
+        assert_eq!(error, ManagerUninstallRouteError::InvalidOptions);
+    }
+
+    #[test]
+    fn mise_uninstall_full_cleanup_routes_self_request_with_mode_suffix() {
+        let route = plan_manager_uninstall_route_with_options(
+            ManagerId::Mise,
+            None,
+            false,
+            false,
+            &ManagerUninstallOptions {
+                mise_cleanup_mode: Some(MiseUninstallCleanupMode::FullCleanup),
+                mise_config_removal: Some(MiseUninstallConfigRemoval::KeepConfig),
+            },
+        )
+        .expect("full cleanup with config choice should route");
+        match route.request {
+            crate::adapters::AdapterRequest::Uninstall(uninstall) => {
+                assert_eq!(uninstall.package.manager, ManagerId::Mise);
+                assert_eq!(uninstall.package.name, "__self__:fullCleanup:keepConfig");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
     }
 }

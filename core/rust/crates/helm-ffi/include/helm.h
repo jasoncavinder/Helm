@@ -303,7 +303,7 @@ bool helm_set_manager_timeout_profile(const char *manager_id,
  * Install a manager tool. Returns the task ID, or -1 on error.
  *
  * Supported manager IDs:
- * - "mise" -> Homebrew
+ * - "mise" -> script installer (default), Homebrew, MacPorts, or cargo install
  * - "asdf" -> Homebrew
  * - "mas" -> Homebrew
  * - "rustup" -> rustup-init (default) or Homebrew, based on selected install method
@@ -318,14 +318,16 @@ int64_t helm_install_manager(const char *manager_id);
  * Install a manager tool with optional JSON options. Returns the task ID, or -1 on error.
  *
  * Supported manager IDs:
- * - "mise" -> Homebrew
+ * - "mise" -> script installer (default), Homebrew, MacPorts, or cargo install
  * - "asdf" -> Homebrew
  * - "mas" -> Homebrew
  * - "rustup" -> rustup-init (default) or Homebrew, based on selected install method
  *
- * Supported options (when selected method is `rustupInstaller`):
+ * Supported options (method-specific):
  * - `rustupInstallSource`: `officialDownload` (default) or `existingBinaryPath`
  * - `rustupBinaryPath`: absolute path used when `rustupInstallSource=existingBinaryPath`
+ * - `miseInstallSource`: `officialDownload` (default) or `existingBinaryPath`
+ * - `miseBinaryPath`: absolute path used when `miseInstallSource=existingBinaryPath`
  *
  * # Safety
  *
@@ -380,6 +382,21 @@ int64_t helm_uninstall_manager(const char *manager_id);
 char *helm_preview_manager_uninstall(const char *manager_id, bool allow_unknown_provenance);
 
 /**
+ * Preview manager uninstall blast radius and strategy as JSON with structured options.
+ *
+ * `options_json` supports:
+ * - `allowUnknownProvenance` (bool)
+ * - `miseCleanupMode` (`managerOnly` | `fullCleanup`)
+ * - `miseConfigRemoval` (`keepConfig` | `removeConfig`)
+ *
+ * # Safety
+ *
+ * `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ * `options_json` must be null or a valid pointer to a NUL-terminated UTF-8 JSON string.
+ */
+char *helm_preview_manager_uninstall_with_options(const char *manager_id, const char *options_json);
+
+/**
  * Uninstall a manager tool. Returns the task ID, or -1 on error.
  *
  * Supported manager IDs include rustup and Homebrew-routed manager adapters where
@@ -393,6 +410,22 @@ char *helm_preview_manager_uninstall(const char *manager_id, bool allow_unknown_
  * `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
  */
 int64_t helm_uninstall_manager_with_options(const char *manager_id, bool allow_unknown_provenance);
+
+/**
+ * Uninstall a manager tool with structured options. Returns the task ID, or -1 on error.
+ *
+ * `options_json` supports:
+ * - `allowUnknownProvenance` (bool)
+ * - `miseCleanupMode` (`managerOnly` | `fullCleanup`)
+ * - `miseConfigRemoval` (`keepConfig` | `removeConfig`)
+ *
+ * # Safety
+ *
+ * `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ * `options_json` must be null or a valid pointer to a NUL-terminated UTF-8 JSON string.
+ */
+int64_t helm_uninstall_manager_with_uninstall_options(const char *manager_id,
+                                                      const char *options_json);
 
 /**
  * Reset the database by rolling back all migrations and re-applying them.
