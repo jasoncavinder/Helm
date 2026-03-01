@@ -1456,31 +1456,11 @@ private struct InspectorManagerDetailView: View {
     }
 
     private func requiresManagerDependency(_ provenance: String) -> Bool {
-        switch provenance {
-        case "homebrew", "macports", "nix", "asdf":
-            return true
-        case "mise":
-            return manager.id != "mise"
-        default:
-            return false
-        }
+        ManagerDependencyResolver.dependencyManagerId(for: manager.id, provenance: provenance) != nil
     }
 
     private func provenanceDependencyManagerId(_ provenance: String) -> String? {
-        switch normalizedProvenance(provenance) {
-        case "homebrew":
-            return "homebrew_formula"
-        case "macports":
-            return "macports"
-        case "nix":
-            return "nix_darwin"
-        case "asdf":
-            return "asdf"
-        case "mise":
-            return manager.id == "mise" ? nil : "mise"
-        default:
-            return nil
-        }
+        ManagerDependencyResolver.dependencyManagerId(for: manager.id, provenance: provenance)
     }
 
     private var multiInstanceState: String {

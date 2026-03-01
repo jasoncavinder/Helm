@@ -99,6 +99,11 @@ Current checkpoint:
     - active managed install instance can now be explicitly switched by `instance_id` through shared core/FFI/service actions; switching clears stale acknowledgement.
     - CLI/TUI parity now includes instance-level controls to acknowledge, clear acknowledgement, and set active instance (`helm managers instances ack|clear-ack|set-active` plus TUI keybindings).
     - GUI inspector now surfaces multi-instance attention and acknowledgement banners with `Keep Multiple`/`Re-evaluate` actions, per-instance `Manage This Instance` actions, and attention health-state signaling when duplicate installs are unacknowledged.
+  - manager dependency enablement-guard follow-up delivered on `dev`:
+    - provenance dependency mapping now resolves through shared core helpers (`manager_dependencies`) reused by runtime recommendation ordering and enable/disable policy checks.
+    - disabling a manager now hard-blocks when enabled dependent managers currently rely on it, with parity enforcement in CLI/TUI flows and FFI service calls.
+    - GUI Managers toggles now preflight dependency transitions and present explicit alerts: disable-block reasons with dependent manager list, and enable-child confirmation that also enables the required parent manager.
+    - service localization now includes explicit dependency-block error messaging for manager enablement failures surfaced through XPC/FFI.
   - post-`v0.17.7` mise provenance calibration follow-up delivered on `dev`:
     - `mise` install-instance classification now uses a dedicated adapter scorer (no longer Homebrew-formula-only), with explicit heuristics for Homebrew, script-installer (`~/.local/bin/mise`), cargo-home, npm-global `@jdxcode/mise`, MacPorts, Nix, system, and enterprise-managed prefixes.
     - ambiguous ownership paths now use bounded optional `brew --prefix mise` and `pkgutil --file-info` evidence as lazy scoring boosts (fail-closed) to avoid detection-pipeline blocking while improving provenance confidence.

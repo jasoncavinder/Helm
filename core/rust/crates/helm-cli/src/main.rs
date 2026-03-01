@@ -35,6 +35,7 @@ use helm_core::execution::{
 use helm_core::managed_automation_policy::{
     ManagedAutomationPolicyMode, apply_managed_automation_policy,
 };
+use helm_core::manager_dependencies::provenance_dependency_manager;
 use helm_core::manager_instances::{install_instance_fingerprint, resolve_multi_instance_state};
 use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
@@ -3512,6 +3513,21 @@ fn cmd_managers(
                     );
                     let code = eligibility.reason_code.unwrap_or("manager.ineligible");
                     return Err(format!("{reason} (reason_code={code})"));
+                }
+            } else {
+                let enabled_map = manager_enabled_map(store.as_ref())?;
+                let dependents =
+                    enabled_dependents_for_manager(store.as_ref(), &enabled_map, manager_id)?;
+                if !dependents.is_empty() {
+                    return Err(format!(
+                        "cannot disable manager '{}': enabled managers depend on it ({})",
+                        manager_id.as_str(),
+                        dependents
+                            .iter()
+                            .map(|id| id.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
                 }
             }
             store
@@ -9723,6 +9739,55 @@ fn manager_enabled_map(store: &SqliteStore) -> Result<HashMap<ManagerId, bool>, 
         map.insert(manager, configured_enabled && eligibility.is_eligible);
     }
     Ok(map)
+}
+
+fn active_install_instances_by_manager(
+    store: &SqliteStore,
+) -> Result<HashMap<ManagerId, ManagerInstallInstance>, String> {
+    let mut grouped: HashMap<ManagerId, Vec<ManagerInstallInstance>> = HashMap::new();
+    for instance in store
+        .list_install_instances(None)
+        .map_err(|error| format!("failed to list manager install instances: {error}"))?
+    {
+        grouped.entry(instance.manager).or_default().push(instance);
+    }
+
+    let mut active = HashMap::new();
+    for (manager, mut instances) in grouped {
+        instances.sort_by(|left, right| {
+            if left.is_active != right.is_active {
+                return right.is_active.cmp(&left.is_active);
+            }
+            left.instance_id.cmp(&right.instance_id)
+        });
+        if let Some(instance) = instances.into_iter().next() {
+            active.insert(manager, instance);
+        }
+    }
+
+    Ok(active)
+}
+
+fn enabled_dependents_for_manager(
+    store: &SqliteStore,
+    enabled_map: &HashMap<ManagerId, bool>,
+    manager: ManagerId,
+) -> Result<Vec<ManagerId>, String> {
+    let active_instances = active_install_instances_by_manager(store)?;
+    let mut dependents = Vec::new();
+    for candidate in ManagerId::ALL {
+        if candidate == manager || !enabled_map.get(&candidate).copied().unwrap_or(true) {
+            continue;
+        }
+        let Some(instance) = active_instances.get(&candidate) else {
+            continue;
+        };
+        if provenance_dependency_manager(candidate, instance.provenance) == Some(manager) {
+            dependents.push(candidate);
+        }
+    }
+    dependents.sort_by_key(|id| id.as_str());
+    Ok(dependents)
 }
 
 fn apply_manager_enablement_self_heal(store: &SqliteStore) -> Result<(), String> {

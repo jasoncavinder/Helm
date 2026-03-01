@@ -47,3 +47,43 @@ func localizedManagerDisplayName(_ managerId: String) -> String {
         return managerId.replacingOccurrences(of: "_", with: " ").capitalized
     }
 }
+
+enum ManagerDependencyResolver {
+    static func dependencyManagerId(for managerId: String, provenance: String?) -> String? {
+        let normalized = normalizedProvenance(provenance)
+        switch normalized {
+        case "homebrew":
+            return "homebrew_formula"
+        case "macports":
+            return "macports"
+        case "nix":
+            return "nix_darwin"
+        case "asdf":
+            return "asdf"
+        case "mise":
+            return managerId == "mise" ? nil : "mise"
+        default:
+            return nil
+        }
+    }
+
+    static func enabledDependents(
+        of managerId: String,
+        statuses: [String: ManagerStatus]
+    ) -> [String] {
+        statuses.values
+            .filter { status in
+                status.managerId != managerId &&
+                    status.enabled &&
+                    dependencyManagerId(for: status.managerId, provenance: status.activeProvenance) == managerId
+            }
+            .map(\.managerId)
+            .sorted()
+    }
+
+    private static func normalizedProvenance(_ value: String?) -> String {
+        value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+    }
+}

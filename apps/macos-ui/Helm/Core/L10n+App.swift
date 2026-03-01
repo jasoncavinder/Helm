@@ -146,6 +146,10 @@ extension L10n {
                 static let updateMessage = "app.managers.alert.update.message"
                 static let uninstallTitle = "app.managers.alert.uninstall.title"
                 static let uninstallMessage = "app.managers.alert.uninstall.message"
+                static let disableBlockedTitle = "app.managers.alert.disable_blocked.title"
+                static let disableBlockedMessage = "app.managers.alert.disable_blocked.message"
+                static let enableRequiresParentTitle = "app.managers.alert.enable_requires_parent.title"
+                static let enableRequiresParentMessage = "app.managers.alert.enable_requires_parent.message"
             }
             struct Uninstall {
                 struct Details {

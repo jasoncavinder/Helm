@@ -143,6 +143,7 @@ use helm_core::execution::{
 use helm_core::managed_automation_policy::{
     ManagedAutomationPolicyMode, apply_managed_automation_policy,
 };
+use helm_core::manager_dependencies::provenance_dependency_manager;
 use helm_core::manager_instances::{install_instance_fingerprint, resolve_multi_instance_state};
 use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
@@ -191,6 +192,7 @@ const SERVICE_ERROR_INTERNAL: &str = "service.error.internal";
 const SERVICE_ERROR_PROCESS_FAILURE: &str = "service.error.process_failure";
 const SERVICE_ERROR_STORAGE_FAILURE: &str = "service.error.storage_failure";
 const SERVICE_ERROR_UNSUPPORTED_CAPABILITY: &str = "service.error.unsupported_capability";
+const SERVICE_ERROR_MANAGER_DEPENDENCY_BLOCKED: &str = "service.error.manager_dependency_blocked";
 
 fn note_lock_poisoned(context: &str) {
     eprintln!("helm-ffi: recovering from poisoned mutex: {context}");
@@ -1878,6 +1880,55 @@ fn manager_is_enabled(
     manager: ManagerId,
 ) -> bool {
     enabled_by_manager.get(&manager).copied().unwrap_or(true)
+}
+
+fn active_install_instances_by_manager(
+    store: &SqliteStore,
+) -> std::collections::HashMap<ManagerId, ManagerInstallInstance> {
+    let mut grouped: std::collections::HashMap<ManagerId, Vec<ManagerInstallInstance>> =
+        std::collections::HashMap::new();
+    if let Ok(instances) = store.list_install_instances(None) {
+        for instance in instances {
+            grouped.entry(instance.manager).or_default().push(instance);
+        }
+    }
+
+    let mut active = std::collections::HashMap::new();
+    for (manager, mut instances) in grouped {
+        instances.sort_by(|left, right| {
+            if left.is_active != right.is_active {
+                return right.is_active.cmp(&left.is_active);
+            }
+            left.instance_id.cmp(&right.instance_id)
+        });
+        if let Some(instance) = instances.into_iter().next() {
+            active.insert(manager, instance);
+        }
+    }
+    active
+}
+
+fn enabled_dependents_for_manager(
+    store: &SqliteStore,
+    enabled_by_manager: &std::collections::HashMap<ManagerId, bool>,
+    manager: ManagerId,
+) -> Vec<ManagerId> {
+    let active_instances = active_install_instances_by_manager(store);
+    let mut dependents = Vec::new();
+    for candidate in ManagerId::ALL {
+        if candidate == manager || !manager_is_enabled(enabled_by_manager, candidate) {
+            continue;
+        }
+        let Some(instance) = active_instances.get(&candidate) else {
+            continue;
+        };
+        if provenance_dependency_manager(candidate, instance.provenance) == Some(manager) {
+            dependents.push(candidate);
+        }
+    }
+
+    dependents.sort_by_key(|id| id.as_str());
+    dependents
 }
 
 fn has_recent_refresh_or_detection(
@@ -6647,6 +6698,23 @@ pub unsafe extern "C" fn helm_set_manager_enabled(
                     .service_error_key
                     .unwrap_or(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
             );
+        }
+    } else {
+        let enabled_by_manager = manager_enabled_map(store.as_ref());
+        let dependents =
+            enabled_dependents_for_manager(store.as_ref(), &enabled_by_manager, manager);
+        if !dependents.is_empty() {
+            let dependent_ids = dependents
+                .iter()
+                .map(|id| id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            eprintln!(
+                "helm-ffi: blocked disabling '{}' because enabled dependents rely on it: {}",
+                manager.as_str(),
+                dependent_ids
+            );
+            return return_error_bool(SERVICE_ERROR_MANAGER_DEPENDENCY_BLOCKED);
         }
     }
 

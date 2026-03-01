@@ -450,7 +450,7 @@
   "app.settings.cli.message.bundle_unavailable": "Bundled Helm CLI is unavailable in this app build.",
   "app.settings.cli.message.existing_install_conflict": "A non-Helm executable already exists at ~/.local/bin/helm. Remove it first.",
   "app.settings.cli.message.remove_blocked_not_managed": "Refusing to remove ~/.local/bin/helm because it is not a Helm-managed shim.",
-  "app.inspector.install_instance_count": "Install Instances",
+  "app.inspector.install_instance_count": "Installed Instances",
   "app.inspector.provenance": "Provenance",
   "app.inspector.confidence": "Confidence",
   "app.inspector.decision_margin": "Decision Margin",
@@ -471,5 +471,9 @@
   "app.managers.uninstall.config": "Config files",
   "app.managers.uninstall.config.required": "Choose config handling",
   "app.managers.uninstall.config.keep": "Keep config files",
-  "app.managers.uninstall.config.remove": "Remove config files"
+  "app.managers.uninstall.config.remove": "Remove config files",
+  "app.managers.alert.disable_blocked.title": "Cannot Disable {manager}",
+  "app.managers.alert.disable_blocked.message": "{manager} cannot be disabled because these enabled managers currently depend on it: {dependents}.",
+  "app.managers.alert.enable_requires_parent.title": "Enable {manager}?",
+  "app.managers.alert.enable_requires_parent.message": "{manager} depends on {parent}. Enabling {manager} will also enable {parent}."
 }

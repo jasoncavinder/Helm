@@ -30,14 +30,15 @@ use super::{
     cancel_inflight_tasks_for_manager, channel_managed_check_status,
     clear_manager_multi_instance_ack, coordinator_cancel_task, coordinator_start_workflow,
     coordinator_submit_request, current_cli_version, database_path, detect_install_provenance,
-    direct_update_apply, direct_update_check_status, env_flag_enabled, is_running_as_root,
-    list_installed_for_enabled, list_manager_install_instances, list_managers,
-    list_outdated_for_enabled, list_tasks_for_enabled, manager_enabled_map,
-    manager_enablement_eligibility_for_store, manager_executable_status,
-    manager_install_methods_status, manager_priority_entries, provenance_can_self_update,
-    provenance_recommended_action, resolve_install_method_override_for_tui,
-    search_local_for_enabled, set_manager_active_install_instance, set_manager_priority_rank,
-    task_log_to_cli_record, task_to_cli_task, write_setting,
+    direct_update_apply, direct_update_check_status, enabled_dependents_for_manager,
+    env_flag_enabled, is_running_as_root, list_installed_for_enabled,
+    list_manager_install_instances, list_managers, list_outdated_for_enabled,
+    list_tasks_for_enabled, manager_enabled_map, manager_enablement_eligibility_for_store,
+    manager_executable_status, manager_install_methods_status, manager_priority_entries,
+    provenance_can_self_update, provenance_recommended_action,
+    resolve_install_method_override_for_tui, search_local_for_enabled,
+    set_manager_active_install_instance, set_manager_priority_rank, task_log_to_cli_record,
+    task_to_cli_task, write_setting,
 };
 use helm_core::models::HomebrewKegPolicy;
 
@@ -2127,6 +2128,20 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
                     );
                     let code = eligibility.reason_code.unwrap_or("manager.ineligible");
                     return Err(format!("{reason} (reason_code={code})"));
+                }
+            } else {
+                let enabled_map = manager_enabled_map(store)?;
+                let dependents = enabled_dependents_for_manager(store, &enabled_map, manager)?;
+                if !dependents.is_empty() {
+                    return Err(format!(
+                        "cannot disable manager '{}': enabled managers depend on it ({})",
+                        manager.as_str(),
+                        dependents
+                            .iter()
+                            .map(|id| id.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
                 }
             }
             store

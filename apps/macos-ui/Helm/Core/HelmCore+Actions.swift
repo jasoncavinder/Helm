@@ -577,8 +577,9 @@ extension HelmCore {
         }
     }
 
-    func setManagerEnabled(_ managerId: String, enabled: Bool) {
+    func setManagerEnabled(_ managerId: String, enabled: Bool, completion: ((Bool) -> Void)? = nil) {
         if isManagerUninstalling(managerId) {
+            completion?(false)
             return
         }
 
@@ -596,6 +597,7 @@ extension HelmCore {
                 managerId: managerId,
                 taskType: "settings"
             )
+            completion?(false)
             return
         }
 
@@ -606,6 +608,7 @@ extension HelmCore {
                 managerId: managerId,
                 taskType: "settings"
             )
+            completion?(false)
             return
         }
 
@@ -624,6 +627,7 @@ extension HelmCore {
                             taskType: "settings"
                         )
                     }
+                    completion?(false)
                     return
                 }
 
@@ -641,6 +645,7 @@ extension HelmCore {
                     includePinned: self.upgradePlanIncludePinned,
                     allowOsUpdates: self.upgradePlanAllowOsUpdates
                 )
+                completion?(true)
             }
         }
     }

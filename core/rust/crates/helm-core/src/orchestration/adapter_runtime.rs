@@ -10,6 +10,7 @@ use crate::adapters::{
     ManagerAdapter,
 };
 use crate::install_instances::collect_manager_install_instances;
+use crate::manager_dependencies::provenance_requires_manager_dependency;
 use crate::manager_policy::manager_enablement_eligibility;
 use crate::models::{
     Capability, CoreError, CoreErrorKind, DetectionInfo, ManagerAction, ManagerId,
@@ -1563,19 +1564,6 @@ fn is_official_direct_provenance(
             crate::models::InstallProvenance::RustupInit
         ) | (ManagerId::Mise, crate::models::InstallProvenance::Mise)
     )
-}
-
-fn provenance_requires_manager_dependency(
-    manager: ManagerId,
-    provenance: crate::models::InstallProvenance,
-) -> bool {
-    matches!(
-        provenance,
-        crate::models::InstallProvenance::Homebrew
-            | crate::models::InstallProvenance::Macports
-            | crate::models::InstallProvenance::Nix
-            | crate::models::InstallProvenance::Asdf
-    ) || (provenance == crate::models::InstallProvenance::Mise && manager != ManagerId::Mise)
 }
 
 fn dependency_manager_rank(manager: ManagerId, provenance: crate::models::InstallProvenance) -> u8 {

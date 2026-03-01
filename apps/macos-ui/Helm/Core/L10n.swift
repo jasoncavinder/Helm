@@ -35,6 +35,7 @@ struct L10n {
             static let notInstalled = "service.error.not_installed"
             static let homebrewRequired = "service.error.homebrew_required"
             static let unsupportedCapability = "service.error.unsupported_capability"
+            static let managerDependencyBlocked = "service.error.manager_dependency_blocked"
             static let invalidInput = "service.error.invalid_input"
             static let parseFailure = "service.error.parse_failure"
             static let timeout = "service.error.timeout"
