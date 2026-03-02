@@ -17594,7 +17594,7 @@ mod tests {
     }
 
     #[test]
-    fn asdf_install_request_prefers_homebrew_method() {
+    fn asdf_install_request_defaults_to_script_installer_and_allows_homebrew_override() {
         let db_path = temp_db_path("asdf-install-method-routing");
         let store = SqliteStore::new(&db_path);
         store
@@ -17602,11 +17602,23 @@ mod tests {
             .expect("store migration should succeed");
         store
             .set_manager_selected_install_method(ManagerId::Asdf, Some("scriptInstaller"))
-            .expect("persisting unsupported asdf preference for install should succeed");
+            .expect("persisting script installer preference should succeed");
 
-        let error = super::build_manager_mutation_request(&store, ManagerId::Asdf, "install", None)
-            .expect_err("saved unsupported method should fail asdf install request");
-        assert!(error.contains("unsupported"));
+        let (target_manager, request) =
+            super::build_manager_mutation_request(&store, ManagerId::Asdf, "install", None)
+                .expect("saved script installer preference should resolve install request");
+        assert_eq!(target_manager, ManagerId::Asdf);
+        match request {
+            super::AdapterRequest::Install(install) => {
+                assert_eq!(install.package.manager, ManagerId::Asdf);
+                assert_eq!(install.package.name, "__self__");
+                assert_eq!(
+                    install.version.as_deref(),
+                    Some("scriptInstaller:officialDownload")
+                );
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
 
         let (target_manager, request) = super::build_manager_mutation_request(
             &store,

@@ -69,6 +69,36 @@ extension HelmCore {
         }
     }
 
+    func respondTaskTimeoutPrompt(taskId: UInt64, waitForCompletion: Bool, completion: ((Bool) -> Void)? = nil) {
+        guard let service = service() else {
+            completion?(false)
+            return
+        }
+
+        service.respondTaskTimeoutPrompt(taskId: Int64(taskId), waitForCompletion: waitForCompletion) { [weak self] success in
+            DispatchQueue.main.async {
+                guard let self else {
+                    completion?(success)
+                    return
+                }
+                if success {
+                    self.fetchTasks()
+                    self.fetchTaskTimeoutPrompts()
+                } else {
+                    logger.warning(
+                        "respondTaskTimeoutPrompt(\(taskId), wait=\(waitForCompletion)) returned false"
+                    )
+                    self.recordLastError(
+                        source: "core.actions",
+                        action: "respondTaskTimeoutPrompt",
+                        taskType: "diagnostics"
+                    )
+                }
+                completion?(success)
+            }
+        }
+    }
+
     func upgradePackage(_ package: PackageItem) {
         guard canUpgradeIndividually(package), !upgradeActionPackageIds.contains(package.id) else { return }
 

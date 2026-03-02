@@ -35,6 +35,19 @@ char *helm_get_task_output(int64_t task_id);
  */
 char *helm_list_task_logs(int64_t task_id, int64_t limit);
 
+/**
+ * List pending hard-timeout prompts for running tasks as JSON.
+ */
+char *helm_list_task_timeout_prompts(void);
+
+/**
+ * Respond to a pending task hard-timeout prompt by task ID.
+ *
+ * When `wait_for_completion` is true, the task deadline is extended.
+ * When false, the task is terminated immediately.
+ */
+bool helm_respond_task_timeout_prompt(int64_t task_id, bool wait_for_completion);
+
 bool helm_trigger_refresh(void);
 
 bool helm_trigger_detection(void);
@@ -337,7 +350,7 @@ bool helm_set_manager_timeout_profile(const char *manager_id,
  *
  * Supported manager IDs:
  * - "mise" -> script installer (default), Homebrew, MacPorts, or cargo install
- * - "asdf" -> Homebrew
+ * - "asdf" -> script installer (default) or Homebrew
  * - "mas" -> Homebrew
  * - "rustup" -> rustup-init (default) or Homebrew, based on selected install method
  *
@@ -352,7 +365,7 @@ int64_t helm_install_manager(const char *manager_id);
  *
  * Supported manager IDs:
  * - "mise" -> script installer (default), Homebrew, MacPorts, or cargo install
- * - "asdf" -> Homebrew
+ * - "asdf" -> script installer (default) or Homebrew
  * - "mas" -> Homebrew
  * - "rustup" -> rustup-init (default) or Homebrew, based on selected install method
  *

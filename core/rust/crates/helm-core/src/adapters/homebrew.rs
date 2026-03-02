@@ -47,7 +47,9 @@ pub struct HomebrewDetectOutput {
     pub version_output: String,
 }
 
-const INSTALL_TIMEOUT: Duration = Duration::from_secs(300);
+const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(4 * 60 * 60);
+const LIFECYCLE_IDLE_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+const PIN_TIMEOUT: Duration = Duration::from_secs(300);
 
 pub trait HomebrewSource: Send + Sync {
     fn detect(&self) -> AdapterResult<HomebrewDetectOutput>;
@@ -276,8 +278,9 @@ pub fn homebrew_install_request(task_id: Option<TaskId>, name: &str) -> ProcessS
         TaskType::Install,
         ManagerAction::Install,
         CommandSpec::new(HOMEBREW_COMMAND).args(["install", name]),
-        INSTALL_TIMEOUT,
+        LIFECYCLE_TIMEOUT,
     )
+    .idle_timeout(LIFECYCLE_IDLE_TIMEOUT)
 }
 
 pub fn homebrew_uninstall_request(task_id: Option<TaskId>, name: &str) -> ProcessSpawnRequest {
@@ -286,8 +289,9 @@ pub fn homebrew_uninstall_request(task_id: Option<TaskId>, name: &str) -> Proces
         TaskType::Uninstall,
         ManagerAction::Uninstall,
         CommandSpec::new(HOMEBREW_COMMAND).args(["uninstall", name]),
-        INSTALL_TIMEOUT,
+        LIFECYCLE_TIMEOUT,
     )
+    .idle_timeout(LIFECYCLE_IDLE_TIMEOUT)
 }
 
 pub fn homebrew_upgrade_request(task_id: Option<TaskId>, name: &str) -> ProcessSpawnRequest {
@@ -303,8 +307,9 @@ pub fn homebrew_upgrade_request(task_id: Option<TaskId>, name: &str) -> ProcessS
         TaskType::Upgrade,
         ManagerAction::Upgrade,
         command,
-        INSTALL_TIMEOUT,
+        LIFECYCLE_TIMEOUT,
     )
+    .idle_timeout(LIFECYCLE_IDLE_TIMEOUT)
 }
 
 pub fn homebrew_cleanup_request(task_id: Option<TaskId>, name: &str) -> ProcessSpawnRequest {
@@ -313,8 +318,9 @@ pub fn homebrew_cleanup_request(task_id: Option<TaskId>, name: &str) -> ProcessS
         TaskType::Upgrade,
         ManagerAction::Upgrade,
         CommandSpec::new(HOMEBREW_COMMAND).args(["cleanup", name]),
-        INSTALL_TIMEOUT,
+        LIFECYCLE_TIMEOUT,
     )
+    .idle_timeout(LIFECYCLE_IDLE_TIMEOUT)
 }
 
 fn split_upgrade_target(name: &str) -> (&str, bool) {
@@ -372,7 +378,7 @@ pub fn homebrew_pin_request(task_id: Option<TaskId>, name: &str) -> ProcessSpawn
         TaskType::Pin,
         ManagerAction::Pin,
         CommandSpec::new(HOMEBREW_COMMAND).args(["pin", name]),
-        INSTALL_TIMEOUT,
+        PIN_TIMEOUT,
     )
 }
 
@@ -382,7 +388,7 @@ pub fn homebrew_unpin_request(task_id: Option<TaskId>, name: &str) -> ProcessSpa
         TaskType::Unpin,
         ManagerAction::Unpin,
         CommandSpec::new(HOMEBREW_COMMAND).args(["unpin", name]),
-        INSTALL_TIMEOUT,
+        PIN_TIMEOUT,
     )
 }
 
@@ -923,10 +929,11 @@ mod tests {
 
     use super::{
         HomebrewAdapter, HomebrewDetectOutput, HomebrewSource, homebrew_cleanup_request,
-        homebrew_detect_request, homebrew_list_installed_request, homebrew_list_outdated_request,
-        homebrew_pin_request, homebrew_search_local_request, homebrew_unpin_request,
-        homebrew_upgrade_request, parse_homebrew_version, parse_installed_formulae,
-        parse_outdated_formulae, parse_search_formulae,
+        homebrew_detect_request, homebrew_install_request, homebrew_list_installed_request,
+        homebrew_list_outdated_request, homebrew_pin_request, homebrew_search_local_request,
+        homebrew_uninstall_request, homebrew_unpin_request, homebrew_upgrade_request,
+        parse_homebrew_version, parse_installed_formulae, parse_outdated_formulae,
+        parse_search_formulae,
     };
 
     const INSTALLED_FIXTURE: &str =
@@ -1305,6 +1312,36 @@ mod tests {
         );
         assert_eq!(cleanup.task_type, TaskType::Upgrade);
         assert_eq!(cleanup.action, ManagerAction::Upgrade);
+    }
+
+    #[test]
+    fn lifecycle_command_plans_include_extended_hard_and_idle_timeouts() {
+        let install = homebrew_install_request(None, "rustup");
+        assert_eq!(install.timeout, Some(super::LIFECYCLE_TIMEOUT));
+        assert_eq!(install.idle_timeout, Some(super::LIFECYCLE_IDLE_TIMEOUT));
+
+        let uninstall = homebrew_uninstall_request(None, "rustup");
+        assert_eq!(uninstall.timeout, Some(super::LIFECYCLE_TIMEOUT));
+        assert_eq!(uninstall.idle_timeout, Some(super::LIFECYCLE_IDLE_TIMEOUT));
+
+        let upgrade = homebrew_upgrade_request(None, "rustup");
+        assert_eq!(upgrade.timeout, Some(super::LIFECYCLE_TIMEOUT));
+        assert_eq!(upgrade.idle_timeout, Some(super::LIFECYCLE_IDLE_TIMEOUT));
+
+        let cleanup = homebrew_cleanup_request(None, "rustup");
+        assert_eq!(cleanup.timeout, Some(super::LIFECYCLE_TIMEOUT));
+        assert_eq!(cleanup.idle_timeout, Some(super::LIFECYCLE_IDLE_TIMEOUT));
+    }
+
+    #[test]
+    fn pin_command_plans_keep_short_timeout_and_no_idle_timeout() {
+        let pin = homebrew_pin_request(None, "git");
+        assert_eq!(pin.timeout, Some(super::PIN_TIMEOUT));
+        assert_eq!(pin.idle_timeout, None);
+
+        let unpin = homebrew_unpin_request(None, "git");
+        assert_eq!(unpin.timeout, Some(super::PIN_TIMEOUT));
+        assert_eq!(unpin.idle_timeout, None);
     }
 
     #[test]

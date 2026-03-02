@@ -85,6 +85,15 @@ pub fn build_manager_uninstall_preview(
             context.active_instance,
             uninstall_request_package_name(context.request),
         );
+    } else if context.target_manager == ManagerId::Asdf || context.strategy == StrategyKind::AsdfSelf {
+        append_asdf_uninstall_impact(
+            &mut files_removed,
+            &mut directories_removed,
+            &mut secondary_effects,
+            &mut seen_files,
+            &mut seen_directories,
+            context.active_instance,
+        );
     } else if context.target_manager == ManagerId::HomebrewFormula {
         let formula_name = homebrew_uninstall_spec
             .as_ref()
@@ -318,6 +327,39 @@ fn uninstall_request_package_name(request: &AdapterRequest) -> Option<&str> {
         AdapterRequest::Uninstall(uninstall) => Some(uninstall.package.name.as_str()),
         _ => None,
     }
+}
+
+fn append_asdf_uninstall_impact(
+    files_removed: &mut Vec<UninstallImpactPath>,
+    directories_removed: &mut Vec<UninstallImpactPath>,
+    secondary_effects: &mut Vec<String>,
+    seen_files: &mut HashSet<String>,
+    seen_directories: &mut HashSet<String>,
+    active_instance: Option<&ManagerInstallInstance>,
+) {
+    if let Some(instance) = active_instance {
+        push_impact_path(files_removed, seen_files, instance.display_path.clone());
+        if let Some(path) = instance.canonical_path.clone() {
+            push_impact_path(files_removed, seen_files, path);
+        }
+    }
+
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("~"));
+    let asdf_root = home.join(".asdf");
+    push_impact_path(directories_removed, seen_directories, asdf_root.clone());
+
+    secondary_effects.push(format!(
+        "asdf install root '{}' may be removed.",
+        asdf_root.display()
+    ));
+    secondary_effects.push(
+        "asdf-managed plugins and tool versions under .asdf may also be removed.".to_string(),
+    );
+    secondary_effects.push(
+        "Shell profile initialization lines are not automatically removed.".to_string(),
+    );
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

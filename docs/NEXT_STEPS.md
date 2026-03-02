@@ -281,6 +281,8 @@ Current checkpoint:
     - process idle-timeout tracking now resets on stdout/stderr output and sampled process CPU progress (`proc_pid_rusage` on macOS, `/proc/<pid>/stat` on Linux) so silent-but-active tasks are less likely to false-timeout
     - rustup self-uninstall now runs with explicit timeout profile tuning (15m hard timeout, 180s idle timeout)
     - Control Center running-task dropdown now polls and shows both Helm-generated task logs and task stdout/stderr output in a combined live stream
+    - Homebrew lifecycle task defaults now use long-run timeout profiles (4h hard timeout, 30m idle timeout for install/uninstall/upgrade/cleanup), and mutating process execution now applies bounded activity-based hard-timeout extensions so long-running active jobs can continue while still enforcing a cap
+    - hard-timeout handling now emits actionable timeout prompts through core/FFI/XPC before forced termination, and GUI now posts macOS notifications for pending timeout prompts plus all-tasks-complete transitions when Control Center/popover are inactive
   - post-`v0.17.7` manager install-flow UX follow-up delivered on `dev`:
     - non-installed managers in inspector now surface an install action instead of a disabled `View Packages` button
     - manager install flows (Managers list and inspector) now require a confirmation sheet with explicit install-method selection

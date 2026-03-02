@@ -267,6 +267,17 @@ private struct ManagerSectionRow: View {
         manager.canInstall && !isManagerUninstalling
     }
 
+    private var metadataMismatchIssueSummary: String? {
+        guard let issue = status?.packageStateIssues?.first(where: { issue in
+            issue.issueCode == "metadata_only_install"
+        }) else {
+            return nil
+        }
+        return L10n.App.Managers.State.metadataMismatch.localized(with: [
+            "package": issue.packageName
+        ])
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
@@ -291,6 +302,11 @@ private struct ManagerSectionRow: View {
                         Text(L10n.App.Managers.Tooltip.outdated.localized(with: ["count": outdatedCount]))
                             .font(.caption)
                             .foregroundColor(outdatedCount == 0 ? HelmTheme.textSecondary : HelmTheme.stateAttention)
+                    }
+                    if let metadataMismatchIssueSummary {
+                        Text(metadataMismatchIssueSummary)
+                            .font(.caption2)
+                            .foregroundColor(HelmTheme.stateAttention)
                     }
                 }
 

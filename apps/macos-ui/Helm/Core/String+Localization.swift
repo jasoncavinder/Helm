@@ -67,6 +67,37 @@ enum ManagerDependencyResolver {
         }
     }
 
+    static func dependencyManagerId(
+        for managerId: String,
+        installMethod: ManagerDistributionMethod
+    ) -> String? {
+        switch installMethod {
+        case .homebrew:
+            return "homebrew_formula"
+        case .macports:
+            return "macports"
+        case .npm:
+            return "npm"
+        case .pip:
+            return "pip"
+        case .pipx:
+            return "pipx"
+        case .gem:
+            return "rubygems"
+        case .cargoInstall:
+            return "cargo"
+        case .asdf:
+            return "asdf"
+        case .mise:
+            return managerId == "mise" ? nil : "mise"
+        case .rustupInstaller:
+            return managerId == "rustup" ? nil : "rustup"
+        case .appStore, .setapp, .officialInstaller, .scriptInstaller, .corepack,
+             .xcodeSelect, .softwareUpdate, .systemProvided, .notManageable:
+            return nil
+        }
+    }
+
     static func enabledDependents(
         of managerId: String,
         statuses: [String: ManagerStatus]

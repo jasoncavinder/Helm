@@ -147,10 +147,10 @@ use helm_core::manager_dependencies::provenance_dependency_manager;
 use helm_core::manager_instances::{install_instance_fingerprint, resolve_multi_instance_state};
 use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
-    Capability, DetectionInfo, HomebrewKegPolicy, ManagerAuthority, ManagerId,
-    ManagerInstallInstance, ManagerUninstallPreview, OutdatedPackage, PackageRef, PinKind,
-    PinRecord, SearchQuery, StrategyKind, TaskId, TaskLogLevel, TaskLogRecord, TaskStatus,
-    TaskType,
+    Capability, DetectionInfo, HomebrewKegPolicy, InstallProvenance, ManagerAction,
+    ManagerAuthority, ManagerId, ManagerInstallInstance, ManagerUninstallPreview, OutdatedPackage,
+    PackageRef, PinKind, PinRecord, SearchQuery, StrategyKind, TaskId, TaskLogLevel,
+    TaskLogRecord, TaskStatus, TaskType,
 };
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
 use helm_core::orchestration::{AdapterTaskTerminalState, CancellationMode};
@@ -537,6 +537,7 @@ struct FfiManagerStatus {
     supports_package_install: bool,
     supports_package_uninstall: bool,
     supports_package_upgrade: bool,
+    package_state_issues: Vec<FfiManagerPackageStateIssue>,
     is_eligible: bool,
     ineligible_reason_code: Option<String>,
     ineligible_reason_message: Option<String>,
@@ -557,6 +558,14 @@ struct FfiManagerStatus {
     active_explanation_secondary: Option<String>,
     competing_provenance: Option<String>,
     competing_confidence: Option<f64>,
+}
+
+#[derive(serde::Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct FfiManagerPackageStateIssue {
+    source_manager_id: String,
+    package_name: String,
+    issue_code: String,
 }
 
 #[derive(serde::Serialize, Clone, Debug, PartialEq)]
@@ -956,7 +965,11 @@ fn manager_executable_candidates(id: ManagerId) -> &'static [&'static str] {
         }
         ManagerId::Asdf => &["asdf"],
         ManagerId::Mise => &["mise"],
-        ManagerId::Rustup => &["rustup"],
+        ManagerId::Rustup => &[
+            "rustup",
+            "/opt/homebrew/opt/rustup/bin/rustup",
+            "/usr/local/opt/rustup/bin/rustup",
+        ],
         ManagerId::Npm => &["npm"],
         ManagerId::Pnpm => &["pnpm"],
         ManagerId::Yarn => &["yarn"],
@@ -1316,6 +1329,20 @@ fn build_manager_statuses(
         }
     }
 
+    let homebrew_installed_formulas: std::collections::HashSet<String> = store
+        .and_then(|store| store.list_installed().ok())
+        .map(|packages| {
+            packages
+                .into_iter()
+                .filter(|package| package.package.manager == ManagerId::HomebrewFormula)
+                .filter_map(|package| {
+                    let name = package.package.name.trim().to_ascii_lowercase();
+                    (!name.is_empty()).then_some(name)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
     ManagerId::ALL
         .iter()
         .map(|&id| {
@@ -1415,6 +1442,11 @@ fn build_manager_statuses(
                     }),
                     acknowledged_fingerprint,
                 );
+            let package_state_issues = manager_package_state_issues(
+                id,
+                manager_install_instances,
+                &homebrew_installed_formulas,
+            );
 
             FfiManagerStatus {
                 manager_id: id.as_str().to_string(),
@@ -1438,6 +1470,7 @@ fn build_manager_statuses(
                 supports_package_install,
                 supports_package_uninstall,
                 supports_package_upgrade,
+                package_state_issues,
                 is_eligible: eligibility.is_eligible,
                 ineligible_reason_code: eligibility.reason_code.map(str::to_string),
                 ineligible_reason_message: eligibility.reason_message.map(str::to_string),
@@ -1475,6 +1508,53 @@ fn build_manager_statuses(
             }
         })
         .collect()
+}
+
+fn manager_package_state_issues(
+    manager: ManagerId,
+    manager_install_instances: Option<&Vec<ManagerInstallInstance>>,
+    homebrew_installed_formulas: &std::collections::HashSet<String>,
+) -> Vec<FfiManagerPackageStateIssue> {
+    let Some(formula_name) = manager_expected_homebrew_formula(manager) else {
+        return Vec::new();
+    };
+    let normalized_formula = formula_name.to_ascii_lowercase();
+    if !homebrew_installed_formulas.contains(&normalized_formula) {
+        return Vec::new();
+    }
+    if manager_has_homebrew_instance_for_formula(manager_install_instances, formula_name) {
+        return Vec::new();
+    }
+
+    vec![FfiManagerPackageStateIssue {
+        source_manager_id: ManagerId::HomebrewFormula.as_str().to_string(),
+        package_name: formula_name.to_string(),
+        issue_code: "metadata_only_install".to_string(),
+    }]
+}
+
+fn manager_expected_homebrew_formula(manager: ManagerId) -> Option<&'static str> {
+    match manager {
+        // Rustup supports both rustup-init and Homebrew installs, so it is intentionally handled
+        // outside the static manager->formula map.
+        ManagerId::Rustup => Some("rustup"),
+        _ => helm_core::manager_lifecycle::manager_homebrew_formula_name(manager),
+    }
+}
+
+fn manager_has_homebrew_instance_for_formula(
+    manager_install_instances: Option<&Vec<ManagerInstallInstance>>,
+    expected_formula: &str,
+) -> bool {
+    manager_install_instances.is_some_and(|instances| {
+        instances.iter().any(|instance| {
+            if instance.provenance != InstallProvenance::Homebrew {
+                return false;
+            }
+            helm_core::manager_lifecycle::homebrew_formula_name_from_instance(instance)
+                .is_none_or(|name| name.eq_ignore_ascii_case(expected_formula))
+        })
+    })
 }
 
 fn manager_install_method_options(manager: ManagerId) -> Vec<FfiManagerInstallMethodOption> {
@@ -4169,6 +4249,18 @@ struct FfiTaskLogRecord {
     created_at_unix: i64,
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FfiTaskTimeoutPromptRecord {
+    task_id: TaskId,
+    manager: ManagerId,
+    task_type: TaskType,
+    action: &'static str,
+    requested_at_unix_ms: i64,
+    grace_seconds: u64,
+    suggested_extension_seconds: u64,
+}
+
 const DIAGNOSTICS_REDACTION_PLACEHOLDER: &str = "[REDACTED]";
 const DIAGNOSTICS_ALLOWED_ENV_KEYS: &[&str] = &[
     "PATH", "PWD", "SHELL", "TERM", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TMP", "TEMP",
@@ -4350,6 +4442,20 @@ fn map_task_log_record(entry: TaskLogRecord) -> FfiTaskLogRecord {
     }
 }
 
+fn map_timeout_prompt_record(
+    entry: helm_core::execution::timeout_prompt_store::TaskTimeoutPromptRecord,
+) -> FfiTaskTimeoutPromptRecord {
+    FfiTaskTimeoutPromptRecord {
+        task_id: entry.task_id,
+        manager: entry.manager,
+        task_type: entry.task_type,
+        action: manager_action_str(entry.action),
+        requested_at_unix_ms: entry.requested_at_unix_ms,
+        grace_seconds: entry.grace_seconds,
+        suggested_extension_seconds: entry.suggested_extension_seconds,
+    }
+}
+
 /// Return captured stdout/stderr for a task ID as JSON.
 ///
 /// Returns `null` only on serialization/allocation failure.
@@ -4412,6 +4518,45 @@ pub extern "C" fn helm_list_task_logs(task_id: i64, limit: i64) -> *mut c_char {
     }
 }
 
+/// List pending hard-timeout prompts for running tasks as JSON.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_list_task_timeout_prompts() -> *mut c_char {
+    let entries: Vec<FfiTaskTimeoutPromptRecord> =
+        helm_core::execution::timeout_prompt_store::list_prompts()
+            .into_iter()
+            .map(map_timeout_prompt_record)
+            .collect();
+
+    let json = match serde_json::to_string(&entries) {
+        Ok(value) => value,
+        Err(_) => return std::ptr::null_mut(),
+    };
+    match CString::new(json) {
+        Ok(c_string) => c_string.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Respond to a pending task hard-timeout prompt by task ID.
+///
+/// When `wait_for_completion` is true, the task deadline is extended.
+/// When false, the task is terminated immediately.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_respond_task_timeout_prompt(
+    task_id: i64,
+    wait_for_completion: bool,
+) -> bool {
+    if task_id < 0 {
+        return false;
+    }
+    let decision = if wait_for_completion {
+        helm_core::execution::timeout_prompt_store::TimeoutPromptDecision::Wait
+    } else {
+        helm_core::execution::timeout_prompt_store::TimeoutPromptDecision::Stop
+    };
+    helm_core::execution::timeout_prompt_store::respond(TaskId(task_id as u64), decision)
+}
+
 fn task_status_str(status: TaskStatus) -> &'static str {
     match status {
         TaskStatus::Queued => "queued",
@@ -4419,6 +4564,21 @@ fn task_status_str(status: TaskStatus) -> &'static str {
         TaskStatus::Completed => "completed",
         TaskStatus::Cancelled => "cancelled",
         TaskStatus::Failed => "failed",
+    }
+}
+
+fn manager_action_str(action: ManagerAction) -> &'static str {
+    match action {
+        ManagerAction::Detect => "detect",
+        ManagerAction::Refresh => "refresh",
+        ManagerAction::Search => "search",
+        ManagerAction::ListInstalled => "list_installed",
+        ManagerAction::ListOutdated => "list_outdated",
+        ManagerAction::Install => "install",
+        ManagerAction::Uninstall => "uninstall",
+        ManagerAction::Upgrade => "upgrade",
+        ManagerAction::Pin => "pin",
+        ManagerAction::Unpin => "unpin",
     }
 }
 
@@ -7122,7 +7282,7 @@ pub unsafe extern "C" fn helm_set_manager_timeout_profile(
 ///
 /// Supported manager IDs:
 /// - "mise" -> script installer (default), Homebrew, MacPorts, or cargo install
-/// - "asdf" -> Homebrew
+/// - "asdf" -> script installer (default) or Homebrew
 /// - "mas" -> Homebrew
 /// - "rustup" -> rustup-init (default) or Homebrew, based on selected install method
 ///
@@ -7138,7 +7298,7 @@ pub unsafe extern "C" fn helm_install_manager(manager_id: *const c_char) -> i64 
 ///
 /// Supported manager IDs:
 /// - "mise" -> script installer (default), Homebrew, MacPorts, or cargo install
-/// - "asdf" -> Homebrew
+/// - "asdf" -> script installer (default) or Homebrew
 /// - "mas" -> Homebrew
 /// - "rustup" -> rustup-init (default) or Homebrew, based on selected install method
 ///
@@ -7748,11 +7908,11 @@ mod tests {
         build_manager_uninstall_plan, build_manager_uninstall_preview, build_visible_tasks,
         collect_upgrade_all_targets, homebrew_probe_candidates,
         manager_allows_individual_package_install, manager_authority_key,
-        manager_uninstall_label_for_route,
-        manager_participates_in_package_search, parse_homebrew_config_version,
-        push_upgrade_plan_step, resolve_homebrew_manager_update_strategy,
-        resolve_rustup_uninstall_strategy, search_label_args, search_label_key_for_query,
-        upgrade_plan_step_id, upgrade_reason_label_for, upgrade_task_label_for,
+        manager_participates_in_package_search, manager_uninstall_label_for_route,
+        parse_homebrew_config_version, push_upgrade_plan_step,
+        resolve_homebrew_manager_update_strategy, resolve_rustup_uninstall_strategy,
+        search_label_args, search_label_key_for_query, upgrade_plan_step_id,
+        upgrade_reason_label_for, upgrade_task_label_for,
     };
     use helm_core::adapters::{AdapterRequest, ManagerAdapter, UninstallRequest};
     use helm_core::manager_policy::{
@@ -7761,10 +7921,10 @@ mod tests {
     use helm_core::models::{
         AutomationLevel, DetectionInfo, InstallProvenance, ManagerId, ManagerInstallInstance,
         OutdatedPackage, PackageRef, StrategyKind, TaskId, TaskLogRecord, TaskRecord, TaskStatus,
-        TaskType,
+        TaskType, InstalledPackage,
     };
     use helm_core::orchestration::adapter_runtime::AdapterRuntime;
-    use helm_core::persistence::{DetectionStore, ManagerPreference, TaskStore};
+    use helm_core::persistence::{DetectionStore, ManagerPreference, PackageStore, TaskStore};
     use helm_core::sqlite::SqliteStore;
     use helm_core::uninstall_preview::{
         DEFAULT_MANAGER_UNINSTALL_SAFE_BLAST_RADIUS_THRESHOLD, ManagerUninstallPreviewContext,
@@ -7838,6 +7998,21 @@ mod tests {
         instance.alias_paths = vec![std::path::PathBuf::from(display_path)];
         instance.update_strategy = update_strategy;
         instance
+    }
+
+    fn sample_installed_package(
+        manager: ManagerId,
+        name: &str,
+        installed_version: Option<&str>,
+    ) -> InstalledPackage {
+        InstalledPackage {
+            package: PackageRef {
+                manager,
+                name: name.to_string(),
+            },
+            installed_version: installed_version.map(str::to_string),
+            pinned: false,
+        }
     }
 
     fn temp_sqlite_store(name: &str) -> SqliteStore {
@@ -8553,6 +8728,14 @@ mod tests {
     }
 
     #[test]
+    fn rustup_executable_candidates_include_homebrew_keg_only_paths() {
+        let candidates = manager_executable_candidates(ManagerId::Rustup);
+        assert!(candidates.contains(&"rustup"));
+        assert!(candidates.contains(&"/opt/homebrew/opt/rustup/bin/rustup"));
+        assert!(candidates.contains(&"/usr/local/opt/rustup/bin/rustup"));
+    }
+
+    #[test]
     fn manager_status_preferences_override_default_enabled_policy() {
         let pref_map = HashMap::from([
             (
@@ -8934,6 +9117,41 @@ mod tests {
             rustup.multi_instance_fingerprint.as_deref(),
             Some(acknowledged_fingerprint.as_str())
         );
+
+        let _ = fs::remove_file(store.database_path());
+    }
+
+    #[test]
+    fn manager_status_flags_metadata_only_homebrew_formula_install_issues() {
+        let store = temp_sqlite_store("manager-status-metadata-only-homebrew");
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Rustup,
+                &[sample_rustup_install_instance(
+                    StrategyKind::RustupSelf,
+                    InstallProvenance::RustupInit,
+                    "/Users/test/.cargo/bin/rustup",
+                )],
+            )
+            .expect("install instances should persist");
+        store
+            .upsert_installed(&[sample_installed_package(
+                ManagerId::HomebrewFormula,
+                "rustup",
+                Some("1.28.2"),
+            )])
+            .expect("homebrew installed snapshot should persist");
+
+        let statuses = build_manager_statuses(None, Some(&store), &HashMap::new(), &HashMap::new());
+        let rustup = status_for(&statuses, ManagerId::Rustup);
+        assert_eq!(rustup.package_state_issues.len(), 1);
+        let issue = &rustup.package_state_issues[0];
+        assert_eq!(issue.source_manager_id, "homebrew_formula");
+        assert_eq!(issue.package_name, "rustup");
+        assert_eq!(issue.issue_code, "metadata_only_install");
 
         let _ = fs::remove_file(store.database_path());
     }

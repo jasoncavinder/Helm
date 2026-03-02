@@ -78,15 +78,12 @@ struct TaskRowView: View {
                 }
             }
             .contentShape(Rectangle())
-            .gesture(
-                TapGesture().onEnded {
-                    if canExpandDetails {
-                        onToggleDetails?()
-                    }
-                    onSelect?()
-                },
-                including: .gesture
-            )
+            .onTapGesture {
+                if canExpandDetails {
+                    onToggleDetails?()
+                }
+                onSelect?()
+            }
             .helmPointer(enabled: canExpandDetails || onSelect != nil)
 
             if canExpandDetails && isExpanded {
@@ -131,12 +128,8 @@ private struct TaskRowLiveOutputView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(L10n.App.Inspector.taskOutputLogs.localized)
-                .font(.caption.weight(.semibold))
-                .foregroundColor(.secondary)
-
             TaskSelectableMonospacedTextArea(text: liveOutputText)
-                .frame(minHeight: 88, maxHeight: 140)
+                .frame(minHeight: 140, maxHeight: 220)
                 .background(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(HelmTheme.surfacePanel)
@@ -204,10 +197,7 @@ private struct TaskRowLiveOutputView: View {
     private func renderedOutputSections() -> [String] {
         var sections: [String] = []
         if let logsText = taskLogsText(), !logsText.isEmpty {
-            sections.append(formattedSection(
-                title: L10n.App.Inspector.taskOutputLogs.localized.uppercased(),
-                body: logsText
-            ))
+            sections.append(logsText)
         }
         if let stderrText = normalizedOutputText(taskOutputRecord?.stderr) {
             sections.append(formattedSection(

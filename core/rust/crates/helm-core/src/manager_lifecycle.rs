@@ -147,13 +147,11 @@ pub fn plan_manager_install(
             Some("cargoInstall") => Ok(package_manager_install_plan(ManagerId::Cargo, "mise")),
             Some(_) => Err(ManagerInstallPlanError::UnsupportedMethod),
         },
-        ManagerId::Asdf => {
-            if matches!(selected_method, Some("homebrew") | None) {
-                Ok(homebrew_manager_install_plan("asdf"))
-            } else {
-                Err(ManagerInstallPlanError::UnsupportedMethod)
-            }
-        }
+        ManagerId::Asdf => match selected_method {
+            Some("homebrew") => Ok(homebrew_manager_install_plan("asdf")),
+            Some("scriptInstaller") | None => Ok(asdf_manager_install_plan()),
+            Some(_) => Err(ManagerInstallPlanError::UnsupportedMethod),
+        },
         ManagerId::Mas => {
             if matches!(selected_method, Some("homebrew") | None) {
                 Ok(homebrew_manager_install_plan("mas"))
@@ -226,6 +224,23 @@ pub fn plan_manager_update(
                 target_manager: ManagerId::HomebrewFormula,
                 target: ManagerUpdateTarget::HomebrewFormula {
                     formula_name: "rustup".to_string(),
+                },
+            }),
+            Ok(_) => Err(ManagerUpdatePlanError::AmbiguousProvenance),
+            Err(UpdateStrategyResolutionError::ReadOnly) => Err(ManagerUpdatePlanError::ReadOnly),
+            Err(UpdateStrategyResolutionError::AmbiguousProvenance) => {
+                Err(ManagerUpdatePlanError::AmbiguousProvenance)
+            }
+        },
+        ManagerId::Asdf => match resolve_asdf_update_strategy(active_instance) {
+            Ok(StrategyKind::AsdfSelf) => Ok(ManagerUpdatePlan {
+                target_manager: ManagerId::Asdf,
+                target: ManagerUpdateTarget::ManagerSelf,
+            }),
+            Ok(StrategyKind::HomebrewFormula) => Ok(ManagerUpdatePlan {
+                target_manager: ManagerId::HomebrewFormula,
+                target: ManagerUpdateTarget::HomebrewFormula {
+                    formula_name: "asdf".to_string(),
                 },
             }),
             Ok(_) => Err(ManagerUpdatePlanError::AmbiguousProvenance),
@@ -423,6 +438,62 @@ pub fn plan_manager_uninstall_route_with_options(
         });
     }
 
+    if manager == ManagerId::Asdf {
+        let resolution = resolve_asdf_uninstall_strategy(
+            active_instance,
+            allow_unknown_provenance,
+            preview_only,
+        )
+        .map_err(|_| ManagerUninstallRouteError::AmbiguousProvenance)?;
+        let (target_manager, request) = match resolution.strategy {
+            StrategyKind::HomebrewFormula => (
+                ManagerId::HomebrewFormula,
+                AdapterRequest::Uninstall(UninstallRequest {
+                    package: PackageRef {
+                        manager: ManagerId::HomebrewFormula,
+                        name: encode_homebrew_manager_uninstall_package_name(
+                            "asdf",
+                            manager,
+                            homebrew_cleanup_mode(options),
+                        ),
+                    },
+                }),
+            ),
+            StrategyKind::AsdfSelf => (
+                ManagerId::Asdf,
+                AdapterRequest::Uninstall(UninstallRequest {
+                    package: PackageRef {
+                        manager: ManagerId::Asdf,
+                        name: "__self__".to_string(),
+                    },
+                }),
+            ),
+            StrategyKind::ReadOnly => {
+                return Ok(read_only_uninstall_route_plan(
+                    manager,
+                    resolution.unknown_override_required,
+                    resolution.used_unknown_override,
+                ));
+            }
+            _ => return Err(ManagerUninstallRouteError::AmbiguousProvenance),
+        };
+        if matches!(resolution.strategy, StrategyKind::AsdfSelf)
+            && !homebrew_cleanup_options_are_default(options)
+        {
+            return Err(ManagerUninstallRouteError::InvalidOptions);
+        }
+        if options.mise_cleanup_mode.is_some() || options.mise_config_removal.is_some() {
+            return Err(ManagerUninstallRouteError::InvalidOptions);
+        }
+        return Ok(ManagerUninstallRoutePlan {
+            target_manager,
+            request,
+            strategy: resolution.strategy,
+            unknown_override_required: resolution.unknown_override_required,
+            used_unknown_override: resolution.used_unknown_override,
+        });
+    }
+
     if let Some(formula_name) = manager_homebrew_formula_name(manager) {
         let resolution = resolve_homebrew_manager_uninstall_strategy(
             active_instance,
@@ -593,6 +664,24 @@ fn rustup_manager_install_plan(
             ("manager", "rustup".to_string()),
         ],
     })
+}
+
+fn asdf_manager_install_plan() -> ManagerInstallPlan {
+    ManagerInstallPlan {
+        target_manager: ManagerId::Asdf,
+        request: AdapterRequest::Install(InstallRequest {
+            package: PackageRef {
+                manager: ManagerId::Asdf,
+                name: "__self__".to_string(),
+            },
+            version: Some("scriptInstaller:officialDownload".to_string()),
+        }),
+        label_key: "service.task.label.install.package",
+        label_args: vec![
+            ("package", "asdf".to_string()),
+            ("manager", "asdf".to_string()),
+        ],
+    }
 }
 
 fn mise_install_request_version(
@@ -938,7 +1027,8 @@ pub fn resolve_homebrew_manager_uninstall_strategy(
         StrategyKind::InteractivePrompt
         | StrategyKind::Unknown
         | StrategyKind::ManualRemediation
-        | StrategyKind::RustupSelf => {
+        | StrategyKind::RustupSelf
+        | StrategyKind::AsdfSelf => {
             if allow_unknown_provenance {
                 return Ok(UninstallStrategyResolution {
                     strategy: StrategyKind::HomebrewFormula,
@@ -983,13 +1073,68 @@ pub fn resolve_rustup_uninstall_strategy(
         }
         StrategyKind::InteractivePrompt
         | StrategyKind::Unknown
-        | StrategyKind::ManualRemediation => {
+        | StrategyKind::ManualRemediation
+        | StrategyKind::AsdfSelf => {
             let fallback = if instance.competing_provenance == Some(InstallProvenance::Homebrew)
                 || rustup_instance_path_looks_homebrew(instance)
             {
                 StrategyKind::HomebrewFormula
             } else {
                 StrategyKind::RustupSelf
+            };
+
+            if allow_unknown_provenance {
+                return Ok(UninstallStrategyResolution {
+                    strategy: fallback,
+                    unknown_override_required: true,
+                    used_unknown_override: true,
+                });
+            }
+
+            if preview_only {
+                return Ok(UninstallStrategyResolution {
+                    strategy: fallback,
+                    unknown_override_required: true,
+                    used_unknown_override: false,
+                });
+            }
+
+            Err(UninstallStrategyResolutionError::AmbiguousProvenance)
+        }
+    }
+}
+
+pub fn resolve_asdf_uninstall_strategy(
+    active_instance: Option<&ManagerInstallInstance>,
+    allow_unknown_provenance: bool,
+    preview_only: bool,
+) -> Result<UninstallStrategyResolution, UninstallStrategyResolutionError> {
+    let Some(instance) = active_instance else {
+        return Ok(UninstallStrategyResolution {
+            strategy: StrategyKind::AsdfSelf,
+            unknown_override_required: false,
+            used_unknown_override: false,
+        });
+    };
+
+    match instance.uninstall_strategy {
+        StrategyKind::HomebrewFormula | StrategyKind::AsdfSelf | StrategyKind::ReadOnly => {
+            Ok(UninstallStrategyResolution {
+                strategy: instance.uninstall_strategy,
+                unknown_override_required: false,
+                used_unknown_override: false,
+            })
+        }
+        StrategyKind::InteractivePrompt
+        | StrategyKind::Unknown
+        | StrategyKind::ManualRemediation
+        | StrategyKind::RustupSelf => {
+            let fallback = if instance.competing_provenance == Some(InstallProvenance::Homebrew)
+                || asdf_instance_path_looks_homebrew(instance)
+            {
+                StrategyKind::HomebrewFormula
+            } else {
+                StrategyKind::AsdfSelf
             };
 
             if allow_unknown_provenance {
@@ -1025,9 +1170,27 @@ pub fn resolve_rustup_update_strategy(
         StrategyKind::ReadOnly => Err(UpdateStrategyResolutionError::ReadOnly),
         StrategyKind::InteractivePrompt
         | StrategyKind::Unknown
-        | StrategyKind::ManualRemediation => {
+        | StrategyKind::ManualRemediation
+        | StrategyKind::AsdfSelf => {
             Err(UpdateStrategyResolutionError::AmbiguousProvenance)
         }
+    }
+}
+
+pub fn resolve_asdf_update_strategy(
+    active_instance: Option<&ManagerInstallInstance>,
+) -> Result<StrategyKind, UpdateStrategyResolutionError> {
+    let Some(instance) = active_instance else {
+        return Ok(StrategyKind::AsdfSelf);
+    };
+
+    match instance.update_strategy {
+        StrategyKind::HomebrewFormula | StrategyKind::AsdfSelf => Ok(instance.update_strategy),
+        StrategyKind::ReadOnly => Err(UpdateStrategyResolutionError::ReadOnly),
+        StrategyKind::InteractivePrompt
+        | StrategyKind::Unknown
+        | StrategyKind::ManualRemediation
+        | StrategyKind::RustupSelf => Err(UpdateStrategyResolutionError::AmbiguousProvenance),
     }
 }
 
@@ -1044,11 +1207,21 @@ pub fn resolve_homebrew_manager_update_strategy(
         StrategyKind::InteractivePrompt
         | StrategyKind::Unknown
         | StrategyKind::ManualRemediation
-        | StrategyKind::RustupSelf => Err(UpdateStrategyResolutionError::AmbiguousProvenance),
+        | StrategyKind::RustupSelf
+        | StrategyKind::AsdfSelf => Err(UpdateStrategyResolutionError::AmbiguousProvenance),
     }
 }
 
 fn rustup_instance_path_looks_homebrew(instance: &ManagerInstallInstance) -> bool {
+    instance
+        .canonical_path
+        .as_ref()
+        .is_some_and(|path| path.starts_with("/opt/homebrew/") || path.starts_with("/usr/local/"))
+        || instance.display_path.starts_with("/opt/homebrew/")
+        || instance.display_path.starts_with("/usr/local/")
+}
+
+fn asdf_instance_path_looks_homebrew(instance: &ManagerInstallInstance) -> bool {
     instance
         .canonical_path
         .as_ref()
@@ -1066,7 +1239,8 @@ mod tests {
         UpdateStrategyResolutionError, encode_homebrew_manager_uninstall_package_name,
         manager_homebrew_formula_name, parse_homebrew_manager_uninstall_package_name,
         plan_manager_install, plan_manager_uninstall_route_with_options,
-        resolve_homebrew_manager_update_strategy, resolve_rustup_uninstall_strategy,
+        resolve_asdf_update_strategy, resolve_homebrew_manager_update_strategy,
+        resolve_rustup_uninstall_strategy,
     };
     use crate::models::{
         AutomationLevel, InstallInstanceIdentityKind, InstallProvenance, ManagerId,
@@ -1181,6 +1355,24 @@ mod tests {
     }
 
     #[test]
+    fn manager_install_plan_defaults_asdf_to_script_installer() {
+        let plan = plan_manager_install(ManagerId::Asdf, None, &ManagerInstallOptions::default())
+            .expect("asdf install plan should resolve");
+        assert_eq!(plan.target_manager, ManagerId::Asdf);
+        match plan.request {
+            crate::adapters::AdapterRequest::Install(install) => {
+                assert_eq!(install.package.manager, ManagerId::Asdf);
+                assert_eq!(install.package.name, "__self__");
+                assert_eq!(
+                    install.version.as_deref(),
+                    Some("scriptInstaller:officialDownload")
+                );
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+    }
+
+    #[test]
     fn manager_install_plan_supports_mise_existing_binary_path() {
         let plan = plan_manager_install(
             ManagerId::Mise,
@@ -1264,6 +1456,18 @@ mod tests {
         let error = resolve_homebrew_manager_update_strategy(Some(&instance))
             .expect_err("read-only should block updates");
         assert_eq!(error, UpdateStrategyResolutionError::ReadOnly);
+    }
+
+    #[test]
+    fn asdf_update_resolution_supports_asdf_self_strategy() {
+        let mut instance = sample_instance();
+        instance.manager = ManagerId::Asdf;
+        instance.display_path = PathBuf::from("/Users/example/.asdf/bin/asdf");
+        instance.canonical_path = Some(PathBuf::from("/Users/example/.asdf/bin/asdf"));
+        instance.update_strategy = StrategyKind::AsdfSelf;
+        let strategy =
+            resolve_asdf_update_strategy(Some(&instance)).expect("asdf self strategy should resolve");
+        assert_eq!(strategy, StrategyKind::AsdfSelf);
     }
 
     #[test]
@@ -1387,6 +1591,53 @@ mod tests {
             },
         )
         .expect_err("rustup-self strategy should reject homebrew cleanup options");
+        assert_eq!(error, ManagerUninstallRouteError::InvalidOptions);
+    }
+
+    #[test]
+    fn asdf_self_uninstall_routes_to_asdf_manager() {
+        let mut instance = sample_instance();
+        instance.manager = ManagerId::Asdf;
+        instance.display_path = PathBuf::from("/Users/example/.asdf/bin/asdf");
+        instance.canonical_path = Some(PathBuf::from("/Users/example/.asdf/bin/asdf"));
+        instance.uninstall_strategy = StrategyKind::AsdfSelf;
+        instance.update_strategy = StrategyKind::AsdfSelf;
+        let route = plan_manager_uninstall_route_with_options(
+            ManagerId::Asdf,
+            Some(&instance),
+            false,
+            false,
+            &ManagerUninstallOptions::default(),
+        )
+        .expect("asdf self uninstall should route");
+        assert_eq!(route.target_manager, ManagerId::Asdf);
+        match route.request {
+            crate::adapters::AdapterRequest::Uninstall(uninstall) => {
+                assert_eq!(uninstall.package.manager, ManagerId::Asdf);
+                assert_eq!(uninstall.package.name, "__self__");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn asdf_self_uninstall_rejects_homebrew_cleanup_options() {
+        let mut instance = sample_instance();
+        instance.manager = ManagerId::Asdf;
+        instance.display_path = PathBuf::from("/Users/example/.asdf/bin/asdf");
+        instance.canonical_path = Some(PathBuf::from("/Users/example/.asdf/bin/asdf"));
+        instance.uninstall_strategy = StrategyKind::AsdfSelf;
+        let error = plan_manager_uninstall_route_with_options(
+            ManagerId::Asdf,
+            Some(&instance),
+            false,
+            false,
+            &ManagerUninstallOptions {
+                homebrew_cleanup_mode: Some(HomebrewUninstallCleanupMode::FullCleanup),
+                ..ManagerUninstallOptions::default()
+            },
+        )
+        .expect_err("asdf self uninstall should reject homebrew cleanup options");
         assert_eq!(error, ManagerUninstallRouteError::InvalidOptions);
     }
 }

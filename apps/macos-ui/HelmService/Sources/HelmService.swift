@@ -70,6 +70,24 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(String(cString: cString))
     }
 
+    func listTaskTimeoutPrompts(withReply reply: @escaping (String?) -> Void) {
+        guard let cString = helm_list_task_timeout_prompts() else {
+            logger.warning("helm_list_task_timeout_prompts returned nil")
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(cString) }
+        reply(String(cString: cString))
+    }
+
+    func respondTaskTimeoutPrompt(taskId: Int64, waitForCompletion: Bool, withReply reply: @escaping (Bool) -> Void) {
+        let result = helm_respond_task_timeout_prompt(taskId, waitForCompletion)
+        logger.info(
+            "helm_respond_task_timeout_prompt(\(taskId), wait=\(waitForCompletion)) result: \(result)"
+        )
+        reply(result)
+    }
+
     func triggerRefresh(withReply reply: @escaping (Bool) -> Void) {
         let result = helm_trigger_refresh()
         logger.info("helm_trigger_refresh result: \(result)")

@@ -1116,6 +1116,7 @@ private struct InspectorManagerDetailView: View {
     @State private var pendingIdleTimeoutSeconds: Int?
     @State private var showAdvancedInstallOptions = false
     @State private var installSubmissionInFlight = false
+    @State private var showPackageStateIssueDetails = false
     @State private var pendingRustupInstallSource: ManagerRustupInstallSource = .officialDownload
     @State private var pendingRustupBinaryPath = ""
     @State private var pendingMiseInstallSource: ManagerMiseInstallSource = .officialDownload
@@ -1291,10 +1292,6 @@ private struct InspectorManagerDetailView: View {
             return false
         }
         return installMethodOptionAllowed(option)
-    }
-
-    private var hasAllowedInstallMethodOption: Bool {
-        sortedHelmSupportedInstallMethodOptions.contains(where: installMethodOptionAllowed)
     }
 
     private var rustupInstallMethodSelected: Bool {
@@ -1523,6 +1520,38 @@ private struct InspectorManagerDetailView: View {
         core.isManagerUninstalling(manager.id)
     }
 
+    private var metadataOnlyPackageStateIssue: ManagerPackageStateIssue? {
+        (status?.packageStateIssues ?? []).first(where: { issue in
+            issue.issueCode == "metadata_only_install"
+        })
+    }
+
+    private var metadataOnlyIssueInstalledPackage: PackageItem? {
+        guard let issue = metadataOnlyPackageStateIssue else { return nil }
+        return core.installedPackages.first(where: { package in
+            package.managerId == issue.sourceManagerId
+                && package.name.caseInsensitiveCompare(issue.packageName) == .orderedSame
+        })
+    }
+
+    private var metadataOnlyIssueCanRemoveStaleEntry: Bool {
+        guard let package = metadataOnlyIssueInstalledPackage else {
+            return false
+        }
+        return core.canUninstallPackage(package)
+    }
+
+    private func metadataOnlyIssueExpectedPaths(for issue: ManagerPackageStateIssue) -> [String] {
+        let packageName = issue.packageName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !packageName.isEmpty else {
+            return []
+        }
+        return [
+            "/opt/homebrew/opt/\(packageName)/bin/\(packageName)",
+            "/usr/local/opt/\(packageName)/bin/\(packageName)"
+        ]
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
@@ -1583,6 +1612,10 @@ private struct InspectorManagerDetailView: View {
                 }
             }
 
+            if let issue = metadataOnlyPackageStateIssue {
+                packageStateIssueBanner(issue)
+            }
+
             InspectorField(label: L10n.App.Inspector.category.localized) {
                 Text(localizedCategoryName(manager.category))
                     .font(.callout)
@@ -1595,8 +1628,8 @@ private struct InspectorManagerDetailView: View {
             Group {
                 InspectorField(label: L10n.App.Inspector.detectionDiagnostics.localized) {
                     HStack(alignment: .top, spacing: 6) {
-                        Image(systemName: detected ? "checkmark.circle.fill" : "xmark.circle")
-                            .foregroundColor(detected ? HelmTheme.stateHealthy : HelmTheme.stateError)
+                        Image(systemName: detectionDiagnosticsIconName(detectionDiagnostics.reason))
+                            .foregroundColor(detectionDiagnosticsIconColor(detectionDiagnostics.reason))
                             .padding(.top, 1)
                         Text(localizedDetectionReason(detectionDiagnostics.reason))
                             .font(.callout)
@@ -1953,6 +1986,148 @@ private struct InspectorManagerDetailView: View {
         )
     }
 
+    @ViewBuilder
+    private func packageStateIssueBanner(_ issue: ManagerPackageStateIssue) -> some View {
+        let sourceManagerName = localizedManagerDisplayName(issue.sourceManagerId)
+        let expectedPaths = metadataOnlyIssueExpectedPaths(for: issue)
+        let detectedPaths = installInstances.map(\.displayPath)
+
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(HelmTheme.stateAttention)
+                    .padding(.top, 2)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L10n.App.Inspector.PackageStateIssue.MetadataOnly.title.localized)
+                        .font(.callout.weight(.semibold))
+                    Text(
+                        L10n.App.Inspector.PackageStateIssue.MetadataOnly.message.localized(with: [
+                            "source_manager": sourceManagerName,
+                            "package": issue.packageName
+                        ])
+                    )
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    Text(L10n.App.Inspector.PackageStateIssue.MetadataOnly.impact.localized)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 8) {
+                Button(L10n.App.Inspector.PackageStateIssue.MetadataOnly.repairAction.localized) {
+                    repairMetadataOnlyInstallIssue()
+                }
+                .buttonStyle(HelmSecondaryButtonStyle())
+                .disabled(managerIsUninstalling)
+                .helmPointer(enabled: !managerIsUninstalling)
+
+                Button(
+                    L10n.App.Inspector.PackageStateIssue.MetadataOnly.removeStaleAction.localized
+                ) {
+                    removeMetadataOnlyInstallIssue()
+                }
+                .buttonStyle(HelmSecondaryButtonStyle())
+                .disabled(!metadataOnlyIssueCanRemoveStaleEntry || managerIsUninstalling)
+                .helmPointer(enabled: metadataOnlyIssueCanRemoveStaleEntry && !managerIsUninstalling)
+
+                Spacer(minLength: 0)
+            }
+
+            DisclosureGroup(
+                L10n.App.Inspector.PackageStateIssue.MetadataOnly.detailsToggle.localized,
+                isExpanded: $showPackageStateIssueDetails
+            ) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .top, spacing: 8) {
+                        Text(
+                            "\(L10n.App.Inspector.PackageStateIssue.MetadataOnly.detailsSource.localized):"
+                        )
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.secondary)
+                        Text(sourceManagerName)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    HStack(alignment: .top, spacing: 8) {
+                        Text(
+                            "\(L10n.App.Inspector.PackageStateIssue.MetadataOnly.detailsPackage.localized):"
+                        )
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.secondary)
+                        Text(issue.packageName)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(L10n.App.Inspector.PackageStateIssue.MetadataOnly.detailsExpectedPaths.localized)
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(.secondary)
+                        if expectedPaths.isEmpty {
+                            Text("-")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        } else {
+                            ForEach(expectedPaths, id: \.self) { path in
+                                Text(path)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(
+                            "\(L10n.App.Inspector.PackageStateIssue.MetadataOnly.detailsDetectedInstances.localized): \(detectedPaths.count)"
+                        )
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.secondary)
+                        if detectedPaths.isEmpty {
+                            Text("-")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        } else {
+                            ForEach(detectedPaths, id: \.self) { path in
+                                Text(path)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                }
+                .padding(.top, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(HelmTheme.surfaceElevated)
+        )
+    }
+
+    private func repairMetadataOnlyInstallIssue() {
+        guard !managerIsUninstalling else { return }
+        core.setManagerInstallMethod(manager.id, installMethod: "homebrew") { success in
+            guard success else { return }
+            core.installManager(manager.id)
+        }
+    }
+
+    private func removeMetadataOnlyInstallIssue() {
+        guard !managerIsUninstalling,
+              let package = metadataOnlyIssueInstalledPackage,
+              core.canUninstallPackage(package) else {
+            return
+        }
+        core.uninstallPackage(package)
+    }
+
     private func managerActionButton(
         symbol: String,
         tooltip: String,
@@ -1975,7 +2150,6 @@ private struct InspectorManagerDetailView: View {
         guard manager.canInstall && !detected else { return }
         guard !managerIsUninstalling else { return }
         guard !installSubmissionInFlight else { return }
-        guard hasAllowedInstallMethodOption else { return }
         prepareInstallMethodSelection()
     }
 
@@ -2506,6 +2680,23 @@ private struct InspectorManagerDetailView: View {
 
     private func installMethodOptionAllowed(_ option: ManagerInstallMethodOption) -> Bool {
         option.isAllowed(in: installMethodPolicyContext)
+            && installMethodDependencyAvailable(option)
+    }
+
+    private func installMethodDependencyAvailable(_ option: ManagerInstallMethodOption) -> Bool {
+        guard let dependencyManagerId = ManagerDependencyResolver.dependencyManagerId(
+            for: manager.id,
+            installMethod: option.method
+        ) else {
+            return true
+        }
+        guard core.isManagerDetected(dependencyManagerId) else {
+            return false
+        }
+        guard let dependencyStatus = core.managerStatuses[dependencyManagerId] else {
+            return false
+        }
+        return dependencyStatus.enabled
     }
 
     private func formatConfidence(_ value: Double) -> String {
@@ -2523,11 +2714,38 @@ private struct InspectorManagerDetailView: View {
         switch reason {
         case .detected: return L10n.App.Inspector.detectionReasonDetected.localized
         case .notDetected: return L10n.App.Inspector.detectionReasonNotDetected.localized
+        case .inconsistent: return L10n.App.Inspector.detectionReasonInconsistent.localized
         case .inProgress: return L10n.App.Inspector.detectionReasonInProgress.localized
         case .failed: return L10n.App.Inspector.detectionReasonFailed.localized
         case .disabled: return L10n.App.Inspector.detectionReasonDisabled.localized
         case .notImplemented: return L10n.App.Inspector.detectionReasonNotImplemented.localized
         case .neverChecked: return L10n.App.Inspector.detectionReasonNeverChecked.localized
+        }
+    }
+
+    private func detectionDiagnosticsIconName(_ reason: ManagerDetectionDiagnosticReason) -> String {
+        switch reason {
+        case .detected:
+            return "checkmark.circle.fill"
+        case .inconsistent:
+            return "exclamationmark.triangle.fill"
+        case .inProgress:
+            return "clock.badge.exclamationmark"
+        case .failed, .disabled, .notDetected, .notImplemented, .neverChecked:
+            return "xmark.circle"
+        }
+    }
+
+    private func detectionDiagnosticsIconColor(_ reason: ManagerDetectionDiagnosticReason) -> Color {
+        switch reason {
+        case .detected:
+            return HelmTheme.stateHealthy
+        case .inconsistent:
+            return HelmTheme.stateAttention
+        case .inProgress:
+            return HelmTheme.stateAttention
+        case .failed, .disabled, .notDetected, .notImplemented, .neverChecked:
+            return HelmTheme.stateError
         }
     }
 

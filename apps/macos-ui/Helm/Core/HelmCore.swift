@@ -258,9 +258,24 @@ struct CoreTaskLogRecord: Codable, Identifiable {
     }
 }
 
+struct CoreTaskTimeoutPrompt: Codable, Identifiable {
+    let taskId: UInt64
+    let manager: String
+    let taskType: String
+    let action: String
+    let requestedAtUnixMs: Int64
+    let graceSeconds: UInt64
+    let suggestedExtensionSeconds: UInt64
+
+    var id: String {
+        "\(taskId):\(requestedAtUnixMs)"
+    }
+}
+
 enum ManagerDetectionDiagnosticReason {
     case detected
     case notDetected
+    case inconsistent
     case inProgress
     case failed
     case disabled
@@ -356,6 +371,7 @@ struct ManagerStatus: Codable {
     let supportsPackageInstall: Bool
     let supportsPackageUninstall: Bool
     let supportsPackageUpgrade: Bool
+    let packageStateIssues: [ManagerPackageStateIssue]?
     let isEligible: Bool?
     let ineligibleReasonCode: String?
     let ineligibleReasonMessage: String?
@@ -376,6 +392,12 @@ struct ManagerStatus: Codable {
     let activeExplanationSecondary: String?
     let competingProvenance: String?
     let competingConfidence: Double?
+}
+
+struct ManagerPackageStateIssue: Codable {
+    let sourceManagerId: String
+    let packageName: String
+    let issueCode: String
 }
 
 struct ManagerInstallMethodStatus: Codable {
@@ -597,6 +619,7 @@ final class HelmCore: ObservableObject {
     @Published var activeTasks: [TaskItem] = [] {
         didSet { scheduleDerivedViewStateRefresh() }
     }
+    @Published var taskTimeoutPrompts: [CoreTaskTimeoutPrompt] = []
     @Published var searchResults: [PackageItem] = []
     @Published var cachedAvailablePackages: [PackageItem] = []
     @Published var upgradePlanSteps: [CoreUpgradePlanStep] = []
@@ -891,6 +914,7 @@ final class HelmCore: ObservableObject {
         if now.timeIntervalSince(lastTaskSnapshotRefreshAt) >= taskSnapshotInterval {
             lastTaskSnapshotRefreshAt = now
             fetchTasks()
+            fetchTaskTimeoutPrompts()
         }
 
         let fullSnapshotInterval: TimeInterval = {
@@ -1163,6 +1187,7 @@ final class HelmCore: ObservableObject {
                     self?.installedPackages = []
                     self?.outdatedPackages = []
                     self?.activeTasks = []
+                    self?.taskTimeoutPrompts = []
                     self?.searchResults = []
                     self?.cachedAvailablePackages = []
                     self?.detectedManagers = []
