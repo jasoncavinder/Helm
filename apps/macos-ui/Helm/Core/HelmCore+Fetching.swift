@@ -123,8 +123,8 @@ extension HelmCore {
                     let taskLabel = self.localizedTaskLabel(from: task)
                     return TaskItem(
                         id: "\(task.id)",
-                        description: overrideDescription
-                            ?? taskLabel
+                        description: taskLabel
+                            ?? overrideDescription
                             ?? L10n.App.Tasks.fallbackDescription.localized(with: [
                                 "task_type": self.localizedTaskType(task.taskType),
                                 "manager": managerName
@@ -558,6 +558,40 @@ extension HelmCore {
                 return
             }
             completion(logs)
+        }
+    }
+
+    func fetchTaskTimeoutPrompts() {
+        guard let svc = service() else { return }
+        withTimeout(
+            10,
+            source: "core.fetching",
+            action: "listTaskTimeoutPrompts",
+            taskType: "diagnostics",
+            operation: { completion in
+                svc.listTaskTimeoutPrompts { completion($0) }
+            }
+        ) { [weak self] jsonString in
+            guard let self = self else { return }
+            guard let jsonString = jsonString,
+                  let data = jsonString.data(using: .utf8),
+                  let prompts: [CoreTaskTimeoutPrompt] = self.decodeCorePayload(
+                    [CoreTaskTimeoutPrompt].self,
+                    from: data,
+                    decodeContext: "fetchTaskTimeoutPrompts",
+                    source: "core.fetching",
+                    action: "listTaskTimeoutPrompts.decode",
+                    taskType: "diagnostics"
+                  ) else {
+                DispatchQueue.main.async {
+                    self.taskTimeoutPrompts = []
+                }
+                return
+            }
+
+            DispatchQueue.main.async {
+                self.taskTimeoutPrompts = prompts
+            }
         }
     }
 

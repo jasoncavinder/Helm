@@ -1,9 +1,13 @@
 use std::collections::HashSet;
+use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::adapters::manager::{AdapterRequest, AdapterResponse, AdapterResult, ManagerAdapter};
 use crate::execution::{CommandSpec, ProcessSpawnRequest};
+use crate::manager_lifecycle::{
+    HomebrewUninstallCleanupMode, parse_homebrew_manager_uninstall_package_name,
+};
 use crate::models::{
     ActionSafety, CachedSearchResult, Capability, CoreError, CoreErrorKind, DetectionInfo,
     InstalledPackage, ManagerAction, ManagerAuthority, ManagerCategory, ManagerDescriptor,
@@ -43,7 +47,9 @@ pub struct HomebrewDetectOutput {
     pub version_output: String,
 }
 
-const INSTALL_TIMEOUT: Duration = Duration::from_secs(300);
+const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(4 * 60 * 60);
+const LIFECYCLE_IDLE_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+const PIN_TIMEOUT: Duration = Duration::from_secs(300);
 
 pub trait HomebrewSource: Send + Sync {
     fn detect(&self) -> AdapterResult<HomebrewDetectOutput>;
@@ -131,12 +137,31 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                 }))
             }
             AdapterRequest::Uninstall(uninstall_request) => {
-                if let Err(error) = self
-                    .source
-                    .uninstall_formula(&uninstall_request.package.name)
+                let parsed_uninstall = parse_homebrew_manager_uninstall_package_name(
+                    uninstall_request.package.name.as_str(),
+                );
+                let formula_name = parsed_uninstall
+                    .as_ref()
+                    .map(|spec| spec.formula_name.as_str())
+                    .unwrap_or_else(|| uninstall_request.package.name.as_str());
+                let mut uninstall_output = self.source.uninstall_formula(formula_name);
+                if let Err(error) = uninstall_output.as_ref()
                     && !is_homebrew_already_absent_uninstall_error(&error)
                 {
-                    return Err(error);
+                    return Err(error.clone());
+                }
+                if let Some(spec) = parsed_uninstall
+                    && matches!(spec.cleanup_mode, HomebrewUninstallCleanupMode::FullCleanup)
+                {
+                    let cleanup_output = perform_manager_full_cleanup(spec.requested_manager)?;
+                    let mut merged = uninstall_output.unwrap_or_default();
+                    if !cleanup_output.is_empty() {
+                        if !merged.trim().is_empty() {
+                            merged.push('\n');
+                        }
+                        merged.push_str(cleanup_output.as_str());
+                    }
+                    uninstall_output = Ok(merged);
                 }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: uninstall_request.package,
@@ -253,8 +278,9 @@ pub fn homebrew_install_request(task_id: Option<TaskId>, name: &str) -> ProcessS
         TaskType::Install,
         ManagerAction::Install,
         CommandSpec::new(HOMEBREW_COMMAND).args(["install", name]),
-        INSTALL_TIMEOUT,
+        LIFECYCLE_TIMEOUT,
     )
+    .idle_timeout(LIFECYCLE_IDLE_TIMEOUT)
 }
 
 pub fn homebrew_uninstall_request(task_id: Option<TaskId>, name: &str) -> ProcessSpawnRequest {
@@ -263,8 +289,9 @@ pub fn homebrew_uninstall_request(task_id: Option<TaskId>, name: &str) -> Proces
         TaskType::Uninstall,
         ManagerAction::Uninstall,
         CommandSpec::new(HOMEBREW_COMMAND).args(["uninstall", name]),
-        INSTALL_TIMEOUT,
+        LIFECYCLE_TIMEOUT,
     )
+    .idle_timeout(LIFECYCLE_IDLE_TIMEOUT)
 }
 
 pub fn homebrew_upgrade_request(task_id: Option<TaskId>, name: &str) -> ProcessSpawnRequest {
@@ -280,8 +307,9 @@ pub fn homebrew_upgrade_request(task_id: Option<TaskId>, name: &str) -> ProcessS
         TaskType::Upgrade,
         ManagerAction::Upgrade,
         command,
-        INSTALL_TIMEOUT,
+        LIFECYCLE_TIMEOUT,
     )
+    .idle_timeout(LIFECYCLE_IDLE_TIMEOUT)
 }
 
 pub fn homebrew_cleanup_request(task_id: Option<TaskId>, name: &str) -> ProcessSpawnRequest {
@@ -290,8 +318,9 @@ pub fn homebrew_cleanup_request(task_id: Option<TaskId>, name: &str) -> ProcessS
         TaskType::Upgrade,
         ManagerAction::Upgrade,
         CommandSpec::new(HOMEBREW_COMMAND).args(["cleanup", name]),
-        INSTALL_TIMEOUT,
+        LIFECYCLE_TIMEOUT,
     )
+    .idle_timeout(LIFECYCLE_IDLE_TIMEOUT)
 }
 
 fn split_upgrade_target(name: &str) -> (&str, bool) {
@@ -349,7 +378,7 @@ pub fn homebrew_pin_request(task_id: Option<TaskId>, name: &str) -> ProcessSpawn
         TaskType::Pin,
         ManagerAction::Pin,
         CommandSpec::new(HOMEBREW_COMMAND).args(["pin", name]),
-        INSTALL_TIMEOUT,
+        PIN_TIMEOUT,
     )
 }
 
@@ -359,7 +388,7 @@ pub fn homebrew_unpin_request(task_id: Option<TaskId>, name: &str) -> ProcessSpa
         TaskType::Unpin,
         ManagerAction::Unpin,
         CommandSpec::new(HOMEBREW_COMMAND).args(["unpin", name]),
-        INSTALL_TIMEOUT,
+        PIN_TIMEOUT,
     )
 }
 
@@ -738,6 +767,143 @@ fn is_no_results_diagnostic(line: &str) -> bool {
         || lowered.starts_with("no formula or cask found for")
 }
 
+fn perform_manager_full_cleanup(manager: ManagerId) -> AdapterResult<String> {
+    match manager {
+        ManagerId::Rustup => cleanup_rustup_artifacts(),
+        ManagerId::Mise => cleanup_mise_artifacts(),
+        _ => Ok(format!(
+            "Helm full-cleanup: no additional manager-owned artifacts are currently defined for '{}'.",
+            manager.as_str()
+        )),
+    }
+}
+
+fn cleanup_rustup_artifacts() -> AdapterResult<String> {
+    let mut lines: Vec<String> = Vec::new();
+    let rustup_home = resolve_rustup_home();
+    let cargo_home = resolve_cargo_home();
+    let cargo_bin = cargo_home.join("bin");
+
+    let removed_rustup_home = remove_directory_if_exists(rustup_home.as_path())?;
+    if removed_rustup_home {
+        lines.push(format!(
+            "Helm full-cleanup: removed rustup home directory '{}'.",
+            rustup_home.display()
+        ));
+    } else {
+        lines.push(format!(
+            "Helm full-cleanup: rustup home directory '{}' was not present.",
+            rustup_home.display()
+        ));
+    }
+
+    let mut removed_proxy_count = 0usize;
+    for binary in [
+        "rustup",
+        "cargo",
+        "rustc",
+        "rustdoc",
+        "rustfmt",
+        "clippy-driver",
+        "rust-gdb",
+        "rust-gdbgui",
+        "rust-lldb",
+    ] {
+        let path = cargo_bin.join(binary);
+        if remove_file_if_exists(path.as_path())? {
+            removed_proxy_count += 1;
+        }
+    }
+    lines.push(format!(
+        "Helm full-cleanup: removed {} rustup proxy binaries under '{}'.",
+        removed_proxy_count,
+        cargo_bin.display()
+    ));
+
+    Ok(lines.join("\n"))
+}
+
+fn cleanup_mise_artifacts() -> AdapterResult<String> {
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("~"));
+    let state_dir = home.join(".local/share/mise");
+    let cache_dir = home.join(".cache/mise");
+
+    let removed_state = remove_directory_if_exists(state_dir.as_path())?;
+    let removed_cache = remove_directory_if_exists(cache_dir.as_path())?;
+
+    Ok(format!(
+        "Helm full-cleanup: state_dir={} ({}) cache_dir={} ({})",
+        state_dir.display(),
+        if removed_state {
+            "removed"
+        } else {
+            "not_present"
+        },
+        cache_dir.display(),
+        if removed_cache {
+            "removed"
+        } else {
+            "not_present"
+        }
+    ))
+}
+
+fn remove_directory_if_exists(path: &std::path::Path) -> AdapterResult<bool> {
+    if !path.exists() {
+        return Ok(false);
+    }
+    fs::remove_dir_all(path).map_err(|error| CoreError {
+        manager: Some(ManagerId::HomebrewFormula),
+        task: Some(TaskType::Uninstall),
+        action: Some(ManagerAction::Uninstall),
+        kind: CoreErrorKind::ProcessFailure,
+        message: format!(
+            "homebrew full-cleanup failed to remove directory '{}': {error}",
+            path.display()
+        ),
+    })?;
+    Ok(true)
+}
+
+fn remove_file_if_exists(path: &std::path::Path) -> AdapterResult<bool> {
+    if !path.exists() {
+        return Ok(false);
+    }
+    fs::remove_file(path).map_err(|error| CoreError {
+        manager: Some(ManagerId::HomebrewFormula),
+        task: Some(TaskType::Uninstall),
+        action: Some(ManagerAction::Uninstall),
+        kind: CoreErrorKind::ProcessFailure,
+        message: format!(
+            "homebrew full-cleanup failed to remove file '{}': {error}",
+            path.display()
+        ),
+    })?;
+    Ok(true)
+}
+
+fn resolve_cargo_home() -> PathBuf {
+    if let Some(raw) = std::env::var_os("CARGO_HOME").filter(|value| !value.is_empty()) {
+        return PathBuf::from(raw);
+    }
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .map(|home| home.join(".cargo"))
+        .unwrap_or_else(|| PathBuf::from("~/.cargo"))
+}
+
+fn resolve_rustup_home() -> PathBuf {
+    if let Some(raw) = std::env::var_os("RUSTUP_HOME").filter(|value| !value.is_empty()) {
+        return PathBuf::from(raw);
+    }
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .map(|home| home.join(".rustup"))
+        .unwrap_or_else(|| PathBuf::from("~/.rustup"))
+}
+
 fn parse_error(message: &str) -> CoreError {
     CoreError {
         manager: Some(ManagerId::HomebrewFormula),
@@ -763,10 +929,11 @@ mod tests {
 
     use super::{
         HomebrewAdapter, HomebrewDetectOutput, HomebrewSource, homebrew_cleanup_request,
-        homebrew_detect_request, homebrew_list_installed_request, homebrew_list_outdated_request,
-        homebrew_pin_request, homebrew_search_local_request, homebrew_unpin_request,
-        homebrew_upgrade_request, parse_homebrew_version, parse_installed_formulae,
-        parse_outdated_formulae, parse_search_formulae,
+        homebrew_detect_request, homebrew_install_request, homebrew_list_installed_request,
+        homebrew_list_outdated_request, homebrew_pin_request, homebrew_search_local_request,
+        homebrew_uninstall_request, homebrew_unpin_request, homebrew_upgrade_request,
+        parse_homebrew_version, parse_installed_formulae, parse_outdated_formulae,
+        parse_search_formulae,
     };
 
     const INSTALLED_FIXTURE: &str =
@@ -1145,6 +1312,36 @@ mod tests {
         );
         assert_eq!(cleanup.task_type, TaskType::Upgrade);
         assert_eq!(cleanup.action, ManagerAction::Upgrade);
+    }
+
+    #[test]
+    fn lifecycle_command_plans_include_extended_hard_and_idle_timeouts() {
+        let install = homebrew_install_request(None, "rustup");
+        assert_eq!(install.timeout, Some(super::LIFECYCLE_TIMEOUT));
+        assert_eq!(install.idle_timeout, Some(super::LIFECYCLE_IDLE_TIMEOUT));
+
+        let uninstall = homebrew_uninstall_request(None, "rustup");
+        assert_eq!(uninstall.timeout, Some(super::LIFECYCLE_TIMEOUT));
+        assert_eq!(uninstall.idle_timeout, Some(super::LIFECYCLE_IDLE_TIMEOUT));
+
+        let upgrade = homebrew_upgrade_request(None, "rustup");
+        assert_eq!(upgrade.timeout, Some(super::LIFECYCLE_TIMEOUT));
+        assert_eq!(upgrade.idle_timeout, Some(super::LIFECYCLE_IDLE_TIMEOUT));
+
+        let cleanup = homebrew_cleanup_request(None, "rustup");
+        assert_eq!(cleanup.timeout, Some(super::LIFECYCLE_TIMEOUT));
+        assert_eq!(cleanup.idle_timeout, Some(super::LIFECYCLE_IDLE_TIMEOUT));
+    }
+
+    #[test]
+    fn pin_command_plans_keep_short_timeout_and_no_idle_timeout() {
+        let pin = homebrew_pin_request(None, "git");
+        assert_eq!(pin.timeout, Some(super::PIN_TIMEOUT));
+        assert_eq!(pin.idle_timeout, None);
+
+        let unpin = homebrew_unpin_request(None, "git");
+        assert_eq!(unpin.timeout, Some(super::PIN_TIMEOUT));
+        assert_eq!(unpin.idle_timeout, None);
     }
 
     #[test]

@@ -4,11 +4,12 @@ use std::fs;
 use std::path::Path;
 use std::time::Duration;
 
+use helm_core::execution::timeout_prompt_store::{self, TimeoutPromptDecision};
 use helm_core::execution::{
     CommandSpec, ProcessExitStatus, ProcessSpawnRequest, ProcessTerminationMode,
     TokioProcessExecutor, spawn_validated,
 };
-use helm_core::models::{CoreErrorKind, ManagerAction, ManagerId, TaskType};
+use helm_core::models::{CoreErrorKind, ManagerAction, ManagerId, TaskId, TaskType};
 
 fn echo_request() -> ProcessSpawnRequest {
     ProcessSpawnRequest::new(
@@ -164,6 +165,134 @@ async fn idle_timeout_resets_when_process_is_emitting_output() {
     assert!(
         String::from_utf8_lossy(&output.stdout).contains("tick"),
         "expected process output to be captured"
+    );
+}
+
+#[tokio::test]
+async fn hard_timeout_extends_for_active_install_process() {
+    let executor = TokioProcessExecutor;
+    let request = ProcessSpawnRequest::new(
+        ManagerId::HomebrewFormula,
+        TaskType::Install,
+        ManagerAction::Install,
+        CommandSpec::new("/bin/sh")
+            .args(["-c", "for i in 1 2 3 4; do echo tick; sleep 0.12; done"]),
+    )
+    .timeout(Duration::from_millis(350))
+    .idle_timeout(Duration::from_secs(5));
+
+    let handle = spawn_validated(&executor, request).expect("spawn should succeed");
+    let output = handle.wait().await.expect("wait should succeed");
+    assert_eq!(output.status, ProcessExitStatus::ExitCode(0));
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("tick"),
+        "expected process output to be captured"
+    );
+}
+
+#[tokio::test]
+async fn hard_timeout_does_not_extend_on_stale_activity() {
+    let executor = TokioProcessExecutor;
+    let request = ProcessSpawnRequest::new(
+        ManagerId::HomebrewFormula,
+        TaskType::Install,
+        ManagerAction::Install,
+        CommandSpec::new("/bin/sh").args(["-c", "echo tick; sleep 30"]),
+    )
+    .timeout(Duration::from_millis(350))
+    .idle_timeout(Duration::from_secs(5));
+
+    let handle = spawn_validated(&executor, request).expect("spawn should succeed");
+    let error = handle.wait().await.expect_err("should timeout");
+    assert_eq!(error.kind, CoreErrorKind::Timeout);
+    assert!(
+        error.message.contains("hard timeout"),
+        "expected hard-timeout error, got: {}",
+        error.message
+    );
+}
+
+#[tokio::test]
+async fn hard_timeout_for_detection_remains_absolute() {
+    let executor = TokioProcessExecutor;
+    let request = ProcessSpawnRequest::new(
+        ManagerId::HomebrewFormula,
+        TaskType::Detection,
+        ManagerAction::Detect,
+        CommandSpec::new("/bin/sh")
+            .args(["-c", "for i in 1 2 3 4 5 6; do echo tick; sleep 0.12; done"]),
+    )
+    .timeout(Duration::from_millis(350))
+    .idle_timeout(Duration::from_secs(5));
+
+    let handle = spawn_validated(&executor, request).expect("spawn should succeed");
+    let error = handle.wait().await.expect_err("should hard-timeout");
+    assert_eq!(error.kind, CoreErrorKind::Timeout);
+    assert!(
+        error.message.contains("hard timeout"),
+        "expected hard-timeout error, got: {}",
+        error.message
+    );
+}
+
+#[tokio::test]
+async fn hard_timeout_prompt_wait_decision_extends_running_task() {
+    let executor = TokioProcessExecutor;
+    let task_id = TaskId(91_001);
+    timeout_prompt_store::clear_prompt(task_id);
+    let request = ProcessSpawnRequest::new(
+        ManagerId::HomebrewFormula,
+        TaskType::Install,
+        ManagerAction::Install,
+        CommandSpec::new("/bin/sh").args(["-c", "sleep 0.8"]),
+    )
+    .task_id(task_id)
+    .timeout(Duration::from_millis(350))
+    .idle_timeout(Duration::from_secs(5));
+
+    let handle = spawn_validated(&executor, request).expect("spawn should succeed");
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert!(
+            timeout_prompt_store::respond(task_id, TimeoutPromptDecision::Wait),
+            "expected timeout prompt to be pending for wait response"
+        );
+    });
+
+    let output = handle.wait().await.expect("wait should succeed");
+    assert_eq!(output.status, ProcessExitStatus::ExitCode(0));
+}
+
+#[tokio::test]
+async fn hard_timeout_prompt_stop_decision_terminates_task() {
+    let executor = TokioProcessExecutor;
+    let task_id = TaskId(91_002);
+    timeout_prompt_store::clear_prompt(task_id);
+    let request = ProcessSpawnRequest::new(
+        ManagerId::HomebrewFormula,
+        TaskType::Install,
+        ManagerAction::Install,
+        CommandSpec::new("/bin/sh").args(["-c", "sleep 30"]),
+    )
+    .task_id(task_id)
+    .timeout(Duration::from_millis(350))
+    .idle_timeout(Duration::from_secs(5));
+
+    let handle = spawn_validated(&executor, request).expect("spawn should succeed");
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert!(
+            timeout_prompt_store::respond(task_id, TimeoutPromptDecision::Stop),
+            "expected timeout prompt to be pending for stop response"
+        );
+    });
+
+    let error = handle.wait().await.expect_err("should hard-timeout");
+    assert_eq!(error.kind, CoreErrorKind::Timeout);
+    assert!(
+        error.message.contains("user selected stop"),
+        "expected user stop timeout reason, got: {}",
+        error.message
     );
 }
 

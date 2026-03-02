@@ -58,15 +58,7 @@ struct ControlCenterInspectorView: View {
                         detectionDiagnostics: core.managerDetectionDiagnostics(for: manager.id),
                         health: core.health(forManagerId: manager.id),
                         packageCount: core.installedPackages.filter { $0.managerId == manager.id }.count,
-                        outdatedCount: core.outdatedCount(forManagerId: manager.id),
-                        onViewPackages: {
-                            context.selectedManagerId = manager.id
-                            context.selectedPackageId = nil
-                            context.selectedTaskId = nil
-                            context.managerFilterId = manager.id
-                            context.selectedUpgradePlanStepId = nil
-                            context.selectedSection = .packages
-                        }
+                        outdatedCount: core.outdatedCount(forManagerId: manager.id)
                     )
                 } else {
                     Text(L10n.App.Inspector.empty.localized)
@@ -1113,7 +1105,6 @@ private struct InspectorManagerDetailView: View {
     let health: OperationalHealth
     let packageCount: Int
     let outdatedCount: Int
-    let onViewPackages: () -> Void
     @State private var confirmAction: ConfirmAction?
     @State private var uninstallConfirmation: UninstallConfirmationContext?
     @State private var showUninstallDetails = false
@@ -1125,23 +1116,50 @@ private struct InspectorManagerDetailView: View {
     @State private var pendingIdleTimeoutSeconds: Int?
     @State private var showAdvancedInstallOptions = false
     @State private var installSubmissionInFlight = false
+    @State private var showPackageStateIssueDetails = false
     @State private var pendingRustupInstallSource: ManagerRustupInstallSource = .officialDownload
     @State private var pendingRustupBinaryPath = ""
     @State private var pendingMiseInstallSource: ManagerMiseInstallSource = .officialDownload
     @State private var pendingMiseBinaryPath = ""
+    @State private var activeInstanceUpdateInFlightId: String?
     @State private var pendingUninstallOptions = ManagerUninstallActionOptions(
         allowUnknownProvenance: false,
+        homebrewCleanupMode: nil,
         miseCleanupMode: nil,
         miseConfigRemoval: nil
     )
 
     private enum ConfirmAction: Identifiable {
         case update
+        case enableRequiredManagerForInstance(
+            parentManagerId: String,
+            instanceId: String,
+            followUp: ManagedInstanceFollowUpAction
+        )
 
         var id: String {
             switch self {
             case .update:
                 return "update"
+            case let .enableRequiredManagerForInstance(parentManagerId, instanceId, followUp):
+                return "enable-required-\(parentManagerId)-\(instanceId)-\(followUp.id)"
+            }
+        }
+    }
+
+    private enum ManagedInstanceFollowUpAction {
+        case none
+        case update
+        case uninstall(allowUnknownProvenance: Bool)
+
+        var id: String {
+            switch self {
+            case .none:
+                return "none"
+            case .update:
+                return "update"
+            case let .uninstall(allowUnknownProvenance):
+                return "uninstall-\(allowUnknownProvenance)"
             }
         }
     }
@@ -1276,10 +1294,6 @@ private struct InspectorManagerDetailView: View {
         return installMethodOptionAllowed(option)
     }
 
-    private var hasAllowedInstallMethodOption: Bool {
-        sortedHelmSupportedInstallMethodOptions.contains(where: installMethodOptionAllowed)
-    }
-
     private var rustupInstallMethodSelected: Bool {
         pendingInstallMethodRawValue == ManagerDistributionMethod.rustupInstaller.rawValue
     }
@@ -1315,6 +1329,10 @@ private struct InspectorManagerDetailView: View {
         pendingUninstallOptions.miseCleanupMode ?? .managerOnly
     }
 
+    private var homebrewUninstallCleanupModeSelection: ManagerHomebrewUninstallCleanupMode {
+        pendingUninstallOptions.homebrewCleanupMode ?? .managerOnly
+    }
+
     private var miseRequiresConfigRemovalSelection: Bool {
         manager.id == "mise" && miseUninstallCleanupModeSelection == .fullCleanup
     }
@@ -1347,11 +1365,135 @@ private struct InspectorManagerDetailView: View {
     private var installInstances: [ManagerInstallInstanceStatus] {
         let instances = status?.installInstances ?? []
         return instances.sorted { left, right in
+            let leftBucket = installInstanceRecommendationBucket(for: left)
+            let rightBucket = installInstanceRecommendationBucket(for: right)
+            if leftBucket != rightBucket {
+                return leftBucket < rightBucket
+            }
+
+            let leftDependencyRank = dependencyManagerRecommendationRank(for: left)
+            let rightDependencyRank = dependencyManagerRecommendationRank(for: right)
+            if leftDependencyRank != rightDependencyRank {
+                return leftDependencyRank < rightDependencyRank
+            }
+
+            let leftClassRank = nonDependencyRecommendationRank(for: left)
+            let rightClassRank = nonDependencyRecommendationRank(for: right)
+            if leftClassRank != rightClassRank {
+                return leftClassRank < rightClassRank
+            }
+
+            if left.confidence != right.confidence {
+                return left.confidence > right.confidence
+            }
+
             if left.isActive != right.isActive {
                 return left.isActive && !right.isActive
             }
+
             return left.displayPath.localizedStandardCompare(right.displayPath) == .orderedAscending
         }
+    }
+
+    private var installedManagerRecommendationOrder: [String: Int] {
+        let ordered = core.managersState.authoritativeManagers
+            + core.managersState.standardManagers
+            + core.managersState.guardedManagers
+        var mapping: [String: Int] = [:]
+        var cursor = 0
+        for managerInfo in ordered where core.isManagerDetected(managerInfo.id) {
+            guard mapping[managerInfo.id] == nil else { continue }
+            mapping[managerInfo.id] = cursor
+            cursor += 1
+        }
+        return mapping
+    }
+
+    // TODO(business): wire designated install/provenance method ordering when Helm Business policy is implemented.
+    private var businessDesignatedProvenance: String? {
+        nil
+    }
+
+    private func installInstanceRecommendationBucket(for instance: ManagerInstallInstanceStatus) -> Int {
+        let provenance = normalizedProvenance(instance.provenance)
+
+        if let designated = businessDesignatedProvenance,
+           provenance == normalizedProvenance(designated) {
+            return 0
+        }
+        if isOfficialDirectProvenance(provenance) {
+            return 1
+        }
+        if requiresManagerDependency(provenance) {
+            return 3
+        }
+        if provenance == "unknown" {
+            return 4
+        }
+        return 2
+    }
+
+    private func dependencyManagerRecommendationRank(
+        for instance: ManagerInstallInstanceStatus
+    ) -> Int {
+        guard let managerId = provenanceDependencyManagerId(instance.provenance) else {
+            return Int.max / 2
+        }
+        if let rank = installedManagerRecommendationOrder[managerId] {
+            return rank
+        }
+        return core.managerPriorityRank(for: managerId)
+    }
+
+    private func nonDependencyRecommendationRank(
+        for instance: ManagerInstallInstanceStatus
+    ) -> Int {
+        switch normalizedProvenance(instance.provenance) {
+        case "rustup_init": return 0
+        case "mise": return manager.id == "mise" ? 1 : 6
+        case "source_build": return 2
+        case "system": return 3
+        case "enterprise_managed": return 4
+        case "unknown": return 99
+        default: return 10
+        }
+    }
+
+    private func normalizedProvenance(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private func isOfficialDirectProvenance(_ provenance: String) -> Bool {
+        if provenance == "source_build" {
+            return true
+        }
+        if manager.id == "rustup" && provenance == "rustup_init" {
+            return true
+        }
+        if manager.id == "mise" && provenance == "mise" {
+            return true
+        }
+        return false
+    }
+
+    private func requiresManagerDependency(_ provenance: String) -> Bool {
+        ManagerDependencyResolver.dependencyManagerId(for: manager.id, provenance: provenance) != nil
+    }
+
+    private func provenanceDependencyManagerId(_ provenance: String) -> String? {
+        ManagerDependencyResolver.dependencyManagerId(for: manager.id, provenance: provenance)
+    }
+
+    private var multiInstanceState: String {
+        status?.multiInstanceState?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "none"
+    }
+
+    private var multiInstanceAttentionNeeded: Bool {
+        multiInstanceState == "attention_needed" && installInstanceCount > 1
+    }
+
+    private var multiInstanceAcknowledged: Bool {
+        multiInstanceState == "acknowledged" && installInstanceCount > 1
     }
 
     private func competingProvenanceSummary(
@@ -1376,6 +1518,38 @@ private struct InspectorManagerDetailView: View {
 
     private var managerIsUninstalling: Bool {
         core.isManagerUninstalling(manager.id)
+    }
+
+    private var metadataOnlyPackageStateIssue: ManagerPackageStateIssue? {
+        (status?.packageStateIssues ?? []).first(where: { issue in
+            issue.issueCode == "metadata_only_install"
+        })
+    }
+
+    private var metadataOnlyIssueInstalledPackage: PackageItem? {
+        guard let issue = metadataOnlyPackageStateIssue else { return nil }
+        return core.installedPackages.first(where: { package in
+            package.managerId == issue.sourceManagerId
+                && package.name.caseInsensitiveCompare(issue.packageName) == .orderedSame
+        })
+    }
+
+    private var metadataOnlyIssueCanRemoveStaleEntry: Bool {
+        guard let package = metadataOnlyIssueInstalledPackage else {
+            return false
+        }
+        return core.canUninstallPackage(package)
+    }
+
+    private func metadataOnlyIssueExpectedPaths(for issue: ManagerPackageStateIssue) -> [String] {
+        let packageName = issue.packageName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !packageName.isEmpty else {
+            return []
+        }
+        return [
+            "/opt/homebrew/opt/\(packageName)/bin/\(packageName)",
+            "/usr/local/opt/\(packageName)/bin/\(packageName)"
+        ]
     }
 
     var body: some View {
@@ -1408,7 +1582,39 @@ private struct InspectorManagerDetailView: View {
                     .foregroundColor(outdatedCount == 0 ? HelmTheme.textSecondary : HelmTheme.stateAttention)
             }
 
-            managerActionRow
+            if multiInstanceAttentionNeeded {
+                multiInstanceBanner(
+                    icon: "exclamationmark.triangle.fill",
+                    tint: HelmTheme.stateAttention,
+                    title: L10n.App.Inspector.MultiInstance.attentionTitle.localized,
+                    message: L10n.App.Inspector.MultiInstance.attentionMessage.localized
+                ) {
+                    Button(L10n.App.Inspector.MultiInstance.keepMultiple.localized) {
+                        core.acknowledgeManagerMultiInstanceState(manager.id)
+                    }
+                    .buttonStyle(HelmSecondaryButtonStyle())
+                    .disabled(managerIsUninstalling)
+                    .helmPointer(enabled: !managerIsUninstalling)
+                }
+            } else if multiInstanceAcknowledged {
+                multiInstanceBanner(
+                    icon: "checkmark.seal.fill",
+                    tint: HelmTheme.stateHealthy,
+                    title: L10n.App.Inspector.MultiInstance.acknowledgedTitle.localized,
+                    message: L10n.App.Inspector.MultiInstance.acknowledgedMessage.localized
+                ) {
+                    Button(L10n.App.Inspector.MultiInstance.reevaluate.localized) {
+                        core.clearManagerMultiInstanceAck(manager.id)
+                    }
+                    .buttonStyle(HelmSecondaryButtonStyle())
+                    .disabled(managerIsUninstalling)
+                    .helmPointer(enabled: !managerIsUninstalling)
+                }
+            }
+
+            if let issue = metadataOnlyPackageStateIssue {
+                packageStateIssueBanner(issue)
+            }
 
             InspectorField(label: L10n.App.Inspector.category.localized) {
                 Text(localizedCategoryName(manager.category))
@@ -1422,8 +1628,8 @@ private struct InspectorManagerDetailView: View {
             Group {
                 InspectorField(label: L10n.App.Inspector.detectionDiagnostics.localized) {
                     HStack(alignment: .top, spacing: 6) {
-                        Image(systemName: detected ? "checkmark.circle.fill" : "xmark.circle")
-                            .foregroundColor(detected ? HelmTheme.stateHealthy : HelmTheme.stateError)
+                        Image(systemName: detectionDiagnosticsIconName(detectionDiagnostics.reason))
+                            .foregroundColor(detectionDiagnosticsIconColor(detectionDiagnostics.reason))
                             .padding(.top, 1)
                         Text(localizedDetectionReason(detectionDiagnostics.reason))
                             .font(.callout)
@@ -1434,26 +1640,13 @@ private struct InspectorManagerDetailView: View {
                         : L10n.App.Inspector.notDetected.localized)
                 }
 
-                if let lastStatus = detectionDiagnostics.latestTaskStatus {
-                    InspectorField(label: L10n.App.Inspector.detectionLastTaskStatus.localized) {
-                        Text(localizedTaskStatus(lastStatus))
-                            .font(.callout)
-                    }
-                }
-
-                if let lastTaskId = detectionDiagnostics.latestTaskId {
-                    InspectorField(label: L10n.App.Inspector.detectionLastTaskId.localized) {
-                        Text(String(lastTaskId))
-                            .font(.caption.monospacedDigit())
-                    }
-                }
-
                 if installInstanceCount > 0 {
                     InspectorField(label: L10n.App.Inspector.installInstanceCount.localized) {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text(String(installInstanceCount))
-                                .font(.callout.monospacedDigit())
                             ForEach(installInstances) { instance in
+                                let switchingManagedInstance =
+                                    activeInstanceUpdateInFlightId == instance.instanceId
+                                let anyInstanceSwitchInFlight = activeInstanceUpdateInFlightId != nil
                                 VStack(alignment: .leading, spacing: 4) {
                                     HStack(alignment: .top, spacing: 6) {
                                         if instance.isActive {
@@ -1487,6 +1680,48 @@ private struct InspectorManagerDetailView: View {
                                         Text("\(L10n.App.Inspector.competingProvenance.localized): \(competing)")
                                             .font(.caption)
                                             .foregroundColor(.secondary)
+                                    }
+                                    HStack(spacing: 6) {
+                                        if !instance.isActive {
+                                            managerActionButton(
+                                                symbol: "scope",
+                                                tooltip: L10n.App.Inspector.MultiInstance.manageInstance.localized,
+                                                enabled: !managerIsUninstalling && !anyInstanceSwitchInFlight
+                                            ) {
+                                                performWithManagedInstance(instance, followUp: .none)
+                                            }
+                                        }
+
+                                        if manager.canUpdate && detected && enabled {
+                                            managerActionButton(
+                                                symbol: "arrow.up.circle",
+                                                tooltip: L10n.Common.update.localized,
+                                                enabled: !managerIsUninstalling && !anyInstanceSwitchInFlight
+                                            ) {
+                                                performWithManagedInstance(instance, followUp: .update)
+                                            }
+                                        }
+
+                                        if manager.canUninstall && detected && enabled {
+                                            managerActionButton(
+                                                symbol: "trash",
+                                                tooltip: L10n.Common.uninstall.localized,
+                                                enabled: !loadingManagerUninstallPreview
+                                                    && !managerIsUninstalling
+                                                    && !anyInstanceSwitchInFlight
+                                            ) {
+                                                performWithManagedInstance(
+                                                    instance,
+                                                    followUp: .uninstall(allowUnknownProvenance: false)
+                                                )
+                                            }
+                                        }
+
+                                        Spacer(minLength: 0)
+                                        if switchingManagedInstance {
+                                            ProgressView()
+                                                .controlSize(.small)
+                                        }
                                     }
                                 }
                                 .padding(8)
@@ -1681,56 +1916,216 @@ private struct InspectorManagerDetailView: View {
                     primaryButton: .default(Text(L10n.Common.update.localized)) { core.updateManager(manager.id) },
                     secondaryButton: .cancel()
                 )
+            case let .enableRequiredManagerForInstance(parentManagerId, instanceId, followUp):
+                return Alert(
+                    title: Text(
+                        L10n.App.Managers.Alert.enableRequiresParentTitle.localized(
+                            with: ["manager": localizedManagerDisplayName(manager.id)]
+                        )
+                    ),
+                    message: Text(
+                        L10n.App.Managers.Alert.enableRequiresParentMessage.localized(
+                            with: [
+                                "manager": localizedManagerDisplayName(manager.id),
+                                "parent": localizedManagerDisplayName(parentManagerId)
+                            ]
+                        )
+                    ),
+                    primaryButton: .default(Text(L10n.Common.continue.localized)) {
+                        core.setManagerEnabled(parentManagerId, enabled: true) { success in
+                            guard success else { return }
+                            guard let instance = installInstances.first(where: { $0.instanceId == instanceId }) else {
+                                return
+                            }
+                            performManagedInstanceSwitch(instance, followUp: followUp)
+                        }
+                    },
+                    secondaryButton: .cancel(Text(L10n.Common.cancel.localized))
+                )
             }
+        }
+        .onAppear {
+            consumePendingInstallSheetRequestIfNeeded()
+        }
+        .onChange(of: context.managerInstallSheetRequestToken) { _ in
+            consumePendingInstallSheetRequestIfNeeded()
         }
     }
 
-    private var managerActionRow: some View {
-        HStack(spacing: 6) {
-            if detected {
-                managerActionButton(
-                    symbol: "shippingbox",
-                    tooltip: L10n.App.Managers.Action.viewPackages.localized,
-                    enabled: packageCount > 0 && enabled && !managerIsUninstalling
-                ) {
-                    onViewPackages()
+    private func multiInstanceBanner<Actions: View>(
+        icon: String,
+        tint: Color,
+        title: String,
+        message: String,
+        @ViewBuilder actions: () -> Actions
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: icon)
+                    .foregroundColor(tint)
+                    .padding(.top, 2)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.callout.weight(.semibold))
+                    Text(message)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                Spacer(minLength: 0)
             }
-
-            if manager.canUpdate && detected && enabled {
-                managerActionButton(
-                    symbol: "arrow.up.circle",
-                    tooltip: L10n.Common.update.localized,
-                    enabled: !managerIsUninstalling
-                ) {
-                    confirmAction = .update
-                }
+            HStack(spacing: 8) {
+                actions()
+                Spacer(minLength: 0)
             }
-
-            if manager.canUninstall && detected && enabled {
-                managerActionButton(
-                    symbol: "trash",
-                    tooltip: L10n.Common.uninstall.localized,
-                    enabled: !loadingManagerUninstallPreview && !managerIsUninstalling
-                ) {
-                    requestManagerUninstallConfirmation(allowUnknownProvenance: false)
-                }
-            }
-
-            if manager.canInstall && !detected {
-                managerActionButton(
-                    symbol: "arrow.down.circle",
-                    tooltip: L10n.Common.install.localized,
-                    enabled: !installSubmissionInFlight
-                        && hasAllowedInstallMethodOption
-                        && !managerIsUninstalling
-                ) {
-                    prepareInstallMethodSelection()
-                }
-            }
-
-            Spacer(minLength: 0)
         }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(HelmTheme.surfaceElevated)
+        )
+    }
+
+    @ViewBuilder
+    private func packageStateIssueBanner(_ issue: ManagerPackageStateIssue) -> some View {
+        let sourceManagerName = localizedManagerDisplayName(issue.sourceManagerId)
+        let expectedPaths = metadataOnlyIssueExpectedPaths(for: issue)
+        let detectedPaths = installInstances.map(\.displayPath)
+
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(HelmTheme.stateAttention)
+                    .padding(.top, 2)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L10n.App.Inspector.PackageStateIssue.MetadataOnly.title.localized)
+                        .font(.callout.weight(.semibold))
+                    Text(
+                        L10n.App.Inspector.PackageStateIssue.MetadataOnly.message.localized(with: [
+                            "source_manager": sourceManagerName,
+                            "package": issue.packageName
+                        ])
+                    )
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    Text(L10n.App.Inspector.PackageStateIssue.MetadataOnly.impact.localized)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 8) {
+                Button(L10n.App.Inspector.PackageStateIssue.MetadataOnly.repairAction.localized) {
+                    repairMetadataOnlyInstallIssue()
+                }
+                .buttonStyle(HelmSecondaryButtonStyle())
+                .disabled(managerIsUninstalling)
+                .helmPointer(enabled: !managerIsUninstalling)
+
+                Button(
+                    L10n.App.Inspector.PackageStateIssue.MetadataOnly.removeStaleAction.localized
+                ) {
+                    removeMetadataOnlyInstallIssue()
+                }
+                .buttonStyle(HelmSecondaryButtonStyle())
+                .disabled(!metadataOnlyIssueCanRemoveStaleEntry || managerIsUninstalling)
+                .helmPointer(enabled: metadataOnlyIssueCanRemoveStaleEntry && !managerIsUninstalling)
+
+                Spacer(minLength: 0)
+            }
+
+            DisclosureGroup(
+                L10n.App.Inspector.PackageStateIssue.MetadataOnly.detailsToggle.localized,
+                isExpanded: $showPackageStateIssueDetails
+            ) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .top, spacing: 8) {
+                        Text(
+                            "\(L10n.App.Inspector.PackageStateIssue.MetadataOnly.detailsSource.localized):"
+                        )
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.secondary)
+                        Text(sourceManagerName)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    HStack(alignment: .top, spacing: 8) {
+                        Text(
+                            "\(L10n.App.Inspector.PackageStateIssue.MetadataOnly.detailsPackage.localized):"
+                        )
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.secondary)
+                        Text(issue.packageName)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(L10n.App.Inspector.PackageStateIssue.MetadataOnly.detailsExpectedPaths.localized)
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(.secondary)
+                        if expectedPaths.isEmpty {
+                            Text("-")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        } else {
+                            ForEach(expectedPaths, id: \.self) { path in
+                                Text(path)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(
+                            "\(L10n.App.Inspector.PackageStateIssue.MetadataOnly.detailsDetectedInstances.localized): \(detectedPaths.count)"
+                        )
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.secondary)
+                        if detectedPaths.isEmpty {
+                            Text("-")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        } else {
+                            ForEach(detectedPaths, id: \.self) { path in
+                                Text(path)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                }
+                .padding(.top, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(HelmTheme.surfaceElevated)
+        )
+    }
+
+    private func repairMetadataOnlyInstallIssue() {
+        guard !managerIsUninstalling else { return }
+        core.setManagerInstallMethod(manager.id, installMethod: "homebrew") { success in
+            guard success else { return }
+            core.installManager(manager.id)
+        }
+    }
+
+    private func removeMetadataOnlyInstallIssue() {
+        guard !managerIsUninstalling,
+              let package = metadataOnlyIssueInstalledPackage,
+              core.canUninstallPackage(package) else {
+            return
+        }
+        core.uninstallPackage(package)
     }
 
     private func managerActionButton(
@@ -1747,6 +2142,66 @@ private struct InspectorManagerDetailView: View {
         .accessibilityLabel(tooltip)
         .disabled(!enabled)
         .helmPointer(enabled: enabled)
+    }
+
+    private func consumePendingInstallSheetRequestIfNeeded() {
+        guard context.managerInstallSheetRequestManagerId == manager.id else { return }
+        context.managerInstallSheetRequestManagerId = nil
+        guard manager.canInstall && !detected else { return }
+        guard !managerIsUninstalling else { return }
+        guard !installSubmissionInFlight else { return }
+        prepareInstallMethodSelection()
+    }
+
+    private func performWithManagedInstance(
+        _ instance: ManagerInstallInstanceStatus,
+        followUp: ManagedInstanceFollowUpAction
+    ) {
+        guard !instance.isActive else {
+            executeManagedInstanceFollowUp(followUp)
+            return
+        }
+
+        if let parentManagerId = requiredDependencyManagerId(for: instance),
+           let parentStatus = core.managersState.managerStatusesById[parentManagerId],
+           !parentStatus.enabled
+        {
+            confirmAction = .enableRequiredManagerForInstance(
+                parentManagerId: parentManagerId,
+                instanceId: instance.instanceId,
+                followUp: followUp
+            )
+            return
+        }
+
+        performManagedInstanceSwitch(instance, followUp: followUp)
+    }
+
+    private func requiredDependencyManagerId(for instance: ManagerInstallInstanceStatus) -> String? {
+        ManagerDependencyResolver.dependencyManagerId(for: manager.id, provenance: instance.provenance)
+    }
+
+    private func performManagedInstanceSwitch(
+        _ instance: ManagerInstallInstanceStatus,
+        followUp: ManagedInstanceFollowUpAction
+    ) {
+        activeInstanceUpdateInFlightId = instance.instanceId
+        core.setManagerActiveInstallInstance(manager.id, instanceId: instance.instanceId) { success in
+            activeInstanceUpdateInFlightId = nil
+            guard success else { return }
+            executeManagedInstanceFollowUp(followUp)
+        }
+    }
+
+    private func executeManagedInstanceFollowUp(_ followUp: ManagedInstanceFollowUpAction) {
+        switch followUp {
+        case .none:
+            return
+        case .update:
+            confirmAction = .update
+        case let .uninstall(allowUnknownProvenance):
+            requestManagerUninstallConfirmation(allowUnknownProvenance: allowUnknownProvenance)
+        }
     }
 
     private func prepareInstallMethodSelection() {
@@ -1907,15 +2362,9 @@ private struct InspectorManagerDetailView: View {
     }
 
     private func defaultUninstallOptions(allowUnknownProvenance: Bool) -> ManagerUninstallActionOptions {
-        if manager.id == "mise" {
-            return ManagerUninstallActionOptions(
-                allowUnknownProvenance: allowUnknownProvenance,
-                miseCleanupMode: .managerOnly,
-                miseConfigRemoval: nil
-            )
-        }
         return ManagerUninstallActionOptions(
             allowUnknownProvenance: allowUnknownProvenance,
+            homebrewCleanupMode: nil,
             miseCleanupMode: nil,
             miseConfigRemoval: nil
         )
@@ -1925,6 +2374,7 @@ private struct InspectorManagerDetailView: View {
         loadingManagerUninstallPreview = true
         let options = ManagerUninstallActionOptions(
             allowUnknownProvenance: allowUnknownProvenance,
+            homebrewCleanupMode: pendingUninstallOptions.homebrewCleanupMode,
             miseCleanupMode: pendingUninstallOptions.miseCleanupMode,
             miseConfigRemoval: pendingUninstallOptions.miseConfigRemoval
         )
@@ -2008,7 +2458,35 @@ private struct InspectorManagerDetailView: View {
                 }
             }
 
-            if manager.id == "mise" {
+            let usesHomebrewCleanupScope = context.preview?.strategy == "homebrew_formula"
+            if usesHomebrewCleanupScope {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("app.managers.uninstall.scope".localized)
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.secondary)
+                    Picker(
+                        "app.managers.uninstall.scope".localized,
+                        selection: Binding(
+                            get: { homebrewUninstallCleanupModeSelection },
+                            set: { mode in
+                                pendingUninstallOptions = ManagerUninstallActionOptions(
+                                    allowUnknownProvenance: pendingUninstallOptions.allowUnknownProvenance,
+                                    homebrewCleanupMode: mode,
+                                    miseCleanupMode: nil,
+                                    miseConfigRemoval: nil
+                                )
+                                refreshManagerUninstallPreviewForCurrentOptions()
+                            }
+                        )
+                    ) {
+                        Text("app.managers.uninstall.scope.manager_only".localized)
+                            .tag(ManagerHomebrewUninstallCleanupMode.managerOnly)
+                        Text("app.managers.uninstall.scope.full_cleanup".localized)
+                            .tag(ManagerHomebrewUninstallCleanupMode.fullCleanup)
+                    }
+                    .pickerStyle(.segmented)
+                }
+            } else if manager.id == "mise" {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("app.managers.uninstall.scope".localized)
                         .font(.caption.weight(.semibold))
@@ -2021,12 +2499,14 @@ private struct InspectorManagerDetailView: View {
                                 if mode == .managerOnly {
                                     pendingUninstallOptions = ManagerUninstallActionOptions(
                                         allowUnknownProvenance: pendingUninstallOptions.allowUnknownProvenance,
+                                        homebrewCleanupMode: nil,
                                         miseCleanupMode: .managerOnly,
                                         miseConfigRemoval: nil
                                     )
                                 } else {
                                     pendingUninstallOptions = ManagerUninstallActionOptions(
                                         allowUnknownProvenance: pendingUninstallOptions.allowUnknownProvenance,
+                                        homebrewCleanupMode: nil,
                                         miseCleanupMode: .fullCleanup,
                                         miseConfigRemoval: pendingUninstallOptions.miseConfigRemoval
                                     )
@@ -2054,6 +2534,7 @@ private struct InspectorManagerDetailView: View {
                                     set: { selection in
                                         pendingUninstallOptions = ManagerUninstallActionOptions(
                                             allowUnknownProvenance: pendingUninstallOptions.allowUnknownProvenance,
+                                            homebrewCleanupMode: nil,
                                             miseCleanupMode: .fullCleanup,
                                             miseConfigRemoval: selection
                                         )
@@ -2120,6 +2601,7 @@ private struct InspectorManagerDetailView: View {
                     Button(L10n.Common.uninstall.localized) {
                         let effectiveOptions = ManagerUninstallActionOptions(
                             allowUnknownProvenance: context.resolvedAllowUnknownProvenance,
+                            homebrewCleanupMode: pendingUninstallOptions.homebrewCleanupMode,
                             miseCleanupMode: pendingUninstallOptions.miseCleanupMode,
                             miseConfigRemoval: pendingUninstallOptions.miseConfigRemoval
                         )
@@ -2198,6 +2680,23 @@ private struct InspectorManagerDetailView: View {
 
     private func installMethodOptionAllowed(_ option: ManagerInstallMethodOption) -> Bool {
         option.isAllowed(in: installMethodPolicyContext)
+            && installMethodDependencyAvailable(option)
+    }
+
+    private func installMethodDependencyAvailable(_ option: ManagerInstallMethodOption) -> Bool {
+        guard let dependencyManagerId = ManagerDependencyResolver.dependencyManagerId(
+            for: manager.id,
+            installMethod: option.method
+        ) else {
+            return true
+        }
+        guard core.isManagerDetected(dependencyManagerId) else {
+            return false
+        }
+        guard let dependencyStatus = core.managerStatuses[dependencyManagerId] else {
+            return false
+        }
+        return dependencyStatus.enabled
     }
 
     private func formatConfidence(_ value: Double) -> String {
@@ -2215,11 +2714,38 @@ private struct InspectorManagerDetailView: View {
         switch reason {
         case .detected: return L10n.App.Inspector.detectionReasonDetected.localized
         case .notDetected: return L10n.App.Inspector.detectionReasonNotDetected.localized
+        case .inconsistent: return L10n.App.Inspector.detectionReasonInconsistent.localized
         case .inProgress: return L10n.App.Inspector.detectionReasonInProgress.localized
         case .failed: return L10n.App.Inspector.detectionReasonFailed.localized
         case .disabled: return L10n.App.Inspector.detectionReasonDisabled.localized
         case .notImplemented: return L10n.App.Inspector.detectionReasonNotImplemented.localized
         case .neverChecked: return L10n.App.Inspector.detectionReasonNeverChecked.localized
+        }
+    }
+
+    private func detectionDiagnosticsIconName(_ reason: ManagerDetectionDiagnosticReason) -> String {
+        switch reason {
+        case .detected:
+            return "checkmark.circle.fill"
+        case .inconsistent:
+            return "exclamationmark.triangle.fill"
+        case .inProgress:
+            return "clock.badge.exclamationmark"
+        case .failed, .disabled, .notDetected, .notImplemented, .neverChecked:
+            return "xmark.circle"
+        }
+    }
+
+    private func detectionDiagnosticsIconColor(_ reason: ManagerDetectionDiagnosticReason) -> Color {
+        switch reason {
+        case .detected:
+            return HelmTheme.stateHealthy
+        case .inconsistent:
+            return HelmTheme.stateAttention
+        case .inProgress:
+            return HelmTheme.stateAttention
+        case .failed, .disabled, .notDetected, .notImplemented, .neverChecked:
+            return HelmTheme.stateError
         }
     }
 

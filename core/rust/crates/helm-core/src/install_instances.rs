@@ -726,9 +726,9 @@ fn classify_asdf_instance(instance: &mut ManagerInstallInstance) {
         instance.confidence = confidence;
         instance.decision_margin = Some(0.30);
         instance.automation_level = automation_level_for(instance.provenance, confidence);
-        instance.uninstall_strategy = uninstall_strategy_for(instance.provenance);
-        instance.update_strategy = update_strategy_for(instance.provenance);
-        instance.remediation_strategy = remediation_strategy_for(instance.provenance);
+        instance.uninstall_strategy = StrategyKind::AsdfSelf;
+        instance.update_strategy = StrategyKind::AsdfSelf;
+        instance.remediation_strategy = StrategyKind::AsdfSelf;
         instance.explanation_primary =
             Some("asdf executable path indicates asdf-managed layout".to_string());
         instance.explanation_secondary = None;
@@ -2336,7 +2336,11 @@ fn manager_executable_candidates(id: ManagerId) -> &'static [&'static str] {
         }
         ManagerId::Asdf => &["asdf"],
         ManagerId::Mise => &["mise"],
-        ManagerId::Rustup => &["rustup"],
+        ManagerId::Rustup => &[
+            "rustup",
+            "/opt/homebrew/opt/rustup/bin/rustup",
+            "/usr/local/opt/rustup/bin/rustup",
+        ],
         ManagerId::Npm => &["npm"],
         ManagerId::Pnpm => &["pnpm"],
         ManagerId::Yarn => &["yarn"],
@@ -2667,6 +2671,14 @@ mod tests {
     }
 
     #[test]
+    fn rustup_candidates_include_homebrew_keg_only_paths() {
+        let candidates = manager_executable_candidates(ManagerId::Rustup);
+        assert!(candidates.contains(&"rustup"));
+        assert!(candidates.contains(&"/opt/homebrew/opt/rustup/bin/rustup"));
+        assert!(candidates.contains(&"/usr/local/opt/rustup/bin/rustup"));
+    }
+
+    #[test]
     fn mise_cellar_path_classifies_as_homebrew() {
         let detection = DetectionInfo {
             installed: true,
@@ -2838,8 +2850,8 @@ mod tests {
             instance.automation_level,
             AutomationLevel::NeedsConfirmation
         );
-        assert_eq!(instance.uninstall_strategy, StrategyKind::InteractivePrompt);
-        assert_eq!(instance.update_strategy, StrategyKind::InteractivePrompt);
+        assert_eq!(instance.uninstall_strategy, StrategyKind::AsdfSelf);
+        assert_eq!(instance.update_strategy, StrategyKind::AsdfSelf);
     }
 
     #[test]

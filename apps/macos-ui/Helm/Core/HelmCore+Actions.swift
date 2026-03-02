@@ -69,6 +69,36 @@ extension HelmCore {
         }
     }
 
+    func respondTaskTimeoutPrompt(taskId: UInt64, waitForCompletion: Bool, completion: ((Bool) -> Void)? = nil) {
+        guard let service = service() else {
+            completion?(false)
+            return
+        }
+
+        service.respondTaskTimeoutPrompt(taskId: Int64(taskId), waitForCompletion: waitForCompletion) { [weak self] success in
+            DispatchQueue.main.async {
+                guard let self else {
+                    completion?(success)
+                    return
+                }
+                if success {
+                    self.fetchTasks()
+                    self.fetchTaskTimeoutPrompts()
+                } else {
+                    logger.warning(
+                        "respondTaskTimeoutPrompt(\(taskId), wait=\(waitForCompletion)) returned false"
+                    )
+                    self.recordLastError(
+                        source: "core.actions",
+                        action: "respondTaskTimeoutPrompt",
+                        taskType: "diagnostics"
+                    )
+                }
+                completion?(success)
+            }
+        }
+    }
+
     func upgradePackage(_ package: PackageItem) {
         guard canUpgradeIndividually(package), !upgradeActionPackageIds.contains(package.id) else { return }
 
@@ -577,8 +607,9 @@ extension HelmCore {
         }
     }
 
-    func setManagerEnabled(_ managerId: String, enabled: Bool) {
+    func setManagerEnabled(_ managerId: String, enabled: Bool, completion: ((Bool) -> Void)? = nil) {
         if isManagerUninstalling(managerId) {
+            completion?(false)
             return
         }
 
@@ -596,6 +627,7 @@ extension HelmCore {
                 managerId: managerId,
                 taskType: "settings"
             )
+            completion?(false)
             return
         }
 
@@ -606,6 +638,7 @@ extension HelmCore {
                 managerId: managerId,
                 taskType: "settings"
             )
+            completion?(false)
             return
         }
 
@@ -624,6 +657,7 @@ extension HelmCore {
                             taskType: "settings"
                         )
                     }
+                    completion?(false)
                     return
                 }
 
@@ -641,6 +675,7 @@ extension HelmCore {
                     includePinned: self.upgradePlanIncludePinned,
                     allowOsUpdates: self.upgradePlanAllowOsUpdates
                 )
+                completion?(true)
             }
         }
     }
@@ -741,6 +776,82 @@ extension HelmCore {
                 return
             }
             self.fetchManagerStatus()
+        }
+    }
+
+    func setManagerActiveInstallInstance(
+        _ managerId: String,
+        instanceId: String,
+        completion: ((Bool) -> Void)? = nil
+    ) {
+        if isManagerUninstalling(managerId) {
+            completion?(false)
+            return
+        }
+        service()?.setManagerActiveInstallInstance(managerId: managerId, instanceId: instanceId) { [weak self] success in
+            guard let self else { return }
+            if !success {
+                logger.error("setManagerActiveInstallInstance(\(managerId), \(instanceId)) failed")
+                self.recordLastError(
+                    source: "core.actions",
+                    action: "setManagerActiveInstallInstance",
+                    managerId: managerId,
+                    taskType: "settings"
+                )
+                DispatchQueue.main.async {
+                    completion?(false)
+                }
+                return
+            }
+            self.fetchManagerStatus()
+            self.triggerDetection(for: managerId)
+            DispatchQueue.main.async {
+                completion?(true)
+            }
+        }
+    }
+
+    func acknowledgeManagerMultiInstanceState(
+        _ managerId: String,
+        completion: ((Bool) -> Void)? = nil
+    ) {
+        service()?.acknowledgeManagerMultiInstanceState(managerId: managerId) { [weak self] success in
+            guard let self else { return }
+            if !success {
+                logger.error("acknowledgeManagerMultiInstanceState(\(managerId)) failed")
+                self.recordLastError(
+                    source: "core.actions",
+                    action: "acknowledgeManagerMultiInstanceState",
+                    managerId: managerId,
+                    taskType: "settings"
+                )
+            }
+            self.fetchManagerStatus()
+            DispatchQueue.main.async {
+                completion?(success)
+            }
+        }
+    }
+
+    func clearManagerMultiInstanceAck(
+        _ managerId: String,
+        completion: ((Bool) -> Void)? = nil
+    ) {
+        service()?.clearManagerMultiInstanceAck(managerId: managerId) { [weak self] success in
+            guard let self else { return }
+            if !success {
+                logger.error("clearManagerMultiInstanceAck(\(managerId)) failed")
+                self.recordLastError(
+                    source: "core.actions",
+                    action: "clearManagerMultiInstanceAck",
+                    managerId: managerId,
+                    taskType: "settings"
+                )
+            }
+            self.fetchManagerStatus()
+            DispatchQueue.main.async {
+                completion?(success)
+            }
         }
     }
 
@@ -978,6 +1089,7 @@ extension HelmCore {
             managerId,
             options: ManagerUninstallActionOptions(
                 allowUnknownProvenance: allowUnknownProvenance,
+                homebrewCleanupMode: nil,
                 miseCleanupMode: nil,
                 miseConfigRemoval: nil
             ),
@@ -1122,6 +1234,7 @@ extension HelmCore {
             managerId,
             options: ManagerUninstallActionOptions(
                 allowUnknownProvenance: allowUnknownProvenance,
+                homebrewCleanupMode: nil,
                 miseCleanupMode: nil,
                 miseConfigRemoval: nil
             )

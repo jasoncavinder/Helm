@@ -30,6 +30,17 @@ pub trait DetectionStore: Send + Sync {
         manager: Option<ManagerId>,
     ) -> PersistenceResult<Vec<ManagerInstallInstance>>;
 
+    fn set_manager_multi_instance_ack_fingerprint(
+        &self,
+        manager: ManagerId,
+        fingerprint: Option<&str>,
+    ) -> PersistenceResult<()>;
+
+    fn manager_multi_instance_ack_fingerprint(
+        &self,
+        manager: ManagerId,
+    ) -> PersistenceResult<Option<String>>;
+
     fn set_manager_enabled(&self, manager: ManagerId, enabled: bool) -> PersistenceResult<()>;
 
     fn set_manager_selected_executable_path(

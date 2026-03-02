@@ -816,6 +816,43 @@ fn replace_install_instances_replaces_previous_rows_for_manager() {
 }
 
 #[test]
+fn manager_multi_instance_ack_fingerprint_roundtrip() {
+    let path = test_db_path("manager-multi-instance-ack-roundtrip");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    assert_eq!(
+        store
+            .manager_multi_instance_ack_fingerprint(ManagerId::Rustup)
+            .unwrap(),
+        None
+    );
+
+    store
+        .set_manager_multi_instance_ack_fingerprint(ManagerId::Rustup, Some("abc123"))
+        .unwrap();
+    assert_eq!(
+        store
+            .manager_multi_instance_ack_fingerprint(ManagerId::Rustup)
+            .unwrap()
+            .as_deref(),
+        Some("abc123")
+    );
+
+    store
+        .set_manager_multi_instance_ack_fingerprint(ManagerId::Rustup, None)
+        .unwrap();
+    assert_eq!(
+        store
+            .manager_multi_instance_ack_fingerprint(ManagerId::Rustup)
+            .unwrap(),
+        None
+    );
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn manager_preferences_selection_fields_roundtrip() {
     let path = test_db_path("manager-preferences-selection-roundtrip");
     let store = SqliteStore::new(&path);

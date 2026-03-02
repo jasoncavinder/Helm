@@ -492,7 +492,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: true,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(
                     .scriptInstaller,

@@ -258,9 +258,24 @@ struct CoreTaskLogRecord: Codable, Identifiable {
     }
 }
 
+struct CoreTaskTimeoutPrompt: Codable, Identifiable {
+    let taskId: UInt64
+    let manager: String
+    let taskType: String
+    let action: String
+    let requestedAtUnixMs: Int64
+    let graceSeconds: UInt64
+    let suggestedExtensionSeconds: UInt64
+
+    var id: String {
+        "\(taskId):\(requestedAtUnixMs)"
+    }
+}
+
 enum ManagerDetectionDiagnosticReason {
     case detected
     case notDetected
+    case inconsistent
     case inProgress
     case failed
     case disabled
@@ -356,12 +371,16 @@ struct ManagerStatus: Codable {
     let supportsPackageInstall: Bool
     let supportsPackageUninstall: Bool
     let supportsPackageUpgrade: Bool
+    let packageStateIssues: [ManagerPackageStateIssue]?
     let isEligible: Bool?
     let ineligibleReasonCode: String?
     let ineligibleReasonMessage: String?
     let ineligibleServiceErrorKey: String?
     let installInstances: [ManagerInstallInstanceStatus]?
     let installInstanceCount: Int?
+    let multiInstanceState: String?
+    let multiInstanceAcknowledged: Bool?
+    let multiInstanceFingerprint: String?
     let activeProvenance: String?
     let activeConfidence: Double?
     let activeDecisionMargin: Double?
@@ -373,6 +392,12 @@ struct ManagerStatus: Codable {
     let activeExplanationSecondary: String?
     let competingProvenance: String?
     let competingConfidence: Double?
+}
+
+struct ManagerPackageStateIssue: Codable {
+    let sourceManagerId: String
+    let packageName: String
+    let issueCode: String
 }
 
 struct ManagerInstallMethodStatus: Codable {
@@ -460,6 +485,11 @@ enum ManagerMiseUninstallConfigRemoval: String, Codable {
     case removeConfig
 }
 
+enum ManagerHomebrewUninstallCleanupMode: String, Codable {
+    case managerOnly
+    case fullCleanup
+}
+
 struct ManagerInstallActionOptions: Codable {
     let rustupInstallSource: ManagerRustupInstallSource?
     let rustupBinaryPath: String?
@@ -469,6 +499,7 @@ struct ManagerInstallActionOptions: Codable {
 
 struct ManagerUninstallActionOptions: Codable {
     let allowUnknownProvenance: Bool?
+    let homebrewCleanupMode: ManagerHomebrewUninstallCleanupMode?
     let miseCleanupMode: ManagerMiseUninstallCleanupMode?
     let miseConfigRemoval: ManagerMiseUninstallConfigRemoval?
 }
@@ -588,6 +619,7 @@ final class HelmCore: ObservableObject {
     @Published var activeTasks: [TaskItem] = [] {
         didSet { scheduleDerivedViewStateRefresh() }
     }
+    @Published var taskTimeoutPrompts: [CoreTaskTimeoutPrompt] = []
     @Published var searchResults: [PackageItem] = []
     @Published var cachedAvailablePackages: [PackageItem] = []
     @Published var upgradePlanSteps: [CoreUpgradePlanStep] = []
@@ -882,6 +914,7 @@ final class HelmCore: ObservableObject {
         if now.timeIntervalSince(lastTaskSnapshotRefreshAt) >= taskSnapshotInterval {
             lastTaskSnapshotRefreshAt = now
             fetchTasks()
+            fetchTaskTimeoutPrompts()
         }
 
         let fullSnapshotInterval: TimeInterval = {
@@ -1154,6 +1187,7 @@ final class HelmCore: ObservableObject {
                     self?.installedPackages = []
                     self?.outdatedPackages = []
                     self?.activeTasks = []
+                    self?.taskTimeoutPrompts = []
                     self?.searchResults = []
                     self?.cachedAvailablePackages = []
                     self?.detectedManagers = []
@@ -1279,16 +1313,20 @@ final class HelmCore: ObservableObject {
         var managerHealthById: [String: OperationalHealth] = [:]
         managerHealthById.reserveCapacity(visibleManagers.count)
         for manager in visibleManagers {
+            let multiInstanceAttentionNeeded =
+                managerStatuses[manager.id]?.multiInstanceState == "attention_needed"
             if failedManagerIds.contains(manager.id) {
                 managerHealthById[manager.id] = .error
             } else if runningManagerIds.contains(manager.id) {
                 managerHealthById[manager.id] = .running
-            } else if outdatedManagerIds.contains(manager.id) {
+            } else if outdatedManagerIds.contains(manager.id) || multiInstanceAttentionNeeded {
                 managerHealthById[manager.id] = .attention
             } else {
                 managerHealthById[manager.id] = .healthy
             }
         }
+
+        let hasManagerAttention = managerHealthById.values.contains(.attention)
 
         let popoverManagerRows = visibleManagers
             .sorted { lhs, rhs in
@@ -1310,7 +1348,7 @@ final class HelmCore: ObservableObject {
             if runningTaskCount > 0 || isRefreshing {
                 return .running
             }
-            if !outdatedPackages.isEmpty {
+            if !outdatedPackages.isEmpty || hasManagerAttention {
                 return .attention
             }
             return .healthy

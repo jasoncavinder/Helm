@@ -112,6 +112,13 @@ const HELM_SUDO_ASKPASS_ENV: &str = "HELM_SUDO_ASKPASS";
 const HELM_SUDO_ASKPASS_ALLOW_OVERRIDE_ENV: &str = "HELM_SUDO_ASKPASS_ALLOW_OVERRIDE";
 const WAIT_LOOP_POLL_INTERVAL: Duration = Duration::from_millis(200);
 const CPU_PROGRESS_SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
+const HARD_TIMEOUT_EXTENSION_MAX_BUDGET: Duration = Duration::from_secs(4 * 60 * 60);
+const HARD_TIMEOUT_EXTENSION_MAX_STEP: Duration = Duration::from_secs(15 * 60);
+const HARD_TIMEOUT_EXTENSION_MIN_STEP: Duration = Duration::from_secs(30);
+const HARD_TIMEOUT_EXTENSION_MAX_ACTIVITY_WINDOW: Duration = Duration::from_secs(60);
+const HARD_TIMEOUT_EXTENSION_MIN_ACTIVITY_WINDOW: Duration = Duration::from_secs(15);
+const HARD_TIMEOUT_PROMPT_GRACE_PERIOD: Duration = Duration::from_secs(30);
+const HARD_TIMEOUT_PROMPT_EXTENSION: Duration = Duration::from_secs(30 * 60);
 
 fn prepare_command_for_spawn(
     request: &ProcessSpawnRequest,
@@ -423,6 +430,109 @@ struct ProcessCpuProgressProbe {
     last_sampled_at: Option<tokio::time::Instant>,
 }
 
+struct HardTimeoutState {
+    base_timeout: Duration,
+    deadline: tokio::time::Instant,
+    extension_budget_remaining: Duration,
+    extension_step: Duration,
+    activity_window: Duration,
+}
+
+impl HardTimeoutState {
+    fn new(
+        base_timeout: Option<Duration>,
+        task_type: TaskType,
+        started_at: tokio::time::Instant,
+    ) -> Option<Self> {
+        let base_timeout = base_timeout?;
+        Some(Self {
+            base_timeout,
+            deadline: started_at + base_timeout,
+            extension_budget_remaining: hard_timeout_extension_budget(task_type, base_timeout),
+            extension_step: hard_timeout_extension_step(base_timeout),
+            activity_window: hard_timeout_activity_window(base_timeout),
+        })
+    }
+
+    fn maybe_extend(
+        &mut self,
+        now: tokio::time::Instant,
+        last_activity_at: tokio::time::Instant,
+    ) -> Option<Duration> {
+        if self.extension_budget_remaining.is_zero() {
+            return None;
+        }
+        if now.duration_since(last_activity_at) > self.activity_window {
+            return None;
+        }
+        if let Some(trigger_at) = self.deadline.checked_sub(self.activity_window)
+            && now < trigger_at
+        {
+            return None;
+        }
+
+        let extension = self.extension_step.min(self.extension_budget_remaining);
+        if extension.is_zero() {
+            return None;
+        }
+        self.deadline += extension;
+        self.extension_budget_remaining = self.extension_budget_remaining.saturating_sub(extension);
+        Some(extension)
+    }
+
+    fn has_timed_out(&self, now: tokio::time::Instant) -> bool {
+        now >= self.deadline
+    }
+
+    fn effective_timeout(&self, started_at: tokio::time::Instant) -> Duration {
+        self.deadline
+            .checked_duration_since(started_at)
+            .unwrap_or(self.base_timeout)
+    }
+
+    fn extension_budget_remaining(&self) -> Duration {
+        self.extension_budget_remaining
+    }
+
+    fn extend_manual(&mut self, extension: Duration) -> Duration {
+        if extension.is_zero() {
+            return Duration::ZERO;
+        }
+        self.deadline += extension;
+        extension
+    }
+}
+
+fn hard_timeout_extension_budget(task_type: TaskType, hard_timeout: Duration) -> Duration {
+    if !matches!(
+        task_type,
+        TaskType::Install | TaskType::Uninstall | TaskType::Upgrade
+    ) {
+        return Duration::ZERO;
+    }
+    hard_timeout.min(HARD_TIMEOUT_EXTENSION_MAX_BUDGET)
+}
+
+fn hard_timeout_extension_step(hard_timeout: Duration) -> Duration {
+    if hard_timeout <= Duration::from_secs(2) {
+        return hard_timeout / 2;
+    }
+    let derived = hard_timeout / 8;
+    derived
+        .max(HARD_TIMEOUT_EXTENSION_MIN_STEP)
+        .min(HARD_TIMEOUT_EXTENSION_MAX_STEP)
+}
+
+fn hard_timeout_activity_window(hard_timeout: Duration) -> Duration {
+    if hard_timeout <= Duration::from_secs(2) {
+        return hard_timeout / 2;
+    }
+    let derived = hard_timeout / 20;
+    derived
+        .max(HARD_TIMEOUT_EXTENSION_MIN_ACTIVITY_WINDOW)
+        .min(HARD_TIMEOUT_EXTENSION_MAX_ACTIVITY_WINDOW)
+}
+
 impl ProcessCpuProgressProbe {
     fn new(pid: Option<u32>, now: tokio::time::Instant) -> Self {
         Self {
@@ -604,6 +714,7 @@ impl RunningProcess for TokioRunningProcess {
             let mut child = child.ok_or_else(|| {
                 let message = "child process already consumed".to_string();
                 if let Some(task_id) = task_id {
+                    crate::execution::timeout_prompt_store::clear_prompt(task_id);
                     crate::execution::task_output_store::record_error(
                         task_id,
                         "internal_child_consumed",
@@ -617,6 +728,7 @@ impl RunningProcess for TokioRunningProcess {
             })?;
 
             if let Some(task_id) = task_id {
+                crate::execution::timeout_prompt_store::clear_prompt(task_id);
                 crate::execution::task_output_store::record_command(task_id, &command_display);
             }
 
@@ -687,6 +799,7 @@ impl RunningProcess for TokioRunningProcess {
                     path_snippet.as_deref(),
                 );
                 if let Some(task_id) = task_id {
+                    crate::execution::timeout_prompt_store::clear_prompt(task_id);
                     crate::execution::task_output_store::record_error(
                         task_id,
                         "wait_failed",
@@ -704,6 +817,8 @@ impl RunningProcess for TokioRunningProcess {
             let mut last_activity_instant = started_instant;
             let mut last_output_activity_instant = started_instant;
             let mut cpu_probe = ProcessCpuProgressProbe::new(pid, started_instant);
+            let mut hard_timeout_state = HardTimeoutState::new(timeout, task_type, started_instant);
+            let mut hard_timeout_prompt_started_at: Option<tokio::time::Instant> = None;
             let mut activity_channel_open = true;
 
             let status = loop {
@@ -730,33 +845,171 @@ impl RunningProcess for TokioRunningProcess {
                 if cpu_probe.observe_progress(now) {
                     last_activity_instant = now;
                 }
-                let timeout_state = timeout
-                    .filter(|duration| now.duration_since(started_instant) >= *duration)
-                    .map(|duration| {
-                        (
-                            "hard_timeout",
-                            format!(
-                                "process reached hard timeout after {}ms",
-                                duration.as_millis()
-                            ),
-                        )
-                    })
-                    .or_else(|| {
-                        idle_timeout
-                            .filter(|duration| {
-                                now.duration_since(last_activity_instant) >= *duration
-                            })
-                            .map(|duration| {
-                                (
-                                    "idle_timeout",
+                if let Some(hard_timeout_state) = hard_timeout_state.as_mut()
+                    && let Some(extension) =
+                        hard_timeout_state.maybe_extend(now, last_activity_instant)
+                {
+                    let message = format!(
+                        "[helm] extending hard timeout by {}ms after progress; effective timeout {}ms (remaining extension budget {}ms)",
+                        extension.as_millis(),
+                        hard_timeout_state
+                            .effective_timeout(started_instant)
+                            .as_millis(),
+                        hard_timeout_state.extension_budget_remaining().as_millis()
+                    );
+                    tracing::info!(
+                        manager = ?manager,
+                        task_type = ?task_type,
+                        action = ?action,
+                        task_id = task_id.map(|value| value.0),
+                        pid,
+                        extension_ms = extension.as_millis(),
+                        effective_timeout_ms = hard_timeout_state
+                            .effective_timeout(started_instant)
+                            .as_millis(),
+                        extension_budget_remaining_ms = hard_timeout_state
+                            .extension_budget_remaining()
+                            .as_millis(),
+                        "process hard timeout extended due to observed activity"
+                    );
+                    if let Some(task_id) = task_id {
+                        crate::execution::task_output_store::append_stderr(
+                            task_id,
+                            format!("{message}\n").as_bytes(),
+                        );
+                    }
+                }
+                let mut timeout_state: Option<(&str, String)> = None;
+                if let Some(hard_timeout_state_ref) = hard_timeout_state.as_mut()
+                    && hard_timeout_state_ref.has_timed_out(now)
+                {
+                    let base_timeout_reason = format!(
+                        "process reached hard timeout after {}ms (base {}ms, extended {}ms)",
+                        hard_timeout_state_ref
+                            .effective_timeout(started_instant)
+                            .as_millis(),
+                        hard_timeout_state_ref.base_timeout.as_millis(),
+                        hard_timeout_state_ref
+                            .effective_timeout(started_instant)
+                            .saturating_sub(hard_timeout_state_ref.base_timeout)
+                            .as_millis()
+                    );
+
+                    if let Some(task_id) = task_id {
+                        match crate::execution::timeout_prompt_store::take_decision(task_id) {
+                            Some(
+                                crate::execution::timeout_prompt_store::TimeoutPromptDecision::Wait,
+                            ) => {
+                                let extension = hard_timeout_state_ref
+                                    .extend_manual(HARD_TIMEOUT_PROMPT_EXTENSION);
+                                hard_timeout_prompt_started_at = None;
+                                crate::execution::timeout_prompt_store::clear_prompt(task_id);
+                                let message = format!(
+                                    "[helm] user requested to wait; extended hard timeout by {}ms (effective timeout {}ms)",
+                                    extension.as_millis(),
+                                    hard_timeout_state_ref
+                                        .effective_timeout(started_instant)
+                                        .as_millis()
+                                );
+                                tracing::info!(
+                                    manager = ?manager,
+                                    task_type = ?task_type,
+                                    action = ?action,
+                                    task_id = task_id.0,
+                                    pid,
+                                    extension_ms = extension.as_millis(),
+                                    effective_timeout_ms = hard_timeout_state_ref
+                                        .effective_timeout(started_instant)
+                                        .as_millis(),
+                                    "task timeout prompt decision: wait"
+                                );
+                                crate::execution::task_output_store::append_stderr(
+                                    task_id,
+                                    format!("{message}\n").as_bytes(),
+                                );
+                                continue;
+                            }
+                            Some(
+                                crate::execution::timeout_prompt_store::TimeoutPromptDecision::Stop,
+                            ) => {
+                                hard_timeout_prompt_started_at = None;
+                                crate::execution::timeout_prompt_store::clear_prompt(task_id);
+                                timeout_state = Some((
+                                    "hard_timeout",
+                                    format!("{base_timeout_reason}; user selected stop"),
+                                ));
+                            }
+                            None => {
+                                if hard_timeout_prompt_started_at.is_none() {
+                                    hard_timeout_prompt_started_at = Some(now);
+                                    let prompt =
+                                        crate::execution::timeout_prompt_store::upsert_prompt(
+                                            task_id,
+                                            manager,
+                                            task_type,
+                                            action,
+                                            HARD_TIMEOUT_PROMPT_GRACE_PERIOD,
+                                            HARD_TIMEOUT_PROMPT_EXTENSION,
+                                        );
+                                    let message = format!(
+                                        "[helm] hard timeout reached; waiting up to {}s for user decision before termination (task={}, suggested wait extension={}s)",
+                                        prompt.grace_seconds,
+                                        prompt.task_id.0,
+                                        prompt.suggested_extension_seconds
+                                    );
+                                    tracing::warn!(
+                                        manager = ?manager,
+                                        task_type = ?task_type,
+                                        action = ?action,
+                                        task_id = task_id.0,
+                                        pid,
+                                        grace_seconds = prompt.grace_seconds,
+                                        suggested_extension_seconds = prompt.suggested_extension_seconds,
+                                        "task timeout prompt created"
+                                    );
+                                    crate::execution::task_output_store::append_stderr(
+                                        task_id,
+                                        format!("{message}\n").as_bytes(),
+                                    );
+                                }
+
+                                let grace_started_at =
+                                    hard_timeout_prompt_started_at.unwrap_or(now);
+                                if now.duration_since(grace_started_at)
+                                    < HARD_TIMEOUT_PROMPT_GRACE_PERIOD
+                                {
+                                    continue;
+                                }
+                                hard_timeout_prompt_started_at = None;
+                                crate::execution::timeout_prompt_store::clear_prompt(task_id);
+                                timeout_state = Some((
+                                    "hard_timeout",
                                     format!(
-                                        "process produced no output or CPU progress for {}ms (last output {}ms ago)",
-                                        duration.as_millis(),
-                                        now.duration_since(last_output_activity_instant).as_millis()
+                                        "{base_timeout_reason}; no user response within {}ms",
+                                        HARD_TIMEOUT_PROMPT_GRACE_PERIOD.as_millis()
                                     ),
-                                )
-                            })
-                    });
+                                ));
+                            }
+                        }
+                    } else {
+                        timeout_state = Some(("hard_timeout", base_timeout_reason));
+                    }
+                }
+
+                let timeout_state = timeout_state.or_else(|| {
+                    idle_timeout
+                        .filter(|duration| now.duration_since(last_activity_instant) >= *duration)
+                        .map(|duration| {
+                            (
+                                "idle_timeout",
+                                format!(
+                                    "process produced no output or CPU progress for {}ms (last output {}ms ago)",
+                                    duration.as_millis(),
+                                    now.duration_since(last_output_activity_instant).as_millis()
+                                ),
+                            )
+                        })
+                });
 
                 if let Some((timeout_code, timeout_reason)) = timeout_state {
                     if let Some(pid) = pid {
@@ -775,6 +1028,7 @@ impl RunningProcess for TokioRunningProcess {
                         path_snippet.as_deref(),
                     );
                     if let Some(task_id) = task_id {
+                        crate::execution::timeout_prompt_store::clear_prompt(task_id);
                         crate::execution::task_output_store::record_terminal_metadata(
                             task_id,
                             started_at,
@@ -803,6 +1057,10 @@ impl RunningProcess for TokioRunningProcess {
                     });
                 }
             };
+
+            if let Some(task_id) = task_id {
+                crate::execution::timeout_prompt_store::clear_prompt(task_id);
+            }
 
             let read_deadline = Duration::from_millis(250);
             let stdout = match tokio::time::timeout(read_deadline, stdout_reader).await {

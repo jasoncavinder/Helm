@@ -35,6 +35,8 @@ use helm_core::execution::{
 use helm_core::managed_automation_policy::{
     ManagedAutomationPolicyMode, apply_managed_automation_policy,
 };
+use helm_core::manager_dependencies::provenance_dependency_manager;
+use helm_core::manager_instances::{install_instance_fingerprint, resolve_multi_instance_state};
 use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
     CachedSearchResult, Capability, DetectionInfo, HomebrewKegPolicy, InstalledPackage,
@@ -374,6 +376,9 @@ struct CliManagerStatus {
     ineligible_reason_code: Option<String>,
     ineligible_reason_message: Option<String>,
     install_instance_count: usize,
+    multi_instance_state: String,
+    multi_instance_acknowledged: bool,
+    multi_instance_fingerprint: Option<String>,
     active_provenance: Option<String>,
     active_confidence: Option<f64>,
     active_decision_margin: Option<f64>,
@@ -3417,6 +3422,15 @@ fn cmd_managers(
                     row.selected_install_method.as_deref().unwrap_or("-")
                 );
                 println!("  install_instance_count: {}", row.install_instance_count);
+                println!("  multi_instance_state: {}", row.multi_instance_state);
+                println!(
+                    "  multi_instance_acknowledged: {}",
+                    row.multi_instance_acknowledged
+                );
+                println!(
+                    "  multi_instance_fingerprint: {}",
+                    row.multi_instance_fingerprint.as_deref().unwrap_or("-")
+                );
                 println!(
                     "  active_provenance: {}",
                     row.active_provenance.as_deref().unwrap_or("-")
@@ -3499,6 +3513,21 @@ fn cmd_managers(
                     );
                     let code = eligibility.reason_code.unwrap_or("manager.ineligible");
                     return Err(format!("{reason} (reason_code={code})"));
+                }
+            } else {
+                let enabled_map = manager_enabled_map(store.as_ref())?;
+                let dependents =
+                    enabled_dependents_for_manager(store.as_ref(), &enabled_map, manager_id)?;
+                if !dependents.is_empty() {
+                    return Err(format!(
+                        "cannot disable manager '{}': enabled managers depend on it ({})",
+                        manager_id.as_str(),
+                        dependents
+                            .iter()
+                            .map(|id| id.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
                 }
             }
             store
@@ -3612,7 +3641,7 @@ fn cmd_managers_list(store: &SqliteStore, options: GlobalOptions) -> Result<(), 
             }
         );
         println!(
-            "  {} [{}|{}] {} exec={} method={} prov={} conf={} margin={} inst={} exec_diag={}{}",
+            "  {} [{}|{}] {} exec={} method={} prov={} conf={} margin={} inst={} multi={} exec_diag={}{}",
             manager.manager_id,
             state,
             detected,
@@ -3623,6 +3652,7 @@ fn cmd_managers_list(store: &SqliteStore, options: GlobalOptions) -> Result<(), 
             confidence,
             margin,
             manager.install_instance_count,
+            manager.multi_instance_state,
             manager.executable_path_diagnostic,
             flags
         );
@@ -4281,6 +4311,98 @@ fn cmd_managers_instances(
     options: GlobalOptions,
     command_args: &[String],
 ) -> Result<(), String> {
+    if let Some(subcommand) = command_args.first().map(String::as_str) {
+        match subcommand {
+            "ack" => {
+                if command_args.len() != 2 {
+                    return Err(
+                        "managers instances ack requires exactly one manager id".to_string()
+                    );
+                }
+                let manager = parse_manager_id(&command_args[1])?;
+                let message = acknowledge_manager_multi_instance_state(store, manager)?;
+                let manager_status = list_managers(store)?
+                    .into_iter()
+                    .find(|row| row.manager_id == manager.as_str())
+                    .ok_or_else(|| format!("manager '{}' not found", manager.as_str()))?;
+                if options.json {
+                    emit_json_payload(
+                        "helm.cli.v1.managers.instances.ack",
+                        json!({
+                            "manager_id": manager.as_str(),
+                            "acknowledged": true,
+                            "multi_instance_state": manager_status.multi_instance_state,
+                            "multi_instance_acknowledged": manager_status.multi_instance_acknowledged,
+                            "multi_instance_fingerprint": manager_status.multi_instance_fingerprint
+                        }),
+                    );
+                } else {
+                    println!("{message}");
+                }
+                return Ok(());
+            }
+            "clear-ack" => {
+                if command_args.len() != 2 {
+                    return Err(
+                        "managers instances clear-ack requires exactly one manager id".to_string(),
+                    );
+                }
+                let manager = parse_manager_id(&command_args[1])?;
+                let message = clear_manager_multi_instance_ack(store, manager)?;
+                let manager_status = list_managers(store)?
+                    .into_iter()
+                    .find(|row| row.manager_id == manager.as_str())
+                    .ok_or_else(|| format!("manager '{}' not found", manager.as_str()))?;
+                if options.json {
+                    emit_json_payload(
+                        "helm.cli.v1.managers.instances.clear_ack",
+                        json!({
+                            "manager_id": manager.as_str(),
+                            "acknowledged": false,
+                            "multi_instance_state": manager_status.multi_instance_state,
+                            "multi_instance_acknowledged": manager_status.multi_instance_acknowledged,
+                            "multi_instance_fingerprint": manager_status.multi_instance_fingerprint
+                        }),
+                    );
+                } else {
+                    println!("{message}");
+                }
+                return Ok(());
+            }
+            "set-active" => {
+                if command_args.len() != 3 {
+                    return Err(
+                        "managers instances set-active requires <manager-id> and <instance-id>"
+                            .to_string(),
+                    );
+                }
+                let manager = parse_manager_id(&command_args[1])?;
+                let instance_id = command_args[2].trim();
+                let message = set_manager_active_install_instance(store, manager, instance_id)?;
+                let manager_status = list_managers(store)?
+                    .into_iter()
+                    .find(|row| row.manager_id == manager.as_str())
+                    .ok_or_else(|| format!("manager '{}' not found", manager.as_str()))?;
+                if options.json {
+                    emit_json_payload(
+                        "helm.cli.v1.managers.instances.set_active",
+                        json!({
+                            "manager_id": manager.as_str(),
+                            "instance_id": instance_id,
+                            "selected_executable_path": manager_status.selected_executable_path,
+                            "multi_instance_state": manager_status.multi_instance_state,
+                            "multi_instance_acknowledged": manager_status.multi_instance_acknowledged
+                        }),
+                    );
+                } else {
+                    println!("{message}");
+                }
+                return Ok(());
+            }
+            _ => {}
+        }
+    }
+
     if command_args.len() > 1 {
         return Err("managers instances accepts zero or one manager id".to_string());
     }
@@ -4314,9 +4436,26 @@ fn cmd_managers_instances(
         return Ok(());
     }
 
+    let manager_multi_instance_state: HashMap<String, (String, bool)> = list_managers(store)?
+        .into_iter()
+        .map(|manager| {
+            (
+                manager.manager_id,
+                (
+                    manager.multi_instance_state,
+                    manager.multi_instance_acknowledged,
+                ),
+            )
+        })
+        .collect();
+
     for instance in instances {
+        let (multi_state, multi_acknowledged) = manager_multi_instance_state
+            .get(&instance.manager_id)
+            .map(|(state, acknowledged)| (state.as_str(), *acknowledged))
+            .unwrap_or(("none", false));
         println!(
-            "  {} [{}] prov={} conf={:.2} margin={} automation={} active={}",
+            "  {} [{}] prov={} conf={:.2} margin={} automation={} active={} multi={} ack={}",
             instance.manager_id,
             instance.instance_id,
             instance.provenance,
@@ -4326,7 +4465,9 @@ fn cmd_managers_instances(
                 .map(|value| format!("{value:.2}"))
                 .unwrap_or_else(|| "-".to_string()),
             instance.automation_level,
-            instance.is_active
+            instance.is_active,
+            multi_state,
+            multi_acknowledged
         );
         println!(
             "    path={} canonical={}",
@@ -9600,6 +9741,55 @@ fn manager_enabled_map(store: &SqliteStore) -> Result<HashMap<ManagerId, bool>, 
     Ok(map)
 }
 
+fn active_install_instances_by_manager(
+    store: &SqliteStore,
+) -> Result<HashMap<ManagerId, ManagerInstallInstance>, String> {
+    let mut grouped: HashMap<ManagerId, Vec<ManagerInstallInstance>> = HashMap::new();
+    for instance in store
+        .list_install_instances(None)
+        .map_err(|error| format!("failed to list manager install instances: {error}"))?
+    {
+        grouped.entry(instance.manager).or_default().push(instance);
+    }
+
+    let mut active = HashMap::new();
+    for (manager, mut instances) in grouped {
+        instances.sort_by(|left, right| {
+            if left.is_active != right.is_active {
+                return right.is_active.cmp(&left.is_active);
+            }
+            left.instance_id.cmp(&right.instance_id)
+        });
+        if let Some(instance) = instances.into_iter().next() {
+            active.insert(manager, instance);
+        }
+    }
+
+    Ok(active)
+}
+
+fn enabled_dependents_for_manager(
+    store: &SqliteStore,
+    enabled_map: &HashMap<ManagerId, bool>,
+    manager: ManagerId,
+) -> Result<Vec<ManagerId>, String> {
+    let active_instances = active_install_instances_by_manager(store)?;
+    let mut dependents = Vec::new();
+    for candidate in ManagerId::ALL {
+        if candidate == manager || !enabled_map.get(&candidate).copied().unwrap_or(true) {
+            continue;
+        }
+        let Some(instance) = active_instances.get(&candidate) else {
+            continue;
+        };
+        if provenance_dependency_manager(candidate, instance.provenance) == Some(manager) {
+            dependents.push(candidate);
+        }
+    }
+    dependents.sort_by_key(|id| id.as_str());
+    Ok(dependents)
+}
+
 fn apply_manager_enablement_self_heal(store: &SqliteStore) -> Result<(), String> {
     let detections: HashMap<ManagerId, DetectionInfo> = store
         .list_detections()
@@ -10125,6 +10315,17 @@ fn list_managers(store: &SqliteStore) -> Result<Vec<CliManagerStatus>, String> {
             .or_default()
             .push(instance);
     }
+    let mut multi_instance_ack_fingerprints: HashMap<ManagerId, Option<String>> = HashMap::new();
+    for manager in ManagerId::ALL {
+        let fingerprint = store
+            .manager_multi_instance_ack_fingerprint(manager)
+            .map_err(|error| {
+                format!(
+                    "failed to read manager multi-instance acknowledgement fingerprint: {error}"
+                )
+            })?;
+        multi_instance_ack_fingerprints.insert(manager, normalize_nonempty(fingerprint));
+    }
     for instances in install_instance_map.values_mut() {
         instances.sort_by(|left, right| {
             right
@@ -10138,14 +10339,22 @@ fn list_managers(store: &SqliteStore) -> Result<Vec<CliManagerStatus>, String> {
     for descriptor in registry::managers() {
         let detection = detection_map.get(&descriptor.id);
         let preference = preference_map.get(&descriptor.id);
-        let active_instance = install_instance_map
-            .get(&descriptor.id)
+        let manager_install_instances = install_instance_map.get(&descriptor.id);
+        let active_instance = manager_install_instances
             .and_then(|instances| instances.iter().find(|instance| instance.is_active))
-            .or_else(|| {
-                install_instance_map
-                    .get(&descriptor.id)
-                    .and_then(|instances| instances.first())
-            });
+            .or_else(|| manager_install_instances.and_then(|instances| instances.first()));
+        let acknowledged_fingerprint = multi_instance_ack_fingerprints
+            .get(&descriptor.id)
+            .and_then(|value| value.as_deref());
+        let (multi_instance_state, multi_instance_fingerprint, multi_instance_acknowledged) =
+            resolve_multi_instance_state(
+                manager_install_instances.into_iter().flat_map(|instances| {
+                    instances
+                        .iter()
+                        .map(|instance| instance.instance_id.as_str())
+                }),
+                acknowledged_fingerprint,
+            );
         let active_executable_path = detection.and_then(|info| info.executable_path.as_deref());
         let executable_paths = if detection.map(|info| info.installed).unwrap_or(false) {
             collect_manager_executable_paths(descriptor.id, active_executable_path)
@@ -10222,6 +10431,9 @@ fn list_managers(store: &SqliteStore) -> Result<Vec<CliManagerStatus>, String> {
                 .get(&descriptor.id)
                 .map(|instances| instances.len())
                 .unwrap_or(0),
+            multi_instance_state: multi_instance_state.as_str().to_string(),
+            multi_instance_acknowledged,
+            multi_instance_fingerprint,
             active_provenance: active_instance
                 .map(|instance| instance.provenance.as_str().to_string()),
             active_confidence: active_instance.map(|instance| instance.confidence),
@@ -10331,6 +10543,96 @@ fn list_manager_install_instances(
             .then_with(|| left.instance_id.cmp(&right.instance_id))
     });
     Ok(result)
+}
+
+fn set_manager_active_install_instance(
+    store: &SqliteStore,
+    manager: ManagerId,
+    instance_id: &str,
+) -> Result<String, String> {
+    let target = normalize_nonempty(Some(instance_id.to_string()))
+        .ok_or_else(|| "instance id must not be empty".to_string())?;
+    let mut instances = store
+        .list_install_instances(Some(manager))
+        .map_err(|error| format!("failed to list manager install instances: {error}"))?;
+    if instances.is_empty() {
+        return Err(format!(
+            "manager '{}' has no detected install instances",
+            manager.as_str()
+        ));
+    }
+    let Some(selected_index) = instances
+        .iter()
+        .position(|instance| instance.instance_id.trim() == target.as_str())
+    else {
+        return Err(format!(
+            "manager '{}' install instance '{}' not found",
+            manager.as_str(),
+            target
+        ));
+    };
+
+    let selected_path = instances[selected_index]
+        .display_path
+        .to_string_lossy()
+        .to_string();
+    for (index, instance) in instances.iter_mut().enumerate() {
+        instance.is_active = index == selected_index;
+    }
+
+    store
+        .replace_install_instances(manager, &instances)
+        .map_err(|error| {
+            format!("failed to persist manager install instance selection: {error}")
+        })?;
+    store
+        .set_manager_selected_executable_path(manager, Some(selected_path.as_str()))
+        .map_err(|error| format!("failed to set selected executable path: {error}"))?;
+    store
+        .set_manager_multi_instance_ack_fingerprint(manager, None)
+        .map_err(|error| format!("failed to clear multi-instance acknowledgement: {error}"))?;
+
+    Ok(format!(
+        "Manager '{}' active install instance set to '{}' ({})",
+        manager.as_str(),
+        target,
+        selected_path
+    ))
+}
+
+fn acknowledge_manager_multi_instance_state(
+    store: &SqliteStore,
+    manager: ManagerId,
+) -> Result<String, String> {
+    let instances = store
+        .list_install_instances(Some(manager))
+        .map_err(|error| format!("failed to list manager install instances: {error}"))?;
+    let Some(fingerprint) = install_instance_fingerprint(&instances) else {
+        return Err(format!(
+            "manager '{}' does not currently have multiple install instances to acknowledge",
+            manager.as_str()
+        ));
+    };
+    store
+        .set_manager_multi_instance_ack_fingerprint(manager, Some(fingerprint.as_str()))
+        .map_err(|error| format!("failed to persist multi-instance acknowledgement: {error}"))?;
+    Ok(format!(
+        "Manager '{}' multi-instance state acknowledged.",
+        manager.as_str()
+    ))
+}
+
+fn clear_manager_multi_instance_ack(
+    store: &SqliteStore,
+    manager: ManagerId,
+) -> Result<String, String> {
+    store
+        .set_manager_multi_instance_ack_fingerprint(manager, None)
+        .map_err(|error| format!("failed to clear multi-instance acknowledgement: {error}"))?;
+    Ok(format!(
+        "Manager '{}' multi-instance acknowledgement cleared.",
+        manager.as_str()
+    ))
 }
 
 fn manager_executable_status(
@@ -11325,6 +11627,23 @@ fn parse_mise_config_removal_arg(
     }
 }
 
+fn parse_homebrew_cleanup_mode_arg(
+    raw: &str,
+) -> Result<helm_core::manager_lifecycle::HomebrewUninstallCleanupMode, String> {
+    match raw.trim() {
+        "managerOnly" | "manager-only" | "manager_only" => {
+            Ok(helm_core::manager_lifecycle::HomebrewUninstallCleanupMode::ManagerOnly)
+        }
+        "fullCleanup" | "full-cleanup" | "full_cleanup" => {
+            Ok(helm_core::manager_lifecycle::HomebrewUninstallCleanupMode::FullCleanup)
+        }
+        other => Err(format!(
+            "unsupported homebrew cleanup mode '{}'; supported: managerOnly, fullCleanup",
+            other
+        )),
+    }
+}
+
 fn parse_manager_mutation_args(
     subcommand: &str,
     command_args: &[String],
@@ -11338,6 +11657,9 @@ fn parse_manager_mutation_args(
     let mut rustup_binary_path: Option<String> = None;
     let mut mise_install_source: Option<helm_core::manager_lifecycle::MiseInstallSource> = None;
     let mut mise_binary_path: Option<String> = None;
+    let mut homebrew_cleanup_mode: Option<
+        helm_core::manager_lifecycle::HomebrewUninstallCleanupMode,
+    > = None;
     let mut mise_cleanup_mode: Option<helm_core::manager_lifecycle::MiseUninstallCleanupMode> =
         None;
     let mut mise_config_removal: Option<helm_core::manager_lifecycle::MiseUninstallConfigRemoval> =
@@ -11359,6 +11681,24 @@ fn parse_manager_mutation_args(
             "--allow-unknown-provenance" if uninstall_command => {
                 allow_unknown_provenance = true;
                 index += 1;
+            }
+            "--homebrew-cleanup-mode" if uninstall_command => {
+                if index + 1 >= command_args.len() {
+                    return Err(
+                        "managers uninstall --homebrew-cleanup-mode requires a mode value"
+                            .to_string(),
+                    );
+                }
+                if homebrew_cleanup_mode.is_some() {
+                    return Err(
+                        "managers uninstall --homebrew-cleanup-mode specified multiple times"
+                            .to_string(),
+                    );
+                }
+                homebrew_cleanup_mode = Some(parse_homebrew_cleanup_mode_arg(
+                    command_args[index + 1].as_str(),
+                )?);
+                index += 2;
             }
             "--mise-cleanup-mode" if uninstall_command => {
                 if index + 1 >= command_args.len() {
@@ -11473,7 +11813,7 @@ fn parse_manager_mutation_args(
             flag if flag.starts_with("--") => {
                 if uninstall_command {
                     return Err(format!(
-                        "unsupported managers uninstall argument '{}'; supported: <manager-id>, --preview, --yes, --allow-unknown-provenance, --mise-cleanup-mode <managerOnly|fullCleanup>, --mise-config-removal <keepConfig|removeConfig>",
+                        "unsupported managers uninstall argument '{}'; supported: <manager-id>, --preview, --yes, --allow-unknown-provenance, --homebrew-cleanup-mode <managerOnly|fullCleanup>, --mise-cleanup-mode <managerOnly|fullCleanup>, --mise-config-removal <keepConfig|removeConfig>",
                         flag
                     ));
                 }
@@ -11589,8 +11929,14 @@ fn parse_manager_mutation_args(
     }
     let uninstall_options = if uninstall_command && manager == ManagerId::Mise {
         helm_core::manager_lifecycle::ManagerUninstallOptions {
+            homebrew_cleanup_mode,
             mise_cleanup_mode,
             mise_config_removal,
+        }
+    } else if uninstall_command {
+        helm_core::manager_lifecycle::ManagerUninstallOptions {
+            homebrew_cleanup_mode,
+            ..helm_core::manager_lifecycle::ManagerUninstallOptions::default()
         }
     } else {
         helm_core::manager_lifecycle::ManagerUninstallOptions::default()
@@ -12708,6 +13054,14 @@ fn print_managers_help_topic(path: &[String]) -> bool {
                 print_managers_install_methods_set_help();
                 return true;
             }
+            ("instances", "ack") => {
+                print_managers_instances_ack_help();
+                return true;
+            }
+            ("instances", "clear-ack") => {
+                print_managers_instances_clear_ack_help();
+                return true;
+            }
             ("priority", "list") => {
                 print_managers_priority_list_help();
                 return true;
@@ -12721,6 +13075,13 @@ fn print_managers_help_topic(path: &[String]) -> bool {
                 return true;
             }
             _ => {}
+        }
+    }
+
+    if path.len() == 3 {
+        if (path[0].as_str(), path[1].as_str()) == ("instances", "set-active") {
+            print_managers_instances_set_active_help();
+            return true;
         }
     }
 
@@ -13246,6 +13607,9 @@ fn print_managers_help() {
     println!("  install-methods list <manager-id>");
     println!("  install-methods set <manager-id> <method-id|default>");
     println!("  instances [<manager-id>]");
+    println!("  instances ack <manager-id>");
+    println!("  instances clear-ack <manager-id>");
+    println!("  instances set-active <manager-id> <instance-id>");
     println!("  priority list");
     println!("  priority set <manager-id> --rank <n>");
     println!("  priority reset");
@@ -13327,13 +13691,14 @@ fn print_managers_update_help() {
 fn print_managers_uninstall_help() {
     println!("USAGE:");
     println!(
-        "  helm managers uninstall <manager-id> [--preview] [--yes] [--allow-unknown-provenance] [--mise-cleanup-mode <managerOnly|fullCleanup>] [--mise-config-removal <keepConfig|removeConfig>]"
+        "  helm managers uninstall <manager-id> [--preview] [--yes] [--allow-unknown-provenance] [--homebrew-cleanup-mode <managerOnly|fullCleanup>] [--mise-cleanup-mode <managerOnly|fullCleanup>] [--mise-config-removal <keepConfig|removeConfig>]"
     );
     println!();
     println!("DESCRIPTION:");
     println!(
         "  Uninstall a supported manager via detected provenance strategy with blast-radius preview."
     );
+    println!("  homebrew-routed managers: --homebrew-cleanup-mode defaults to managerOnly.");
     println!("  mise-only: --mise-cleanup-mode defaults to managerOnly.");
     println!("  mise-only: fullCleanup requires --mise-config-removal keepConfig|removeConfig.");
 }
@@ -13391,9 +13756,38 @@ fn print_managers_install_methods_set_help() {
 fn print_managers_instances_help() {
     println!("USAGE:");
     println!("  helm managers instances [<manager-id>]");
+    println!("  helm managers instances ack <manager-id>");
+    println!("  helm managers instances clear-ack <manager-id>");
+    println!("  helm managers instances set-active <manager-id> <instance-id>");
     println!();
     println!("DESCRIPTION:");
     println!("  Show detected install instances with provenance, confidence, and explainability.");
+    println!("  Use ack/clear-ack to manage multi-instance acknowledgement state.");
+    println!("  Use set-active to select which detected install instance Helm manages.");
+}
+
+fn print_managers_instances_ack_help() {
+    println!("USAGE:");
+    println!("  helm managers instances ack <manager-id>");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Acknowledge an intentional multi-install manager state.");
+}
+
+fn print_managers_instances_clear_ack_help() {
+    println!("USAGE:");
+    println!("  helm managers instances clear-ack <manager-id>");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Clear the stored multi-install acknowledgement for a manager.");
+}
+
+fn print_managers_instances_set_active_help() {
+    println!("USAGE:");
+    println!("  helm managers instances set-active <manager-id> <instance-id>");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Set the active managed install instance and clear any prior acknowledgement.");
 }
 
 fn print_managers_priority_help() {
@@ -14507,6 +14901,22 @@ mod tests {
             &["instances".to_string()]
         ));
         assert!(command_help_topic_exists(
+            Command::Managers,
+            &["instances".to_string(), "ack".to_string()]
+        ));
+        assert!(command_help_topic_exists(
+            Command::Managers,
+            &["instances".to_string(), "clear-ack".to_string()]
+        ));
+        assert!(command_help_topic_exists(
+            Command::Managers,
+            &[
+                "instances".to_string(),
+                "set-active".to_string(),
+                "<instance-id>".to_string()
+            ]
+        ));
+        assert!(command_help_topic_exists(
             Command::SelfCmd,
             &["auto-check".to_string(), "frequency".to_string()]
         ));
@@ -14593,6 +15003,268 @@ mod tests {
         assert!(
             rustup.active_confidence.unwrap_or_default() >= 0.90,
             "expected confidence >= 0.90"
+        );
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn list_managers_reports_multi_instance_state_transitions() {
+        let db_path = temp_db_path("manager-multi-instance-state");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+
+        let homebrew = ManagerInstallInstance {
+            manager: ManagerId::Rustup,
+            instance_id: "rustup-homebrew".to_string(),
+            identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+            identity_value: "/opt/homebrew/Cellar/rustup/1.28.2/bin/rustup".to_string(),
+            display_path: PathBuf::from("/opt/homebrew/bin/rustup"),
+            canonical_path: Some(PathBuf::from(
+                "/opt/homebrew/Cellar/rustup/1.28.2/bin/rustup",
+            )),
+            alias_paths: vec![PathBuf::from("/opt/homebrew/bin/rustup")],
+            is_active: false,
+            version: Some("1.28.2".to_string()),
+            provenance: InstallProvenance::Homebrew,
+            confidence: 0.94,
+            decision_margin: Some(0.53),
+            automation_level: AutomationLevel::Automatic,
+            uninstall_strategy: StrategyKind::HomebrewFormula,
+            update_strategy: StrategyKind::HomebrewFormula,
+            remediation_strategy: StrategyKind::ManualRemediation,
+            explanation_primary: Some("path is in Homebrew Cellar".to_string()),
+            explanation_secondary: None,
+            competing_provenance: Some(InstallProvenance::RustupInit),
+            competing_confidence: Some(0.41),
+        };
+        let user = ManagerInstallInstance {
+            manager: ManagerId::Rustup,
+            instance_id: "rustup-user".to_string(),
+            identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+            identity_value: "/Users/test/.cargo/bin/rustup".to_string(),
+            display_path: PathBuf::from("/Users/test/.cargo/bin/rustup"),
+            canonical_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+            alias_paths: vec![PathBuf::from("/Users/test/.cargo/bin/rustup")],
+            is_active: true,
+            version: Some("1.28.2".to_string()),
+            provenance: InstallProvenance::RustupInit,
+            confidence: 0.92,
+            decision_margin: Some(0.30),
+            automation_level: AutomationLevel::Automatic,
+            uninstall_strategy: StrategyKind::RustupSelf,
+            update_strategy: StrategyKind::RustupSelf,
+            remediation_strategy: StrategyKind::RustupSelf,
+            explanation_primary: Some("path is under CARGO_HOME/bin".to_string()),
+            explanation_secondary: None,
+            competing_provenance: Some(InstallProvenance::Homebrew),
+            competing_confidence: Some(0.45),
+        };
+
+        store
+            .replace_install_instances(ManagerId::Rustup, &[homebrew.clone(), user.clone()])
+            .expect("rustup instances should persist");
+
+        let managers = list_managers(&store).expect("manager list should load");
+        let rustup = managers
+            .into_iter()
+            .find(|manager| manager.manager_id == "rustup")
+            .expect("rustup manager row should exist");
+        assert_eq!(rustup.multi_instance_state, "attention_needed");
+        assert!(!rustup.multi_instance_acknowledged);
+        let acknowledged_fingerprint = rustup
+            .multi_instance_fingerprint
+            .as_deref()
+            .expect("fingerprint should be present")
+            .to_string();
+
+        store
+            .set_manager_multi_instance_ack_fingerprint(
+                ManagerId::Rustup,
+                Some(acknowledged_fingerprint.as_str()),
+            )
+            .expect("manager acknowledgement should persist");
+
+        let managers = list_managers(&store).expect("manager list should load");
+        let rustup = managers
+            .into_iter()
+            .find(|manager| manager.manager_id == "rustup")
+            .expect("rustup manager row should exist");
+        assert_eq!(rustup.multi_instance_state, "acknowledged");
+        assert!(rustup.multi_instance_acknowledged);
+        assert_eq!(
+            rustup.multi_instance_fingerprint.as_deref(),
+            Some(acknowledged_fingerprint.as_str())
+        );
+
+        let mut extra = user;
+        extra.instance_id = "rustup-extra".to_string();
+        extra.identity_value = "/Users/test/.local/bin/rustup".to_string();
+        extra.display_path = PathBuf::from("/Users/test/.local/bin/rustup");
+        extra.canonical_path = Some(PathBuf::from("/Users/test/.local/bin/rustup"));
+        extra.is_active = false;
+
+        store
+            .replace_install_instances(ManagerId::Rustup, &[homebrew, extra])
+            .expect("updated rustup instances should persist");
+
+        let managers = list_managers(&store).expect("manager list should load");
+        let rustup = managers
+            .into_iter()
+            .find(|manager| manager.manager_id == "rustup")
+            .expect("rustup manager row should exist");
+        assert_eq!(rustup.multi_instance_state, "attention_needed");
+        assert!(!rustup.multi_instance_acknowledged);
+        assert_ne!(
+            rustup.multi_instance_fingerprint.as_deref(),
+            Some(acknowledged_fingerprint.as_str())
+        );
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn set_manager_active_install_instance_switches_active_and_clears_ack() {
+        let db_path = temp_db_path("manager-set-active-install-instance");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+
+        let make_instance =
+            |instance_id: &str, display_path: &str, active: bool| ManagerInstallInstance {
+                manager: ManagerId::Rustup,
+                instance_id: instance_id.to_string(),
+                identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                identity_value: display_path.to_string(),
+                display_path: PathBuf::from(display_path),
+                canonical_path: Some(PathBuf::from(display_path)),
+                alias_paths: vec![PathBuf::from(display_path)],
+                is_active: active,
+                version: Some("1.28.2".to_string()),
+                provenance: InstallProvenance::RustupInit,
+                confidence: 0.92,
+                decision_margin: Some(0.30),
+                automation_level: AutomationLevel::Automatic,
+                uninstall_strategy: StrategyKind::RustupSelf,
+                update_strategy: StrategyKind::RustupSelf,
+                remediation_strategy: StrategyKind::RustupSelf,
+                explanation_primary: Some("path is under CARGO_HOME/bin".to_string()),
+                explanation_secondary: None,
+                competing_provenance: Some(InstallProvenance::Homebrew),
+                competing_confidence: Some(0.45),
+            };
+
+        let homebrew = make_instance("rustup-homebrew", "/opt/homebrew/bin/rustup", false);
+        let user = make_instance("rustup-user", "/Users/test/.cargo/bin/rustup", true);
+        store
+            .replace_install_instances(ManagerId::Rustup, &[homebrew, user])
+            .expect("rustup instances should persist");
+        store
+            .set_manager_multi_instance_ack_fingerprint(ManagerId::Rustup, Some("ack"))
+            .expect("multi-instance ack should persist");
+
+        let message = super::set_manager_active_install_instance(
+            &store,
+            ManagerId::Rustup,
+            "rustup-homebrew",
+        )
+        .expect("active instance selection should succeed");
+        assert!(message.contains("rustup-homebrew"));
+
+        let rows = store
+            .list_install_instances(Some(ManagerId::Rustup))
+            .expect("manager instances should load");
+        let active_ids = rows
+            .iter()
+            .filter(|instance| instance.is_active)
+            .map(|instance| instance.instance_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(active_ids, vec!["rustup-homebrew"]);
+        assert_eq!(
+            store
+                .manager_multi_instance_ack_fingerprint(ManagerId::Rustup)
+                .expect("manager ack should load"),
+            None
+        );
+
+        let selected_path = store
+            .list_manager_preferences()
+            .expect("manager preferences should load")
+            .into_iter()
+            .find(|preference| preference.manager == ManagerId::Rustup)
+            .and_then(|preference| preference.selected_executable_path);
+        assert_eq!(selected_path.as_deref(), Some("/opt/homebrew/bin/rustup"));
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn acknowledge_manager_multi_instance_state_requires_multiple_instances() {
+        let db_path = temp_db_path("manager-multi-instance-ack");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+
+        let single = ManagerInstallInstance {
+            manager: ManagerId::Rustup,
+            instance_id: "rustup-user".to_string(),
+            identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+            identity_value: "/Users/test/.cargo/bin/rustup".to_string(),
+            display_path: PathBuf::from("/Users/test/.cargo/bin/rustup"),
+            canonical_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+            alias_paths: vec![PathBuf::from("/Users/test/.cargo/bin/rustup")],
+            is_active: true,
+            version: Some("1.28.2".to_string()),
+            provenance: InstallProvenance::RustupInit,
+            confidence: 0.92,
+            decision_margin: Some(0.30),
+            automation_level: AutomationLevel::Automatic,
+            uninstall_strategy: StrategyKind::RustupSelf,
+            update_strategy: StrategyKind::RustupSelf,
+            remediation_strategy: StrategyKind::RustupSelf,
+            explanation_primary: Some("path is under CARGO_HOME/bin".to_string()),
+            explanation_secondary: None,
+            competing_provenance: Some(InstallProvenance::Homebrew),
+            competing_confidence: Some(0.45),
+        };
+        store
+            .replace_install_instances(ManagerId::Rustup, std::slice::from_ref(&single))
+            .expect("single rustup instance should persist");
+
+        let error = super::acknowledge_manager_multi_instance_state(&store, ManagerId::Rustup)
+            .expect_err("single-instance ack should fail");
+        assert!(
+            error.contains("does not currently have multiple install instances"),
+            "unexpected error: {error}"
+        );
+
+        let mut first = single;
+        first.is_active = true;
+        let mut second = first.clone();
+        second.instance_id = "rustup-homebrew".to_string();
+        second.identity_value = "/opt/homebrew/bin/rustup".to_string();
+        second.display_path = PathBuf::from("/opt/homebrew/bin/rustup");
+        second.canonical_path = Some(PathBuf::from("/opt/homebrew/bin/rustup"));
+        second.is_active = false;
+        second.provenance = InstallProvenance::Homebrew;
+        second.uninstall_strategy = StrategyKind::HomebrewFormula;
+        second.update_strategy = StrategyKind::HomebrewFormula;
+        store
+            .replace_install_instances(ManagerId::Rustup, &[first, second])
+            .expect("multi-instance rustup state should persist");
+
+        super::acknowledge_manager_multi_instance_state(&store, ManagerId::Rustup)
+            .expect("multi-instance ack should succeed");
+        assert!(
+            store
+                .manager_multi_instance_ack_fingerprint(ManagerId::Rustup)
+                .expect("manager ack should load")
+                .is_some(),
+            "expected persisted multi-instance acknowledgement fingerprint"
         );
 
         let _ = fs::remove_file(db_path);
@@ -14908,6 +15580,25 @@ mod tests {
     }
 
     #[test]
+    fn parse_manager_mutation_args_uninstall_accepts_homebrew_cleanup_options() {
+        let parsed = parse_manager_mutation_args(
+            "uninstall",
+            &[
+                "rustup".to_string(),
+                "--homebrew-cleanup-mode".to_string(),
+                "fullCleanup".to_string(),
+            ],
+        )
+        .expect("homebrew cleanup options should parse");
+
+        assert_eq!(parsed.manager, ManagerId::Rustup);
+        assert_eq!(
+            parsed.uninstall_options.homebrew_cleanup_mode,
+            Some(helm_core::manager_lifecycle::HomebrewUninstallCleanupMode::FullCleanup)
+        );
+    }
+
+    #[test]
     fn parse_manager_mutation_args_uninstall_accepts_mise_cleanup_options() {
         let parsed = parse_manager_mutation_args(
             "uninstall",
@@ -14959,6 +15650,20 @@ mod tests {
         )
         .expect_err("invalid mise cleanup mode should fail");
         assert!(error.contains("unsupported mise cleanup mode"));
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_uninstall_rejects_invalid_homebrew_cleanup_mode() {
+        let error = parse_manager_mutation_args(
+            "uninstall",
+            &[
+                "rustup".to_string(),
+                "--homebrew-cleanup-mode".to_string(),
+                "invalid".to_string(),
+            ],
+        )
+        .expect_err("invalid homebrew cleanup mode should fail");
+        assert!(error.contains("unsupported homebrew cleanup mode"));
     }
 
     #[test]
@@ -16889,7 +17594,7 @@ mod tests {
     }
 
     #[test]
-    fn asdf_install_request_prefers_homebrew_method() {
+    fn asdf_install_request_defaults_to_script_installer_and_allows_homebrew_override() {
         let db_path = temp_db_path("asdf-install-method-routing");
         let store = SqliteStore::new(&db_path);
         store
@@ -16897,11 +17602,23 @@ mod tests {
             .expect("store migration should succeed");
         store
             .set_manager_selected_install_method(ManagerId::Asdf, Some("scriptInstaller"))
-            .expect("persisting unsupported asdf preference for install should succeed");
+            .expect("persisting script installer preference should succeed");
 
-        let error = super::build_manager_mutation_request(&store, ManagerId::Asdf, "install", None)
-            .expect_err("saved unsupported method should fail asdf install request");
-        assert!(error.contains("unsupported"));
+        let (target_manager, request) =
+            super::build_manager_mutation_request(&store, ManagerId::Asdf, "install", None)
+                .expect("saved script installer preference should resolve install request");
+        assert_eq!(target_manager, ManagerId::Asdf);
+        match request {
+            super::AdapterRequest::Install(install) => {
+                assert_eq!(install.package.manager, ManagerId::Asdf);
+                assert_eq!(install.package.name, "__self__");
+                assert_eq!(
+                    install.version.as_deref(),
+                    Some("scriptInstaller:officialDownload")
+                );
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
 
         let (target_manager, request) = super::build_manager_mutation_request(
             &store,

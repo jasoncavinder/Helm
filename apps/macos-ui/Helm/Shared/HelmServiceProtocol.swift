@@ -6,6 +6,8 @@ import Foundation
     func listTasks(withReply reply: @escaping (String?) -> Void)
     func getTaskOutput(taskId: Int64, withReply reply: @escaping (String?) -> Void)
     func listTaskLogs(taskId: Int64, limit: Int64, withReply reply: @escaping (String?) -> Void)
+    func listTaskTimeoutPrompts(withReply reply: @escaping (String?) -> Void)
+    func respondTaskTimeoutPrompt(taskId: Int64, waitForCompletion: Bool, withReply reply: @escaping (Bool) -> Void)
     func triggerRefresh(withReply reply: @escaping (Bool) -> Void)
     func triggerDetection(withReply reply: @escaping (Bool) -> Void)
     func triggerDetectionForManager(managerId: String, withReply reply: @escaping (Bool) -> Void)
@@ -35,6 +37,9 @@ import Foundation
     func unpinPackage(managerId: String, packageName: String, withReply reply: @escaping (Bool) -> Void)
     func setManagerEnabled(managerId: String, enabled: Bool, withReply reply: @escaping (Bool) -> Void)
     func setManagerSelectedExecutablePath(managerId: String, selectedPath: String?, withReply reply: @escaping (Bool) -> Void)
+    func setManagerActiveInstallInstance(managerId: String, instanceId: String, withReply reply: @escaping (Bool) -> Void)
+    func acknowledgeManagerMultiInstanceState(managerId: String, withReply reply: @escaping (Bool) -> Void)
+    func clearManagerMultiInstanceAck(managerId: String, withReply reply: @escaping (Bool) -> Void)
     func setManagerInstallMethod(managerId: String, installMethod: String?, withReply reply: @escaping (Bool) -> Void)
     func setManagerTimeoutProfile(
         managerId: String,

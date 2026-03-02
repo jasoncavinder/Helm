@@ -70,6 +70,24 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(String(cString: cString))
     }
 
+    func listTaskTimeoutPrompts(withReply reply: @escaping (String?) -> Void) {
+        guard let cString = helm_list_task_timeout_prompts() else {
+            logger.warning("helm_list_task_timeout_prompts returned nil")
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(cString) }
+        reply(String(cString: cString))
+    }
+
+    func respondTaskTimeoutPrompt(taskId: Int64, waitForCompletion: Bool, withReply reply: @escaping (Bool) -> Void) {
+        let result = helm_respond_task_timeout_prompt(taskId, waitForCompletion)
+        logger.info(
+            "helm_respond_task_timeout_prompt(\(taskId), wait=\(waitForCompletion)) result: \(result)"
+        )
+        reply(result)
+    }
+
     func triggerRefresh(withReply reply: @escaping (Bool) -> Void) {
         let result = helm_trigger_refresh()
         logger.info("helm_trigger_refresh result: \(result)")
@@ -330,6 +348,32 @@ class HelmService: NSObject, HelmServiceProtocol {
             }
         }
         logger.info("helm_set_manager_selected_executable_path(\(managerId), \(selectedPath ?? "nil")) result: \(result)")
+        reply(result)
+    }
+
+    func setManagerActiveInstallInstance(managerId: String, instanceId: String, withReply reply: @escaping (Bool) -> Void) {
+        let result = managerId.withCString { manager in
+            instanceId.withCString { instance in
+                helm_set_manager_active_install_instance(manager, instance)
+            }
+        }
+        logger.info("helm_set_manager_active_install_instance(\(managerId), \(instanceId)) result: \(result)")
+        reply(result)
+    }
+
+    func acknowledgeManagerMultiInstanceState(managerId: String, withReply reply: @escaping (Bool) -> Void) {
+        let result = managerId.withCString { manager in
+            helm_ack_manager_multi_instance_state(manager)
+        }
+        logger.info("helm_ack_manager_multi_instance_state(\(managerId)) result: \(result)")
+        reply(result)
+    }
+
+    func clearManagerMultiInstanceAck(managerId: String, withReply reply: @escaping (Bool) -> Void) {
+        let result = managerId.withCString { manager in
+            helm_clear_manager_multi_instance_ack(manager)
+        }
+        logger.info("helm_clear_manager_multi_instance_ack(\(managerId)) result: \(result)")
         reply(result)
     }
 

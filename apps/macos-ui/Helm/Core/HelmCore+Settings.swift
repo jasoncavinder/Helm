@@ -951,22 +951,10 @@ extension HelmCore {
 
     func managerActionDescription(action: String, managerId: String) -> String {
         switch (action, managerId) {
-        case ("Install", "mas"):
-            return L10n.Service.Task.Label.installHomebrewFormula.localized(with: ["package": "mas"])
-        case ("Install", "mise"):
-            return L10n.Service.Task.Label.installHomebrewFormula.localized(with: ["package": "mise"])
         case ("Update", "homebrew_formula"):
             return L10n.Service.Task.Label.updateHomebrewSelf.localized
-        case ("Update", "mas"):
-            return L10n.Service.Task.Label.updateHomebrewFormula.localized(with: ["package": "mas"])
-        case ("Update", "mise"):
-            return L10n.Service.Task.Label.updateHomebrewFormula.localized(with: ["package": "mise"])
         case ("Update", "rustup"):
             return L10n.Service.Task.Label.updateRustupSelf.localized
-        case ("Uninstall", "mas"):
-            return L10n.Service.Task.Label.uninstallHomebrewFormula.localized(with: ["package": "mas"])
-        case ("Uninstall", "mise"):
-            return L10n.Service.Task.Label.uninstallHomebrewFormula.localized(with: ["package": "mise"])
         case ("Uninstall", "rustup"):
             return L10n.Service.Task.Label.uninstallRustupSelf.localized
         default:

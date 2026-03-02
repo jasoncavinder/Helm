@@ -1195,6 +1195,56 @@ ORDER BY manager_id, is_active DESC, instance_id
         })
     }
 
+    fn set_manager_multi_instance_ack_fingerprint(
+        &self,
+        manager: ManagerId,
+        fingerprint: Option<&str>,
+    ) -> PersistenceResult<()> {
+        self.with_connection("set_manager_multi_instance_ack_fingerprint", |connection| {
+            ensure_schema_ready(connection)?;
+            if let Some(value) = fingerprint.map(str::trim).filter(|entry| !entry.is_empty()) {
+                connection.execute(
+                    "
+INSERT INTO manager_multi_instance_ack (
+    manager_id,
+    instances_fingerprint,
+    acknowledged_at_unix
+)
+VALUES (?1, ?2, strftime('%s', 'now'))
+ON CONFLICT(manager_id) DO UPDATE SET
+    instances_fingerprint = excluded.instances_fingerprint,
+    acknowledged_at_unix = excluded.acknowledged_at_unix
+",
+                    params![manager.as_str(), value],
+                )?;
+            } else {
+                connection.execute(
+                    "DELETE FROM manager_multi_instance_ack WHERE manager_id = ?1",
+                    params![manager.as_str()],
+                )?;
+            }
+            Ok(())
+        })
+    }
+
+    fn manager_multi_instance_ack_fingerprint(
+        &self,
+        manager: ManagerId,
+    ) -> PersistenceResult<Option<String>> {
+        self.with_connection("manager_multi_instance_ack_fingerprint", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection.prepare(
+                "SELECT instances_fingerprint
+                 FROM manager_multi_instance_ack
+                 WHERE manager_id = ?1",
+            )?;
+            let value = statement
+                .query_row(params![manager.as_str()], |row| row.get::<_, String>(0))
+                .optional()?;
+            Ok(value.and_then(|entry| normalize_optional_text(Some(entry))))
+        })
+    }
+
     fn set_manager_enabled(&self, manager: ManagerId, enabled: bool) -> PersistenceResult<()> {
         self.with_connection("set_manager_enabled", |connection| {
             ensure_schema_ready(connection)?;

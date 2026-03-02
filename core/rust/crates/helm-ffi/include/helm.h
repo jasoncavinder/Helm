@@ -35,6 +35,19 @@ char *helm_get_task_output(int64_t task_id);
  */
 char *helm_list_task_logs(int64_t task_id, int64_t limit);
 
+/**
+ * List pending hard-timeout prompts for running tasks as JSON.
+ */
+char *helm_list_task_timeout_prompts(void);
+
+/**
+ * Respond to a pending task hard-timeout prompt by task ID.
+ *
+ * When `wait_for_completion` is true, the task deadline is extended.
+ * When false, the task is terminated immediately.
+ */
+bool helm_respond_task_timeout_prompt(int64_t task_id, bool wait_for_completion);
+
 bool helm_trigger_refresh(void);
 
 bool helm_trigger_detection(void);
@@ -277,6 +290,39 @@ bool helm_set_manager_enabled(const char *manager_id, bool enabled);
 bool helm_set_manager_selected_executable_path(const char *manager_id, const char *selected_path);
 
 /**
+ * Set the managed install instance for a manager by stable `instance_id`.
+ *
+ * This updates selected executable-path preference, marks the selected instance active,
+ * clears multi-instance acknowledgement, and refreshes in-memory executable overrides.
+ *
+ * # Safety
+ *
+ * `manager_id` and `instance_id` must be valid, non-null pointers to NUL-terminated UTF-8
+ * C strings.
+ */
+bool helm_set_manager_active_install_instance(const char *manager_id, const char *instance_id);
+
+/**
+ * Acknowledge current multi-instance install set for a manager.
+ *
+ * Stores the active install-set fingerprint so manager health can be considered acknowledged.
+ *
+ * # Safety
+ *
+ * `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ */
+bool helm_ack_manager_multi_instance_state(const char *manager_id);
+
+/**
+ * Clear multi-instance acknowledgement state for a manager.
+ *
+ * # Safety
+ *
+ * `manager_id` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ */
+bool helm_clear_manager_multi_instance_ack(const char *manager_id);
+
+/**
  * Set (or clear) the selected install method for a manager.
  *
  * # Safety
@@ -304,7 +350,7 @@ bool helm_set_manager_timeout_profile(const char *manager_id,
  *
  * Supported manager IDs:
  * - "mise" -> script installer (default), Homebrew, MacPorts, or cargo install
- * - "asdf" -> Homebrew
+ * - "asdf" -> script installer (default) or Homebrew
  * - "mas" -> Homebrew
  * - "rustup" -> rustup-init (default) or Homebrew, based on selected install method
  *
@@ -319,7 +365,7 @@ int64_t helm_install_manager(const char *manager_id);
  *
  * Supported manager IDs:
  * - "mise" -> script installer (default), Homebrew, MacPorts, or cargo install
- * - "asdf" -> Homebrew
+ * - "asdf" -> script installer (default) or Homebrew
  * - "mas" -> Homebrew
  * - "rustup" -> rustup-init (default) or Homebrew, based on selected install method
  *
@@ -386,6 +432,7 @@ char *helm_preview_manager_uninstall(const char *manager_id, bool allow_unknown_
  *
  * `options_json` supports:
  * - `allowUnknownProvenance` (bool)
+ * - `homebrewCleanupMode` (`managerOnly` | `fullCleanup`)
  * - `miseCleanupMode` (`managerOnly` | `fullCleanup`)
  * - `miseConfigRemoval` (`keepConfig` | `removeConfig`)
  *
@@ -416,6 +463,7 @@ int64_t helm_uninstall_manager_with_options(const char *manager_id, bool allow_u
  *
  * `options_json` supports:
  * - `allowUnknownProvenance` (bool)
+ * - `homebrewCleanupMode` (`managerOnly` | `fullCleanup`)
  * - `miseCleanupMode` (`managerOnly` | `fullCleanup`)
  * - `miseConfigRemoval` (`keepConfig` | `removeConfig`)
  *

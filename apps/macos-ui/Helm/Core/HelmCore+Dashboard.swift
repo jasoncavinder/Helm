@@ -161,10 +161,14 @@ extension HelmCore {
         if isManagerVerifying(managerId) {
             return .notInstalled
         }
-        if let precomputed = overviewState.managerHealthById[managerId] {
+        let packageStateIssuePresent = !(managerStatuses[managerId]?.packageStateIssues?.isEmpty ?? true)
+        if !packageStateIssuePresent, let precomputed = overviewState.managerHealthById[managerId] {
             return precomputed
         }
         if let status = managerStatuses[managerId], status.detected == false {
+            if packageStateIssuePresent {
+                return .attention
+            }
             return .notInstalled
         }
         if managerStatuses[managerId] == nil && !detectedManagers.contains(managerId) {
@@ -182,6 +186,12 @@ extension HelmCore {
             $0.isRunning && $0.managerId == managerId
         }) {
             return .running
+        }
+        if packageStateIssuePresent {
+            return .attention
+        }
+        if managerStatuses[managerId]?.multiInstanceState == "attention_needed" {
+            return .attention
         }
         if outdatedPackages.contains(where: { $0.managerId == managerId }) {
             return .attention
@@ -256,7 +266,7 @@ extension HelmCore {
         let mutationTaskTypesRequiringDetectionResync = Set(["manager_install", "manager_uninstall"])
         var completedManagerInstalls: [String] = []
         var completedManagerUninstalls: [String] = []
-        var shouldTriggerDetectionResync = false
+        var verificationManagerIds = Set<String>()
 
         for managerId in Array(managerActionTaskByManager.keys) {
             guard let taskId = managerActionTaskByManager[managerId] else { continue }
@@ -270,9 +280,15 @@ extension HelmCore {
                 }
                 if let trackedTaskType,
                    mutationTaskTypesRequiringDetectionResync.contains(trackedTaskType) {
-                    shouldTriggerDetectionResync = true
+                    verificationManagerIds.insert(managerId)
+                    managerOperations[managerId] = L10n.App.Managers.Operation.verifying.localized
                 }
-                if let fallback = managerActionMissingTaskFailureText(for: trackedTaskType) {
+                if let trackedTaskType,
+                   mutationTaskTypesRequiringDetectionResync.contains(trackedTaskType) {
+                    taskSyncLogger.warning(
+                        "Tracked manager mutation task disappeared before visibility; scheduling manager verification (manager=\(managerId), task_id=\(taskId), task_type=\(trackedTaskType))"
+                    )
+                } else if let fallback = managerActionMissingTaskFailureText(for: trackedTaskType) {
                     managerOperations[managerId] = fallback
                     taskSyncLogger.warning(
                         "Tracked manager action task disappeared before visibility (manager=\(managerId), task_id=\(taskId), task_type=\(trackedTaskType ?? "unknown"))"
@@ -281,6 +297,7 @@ extension HelmCore {
                     managerOperations.removeValue(forKey: managerId)
                 }
                 managerActionTaskByManager.removeValue(forKey: managerId)
+                managerActionTaskDescriptions.removeValue(forKey: taskId)
                 managerActionTaskTypes.removeValue(forKey: taskId)
                 managerActionTaskSubmittedAt.removeValue(forKey: taskId)
                 continue
@@ -292,12 +309,13 @@ extension HelmCore {
                     completedManagerUninstalls.append(managerId)
                 } else if let trackedTaskType,
                           mutationTaskTypesRequiringDetectionResync.contains(trackedTaskType) {
-                    shouldTriggerDetectionResync = true
+                    verificationManagerIds.insert(managerId)
                 }
                 if trackedTaskType != "manager_install" || status != "completed" {
                     managerOperations.removeValue(forKey: managerId)
                 }
                 managerActionTaskByManager.removeValue(forKey: managerId)
+                managerActionTaskDescriptions.removeValue(forKey: taskId)
                 managerActionTaskTypes.removeValue(forKey: taskId)
                 managerActionTaskSubmittedAt.removeValue(forKey: taskId)
             }
@@ -312,8 +330,9 @@ extension HelmCore {
             startManagerVerification(managerId: managerId, coreTasks: coreTasks)
         }
 
-        if shouldTriggerDetectionResync {
-            triggerDetection()
+        let completedVerificationManagers = Set(completedManagerInstalls).union(completedManagerUninstalls)
+        for managerId in verificationManagerIds where !completedVerificationManagers.contains(managerId) {
+            startManagerVerification(managerId: managerId, coreTasks: coreTasks)
         }
 
         syncManagerVerificationState(from: coreTasks)
@@ -669,6 +688,7 @@ extension HelmCore {
         let isImplemented = status?.isImplemented ?? managerInfo?.isImplemented ?? true
         let isEnabled = status?.enabled ?? true
         let isDetected = isManagerDetected(managerId)
+        let hasPackageStateIssues = !(status?.packageStateIssues?.isEmpty ?? true)
         let latestTask = latestDetectionTask(for: managerId)
         let latestStatus = latestTask?.status.lowercased()
 
@@ -677,6 +697,8 @@ extension HelmCore {
             reason = .notImplemented
         } else if !isEnabled {
             reason = .disabled
+        } else if hasPackageStateIssues {
+            reason = .inconsistent
         } else if latestStatus == "queued" || latestStatus == "running" {
             reason = .inProgress
         } else if latestStatus == "failed" || latestStatus == "cancelled" {

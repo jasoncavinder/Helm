@@ -34,11 +34,19 @@ const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
 const LIST_TIMEOUT: Duration = Duration::from_secs(120);
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(60);
 const MUTATION_TIMEOUT: Duration = Duration::from_secs(600);
+const INSTALL_TIMEOUT: Duration = Duration::from_secs(20 * 60);
+const INSTALL_IDLE_TIMEOUT: Duration = Duration::from_secs(180);
+const MANAGER_UPDATE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AsdfDetectOutput {
     pub executable_path: Option<PathBuf>,
     pub version_output: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AsdfInstallSource {
+    OfficialDownload,
 }
 
 pub trait AsdfSource: Send + Sync {
@@ -47,9 +55,12 @@ pub trait AsdfSource: Send + Sync {
     fn list_plugins(&self) -> AdapterResult<String>;
     fn list_all_plugins(&self) -> AdapterResult<String>;
     fn latest_version(&self, plugin: &str) -> AdapterResult<String>;
-    fn install(&self, plugin: &str, version: Option<&str>) -> AdapterResult<String>;
-    fn uninstall(&self, plugin: &str, version: &str) -> AdapterResult<String>;
-    fn upgrade(&self, plugin: Option<&str>) -> AdapterResult<String>;
+    fn install_plugin(&self, plugin: &str, version: Option<&str>) -> AdapterResult<String>;
+    fn uninstall_plugin(&self, plugin: &str, version: &str) -> AdapterResult<String>;
+    fn upgrade_plugins(&self, plugin: Option<&str>) -> AdapterResult<String>;
+    fn install_self(&self, source: AsdfInstallSource) -> AdapterResult<String>;
+    fn self_uninstall(&self) -> AdapterResult<String>;
+    fn self_update(&self) -> AdapterResult<String>;
 }
 
 pub struct AsdfAdapter<S: AsdfSource> {
@@ -133,12 +144,22 @@ impl<S: AsdfSource> ManagerAdapter for AsdfAdapter<S> {
                 Ok(AdapterResponse::SearchResults(results))
             }
             AdapterRequest::Install(install_request) => {
+                if install_request.package.name == "__self__" {
+                    let install_source = parse_install_source(install_request.version.as_deref())?;
+                    let _ = self.source.install_self(install_source)?;
+                    return Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
+                        package: install_request.package,
+                        action: ManagerAction::Install,
+                        before_version: None,
+                        after_version: None,
+                    }));
+                }
                 crate::adapters::validate_package_identifier(
                     ManagerId::Asdf,
                     ManagerAction::Install,
                     install_request.package.name.as_str(),
                 )?;
-                let _ = self.source.install(
+                let _ = self.source.install_plugin(
                     install_request.package.name.as_str(),
                     install_request.version.as_deref(),
                 )?;
@@ -151,6 +172,15 @@ impl<S: AsdfSource> ManagerAdapter for AsdfAdapter<S> {
                 }))
             }
             AdapterRequest::Uninstall(uninstall_request) => {
+                if uninstall_request.package.name == "__self__" {
+                    let _ = self.source.self_uninstall()?;
+                    return Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
+                        package: uninstall_request.package,
+                        action: ManagerAction::Uninstall,
+                        before_version: None,
+                        after_version: None,
+                    }));
+                }
                 crate::adapters::validate_package_identifier(
                     ManagerId::Asdf,
                     ManagerAction::Uninstall,
@@ -174,9 +204,10 @@ impl<S: AsdfSource> ManagerAdapter for AsdfAdapter<S> {
                         ),
                     })?;
 
-                let _ = self
-                    .source
-                    .uninstall(uninstall_request.package.name.as_str(), &installed_version)?;
+                let _ = self.source.uninstall_plugin(
+                    uninstall_request.package.name.as_str(),
+                    &installed_version,
+                )?;
 
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: uninstall_request.package,
@@ -191,6 +222,16 @@ impl<S: AsdfSource> ManagerAdapter for AsdfAdapter<S> {
                     name: "__all__".to_string(),
                 });
 
+                if package.name == "__self__" {
+                    let _ = self.source.self_update()?;
+                    return Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
+                        package,
+                        action: ManagerAction::Upgrade,
+                        before_version: None,
+                        after_version: None,
+                    }));
+                }
+
                 let target_name = if package.name == "__all__" {
                     None
                 } else {
@@ -202,7 +243,7 @@ impl<S: AsdfSource> ManagerAdapter for AsdfAdapter<S> {
                     Some(package.name.as_str())
                 };
 
-                let _ = self.source.upgrade(target_name)?;
+                let _ = self.source.upgrade_plugins(target_name)?;
 
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
@@ -318,6 +359,37 @@ pub fn asdf_upgrade_request(task_id: Option<TaskId>, plugin: &str) -> ProcessSpa
     )
 }
 
+pub fn asdf_self_update_request(
+    task_id: Option<TaskId>,
+    install_root: &str,
+) -> ProcessSpawnRequest {
+    asdf_request(
+        task_id,
+        TaskType::Upgrade,
+        ManagerAction::Upgrade,
+        CommandSpec::new("git").args(["-C", install_root, "pull", "--ff-only"]),
+        MANAGER_UPDATE_TIMEOUT,
+    )
+}
+
+pub fn asdf_clone_install_request(
+    task_id: Option<TaskId>,
+    install_root: &str,
+) -> ProcessSpawnRequest {
+    asdf_request(
+        task_id,
+        TaskType::Install,
+        ManagerAction::Install,
+        CommandSpec::new("git").args([
+            "clone",
+            "https://github.com/asdf-vm/asdf.git",
+            install_root,
+        ]),
+        INSTALL_TIMEOUT,
+    )
+    .idle_timeout(INSTALL_IDLE_TIMEOUT)
+}
+
 fn asdf_request(
     task_id: Option<TaskId>,
     task_type: TaskType,
@@ -332,6 +404,26 @@ fn asdf_request(
         request = request.task_id(task_id);
     }
     request
+}
+
+fn parse_install_source(version: Option<&str>) -> AdapterResult<AsdfInstallSource> {
+    let Some(version) = version.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(AsdfInstallSource::OfficialDownload);
+    };
+
+    if version.eq_ignore_ascii_case("scriptInstaller:officialDownload")
+        || version.eq_ignore_ascii_case("officialDownload")
+    {
+        return Ok(AsdfInstallSource::OfficialDownload);
+    }
+
+    Err(CoreError {
+        manager: Some(ManagerId::Asdf),
+        task: Some(TaskType::Install),
+        action: Some(ManagerAction::Install),
+        kind: CoreErrorKind::InvalidInput,
+        message: format!("unsupported asdf install source: {version}"),
+    })
 }
 
 fn parse_asdf_version(output: &str) -> Option<String> {
@@ -462,14 +554,15 @@ mod tests {
     use std::time::UNIX_EPOCH;
 
     use crate::adapters::asdf::{
-        AsdfAdapter, AsdfDetectOutput, AsdfSource, asdf_detect_request, asdf_install_request,
-        asdf_list_all_plugins_request, asdf_list_current_request, asdf_uninstall_request,
+        AsdfAdapter, AsdfDetectOutput, AsdfInstallSource, AsdfSource, asdf_clone_install_request,
+        asdf_detect_request, asdf_install_request, asdf_list_all_plugins_request,
+        asdf_list_current_request, asdf_self_update_request, asdf_uninstall_request,
         asdf_upgrade_request, parse_asdf_current, parse_asdf_latest_version, parse_asdf_search,
-        parse_asdf_version,
+        parse_asdf_version, parse_install_source,
     };
     use crate::adapters::manager::{
-        AdapterRequest, AdapterResponse, AdapterResult, ListInstalledRequest, ListOutdatedRequest,
-        ManagerAdapter, SearchRequest, UninstallRequest, UpgradeRequest,
+        AdapterRequest, AdapterResponse, AdapterResult, InstallRequest, ListInstalledRequest,
+        ListOutdatedRequest, ManagerAdapter, SearchRequest, UninstallRequest, UpgradeRequest,
     };
     use crate::models::{ManagerAction, ManagerId, PackageRef, SearchQuery, TaskType};
 
@@ -565,6 +658,40 @@ mod tests {
         let upgrade = asdf_upgrade_request(None, "python");
         assert_eq!(upgrade.task_type, TaskType::Upgrade);
         assert_eq!(upgrade.command.args, vec!["install", "python", "latest"]);
+    }
+
+    #[test]
+    fn manager_self_requests_have_expected_shapes() {
+        let install = asdf_clone_install_request(None, "/Users/test/.asdf");
+        assert_eq!(install.task_type, TaskType::Install);
+        assert_eq!(
+            install.command.args,
+            vec![
+                "clone",
+                "https://github.com/asdf-vm/asdf.git",
+                "/Users/test/.asdf"
+            ]
+        );
+
+        let update = asdf_self_update_request(None, "/Users/test/.asdf");
+        assert_eq!(update.task_type, TaskType::Upgrade);
+        assert_eq!(
+            update.command.args,
+            vec!["-C", "/Users/test/.asdf", "pull", "--ff-only"]
+        );
+    }
+
+    #[test]
+    fn parses_asdf_manager_install_source() {
+        assert_eq!(
+            parse_install_source(Some("scriptInstaller:officialDownload")).expect("source should parse"),
+            AsdfInstallSource::OfficialDownload
+        );
+        assert_eq!(
+            parse_install_source(Some("officialDownload")).expect("source should parse"),
+            AsdfInstallSource::OfficialDownload
+        );
+        assert!(parse_install_source(Some("existingBinaryPath:/tmp/asdf")).is_err());
     }
 
     #[test]
@@ -724,6 +851,52 @@ mod tests {
         assert_eq!(result.package.name, "__all__");
     }
 
+    #[test]
+    fn adapter_manager_self_actions_accept_self_placeholder() {
+        let source = FixtureSource {
+            detect_result: Ok(AsdfDetectOutput {
+                executable_path: Some(PathBuf::from("/Users/test/.asdf/bin/asdf")),
+                version_output: VERSION_FIXTURE.to_string(),
+            }),
+            list_current_result: Ok(CURRENT_FIXTURE.to_string()),
+            list_plugins_result: Ok("nodejs\npython\n".to_string()),
+            list_all_plugins_result: Ok(PLUGINS_FIXTURE.to_string()),
+            latest_by_plugin: HashMap::new(),
+        };
+        let adapter = AsdfAdapter::new(source);
+
+        let install_response = adapter
+            .execute(AdapterRequest::Install(InstallRequest {
+                package: PackageRef {
+                    manager: ManagerId::Asdf,
+                    name: "__self__".to_string(),
+                },
+                version: Some("scriptInstaller:officialDownload".to_string()),
+            }))
+            .expect("manager install should succeed");
+        assert!(matches!(install_response, AdapterResponse::Mutation(_)));
+
+        let uninstall_response = adapter
+            .execute(AdapterRequest::Uninstall(UninstallRequest {
+                package: PackageRef {
+                    manager: ManagerId::Asdf,
+                    name: "__self__".to_string(),
+                },
+            }))
+            .expect("manager uninstall should succeed");
+        assert!(matches!(uninstall_response, AdapterResponse::Mutation(_)));
+
+        let upgrade_response = adapter
+            .execute(AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Asdf,
+                    name: "__self__".to_string(),
+                }),
+            }))
+            .expect("manager update should succeed");
+        assert!(matches!(upgrade_response, AdapterResponse::Mutation(_)));
+    }
+
     struct FixtureSource {
         detect_result: AdapterResult<AsdfDetectOutput>,
         list_current_result: AdapterResult<String>,
@@ -762,15 +935,27 @@ mod tests {
                 })
         }
 
-        fn install(&self, _plugin: &str, _version: Option<&str>) -> AdapterResult<String> {
+        fn install_plugin(&self, _plugin: &str, _version: Option<&str>) -> AdapterResult<String> {
             Ok(String::new())
         }
 
-        fn uninstall(&self, _plugin: &str, _version: &str) -> AdapterResult<String> {
+        fn uninstall_plugin(&self, _plugin: &str, _version: &str) -> AdapterResult<String> {
             Ok(String::new())
         }
 
-        fn upgrade(&self, _plugin: Option<&str>) -> AdapterResult<String> {
+        fn upgrade_plugins(&self, _plugin: Option<&str>) -> AdapterResult<String> {
+            Ok(String::new())
+        }
+
+        fn install_self(&self, _source: AsdfInstallSource) -> AdapterResult<String> {
+            Ok(String::new())
+        }
+
+        fn self_uninstall(&self) -> AdapterResult<String> {
+            Ok(String::new())
+        }
+
+        fn self_update(&self) -> AdapterResult<String> {
             Ok(String::new())
         }
     }

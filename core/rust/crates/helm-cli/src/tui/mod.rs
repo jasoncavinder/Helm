@@ -20,21 +20,25 @@ use serde_json::json;
 
 use super::provenance::{InstallChannel, UpdatePolicy};
 use super::{
-    CachedSearchResult, CliDiagnosticsSummary, CliManagerStatus, CliTaskLogRecord, CliTaskRecord,
-    CoordinatorSubmitRequest, CoordinatorWorkflowRequest, ExecutionMode, InstalledPackage,
-    ManagerId, OutdatedPackage, PackageRef, SELF_UPDATE_ALLOW_ROOT_ENV, SqliteStore,
-    TASK_FETCH_LIMIT, TaskId, adapter_request_to_coordinator_submit, build_diagnostics_summary,
-    build_manager_mutation_request, build_manager_uninstall_plan_with_options,
-    build_package_uninstall_preview_for_package, cancel_inflight_tasks_for_manager,
-    channel_managed_check_status, coordinator_cancel_task, coordinator_start_workflow,
+    CachedSearchResult, CliDiagnosticsSummary, CliManagerInstallInstance, CliManagerStatus,
+    CliTaskLogRecord, CliTaskRecord, CoordinatorSubmitRequest, CoordinatorWorkflowRequest,
+    ExecutionMode, InstalledPackage, ManagerId, OutdatedPackage, PackageRef,
+    SELF_UPDATE_ALLOW_ROOT_ENV, SqliteStore, TASK_FETCH_LIMIT, TaskId,
+    acknowledge_manager_multi_instance_state, adapter_request_to_coordinator_submit,
+    build_diagnostics_summary, build_manager_mutation_request,
+    build_manager_uninstall_plan_with_options, build_package_uninstall_preview_for_package,
+    cancel_inflight_tasks_for_manager, channel_managed_check_status,
+    clear_manager_multi_instance_ack, coordinator_cancel_task, coordinator_start_workflow,
     coordinator_submit_request, current_cli_version, database_path, detect_install_provenance,
-    direct_update_apply, direct_update_check_status, env_flag_enabled, is_running_as_root,
-    list_installed_for_enabled, list_managers, list_outdated_for_enabled, list_tasks_for_enabled,
-    manager_enabled_map, manager_enablement_eligibility_for_store, manager_executable_status,
-    manager_install_methods_status, manager_priority_entries, provenance_can_self_update,
-    provenance_recommended_action, resolve_install_method_override_for_tui,
-    search_local_for_enabled, set_manager_priority_rank, task_log_to_cli_record, task_to_cli_task,
-    write_setting,
+    direct_update_apply, direct_update_check_status, enabled_dependents_for_manager,
+    env_flag_enabled, is_running_as_root, list_installed_for_enabled,
+    list_manager_install_instances, list_managers, list_outdated_for_enabled,
+    list_tasks_for_enabled, manager_enabled_map, manager_enablement_eligibility_for_store,
+    manager_executable_status, manager_install_methods_status, manager_priority_entries,
+    provenance_can_self_update, provenance_recommended_action,
+    resolve_install_method_override_for_tui, search_local_for_enabled,
+    set_manager_active_install_instance, set_manager_priority_rank, task_log_to_cli_record,
+    task_to_cli_task, write_setting,
 };
 use helm_core::models::HomebrewKegPolicy;
 
@@ -66,14 +70,37 @@ fn mise_uninstall_options_label(
     }
 }
 
+fn homebrew_uninstall_options_label(
+    options: &helm_core::manager_lifecycle::ManagerUninstallOptions,
+) -> Option<&'static str> {
+    use helm_core::manager_lifecycle::HomebrewUninstallCleanupMode;
+
+    match options.homebrew_cleanup_mode {
+        Some(HomebrewUninstallCleanupMode::ManagerOnly) => Some("homebrew_mode=manager_only"),
+        Some(HomebrewUninstallCleanupMode::FullCleanup) => Some("homebrew_mode=full_cleanup"),
+        None => None,
+    }
+}
+
 fn mise_uninstall_options_full_cleanup(
     config_removal: helm_core::manager_lifecycle::MiseUninstallConfigRemoval,
 ) -> helm_core::manager_lifecycle::ManagerUninstallOptions {
     helm_core::manager_lifecycle::ManagerUninstallOptions {
+        homebrew_cleanup_mode: None,
         mise_cleanup_mode: Some(
             helm_core::manager_lifecycle::MiseUninstallCleanupMode::FullCleanup,
         ),
         mise_config_removal: Some(config_removal),
+    }
+}
+
+fn homebrew_uninstall_options_full_cleanup() -> helm_core::manager_lifecycle::ManagerUninstallOptions
+{
+    helm_core::manager_lifecycle::ManagerUninstallOptions {
+        homebrew_cleanup_mode: Some(
+            helm_core::manager_lifecycle::HomebrewUninstallCleanupMode::FullCleanup,
+        ),
+        ..helm_core::manager_lifecycle::ManagerUninstallOptions::default()
     }
 }
 
@@ -280,14 +307,21 @@ impl ConfirmAction {
                     prompt.push(' ');
                     prompt.push_str(summary);
                 }
-                if *subcommand == "uninstall"
-                    && *manager == ManagerId::Mise
-                    && let Some(summary) = mise_uninstall_options_label(uninstall_options)
-                {
-                    prompt.push(' ');
-                    prompt.push('[');
-                    prompt.push_str(summary);
-                    prompt.push(']');
+                if *subcommand == "uninstall" {
+                    if let Some(summary) = homebrew_uninstall_options_label(uninstall_options) {
+                        prompt.push(' ');
+                        prompt.push('[');
+                        prompt.push_str(summary);
+                        prompt.push(']');
+                    }
+                    if *manager == ManagerId::Mise
+                        && let Some(summary) = mise_uninstall_options_label(uninstall_options)
+                    {
+                        prompt.push(' ');
+                        prompt.push('[');
+                        prompt.push_str(summary);
+                        prompt.push(']');
+                    }
                 }
                 if *allow_unknown_provenance {
                     prompt.push_str(" [unknown-provenance override]");
@@ -485,6 +519,7 @@ struct AppState {
     self_update: SelfUpdateSnapshot,
     selected_manager_executable_paths: Vec<String>,
     selected_manager_install_methods: Vec<String>,
+    selected_manager_install_instances: Vec<CliManagerInstallInstance>,
     selected_manager_priority_label: Option<String>,
     task_logs: Vec<CliTaskLogRecord>,
     pending_remote_search_query: Option<String>,
@@ -555,6 +590,7 @@ impl AppState {
             self_update: SelfUpdateSnapshot::default(),
             selected_manager_executable_paths: Vec::new(),
             selected_manager_install_methods: Vec::new(),
+            selected_manager_install_instances: Vec::new(),
             selected_manager_priority_label: None,
             task_logs: Vec::new(),
             pending_remote_search_query: None,
@@ -768,6 +804,7 @@ impl AppState {
     fn refresh_selected_manager_controls(&mut self, store: &SqliteStore) -> Result<(), String> {
         self.selected_manager_executable_paths.clear();
         self.selected_manager_install_methods.clear();
+        self.selected_manager_install_instances.clear();
         self.selected_manager_priority_label = None;
 
         let Some(row) = self.selected_manager() else {
@@ -779,10 +816,12 @@ impl AppState {
             .map_err(|_| format!("unknown manager id '{}'", row.manager_id))?;
         let executable = manager_executable_status(store, manager)?;
         let install_methods = manager_install_methods_status(store, manager)?;
+        let install_instances = list_manager_install_instances(store, Some(manager))?;
         let priorities = manager_priority_entries(store)?;
 
         self.selected_manager_executable_paths = executable.executable_paths;
         self.selected_manager_install_methods = install_methods.install_methods;
+        self.selected_manager_install_instances = install_instances;
 
         if let Some(entry) = priorities
             .iter()
@@ -1498,15 +1537,18 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                 && let Some(manager) = app.selected_manager()
                 && let Ok(manager_id) = manager.manager_id.parse::<ManagerId>()
             {
-                if manager_id != ManagerId::Mise {
-                    app.note_error(
-                        "full-cleanup uninstall shortcuts are currently only supported for mise"
-                            .to_string(),
-                    );
-                } else {
+                if manager_id == ManagerId::Mise {
                     let options = mise_uninstall_options_full_cleanup(
                         helm_core::manager_lifecycle::MiseUninstallConfigRemoval::KeepConfig,
                     );
+                    match prepare_manager_uninstall_confirm_action(
+                        store, manager_id, false, options,
+                    ) {
+                        Ok(action) => app.confirm_action = Some(action),
+                        Err(error) => app.note_error(error),
+                    }
+                } else {
+                    let options = homebrew_uninstall_options_full_cleanup();
                     match prepare_manager_uninstall_confirm_action(
                         store, manager_id, false, options,
                     ) {
@@ -1521,15 +1563,18 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                 && let Some(manager) = app.selected_manager()
                 && let Ok(manager_id) = manager.manager_id.parse::<ManagerId>()
             {
-                if manager_id != ManagerId::Mise {
-                    app.note_error(
-                        "full-cleanup uninstall shortcuts are currently only supported for mise"
-                            .to_string(),
-                    );
-                } else {
+                if manager_id == ManagerId::Mise {
                     let options = mise_uninstall_options_full_cleanup(
                         helm_core::manager_lifecycle::MiseUninstallConfigRemoval::RemoveConfig,
                     );
+                    match prepare_manager_uninstall_confirm_action(
+                        store, manager_id, false, options,
+                    ) {
+                        Ok(action) => app.confirm_action = Some(action),
+                        Err(error) => app.note_error(error),
+                    }
+                } else {
+                    let options = homebrew_uninstall_options_full_cleanup();
                     match prepare_manager_uninstall_confirm_action(
                         store, manager_id, false, options,
                     ) {
@@ -1822,12 +1867,65 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
             }
         }
         KeyCode::Char('a') => {
-            if app.section == Section::Updates {
+            if app.section == Section::Managers
+                && let Some(manager) = app.selected_manager()
+                && let Ok(manager_id) = manager.manager_id.parse::<ManagerId>()
+            {
+                match acknowledge_manager_multi_instance_state(store, manager_id) {
+                    Ok(message) => {
+                        app.note_success(message);
+                        app.reload(store)?;
+                    }
+                    Err(error) => app.note_error(error),
+                }
+            } else if app.section == Section::Updates {
                 app.confirm_action = Some(ConfirmAction::UpgradeAllWithOptions {
                     include_pinned: app.updates_include_pinned,
                     allow_os_updates: app.updates_allow_os_updates,
                     manager_scope: app.updates_manager_scope,
                 });
+            }
+        }
+        KeyCode::Char('A') => {
+            if app.section == Section::Managers
+                && let Some(manager) = app.selected_manager()
+                && let Ok(manager_id) = manager.manager_id.parse::<ManagerId>()
+            {
+                match clear_manager_multi_instance_ack(store, manager_id) {
+                    Ok(message) => {
+                        app.note_success(message);
+                        app.reload(store)?;
+                    }
+                    Err(error) => app.note_error(error),
+                }
+            }
+        }
+        KeyCode::Char('v') => {
+            if app.section == Section::Managers
+                && let Some(manager) = app.selected_manager()
+                && let Ok(manager_id) = manager.manager_id.parse::<ManagerId>()
+            {
+                match cycle_manager_active_install_instance(store, manager_id, 1) {
+                    Ok(message) => {
+                        app.note_success(message);
+                        app.reload(store)?;
+                    }
+                    Err(error) => app.note_error(error),
+                }
+            }
+        }
+        KeyCode::Char('V') => {
+            if app.section == Section::Managers
+                && let Some(manager) = app.selected_manager()
+                && let Ok(manager_id) = manager.manager_id.parse::<ManagerId>()
+            {
+                match cycle_manager_active_install_instance(store, manager_id, -1) {
+                    Ok(message) => {
+                        app.note_success(message);
+                        app.reload(store)?;
+                    }
+                    Err(error) => app.note_error(error),
+                }
             }
         }
         KeyCode::Esc => {
@@ -2030,6 +2128,20 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
                     );
                     let code = eligibility.reason_code.unwrap_or("manager.ineligible");
                     return Err(format!("{reason} (reason_code={code})"));
+                }
+            } else {
+                let enabled_map = manager_enabled_map(store)?;
+                let dependents = enabled_dependents_for_manager(store, &enabled_map, manager)?;
+                if !dependents.is_empty() {
+                    return Err(format!(
+                        "cannot disable manager '{}': enabled managers depend on it ({})",
+                        manager.as_str(),
+                        dependents
+                            .iter()
+                            .map(|id| id.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
                 }
             }
             store
@@ -2269,6 +2381,29 @@ fn cycle_manager_executable_selection(
             manager.as_str()
         ))
     }
+}
+
+fn cycle_manager_active_install_instance(
+    store: &SqliteStore,
+    manager: ManagerId,
+    direction: i32,
+) -> Result<String, String> {
+    let instances = list_manager_install_instances(store, Some(manager))?;
+    if instances.len() <= 1 {
+        return Err(format!(
+            "manager '{}' does not have multiple install instances",
+            manager.as_str()
+        ));
+    }
+    let current_index = instances
+        .iter()
+        .position(|instance| instance.is_active)
+        .unwrap_or(0);
+    let next_index = next_choice_index(current_index, instances.len(), direction);
+    let target = instances
+        .get(next_index)
+        .ok_or_else(|| "failed to resolve next manager install instance".to_string())?;
+    set_manager_active_install_instance(store, manager, target.instance_id.as_str())
 }
 
 fn cycle_manager_install_method_selection(
@@ -3021,6 +3156,29 @@ fn render_detail_pane(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState
                     "Install method: {}",
                     manager.selected_install_method.as_deref().unwrap_or("-")
                 )));
+                let active_instance_id = app
+                    .selected_manager_install_instances
+                    .iter()
+                    .find(|instance| instance.is_active)
+                    .or_else(|| app.selected_manager_install_instances.first())
+                    .map(|instance| instance.instance_id.as_str())
+                    .unwrap_or("-");
+                lines.push(Line::from(format!(
+                    "Install instances: {}",
+                    manager.install_instance_count
+                )));
+                lines.push(Line::from(format!(
+                    "Active instance: {}",
+                    active_instance_id
+                )));
+                lines.push(Line::from(format!(
+                    "Multi-instance state: {}",
+                    manager.multi_instance_state
+                )));
+                lines.push(Line::from(format!(
+                    "Multi-instance acknowledged: {}",
+                    manager.multi_instance_acknowledged
+                )));
                 if let Some(priority) = app.selected_manager_priority_label.as_deref() {
                     lines.push(Line::from(format!("Priority: {}", priority)));
                 }
@@ -3046,15 +3204,44 @@ fn render_detail_pane(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState
                         app.selected_manager_install_methods.join(", ")
                     )));
                 }
+                if app.selected_manager_install_instances.is_empty() {
+                    lines.push(Line::from("Install instance IDs: -"));
+                } else {
+                    let ids = app
+                        .selected_manager_install_instances
+                        .iter()
+                        .take(6)
+                        .map(|instance| {
+                            if instance.is_active {
+                                format!("{}*", instance.instance_id)
+                            } else {
+                                instance.instance_id.clone()
+                            }
+                        })
+                        .collect::<Vec<_>>();
+                    lines.push(Line::from(format!(
+                        "Install instance IDs: {}",
+                        ids.join(", ")
+                    )));
+                    if app.selected_manager_install_instances.len() > 6 {
+                        lines.push(Line::from(format!(
+                            "  ... ({} more)",
+                            app.selected_manager_install_instances.len() - 6
+                        )));
+                    }
+                }
                 lines.push(Line::from(""));
                 lines.push(Line::from(
                     "Actions: [e] enable/disable  [i] install  [u] update  [x] uninstall  [X] uninstall+override",
                 ));
                 lines.push(Line::from(
-                    "         [z] mise full-cleanup (keep config)  [Z] mise full-cleanup (remove config)",
+                    "         [z] full-cleanup (homebrew / mise keep config)  [Z] mise full-cleanup (remove config)",
                 ));
                 lines.push(Line::from(
-                    "         [D] detect  [o/O] cycle executable  [m/M] cycle install method",
+                    "         [D] detect  [o/O] cycle executable  [m/M] cycle install method  [v/V] cycle active instance",
+                ));
+                lines.push(Line::from(
+                    "         [a] acknowledge multi-instance  [A] clear multi-instance acknowledgement",
                 ));
                 lines.push(Line::from(
                     "         [[] / ]] move priority up/down within authority",
@@ -3222,7 +3409,7 @@ fn render_footer(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState) {
         Section::Packages => "i install | u upgrade | x uninstall | p pin/unpin | K keg policy",
         Section::Tasks => "c cancel task",
         Section::Managers => {
-            "e toggle | i install | u update | x uninstall | X uninstall+override | z/Z mise full-cleanup | D detect | o/m cycle"
+            "e toggle | i/u/x/X lifecycle | z/Z full-cleanup | D detect | o/O exec | m/M method | v/V active | a/A ack"
         }
         Section::Settings => {
             "e toggle selected bool | +/- auto-check frequency | K check self update | u update"
@@ -3336,9 +3523,11 @@ fn render_help_overlay(frame: &mut ratatui::Frame<'_>, app: &AppState) {
         Line::from("  Managers:  e enable/disable, i install, u update, x uninstall"),
         Line::from("             X uninstall with unknown-provenance override"),
         Line::from(
-            "             z full-cleanup (keep config), Z full-cleanup (remove config) [mise]",
+            "             z full-cleanup (homebrew / mise keep config), Z mise full-cleanup (remove config)",
         ),
         Line::from("             D detect selected, o/O executable cycle, m/M method cycle"),
+        Line::from("             v/V cycle active install instance"),
+        Line::from("             a acknowledge multi-instance, A clear acknowledgement"),
         Line::from("             [ and ] priority shift within authority"),
         Line::from("  Settings:  e toggle selected bool, +/- frequency"),
         Line::from("             K self check, u self update, U force self update"),
@@ -3805,6 +3994,22 @@ mod tests {
         .prompt();
         assert!(prompt.contains("mode=full_cleanup"));
         assert!(prompt.contains("config=remove"));
+    }
+
+    #[test]
+    fn manager_uninstall_confirm_prompt_shows_homebrew_cleanup_mode() {
+        let prompt = ConfirmAction::ManagerMutation {
+            manager: ManagerId::Rustup,
+            subcommand: "uninstall",
+            allow_unknown_provenance: false,
+            uninstall_options: super::homebrew_uninstall_options_full_cleanup(),
+            uninstall_preview_summary: Some(
+                "[strategy=homebrew_formula provenance=homebrew confidence=0.99 blast_radius=11]"
+                    .to_string(),
+            ),
+        }
+        .prompt();
+        assert!(prompt.contains("homebrew_mode=full_cleanup"));
     }
 
     #[test]

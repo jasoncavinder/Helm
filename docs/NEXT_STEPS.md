@@ -93,6 +93,17 @@ Current checkpoint:
     - provenance score rank/threshold/margin/explainability finalization in `install_instances` now uses one shared helper path
     - external evidence context now supports generic keyed Homebrew prefix probes (`brew --prefix <formula>`) with lazy per-run caching, timeout bounds, and fail-closed behavior
     - Homebrew/rustup lifecycle routing helpers (`formula ownership`, `update strategy`, `uninstall strategy`) now live in `helm-core::manager_lifecycle` and are consumed by CLI/FFI wrappers
+  - multi-instance manager attention/override follow-up delivered on `dev`:
+    - manager status now includes shared multi-instance fields (`multi_instance_state`, `multi_instance_acknowledged`, `multi_instance_fingerprint`) in both CLI and FFI/XPC projections.
+    - persisted multi-instance acknowledgements are now keyed by manager and validated against deterministic install-set fingerprints so acknowledgements auto-clear when instance sets change.
+    - active managed install instance can now be explicitly switched by `instance_id` through shared core/FFI/service actions; switching clears stale acknowledgement.
+    - CLI/TUI parity now includes instance-level controls to acknowledge, clear acknowledgement, and set active instance (`helm managers instances ack|clear-ack|set-active` plus TUI keybindings).
+    - GUI inspector now surfaces multi-instance attention and acknowledgement banners with `Keep Multiple`/`Re-evaluate` actions, per-instance `Manage This Instance` actions, and attention health-state signaling when duplicate installs are unacknowledged.
+  - manager dependency enablement-guard follow-up delivered on `dev`:
+    - provenance dependency mapping now resolves through shared core helpers (`manager_dependencies`) reused by runtime recommendation ordering and enable/disable policy checks.
+    - disabling a manager now hard-blocks when enabled dependent managers currently rely on it, with parity enforcement in CLI/TUI flows and FFI service calls.
+    - GUI Managers toggles now preflight dependency transitions and present explicit alerts: disable-block reasons with dependent manager list, and enable-child confirmation that also enables the required parent manager.
+    - service localization now includes explicit dependency-block error messaging for manager enablement failures surfaced through XPC/FFI.
   - post-`v0.17.7` mise provenance calibration follow-up delivered on `dev`:
     - `mise` install-instance classification now uses a dedicated adapter scorer (no longer Homebrew-formula-only), with explicit heuristics for Homebrew, script-installer (`~/.local/bin/mise`), cargo-home, npm-global `@jdxcode/mise`, MacPorts, Nix, system, and enterprise-managed prefixes.
     - ambiguous ownership paths now use bounded optional `brew --prefix mise` and `pkgutil --file-info` evidence as lazy scoring boosts (fail-closed) to avoid detection-pipeline blocking while improving provenance confidence.
@@ -270,6 +281,8 @@ Current checkpoint:
     - process idle-timeout tracking now resets on stdout/stderr output and sampled process CPU progress (`proc_pid_rusage` on macOS, `/proc/<pid>/stat` on Linux) so silent-but-active tasks are less likely to false-timeout
     - rustup self-uninstall now runs with explicit timeout profile tuning (15m hard timeout, 180s idle timeout)
     - Control Center running-task dropdown now polls and shows both Helm-generated task logs and task stdout/stderr output in a combined live stream
+    - Homebrew lifecycle task defaults now use long-run timeout profiles (4h hard timeout, 30m idle timeout for install/uninstall/upgrade/cleanup), and mutating process execution now applies bounded activity-based hard-timeout extensions so long-running active jobs can continue while still enforcing a cap
+    - hard-timeout handling now emits actionable timeout prompts through core/FFI/XPC before forced termination, and GUI now posts macOS notifications for pending timeout prompts plus all-tasks-complete transitions when Control Center/popover are inactive
   - post-`v0.17.7` manager install-flow UX follow-up delivered on `dev`:
     - non-installed managers in inspector now surface an install action instead of a disabled `View Packages` button
     - manager install flows (Managers list and inspector) now require a confirmation sheet with explicit install-method selection
