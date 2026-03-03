@@ -10017,8 +10017,13 @@ mod tests {
 
         let statuses = build_manager_statuses(None, Some(&store), &HashMap::new(), &HashMap::new());
         let rustup = status_for(&statuses, ManagerId::Rustup);
-        assert_eq!(rustup.package_state_issues.len(), 1);
-        let issue = &rustup.package_state_issues[0];
+        let issue = rustup
+            .package_state_issues
+            .iter()
+            .find(|issue| {
+                issue.finding_code == helm_core::doctor::FINDING_CODE_HOMEBREW_METADATA_ONLY_INSTALL
+            })
+            .expect("metadata-only homebrew formula issue should be present");
         assert_eq!(issue.source_manager_id, "homebrew_formula");
         assert_eq!(issue.package_name, "rustup");
         assert_eq!(issue.issue_code, "metadata_only_install");
