@@ -415,7 +415,10 @@ pub fn remove_helm_managed_post_install_setup(
                     continue;
                 }
                 fs::write(rc_file, updated).map_err(|error| {
-                    format!("failed to write shell config '{}': {error}", rc_file.display())
+                    format!(
+                        "failed to write shell config '{}': {error}",
+                        rc_file.display()
+                    )
                 })?;
                 modified_files += 1;
                 removed_blocks += removed;

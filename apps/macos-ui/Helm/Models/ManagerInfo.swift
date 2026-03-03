@@ -618,7 +618,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.mise, recommended: true, preferred: true),
                 methodOption(.asdf),
@@ -634,7 +634,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.corepack, recommended: true, preferred: true),
                 methodOption(.homebrew, packageHints: ["pnpm"]),
@@ -650,7 +650,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.corepack, recommended: true, preferred: true),
                 methodOption(.homebrew, packageHints: ["yarn"]),
@@ -666,7 +666,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.pipx, recommended: true, preferred: true, packageHints: ["poetry"]),
                 methodOption(.homebrew, packageHints: ["poetry"]),
@@ -682,7 +682,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.systemProvided, recommended: true, preferred: true),
                 methodOption(.homebrew),
@@ -698,7 +698,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.gem, recommended: true, preferred: true),
                 methodOption(.systemProvided),
@@ -715,7 +715,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.systemProvided, recommended: true, preferred: true),
                 methodOption(.homebrew),
@@ -731,7 +731,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.homebrew, recommended: true, preferred: true, packageHints: ["pipx"]),
                 methodOption(.pip)
@@ -745,7 +745,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.rustupInstaller, recommended: true, preferred: true),
                 methodOption(.homebrew, packageHints: ["rust"])
@@ -759,7 +759,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.scriptInstaller, recommended: true, preferred: true, packageHints: ["cargo-binstall"]),
                 methodOption(.cargoInstall, packageHints: ["cargo-binstall"]),
@@ -852,7 +852,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.officialInstaller, recommended: true, preferred: true),
                 methodOption(.homebrew, packageHints: ["podman"]),
@@ -867,7 +867,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.homebrew, recommended: true, preferred: true, packageHints: ["colima"]),
                 methodOption(.macports),

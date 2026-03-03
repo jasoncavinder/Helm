@@ -1229,13 +1229,13 @@ fn default_manager_executable_path(id: ManagerId, executable_paths: &[String]) -
     None
 }
 
-fn manager_install_method_candidates(id: ManagerId) -> &'static [&'static str] {
-    helm_core::registry::manager_install_method_candidates(id)
+fn manager_supported_install_methods(id: ManagerId) -> Vec<&'static str> {
+    helm_core::manager_lifecycle::manager_supported_install_methods(id)
 }
 
 fn normalize_install_method(id: ManagerId, method: Option<String>) -> Option<String> {
     let method = normalize_nonempty(method)?;
-    if manager_install_method_candidates(id).contains(&method.as_str()) {
+    if manager_supported_install_methods(id).contains(&method.as_str()) {
         return Some(method);
     }
     None
@@ -1606,8 +1606,13 @@ fn manager_package_state_issues(
 }
 
 fn manager_install_method_options(manager: ManagerId) -> Vec<FfiManagerInstallMethodOption> {
+    let supported = manager_supported_install_methods(manager);
+    if supported.is_empty() {
+        return Vec::new();
+    }
     helm_core::registry::manager_install_method_specs(manager)
         .iter()
+        .filter(|spec| supported.contains(&spec.id))
         .map(|spec| FfiManagerInstallMethodOption {
             method_id: spec.id.to_string(),
             recommendation_rank: spec.recommendation_rank,
@@ -7533,7 +7538,7 @@ pub unsafe extern "C" fn helm_set_manager_install_method(
         };
         if method.is_empty() {
             None
-        } else if manager_install_method_candidates(manager).contains(&method) {
+        } else if manager_supported_install_methods(manager).contains(&method) {
             Some(method.to_string())
         } else {
             return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
@@ -7951,11 +7956,8 @@ pub unsafe extern "C" fn helm_apply_manager_package_state_issue_repair(
 
 /// Install a manager tool. Returns the task ID, or -1 on error.
 ///
-/// Supported manager IDs:
-/// - "mise" -> script installer (default), Homebrew, MacPorts, or cargo install
-/// - "asdf" -> script installer (default) or Homebrew
-/// - "mas" -> Homebrew
-/// - "rustup" -> rustup-init (default) or Homebrew, based on selected install method
+/// Supported manager IDs/methods are planner-driven and surfaced by
+/// `listManagerStatus.install_method_options`.
 ///
 /// # Safety
 ///
@@ -7967,11 +7969,8 @@ pub unsafe extern "C" fn helm_install_manager(manager_id: *const c_char) -> i64 
 
 /// Install a manager tool with optional JSON options. Returns the task ID, or -1 on error.
 ///
-/// Supported manager IDs:
-/// - "mise" -> script installer (default), Homebrew, MacPorts, or cargo install
-/// - "asdf" -> script installer (default) or Homebrew
-/// - "mas" -> Homebrew
-/// - "rustup" -> rustup-init (default) or Homebrew, based on selected install method
+/// Supported manager IDs/methods are planner-driven and surfaced by
+/// `listManagerStatus.install_method_options`.
 ///
 /// Supported options (method-specific):
 /// - `installMethodOverride`: one-off method id (e.g. `homebrew`) without mutating saved manager preference

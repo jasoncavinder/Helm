@@ -173,8 +173,68 @@ pub fn plan_manager_install(
             | None => Ok(rustup_manager_install_plan(options)?),
             Some(_) => Err(ManagerInstallPlanError::UnsupportedMethod),
         },
+        ManagerId::Npm => match selected_method {
+            Some("homebrew") | None => Ok(homebrew_manager_install_plan("node")),
+            Some(_) => Err(ManagerInstallPlanError::UnsupportedMethod),
+        },
+        ManagerId::Pnpm => match selected_method {
+            Some("homebrew") | None => Ok(homebrew_manager_install_plan("pnpm")),
+            Some(_) => Err(ManagerInstallPlanError::UnsupportedMethod),
+        },
+        ManagerId::Yarn => match selected_method {
+            Some("homebrew") | None => Ok(homebrew_manager_install_plan("yarn")),
+            Some(_) => Err(ManagerInstallPlanError::UnsupportedMethod),
+        },
+        ManagerId::Pipx => match selected_method {
+            Some("homebrew") | None => Ok(homebrew_manager_install_plan("pipx")),
+            Some(_) => Err(ManagerInstallPlanError::UnsupportedMethod),
+        },
+        ManagerId::Pip => match selected_method {
+            Some("homebrew") | None => Ok(homebrew_manager_install_plan("python")),
+            Some(_) => Err(ManagerInstallPlanError::UnsupportedMethod),
+        },
+        ManagerId::Poetry => match selected_method {
+            Some("homebrew") | None => Ok(homebrew_manager_install_plan("poetry")),
+            Some(_) => Err(ManagerInstallPlanError::UnsupportedMethod),
+        },
+        ManagerId::RubyGems => match selected_method {
+            Some("homebrew") | None => Ok(homebrew_manager_install_plan("ruby")),
+            Some(_) => Err(ManagerInstallPlanError::UnsupportedMethod),
+        },
+        ManagerId::Bundler => match selected_method {
+            Some("homebrew") | None => Ok(homebrew_manager_install_plan("ruby")),
+            Some(_) => Err(ManagerInstallPlanError::UnsupportedMethod),
+        },
+        ManagerId::Cargo => match selected_method {
+            Some("homebrew") | None => Ok(homebrew_manager_install_plan("rust")),
+            Some(_) => Err(ManagerInstallPlanError::UnsupportedMethod),
+        },
+        ManagerId::CargoBinstall => match selected_method {
+            Some("homebrew") | None => Ok(homebrew_manager_install_plan("cargo-binstall")),
+            Some(_) => Err(ManagerInstallPlanError::UnsupportedMethod),
+        },
+        ManagerId::Podman => match selected_method {
+            Some("homebrew") | None => Ok(homebrew_manager_install_plan("podman")),
+            Some(_) => Err(ManagerInstallPlanError::UnsupportedMethod),
+        },
+        ManagerId::Colima => match selected_method {
+            Some("homebrew") | None => Ok(homebrew_manager_install_plan("colima")),
+            Some(_) => Err(ManagerInstallPlanError::UnsupportedMethod),
+        },
         _ => Err(ManagerInstallPlanError::UnsupportedManager),
     }
+}
+
+pub fn manager_install_method_supported(manager: ManagerId, method: &str) -> bool {
+    plan_manager_install(manager, Some(method), &ManagerInstallOptions::default()).is_ok()
+}
+
+pub fn manager_supported_install_methods(manager: ManagerId) -> Vec<&'static str> {
+    crate::registry::manager_install_method_candidates(manager)
+        .iter()
+        .copied()
+        .filter(|method| manager_install_method_supported(manager, method))
+        .collect()
 }
 
 fn effective_manager_install_method<'a>(
@@ -876,12 +936,12 @@ fn mise_uninstall_package_name(options: &ManagerUninstallOptions) -> Option<Stri
             Some(with_shell_cleanup("__self__".to_string()))
         }
         MiseUninstallCleanupMode::FullCleanup => match options.mise_config_removal {
-            Some(MiseUninstallConfigRemoval::KeepConfig) => {
-                Some(with_shell_cleanup("__self__:fullCleanup:keepConfig".to_string()))
-            }
-            Some(MiseUninstallConfigRemoval::RemoveConfig) => {
-                Some(with_shell_cleanup("__self__:fullCleanup:removeConfig".to_string()))
-            }
+            Some(MiseUninstallConfigRemoval::KeepConfig) => Some(with_shell_cleanup(
+                "__self__:fullCleanup:keepConfig".to_string(),
+            )),
+            Some(MiseUninstallConfigRemoval::RemoveConfig) => Some(with_shell_cleanup(
+                "__self__:fullCleanup:removeConfig".to_string(),
+            )),
             None => None,
         },
     }
@@ -1316,8 +1376,8 @@ mod tests {
         MiseUninstallCleanupMode, MiseUninstallConfigRemoval, RustupInstallSource,
         UpdateStrategyResolutionError, encode_homebrew_manager_uninstall_package_name,
         encode_homebrew_manager_uninstall_package_name_with_options, manager_homebrew_formula_name,
-        parse_homebrew_manager_uninstall_package_name, plan_manager_install,
-        plan_manager_uninstall_route_with_options,
+        manager_supported_install_methods, parse_homebrew_manager_uninstall_package_name,
+        plan_manager_install, plan_manager_uninstall_route_with_options,
         resolve_asdf_update_strategy, resolve_homebrew_manager_update_strategy,
         resolve_rustup_uninstall_strategy,
     };
@@ -1360,6 +1420,62 @@ mod tests {
             Some("cargo-binstall")
         );
         assert_eq!(manager_homebrew_formula_name(ManagerId::Npm), None);
+    }
+
+    #[test]
+    fn manager_supported_install_methods_filters_to_planner_supported_subset() {
+        assert_eq!(
+            manager_supported_install_methods(ManagerId::Npm),
+            vec!["homebrew"]
+        );
+        assert_eq!(
+            manager_supported_install_methods(ManagerId::Pnpm),
+            vec!["homebrew"]
+        );
+        assert_eq!(
+            manager_supported_install_methods(ManagerId::Poetry),
+            vec!["homebrew"]
+        );
+        assert_eq!(
+            manager_supported_install_methods(ManagerId::Cargo),
+            vec!["homebrew"]
+        );
+        assert_eq!(
+            manager_supported_install_methods(ManagerId::DockerDesktop),
+            Vec::<&'static str>::new()
+        );
+    }
+
+    #[test]
+    fn manager_install_plan_routes_supported_homebrew_manager_set() {
+        let cases = [
+            (ManagerId::Npm, "node"),
+            (ManagerId::Pnpm, "pnpm"),
+            (ManagerId::Yarn, "yarn"),
+            (ManagerId::Pipx, "pipx"),
+            (ManagerId::Pip, "python"),
+            (ManagerId::Poetry, "poetry"),
+            (ManagerId::RubyGems, "ruby"),
+            (ManagerId::Bundler, "ruby"),
+            (ManagerId::Cargo, "rust"),
+            (ManagerId::CargoBinstall, "cargo-binstall"),
+            (ManagerId::Podman, "podman"),
+            (ManagerId::Colima, "colima"),
+        ];
+
+        for (manager, expected_formula) in cases {
+            let plan =
+                plan_manager_install(manager, Some("homebrew"), &ManagerInstallOptions::default())
+                    .expect("homebrew manager install plan should resolve");
+            assert_eq!(plan.target_manager, ManagerId::HomebrewFormula);
+            match plan.request {
+                crate::adapters::AdapterRequest::Install(install) => {
+                    assert_eq!(install.package.manager, ManagerId::HomebrewFormula);
+                    assert_eq!(install.package.name, expected_formula);
+                }
+                other => panic!("unexpected request for {}: {other:?}", manager.as_str()),
+            }
+        }
     }
 
     #[test]
@@ -1737,7 +1853,10 @@ mod tests {
         let parsed = parse_homebrew_manager_uninstall_package_name(encoded.as_str())
             .expect("encoded uninstall package marker should parse");
         assert_eq!(parsed.formula_name, "rustup");
-        assert_eq!(parsed.cleanup_mode, HomebrewUninstallCleanupMode::ManagerOnly);
+        assert_eq!(
+            parsed.cleanup_mode,
+            HomebrewUninstallCleanupMode::ManagerOnly
+        );
         assert!(parsed.remove_helm_managed_shell_setup);
     }
 

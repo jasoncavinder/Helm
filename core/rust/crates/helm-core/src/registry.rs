@@ -993,6 +993,15 @@ pub fn manager_install_method_specs(id: ManagerId) -> &'static [ManagerInstallMe
     manager_lifecycle_metadata(id).install_methods
 }
 
+pub fn manager_install_method_spec(
+    id: ManagerId,
+    method_id: &str,
+) -> Option<&'static ManagerInstallMethodSpec> {
+    manager_install_method_specs(id)
+        .iter()
+        .find(|spec| spec.id == method_id)
+}
+
 pub fn manager_participates_in_package_search(id: ManagerId) -> bool {
     manager_lifecycle_metadata(id).participates_in_package_search
 }

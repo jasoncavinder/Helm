@@ -616,7 +616,9 @@ impl AdapterRuntime {
         let task_type = task_type_for_action(action);
 
         let allow_when_disabled = action == ManagerAction::Uninstall;
-        if !allow_when_disabled && !self.manager_is_enabled_from_snapshot(manager, enablement_snapshot) {
+        if !allow_when_disabled
+            && !self.manager_is_enabled_from_snapshot(manager, enablement_snapshot)
+        {
             return Err(CoreError {
                 manager: Some(manager),
                 task: Some(task_type),

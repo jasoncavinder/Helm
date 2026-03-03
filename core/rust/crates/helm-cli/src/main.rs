@@ -10996,8 +10996,7 @@ fn manager_install_methods_status(
     )
     .filter(|method| install_method_allowed_by_policy(manager, method, context));
     let install_methods = manager_install_method_candidates(manager)
-        .iter()
-        .copied()
+        .into_iter()
         .filter(|method| install_method_allowed_by_policy(manager, method, context))
         .map(|method| method.to_string())
         .collect::<Vec<_>>();
@@ -11039,7 +11038,8 @@ fn parse_selected_install_method_arg(
         return Ok(None);
     }
 
-    if manager_install_method_candidates(manager).contains(&raw) {
+    let candidates = manager_install_method_candidates(manager);
+    if candidates.contains(&raw) {
         return Ok(Some(raw.to_string()));
     }
 
@@ -11047,7 +11047,7 @@ fn parse_selected_install_method_arg(
         "unsupported install method '{}' for manager '{}' (supported: {})",
         raw,
         manager.as_str(),
-        manager_install_method_candidates(manager).join(", ")
+        candidates.join(", ")
     ))
 }
 
@@ -11081,8 +11081,8 @@ fn manager_executable_candidates(id: ManagerId) -> &'static [&'static str] {
     }
 }
 
-fn manager_install_method_candidates(id: ManagerId) -> &'static [&'static str] {
-    helm_core::registry::manager_install_method_candidates(id)
+fn manager_install_method_candidates(id: ManagerId) -> Vec<&'static str> {
+    helm_core::manager_lifecycle::manager_supported_install_methods(id)
 }
 
 fn normalize_path_string(path: &std::path::Path) -> Option<String> {
@@ -11445,16 +11445,14 @@ fn manager_install_method_policy_tag(
     manager: ManagerId,
     method: &str,
 ) -> ManagerInstallMethodPolicyTag {
-    match (manager, method) {
-        (_, "notManageable") => ManagerInstallMethodPolicyTag::Blocked,
-        // Keep explicit tags for future managed/business policy rollout.
-        (ManagerId::Mise, "scriptInstaller")
-        | (ManagerId::Mise, "macports")
-        | (ManagerId::Mise, "cargoInstall")
-        | (ManagerId::Mas, "macports")
-        | (ManagerId::Mas, "appStore")
-        | (ManagerId::Mas, "officialInstaller") => ManagerInstallMethodPolicyTag::ManagedRestricted,
-        _ => ManagerInstallMethodPolicyTag::Allowed,
+    match registry::manager_install_method_spec(manager, method).map(|spec| spec.policy_tag) {
+        Some(registry::InstallMethodPolicyTag::Allowed) => ManagerInstallMethodPolicyTag::Allowed,
+        Some(registry::InstallMethodPolicyTag::ManagedRestricted) => {
+            ManagerInstallMethodPolicyTag::ManagedRestricted
+        }
+        Some(registry::InstallMethodPolicyTag::BlockedByPolicy) | None => {
+            ManagerInstallMethodPolicyTag::Blocked
+        }
     }
 }
 
@@ -11472,35 +11470,30 @@ fn install_method_allowed_by_policy(
     }
 }
 
-fn manager_helm_supported_install_methods(id: ManagerId) -> &'static [&'static str] {
-    match id {
-        ManagerId::Mise => &["scriptInstaller", "homebrew", "macports", "cargoInstall"],
-        ManagerId::Mas | ManagerId::Asdf => &["homebrew"],
-        ManagerId::Rustup => &["rustupInstaller", "homebrew"],
-        _ => &[],
-    }
-}
-
-fn manager_supported_install_methods(id: ManagerId) -> Vec<&'static str> {
-    let context = manager_install_method_policy_context();
-    manager_helm_supported_install_methods(id)
-        .iter()
-        .copied()
-        .filter(|method| install_method_allowed_by_policy(id, method, context))
-        .collect()
+fn manager_helm_supported_install_methods(id: ManagerId) -> Vec<&'static str> {
+    helm_core::manager_lifecycle::manager_supported_install_methods(id)
 }
 
 fn manager_supported_install_methods_for_install(
     manager: ManagerId,
 ) -> Result<Vec<&'static str>, String> {
-    let supported = manager_supported_install_methods(manager);
-    if !manager_helm_supported_install_methods(manager).is_empty() && supported.is_empty() {
+    let planner_supported = manager_helm_supported_install_methods(manager);
+    let context = manager_install_method_policy_context();
+    let supported = planner_supported
+        .iter()
+        .copied()
+        .filter(|method| install_method_allowed_by_policy(manager, method, context))
+        .collect::<Vec<_>>();
+    if !supported.is_empty() {
+        return Ok(supported);
+    }
+    if !planner_supported.is_empty() {
         return Err(format!(
             "manager '{}' install methods are currently blocked by managed policy",
             manager.as_str()
         ));
     }
-    Ok(supported)
+    Ok(Vec::new())
 }
 
 fn manager_install_method_allowed_for_selection(manager: ManagerId, method: &str) -> bool {

@@ -398,7 +398,9 @@ enum MiseUninstallPreviewMode {
     FullCleanupRemoveConfig,
 }
 
-fn parse_mise_uninstall_preview_mode(package_name: Option<&str>) -> (MiseUninstallPreviewMode, bool) {
+fn parse_mise_uninstall_preview_mode(
+    package_name: Option<&str>,
+) -> (MiseUninstallPreviewMode, bool) {
     let (base, remove_shell_setup) =
         strip_shell_setup_cleanup_suffix(package_name.unwrap_or("__self__"));
     let mode = match base.trim() {
