@@ -11654,42 +11654,37 @@ fn build_manager_mutation_request_with_options(
             })?;
             (install_plan.target_manager, install_plan.request)
         }
-        "update" => match manager {
-            _ => {
-                let active_instance = active_manager_install_instance(store, manager)?;
-                let update_plan = helm_core::manager_lifecycle::plan_manager_update(
-                    manager,
-                    active_instance.as_ref(),
-                )
-                .map_err(|error| manager_update_plan_error_message(manager, error))?;
+        "update" => {
+            let active_instance = active_manager_install_instance(store, manager)?;
+            let update_plan =
+                helm_core::manager_lifecycle::plan_manager_update(manager, active_instance.as_ref())
+                    .map_err(|error| manager_update_plan_error_message(manager, error))?;
 
-                let request = match &update_plan.target {
-                    helm_core::manager_lifecycle::ManagerUpdateTarget::ManagerSelf => {
-                        helm_core::manager_lifecycle::build_update_request(&update_plan, None)
-                    }
-                    helm_core::manager_lifecycle::ManagerUpdateTarget::HomebrewFormula {
-                        formula_name,
-                    } => {
-                        let policy = effective_homebrew_keg_policy(store, formula_name);
-                        let cleanup_old_kegs = policy == HomebrewKegPolicy::Cleanup;
-                        let target_name =
-                            encode_homebrew_upgrade_target(formula_name, cleanup_old_kegs);
-                        helm_core::manager_lifecycle::build_update_request(
-                            &update_plan,
-                            Some(target_name),
-                        )
-                    }
+            let request = match &update_plan.target {
+                helm_core::manager_lifecycle::ManagerUpdateTarget::ManagerSelf => {
+                    helm_core::manager_lifecycle::build_update_request(&update_plan, None)
                 }
-                .ok_or_else(|| {
-                    format!(
-                        "manager '{}' update strategy resolution returned an unsupported strategy",
-                        manager.as_str(),
+                helm_core::manager_lifecycle::ManagerUpdateTarget::HomebrewFormula {
+                    formula_name,
+                } => {
+                    let policy = effective_homebrew_keg_policy(store, formula_name);
+                    let cleanup_old_kegs = policy == HomebrewKegPolicy::Cleanup;
+                    let target_name = encode_homebrew_upgrade_target(formula_name, cleanup_old_kegs);
+                    helm_core::manager_lifecycle::build_update_request(
+                        &update_plan,
+                        Some(target_name),
                     )
-                })?;
-
-                (update_plan.target_manager, request)
+                }
             }
-        },
+            .ok_or_else(|| {
+                format!(
+                    "manager '{}' update strategy resolution returned an unsupported strategy",
+                    manager.as_str(),
+                )
+            })?;
+
+            (update_plan.target_manager, request)
+        }
         "uninstall" => match manager {
             ManagerId::Rustup => (
                 ManagerId::Rustup,
@@ -13321,11 +13316,9 @@ fn print_managers_help_topic(path: &[String]) -> bool {
         }
     }
 
-    if path.len() == 3 {
-        if (path[0].as_str(), path[1].as_str()) == ("instances", "set-active") {
-            print_managers_instances_set_active_help();
-            return true;
-        }
+    if path.len() == 3 && (path[0].as_str(), path[1].as_str()) == ("instances", "set-active") {
+        print_managers_instances_set_active_help();
+        return true;
     }
 
     false

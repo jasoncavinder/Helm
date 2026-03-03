@@ -90,7 +90,6 @@ pub fn build_manager_uninstall_preview(
             &mut seen_directories,
             context.active_instance,
             uninstall_request_package_name(context.request),
-            self_request_shell_cleanup_requested,
         );
     } else if context.target_manager == ManagerId::Asdf
         || context.strategy == StrategyKind::AsdfSelf
@@ -393,9 +392,9 @@ fn append_asdf_uninstall_impact(
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum MiseUninstallPreviewMode {
-    ManagerOnlyKeepConfig,
-    FullCleanupKeepConfig,
-    FullCleanupRemoveConfig,
+    ManagerOnlyKeep,
+    FullCleanupKeep,
+    FullCleanupRemove,
 }
 
 fn parse_mise_uninstall_preview_mode(
@@ -404,9 +403,9 @@ fn parse_mise_uninstall_preview_mode(
     let (base, remove_shell_setup) =
         strip_shell_setup_cleanup_suffix(package_name.unwrap_or("__self__"));
     let mode = match base.trim() {
-        "__self__:fullCleanup:keepConfig" => MiseUninstallPreviewMode::FullCleanupKeepConfig,
-        "__self__:fullCleanup:removeConfig" => MiseUninstallPreviewMode::FullCleanupRemoveConfig,
-        _ => MiseUninstallPreviewMode::ManagerOnlyKeepConfig,
+        "__self__:fullCleanup:keepConfig" => MiseUninstallPreviewMode::FullCleanupKeep,
+        "__self__:fullCleanup:removeConfig" => MiseUninstallPreviewMode::FullCleanupRemove,
+        _ => MiseUninstallPreviewMode::ManagerOnlyKeep,
     };
     (mode, remove_shell_setup)
 }
@@ -419,7 +418,6 @@ fn append_mise_uninstall_impact(
     seen_directories: &mut HashSet<String>,
     active_instance: Option<&ManagerInstallInstance>,
     package_name: Option<&str>,
-    remove_shell_setup: bool,
 ) {
     if let Some(instance) = active_instance {
         push_impact_path(files_removed, seen_files, instance.display_path.clone());
@@ -435,13 +433,14 @@ fn append_mise_uninstall_impact(
     let mise_cache_dir = home.join(".cache/mise");
     let mise_config_dir = home.join(".config/mise");
 
-    match parse_mise_uninstall_preview_mode(package_name).0 {
-        MiseUninstallPreviewMode::ManagerOnlyKeepConfig => {
+    let (mode, remove_shell_setup) = parse_mise_uninstall_preview_mode(package_name);
+    match mode {
+        MiseUninstallPreviewMode::ManagerOnlyKeep => {
             secondary_effects.push(
                 "Manager-only uninstall keeps mise tool installs, cache, and config.".to_string(),
             );
         }
-        MiseUninstallPreviewMode::FullCleanupKeepConfig => {
+        MiseUninstallPreviewMode::FullCleanupKeep => {
             push_impact_path(
                 directories_removed,
                 seen_directories,
@@ -459,7 +458,7 @@ fn append_mise_uninstall_impact(
             secondary_effects
                 .push("Mise config files are preserved in this uninstall mode.".to_string());
         }
-        MiseUninstallPreviewMode::FullCleanupRemoveConfig => {
+        MiseUninstallPreviewMode::FullCleanupRemove => {
             push_impact_path(
                 directories_removed,
                 seen_directories,
@@ -491,6 +490,7 @@ fn append_mise_uninstall_impact(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn append_rustup_uninstall_impact(
     store: &SqliteStore,
     files_removed: &mut Vec<UninstallImpactPath>,

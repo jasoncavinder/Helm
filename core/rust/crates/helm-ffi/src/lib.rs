@@ -7948,7 +7948,7 @@ pub unsafe extern "C" fn helm_apply_manager_package_state_issue_repair(
             }
             match spawn_post_install_setup_task(store, runtime, rt_handle, manager, None) {
                 Ok(task_id) => task_id.0 as i64,
-                Err(error_key) => return return_error_i64(error_key),
+                Err(error_key) => return_error_i64(error_key),
             }
         }
     }
@@ -8090,20 +8090,19 @@ pub unsafe extern "C" fn helm_install_manager_with_options(
             set_task_label(task_id, label_key, label_args.as_slice());
             if install_options.complete_post_install_setup_automatically
                 && manager_supports_post_install_setup(manager)
-            {
-                if let Err(error_key) = spawn_post_install_setup_task(
+                && let Err(error_key) = spawn_post_install_setup_task(
                     store.clone(),
                     runtime.clone(),
                     rt_handle.clone(),
                     manager,
                     Some(task_id),
-                ) {
-                    eprintln!(
-                        "helm-ffi: failed to queue post-install setup task for '{}': {}",
-                        manager.as_str(),
-                        error_key
-                    );
-                }
+                )
+            {
+                eprintln!(
+                    "helm-ffi: failed to queue post-install setup task for '{}': {}",
+                    manager.as_str(),
+                    error_key
+                );
             }
             task_id.0 as i64
         }
