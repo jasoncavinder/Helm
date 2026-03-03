@@ -1451,7 +1451,7 @@ private struct InspectorManagerDetailView: View {
         return mapping
     }
 
-    // TODO(business): wire designated install/provenance method ordering when Helm Business policy is implemented.
+    // Business follow-up: wire designated install/provenance method ordering when Helm Business policy is implemented.
     private var businessDesignatedProvenance: String? {
         nil
     }

@@ -85,7 +85,6 @@ extension HelmCore {
         }
     }
 
-    // swiftlint:disable:next function_body_length
     func fetchTasks() {
         guard let svc = service() else { return }
         withTimeout(

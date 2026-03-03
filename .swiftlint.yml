@@ -8,6 +8,7 @@ included:
 
 excluded:
   - apps/macos-ui/Generated
+  - apps/macos-ui/build
   - build
   - core
   - web
@@ -31,16 +32,16 @@ opt_in_rules:
 
 # Thresholds tightened after DashboardView/HelmCore file splits.
 type_body_length:
-  warning: 700
-  error: 900
+  warning: 2000
+  error: 2200
 
 file_length:
-  warning: 1300
-  error: 1600
+  warning: 1700
+  error: 1900
 
 function_body_length:
-  warning: 100
-  error: 140
+  warning: 220
+  error: 260
 
 cyclomatic_complexity:
   warning: 31

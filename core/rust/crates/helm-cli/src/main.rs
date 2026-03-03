@@ -14446,6 +14446,19 @@ mod tests {
         std::env::temp_dir().join(format!("helm-cli-self-heal-{name}-{nanos}.sqlite3"))
     }
 
+    fn seed_homebrew_detected(store: &SqliteStore) {
+        store
+            .upsert_detection(
+                ManagerId::HomebrewFormula,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                    version: Some("4.4.0".to_string()),
+                },
+            )
+            .expect("homebrew detection should persist");
+    }
+
     #[cfg(unix)]
     fn unix_mode(path: &Path) -> u32 {
         fs::metadata(path)
@@ -17785,6 +17798,7 @@ mod tests {
         store
             .migrate_to_latest()
             .expect("store migration should succeed");
+        seed_homebrew_detected(&store);
         store
             .replace_install_instances(
                 ManagerId::Rustup,
@@ -17866,6 +17880,7 @@ mod tests {
         store
             .migrate_to_latest()
             .expect("store migration should succeed");
+        seed_homebrew_detected(&store);
         store
             .set_manager_selected_install_method(ManagerId::Mise, Some("homebrew"))
             .expect("persisting mise install preference should succeed");
@@ -17912,6 +17927,7 @@ mod tests {
         store
             .migrate_to_latest()
             .expect("store migration should succeed");
+        seed_homebrew_detected(&store);
         store
             .set_manager_selected_install_method(ManagerId::Asdf, Some("scriptInstaller"))
             .expect("persisting script installer preference should succeed");
@@ -17958,6 +17974,7 @@ mod tests {
         store
             .migrate_to_latest()
             .expect("store migration should succeed");
+        seed_homebrew_detected(&store);
         store
             .set_manager_selected_install_method(ManagerId::Rustup, Some("rustupInstaller"))
             .expect("persisting rustup preferred method should succeed");
