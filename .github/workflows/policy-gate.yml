@@ -21,6 +21,7 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
           HEAD_REF: ${{ github.head_ref }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
@@ -61,6 +62,10 @@ jobs:
           }
 
           mapfile -t changed_files < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          is_dependabot=false
+          if [[ "$HEAD_REF" =~ ^dependabot/ ]] || [[ "$PR_AUTHOR" == "dependabot[bot]" ]] || [[ "$PR_AUTHOR" == "app/dependabot" ]]; then
+            is_dependabot=true
+          fi
 
           docs_only=true
           web_only=true
@@ -82,7 +87,8 @@ jobs:
                 && [[ ! "$HEAD_REF" =~ ^release/ ]] \
                 && [[ ! "$HEAD_REF" =~ ^chore/publish-updates- ]] \
                 && [[ ! "$HEAD_REF" =~ ^chore/publish-cli-updates- ]] \
-                && [[ ! "$HEAD_REF" =~ ^hotfix/cli-updates-emergency- ]]; then
+                && [[ ! "$HEAD_REF" =~ ^hotfix/cli-updates-emergency- ]] \
+                && [[ "$is_dependabot" != "true" ]]; then
                 report_error "PRs into main must come from dev, docs, web, hotfix/*, release/*, chore/publish-updates-*, chore/publish-cli-updates-*, or hotfix/cli-updates-emergency-*."
               fi
 
@@ -107,20 +113,20 @@ jobs:
             dev)
               if [[ "$HEAD_REF" != "main" ]] \
                 && [[ ! "$HEAD_REF" =~ ^(feat|fix|chore|test|refactor|agent|hotfix|release)/ ]] \
-                && [[ ! "$HEAD_REF" =~ ^dependabot/ ]]; then
+                && [[ "$is_dependabot" != "true" ]]; then
                 report_error "PRs into dev must use feature branch prefixes (feat|fix|chore|test|refactor|agent|hotfix|release)."
               fi
 
-              if [[ "$docs_only" == "true" ]]; then
+              if [[ "$docs_only" == "true" ]] && [[ "$is_dependabot" != "true" ]]; then
                 report_error "Docs-only PRs should target docs, not dev."
               fi
 
-              if [[ "$web_only" == "true" ]]; then
+              if [[ "$web_only" == "true" ]] && [[ "$is_dependabot" != "true" ]]; then
                 report_error "Web-only PRs should target web, not dev."
               fi
               ;;
             docs)
-              if [[ "$HEAD_REF" != "main" ]] && [[ ! "$HEAD_REF" =~ ^docs- ]]; then
+              if [[ "$HEAD_REF" != "main" ]] && [[ ! "$HEAD_REF" =~ ^docs- ]] && [[ "$is_dependabot" != "true" ]]; then
                 report_error "PRs into docs must come from docs-* branches (or main for sync PRs)."
               fi
 
@@ -129,7 +135,7 @@ jobs:
               fi
               ;;
             web)
-              if [[ "$HEAD_REF" != "main" ]] && [[ ! "$HEAD_REF" =~ ^web- ]]; then
+              if [[ "$HEAD_REF" != "main" ]] && [[ ! "$HEAD_REF" =~ ^web- ]] && [[ "$is_dependabot" != "true" ]]; then
                 report_error "PRs into web must come from web-* branches (or main for sync PRs)."
               fi
 
