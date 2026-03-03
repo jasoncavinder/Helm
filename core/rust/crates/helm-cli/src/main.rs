@@ -16457,6 +16457,7 @@ mod tests {
         store
             .migrate_to_latest()
             .expect("store migration should succeed");
+        seed_homebrew_detected(&store);
         store
             .replace_install_instances(
                 ManagerId::HomebrewFormula,
