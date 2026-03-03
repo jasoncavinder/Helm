@@ -375,11 +375,8 @@ int64_t helm_apply_manager_package_state_issue_repair(const char *manager_id,
 /**
  * Install a manager tool. Returns the task ID, or -1 on error.
  *
- * Supported manager IDs:
- * - "mise" -> script installer (default), Homebrew, MacPorts, or cargo install
- * - "asdf" -> script installer (default) or Homebrew
- * - "mas" -> Homebrew
- * - "rustup" -> rustup-init (default) or Homebrew, based on selected install method
+ * Supported manager IDs/methods are planner-driven and surfaced by
+ * `listManagerStatus.install_method_options`.
  *
  * # Safety
  *
@@ -390,11 +387,8 @@ int64_t helm_install_manager(const char *manager_id);
 /**
  * Install a manager tool with optional JSON options. Returns the task ID, or -1 on error.
  *
- * Supported manager IDs:
- * - "mise" -> script installer (default), Homebrew, MacPorts, or cargo install
- * - "asdf" -> script installer (default) or Homebrew
- * - "mas" -> Homebrew
- * - "rustup" -> rustup-init (default) or Homebrew, based on selected install method
+ * Supported manager IDs/methods are planner-driven and surfaced by
+ * `listManagerStatus.install_method_options`.
  *
  * Supported options (method-specific):
  * - `installMethodOverride`: one-off method id (e.g. `homebrew`) without mutating saved manager preference

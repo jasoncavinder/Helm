@@ -599,7 +599,7 @@ check_required_secrets() {
   fi
 
   local secrets_json
-  if ! secrets_json="$(gh secret list --json name --limit 200 2>/dev/null)"; then
+  if ! secrets_json="$(gh secret list --json name 2>/dev/null)"; then
     fail "unable to list GitHub repository secrets"
     return
   fi

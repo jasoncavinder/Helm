@@ -455,7 +455,8 @@ fn parse_install_source(version: Option<&str>) -> AdapterResult<AsdfInstallSourc
 }
 
 fn parse_self_uninstall_target(raw: &str) -> AdapterResult<(&str, bool)> {
-    let (base, remove_shell_setup) = crate::manager_lifecycle::strip_shell_setup_cleanup_suffix(raw);
+    let (base, remove_shell_setup) =
+        crate::manager_lifecycle::strip_shell_setup_cleanup_suffix(raw);
     if base == "__self__" {
         return Ok((base, remove_shell_setup));
     }

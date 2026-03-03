@@ -1045,11 +1045,16 @@ private enum HelmCliShimInstaller {
                 script,
                 to: shimURL,
                 filePermissions: 0o755,
-                disallowSymlinkTarget: false
+                disallowSymlinkTarget: false,
+                stagingFileName: ".helm.tmp"
             )
+            let quarantineCleared = try removeQuarantineAttributeIfPresent(at: shimURL)
             try writeInstallMarker(
                 markerURL: markerURL,
                 version: bundleVersion(bundle: bundle)
+            )
+            logger.info(
+                "Helm CLI shim post-install attributes. shim=\(shimURL.path, privacy: .public), quarantine_cleared=\(quarantineCleared, privacy: .public)"
             )
         } catch {
             throw Error.ioFailure(description: error.localizedDescription)
@@ -1227,6 +1232,34 @@ private enum HelmCliShimInstaller {
         )
     }
 
+    @discardableResult
+    private static func removeQuarantineAttributeIfPresent(at url: URL) throws -> Bool {
+        let attributeName = "com.apple.quarantine"
+        let result = url.path.withCString { pathPointer in
+            attributeName.withCString { attributePointer in
+                removexattr(pathPointer, attributePointer, 0)
+            }
+        }
+        if result == 0 {
+            return true
+        }
+
+        let errorCode = errno
+        if errorCode == ENOATTR {
+            return false
+        }
+
+        let errorMessage = String(cString: strerror(errorCode))
+        throw NSError(
+            domain: "HelmCliShimInstaller",
+            code: Int(errorCode),
+            userInfo: [
+                NSLocalizedDescriptionKey:
+                    "Failed to clear \(attributeName) from \(url.path): \(errorMessage)"
+            ]
+        )
+    }
+
     private static func removeInstallMarkerIfAppBundleShim(markerURL: URL) throws {
         let fileManager = FileManager.default
         guard fileManager.fileExists(atPath: markerURL.path) else {
@@ -1244,7 +1277,8 @@ private enum HelmCliShimInstaller {
         _ content: String,
         to url: URL,
         filePermissions: Int,
-        disallowSymlinkTarget: Bool
+        disallowSymlinkTarget: Bool,
+        stagingFileName: String? = nil
     ) throws {
         let fileManager = FileManager.default
         let parentDirectory = url.deletingLastPathComponent()
@@ -1265,8 +1299,21 @@ private enum HelmCliShimInstaller {
             }
         }
 
-        let tempURL = parentDirectory.appendingPathComponent(".\(url.lastPathComponent).tmp-\(UUID().uuidString)")
+        let tempFileName = stagingFileName ?? ".\(url.lastPathComponent).tmp-\(UUID().uuidString)"
+        let tempURL = parentDirectory.appendingPathComponent(tempFileName)
         do {
+            if fileManager.fileExists(atPath: tempURL.path) {
+                let values = try tempURL.resourceValues(forKeys: [.isSymbolicLinkKey])
+                if values.isSymbolicLink == true {
+                    throw NSError(
+                        domain: "HelmCliShimInstaller",
+                        code: 3,
+                        userInfo: [NSLocalizedDescriptionKey: "Refusing to use symlink staging path: \(tempURL.path)"]
+                    )
+                }
+                try fileManager.removeItem(at: tempURL)
+            }
+
             guard let encoded = content.data(using: .utf8) else {
                 throw NSError(
                     domain: "HelmCliShimInstaller",

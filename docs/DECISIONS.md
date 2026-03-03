@@ -662,6 +662,33 @@ Initial implemented manager scope:
 - Preserves trust by surfacing clear guidance and explicit verification rather than silent assumptions.
 
 ---
+## Decision 036 — Repository-Local Codex Operating System
+
+**Decision:**
+Adopt a repository-local Codex operating model with:
+
+- repo-scoped instructions layering (`AGENTS.md` + subtree `AGENTS.md` files)
+- reusable workflow Skills under `skills/`
+- repo-local Codex config (`.codex/config.toml`) using lean `project_doc_max_bytes` (`131072`)
+- reusable slash-command templates under `.codex/commands/`
+- structured local notify logging on `agent-turn-complete` to `dev/logs/codex-runs.ndjson`
+
+**Policy details:**
+
+- Keep policy/invariants in root `AGENTS.md`; move procedures into Skills.
+- Detect repeated/fragile workflows and promote them into Skills instead of expanding root instructions.
+- Keep automation local-first; external MCP integrations remain optional and justified-by-need.
+- Release/publish operations remain explicit-confirmation and dry-run/checklist-first by default.
+- Session observability must avoid secrets and log only minimal structured run metadata.
+
+**Rationale:**
+
+- Reduces instruction repetition and context-window bloat across sessions.
+- Standardizes recurring execution paths (quality gates, remediation batches, updater checks, docs sync).
+- Improves traceability for long-running/multi-step Codex work without introducing remote telemetry.
+- Preserves Helm safety posture while increasing day-to-day operator efficiency.
+
+---
 ## Summary
 
 Helm prioritizes:

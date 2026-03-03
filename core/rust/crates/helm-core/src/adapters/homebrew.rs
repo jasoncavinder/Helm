@@ -146,7 +146,7 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                     .unwrap_or_else(|| uninstall_request.package.name.as_str());
                 let uninstall_output = self.source.uninstall_formula(formula_name);
                 if let Err(error) = uninstall_output.as_ref()
-                    && !is_homebrew_already_absent_uninstall_error(&error)
+                    && !is_homebrew_already_absent_uninstall_error(error)
                 {
                     return Err(error.clone());
                 }

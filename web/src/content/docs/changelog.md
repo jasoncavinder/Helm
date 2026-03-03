@@ -11,6 +11,21 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ---
 
+## 0.17.8 — 2026-03-03
+
+Patch `0.17.8` finalizes manager lifecycle parity expansion and managed CLI shim hardening.
+
+### Added
+- Expanded manager lifecycle parity across core, CLI, FFI, and GUI for planner-backed manager install/update/uninstall paths.
+
+### Changed
+- Merged the manager lifecycle parity sweep into one stable patch cut.
+
+### Fixed
+- Managed CLI shim installs now stage through a temporary `.helm.tmp` file before replacement.
+- Managed CLI shim flow now clears quarantine attributes to avoid blocked execution.
+- Release preflight now avoids the unsupported `gh secret list --limit` invocation path.
+
 ## 0.17.7 — 2026-02-26
 
 Patch `0.17.7` closes the pre-release quality audit and release-gate blockers.

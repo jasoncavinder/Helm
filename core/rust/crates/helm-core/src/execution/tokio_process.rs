@@ -900,9 +900,7 @@ impl RunningProcess for TokioRunningProcess {
                             .as_millis()
                     );
 
-                    if allow_hard_timeout_prompt
-                        && let Some(task_id) = task_id
-                    {
+                    if allow_hard_timeout_prompt && let Some(task_id) = task_id {
                         match crate::execution::timeout_prompt_store::take_decision(task_id) {
                             Some(
                                 crate::execution::timeout_prompt_store::TimeoutPromptDecision::Wait,
@@ -943,7 +941,7 @@ impl RunningProcess for TokioRunningProcess {
                                 hard_timeout_prompt_started_at = None;
                                 crate::execution::timeout_prompt_store::clear_prompt(task_id);
                                 crate::execution::record_task_log_note(
-                                    "[helm] user selected stop after hard-timeout prompt"
+                                    "[helm] user selected stop after hard-timeout prompt",
                                 );
                                 timeout_state = Some((
                                     "hard_timeout",
@@ -995,7 +993,7 @@ impl RunningProcess for TokioRunningProcess {
                                 hard_timeout_prompt_started_at = None;
                                 crate::execution::timeout_prompt_store::clear_prompt(task_id);
                                 crate::execution::record_task_log_note(
-                                    "[helm] hard-timeout prompt expired without user response"
+                                    "[helm] hard-timeout prompt expired without user response",
                                 );
                                 timeout_state = Some((
                                     "hard_timeout",

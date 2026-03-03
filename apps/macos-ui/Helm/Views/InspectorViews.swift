@@ -1281,12 +1281,7 @@ private struct InspectorManagerDetailView: View {
     }
 
     private var helmSupportedInstallMethodRawValues: Set<String> {
-        switch manager.id {
-        case "mas":
-            return ["homebrew"]
-        default:
-            return Set(resolvedInstallMethodOptions.map(\.method.rawValue))
-        }
+        Set(resolvedInstallMethodOptions.map(\.method.rawValue))
     }
 
     private var sortedHelmSupportedInstallMethodOptions: [ManagerInstallMethodOption] {
@@ -1456,7 +1451,7 @@ private struct InspectorManagerDetailView: View {
         return mapping
     }
 
-    // TODO(business): wire designated install/provenance method ordering when Helm Business policy is implemented.
+    // Business follow-up: wire designated install/provenance method ordering when Helm Business policy is implemented.
     private var businessDesignatedProvenance: String? {
         nil
     }
