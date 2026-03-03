@@ -600,8 +600,14 @@ check_required_secrets() {
 
   local secrets_json
   if ! secrets_json="$(gh secret list --json name 2>/dev/null)"; then
-    fail "unable to list GitHub repository secrets"
-    return
+    # Some local environments export GH_TOKEN with narrower permissions than
+    # the user's stored gh keyring credential. Fall back to keyring auth.
+    if [ -n "${GH_TOKEN:-}" ] && secrets_json="$(env -u GH_TOKEN gh secret list --json name 2>/dev/null)"; then
+      warn "GH_TOKEN could not list repository secrets; fell back to stored gh credential"
+    else
+      fail "unable to list GitHub repository secrets"
+      return
+    fi
   fi
 
   local missing
