@@ -119,6 +119,10 @@ Current checkpoint:
   - post-`v0.17.7` mise lifecycle parity follow-up delivered on `dev`:
     - `mise` install now supports `scriptInstaller` (recommended/default), `homebrew`, `macports`, and `cargoInstall` across shared lifecycle planning in CLI/FFI/UI.
     - `mise` uninstall now supports structured cleanup/config options with manager-only default and explicit full-cleanup config choice requirements across CLI/TUI/GUI confirmation flows.
+  - post-`v0.17.7` manager lifecycle parity sweep follow-up delivered on `dev`:
+    - install planning now includes deterministic Homebrew routes for remaining non-system managers (`npm`, `pnpm`, `yarn`, `pip`, `pipx`, `poetry`, `rubygems`, `bundler`, `cargo`, `cargo-binstall`, `podman`, `colima`) so manager install tasks can be submitted consistently from GUI/CLI/TUI.
+    - manager install-method exposure is now planner-backed end-to-end: core filters registry methods to executable planner-supported subsets, CLI install-method list/set/install flows consume the same filtered set with policy enforcement, and FFI manager-status method options now hide unsupported methods.
+    - GUI manager metadata now marks the same manager set as automatable, aligning manager-card/inspector install-update-uninstall controls with the expanded lifecycle planner support.
   - `#93` `feat/v0.17-log-foundation`
   - `#95` `feat/v0.17-structured-error-export`
   - `#96` `feat/v0.17-service-health-panel`
