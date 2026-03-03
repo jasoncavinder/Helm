@@ -34,7 +34,7 @@ Run merge-readiness checks in a stable order and report exactly what failed.
 
 ## Steps executed
 
-1. Run `skills/run-quality-gate/scripts/run-quality-gate.sh <scope>`.
+1. Run `ops/codex/skills/run-quality-gate/scripts/run-quality-gate.sh <scope>`.
 2. Execute checks in deterministic order for the selected scope.
 3. Stop on first failure and report failure details.
 4. Report success only when all selected checks pass.

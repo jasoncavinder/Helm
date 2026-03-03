@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-TEMPLATE_PATH="$ROOT_DIR/skills/skill-generator/templates/SKILL.template.md"
+TEMPLATE_PATH="$ROOT_DIR/ops/codex/skills/skill-generator/templates/SKILL.template.md"
 SKILLS_ROOT="$ROOT_DIR/skills"
 
 SPEC_FILE=""
@@ -418,4 +418,4 @@ echo "[skill-generator] path: $TARGET_DIR"
 echo "[skill-generator] SKILL.md: $TARGET_SKILL_MD"
 echo "[skill-generator] scripts/: $([ "$WITH_SCRIPTS" -eq 1 ] && echo created || echo not-requested)"
 echo "[skill-generator] resources/: $([ "$WITH_RESOURCES" -eq 1 ] && echo created || echo not-requested)"
-echo "[skill-generator] next step: update docs/codex/USAGE.md with invocation guidance for '$SKILL_NAME'"
+echo "[skill-generator] next step: update ops/codex/docs/USAGE.md with invocation guidance for '$SKILL_NAME'"

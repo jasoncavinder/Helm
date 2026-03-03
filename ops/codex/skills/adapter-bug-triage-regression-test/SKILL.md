@@ -36,7 +36,7 @@ Isolate manager-specific defects quickly and pair each fix with targeted regress
 ## Steps executed
 
 1. Reproduce with the minimal failing path.
-2. Run `skills/adapter-bug-triage-regression-test/scripts/manager-test-targets.sh <manager-id>`.
+2. Run `ops/codex/skills/adapter-bug-triage-regression-test/scripts/manager-test-targets.sh <manager-id>`.
 3. Identify failing layer and add/update deterministic regression tests.
 4. Apply minimal fix and rerun targeted tests.
 5. Escalate to broader gates only if blast radius expands.

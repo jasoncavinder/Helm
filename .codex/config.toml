@@ -2,7 +2,7 @@ model = "gpt-5.3-codex"
 project_doc_max_bytes = 131072
 
 [skills]
-path = "../skills"
+path = "../ops/codex/skills"
 
 [features]
 apps = true
@@ -14,4 +14,4 @@ trust_level = "trusted"
 project_doc_max_bytes = 131072
 
 [projects."/Users/jasoncavinder/Projects/Helm".hooks]
-agent-turn-complete = ["scripts/codex/notify-turn-complete.sh"]
+agent-turn-complete = ["ops/codex/scripts/notify-turn-complete.sh"]
