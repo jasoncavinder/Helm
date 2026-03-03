@@ -144,7 +144,7 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                     .as_ref()
                     .map(|spec| spec.formula_name.as_str())
                     .unwrap_or_else(|| uninstall_request.package.name.as_str());
-                let mut uninstall_output = self.source.uninstall_formula(formula_name);
+                let uninstall_output = self.source.uninstall_formula(formula_name);
                 if let Err(error) = uninstall_output.as_ref()
                     && !is_homebrew_already_absent_uninstall_error(&error)
                 {
@@ -154,14 +154,9 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                     && matches!(spec.cleanup_mode, HomebrewUninstallCleanupMode::FullCleanup)
                 {
                     let cleanup_output = perform_manager_full_cleanup(spec.requested_manager)?;
-                    let mut merged = uninstall_output.unwrap_or_default();
-                    if !cleanup_output.is_empty() {
-                        if !merged.trim().is_empty() {
-                            merged.push('\n');
-                        }
-                        merged.push_str(cleanup_output.as_str());
+                    if !cleanup_output.trim().is_empty() {
+                        crate::execution::record_task_log_note(cleanup_output.as_str());
                     }
-                    uninstall_output = Ok(merged);
                 }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: uninstall_request.package,

@@ -543,6 +543,32 @@ Exit Criteria:
 
 ---
 
+## 0.18.x — Doctor & Repair Foundation (rc)
+
+Goal:
+
+- Introduce a dedicated doctor scan pipeline for manager/package-state health findings.
+- Add deterministic finding fingerprints with explainability/evidence fields.
+- Add repair planning primitives (plan/apply) backed by a temporary embedded local knowledge base.
+- Keep repair execution routed through existing task orchestration and safety gates.
+- Deliver first concrete remediation path:
+  - Homebrew metadata-only manager installs (installed metadata exists without matching executable instance).
+- Maintain parity-ready surface contracts for GUI/CLI/TUI, even if some workflows are initially scaffolded.
+
+Exit Criteria:
+
+- Doctor scan report is available and deterministic from local state.
+- Findings include fingerprint, severity, and top evidence factors.
+- Repair plan/apply is functional for metadata-only Homebrew manager-install mismatch.
+- Embedded knowledge-provider path is clearly isolated behind TODO-marked interfaces for future remote lookup.
+- Existing manager install/uninstall UX for metadata-only mismatch is migrated to the repair subsystem path.
+
+Sequencing note:
+
+- This milestone executes first in the `0.18.x` stream before broader local security/advisory groundwork.
+
+---
+
 ## Security Staging (Planned)
 
 Stage 0 (`<=0.16.x`):
@@ -551,6 +577,7 @@ Stage 0 (`<=0.16.x`):
 
 Stage 1 (`0.18.x`):
 - Internal local-only groundwork for vulnerability data handling
+- Doctor/repair fingerprinting and local remediation scaffolding in place for future advisory integration
 - No public feature exposure
 - No Pro gating
 - No centralized backend
@@ -573,7 +600,7 @@ Stage 3 (`1.4.x`) — Shared Brain:
 
 ---
 
-## 0.18.x — Local Security Groundwork (rc)
+## 0.18.x — Local Security Groundwork (rc, second slice)
 
 Goal:
 

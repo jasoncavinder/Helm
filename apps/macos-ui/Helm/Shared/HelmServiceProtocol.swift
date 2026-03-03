@@ -17,6 +17,7 @@ import Foundation
     func cancelTask(taskId: Int64, withReply reply: @escaping (Bool) -> Void)
     func dismissTask(taskId: Int64, withReply reply: @escaping (Bool) -> Void)
     func listManagerStatus(withReply reply: @escaping (String?) -> Void)
+    func doctorScan(withReply reply: @escaping (String?) -> Void)
     func getSharedOnboardingState(withReply reply: @escaping (Bool, String?) -> Void)
     func setSharedOnboardingCompleted(completed: Bool, withReply reply: @escaping (Bool) -> Void)
     func setSharedAcceptedLicenseTermsVersion(version: String?, withReply reply: @escaping (Bool) -> Void)
@@ -65,6 +66,14 @@ import Foundation
     func installManager(managerId: String, withReply reply: @escaping (Int64) -> Void)
     func updateManager(managerId: String, withReply reply: @escaping (Int64) -> Void)
     func uninstallManager(managerId: String, withReply reply: @escaping (Int64) -> Void)
+    func applyManagerPackageStateIssueRepair(
+        managerId: String,
+        sourceManagerId: String,
+        packageName: String,
+        issueCode: String,
+        optionId: String,
+        withReply reply: @escaping (Int64) -> Void
+    )
     func uninstallManagerWithOptions(
         managerId: String,
         allowUnknownProvenance: Bool,

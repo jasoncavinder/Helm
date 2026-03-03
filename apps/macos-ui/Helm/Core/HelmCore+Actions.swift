@@ -631,6 +631,23 @@ extension HelmCore {
             return
         }
 
+        if enabled,
+           let status = managerStatuses[managerId],
+           status.packageStateIssues?.contains(where: { issue in
+               issue.issueCode == "post_install_setup_required"
+           }) == true
+        {
+            recordLastError(
+                message: "service.error.manager_setup_required".localized,
+                source: "core.actions",
+                action: "setManagerEnabled.setup_required",
+                managerId: managerId,
+                taskType: "settings"
+            )
+            completion?(false)
+            return
+        }
+
         guard let service = service() else {
             recordLastError(
                 source: "core.actions",
@@ -1028,6 +1045,110 @@ extension HelmCore {
         }
     }
 
+    func applyManagerPackageStateIssueRepair(
+        managerId: String,
+        sourceManagerId: String,
+        packageName: String,
+        issueCode: String,
+        optionId: String
+    ) {
+        if isManagerUninstalling(managerId) {
+            return
+        }
+        let isManagerInstallRepair = optionId == "reinstall_manager_via_homebrew"
+        let isManagerSetupRepair = optionId == "apply_post_install_setup_defaults"
+        if isManagerInstallRepair {
+            DispatchQueue.main.async {
+                self.managerOperations[managerId] = L10n.App.Managers.Operation.startingInstall.localized
+            }
+        } else if isManagerSetupRepair {
+            DispatchQueue.main.async {
+                self.managerOperations[managerId] = L10n.App.Managers.Operation.verifying.localized
+            }
+        }
+        guard let svc = service() else {
+            recordLastError(
+                source: "core.actions",
+                action: "applyManagerPackageStateIssueRepair.service_unavailable",
+                managerId: managerId,
+                taskType: "repair"
+            )
+            return
+        }
+
+        withTimeout(
+            300,
+            source: "core.actions",
+            action: "applyManagerPackageStateIssueRepair",
+            managerId: managerId,
+            taskType: "repair",
+            operation: { completion in
+                svc.applyManagerPackageStateIssueRepair(
+                    managerId: managerId,
+                    sourceManagerId: sourceManagerId,
+                    packageName: packageName,
+                    issueCode: issueCode,
+                    optionId: optionId
+                ) {
+                    completion($0)
+                }
+            },
+            fallback: Int64(-1)
+        ) { [weak self] taskId in
+            DispatchQueue.main.async {
+                guard let self, let taskId else { return }
+                if taskId < 0 {
+                    logger.error(
+                        "applyManagerPackageStateIssueRepair(\(managerId), \(issueCode), \(optionId)) failed"
+                    )
+                    self.recordLastError(
+                        source: "core.actions",
+                        action: "applyManagerPackageStateIssueRepair.queue_failed",
+                        managerId: managerId,
+                        taskType: "repair"
+                    )
+                    if isManagerInstallRepair {
+                        self.consumeLastServiceErrorKey { serviceErrorKey in
+                            self.managerOperations[managerId] =
+                                serviceErrorKey?.localized
+                                ?? L10n.App.Managers.Operation.installFailed.localized
+                        }
+                    } else if isManagerSetupRepair {
+                        self.consumeLastServiceErrorKey { serviceErrorKey in
+                            self.managerOperations[managerId] = serviceErrorKey?.localized
+                                ?? L10n.Common.error.localized
+                        }
+                    }
+                    return
+                }
+
+                if isManagerInstallRepair {
+                    self.registerManagerActionTask(
+                        managerId: managerId,
+                        taskId: UInt64(taskId),
+                        taskType: "manager_install",
+                        description: self.managerActionDescription(
+                            action: "Install",
+                            managerId: managerId
+                        ),
+                        inProgressText: L10n.App.Managers.Operation.installing.localized
+                    )
+                } else if isManagerSetupRepair {
+                    self.registerManagerActionTask(
+                        managerId: managerId,
+                        taskId: UInt64(taskId),
+                        taskType: "manager_setup",
+                        description: self.managerActionDescription(
+                            action: "Finish Setup",
+                            managerId: managerId
+                        ),
+                        inProgressText: L10n.App.Managers.Operation.verifying.localized
+                    )
+                }
+            }
+        }
+    }
+
     func updateManager(_ managerId: String) {
         if isManagerUninstalling(managerId) {
             return
@@ -1315,6 +1436,15 @@ extension HelmCore {
                 )
             }
         }
+    }
+
+    func verifyManagerPostInstallSetup(_ managerId: String) {
+        _ = managerId
+        fetchManagerStatus()
+        fetchTasks()
+        fetchPackages()
+        fetchOutdatedPackages()
+        refreshCachedAvailablePackages()
     }
 
     func registerManagerActionTask(

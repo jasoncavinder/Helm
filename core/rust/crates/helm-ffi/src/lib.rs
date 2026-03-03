@@ -36,12 +36,14 @@
 //! | `helm_search_local` | Search |
 //! | `helm_trigger_remote_search` | Search |
 //! | `helm_list_manager_status` | Manager control |
+//! | `helm_doctor_scan` | Diagnostics |
 //! | `helm_set_manager_enabled` | Manager control |
 //! | `helm_install_manager` | Manager control |
 //! | `helm_update_manager` | Manager control |
 //! | `helm_uninstall_manager` | Manager control |
 //! | `helm_preview_manager_uninstall` | Manager control |
 //! | `helm_uninstall_manager_with_options` | Manager control |
+//! | `helm_apply_manager_package_state_issue_repair` | Manager control |
 //! | `helm_get_safe_mode` | Settings |
 //! | `helm_set_safe_mode` | Settings |
 //! | `helm_get_homebrew_keg_auto_cleanup` | Settings |
@@ -147,10 +149,10 @@ use helm_core::manager_dependencies::provenance_dependency_manager;
 use helm_core::manager_instances::{install_instance_fingerprint, resolve_multi_instance_state};
 use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
-    Capability, DetectionInfo, HomebrewKegPolicy, InstallProvenance, ManagerAction,
-    ManagerAuthority, ManagerId, ManagerInstallInstance, ManagerUninstallPreview, OutdatedPackage,
-    PackageRef, PinKind, PinRecord, SearchQuery, StrategyKind, TaskId, TaskLogLevel,
-    TaskLogRecord, TaskStatus, TaskType,
+    Capability, DetectionInfo, HomebrewKegPolicy, ManagerAction, ManagerAuthority, ManagerId,
+    ManagerInstallInstance, ManagerUninstallPreview, OutdatedPackage, PackageRef, PinKind,
+    PinRecord, SearchQuery, StrategyKind, TaskId, TaskLogLevel, TaskLogRecord, TaskStatus,
+    TaskType,
 };
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
 use helm_core::orchestration::{AdapterTaskTerminalState, CancellationMode};
@@ -193,6 +195,7 @@ const SERVICE_ERROR_PROCESS_FAILURE: &str = "service.error.process_failure";
 const SERVICE_ERROR_STORAGE_FAILURE: &str = "service.error.storage_failure";
 const SERVICE_ERROR_UNSUPPORTED_CAPABILITY: &str = "service.error.unsupported_capability";
 const SERVICE_ERROR_MANAGER_DEPENDENCY_BLOCKED: &str = "service.error.manager_dependency_blocked";
+const SERVICE_ERROR_MANAGER_SETUP_REQUIRED: &str = "service.error.manager_setup_required";
 
 fn note_lock_poisoned(context: &str) {
     eprintln!("helm-ffi: recovering from poisoned mutex: {context}");
@@ -248,10 +251,12 @@ enum MiseInstallSourcePayload {
 #[derive(Clone, Debug, Default, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ManagerInstallOptionsPayload {
+    install_method_override: Option<String>,
     rustup_install_source: Option<RustupInstallSourcePayload>,
     rustup_binary_path: Option<String>,
     mise_install_source: Option<MiseInstallSourcePayload>,
     mise_binary_path: Option<String>,
+    complete_post_install_setup_automatically: Option<bool>,
 }
 
 #[derive(Clone, Copy, Debug, Default, serde::Deserialize, Eq, PartialEq)]
@@ -316,10 +321,17 @@ fn parse_install_options_payload(
         }
     });
     Ok(helm_core::manager_lifecycle::ManagerInstallOptions {
+        install_method_override: payload
+            .install_method_override
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
         rustup_install_source,
         rustup_binary_path: payload.rustup_binary_path,
         mise_install_source,
         mise_binary_path: payload.mise_binary_path,
+        complete_post_install_setup_automatically: payload
+            .complete_post_install_setup_automatically
+            .unwrap_or(false),
     })
 }
 
@@ -566,6 +578,27 @@ struct FfiManagerPackageStateIssue {
     source_manager_id: String,
     package_name: String,
     issue_code: String,
+    finding_code: String,
+    fingerprint: String,
+    severity: String,
+    summary: Option<String>,
+    evidence_primary: Option<String>,
+    evidence_secondary: Option<String>,
+    knowledge_source: Option<String>,
+    knowledge_version: Option<String>,
+    repair_options: Vec<FfiManagerIssueRepairOption>,
+}
+
+#[derive(serde::Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct FfiManagerIssueRepairOption {
+    option_id: String,
+    action: String,
+    title: String,
+    description: String,
+    recommended: bool,
+    requires_confirmation: bool,
+    automation_level: String,
 }
 
 #[derive(serde::Serialize, Clone, Debug, PartialEq)]
@@ -1403,7 +1436,6 @@ fn build_manager_statuses(
                     .as_deref()
                     .map(std::path::Path::new),
             );
-            let enabled = configured_enabled && eligibility.is_eligible;
             let version = detection.and_then(|d| normalize_nonempty(d.version.clone()));
             let supports_remote_search = runtime
                 .map(|runtime| can_submit_remote_search(runtime, id))
@@ -1447,6 +1479,10 @@ fn build_manager_statuses(
                 manager_install_instances,
                 &homebrew_installed_formulas,
             );
+            let setup_required = package_state_issues.iter().any(|issue| {
+                issue.issue_code == helm_core::doctor::ISSUE_CODE_POST_INSTALL_SETUP_REQUIRED
+            });
+            let enabled = configured_enabled && eligibility.is_eligible && !setup_required;
 
             FfiManagerStatus {
                 manager_id: id.as_str().to_string(),
@@ -1515,46 +1551,56 @@ fn manager_package_state_issues(
     manager_install_instances: Option<&Vec<ManagerInstallInstance>>,
     homebrew_installed_formulas: &std::collections::HashSet<String>,
 ) -> Vec<FfiManagerPackageStateIssue> {
-    let Some(formula_name) = manager_expected_homebrew_formula(manager) else {
-        return Vec::new();
-    };
-    let normalized_formula = formula_name.to_ascii_lowercase();
-    if !homebrew_installed_formulas.contains(&normalized_formula) {
-        return Vec::new();
-    }
-    if manager_has_homebrew_instance_for_formula(manager_install_instances, formula_name) {
-        return Vec::new();
-    }
+    let findings = helm_core::doctor::scan_manager_package_state_issues(
+        helm_core::doctor::ManagerPackageStateScanInput {
+            manager,
+            manager_install_instances: manager_install_instances.map(Vec::as_slice),
+            homebrew_installed_formulas,
+        },
+    );
 
-    vec![FfiManagerPackageStateIssue {
-        source_manager_id: ManagerId::HomebrewFormula.as_str().to_string(),
-        package_name: formula_name.to_string(),
-        issue_code: "metadata_only_install".to_string(),
-    }]
-}
+    findings
+        .into_iter()
+        .map(|finding| {
+            let repair_plan = helm_core::repair::plan_for_finding(&finding);
+            let repair_options = repair_plan
+                .as_ref()
+                .map(|plan| {
+                    plan.options
+                        .iter()
+                        .map(|option| FfiManagerIssueRepairOption {
+                            option_id: option.option_id.clone(),
+                            action: option.action.as_str().to_string(),
+                            title: option.title.clone(),
+                            description: option.description.clone(),
+                            recommended: option.recommended,
+                            requires_confirmation: option.requires_confirmation,
+                            automation_level: option.automation_level.as_str().to_string(),
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
 
-fn manager_expected_homebrew_formula(manager: ManagerId) -> Option<&'static str> {
-    match manager {
-        // Rustup supports both rustup-init and Homebrew installs, so it is intentionally handled
-        // outside the static manager->formula map.
-        ManagerId::Rustup => Some("rustup"),
-        _ => helm_core::manager_lifecycle::manager_homebrew_formula_name(manager),
-    }
-}
-
-fn manager_has_homebrew_instance_for_formula(
-    manager_install_instances: Option<&Vec<ManagerInstallInstance>>,
-    expected_formula: &str,
-) -> bool {
-    manager_install_instances.is_some_and(|instances| {
-        instances.iter().any(|instance| {
-            if instance.provenance != InstallProvenance::Homebrew {
-                return false;
+            FfiManagerPackageStateIssue {
+                source_manager_id: finding.source_manager_id.unwrap_or_default(),
+                package_name: finding.package_name.unwrap_or_default(),
+                issue_code: finding.issue_code.clone(),
+                finding_code: finding.finding_code,
+                fingerprint: finding.fingerprint,
+                severity: finding.severity.as_str().to_string(),
+                summary: normalize_nonempty(Some(finding.summary)),
+                evidence_primary: normalize_nonempty(finding.evidence_primary),
+                evidence_secondary: normalize_nonempty(finding.evidence_secondary),
+                knowledge_source: repair_plan
+                    .as_ref()
+                    .map(|plan| plan.knowledge_source.clone()),
+                knowledge_version: repair_plan
+                    .as_ref()
+                    .map(|plan| plan.knowledge_version.clone()),
+                repair_options,
             }
-            helm_core::manager_lifecycle::homebrew_formula_name_from_instance(instance)
-                .is_none_or(|name| name.eq_ignore_ascii_case(expected_formula))
         })
-    })
+        .collect()
 }
 
 fn manager_install_method_options(manager: ManagerId) -> Vec<FfiManagerInstallMethodOption> {
@@ -1631,6 +1677,77 @@ fn set_task_label(task_id: helm_core::models::TaskId, key: &str, args: &[(&str, 
             args: args_map,
         },
     );
+}
+
+fn append_local_task_log(
+    store: &SqliteStore,
+    task_id: TaskId,
+    manager: ManagerId,
+    task_type: TaskType,
+    status: TaskStatus,
+    level: TaskLogLevel,
+    message: impl Into<String>,
+) {
+    let _ = store.append_task_log(&helm_core::models::NewTaskLogRecord {
+        task_id,
+        manager,
+        task_type,
+        status: Some(status),
+        level,
+        message: message.into(),
+        created_at: std::time::SystemTime::now(),
+    });
+}
+
+fn create_local_task(
+    store: &SqliteStore,
+    manager: ManagerId,
+    task_type: TaskType,
+) -> Result<TaskId, &'static str> {
+    let task_id = store
+        .next_task_id()
+        .map(TaskId)
+        .map_err(|_| SERVICE_ERROR_STORAGE_FAILURE)?;
+    let record = helm_core::models::TaskRecord {
+        id: task_id,
+        manager,
+        task_type,
+        status: TaskStatus::Queued,
+        created_at: std::time::SystemTime::now(),
+    };
+    store
+        .create_task(&record)
+        .map_err(|_| SERVICE_ERROR_STORAGE_FAILURE)?;
+    append_local_task_log(
+        store,
+        task_id,
+        manager,
+        task_type,
+        TaskStatus::Queued,
+        TaskLogLevel::Info,
+        "task queued",
+    );
+    Ok(task_id)
+}
+
+fn update_local_task_status(
+    store: &SqliteStore,
+    task_id: TaskId,
+    manager: ManagerId,
+    task_type: TaskType,
+    status: TaskStatus,
+    level: TaskLogLevel,
+    message: impl Into<String>,
+) {
+    let record = helm_core::models::TaskRecord {
+        id: task_id,
+        manager,
+        task_type,
+        status,
+        created_at: std::time::SystemTime::now(),
+    };
+    let _ = store.update_task(&record);
+    append_local_task_log(store, task_id, manager, task_type, status, level, message);
 }
 
 const TASK_PRUNE_MAX_AGE_SECS: i64 = 300;
@@ -1924,6 +2041,48 @@ fn apply_manager_enablement_self_heal(
     changed
 }
 
+fn grouped_install_instances_by_manager(
+    store: &SqliteStore,
+) -> std::collections::HashMap<ManagerId, Vec<ManagerInstallInstance>> {
+    let mut grouped = std::collections::HashMap::new();
+    if let Ok(instances) = store.list_install_instances(None) {
+        for instance in instances {
+            grouped
+                .entry(instance.manager)
+                .or_insert_with(Vec::new)
+                .push(instance);
+        }
+    }
+    grouped
+}
+
+fn homebrew_installed_formula_set(store: &SqliteStore) -> std::collections::HashSet<String> {
+    store
+        .list_installed()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|package| package.package.manager == ManagerId::HomebrewFormula)
+        .filter_map(|package| {
+            let normalized = package.package.name.trim().to_ascii_lowercase();
+            (!normalized.is_empty()).then_some(normalized)
+        })
+        .collect()
+}
+
+fn manager_has_setup_required_issue(
+    manager: ManagerId,
+    install_instances_by_manager: &std::collections::HashMap<ManagerId, Vec<ManagerInstallInstance>>,
+    homebrew_installed_formulas: &std::collections::HashSet<String>,
+) -> bool {
+    manager_package_state_issues(
+        manager,
+        install_instances_by_manager.get(&manager),
+        homebrew_installed_formulas,
+    )
+    .iter()
+    .any(|issue| issue.issue_code == helm_core::doctor::ISSUE_CODE_POST_INSTALL_SETUP_REQUIRED)
+}
+
 fn manager_enabled_map(store: &SqliteStore) -> std::collections::HashMap<ManagerId, bool> {
     let detections: std::collections::HashMap<ManagerId, DetectionInfo> = store
         .list_detections()
@@ -1936,6 +2095,8 @@ fn manager_enabled_map(store: &SqliteStore) -> std::collections::HashMap<Manager
         .into_iter()
         .map(|preference| (preference.manager, preference))
         .collect();
+    let install_instances_by_manager = grouped_install_instances_by_manager(store);
+    let homebrew_installed_formulas = homebrew_installed_formula_set(store);
 
     let mut enabled_by_manager = std::collections::HashMap::new();
     for manager in ManagerId::ALL {
@@ -1949,7 +2110,15 @@ fn manager_enabled_map(store: &SqliteStore) -> std::collections::HashMap<Manager
             manager,
             selected_executable.as_deref().map(std::path::Path::new),
         );
-        enabled_by_manager.insert(manager, configured_enabled && eligibility.is_eligible);
+        let setup_required = manager_has_setup_required_issue(
+            manager,
+            &install_instances_by_manager,
+            &homebrew_installed_formulas,
+        );
+        enabled_by_manager.insert(
+            manager,
+            configured_enabled && eligibility.is_eligible && !setup_required,
+        );
     }
 
     enabled_by_manager
@@ -5047,6 +5216,68 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
     }
 }
 
+/// Run a local doctor scan and return a health report JSON payload.
+///
+/// Current implementation scope:
+/// - package-state diagnostics for metadata-only Homebrew manager installs.
+///
+/// TODO(doctor-repair): wire additional detectors and remote fingerprint lookups.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_doctor_scan() -> *mut c_char {
+    clear_last_error_key();
+    let guard = lock_or_recover(&STATE, "state");
+    let state = match guard.as_ref() {
+        Some(s) => s,
+        None => {
+            set_last_error_key(SERVICE_ERROR_INTERNAL);
+            return std::ptr::null_mut();
+        }
+    };
+
+    let installed_packages = match state.store.list_installed() {
+        Ok(packages) => packages,
+        Err(_) => {
+            set_last_error_key(SERVICE_ERROR_STORAGE_FAILURE);
+            return std::ptr::null_mut();
+        }
+    };
+    let instances = match state.store.list_install_instances(None) {
+        Ok(instances) => instances,
+        Err(_) => {
+            set_last_error_key(SERVICE_ERROR_STORAGE_FAILURE);
+            return std::ptr::null_mut();
+        }
+    };
+    let mut instances_by_manager: std::collections::HashMap<
+        ManagerId,
+        Vec<ManagerInstallInstance>,
+    > = std::collections::HashMap::new();
+    for instance in instances {
+        instances_by_manager
+            .entry(instance.manager)
+            .or_default()
+            .push(instance);
+    }
+
+    let report = helm_core::doctor::scan_package_state_report(
+        ManagerId::ALL,
+        &instances_by_manager,
+        installed_packages.as_slice(),
+    );
+    let json = match serde_json::to_string(&report) {
+        Ok(json) => json,
+        Err(_) => {
+            set_last_error_key(SERVICE_ERROR_INTERNAL);
+            return std::ptr::null_mut();
+        }
+    };
+
+    match CString::new(json) {
+        Ok(c) => c.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
 /// Return whether shared onboarding has been completed.
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_get_cli_onboarding_completed() -> bool {
@@ -6869,6 +7100,16 @@ pub unsafe extern "C" fn helm_set_manager_enabled(
                     .unwrap_or(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
             );
         }
+
+        let install_instances_by_manager = grouped_install_instances_by_manager(store.as_ref());
+        let homebrew_installed_formulas = homebrew_installed_formula_set(store.as_ref());
+        if manager_has_setup_required_issue(
+            manager,
+            &install_instances_by_manager,
+            &homebrew_installed_formulas,
+        ) {
+            return return_error_bool(SERVICE_ERROR_MANAGER_SETUP_REQUIRED);
+        }
     } else {
         let enabled_by_manager = manager_enabled_map(store.as_ref());
         let dependents =
@@ -7278,6 +7519,317 @@ pub unsafe extern "C" fn helm_set_manager_timeout_profile(
     true
 }
 
+fn manager_supports_post_install_setup(manager: ManagerId) -> bool {
+    matches!(manager, ManagerId::Rustup | ManagerId::Mise | ManagerId::Asdf)
+}
+
+fn spawn_post_install_setup_task(
+    store: Arc<SqliteStore>,
+    runtime: Arc<AdapterRuntime>,
+    rt_handle: tokio::runtime::Handle,
+    manager: ManagerId,
+    wait_for_install_task: Option<TaskId>,
+) -> Result<TaskId, &'static str> {
+    let task_type = TaskType::Install;
+    let task_id = create_local_task(store.as_ref(), manager, task_type)?;
+    set_task_label(
+        task_id,
+        "service.task.label.setup.manager",
+        &[("manager", manager_display_name(manager).to_string())],
+    );
+
+    thread::spawn(move || {
+        update_local_task_status(
+            store.as_ref(),
+            task_id,
+            manager,
+            task_type,
+            TaskStatus::Running,
+            TaskLogLevel::Info,
+            "task started",
+        );
+
+        if let Some(install_task_id) = wait_for_install_task {
+            append_local_task_log(
+                store.as_ref(),
+                task_id,
+                manager,
+                task_type,
+                TaskStatus::Running,
+                TaskLogLevel::Info,
+                format!("waiting for install task {} to complete", install_task_id.0),
+            );
+            let install_terminal = rt_handle.block_on(runtime.wait_for_terminal(install_task_id, None));
+            match install_terminal {
+                Ok(snapshot) => match snapshot.terminal_state {
+                    Some(AdapterTaskTerminalState::Succeeded(_)) => {}
+                    Some(AdapterTaskTerminalState::Cancelled(_)) => {
+                        update_local_task_status(
+                            store.as_ref(),
+                            task_id,
+                            manager,
+                            task_type,
+                            TaskStatus::Cancelled,
+                            TaskLogLevel::Warn,
+                            "post-install setup cancelled because install task was cancelled",
+                        );
+                        return;
+                    }
+                    Some(AdapterTaskTerminalState::Failed(error)) => {
+                        update_local_task_status(
+                            store.as_ref(),
+                            task_id,
+                            manager,
+                            task_type,
+                            TaskStatus::Failed,
+                            TaskLogLevel::Error,
+                            format!(
+                                "post-install setup skipped because install task failed: {}",
+                                error.message
+                            ),
+                        );
+                        return;
+                    }
+                    None => {
+                        update_local_task_status(
+                            store.as_ref(),
+                            task_id,
+                            manager,
+                            task_type,
+                            TaskStatus::Failed,
+                            TaskLogLevel::Error,
+                            "post-install setup skipped because install task ended without terminal status",
+                        );
+                        return;
+                    }
+                },
+                Err(error) => {
+                    update_local_task_status(
+                        store.as_ref(),
+                        task_id,
+                        manager,
+                        task_type,
+                        TaskStatus::Failed,
+                        TaskLogLevel::Error,
+                        format!(
+                            "post-install setup skipped because install task wait failed: {}",
+                            error.message
+                        ),
+                    );
+                    return;
+                }
+            }
+        }
+
+        let instances = match store.list_install_instances(Some(manager)) {
+            Ok(instances) => instances,
+            Err(error) => {
+                update_local_task_status(
+                    store.as_ref(),
+                    task_id,
+                    manager,
+                    task_type,
+                    TaskStatus::Failed,
+                    TaskLogLevel::Error,
+                    format!("failed to load manager install instances: {error}"),
+                );
+                return;
+            }
+        };
+
+        let apply_result = helm_core::post_install_setup::apply_recommended_post_install_setup(
+            manager,
+            Some(instances.as_slice()),
+        );
+        match apply_result {
+            Ok(result) => {
+                append_local_task_log(
+                    store.as_ref(),
+                    task_id,
+                    manager,
+                    task_type,
+                    TaskStatus::Running,
+                    TaskLogLevel::Info,
+                    format!("shell rc file: '{}'", result.rc_file.display()),
+                );
+                let report = helm_core::post_install_setup::evaluate_manager_post_install_setup(
+                    manager,
+                    Some(instances.as_slice()),
+                );
+                if report.is_some_and(|value| value.has_unmet_required()) {
+                    update_local_task_status(
+                        store.as_ref(),
+                        task_id,
+                        manager,
+                        task_type,
+                        TaskStatus::Failed,
+                        TaskLogLevel::Error,
+                        "post-install setup automation completed but requirements are still unmet",
+                    );
+                } else {
+                    update_local_task_status(
+                        store.as_ref(),
+                        task_id,
+                        manager,
+                        task_type,
+                        TaskStatus::Completed,
+                        TaskLogLevel::Info,
+                        result.summary,
+                    );
+                }
+            }
+            Err(error) => {
+                update_local_task_status(
+                    store.as_ref(),
+                    task_id,
+                    manager,
+                    task_type,
+                    TaskStatus::Failed,
+                    TaskLogLevel::Error,
+                    error,
+                );
+            }
+        }
+    });
+
+    Ok(task_id)
+}
+
+/// Apply a manager package-state repair option and queue the corresponding task.
+///
+/// The current scaffold supports metadata-only Homebrew manager installs by routing one of:
+/// - `reinstall_manager_via_homebrew`
+/// - `remove_stale_package_entry`
+///
+/// # Safety
+///
+/// All pointers must be valid, non-null pointers to NUL-terminated UTF-8 C strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_apply_manager_package_state_issue_repair(
+    manager_id: *const c_char,
+    source_manager_id: *const c_char,
+    package_name: *const c_char,
+    issue_code: *const c_char,
+    option_id: *const c_char,
+) -> i64 {
+    clear_last_error_key();
+    if manager_id.is_null()
+        || source_manager_id.is_null()
+        || package_name.is_null()
+        || issue_code.is_null()
+        || option_id.is_null()
+    {
+        return return_error_i64(SERVICE_ERROR_INVALID_INPUT);
+    }
+
+    let manager = {
+        let value = unsafe { CStr::from_ptr(manager_id) };
+        match value
+            .to_str()
+            .ok()
+            .and_then(|raw| raw.parse::<ManagerId>().ok())
+        {
+            Some(manager) => manager,
+            None => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
+        }
+    };
+    let source_manager = {
+        let value = unsafe { CStr::from_ptr(source_manager_id) };
+        match value
+            .to_str()
+            .ok()
+            .and_then(|raw| raw.parse::<ManagerId>().ok())
+        {
+            Some(manager) => manager,
+            None => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
+        }
+    };
+    let package_name = {
+        let value = unsafe { CStr::from_ptr(package_name) };
+        match value.to_str() {
+            Ok(raw) => raw.trim().to_string(),
+            _ => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
+        }
+    };
+    let issue_code = {
+        let value = unsafe { CStr::from_ptr(issue_code) };
+        match value.to_str() {
+            Ok(raw) if !raw.trim().is_empty() => raw.trim().to_string(),
+            _ => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
+        }
+    };
+    let option_id = {
+        let value = unsafe { CStr::from_ptr(option_id) };
+        match value.to_str() {
+            Ok(raw) if !raw.trim().is_empty() => raw.trim().to_string(),
+            _ => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
+        }
+    };
+
+    let plan = match helm_core::repair::plan_for_issue(
+        manager,
+        source_manager,
+        package_name.as_str(),
+        issue_code.as_str(),
+    ) {
+        Some(plan) => plan,
+        None => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
+    };
+    let option = match helm_core::repair::resolve_option(&plan, option_id.as_str()) {
+        Some(option) => option,
+        None => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
+    };
+
+    match option.action {
+        helm_core::repair::RepairAction::ReinstallManagerViaHomebrew => {
+            let manager_c = match CString::new(manager.as_str()) {
+                Ok(value) => value,
+                Err(_) => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
+            };
+            let options_c = match CString::new("{\"installMethodOverride\":\"homebrew\"}") {
+                Ok(value) => value,
+                Err(_) => return return_error_i64(SERVICE_ERROR_INTERNAL),
+            };
+            unsafe { helm_install_manager_with_options(manager_c.as_ptr(), options_c.as_ptr()) }
+        }
+        helm_core::repair::RepairAction::RemoveStalePackageEntry => {
+            if package_name.trim().is_empty() {
+                return return_error_i64(SERVICE_ERROR_INVALID_INPUT);
+            }
+            let source_c = match CString::new(source_manager.as_str()) {
+                Ok(value) => value,
+                Err(_) => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
+            };
+            let package_c = match CString::new(package_name) {
+                Ok(value) => value,
+                Err(_) => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
+            };
+            unsafe { helm_uninstall_package(source_c.as_ptr(), package_c.as_ptr()) }
+        }
+        helm_core::repair::RepairAction::ApplyPostInstallSetupDefaults => {
+            let (store, runtime, rt_handle) = {
+                let guard = lock_or_recover(&STATE, "state");
+                let state = match guard.as_ref() {
+                    Some(s) => s,
+                    None => return return_error_i64(SERVICE_ERROR_INTERNAL),
+                };
+                (
+                    state.store.clone(),
+                    state.runtime.clone(),
+                    state.rt_handle.clone(),
+                )
+            };
+            if !manager_supports_post_install_setup(manager) {
+                return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY);
+            }
+            match spawn_post_install_setup_task(store, runtime, rt_handle, manager, None) {
+                Ok(task_id) => task_id.0 as i64,
+                Err(error_key) => return return_error_i64(error_key),
+            }
+        }
+    }
+}
+
 /// Install a manager tool. Returns the task ID, or -1 on error.
 ///
 /// Supported manager IDs:
@@ -7303,10 +7855,14 @@ pub unsafe extern "C" fn helm_install_manager(manager_id: *const c_char) -> i64 
 /// - "rustup" -> rustup-init (default) or Homebrew, based on selected install method
 ///
 /// Supported options (method-specific):
+/// - `installMethodOverride`: one-off method id (e.g. `homebrew`) without mutating saved manager preference
 /// - `rustupInstallSource`: `officialDownload` (default) or `existingBinaryPath`
 /// - `rustupBinaryPath`: absolute path used when `rustupInstallSource=existingBinaryPath`
 /// - `miseInstallSource`: `officialDownload` (default) or `existingBinaryPath`
 /// - `miseBinaryPath`: absolute path used when `miseInstallSource=existingBinaryPath`
+/// - `completePostInstallSetupAutomatically`: automatically apply recommended setup defaults
+///   after install succeeds for managers that support post-install setup (`rustup`, `mise`,
+///   `asdf`)
 ///
 /// # Safety
 ///
@@ -7412,6 +7968,23 @@ pub unsafe extern "C" fn helm_install_manager_with_options(
     match rt_handle.block_on(runtime.submit(target_manager, request)) {
         Ok(task_id) => {
             set_task_label(task_id, label_key, label_args.as_slice());
+            if install_options.complete_post_install_setup_automatically
+                && manager_supports_post_install_setup(manager)
+            {
+                if let Err(error_key) = spawn_post_install_setup_task(
+                    store.clone(),
+                    runtime.clone(),
+                    rt_handle.clone(),
+                    manager,
+                    Some(task_id),
+                ) {
+                    eprintln!(
+                        "helm-ffi: failed to queue post-install setup task for '{}': {}",
+                        manager.as_str(),
+                        error_key
+                    );
+                }
+            }
             task_id.0 as i64
         }
         Err(e) => {
@@ -7919,9 +8492,9 @@ mod tests {
         PIP_SYSTEM_UNMANAGED_REASON_CODE, RUBYGEMS_SYSTEM_UNMANAGED_REASON_CODE,
     };
     use helm_core::models::{
-        AutomationLevel, DetectionInfo, InstallProvenance, ManagerId, ManagerInstallInstance,
-        OutdatedPackage, PackageRef, StrategyKind, TaskId, TaskLogRecord, TaskRecord, TaskStatus,
-        TaskType, InstalledPackage,
+        AutomationLevel, DetectionInfo, InstallProvenance, InstalledPackage, ManagerId,
+        ManagerInstallInstance, OutdatedPackage, PackageRef, StrategyKind, TaskId, TaskLogRecord,
+        TaskRecord, TaskStatus, TaskType,
     };
     use helm_core::orchestration::adapter_runtime::AdapterRuntime;
     use helm_core::persistence::{DetectionStore, ManagerPreference, PackageStore, TaskStore};
@@ -8729,7 +9302,7 @@ mod tests {
 
     #[test]
     fn rustup_executable_candidates_include_homebrew_keg_only_paths() {
-        let candidates = manager_executable_candidates(ManagerId::Rustup);
+        let candidates = super::manager_executable_candidates(ManagerId::Rustup);
         assert!(candidates.contains(&"rustup"));
         assert!(candidates.contains(&"/opt/homebrew/opt/rustup/bin/rustup"));
         assert!(candidates.contains(&"/usr/local/opt/rustup/bin/rustup"));
@@ -9152,8 +9725,31 @@ mod tests {
         assert_eq!(issue.source_manager_id, "homebrew_formula");
         assert_eq!(issue.package_name, "rustup");
         assert_eq!(issue.issue_code, "metadata_only_install");
+        assert_eq!(
+            issue.finding_code,
+            helm_core::doctor::FINDING_CODE_HOMEBREW_METADATA_ONLY_INSTALL
+        );
+        assert!(!issue.fingerprint.is_empty());
+        assert_eq!(issue.repair_options.len(), 2);
+        assert_eq!(
+            issue.repair_options[0].option_id,
+            helm_core::repair::REPAIR_OPTION_REINSTALL_MANAGER_VIA_HOMEBREW
+        );
+        assert_eq!(
+            issue.repair_options[1].option_id,
+            helm_core::repair::REPAIR_OPTION_REMOVE_STALE_PACKAGE_ENTRY
+        );
 
         let _ = fs::remove_file(store.database_path());
+    }
+
+    #[test]
+    fn parse_install_options_payload_supports_method_override() {
+        let raw = std::ffi::CString::new(r#"{"installMethodOverride":"homebrew"}"#)
+            .expect("json options should encode");
+        let options = super::parse_install_options_payload(raw.as_ptr())
+            .expect("install options payload should parse");
+        assert_eq!(options.install_method_override.as_deref(), Some("homebrew"));
     }
 
     #[test]

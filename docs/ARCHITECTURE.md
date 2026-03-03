@@ -354,6 +354,33 @@ docs/I18N_STRATEGY.md
 
 ---
 
+### 4.10 Doctor & Repair Subsystems (Phase 1)
+
+Doctor and repair are core-owned subsystems for health diagnosis and remediation planning.
+
+Phase-1 behavior:
+
+- Doctor scans local state and emits structured findings.
+- Findings include deterministic fingerprints plus top evidence factors.
+- Repair resolves findings to remediation options through an embedded/local knowledge provider.
+- Repair execution routes through existing task orchestration (no bypass path).
+
+Design constraints:
+
+- Local-first operation (no network dependency in current phase).
+- Explicit TODO seam for future remote known-fix lookup.
+- Explainability is persisted/surfaced with findings to preserve user trust.
+- Repair actions must preserve existing cancellation, timeout, and task observability contracts.
+
+Initial implemented finding:
+
+- Homebrew metadata-only manager install mismatch:
+  - package metadata indicates manager installed via Homebrew
+  - no matching Homebrew executable instance detected
+  - repair options include Homebrew reinstall and stale-entry cleanup
+
+---
+
 ## 5. Execution Model
 
 ### 5.1 Process Execution

@@ -11,7 +11,7 @@
   "app.managers.action.uninstall": "Desinstalar {manager}",
   "app.managers.action.update": "Atualizar {manager}",
   "app.managers.action.view_packages": "Ver pacotes",
-  "app.managers.alert.install.message": "Isto instalará {manager_short} via Homebrew.",
+  "app.managers.alert.install.message": "Isto instalará {manager_short} via {method}.",
   "app.managers.alert.install.title": "Instalar {manager}?",
   "app.managers.alert.uninstall.message": "Isto removerá {manager_short} do seu sistema.",
   "app.managers.uninstall.details.toggle": "More details",
@@ -493,5 +493,15 @@
   "app.inspector.package_state_issue.metadata_only.details_source": "Source",
   "app.inspector.package_state_issue.metadata_only.details_package": "Package",
   "app.inspector.package_state_issue.metadata_only.details_expected_paths": "Expected executable paths",
-  "app.inspector.package_state_issue.metadata_only.details_detected_instances": "Detected manager instances"
+  "app.inspector.package_state_issue.metadata_only.details_detected_instances": "Detected manager instances",
+  "app.inspector.package_state_issue.setup_required.title": "Post-install setup required",
+  "app.inspector.package_state_issue.setup_required.message": "{manager} is installed but needs post-install setup before it can be enabled.",
+  "app.inspector.package_state_issue.setup_required.finish_action": "Finish {manager} Setup",
+  "app.inspector.package_state_issue.setup_required.auto_action": "Apply Recommended Setup",
+  "app.inspector.package_state_issue.setup_required.modal_title": "Finish {manager} Setup",
+  "app.inspector.package_state_issue.setup_required.modal_message": "Complete the following post-install setup steps, then verify.",
+  "app.inspector.package_state_issue.setup_required.steps_title": "Required steps",
+  "app.inspector.package_state_issue.setup_required.commands_title": "Copyable commands",
+  "app.inspector.package_state_issue.setup_required.verify_action": "Verify Setup",
+  "app.inspector.install.complete_post_install_setup_automatically": "Complete post-install setup automatically"
 }

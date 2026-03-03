@@ -128,7 +128,7 @@ const BASH_COMPLETION_SCRIPT: &str = r#"_helm_complete() {
             COMPREPLY=( $(compgen -W "summary task manager provenance export help" -- "${cur}") )
             ;;
         doctor)
-            COMPREPLY=( $(compgen -W "summary task manager provenance export help" -- "${cur}") )
+            COMPREPLY=( $(compgen -W "scan repair help" -- "${cur}") )
             ;;
         onboarding)
             COMPREPLY=( $(compgen -W "status run reset help" -- "${cur}") )
@@ -193,7 +193,7 @@ case $words[2] in
     _values 'subcommand' summary task manager provenance export help
     ;;
   doctor)
-    _values 'subcommand' summary task manager provenance export help
+    _values 'subcommand' scan repair help
     ;;
   onboarding)
     _values 'subcommand' status run reset help
@@ -218,7 +218,7 @@ complete -c helm -n "__fish_seen_subcommand_from tasks" -a "list show logs outpu
 complete -c helm -n "__fish_seen_subcommand_from managers" -a "list show detect enable disable install update uninstall executables install-methods instances priority help"
 complete -c helm -n "__fish_seen_subcommand_from settings" -a "list get set reset help"
 complete -c helm -n "__fish_seen_subcommand_from diagnostics" -a "summary task manager provenance export help"
-complete -c helm -n "__fish_seen_subcommand_from doctor" -a "summary task manager provenance export help"
+complete -c helm -n "__fish_seen_subcommand_from doctor" -a "scan repair help"
 complete -c helm -n "__fish_seen_subcommand_from onboarding" -a "status run reset help"
 complete -c helm -n "__fish_seen_subcommand_from self" -a "status check update uninstall auto-check help"
 complete -c helm -n "__fish_seen_subcommand_from auto-check" -a "status enable disable frequency help"
@@ -1361,10 +1361,15 @@ fn command_help_topic_exists(command: Command, path: &[String]) -> bool {
                         | ("executables", "set")
                         | ("install-methods", "list")
                         | ("install-methods", "set")
+                        | ("instances", "ack")
+                        | ("instances", "clear-ack")
                         | ("priority", "list")
                         | ("priority", "set")
                         | ("priority", "reset")
                 );
+            }
+            if path.len() == 3 {
+                return (path[0].as_str(), path[1].as_str()) == ("instances", "set-active");
             }
             false
         }
@@ -1373,13 +1378,26 @@ fn command_help_topic_exists(command: Command, path: &[String]) -> bool {
                 || (path.len() == 1
                     && matches!(first(path), Some("list" | "get" | "set" | "reset")))
         }
-        Command::Diagnostics | Command::Doctor => {
+        Command::Diagnostics => {
             path.is_empty()
                 || (path.len() == 1
                     && matches!(
                         first(path),
                         Some("summary" | "task" | "manager" | "provenance" | "export")
                     ))
+        }
+        Command::Doctor => {
+            if path.is_empty() {
+                return true;
+            }
+            if path.len() == 1 {
+                return matches!(first(path), Some("scan" | "repair"));
+            }
+            if path.len() == 2 {
+                return (path[0].as_str(), path[1].as_str()) == ("repair", "plan")
+                    || (path[0].as_str(), path[1].as_str()) == ("repair", "apply");
+            }
+            false
         }
         Command::Onboarding => {
             path.is_empty()
@@ -6821,7 +6839,7 @@ fn cmd_doctor(
     command_args: &[String],
 ) -> Result<(), String> {
     if command_args.is_empty() {
-        return cmd_diagnostics_provenance(options);
+        return cmd_doctor_scan(store, options);
     }
     if is_help_token(&command_args[0]) {
         if options.json {
@@ -6831,7 +6849,239 @@ fn cmd_doctor(
         }
         return Ok(());
     }
-    cmd_diagnostics(store, options, command_args)
+    match command_args[0].as_str() {
+        "scan" => cmd_doctor_scan(store, options),
+        "repair" => cmd_doctor_repair(store, options, &command_args[1..]),
+        other => Err(format!(
+            "unsupported doctor subcommand '{}'; currently supported: scan, repair",
+            other
+        )),
+    }
+}
+
+fn cmd_doctor_scan(store: &SqliteStore, options: GlobalOptions) -> Result<(), String> {
+    let installed_packages = store
+        .list_installed()
+        .map_err(|error| format!("failed to list installed packages for doctor scan: {error}"))?;
+    let install_instances = store
+        .list_install_instances(None)
+        .map_err(|error| format!("failed to list install instances for doctor scan: {error}"))?;
+    let mut instances_by_manager: HashMap<ManagerId, Vec<ManagerInstallInstance>> = HashMap::new();
+    for instance in install_instances {
+        instances_by_manager
+            .entry(instance.manager)
+            .or_default()
+            .push(instance);
+    }
+    let report = helm_core::doctor::scan_package_state_report(
+        ManagerId::ALL,
+        &instances_by_manager,
+        installed_packages.as_slice(),
+    );
+
+    if options.json {
+        emit_json_payload("helm.cli.v1.doctor.scan", json!({ "report": report }));
+        return Ok(());
+    }
+
+    println!("Doctor Health: {}", report.health.as_str());
+    println!(
+        "Findings: {} (warnings: {}, errors: {})",
+        report.summary.total_findings, report.summary.warnings, report.summary.errors
+    );
+    if report.findings.is_empty() {
+        println!("No findings detected.");
+        return Ok(());
+    }
+    println!();
+    for finding in report.findings {
+        println!(
+            "- [{}] {} ({})",
+            finding.severity.as_str(),
+            finding.summary,
+            finding.issue_code
+        );
+        if let Some(source) = finding.source_manager_id {
+            println!("  source_manager: {source}");
+        }
+        if let Some(package) = finding.package_name {
+            println!("  package: {package}");
+        }
+        println!("  fingerprint: {}", finding.fingerprint);
+    }
+    Ok(())
+}
+
+fn cmd_doctor_repair(
+    store: &SqliteStore,
+    options: GlobalOptions,
+    command_args: &[String],
+) -> Result<(), String> {
+    if command_args.is_empty() || is_help_token(&command_args[0]) {
+        if options.json {
+            emit_help_json_payload(Some(Command::Doctor), &["repair".to_string()], true);
+        } else {
+            print_doctor_repair_help();
+        }
+        return Ok(());
+    }
+
+    match command_args[0].as_str() {
+        "plan" => {
+            if command_args.len() != 5 {
+                return Err(
+                    "doctor repair plan requires: <manager-id> <source-manager-id> <package-name> <issue-code>"
+                        .to_string(),
+                );
+            }
+            let manager = parse_manager_id(&command_args[1])?;
+            let source_manager = parse_manager_id(&command_args[2])?;
+            let package_name = command_args[3].trim();
+            let issue_code = command_args[4].trim();
+            let plan = helm_core::repair::plan_for_issue(
+                manager,
+                source_manager,
+                package_name,
+                issue_code,
+            )
+            .ok_or_else(|| {
+                format!(
+                    "no repair plan available for manager='{}' source='{}' package='{}' issue='{}'",
+                    manager.as_str(),
+                    source_manager.as_str(),
+                    package_name,
+                    issue_code
+                )
+            })?;
+
+            if options.json {
+                emit_json_payload("helm.cli.v1.doctor.repair.plan", json!({ "plan": plan }));
+                return Ok(());
+            }
+
+            println!(
+                "Repair plan for {} / {} / {}:",
+                manager.as_str(),
+                source_manager.as_str(),
+                package_name
+            );
+            println!(
+                "  fingerprint: {}\n  knowledge: {} ({})",
+                plan.fingerprint, plan.knowledge_source, plan.knowledge_version
+            );
+            for option in plan.options {
+                println!(
+                    "  - {} [{}]{}",
+                    option.option_id,
+                    option.action.as_str(),
+                    if option.recommended {
+                        " (recommended)"
+                    } else {
+                        ""
+                    }
+                );
+                println!("    {}", option.description);
+            }
+            Ok(())
+        }
+        "apply" => {
+            if command_args.len() != 6 {
+                return Err(
+                    "doctor repair apply requires: <manager-id> <source-manager-id> <package-name> <issue-code> <option-id>"
+                        .to_string(),
+                );
+            }
+            let manager = parse_manager_id(&command_args[1])?;
+            let source_manager = parse_manager_id(&command_args[2])?;
+            let package_name = command_args[3].trim().to_string();
+            let issue_code = command_args[4].trim();
+            let option_id = command_args[5].trim();
+            let plan = helm_core::repair::plan_for_issue(
+                manager,
+                source_manager,
+                package_name.as_str(),
+                issue_code,
+            )
+            .ok_or_else(|| {
+                format!(
+                    "no repair plan available for manager='{}' source='{}' package='{}' issue='{}'",
+                    manager.as_str(),
+                    source_manager.as_str(),
+                    package_name,
+                    issue_code
+                )
+            })?;
+            let option = helm_core::repair::resolve_option(&plan, option_id)
+                .ok_or_else(|| format!("unknown repair option '{}'", option_id))?;
+
+            let store_handle = Arc::new(SqliteStore::new(store.database_path().to_path_buf()));
+            store_handle
+                .migrate_to_latest()
+                .map_err(|error| format!("failed to initialize store for repair apply: {error}"))?;
+
+            match option.action {
+                helm_core::repair::RepairAction::ReinstallManagerViaHomebrew => {
+                    let args = vec![
+                        manager.as_str().to_string(),
+                        "--method".to_string(),
+                        "homebrew".to_string(),
+                    ];
+                    cmd_managers_mutation(store_handle, options, "install", args.as_slice())
+                }
+                helm_core::repair::RepairAction::RemoveStalePackageEntry => {
+                    let args = vec![
+                        format!("{}@{}", package_name, source_manager.as_str()),
+                        "--yes".to_string(),
+                    ];
+                    cmd_packages_mutation(store_handle, options, "uninstall", args.as_slice())
+                }
+                helm_core::repair::RepairAction::ApplyPostInstallSetupDefaults => {
+                    let manager_instances = store_handle
+                        .list_install_instances(Some(manager))
+                        .map_err(|error| {
+                            format!("failed to list manager install instances for repair apply: {error}")
+                        })?;
+                    let automation_result = helm_core::post_install_setup::apply_recommended_post_install_setup(
+                        manager,
+                        Some(manager_instances.as_slice()),
+                    )
+                    .map_err(|error| {
+                        format!(
+                            "failed to apply recommended post-install setup for '{}': {error}",
+                            manager.as_str()
+                        )
+                    })?;
+                    if options.json {
+                        emit_json_payload(
+                            "helm.cli.v1.doctor.repair.apply_post_install_setup",
+                            json!({
+                                "manager": manager.as_str(),
+                                "changed": automation_result.changed,
+                                "rc_file": automation_result.rc_file.display().to_string(),
+                                "summary": automation_result.summary
+                            }),
+                        );
+                    } else {
+                        println!(
+                            "Applied post-install setup for {}: {} ({})",
+                            manager.as_str(),
+                            automation_result.summary,
+                            automation_result.rc_file.display()
+                        );
+                    }
+                    cmd_managers_detect(
+                        store_handle,
+                        options,
+                        &[manager.as_str().to_string()],
+                    )
+                }
+            }
+        }
+        other => Err(format!(
+            "unsupported doctor repair subcommand '{}'; currently supported: plan, apply",
+            other
+        )),
+    }
 }
 
 fn cmd_completion(options: GlobalOptions, command_args: &[String]) -> Result<(), String> {
@@ -13244,7 +13494,33 @@ fn print_doctor_help_topic(path: &[String]) -> bool {
         print_doctor_help();
         return true;
     }
-    print_diagnostics_help_topic(path)
+    if path.len() == 1 {
+        match path[0].as_str() {
+            "scan" => {
+                print_doctor_scan_help();
+                return true;
+            }
+            "repair" => {
+                print_doctor_repair_help();
+                return true;
+            }
+            _ => {}
+        }
+    }
+    if path.len() == 2 && path[0] == "repair" {
+        match path[1].as_str() {
+            "plan" => {
+                print_doctor_repair_plan_help();
+                return true;
+            }
+            "apply" => {
+                print_doctor_repair_apply_help();
+                return true;
+            }
+            _ => {}
+        }
+    }
+    false
 }
 
 fn print_help() {
@@ -13284,8 +13560,8 @@ fn print_help() {
     println!("                         Read and update selected settings");
     println!("  diagnostics [summary|task|manager|provenance|export]");
     println!("                         Read diagnostics snapshots and export support data");
-    println!("  doctor [summary|task|manager|provenance|export]");
-    println!("                         Diagnostics alias; default shows provenance");
+    println!("  doctor [scan|repair]");
+    println!("                         Doctor scans and repair workflows");
     println!("  onboarding [status|run|reset]");
     println!("                         Inspect/run/reset CLI first-run onboarding state");
     println!("  self [status|check|update|uninstall|auto-check]");
@@ -13923,12 +14199,55 @@ fn print_diagnostics_help() {
 fn print_doctor_help() {
     println!("USAGE:");
     println!("  helm doctor");
-    println!("  helm doctor provenance");
-    println!("  helm doctor <summary|task|manager|provenance|export> [args]");
+    println!("  helm doctor scan");
+    println!("  helm doctor repair <plan|apply> ...");
+    println!("  helm doctor <scan|repair> [args]");
     println!();
     println!("DESCRIPTION:");
-    println!("  Alias for the diagnostics namespace.");
-    println!("  Without subcommands, doctor defaults to install provenance output.");
+    println!("  Local health scanning and targeted repair workflows.");
+    println!("  Without subcommands, doctor defaults to scan.");
+    println!("  Use 'helm diagnostics ...' for diagnostics namespaces.");
+}
+
+fn print_doctor_scan_help() {
+    println!("USAGE:");
+    println!("  helm doctor scan");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Run local doctor detectors and print a health report.");
+}
+
+fn print_doctor_repair_help() {
+    println!("USAGE:");
+    println!(
+        "  helm doctor repair plan <manager-id> <source-manager-id> <package-name> <issue-code>"
+    );
+    println!(
+        "  helm doctor repair apply <manager-id> <source-manager-id> <package-name> <issue-code> <option-id>"
+    );
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Plan or apply a known repair for a doctor finding fingerprint.");
+}
+
+fn print_doctor_repair_plan_help() {
+    println!("USAGE:");
+    println!(
+        "  helm doctor repair plan <manager-id> <source-manager-id> <package-name> <issue-code>"
+    );
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Show available repair options for a specific issue.");
+}
+
+fn print_doctor_repair_apply_help() {
+    println!("USAGE:");
+    println!(
+        "  helm doctor repair apply <manager-id> <source-manager-id> <package-name> <issue-code> <option-id>"
+    );
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Apply a specific repair option and queue the resulting task.");
 }
 
 fn print_diagnostics_summary_help() {

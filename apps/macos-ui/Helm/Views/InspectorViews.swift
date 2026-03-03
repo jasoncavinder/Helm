@@ -1121,6 +1121,9 @@ private struct InspectorManagerDetailView: View {
     @State private var pendingRustupBinaryPath = ""
     @State private var pendingMiseInstallSource: ManagerMiseInstallSource = .officialDownload
     @State private var pendingMiseBinaryPath = ""
+    @State private var pendingCompletePostInstallSetupAutomatically = false
+    @State private var showPostInstallSetupSheet = false
+    @State private var verifyingPostInstallSetup = false
     @State private var activeInstanceUpdateInFlightId: String?
     @State private var pendingUninstallOptions = ManagerUninstallActionOptions(
         allowUnknownProvenance: false,
@@ -1526,6 +1529,28 @@ private struct InspectorManagerDetailView: View {
         })
     }
 
+    private var postInstallSetupIssue: ManagerPackageStateIssue? {
+        (status?.packageStateIssues ?? []).first(where: { issue in
+            issue.issueCode == "post_install_setup_required"
+        })
+    }
+
+    private var supportsPostInstallSetupAutomation: Bool {
+        manager.id == "rustup" || manager.id == "mise" || manager.id == "asdf"
+    }
+
+    private var postInstallSetupAutomationAvailable: Bool {
+        postInstallSetupIssueSupportsRepairOption("apply_post_install_setup_defaults")
+    }
+
+    private func postInstallSetupIssueSupportsRepairOption(_ optionId: String) -> Bool {
+        guard let issue = postInstallSetupIssue else { return false }
+        guard let options = issue.repairOptions, !options.isEmpty else { return false }
+        return options.contains { option in
+            option.optionId.caseInsensitiveCompare(optionId) == .orderedSame
+        }
+    }
+
     private var metadataOnlyIssueInstalledPackage: PackageItem? {
         guard let issue = metadataOnlyPackageStateIssue else { return nil }
         return core.installedPackages.first(where: { package in
@@ -1539,6 +1564,19 @@ private struct InspectorManagerDetailView: View {
             return false
         }
         return core.canUninstallPackage(package)
+            && metadataOnlyIssueSupportsRepairOption("remove_stale_package_entry")
+    }
+
+    private var metadataOnlyIssueCanRepairInstall: Bool {
+        metadataOnlyIssueSupportsRepairOption("reinstall_manager_via_homebrew")
+    }
+
+    private func metadataOnlyIssueSupportsRepairOption(_ optionId: String) -> Bool {
+        guard let issue = metadataOnlyPackageStateIssue else { return false }
+        guard let options = issue.repairOptions, !options.isEmpty else { return false }
+        return options.contains { option in
+            option.optionId.caseInsensitiveCompare(optionId) == .orderedSame
+        }
     }
 
     private func metadataOnlyIssueExpectedPaths(for issue: ManagerPackageStateIssue) -> [String] {
@@ -1614,6 +1652,10 @@ private struct InspectorManagerDetailView: View {
 
             if let issue = metadataOnlyPackageStateIssue {
                 packageStateIssueBanner(issue)
+            }
+
+            if let issue = postInstallSetupIssue {
+                postInstallSetupBanner(issue)
             }
 
             InspectorField(label: L10n.App.Inspector.category.localized) {
@@ -1762,7 +1804,10 @@ private struct InspectorManagerDetailView: View {
 
                 Text(
                     L10n.App.Managers.Alert.installMessage.localized(
-                        with: ["manager_short": manager.shortName]
+                        with: [
+                            "manager_short": manager.shortName,
+                            "method": pendingInstallMethodDisplayName
+                        ]
                     )
                 )
                 .font(.callout)
@@ -1856,6 +1901,15 @@ private struct InspectorManagerDetailView: View {
                     }
                 }
 
+                if supportsPostInstallSetupAutomation {
+                    Toggle(
+                        "app.inspector.install.complete_post_install_setup_automatically".localized,
+                        isOn: $pendingCompletePostInstallSetupAutomatically
+                    )
+                    .toggleStyle(.checkbox)
+                    .font(.caption)
+                }
+
                 DisclosureGroup(
                     L10n.App.Settings.Section.advanced.localized,
                     isExpanded: $showAdvancedInstallOptions
@@ -1906,6 +1960,9 @@ private struct InspectorManagerDetailView: View {
         }
         .sheet(item: $uninstallConfirmation) { confirmation in
             uninstallConfirmationSheet(confirmation)
+        }
+        .sheet(isPresented: $showPostInstallSetupSheet) {
+            postInstallSetupSheet
         }
         .alert(item: $confirmAction) { action in
             switch action {
@@ -2021,8 +2078,8 @@ private struct InspectorManagerDetailView: View {
                     repairMetadataOnlyInstallIssue()
                 }
                 .buttonStyle(HelmSecondaryButtonStyle())
-                .disabled(managerIsUninstalling)
-                .helmPointer(enabled: !managerIsUninstalling)
+                .disabled(managerIsUninstalling || !metadataOnlyIssueCanRepairInstall)
+                .helmPointer(enabled: !managerIsUninstalling && metadataOnlyIssueCanRepairInstall)
 
                 Button(
                     L10n.App.Inspector.PackageStateIssue.MetadataOnly.removeStaleAction.localized
@@ -2111,21 +2168,265 @@ private struct InspectorManagerDetailView: View {
         )
     }
 
-    private func repairMetadataOnlyInstallIssue() {
-        guard !managerIsUninstalling else { return }
-        core.setManagerInstallMethod(manager.id, installMethod: "homebrew") { success in
-            guard success else { return }
-            core.installManager(manager.id)
+    @ViewBuilder
+    private func postInstallSetupBanner(_ issue: ManagerPackageStateIssue) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(HelmTheme.stateAttention)
+                    .padding(.top, 2)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("app.inspector.package_state_issue.setup_required.title".localized)
+                        .font(.callout.weight(.semibold))
+                    Text(
+                        "app.inspector.package_state_issue.setup_required.message".localized(with: [
+                            "manager": localizedManagerDisplayName(manager.id)
+                        ])
+                    )
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                    if let summary = issue.summary?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !summary.isEmpty {
+                        Text(summary)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 8) {
+                Button(
+                    "app.inspector.package_state_issue.setup_required.finish_action".localized(with: [
+                        "manager": localizedManagerDisplayName(manager.id)
+                    ])
+                ) {
+                    showPostInstallSetupSheet = true
+                }
+                .buttonStyle(HelmSecondaryButtonStyle())
+                .disabled(managerIsUninstalling)
+                .helmPointer(enabled: !managerIsUninstalling)
+
+                if postInstallSetupAutomationAvailable {
+                    Button("app.inspector.package_state_issue.setup_required.auto_action".localized) {
+                        applyRecommendedPostInstallSetup()
+                    }
+                    .buttonStyle(HelmSecondaryButtonStyle())
+                    .disabled(managerIsUninstalling)
+                    .helmPointer(enabled: !managerIsUninstalling)
+                }
+
+                Spacer(minLength: 0)
+            }
         }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(HelmTheme.surfaceElevated)
+        )
+    }
+
+    @ViewBuilder
+    private var postInstallSetupSheet: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(
+                "app.inspector.package_state_issue.setup_required.modal_title".localized(with: [
+                    "manager": localizedManagerDisplayName(manager.id)
+                ])
+            )
+            .font(.title3.weight(.semibold))
+
+            Text(
+                "app.inspector.package_state_issue.setup_required.modal_message".localized(with: [
+                    "manager": localizedManagerDisplayName(manager.id)
+                ])
+            )
+            .font(.callout)
+            .foregroundColor(.secondary)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("app.inspector.package_state_issue.setup_required.steps_title".localized)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.secondary)
+                ForEach(Array(postInstallSetupSteps.enumerated()), id: \.offset) { index, step in
+                    HStack(alignment: .top, spacing: 6) {
+                        Text("\(index + 1).")
+                            .font(.caption.monospacedDigit())
+                            .foregroundColor(.secondary)
+                        Text(step)
+                            .font(.caption)
+                            .foregroundColor(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+
+            if !postInstallSetupCommandBlocks.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("app.inspector.package_state_issue.setup_required.commands_title".localized)
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.secondary)
+                    ForEach(postInstallSetupCommandBlocks, id: \.self) { command in
+                        SelectableMonospacedTextArea(text: command)
+                            .frame(minHeight: 44, maxHeight: 60)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(HelmTheme.surfaceElevated)
+                            )
+                    }
+                }
+            }
+
+            HStack(spacing: 8) {
+                if postInstallSetupAutomationAvailable {
+                    Button("app.inspector.package_state_issue.setup_required.auto_action".localized) {
+                        showPostInstallSetupSheet = false
+                        applyRecommendedPostInstallSetup()
+                    }
+                    .buttonStyle(HelmSecondaryButtonStyle())
+                    .disabled(managerIsUninstalling)
+                    .helmPointer(enabled: !managerIsUninstalling)
+                }
+
+                Spacer()
+
+                Button(L10n.Common.cancel.localized) {
+                    showPostInstallSetupSheet = false
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Button("app.inspector.package_state_issue.setup_required.verify_action".localized) {
+                    verifyingPostInstallSetup = true
+                    core.triggerDetection(for: manager.id) { _ in
+                        verifyingPostInstallSetup = false
+                    }
+                }
+                .buttonStyle(HelmPrimaryButtonStyle())
+                .keyboardShortcut(.defaultAction)
+                .disabled(verifyingPostInstallSetup || managerIsUninstalling)
+                .helmPointer(enabled: !verifyingPostInstallSetup && !managerIsUninstalling)
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 540)
+    }
+
+    private func applyRecommendedPostInstallSetup() {
+        guard let issue = postInstallSetupIssue else { return }
+        core.applyManagerPackageStateIssueRepair(
+            managerId: manager.id,
+            sourceManagerId: issue.sourceManagerId,
+            packageName: issue.packageName,
+            issueCode: issue.issueCode,
+            optionId: "apply_post_install_setup_defaults"
+        )
+    }
+
+    private var shellNameForSetupInstructions: String {
+        let shellPath = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
+        let normalized = URL(fileURLWithPath: shellPath).lastPathComponent.lowercased()
+        switch normalized {
+        case "bash":
+            return "bash"
+        case "fish":
+            return "fish"
+        default:
+            return "zsh"
+        }
+    }
+
+    private var shellRcPathForSetupInstructions: String {
+        switch shellNameForSetupInstructions {
+        case "bash":
+            return "~/.bashrc"
+        case "fish":
+            return "~/.config/fish/config.fish"
+        default:
+            return "~/.zshrc"
+        }
+    }
+
+    private var postInstallSetupSteps: [String] {
+        let shell = shellNameForSetupInstructions
+        let rcFile = shellRcPathForSetupInstructions
+        switch manager.id {
+        case "rustup":
+            return [
+                "Open your shell startup file (\(rcFile)).",
+                "Add Cargo environment initialization so rustup-managed tools are on PATH.",
+                "Start a new shell, then select Verify Setup."
+            ]
+        case "mise":
+            return [
+                "Open your shell startup file (\(rcFile)).",
+                "Add mise activation for \(shell).",
+                "Start a new shell, then select Verify Setup."
+            ]
+        case "asdf":
+            return [
+                "Open your shell startup file (\(rcFile)).",
+                "Add asdf shims to PATH.",
+                "Start a new shell, then select Verify Setup."
+            ]
+        default:
+            return [
+                "Complete the manager's documented post-install setup.",
+                "Start a new shell, then select Verify Setup."
+            ]
+        }
+    }
+
+    private var postInstallSetupCommandBlocks: [String] {
+        let shell = shellNameForSetupInstructions
+        let rcFile = shellRcPathForSetupInstructions
+        switch manager.id {
+        case "rustup":
+            return [
+                "echo 'source \"$HOME/.cargo/env\"' >> \(rcFile)",
+                "source \"$HOME/.cargo/env\""
+            ]
+        case "mise":
+            return [
+                "echo 'eval \"$(mise activate \(shell))\"' >> \(rcFile)",
+                "eval \"$(mise activate \(shell))\""
+            ]
+        case "asdf":
+            return [
+                "echo 'export PATH=\"${ASDF_DATA_DIR:-$HOME/.asdf}/shims:$PATH\"' >> \(rcFile)",
+                "export PATH=\"${ASDF_DATA_DIR:-$HOME/.asdf}/shims:$PATH\""
+            ]
+        default:
+            return []
+        }
+    }
+
+    private func repairMetadataOnlyInstallIssue() {
+        guard !managerIsUninstalling,
+              let issue = metadataOnlyPackageStateIssue else { return }
+        core.applyManagerPackageStateIssueRepair(
+            managerId: manager.id,
+            sourceManagerId: issue.sourceManagerId,
+            packageName: issue.packageName,
+            issueCode: issue.issueCode,
+            optionId: "reinstall_manager_via_homebrew"
+        )
     }
 
     private func removeMetadataOnlyInstallIssue() {
         guard !managerIsUninstalling,
-              let package = metadataOnlyIssueInstalledPackage,
-              core.canUninstallPackage(package) else {
-            return
-        }
-        core.uninstallPackage(package)
+              let issue = metadataOnlyPackageStateIssue,
+              metadataOnlyIssueCanRemoveStaleEntry else { return }
+        core.applyManagerPackageStateIssueRepair(
+            managerId: manager.id,
+            sourceManagerId: issue.sourceManagerId,
+            packageName: issue.packageName,
+            issueCode: issue.issueCode,
+            optionId: "remove_stale_package_entry"
+        )
     }
 
     private func managerActionButton(
@@ -2219,6 +2520,7 @@ private struct InspectorManagerDetailView: View {
         pendingRustupBinaryPath = ""
         pendingMiseInstallSource = .officialDownload
         pendingMiseBinaryPath = ""
+        pendingCompletePostInstallSetupAutomatically = false
 
         let allowedOptions = supportedOptions.filter(installMethodOptionAllowed)
         let selectedMethodRaw = selectedInstallMethodOption.method.rawValue
@@ -2268,6 +2570,7 @@ private struct InspectorManagerDetailView: View {
     }
 
     private func installActionOptions(for installMethod: String) -> ManagerInstallActionOptions? {
+        let autoCompleteSetup = pendingCompletePostInstallSetupAutomatically
         guard manager.id == "rustup",
               installMethod == ManagerDistributionMethod.rustupInstaller.rawValue else {
             if manager.id == "mise",
@@ -2277,7 +2580,17 @@ private struct InspectorManagerDetailView: View {
                     rustupInstallSource: nil,
                     rustupBinaryPath: nil,
                     miseInstallSource: pendingMiseInstallSource,
-                    miseBinaryPath: binaryPath.isEmpty ? nil : binaryPath
+                    miseBinaryPath: binaryPath.isEmpty ? nil : binaryPath,
+                    completePostInstallSetupAutomatically: autoCompleteSetup
+                )
+            }
+            if supportsPostInstallSetupAutomation && autoCompleteSetup {
+                return ManagerInstallActionOptions(
+                    rustupInstallSource: nil,
+                    rustupBinaryPath: nil,
+                    miseInstallSource: nil,
+                    miseBinaryPath: nil,
+                    completePostInstallSetupAutomatically: true
                 )
             }
             return nil
@@ -2287,7 +2600,8 @@ private struct InspectorManagerDetailView: View {
             rustupInstallSource: pendingRustupInstallSource,
             rustupBinaryPath: binaryPath.isEmpty ? nil : binaryPath,
             miseInstallSource: nil,
-            miseBinaryPath: nil
+            miseBinaryPath: nil,
+            completePostInstallSetupAutomatically: autoCompleteSetup
         )
     }
 
@@ -2629,6 +2943,16 @@ private struct InspectorManagerDetailView: View {
         case "App Store": return L10n.App.Managers.Category.appStore.localized
         default: return category
         }
+    }
+
+    private var pendingInstallMethodDisplayName: String {
+        guard let pending = pendingInstallMethodRawValue,
+              let option = pendingInstallMethodOptions.first(where: {
+                  $0.method.rawValue == pending
+              }) else {
+            return localizedInstallMethod(selectedInstallMethodOption.method)
+        }
+        return localizedInstallMethod(option.method)
     }
 
     private func localizedInstallMethod(_ method: ManagerDistributionMethod) -> String {

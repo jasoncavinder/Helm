@@ -95,10 +95,12 @@ pub enum HomebrewUninstallCleanupMode {
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct ManagerInstallOptions {
+    pub install_method_override: Option<String>,
     pub rustup_install_source: Option<RustupInstallSource>,
     pub rustup_binary_path: Option<String>,
     pub mise_install_source: Option<MiseInstallSource>,
     pub mise_binary_path: Option<String>,
+    pub complete_post_install_setup_automatically: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
@@ -175,7 +177,7 @@ pub fn plan_manager_install(
 fn effective_manager_install_method<'a>(
     manager: ManagerId,
     selected_method: Option<&'a str>,
-    options: &ManagerInstallOptions,
+    options: &'a ManagerInstallOptions,
 ) -> Option<&'a str> {
     match manager {
         // Explicit install-source options are request-scoped intent and take precedence over any
@@ -191,7 +193,10 @@ fn effective_manager_install_method<'a>(
         {
             Some("rustupInstaller")
         }
-        _ => selected_method,
+        _ => options
+            .install_method_override
+            .as_deref()
+            .or(selected_method),
     }
 }
 
@@ -1430,6 +1435,49 @@ mod tests {
             },
         )
         .expect("rustup install options should override stale selected method");
+        assert_eq!(plan.target_manager, ManagerId::Rustup);
+        match plan.request {
+            crate::adapters::AdapterRequest::Install(install) => {
+                assert_eq!(install.package.manager, ManagerId::Rustup);
+                assert_eq!(install.version.as_deref(), Some("officialDownload"));
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn manager_install_plan_prefers_request_scoped_method_override() {
+        let plan = plan_manager_install(
+            ManagerId::Rustup,
+            Some("rustupInstaller"),
+            &ManagerInstallOptions {
+                install_method_override: Some("homebrew".to_string()),
+                ..ManagerInstallOptions::default()
+            },
+        )
+        .expect("request-scoped method override should be honored");
+        assert_eq!(plan.target_manager, ManagerId::HomebrewFormula);
+        match plan.request {
+            crate::adapters::AdapterRequest::Install(install) => {
+                assert_eq!(install.package.manager, ManagerId::HomebrewFormula);
+                assert_eq!(install.package.name, "rustup");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn manager_install_plan_keeps_rustup_source_options_precedence_over_method_override() {
+        let plan = plan_manager_install(
+            ManagerId::Rustup,
+            Some("rustupInstaller"),
+            &ManagerInstallOptions {
+                install_method_override: Some("homebrew".to_string()),
+                rustup_install_source: Some(RustupInstallSource::OfficialDownload),
+                ..ManagerInstallOptions::default()
+            },
+        )
+        .expect("rustup source options should take precedence");
         assert_eq!(plan.target_manager, ManagerId::Rustup);
         match plan.request {
             crate::adapters::AdapterRequest::Install(install) => {

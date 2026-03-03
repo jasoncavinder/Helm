@@ -156,6 +156,16 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(String(cString: cString))
     }
 
+    func doctorScan(withReply reply: @escaping (String?) -> Void) {
+        guard let cString = helm_doctor_scan() else {
+            logger.warning("helm_doctor_scan returned nil")
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(cString) }
+        reply(String(cString: cString))
+    }
+
     func getSharedOnboardingState(withReply reply: @escaping (Bool, String?) -> Void) {
         let completed = helm_get_cli_onboarding_completed()
         guard let cString = helm_get_cli_accepted_license_terms_version() else {
@@ -486,6 +496,37 @@ class HelmService: NSObject, HelmServiceProtocol {
     func updateManager(managerId: String, withReply reply: @escaping (Int64) -> Void) {
         let taskId = managerId.withCString { helm_update_manager($0) }
         logger.info("helm_update_manager(\(managerId)) result: \(taskId)")
+        reply(taskId)
+    }
+
+    func applyManagerPackageStateIssueRepair(
+        managerId: String,
+        sourceManagerId: String,
+        packageName: String,
+        issueCode: String,
+        optionId: String,
+        withReply reply: @escaping (Int64) -> Void
+    ) {
+        let taskId = managerId.withCString { manager in
+            sourceManagerId.withCString { sourceManager in
+                packageName.withCString { package in
+                    issueCode.withCString { issue in
+                        optionId.withCString { option in
+                            helm_apply_manager_package_state_issue_repair(
+                                manager,
+                                sourceManager,
+                                package,
+                                issue,
+                                option
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        logger.info(
+            "helm_apply_manager_package_state_issue_repair(\(managerId), \(sourceManagerId), \(packageName), \(issueCode), \(optionId)) result: \(taskId)"
+        )
         reply(taskId)
     }
 

@@ -398,6 +398,25 @@ struct ManagerPackageStateIssue: Codable {
     let sourceManagerId: String
     let packageName: String
     let issueCode: String
+    let findingCode: String?
+    let fingerprint: String?
+    let severity: String?
+    let summary: String?
+    let evidencePrimary: String?
+    let evidenceSecondary: String?
+    let knowledgeSource: String?
+    let knowledgeVersion: String?
+    let repairOptions: [ManagerPackageStateIssueRepairOption]?
+}
+
+struct ManagerPackageStateIssueRepairOption: Codable {
+    let optionId: String
+    let action: String
+    let title: String
+    let description: String
+    let recommended: Bool
+    let requiresConfirmation: Bool
+    let automationLevel: String
 }
 
 struct ManagerInstallMethodStatus: Codable {
@@ -495,6 +514,7 @@ struct ManagerInstallActionOptions: Codable {
     let rustupBinaryPath: String?
     let miseInstallSource: ManagerMiseInstallSource?
     let miseBinaryPath: String?
+    let completePostInstallSetupAutomatically: Bool?
 }
 
 struct ManagerUninstallActionOptions: Codable {
@@ -1294,8 +1314,11 @@ final class HelmCore: ObservableObject {
             let status = managerStatuses[manager.id]
             let isImplemented = status?.isImplemented ?? manager.isImplemented
             let isEnabled = status?.enabled ?? true
+            let hasSetupRequiredIssue = status?.packageStateIssues?.contains(where: { issue in
+                issue.issueCode == "post_install_setup_required"
+            }) ?? false
             let isDetected = isManagerDetected(manager.id)
-            return isImplemented && isEnabled && isDetected
+            return isImplemented && isDetected && (isEnabled || hasSetupRequiredIssue)
         }
 
         let failedManagerIds = Set(
@@ -1315,11 +1338,15 @@ final class HelmCore: ObservableObject {
         for manager in visibleManagers {
             let multiInstanceAttentionNeeded =
                 managerStatuses[manager.id]?.multiInstanceState == "attention_needed"
+            let setupRequired =
+                managerStatuses[manager.id]?.packageStateIssues?.contains(where: { issue in
+                    issue.issueCode == "post_install_setup_required"
+                }) ?? false
             if failedManagerIds.contains(manager.id) {
                 managerHealthById[manager.id] = .error
             } else if runningManagerIds.contains(manager.id) {
                 managerHealthById[manager.id] = .running
-            } else if outdatedManagerIds.contains(manager.id) || multiInstanceAttentionNeeded {
+            } else if setupRequired || outdatedManagerIds.contains(manager.id) || multiInstanceAttentionNeeded {
                 managerHealthById[manager.id] = .attention
             } else {
                 managerHealthById[manager.id] = .healthy

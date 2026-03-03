@@ -1,4 +1,5 @@
 pub mod adapters;
+pub mod doctor;
 pub mod execution;
 pub(crate) mod install_instances;
 pub mod managed_automation_policy;
@@ -9,8 +10,10 @@ pub mod manager_policy;
 pub mod models;
 pub mod orchestration;
 pub mod persistence;
+pub mod post_install_setup;
 pub(crate) mod provenance_policy;
 pub mod registry;
+pub mod repair;
 pub mod sqlite;
 pub(crate) mod task_context;
 pub mod uninstall_preview;

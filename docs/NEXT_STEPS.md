@@ -11,19 +11,28 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-0.18.x planning kickoff (post-v0.17.7 stable)
+0.18.x doctor/repair foundation execution (post-v0.17.7 stable)
 ```
 
 Focus:
 - keep `main`/`dev`/`docs`/`web` publication docs and version markers aligned for `v0.17.7`
 - maintain release-process hardening guardrails now that phases 1-5 are complete (preflight, publish verification, drift prevention)
-- begin execution planning and branch setup for `0.18.x` local security groundwork after stable publication
+- execute doctor/repair subsystem foundation in core + FFI + service surfaces
+- ship first repair path for Homebrew metadata-only manager installs via the new repair subsystem
+- keep repair knowledge lookup local/embedded for now, with explicit TODO seams for future online fingerprint lookup
+- sequence `0.18.x` local security groundwork after doctor/repair foundation slice
 - keep launch-at-login scoped to GUI only (no CLI/TUI parity target)
 - track post-mise lifecycle follow-ups: plugin-as-package modeling evaluation and managed-environment install-source policy controls
 
 Current checkpoint:
 - `v0.17.7` is the current stable release on `main`; pre-1.0 quality-audit remediation and release-gate hardening are now included in stable publication:
   - release artifacts, metadata publication PRs, and post-publish verification checks completed for `v0.17.7`.
+  - post-`v0.17.7` doctor/repair foundation scaffold delivered on `dev`:
+    - added `helm-core` doctor/repair modules with deterministic finding fingerprints, local health report model, and embedded repair knowledge-provider scaffolding
+    - manager package-state issue generation now routes through doctor findings and includes fingerprint/severity/evidence plus repair-option metadata
+    - added repair-apply execution path through FFI + XPC (`helm_apply_manager_package_state_issue_repair`) and migrated GUI metadata-only repair actions to that subsystem
+    - CLI doctor scaffolding now includes `helm doctor scan` and `helm doctor repair plan|apply` for local-first health/repair flows
+    - manager post-install setup slice is now integrated for `rustup`/`mise`/`asdf`: doctor emits `post_install_setup_required`, repair exposes `apply_post_install_setup_defaults`, manager enablement is gated until setup checks pass, GUI inspector provides `Finish Setup` guidance + verify flow + optional install-time auto-setup, and CLI repair apply supports setup-default automation with follow-up detection.
   - post-`0.17.3` `0.17.4` TUI planning slice delivered: detailed ratatui implementation plan documented at `docs/architecture/HELM_TUI_IMPLEMENTATION_PLAN.md` (keyboard model, parity matrix, branding constraints, and ASCII splash-screen contract).
   - post-`0.17.3` `0.17.4` TUI implementation slice delivered: no-arg TTY now launches the ratatui TUI with branded ASCII splash (`logo` + `Helm` + `Take the helm.`), keyboard navigation, command palette/help/confirm overlays, read-only parity panes (updates/packages/tasks/managers/settings/diagnostics), and direct mutation hooks for common manager/package/task actions.
   - post-`0.17.3` `0.17.4` TUI parity-expansion slice delivered: managers pane now supports selected-manager detect/executable/method/priority controls via keyboard, updates pane now supports include-pinned + allow-OS-updates toggles for upgrade workflows, diagnostics pane supports one-key export snapshot writes, task-log detail follows selection movement immediately, and settings pane now exposes integrated self-update status/check/apply controls honoring provenance/channel policy semantics.
@@ -331,7 +340,7 @@ Current checkpoint:
     - parity hardening delivered: GUI+CLI now share coordinator transport authority (FFI bridge + local coordinator host with external-coordinator routing for mutation/cancel flows), self-update policy is now provenance-aware beyond Homebrew-only installs (`direct-script` direct updates + channel-managed guidance), and coordinator hosts now run scheduled due-based auto-check ticks with persisted `auto_check_last_checked_unix`
     - CLI contract hardening delivered: granular task-oriented exit-code mapping (`2` task failure, `3` partial failure, `4` cancellation) and global-flag support for `--json|--ndjson`, `-q|--quiet`, `--no-color`, `--locale <id>`, and `--timeout <seconds>`
     - audit-remediation slice delivered: direct self-update transport failures now emit structured JSON error payloads with actionable guidance in `--json` mode; install provenance marker schema is now centralized at `docs/contracts/install-marker.schema.json` with Rust + installer CI validation; residual CLI recon/dead-code artifacts were removed
-    - audit-remediation follow-up delivered: `helm doctor` top-level alias now routes to diagnostics (defaulting to provenance output), self-update force mode is now restricted to `direct-script` installs only, coordinator auto-check ticks now require direct-script marker policy before endpoint fetches, and direct install/update network paths now enforce allowlisted HTTPS hosts with explicit timeout policy (with opt-in `file://` testing override)
+    - audit-remediation follow-up delivered: `helm doctor` top-level command is now dedicated to doctor workflows (`scan`, `repair`) and defaults to `scan`; diagnostics provenance/export remain under `helm diagnostics ...`, self-update force mode is now restricted to `direct-script` installs only, coordinator auto-check ticks now require direct-script marker policy before endpoint fetches, and direct install/update network paths now enforce allowlisted HTTPS hosts with explicit timeout policy (with opt-in `file://` testing override)
     - audit-remediation follow-up delivered: top-level machine-mode parity now covers help/version/completion/error flows for `--json`/`--ndjson`, NDJSON list payloads now emit one envelope per item (with explicit empty-list envelope behavior), string-based exit-code heuristics are removed in favor of explicit marker-based classification with deterministic runtime fallback (`1`) for untyped errors, CLI release metadata publication now separates stable (`latest.json`) vs prerelease (`latest-rc.json`) pointers; policy-gate now locks CLI metadata mutation to publish/emergency lanes; and scheduled/manual CLI metadata drift guard validation is now added
     - audit-remediation follow-up delivered: Rust-side install-marker writes now use symlink-safe atomic replacement; direct self-update binary replacement now rejects symlink/non-file target paths and enforces bounded payload size (`HELM_CLI_SELF_UPDATE_MAX_DOWNLOAD_BYTES`, default 64 MiB); and release workflows now extend immutable action pinning + per-job token scopes with CLI tag/version verification before publication
     - audit-remediation follow-up delivered: stable CLI update metadata now points to published `v0.17.2` CLI release assets with real checksums (no placeholder zeros), and auto-check last-checked timestamps now update only after eligible direct self-managed check attempts instead of policy-gated skips

@@ -16,6 +16,7 @@ use crate::models::{
     Capability, CoreError, CoreErrorKind, DetectionInfo, ManagerAction, ManagerId,
     NewTaskLogRecord, TaskId, TaskLogLevel, TaskRecord, TaskStatus, TaskType,
 };
+use crate::post_install_setup::evaluate_manager_post_install_setup;
 use crate::orchestration::{
     AdapterExecutionRuntime, AdapterTaskSnapshot, AdapterTaskTerminalState, CancellationMode,
     OrchestrationResult,
@@ -213,7 +214,15 @@ impl AdapterRuntime {
         };
 
         let resolved_executable = selected_executable_path.or(detected_executable_path);
+        let setup_required = ds
+            .list_install_instances(Some(manager))
+            .ok()
+            .and_then(|instances| {
+                evaluate_manager_post_install_setup(manager, Some(instances.as_slice()))
+            })
+            .is_some_and(|report| report.has_unmet_required());
         manager_enablement_eligibility(manager, resolved_executable.as_deref()).is_eligible
+            && !setup_required
     }
 
     pub fn is_safe_mode(&self) -> bool {
@@ -971,6 +980,37 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
                 message = %error.message,
                 "failed to persist terminal task log"
             );
+        }
+
+        let supplemental_notes = crate::execution::drain_task_log_notes(snapshot.runtime.id);
+        for note in supplemental_notes {
+            if let Err(error) = persist_append_task_log(
+                task_store.clone(),
+                NewTaskLogRecord {
+                    task_id: snapshot.runtime.id,
+                    manager: snapshot.runtime.manager,
+                    task_type: snapshot.runtime.task_type,
+                    status: Some(terminal_status),
+                    level: TaskLogLevel::Info,
+                    message: note,
+                    created_at: SystemTime::now(),
+                },
+                snapshot.runtime.manager,
+                snapshot.runtime.task_type,
+                action,
+            )
+            .await
+            {
+                tracing::warn!(
+                    manager = ?manager,
+                    task_id = task_id.0,
+                    task_type = ?task_type,
+                    action = ?action,
+                    kind = ?error.kind,
+                    message = %error.message,
+                    "failed to persist supplemental task log note"
+                );
+            }
         }
     });
 }

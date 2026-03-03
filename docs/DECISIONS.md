@@ -601,6 +601,67 @@ Introduce a dedicated per-manager install-instance model for provenance analysis
 - Keeps adoption low-risk by preserving existing detection compatibility and delaying routing switch-over.
 
 ---
+
+## Decision 034 — Local-First Doctor/Repair Architecture (Phase 1)
+
+**Decision:**
+Introduce dedicated `doctor` and `repair` subsystems in core, with:
+
+- deterministic local finding fingerprints
+- embedded/local knowledge lookup for known remediations
+- repair planning + apply primitives routed through existing task orchestration
+
+Phase-1 scope is intentionally narrow and starts with Homebrew metadata-only manager-install mismatch remediation.
+
+**Policy details:**
+
+- Doctor findings must include:
+  - `finding_code`
+  - `issue_code`
+  - deterministic `fingerprint`
+  - severity and top evidence factors
+- Repair planning maps finding fingerprints to actionable options.
+- External/online lookup is deferred; current release uses embedded knowledge data and explicit TODO seams for future remote providers.
+- Repair execution must reuse existing manager/package mutation pathways and keep task lifecycle visibility/cancellation semantics intact.
+- UI/CLI/TUI should consume the same core finding/repair contracts; surface-level UX can evolve independently.
+
+**Rationale:**
+
+- Creates a stable bridge from current local diagnostics to future online known-fix workflows without hard-coupling current releases to backend availability.
+- Consolidates ad hoc one-off remediation logic behind one subsystem contract.
+- Preserves user trust through deterministic local-first behavior and explainable reasoning prior to backend rollout.
+
+---
+## Decision 035 — Post-Install Setup Is a First-Class Health Gate
+
+**Decision:**
+Treat manager post-install shell/setup requirements as explicit doctor/repair findings and as a manageability gate (not a soft warning).
+
+Initial implemented manager scope:
+
+- `rustup`
+- `mise`
+- `asdf`
+
+**Policy details:**
+
+- Detection/doctor emits `post_install_setup_required` when manager install instances are present but required setup checks are unmet.
+- Manager enablement must be blocked when setup-required findings are present.
+- Repair planning exposes `apply_post_install_setup_defaults` when safe automation is available.
+- GUI/CLI/TUI consume the same issue/repair contract:
+  - user-facing guided steps
+  - explicit verify/check-again path
+  - optional automation path when supported
+- Install flow can optionally request automatic post-install setup completion; default remains opt-in (`off`).
+- Non-implemented managers remain out of scope until adapter-specific setup requirements are defined.
+
+**Rationale:**
+
+- Prevents false "installed/healthy" states when core shell activation is missing.
+- Aligns manager health, enablement policy, and repair UX behind one deterministic contract.
+- Preserves trust by surfacing clear guidance and explicit verification rather than silent assumptions.
+
+---
 ## Summary
 
 Helm prioritizes:

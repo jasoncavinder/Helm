@@ -91,7 +91,7 @@
   "app.managers.action.update": "{manager} aktualisieren",
   "app.managers.action.uninstall": "{manager} deinstallieren",
   "app.managers.alert.install.title": "{manager} installieren?",
-  "app.managers.alert.install.message": "Dadurch wird {manager_short} über Homebrew installiert.",
+  "app.managers.alert.install.message": "Dadurch wird {manager_short} über {method} installiert.",
   "app.managers.alert.update.title": "{manager} aktualisieren?",
   "app.managers.alert.update.message": "Dies führt den unterstützten Update-Ablauf des Managers aus.",
   "app.managers.alert.uninstall.title": "{manager} deinstallieren?",
@@ -493,5 +493,15 @@
   "app.inspector.package_state_issue.metadata_only.details_source": "Source",
   "app.inspector.package_state_issue.metadata_only.details_package": "Package",
   "app.inspector.package_state_issue.metadata_only.details_expected_paths": "Expected executable paths",
-  "app.inspector.package_state_issue.metadata_only.details_detected_instances": "Detected manager instances"
+  "app.inspector.package_state_issue.metadata_only.details_detected_instances": "Detected manager instances",
+  "app.inspector.package_state_issue.setup_required.title": "Post-install setup required",
+  "app.inspector.package_state_issue.setup_required.message": "{manager} is installed but needs post-install setup before it can be enabled.",
+  "app.inspector.package_state_issue.setup_required.finish_action": "Finish {manager} Setup",
+  "app.inspector.package_state_issue.setup_required.auto_action": "Apply Recommended Setup",
+  "app.inspector.package_state_issue.setup_required.modal_title": "Finish {manager} Setup",
+  "app.inspector.package_state_issue.setup_required.modal_message": "Complete the following post-install setup steps, then verify.",
+  "app.inspector.package_state_issue.setup_required.steps_title": "Required steps",
+  "app.inspector.package_state_issue.setup_required.commands_title": "Copyable commands",
+  "app.inspector.package_state_issue.setup_required.verify_action": "Verify Setup",
+  "app.inspector.install.complete_post_install_setup_automatically": "Complete post-install setup automatically"
 }
