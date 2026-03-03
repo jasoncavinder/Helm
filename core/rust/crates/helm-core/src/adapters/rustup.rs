@@ -29,12 +29,12 @@ const RUSTUP_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
 
 const RUSTUP_COMMAND: &str = "rustup";
 const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
-const LIST_TIMEOUT: Duration = Duration::from_secs(60);
-const INSTALL_TIMEOUT: Duration = Duration::from_secs(20 * 60);
-const INSTALL_IDLE_TIMEOUT: Duration = Duration::from_secs(180);
+const LIST_TIMEOUT: Duration = Duration::from_secs(120);
+const INSTALL_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+const INSTALL_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 
-const UNINSTALL_TIMEOUT: Duration = Duration::from_secs(15 * 60);
-const UNINSTALL_IDLE_TIMEOUT: Duration = Duration::from_secs(180);
+const UNINSTALL_TIMEOUT: Duration = Duration::from_secs(25 * 60);
+const UNINSTALL_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RustupDetectOutput {
@@ -117,7 +117,44 @@ impl<S: RustupSource> ManagerAdapter for RustupAdapter<S> {
                 }))
             }
             AdapterRequest::Uninstall(uninstall_request) => {
+                let (uninstall_target, remove_shell_setup) =
+                    parse_self_uninstall_target(uninstall_request.package.name.as_str())?;
+                if uninstall_target != "__self__" {
+                    return Err(CoreError {
+                        manager: Some(ManagerId::Rustup),
+                        task: Some(TaskType::Uninstall),
+                        action: Some(ManagerAction::Uninstall),
+                        kind: CoreErrorKind::InvalidInput,
+                        message: format!("unsupported rustup uninstall target: {uninstall_target}"),
+                    });
+                }
                 let _ = self.source.self_uninstall()?;
+                if remove_shell_setup {
+                    match crate::post_install_setup::remove_helm_managed_post_install_setup(
+                        ManagerId::Rustup,
+                    ) {
+                        Ok(result) => {
+                            crate::execution::record_task_log_note(result.summary().as_str());
+                            if !result.malformed_files.is_empty() {
+                                crate::execution::record_task_log_note(
+                                    format!(
+                                        "helm-managed rustup setup markers were malformed in {} shell startup file(s); left unchanged",
+                                        result.malformed_files.len()
+                                    )
+                                    .as_str(),
+                                );
+                            }
+                        }
+                        Err(error) => {
+                            crate::execution::record_task_log_note(
+                                format!(
+                                    "failed to remove Helm-managed rustup shell setup block(s): {error}"
+                                )
+                                .as_str(),
+                            );
+                        }
+                    }
+                }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: uninstall_request.package,
                     action: ManagerAction::Uninstall,
@@ -309,6 +346,20 @@ fn parse_install_source(version: Option<&str>) -> AdapterResult<RustupInstallSou
         action: Some(ManagerAction::Install),
         kind: CoreErrorKind::InvalidInput,
         message: format!("unsupported rustup install source: {version}"),
+    })
+}
+
+fn parse_self_uninstall_target(raw: &str) -> AdapterResult<(&str, bool)> {
+    let (base, remove_shell_setup) = crate::manager_lifecycle::strip_shell_setup_cleanup_suffix(raw);
+    if base == "__self__" {
+        return Ok((base, remove_shell_setup));
+    }
+    Err(CoreError {
+        manager: Some(ManagerId::Rustup),
+        task: Some(TaskType::Uninstall),
+        action: Some(ManagerAction::Uninstall),
+        kind: CoreErrorKind::InvalidInput,
+        message: format!("unsupported rustup uninstall target: {raw}"),
     })
 }
 

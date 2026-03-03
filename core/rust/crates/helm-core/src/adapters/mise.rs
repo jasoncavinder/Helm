@@ -32,12 +32,12 @@ const MISE_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
 
 const MISE_COMMAND: &str = "mise";
 const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
-const LIST_TIMEOUT: Duration = Duration::from_secs(60);
-const INSTALL_TIMEOUT: Duration = Duration::from_secs(20 * 60);
-const INSTALL_IDLE_TIMEOUT: Duration = Duration::from_secs(180);
-const UNINSTALL_TIMEOUT: Duration = Duration::from_secs(15 * 60);
-const UNINSTALL_IDLE_TIMEOUT: Duration = Duration::from_secs(180);
-const UPGRADE_TIMEOUT: Duration = Duration::from_secs(300);
+const LIST_TIMEOUT: Duration = Duration::from_secs(120);
+const INSTALL_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+const INSTALL_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
+const UNINSTALL_TIMEOUT: Duration = Duration::from_secs(25 * 60);
+const UNINSTALL_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
+const UPGRADE_TIMEOUT: Duration = Duration::from_secs(600);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MiseDetectOutput {
@@ -126,8 +126,34 @@ impl<S: MiseSource> ManagerAdapter for MiseAdapter<S> {
                 }))
             }
             AdapterRequest::Uninstall(uninstall_request) => {
-                let mode = parse_uninstall_mode(uninstall_request.package.name.as_str())?;
-                let _ = self.source.self_uninstall(mode)?;
+                let uninstall_spec = parse_uninstall_mode(uninstall_request.package.name.as_str())?;
+                let _ = self.source.self_uninstall(uninstall_spec.mode)?;
+                if uninstall_spec.remove_shell_setup {
+                    match crate::post_install_setup::remove_helm_managed_post_install_setup(
+                        ManagerId::Mise,
+                    ) {
+                        Ok(result) => {
+                            crate::execution::record_task_log_note(result.summary().as_str());
+                            if !result.malformed_files.is_empty() {
+                                crate::execution::record_task_log_note(
+                                    format!(
+                                        "helm-managed mise setup markers were malformed in {} shell startup file(s); left unchanged",
+                                        result.malformed_files.len()
+                                    )
+                                    .as_str(),
+                                );
+                            }
+                        }
+                        Err(error) => {
+                            crate::execution::record_task_log_note(
+                                format!(
+                                    "failed to remove Helm-managed mise shell setup block(s): {error}"
+                                )
+                                .as_str(),
+                            );
+                        }
+                    }
+                }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: uninstall_request.package,
                     action: ManagerAction::Uninstall,
@@ -307,19 +333,31 @@ fn parse_install_source(version: Option<&str>) -> AdapterResult<MiseInstallSourc
     })
 }
 
-fn parse_uninstall_mode(package_name: &str) -> AdapterResult<MiseUninstallMode> {
-    match package_name.trim() {
-        "__self__" => Ok(MiseUninstallMode::ManagerOnlyKeepConfig),
-        "__self__:fullCleanup:keepConfig" => Ok(MiseUninstallMode::FullCleanupKeepConfig),
-        "__self__:fullCleanup:removeConfig" => Ok(MiseUninstallMode::FullCleanupRemoveConfig),
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct MiseUninstallSpec {
+    mode: MiseUninstallMode,
+    remove_shell_setup: bool,
+}
+
+fn parse_uninstall_mode(package_name: &str) -> AdapterResult<MiseUninstallSpec> {
+    let (base_name, remove_shell_setup) =
+        crate::manager_lifecycle::strip_shell_setup_cleanup_suffix(package_name);
+    let mode = match base_name.trim() {
+        "__self__" => MiseUninstallMode::ManagerOnlyKeepConfig,
+        "__self__:fullCleanup:keepConfig" => MiseUninstallMode::FullCleanupKeepConfig,
+        "__self__:fullCleanup:removeConfig" => MiseUninstallMode::FullCleanupRemoveConfig,
         other => Err(CoreError {
             manager: Some(ManagerId::Mise),
             task: Some(TaskType::Uninstall),
             action: Some(ManagerAction::Uninstall),
             kind: CoreErrorKind::InvalidInput,
             message: format!("unsupported mise uninstall mode: {other}"),
-        }),
-    }
+        })?,
+    };
+    Ok(MiseUninstallSpec {
+        mode,
+        remove_shell_setup,
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -682,16 +720,27 @@ mod tests {
     #[test]
     fn parse_uninstall_mode_supports_known_modes() {
         assert_eq!(
-            parse_uninstall_mode("__self__").expect("mode should parse"),
+            parse_uninstall_mode("__self__")
+                .expect("mode should parse")
+                .mode,
             MiseUninstallMode::ManagerOnlyKeepConfig
         );
         assert_eq!(
-            parse_uninstall_mode("__self__:fullCleanup:keepConfig").expect("mode should parse"),
+            parse_uninstall_mode("__self__:fullCleanup:keepConfig")
+                .expect("mode should parse")
+                .mode,
             MiseUninstallMode::FullCleanupKeepConfig
         );
         assert_eq!(
-            parse_uninstall_mode("__self__:fullCleanup:removeConfig").expect("mode should parse"),
+            parse_uninstall_mode("__self__:fullCleanup:removeConfig")
+                .expect("mode should parse")
+                .mode,
             MiseUninstallMode::FullCleanupRemoveConfig
+        );
+        assert!(
+            parse_uninstall_mode("__self__:removeShellSetup")
+                .expect("mode should parse")
+                .remove_shell_setup
         );
     }
 

@@ -3,9 +3,9 @@ use std::sync::Arc;
 
 use crate::adapters::asdf::{
     AsdfDetectOutput, AsdfInstallSource, AsdfSource, asdf_clone_install_request,
-    asdf_detect_request, asdf_install_request, asdf_latest_request,
-    asdf_list_all_plugins_request, asdf_list_current_request, asdf_list_plugins_request,
-    asdf_self_update_request, asdf_uninstall_request, asdf_upgrade_request,
+    asdf_detect_request, asdf_install_request, asdf_latest_request, asdf_list_all_plugins_request,
+    asdf_list_current_request, asdf_list_plugins_request, asdf_self_update_request,
+    asdf_uninstall_request, asdf_upgrade_request,
 };
 use crate::adapters::detect_utils::which_executable;
 use crate::adapters::manager::AdapterResult;
@@ -173,12 +173,18 @@ impl ProcessAsdfSource {
         }
 
         let install_root_string = install_root.to_string_lossy().to_string();
-        let request =
-            self.configure_request(asdf_clone_install_request(None, install_root_string.as_str()));
+        let request = self.configure_request(asdf_clone_install_request(
+            None,
+            install_root_string.as_str(),
+        ));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 
-    fn resolve_current_asdf_root(&self, task_type: TaskType, action: ManagerAction) -> AdapterResult<PathBuf> {
+    fn resolve_current_asdf_root(
+        &self,
+        task_type: TaskType,
+        action: ManagerAction,
+    ) -> AdapterResult<PathBuf> {
         let home = std::env::var("HOME").ok();
         let detection = self.detect()?;
         let from_executable = detection
@@ -194,7 +200,10 @@ impl ProcessAsdfSource {
                 CoreErrorKind::InvalidInput,
                 task_type,
                 action,
-                format!("refusing asdf action for unsafe root '{}'", candidate.display()),
+                format!(
+                    "refusing asdf action for unsafe root '{}'",
+                    candidate.display()
+                ),
             ));
         }
         Ok(candidate)
@@ -281,8 +290,7 @@ impl AsdfSource for ProcessAsdfSource {
     }
 
     fn self_uninstall(&self) -> AdapterResult<String> {
-        let root =
-            self.resolve_current_asdf_root(TaskType::Uninstall, ManagerAction::Uninstall)?;
+        let root = self.resolve_current_asdf_root(TaskType::Uninstall, ManagerAction::Uninstall)?;
         match std::fs::remove_dir_all(root.as_path()) {
             Ok(()) => Ok(format!("removed asdf install root '{}'", root.display())),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(format!(
@@ -293,7 +301,10 @@ impl AsdfSource for ProcessAsdfSource {
                 CoreErrorKind::ProcessFailure,
                 TaskType::Uninstall,
                 ManagerAction::Uninstall,
-                format!("failed to remove asdf install root '{}': {error}", root.display()),
+                format!(
+                    "failed to remove asdf install root '{}': {error}",
+                    root.display()
+                ),
             )),
         }
     }

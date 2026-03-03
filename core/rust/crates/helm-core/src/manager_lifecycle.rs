@@ -108,15 +108,18 @@ pub struct ManagerUninstallOptions {
     pub homebrew_cleanup_mode: Option<HomebrewUninstallCleanupMode>,
     pub mise_cleanup_mode: Option<MiseUninstallCleanupMode>,
     pub mise_config_removal: Option<MiseUninstallConfigRemoval>,
+    pub remove_helm_managed_shell_setup: Option<bool>,
 }
 
 const HOMEBREW_MANAGER_UNINSTALL_MARKER: &str = "@@helm.manager.uninstall::";
+const SHELL_SETUP_CLEANUP_MARKER: &str = "removeShellSetup";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HomebrewManagerUninstallRequestSpec {
     pub formula_name: String,
     pub requested_manager: ManagerId,
     pub cleanup_mode: HomebrewUninstallCleanupMode,
+    pub remove_helm_managed_shell_setup: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -345,10 +348,16 @@ pub fn plan_manager_uninstall_route_with_options(
             if options.mise_cleanup_mode.is_some() || options.mise_config_removal.is_some() {
                 return Err(ManagerUninstallRouteError::InvalidOptions);
             }
-            if !homebrew_cleanup_options_are_default(options) {
+            if !homebrew_cleanup_options_are_default(options)
+                || remove_shell_setup_requested(options)
+            {
                 let cleanup_mode = homebrew_cleanup_mode(options);
-                let package_name =
-                    encode_homebrew_manager_uninstall_package_name("mise", manager, cleanup_mode);
+                let package_name = encode_homebrew_manager_uninstall_package_name_with_options(
+                    "mise",
+                    manager,
+                    cleanup_mode,
+                    remove_shell_setup_requested(options),
+                );
                 return Ok(ManagerUninstallRoutePlan {
                     target_manager: ManagerId::HomebrewFormula,
                     request: AdapterRequest::Uninstall(UninstallRequest {
@@ -402,10 +411,11 @@ pub fn plan_manager_uninstall_route_with_options(
                     AdapterRequest::Uninstall(UninstallRequest {
                         package: PackageRef {
                             manager: ManagerId::HomebrewFormula,
-                            name: encode_homebrew_manager_uninstall_package_name(
+                            name: encode_homebrew_manager_uninstall_package_name_with_options(
                                 "rustup",
                                 manager,
                                 cleanup_mode,
+                                remove_shell_setup_requested(options),
                             ),
                         },
                     }),
@@ -416,7 +426,11 @@ pub fn plan_manager_uninstall_route_with_options(
                 AdapterRequest::Uninstall(UninstallRequest {
                     package: PackageRef {
                         manager: ManagerId::Rustup,
-                        name: "__self__".to_string(),
+                        name: if remove_shell_setup_requested(options) {
+                            "__self__:removeShellSetup".to_string()
+                        } else {
+                            "__self__".to_string()
+                        },
                     },
                 }),
             ),
@@ -456,10 +470,11 @@ pub fn plan_manager_uninstall_route_with_options(
                 AdapterRequest::Uninstall(UninstallRequest {
                     package: PackageRef {
                         manager: ManagerId::HomebrewFormula,
-                        name: encode_homebrew_manager_uninstall_package_name(
+                        name: encode_homebrew_manager_uninstall_package_name_with_options(
                             "asdf",
                             manager,
                             homebrew_cleanup_mode(options),
+                            remove_shell_setup_requested(options),
                         ),
                     },
                 }),
@@ -469,7 +484,11 @@ pub fn plan_manager_uninstall_route_with_options(
                 AdapterRequest::Uninstall(UninstallRequest {
                     package: PackageRef {
                         manager: ManagerId::Asdf,
-                        name: "__self__".to_string(),
+                        name: if remove_shell_setup_requested(options) {
+                            "__self__:removeShellSetup".to_string()
+                        } else {
+                            "__self__".to_string()
+                        },
                     },
                 }),
             ),
@@ -521,10 +540,11 @@ pub fn plan_manager_uninstall_route_with_options(
             request: AdapterRequest::Uninstall(UninstallRequest {
                 package: PackageRef {
                     manager: ManagerId::HomebrewFormula,
-                    name: encode_homebrew_manager_uninstall_package_name(
+                    name: encode_homebrew_manager_uninstall_package_name_with_options(
                         formula_name,
                         manager,
                         homebrew_cleanup_mode(options),
+                        remove_shell_setup_requested(options),
                     ),
                 },
             }),
@@ -558,10 +578,11 @@ pub fn plan_manager_uninstall_route_with_options(
             request: AdapterRequest::Uninstall(UninstallRequest {
                 package: PackageRef {
                     manager: ManagerId::HomebrewFormula,
-                    name: encode_homebrew_manager_uninstall_package_name(
+                    name: encode_homebrew_manager_uninstall_package_name_with_options(
                         &formula_name,
                         manager,
                         homebrew_cleanup_mode(options),
+                        remove_shell_setup_requested(options),
                     ),
                 },
             }),
@@ -749,6 +770,20 @@ fn manager_only_uninstall_options_are_default(options: &ManagerUninstallOptions)
     homebrew_cleanup_options_are_default(options)
         && options.mise_cleanup_mode.is_none()
         && options.mise_config_removal.is_none()
+        && options.remove_helm_managed_shell_setup.is_none()
+}
+
+fn remove_shell_setup_requested(options: &ManagerUninstallOptions) -> bool {
+    options.remove_helm_managed_shell_setup.unwrap_or(false)
+}
+
+pub fn strip_shell_setup_cleanup_suffix(value: &str) -> (&str, bool) {
+    let trimmed = value.trim();
+    if let Some(stripped) = trimmed.strip_suffix(":removeShellSetup") {
+        (stripped, true)
+    } else {
+        (trimmed, false)
+    }
 }
 
 pub fn encode_homebrew_manager_uninstall_package_name(
@@ -756,12 +791,37 @@ pub fn encode_homebrew_manager_uninstall_package_name(
     requested_manager: ManagerId,
     cleanup_mode: HomebrewUninstallCleanupMode,
 ) -> String {
-    if matches!(cleanup_mode, HomebrewUninstallCleanupMode::ManagerOnly) {
+    encode_homebrew_manager_uninstall_package_name_with_options(
+        formula_name,
+        requested_manager,
+        cleanup_mode,
+        false,
+    )
+}
+
+pub fn encode_homebrew_manager_uninstall_package_name_with_options(
+    formula_name: &str,
+    requested_manager: ManagerId,
+    cleanup_mode: HomebrewUninstallCleanupMode,
+    remove_helm_managed_shell_setup: bool,
+) -> String {
+    if matches!(cleanup_mode, HomebrewUninstallCleanupMode::ManagerOnly)
+        && !remove_helm_managed_shell_setup
+    {
         return formula_name.to_string();
     }
+    let cleanup_token = match cleanup_mode {
+        HomebrewUninstallCleanupMode::ManagerOnly => "managerOnly",
+        HomebrewUninstallCleanupMode::FullCleanup => "fullCleanup",
+    };
     format!(
-        "{HOMEBREW_MANAGER_UNINSTALL_MARKER}{formula_name}::{}::fullCleanup",
-        requested_manager.as_str()
+        "{HOMEBREW_MANAGER_UNINSTALL_MARKER}{formula_name}::{}::{cleanup_token}::{}",
+        requested_manager.as_str(),
+        if remove_helm_managed_shell_setup {
+            SHELL_SETUP_CLEANUP_MARKER
+        } else {
+            "keepShellSetup"
+        }
     )
 }
 
@@ -769,10 +829,11 @@ pub fn parse_homebrew_manager_uninstall_package_name(
     value: &str,
 ) -> Option<HomebrewManagerUninstallRequestSpec> {
     let stripped = value.strip_prefix(HOMEBREW_MANAGER_UNINSTALL_MARKER)?;
-    let mut parts = stripped.splitn(3, "::");
+    let mut parts = stripped.splitn(4, "::");
     let formula_name = parts.next()?.trim();
     let manager_raw = parts.next()?.trim();
     let cleanup_raw = parts.next()?.trim();
+    let shell_cleanup_raw = parts.next().map(str::trim);
     if formula_name.is_empty() {
         return None;
     }
@@ -782,10 +843,16 @@ pub fn parse_homebrew_manager_uninstall_package_name(
         "managerOnly" => HomebrewUninstallCleanupMode::ManagerOnly,
         _ => return None,
     };
+    let remove_helm_managed_shell_setup = match shell_cleanup_raw {
+        Some(SHELL_SETUP_CLEANUP_MARKER) => true,
+        Some("keepShellSetup") | None => false,
+        _ => return None,
+    };
     Some(HomebrewManagerUninstallRequestSpec {
         formula_name: formula_name.to_string(),
         requested_manager,
         cleanup_mode,
+        remove_helm_managed_shell_setup,
     })
 }
 
@@ -793,19 +860,27 @@ fn mise_uninstall_package_name(options: &ManagerUninstallOptions) -> Option<Stri
     let cleanup_mode = options
         .mise_cleanup_mode
         .unwrap_or(MiseUninstallCleanupMode::ManagerOnly);
+    let remove_shell_setup = remove_shell_setup_requested(options);
+    let with_shell_cleanup = |base: String| {
+        if remove_shell_setup {
+            format!("{base}:removeShellSetup")
+        } else {
+            base
+        }
+    };
     match cleanup_mode {
         MiseUninstallCleanupMode::ManagerOnly => {
             if options.mise_config_removal.is_some() {
                 return None;
             }
-            Some("__self__".to_string())
+            Some(with_shell_cleanup("__self__".to_string()))
         }
         MiseUninstallCleanupMode::FullCleanup => match options.mise_config_removal {
             Some(MiseUninstallConfigRemoval::KeepConfig) => {
-                Some("__self__:fullCleanup:keepConfig".to_string())
+                Some(with_shell_cleanup("__self__:fullCleanup:keepConfig".to_string()))
             }
             Some(MiseUninstallConfigRemoval::RemoveConfig) => {
-                Some("__self__:fullCleanup:removeConfig".to_string())
+                Some(with_shell_cleanup("__self__:fullCleanup:removeConfig".to_string()))
             }
             None => None,
         },
@@ -1176,9 +1251,7 @@ pub fn resolve_rustup_update_strategy(
         StrategyKind::InteractivePrompt
         | StrategyKind::Unknown
         | StrategyKind::ManualRemediation
-        | StrategyKind::AsdfSelf => {
-            Err(UpdateStrategyResolutionError::AmbiguousProvenance)
-        }
+        | StrategyKind::AsdfSelf => Err(UpdateStrategyResolutionError::AmbiguousProvenance),
     }
 }
 
@@ -1242,8 +1315,9 @@ mod tests {
         ManagerUninstallOptions, ManagerUninstallRouteError, MiseInstallSource,
         MiseUninstallCleanupMode, MiseUninstallConfigRemoval, RustupInstallSource,
         UpdateStrategyResolutionError, encode_homebrew_manager_uninstall_package_name,
-        manager_homebrew_formula_name, parse_homebrew_manager_uninstall_package_name,
-        plan_manager_install, plan_manager_uninstall_route_with_options,
+        encode_homebrew_manager_uninstall_package_name_with_options, manager_homebrew_formula_name,
+        parse_homebrew_manager_uninstall_package_name, plan_manager_install,
+        plan_manager_uninstall_route_with_options,
         resolve_asdf_update_strategy, resolve_homebrew_manager_update_strategy,
         resolve_rustup_uninstall_strategy,
     };
@@ -1513,8 +1587,8 @@ mod tests {
         instance.display_path = PathBuf::from("/Users/example/.asdf/bin/asdf");
         instance.canonical_path = Some(PathBuf::from("/Users/example/.asdf/bin/asdf"));
         instance.update_strategy = StrategyKind::AsdfSelf;
-        let strategy =
-            resolve_asdf_update_strategy(Some(&instance)).expect("asdf self strategy should resolve");
+        let strategy = resolve_asdf_update_strategy(Some(&instance))
+            .expect("asdf self strategy should resolve");
         assert_eq!(strategy, StrategyKind::AsdfSelf);
     }
 
@@ -1529,6 +1603,7 @@ mod tests {
                 homebrew_cleanup_mode: None,
                 mise_cleanup_mode: Some(MiseUninstallCleanupMode::FullCleanup),
                 mise_config_removal: None,
+                remove_helm_managed_shell_setup: None,
             },
         )
         .expect_err("full cleanup should require config selection");
@@ -1546,6 +1621,7 @@ mod tests {
                 homebrew_cleanup_mode: None,
                 mise_cleanup_mode: Some(MiseUninstallCleanupMode::ManagerOnly),
                 mise_config_removal: Some(MiseUninstallConfigRemoval::RemoveConfig),
+                remove_helm_managed_shell_setup: None,
             },
         )
         .expect_err("manager-only uninstall should not accept config removal options");
@@ -1563,6 +1639,7 @@ mod tests {
                 homebrew_cleanup_mode: None,
                 mise_cleanup_mode: Some(MiseUninstallCleanupMode::FullCleanup),
                 mise_config_removal: Some(MiseUninstallConfigRemoval::KeepConfig),
+                remove_helm_managed_shell_setup: None,
             },
         )
         .expect("full cleanup with config choice should route");
@@ -1590,6 +1667,7 @@ mod tests {
             parsed.cleanup_mode,
             HomebrewUninstallCleanupMode::FullCleanup
         );
+        assert!(!parsed.remove_helm_managed_shell_setup);
     }
 
     #[test]
@@ -1617,9 +1695,50 @@ mod tests {
                     parsed.cleanup_mode,
                     HomebrewUninstallCleanupMode::FullCleanup
                 );
+                assert!(!parsed.remove_helm_managed_shell_setup);
             }
             other => panic!("unexpected request: {other:?}"),
         }
+    }
+
+    #[test]
+    fn rustup_self_uninstall_route_can_request_shell_setup_cleanup() {
+        let mut instance = sample_instance();
+        instance.display_path = PathBuf::from("/Users/example/.cargo/bin/rustup");
+        instance.canonical_path = Some(PathBuf::from("/Users/example/.cargo/bin/rustup"));
+        instance.uninstall_strategy = StrategyKind::RustupSelf;
+        let route = plan_manager_uninstall_route_with_options(
+            ManagerId::Rustup,
+            Some(&instance),
+            false,
+            false,
+            &ManagerUninstallOptions {
+                remove_helm_managed_shell_setup: Some(true),
+                ..ManagerUninstallOptions::default()
+            },
+        )
+        .expect("rustup self uninstall should route");
+        match route.request {
+            crate::adapters::AdapterRequest::Uninstall(uninstall) => {
+                assert_eq!(uninstall.package.name, "__self__:removeShellSetup");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn homebrew_uninstall_package_name_roundtrips_shell_setup_cleanup_option() {
+        let encoded = encode_homebrew_manager_uninstall_package_name_with_options(
+            "rustup",
+            ManagerId::Rustup,
+            HomebrewUninstallCleanupMode::ManagerOnly,
+            true,
+        );
+        let parsed = parse_homebrew_manager_uninstall_package_name(encoded.as_str())
+            .expect("encoded uninstall package marker should parse");
+        assert_eq!(parsed.formula_name, "rustup");
+        assert_eq!(parsed.cleanup_mode, HomebrewUninstallCleanupMode::ManagerOnly);
+        assert!(parsed.remove_helm_managed_shell_setup);
     }
 
     #[test]

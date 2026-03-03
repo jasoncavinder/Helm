@@ -91,6 +91,7 @@ fn mise_uninstall_options_full_cleanup(
             helm_core::manager_lifecycle::MiseUninstallCleanupMode::FullCleanup,
         ),
         mise_config_removal: Some(config_removal),
+        remove_helm_managed_shell_setup: None,
     }
 }
 

@@ -609,7 +609,7 @@ private struct SelectableMonospacedTextArea: NSViewRepresentable {
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = false
 
-        let textView = NSTextView()
+        let textView = CopyableTextView()
         textView.isEditable = false
         textView.isSelectable = true
         textView.drawsBackground = false
@@ -639,6 +639,19 @@ private struct SelectableMonospacedTextArea: NSViewRepresentable {
         if textView.string != text {
             textView.string = text
         }
+    }
+}
+
+private final class CopyableTextView: NSTextView {
+    override var acceptsFirstResponder: Bool { true }
+
+    override func keyDown(with event: NSEvent) {
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == [.command],
+           event.charactersIgnoringModifiers?.lowercased() == "c" {
+            copy(self)
+            return
+        }
+        super.keyDown(with: event)
     }
 }
 
@@ -1124,12 +1137,15 @@ private struct InspectorManagerDetailView: View {
     @State private var pendingCompletePostInstallSetupAutomatically = false
     @State private var showPostInstallSetupSheet = false
     @State private var verifyingPostInstallSetup = false
+    @State private var postInstallSetupVerificationMessage: String?
     @State private var activeInstanceUpdateInFlightId: String?
+    @State private var expandedInstallInstanceIds: Set<String> = []
     @State private var pendingUninstallOptions = ManagerUninstallActionOptions(
         allowUnknownProvenance: false,
         homebrewCleanupMode: nil,
         miseCleanupMode: nil,
-        miseConfigRemoval: nil
+        miseConfigRemoval: nil,
+        removeHelmManagedShellSetup: nil
     )
 
     private enum ConfirmAction: Identifiable {
@@ -1288,13 +1304,41 @@ private struct InspectorManagerDetailView: View {
     }
 
     private var selectedPendingInstallMethodIsAllowed: Bool {
-        guard let pendingInstallMethodRawValue,
-              let option = pendingInstallMethodOptions.first(where: {
-                  $0.method.rawValue == pendingInstallMethodRawValue
-              }) else {
+        guard let option = selectedPendingInstallMethodOption else {
             return false
         }
         return installMethodOptionAllowed(option)
+    }
+
+    private var selectedPendingInstallMethodOption: ManagerInstallMethodOption? {
+        guard let pendingInstallMethodRawValue else { return nil }
+        return pendingInstallMethodOptions.first(where: {
+            $0.method.rawValue == pendingInstallMethodRawValue
+        })
+    }
+
+    private var selectedInstallMethodUnavailableMessage: String? {
+        guard let option = selectedPendingInstallMethodOption else { return nil }
+        guard !installMethodOptionAllowed(option) else { return nil }
+        guard let dependencyManagerId = ManagerDependencyResolver.dependencyManagerId(
+            for: manager.id,
+            installMethod: option.method
+        ) else {
+            return nil
+        }
+
+        let methodName = localizedInstallMethod(option.method)
+        let dependencyName = localizedManagerDisplayName(dependencyManagerId)
+        if !core.isManagerDetected(dependencyManagerId) {
+            return "\(methodName): \(dependencyName) (\(L10n.Common.notInstalled.localized))"
+        }
+
+        let dependencyEnabled = core.managerStatuses[dependencyManagerId]?.enabled ?? false
+        if !dependencyEnabled {
+            return "\(methodName): \(dependencyName) (\(L10n.Common.disabled.localized))"
+        }
+
+        return nil
     }
 
     private var rustupInstallMethodSelected: Bool {
@@ -1539,6 +1583,19 @@ private struct InspectorManagerDetailView: View {
         manager.id == "rustup" || manager.id == "mise" || manager.id == "asdf"
     }
 
+    private var supportsShellSetupTeardownOption: Bool {
+        manager.id == "rustup" || manager.id == "mise" || manager.id == "asdf"
+    }
+
+    private var defaultShellSetupTeardownSelection: Bool {
+        supportsShellSetupTeardownOption && installInstanceCount <= 1
+    }
+
+    private var shellSetupTeardownSelection: Bool {
+        guard supportsShellSetupTeardownOption else { return false }
+        return pendingUninstallOptions.removeHelmManagedShellSetup ?? defaultShellSetupTeardownSelection
+    }
+
     private var postInstallSetupAutomationAvailable: Bool {
         postInstallSetupIssueSupportsRepairOption("apply_post_install_setup_defaults")
     }
@@ -1668,19 +1725,17 @@ private struct InspectorManagerDetailView: View {
                 .foregroundColor(.secondary)
 
             Group {
-                InspectorField(label: L10n.App.Inspector.detectionDiagnostics.localized) {
-                    HStack(alignment: .top, spacing: 6) {
-                        Image(systemName: detectionDiagnosticsIconName(detectionDiagnostics.reason))
-                            .foregroundColor(detectionDiagnosticsIconColor(detectionDiagnostics.reason))
-                            .padding(.top, 1)
-                        Text(localizedDetectionReason(detectionDiagnostics.reason))
-                            .font(.callout)
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityValue(detected
-                        ? L10n.App.Inspector.detected.localized
-                        : L10n.App.Inspector.notDetected.localized)
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: detectionDiagnosticsIconName(detectionDiagnostics.reason))
+                        .foregroundColor(detectionDiagnosticsIconColor(detectionDiagnostics.reason))
+                        .padding(.top, 1)
+                    Text(localizedDetectionReason(detectionDiagnostics.reason))
+                        .font(.callout)
                 }
+                .accessibilityElement(children: .combine)
+                .accessibilityValue(detected
+                    ? L10n.App.Inspector.detected.localized
+                    : L10n.App.Inspector.notDetected.localized)
 
                 if installInstanceCount > 0 {
                     InspectorField(label: L10n.App.Inspector.installInstanceCount.localized) {
@@ -1689,40 +1744,60 @@ private struct InspectorManagerDetailView: View {
                                 let switchingManagedInstance =
                                     activeInstanceUpdateInFlightId == instance.instanceId
                                 let anyInstanceSwitchInFlight = activeInstanceUpdateInFlightId != nil
-                                VStack(alignment: .leading, spacing: 4) {
-                                    HStack(alignment: .top, spacing: 6) {
-                                        if instance.isActive {
-                                            Image(systemName: "checkmark.circle.fill")
-                                                .foregroundColor(HelmTheme.stateHealthy)
-                                                .padding(.top, 1)
+                                let isExpanded = expandedInstallInstanceIds.contains(instance.instanceId)
+
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Button {
+                                        toggleInstallInstanceExpansion(instance.instanceId)
+                                    } label: {
+                                        HStack(alignment: .top, spacing: 6) {
+                                            if instance.isActive {
+                                                Image(systemName: "checkmark.circle.fill")
+                                                    .foregroundColor(HelmTheme.stateHealthy)
+                                                    .padding(.top, 1)
+                                            }
+                                            Text(instance.displayPath)
+                                                .font(.system(.caption, design: .monospaced))
+                                                .lineLimit(2)
+                                                .multilineTextAlignment(.leading)
+                                            Spacer(minLength: 0)
+                                            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                                                .font(.caption2.weight(.semibold))
+                                                .foregroundColor(.secondary)
+                                                .padding(.top, 2)
                                         }
-                                        Text(instance.displayPath)
-                                            .font(.system(.caption, design: .monospaced))
-                                            .lineLimit(2)
                                     }
-                                    Text("\(L10n.App.Inspector.provenance.localized): \(instance.provenance)")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                    Text("\(L10n.App.Inspector.confidence.localized): \(formatConfidence(instance.confidence))")
-                                        .font(.caption.monospacedDigit())
-                                        .foregroundColor(.secondary)
-                                    if let decisionMargin = instance.decisionMargin {
-                                        Text("\(L10n.App.Inspector.decisionMargin.localized): \(formatConfidence(decisionMargin))")
-                                            .font(.caption.monospacedDigit())
-                                            .foregroundColor(.secondary)
+                                    .buttonStyle(.plain)
+                                    .helmPointer()
+
+                                    if isExpanded {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text("\(L10n.App.Inspector.provenance.localized): \(instance.provenance)")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                            Text("\(L10n.App.Inspector.confidence.localized): \(formatConfidence(instance.confidence))")
+                                                .font(.caption.monospacedDigit())
+                                                .foregroundColor(.secondary)
+                                            if let decisionMargin = instance.decisionMargin {
+                                                Text("\(L10n.App.Inspector.decisionMargin.localized): \(formatConfidence(decisionMargin))")
+                                                    .font(.caption.monospacedDigit())
+                                                    .foregroundColor(.secondary)
+                                            }
+                                            if let explanation = instance.explanationPrimary?.trimmingCharacters(in: .whitespacesAndNewlines),
+                                               !explanation.isEmpty {
+                                                Text("\(L10n.App.Inspector.explanation.localized): \(explanation)")
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                                    .lineLimit(3)
+                                            }
+                                            if let competing = competingProvenanceSummary(for: instance) {
+                                                Text("\(L10n.App.Inspector.competingProvenance.localized): \(competing)")
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                            }
+                                        }
                                     }
-                                    if let explanation = instance.explanationPrimary?.trimmingCharacters(in: .whitespacesAndNewlines),
-                                       !explanation.isEmpty {
-                                        Text("\(L10n.App.Inspector.explanation.localized): \(explanation)")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                            .lineLimit(3)
-                                    }
-                                    if let competing = competingProvenanceSummary(for: instance) {
-                                        Text("\(L10n.App.Inspector.competingProvenance.localized): \(competing)")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                    }
+
                                     HStack(spacing: 6) {
                                         if !instance.isActive {
                                             managerActionButton(
@@ -1744,7 +1819,7 @@ private struct InspectorManagerDetailView: View {
                                             }
                                         }
 
-                                        if manager.canUninstall && detected && enabled {
+                                        if manager.canUninstall && detected {
                                             managerActionButton(
                                                 symbol: "trash",
                                                 tooltip: L10n.Common.uninstall.localized,
@@ -1831,6 +1906,13 @@ private struct InspectorManagerDetailView: View {
                         }
                     }
                     .pickerStyle(.inline)
+
+                    if let unavailableMessage = selectedInstallMethodUnavailableMessage {
+                        Text(unavailableMessage)
+                            .font(.caption)
+                            .foregroundColor(HelmTheme.stateAttention)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
 
                 if rustupInstallMethodSelected {
@@ -2198,12 +2280,13 @@ private struct InspectorManagerDetailView: View {
                 Spacer(minLength: 0)
             }
 
-            HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 8) {
                 Button(
                     "app.inspector.package_state_issue.setup_required.finish_action".localized(with: [
                         "manager": localizedManagerDisplayName(manager.id)
                     ])
                 ) {
+                    postInstallSetupVerificationMessage = nil
                     showPostInstallSetupSheet = true
                 }
                 .buttonStyle(HelmSecondaryButtonStyle())
@@ -2218,8 +2301,6 @@ private struct InspectorManagerDetailView: View {
                     .disabled(managerIsUninstalling)
                     .helmPointer(enabled: !managerIsUninstalling)
                 }
-
-                Spacer(minLength: 0)
             }
         }
         .padding(10)
@@ -2251,39 +2332,53 @@ private struct InspectorManagerDetailView: View {
                 Text("app.inspector.package_state_issue.setup_required.steps_title".localized)
                     .font(.caption.weight(.semibold))
                     .foregroundColor(.secondary)
-                ForEach(Array(postInstallSetupSteps.enumerated()), id: \.offset) { index, step in
+                ForEach(Array(postInstallSetupInstructions.enumerated()), id: \.offset) { index, instruction in
                     HStack(alignment: .top, spacing: 6) {
                         Text("\(index + 1).")
                             .font(.caption.monospacedDigit())
                             .foregroundColor(.secondary)
-                        Text(step)
-                            .font(.caption)
-                            .foregroundColor(.primary)
-                            .fixedSize(horizontal: false, vertical: true)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(instruction.text)
+                                .font(.caption)
+                                .foregroundColor(.primary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            ForEach(Array(instruction.commands.enumerated()), id: \.offset) { _, command in
+                                HStack(alignment: .top, spacing: 8) {
+                                    SelectableMonospacedTextArea(text: command)
+                                        .frame(minHeight: 44, maxHeight: 60)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .fill(HelmTheme.surfaceElevated)
+                                        )
+
+                                    Button {
+                                        copyTextToClipboard(command)
+                                    } label: {
+                                        Image(systemName: "doc.on.doc")
+                                    }
+                                    .buttonStyle(HelmIconButtonStyle())
+                                    .help(L10n.App.Inspector.copyAll.localized)
+                                    .accessibilityLabel(L10n.App.Inspector.copyAll.localized)
+                                }
+                            }
+                        }
                     }
                 }
             }
 
-            if !postInstallSetupCommandBlocks.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("app.inspector.package_state_issue.setup_required.commands_title".localized)
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(.secondary)
-                    ForEach(postInstallSetupCommandBlocks, id: \.self) { command in
-                        SelectableMonospacedTextArea(text: command)
-                            .frame(minHeight: 44, maxHeight: 60)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(HelmTheme.surfaceElevated)
-                            )
-                    }
-                }
+            if let message = postInstallSetupVerificationMessage,
+               !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(message)
+                    .font(.caption)
+                    .foregroundColor(HelmTheme.stateAttention)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             HStack(spacing: 8) {
                 if postInstallSetupAutomationAvailable {
                     Button("app.inspector.package_state_issue.setup_required.auto_action".localized) {
+                        postInstallSetupVerificationMessage = nil
                         showPostInstallSetupSheet = false
                         applyRecommendedPostInstallSetup()
                     }
@@ -2295,14 +2390,20 @@ private struct InspectorManagerDetailView: View {
                 Spacer()
 
                 Button(L10n.Common.cancel.localized) {
+                    postInstallSetupVerificationMessage = nil
                     showPostInstallSetupSheet = false
                 }
                 .keyboardShortcut(.cancelAction)
 
-                Button("app.inspector.package_state_issue.setup_required.verify_action".localized) {
-                    verifyingPostInstallSetup = true
-                    core.triggerDetection(for: manager.id) { _ in
-                        verifyingPostInstallSetup = false
+                Button {
+                    verifyPostInstallSetup()
+                } label: {
+                    HStack(spacing: 6) {
+                        if verifyingPostInstallSetup {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                        Text("app.inspector.package_state_issue.setup_required.verify_action".localized)
                     }
                 }
                 .buttonStyle(HelmPrimaryButtonStyle())
@@ -2350,57 +2451,113 @@ private struct InspectorManagerDetailView: View {
         }
     }
 
-    private var postInstallSetupSteps: [String] {
+    private struct PostInstallSetupInstruction {
+        let text: String
+        let commands: [String]
+    }
+
+    private var postInstallSetupInstructions: [PostInstallSetupInstruction] {
         let shell = shellNameForSetupInstructions
         let rcFile = shellRcPathForSetupInstructions
         switch manager.id {
         case "rustup":
             return [
-                "Open your shell startup file (\(rcFile)).",
-                "Add Cargo environment initialization so rustup-managed tools are on PATH.",
-                "Start a new shell, then select Verify Setup."
+                PostInstallSetupInstruction(
+                    text: "Open your shell startup file (\(rcFile)).",
+                    commands: []
+                ),
+                PostInstallSetupInstruction(
+                    text: "Add Cargo environment initialization so rustup-managed tools are on PATH.",
+                    commands: ["echo 'source \"$HOME/.cargo/env\"' >> \(rcFile)"]
+                ),
+                PostInstallSetupInstruction(
+                    text: "Start a new shell, then select Verify Setup. Or apply setup immediately in your current shell.",
+                    commands: ["source \"$HOME/.cargo/env\""]
+                )
             ]
         case "mise":
             return [
-                "Open your shell startup file (\(rcFile)).",
-                "Add mise activation for \(shell).",
-                "Start a new shell, then select Verify Setup."
+                PostInstallSetupInstruction(
+                    text: "Open your shell startup file (\(rcFile)).",
+                    commands: []
+                ),
+                PostInstallSetupInstruction(
+                    text: "Add mise activation for \(shell).",
+                    commands: ["echo 'eval \"$(mise activate \(shell))\"' >> \(rcFile)"]
+                ),
+                PostInstallSetupInstruction(
+                    text: "Start a new shell, then select Verify Setup. Or apply setup immediately in your current shell.",
+                    commands: ["eval \"$(mise activate \(shell))\""]
+                )
             ]
         case "asdf":
             return [
-                "Open your shell startup file (\(rcFile)).",
-                "Add asdf shims to PATH.",
-                "Start a new shell, then select Verify Setup."
+                PostInstallSetupInstruction(
+                    text: "Open your shell startup file (\(rcFile)).",
+                    commands: []
+                ),
+                PostInstallSetupInstruction(
+                    text: "Add asdf shims to PATH.",
+                    commands: ["echo 'export PATH=\"${ASDF_DATA_DIR:-$HOME/.asdf}/shims:$PATH\"' >> \(rcFile)"]
+                ),
+                PostInstallSetupInstruction(
+                    text: "Start a new shell, then select Verify Setup. Or apply setup immediately in your current shell.",
+                    commands: ["export PATH=\"${ASDF_DATA_DIR:-$HOME/.asdf}/shims:$PATH\""]
+                )
             ]
         default:
             return [
-                "Complete the manager's documented post-install setup.",
-                "Start a new shell, then select Verify Setup."
+                PostInstallSetupInstruction(
+                    text: "Complete the manager's documented post-install setup.",
+                    commands: []
+                ),
+                PostInstallSetupInstruction(
+                    text: "Start a new shell, then select Verify Setup.",
+                    commands: []
+                )
             ]
         }
     }
 
-    private var postInstallSetupCommandBlocks: [String] {
-        let shell = shellNameForSetupInstructions
-        let rcFile = shellRcPathForSetupInstructions
-        switch manager.id {
-        case "rustup":
-            return [
-                "echo 'source \"$HOME/.cargo/env\"' >> \(rcFile)",
-                "source \"$HOME/.cargo/env\""
-            ]
-        case "mise":
-            return [
-                "echo 'eval \"$(mise activate \(shell))\"' >> \(rcFile)",
-                "eval \"$(mise activate \(shell))\""
-            ]
-        case "asdf":
-            return [
-                "echo 'export PATH=\"${ASDF_DATA_DIR:-$HOME/.asdf}/shims:$PATH\"' >> \(rcFile)",
-                "export PATH=\"${ASDF_DATA_DIR:-$HOME/.asdf}/shims:$PATH\""
-            ]
-        default:
-            return []
+    private func verifyPostInstallSetup() {
+        postInstallSetupVerificationMessage = nil
+        verifyingPostInstallSetup = true
+        core.triggerDetection(for: manager.id) { success in
+            if !success {
+                verifyingPostInstallSetup = false
+                postInstallSetupVerificationMessage = L10n.Common.error.localized
+                return
+            }
+            waitForPostInstallSetupVerificationResult(attemptsRemaining: 12)
+        }
+    }
+
+    private func waitForPostInstallSetupVerificationResult(attemptsRemaining: Int) {
+        core.fetchManagerStatus()
+        core.fetchTasks()
+        core.fetchPackages()
+        core.fetchOutdatedPackages()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            let diagnostics = core.managerDetectionDiagnostics(for: manager.id)
+            if diagnostics.reason == .inProgress && attemptsRemaining > 0 {
+                waitForPostInstallSetupVerificationResult(
+                    attemptsRemaining: attemptsRemaining - 1
+                )
+                return
+            }
+
+            verifyingPostInstallSetup = false
+            if let issue = postInstallSetupIssue {
+                let summary = issue.summary?.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let summary, !summary.isEmpty {
+                    postInstallSetupVerificationMessage = summary
+                } else {
+                    postInstallSetupVerificationMessage = localizedDetectionReason(diagnostics.reason)
+                }
+            } else {
+                showPostInstallSetupSheet = false
+            }
         }
     }
 
@@ -2680,7 +2837,10 @@ private struct InspectorManagerDetailView: View {
             allowUnknownProvenance: allowUnknownProvenance,
             homebrewCleanupMode: nil,
             miseCleanupMode: nil,
-            miseConfigRemoval: nil
+            miseConfigRemoval: nil,
+            removeHelmManagedShellSetup: supportsShellSetupTeardownOption
+                ? defaultShellSetupTeardownSelection
+                : nil
         )
     }
 
@@ -2690,7 +2850,8 @@ private struct InspectorManagerDetailView: View {
             allowUnknownProvenance: allowUnknownProvenance,
             homebrewCleanupMode: pendingUninstallOptions.homebrewCleanupMode,
             miseCleanupMode: pendingUninstallOptions.miseCleanupMode,
-            miseConfigRemoval: pendingUninstallOptions.miseConfigRemoval
+            miseConfigRemoval: pendingUninstallOptions.miseConfigRemoval,
+            removeHelmManagedShellSetup: pendingUninstallOptions.removeHelmManagedShellSetup
         )
         core.previewManagerUninstall(
             manager.id,
@@ -2787,7 +2948,8 @@ private struct InspectorManagerDetailView: View {
                                     allowUnknownProvenance: pendingUninstallOptions.allowUnknownProvenance,
                                     homebrewCleanupMode: mode,
                                     miseCleanupMode: nil,
-                                    miseConfigRemoval: nil
+                                    miseConfigRemoval: nil,
+                                    removeHelmManagedShellSetup: pendingUninstallOptions.removeHelmManagedShellSetup
                                 )
                                 refreshManagerUninstallPreviewForCurrentOptions()
                             }
@@ -2815,14 +2977,16 @@ private struct InspectorManagerDetailView: View {
                                         allowUnknownProvenance: pendingUninstallOptions.allowUnknownProvenance,
                                         homebrewCleanupMode: nil,
                                         miseCleanupMode: .managerOnly,
-                                        miseConfigRemoval: nil
+                                        miseConfigRemoval: nil,
+                                        removeHelmManagedShellSetup: pendingUninstallOptions.removeHelmManagedShellSetup
                                     )
                                 } else {
                                     pendingUninstallOptions = ManagerUninstallActionOptions(
                                         allowUnknownProvenance: pendingUninstallOptions.allowUnknownProvenance,
                                         homebrewCleanupMode: nil,
                                         miseCleanupMode: .fullCleanup,
-                                        miseConfigRemoval: pendingUninstallOptions.miseConfigRemoval
+                                        miseConfigRemoval: pendingUninstallOptions.miseConfigRemoval,
+                                        removeHelmManagedShellSetup: pendingUninstallOptions.removeHelmManagedShellSetup
                                     )
                                 }
                                 refreshManagerUninstallPreviewForCurrentOptions()
@@ -2850,7 +3014,8 @@ private struct InspectorManagerDetailView: View {
                                             allowUnknownProvenance: pendingUninstallOptions.allowUnknownProvenance,
                                             homebrewCleanupMode: nil,
                                             miseCleanupMode: .fullCleanup,
-                                            miseConfigRemoval: selection
+                                            miseConfigRemoval: selection,
+                                            removeHelmManagedShellSetup: pendingUninstallOptions.removeHelmManagedShellSetup
                                         )
                                         refreshManagerUninstallPreviewForCurrentOptions()
                                     }
@@ -2867,6 +3032,27 @@ private struct InspectorManagerDetailView: View {
                         }
                     }
                 }
+            }
+
+            if supportsShellSetupTeardownOption {
+                Toggle(
+                    "app.managers.uninstall.remove_helm_managed_shell_setup".localized,
+                    isOn: Binding(
+                        get: { shellSetupTeardownSelection },
+                        set: { enabled in
+                            pendingUninstallOptions = ManagerUninstallActionOptions(
+                                allowUnknownProvenance: pendingUninstallOptions.allowUnknownProvenance,
+                                homebrewCleanupMode: pendingUninstallOptions.homebrewCleanupMode,
+                                miseCleanupMode: pendingUninstallOptions.miseCleanupMode,
+                                miseConfigRemoval: pendingUninstallOptions.miseConfigRemoval,
+                                removeHelmManagedShellSetup: enabled
+                            )
+                            refreshManagerUninstallPreviewForCurrentOptions()
+                        }
+                    )
+                )
+                .toggleStyle(.checkbox)
+                .font(.caption)
             }
 
             DisclosureGroup(
@@ -2917,7 +3103,8 @@ private struct InspectorManagerDetailView: View {
                             allowUnknownProvenance: context.resolvedAllowUnknownProvenance,
                             homebrewCleanupMode: pendingUninstallOptions.homebrewCleanupMode,
                             miseCleanupMode: pendingUninstallOptions.miseCleanupMode,
-                            miseConfigRemoval: pendingUninstallOptions.miseConfigRemoval
+                            miseConfigRemoval: pendingUninstallOptions.miseConfigRemoval,
+                            removeHelmManagedShellSetup: pendingUninstallOptions.removeHelmManagedShellSetup
                         )
                         uninstallConfirmation = nil
                         core.uninstallManager(manager.id, options: effectiveOptions)
@@ -3027,6 +3214,14 @@ private struct InspectorManagerDetailView: View {
         String(format: "%.2f", value)
     }
 
+    private func toggleInstallInstanceExpansion(_ instanceId: String) {
+        if expandedInstallInstanceIds.contains(instanceId) {
+            expandedInstallInstanceIds.remove(instanceId)
+        } else {
+            expandedInstallInstanceIds.insert(instanceId)
+        }
+    }
+
     private func timeoutMenuLabel(_ seconds: Int?) -> String {
         guard let seconds else {
             return L10n.App.Inspector.timeoutUseDefault.localized
@@ -3037,13 +3232,13 @@ private struct InspectorManagerDetailView: View {
     private func localizedDetectionReason(_ reason: ManagerDetectionDiagnosticReason) -> String {
         switch reason {
         case .detected: return L10n.App.Inspector.detectionReasonDetected.localized
-        case .notDetected: return L10n.App.Inspector.detectionReasonNotDetected.localized
+        case .notDetected, .neverChecked:
+            return "\(localizedManagerDisplayName(manager.id)): \(L10n.App.Inspector.detectionReasonNotDetected.localized)"
         case .inconsistent: return L10n.App.Inspector.detectionReasonInconsistent.localized
         case .inProgress: return L10n.App.Inspector.detectionReasonInProgress.localized
         case .failed: return L10n.App.Inspector.detectionReasonFailed.localized
         case .disabled: return L10n.App.Inspector.detectionReasonDisabled.localized
         case .notImplemented: return L10n.App.Inspector.detectionReasonNotImplemented.localized
-        case .neverChecked: return L10n.App.Inspector.detectionReasonNeverChecked.localized
         }
     }
 
@@ -3055,7 +3250,9 @@ private struct InspectorManagerDetailView: View {
             return "exclamationmark.triangle.fill"
         case .inProgress:
             return "clock.badge.exclamationmark"
-        case .failed, .disabled, .notDetected, .notImplemented, .neverChecked:
+        case .notDetected, .neverChecked:
+            return "questionmark.circle"
+        case .failed, .disabled, .notImplemented:
             return "xmark.circle"
         }
     }
@@ -3068,7 +3265,9 @@ private struct InspectorManagerDetailView: View {
             return HelmTheme.stateAttention
         case .inProgress:
             return HelmTheme.stateAttention
-        case .failed, .disabled, .notDetected, .notImplemented, .neverChecked:
+        case .notDetected, .neverChecked:
+            return HelmTheme.textSecondary
+        case .failed, .disabled, .notImplemented:
             return HelmTheme.stateError
         }
     }

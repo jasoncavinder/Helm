@@ -1212,7 +1212,8 @@ extension HelmCore {
                 allowUnknownProvenance: allowUnknownProvenance,
                 homebrewCleanupMode: nil,
                 miseCleanupMode: nil,
-                miseConfigRemoval: nil
+                miseConfigRemoval: nil,
+                removeHelmManagedShellSetup: nil
             ),
             completion: completion
         )
@@ -1357,7 +1358,8 @@ extension HelmCore {
                 allowUnknownProvenance: allowUnknownProvenance,
                 homebrewCleanupMode: nil,
                 miseCleanupMode: nil,
-                miseConfigRemoval: nil
+                miseConfigRemoval: nil,
+                removeHelmManagedShellSetup: nil
             )
         )
     }

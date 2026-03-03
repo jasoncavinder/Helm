@@ -15,7 +15,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     private var eventMonitor: EventMonitor?
     private var controlCenterWindowController: NSWindowController?
     private var statusMenu: NSMenu?
+    private var aboutMenuItem: NSMenuItem?
     private var checkForUpdatesMenuItem: NSMenuItem?
+    private var controlCenterMenuItem: NSMenuItem?
+    private var settingsMenuItem: NSMenuItem?
     private var upgradeAllMenuItem: NSMenuItem?
     private var refreshMenuItem: NSMenuItem?
     private var cancellables: Set<AnyCancellable> = []
@@ -552,6 +555,7 @@ private extension AppDelegate {
         )
         aboutItem.target = self
         menu.addItem(aboutItem)
+        aboutMenuItem = aboutItem
 
         let checkForUpdatesItem = NSMenuItem(
             title: L10n.App.Overlay.About.checkForUpdates.localized,
@@ -569,6 +573,7 @@ private extension AppDelegate {
         )
         controlCenterItem.target = self
         menu.addItem(controlCenterItem)
+        controlCenterMenuItem = controlCenterItem
 
         menu.addItem(.separator())
 
@@ -600,6 +605,7 @@ private extension AppDelegate {
         settingsMenu.addItem(advancedSettingsItem)
         settingsItem.submenu = settingsMenu
         menu.addItem(settingsItem)
+        settingsMenuItem = settingsItem
 
         menu.addItem(buildSupportMenuItem())
 
@@ -653,10 +659,20 @@ private extension AppDelegate {
     }
 
     func updateStatusMenuState() {
-        checkForUpdatesMenuItem?.isEnabled = appUpdate.canCheckForUpdates && !appUpdate.isCheckingForUpdates
-        checkForUpdatesMenuItem?.toolTip = appUpdate.unavailableReasonLocalizationKey?.localized
-        upgradeAllMenuItem?.isEnabled = !core.outdatedPackages.isEmpty
-        refreshMenuItem?.isEnabled = !core.isRefreshing
+        let onboardingComplete = core.hasCompletedOnboarding
+
+        aboutMenuItem?.isEnabled = onboardingComplete
+        controlCenterMenuItem?.isEnabled = onboardingComplete
+        settingsMenuItem?.isEnabled = onboardingComplete
+
+        checkForUpdatesMenuItem?.isEnabled = onboardingComplete
+            && appUpdate.canCheckForUpdates
+            && !appUpdate.isCheckingForUpdates
+        checkForUpdatesMenuItem?.toolTip = onboardingComplete
+            ? appUpdate.unavailableReasonLocalizationKey?.localized
+            : nil
+        upgradeAllMenuItem?.isEnabled = onboardingComplete && !core.outdatedPackages.isEmpty
+        refreshMenuItem?.isEnabled = onboardingComplete && !core.isRefreshing
     }
 
     func showStatusMenu() {

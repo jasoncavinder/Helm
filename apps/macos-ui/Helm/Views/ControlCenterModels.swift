@@ -4,8 +4,8 @@ enum ControlCenterSection: String, CaseIterable, Identifiable {
     case overview
     case updates
     case packages
-    case tasks
     case managers
+    case tasks
     case settings
 
     var id: String { rawValue }

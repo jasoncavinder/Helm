@@ -522,6 +522,7 @@ struct ManagerUninstallActionOptions: Codable {
     let homebrewCleanupMode: ManagerHomebrewUninstallCleanupMode?
     let miseCleanupMode: ManagerMiseUninstallCleanupMode?
     let miseConfigRemoval: ManagerMiseUninstallConfigRemoval?
+    let removeHelmManagedShellSetup: Bool?
 }
 
 struct PackageUninstallPreview: Codable {

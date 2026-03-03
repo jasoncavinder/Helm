@@ -289,6 +289,7 @@ struct ManagerUninstallOptionsPayload {
     homebrew_cleanup_mode: Option<HomebrewUninstallCleanupModePayload>,
     mise_cleanup_mode: Option<MiseUninstallCleanupModePayload>,
     mise_config_removal: Option<MiseUninstallConfigRemovalPayload>,
+    remove_helm_managed_shell_setup: Option<bool>,
 }
 
 fn parse_install_options_payload(
@@ -390,6 +391,7 @@ fn parse_uninstall_options_payload(
             homebrew_cleanup_mode,
             mise_cleanup_mode,
             mise_config_removal,
+            remove_helm_managed_shell_setup: payload.remove_helm_managed_shell_setup,
         },
     ))
 }
@@ -1754,6 +1756,9 @@ const TASK_PRUNE_MAX_AGE_SECS: i64 = 300;
 const TASK_RECENT_FETCH_LIMIT: usize = 1000;
 const TASK_TERMINAL_HISTORY_LIMIT: usize = 50;
 const TASK_INFLIGHT_DEDUP_MAX_AGE_SECS: u64 = 1800;
+const STALE_INFLIGHT_TASK_LOG_CONTEXT_STARTUP: &str = "startup_reconciliation";
+const STALE_INFLIGHT_TASK_LOG_CONTEXT_DEDUPE: &str = "inflight_dedupe_check";
+const STALE_INFLIGHT_TASK_LOG_CONTEXT_TRIGGER_GUARD: &str = "trigger_guard";
 
 fn is_inflight_status(status: TaskStatus) -> bool {
     matches!(status, TaskStatus::Queued | TaskStatus::Running)
@@ -1778,6 +1783,63 @@ fn is_recent_inflight_task(task: &helm_core::models::TaskRecord) -> bool {
         .duration_since(task.created_at)
         .map(|elapsed| elapsed.as_secs() <= TASK_INFLIGHT_DEDUP_MAX_AGE_SECS)
         .unwrap_or(true)
+}
+
+fn runtime_task_is_inflight(
+    runtime: &AdapterRuntime,
+    rt_handle: &tokio::runtime::Handle,
+    task_id: TaskId,
+) -> bool {
+    rt_handle
+        .block_on(runtime.status(task_id))
+        .map(is_inflight_status)
+        .unwrap_or(false)
+}
+
+fn mark_stale_inflight_task_terminal(
+    store: &SqliteStore,
+    task: &helm_core::models::TaskRecord,
+    context: &str,
+) {
+    update_local_task_status(
+        store,
+        task.id,
+        task.manager,
+        task.task_type,
+        TaskStatus::Cancelled,
+        TaskLogLevel::Warn,
+        format!(
+            "task reconciled to terminal state; runtime has no live task entry [{}]",
+            context
+        ),
+    );
+}
+
+fn reconcile_stale_local_inflight_tasks(
+    store: &SqliteStore,
+    runtime: &AdapterRuntime,
+    rt_handle: &tokio::runtime::Handle,
+    context: &str,
+) -> usize {
+    let tasks = match store.list_recent_tasks(TASK_RECENT_FETCH_LIMIT) {
+        Ok(tasks) => tasks,
+        Err(_) => return 0,
+    };
+
+    let mut reconciled = 0usize;
+    for task in tasks {
+        if !is_inflight_status(task.status) {
+            continue;
+        }
+        if runtime_task_is_inflight(runtime, rt_handle, task.id) {
+            continue;
+        }
+
+        mark_stale_inflight_task_terminal(store, &task, context);
+        reconciled = reconciled.saturating_add(1);
+    }
+
+    reconciled
 }
 
 fn task_signature_key(
@@ -1840,6 +1902,8 @@ fn build_visible_tasks(
 
 fn find_matching_inflight_task(
     store: &SqliteStore,
+    runtime: &AdapterRuntime,
+    rt_handle: &tokio::runtime::Handle,
     manager: ManagerId,
     task_type: TaskType,
     label_key: Option<&str>,
@@ -1854,6 +1918,10 @@ fn find_matching_inflight_task(
             || !is_inflight_status(task.status)
             || !is_recent_inflight_task(&task)
         {
+            return None;
+        }
+        if !runtime_task_is_inflight(runtime, rt_handle, task.id) {
+            mark_stale_inflight_task_terminal(store, &task, STALE_INFLIGHT_TASK_LOG_CONTEXT_DEDUPE);
             return None;
         }
 
@@ -2071,7 +2139,10 @@ fn homebrew_installed_formula_set(store: &SqliteStore) -> std::collections::Hash
 
 fn manager_has_setup_required_issue(
     manager: ManagerId,
-    install_instances_by_manager: &std::collections::HashMap<ManagerId, Vec<ManagerInstallInstance>>,
+    install_instances_by_manager: &std::collections::HashMap<
+        ManagerId,
+        Vec<ManagerInstallInstance>,
+    >,
     homebrew_installed_formulas: &std::collections::HashSet<String>,
 ) -> bool {
     manager_package_state_issues(
@@ -2182,20 +2253,36 @@ fn enabled_dependents_for_manager(
 
 fn has_recent_refresh_or_detection(
     store: &SqliteStore,
+    runtime: &AdapterRuntime,
+    rt_handle: &tokio::runtime::Handle,
     enabled_by_manager: &std::collections::HashMap<ManagerId, bool>,
 ) -> bool {
-    store
-        .list_recent_tasks(TASK_RECENT_FETCH_LIMIT)
-        .ok()
-        .map(|tasks| {
-            tasks.into_iter().any(|task| {
-                manager_is_enabled(enabled_by_manager, task.manager)
-                    && is_inflight_status(task.status)
-                    && is_recent_inflight_task(&task)
-                    && matches!(task.task_type, TaskType::Refresh | TaskType::Detection)
-            })
-        })
-        .unwrap_or(false)
+    let tasks = match store.list_recent_tasks(TASK_RECENT_FETCH_LIMIT) {
+        Ok(tasks) => tasks,
+        Err(_) => return false,
+    };
+
+    for task in tasks {
+        if !manager_is_enabled(enabled_by_manager, task.manager)
+            || !is_inflight_status(task.status)
+            || !is_recent_inflight_task(&task)
+            || !matches!(task.task_type, TaskType::Refresh | TaskType::Detection)
+        {
+            continue;
+        }
+
+        if runtime_task_is_inflight(runtime, rt_handle, task.id) {
+            return true;
+        }
+
+        mark_stale_inflight_task_terminal(
+            store,
+            &task,
+            STALE_INFLIGHT_TASK_LOG_CONTEXT_TRIGGER_GUARD,
+        );
+    }
+
+    false
 }
 
 fn preseed_presence_detections(
@@ -2268,6 +2355,8 @@ fn queue_remote_search_task(
 
     if let Some(existing) = find_matching_inflight_task(
         store,
+        runtime,
+        rt_handle,
         manager,
         TaskType::Search,
         Some(label_key),
@@ -4235,6 +4324,18 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
         .map(|pref| (pref.manager, pref))
         .collect();
     sync_manager_executable_overrides(&detection_map, &pref_map);
+    let reconciled_stale_tasks = reconcile_stale_local_inflight_tasks(
+        store.as_ref(),
+        runtime.as_ref(),
+        &rt_handle,
+        STALE_INFLIGHT_TASK_LOG_CONTEXT_STARTUP,
+    );
+    if reconciled_stale_tasks > 0 {
+        eprintln!(
+            "helm_init: reconciled {} stale queued/running task record(s)",
+            reconciled_stale_tasks
+        );
+    }
 
     let coordinator_rt_handle = rt_handle.clone();
 
@@ -4775,8 +4876,12 @@ pub extern "C" fn helm_trigger_refresh() -> bool {
     let store = state.store.clone();
     let enabled_by_manager = manager_enabled_map(store.as_ref());
 
-    let has_refresh_or_detection =
-        has_recent_refresh_or_detection(store.as_ref(), &enabled_by_manager);
+    let has_refresh_or_detection = has_recent_refresh_or_detection(
+        store.as_ref(),
+        runtime.as_ref(),
+        &state.rt_handle,
+        &enabled_by_manager,
+    );
     if has_refresh_or_detection {
         return true;
     }
@@ -4809,8 +4914,12 @@ pub extern "C" fn helm_trigger_detection() -> bool {
     let store = state.store.clone();
     let enabled_by_manager = manager_enabled_map(store.as_ref());
 
-    let has_refresh_or_detection =
-        has_recent_refresh_or_detection(store.as_ref(), &enabled_by_manager);
+    let has_refresh_or_detection = has_recent_refresh_or_detection(
+        store.as_ref(),
+        runtime.as_ref(),
+        &state.rt_handle,
+        &enabled_by_manager,
+    );
     if has_refresh_or_detection {
         return true;
     }
@@ -6436,6 +6545,8 @@ pub unsafe extern "C" fn helm_upgrade_package(
 
     if let Some(existing) = find_matching_inflight_task(
         store.as_ref(),
+        runtime.as_ref(),
+        &rt_handle,
         target_manager,
         TaskType::Upgrade,
         label_key,
@@ -6545,6 +6656,8 @@ pub unsafe extern "C" fn helm_install_package(
 
     if let Some(existing) = find_matching_inflight_task(
         store.as_ref(),
+        runtime.as_ref(),
+        &rt_handle,
         manager,
         TaskType::Install,
         Some(label_key),
@@ -6651,6 +6764,8 @@ pub unsafe extern "C" fn helm_uninstall_package(
 
     if let Some(existing) = find_matching_inflight_task(
         store.as_ref(),
+        runtime.as_ref(),
+        &rt_handle,
         manager,
         TaskType::Uninstall,
         Some(label_key),
@@ -7520,7 +7635,10 @@ pub unsafe extern "C" fn helm_set_manager_timeout_profile(
 }
 
 fn manager_supports_post_install_setup(manager: ManagerId) -> bool {
-    matches!(manager, ManagerId::Rustup | ManagerId::Mise | ManagerId::Asdf)
+    matches!(
+        manager,
+        ManagerId::Rustup | ManagerId::Mise | ManagerId::Asdf
+    )
 }
 
 fn spawn_post_install_setup_task(
@@ -7559,7 +7677,8 @@ fn spawn_post_install_setup_task(
                 TaskLogLevel::Info,
                 format!("waiting for install task {} to complete", install_task_id.0),
             );
-            let install_terminal = rt_handle.block_on(runtime.wait_for_terminal(install_task_id, None));
+            let install_terminal =
+                rt_handle.block_on(runtime.wait_for_terminal(install_task_id, None));
             match install_terminal {
                 Ok(snapshot) => match snapshot.terminal_state {
                     Some(AdapterTaskTerminalState::Succeeded(_)) => {}
@@ -7957,6 +8076,8 @@ pub unsafe extern "C" fn helm_install_manager_with_options(
 
     if let Some(existing) = find_matching_inflight_task(
         store.as_ref(),
+        runtime.as_ref(),
+        &rt_handle,
         target_manager,
         TaskType::Install,
         Some(label_key),
@@ -8115,6 +8236,8 @@ pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
 
     if let Some(existing) = find_matching_inflight_task(
         store.as_ref(),
+        runtime.as_ref(),
+        &rt_handle,
         target_manager,
         TaskType::Upgrade,
         Some(label_key),
@@ -8394,6 +8517,8 @@ unsafe fn helm_uninstall_manager_with_options_internal(
 
     if let Some(existing) = find_matching_inflight_task(
         store.as_ref(),
+        runtime.as_ref(),
+        &rt_handle,
         plan.target_manager,
         TaskType::Uninstall,
         Some(plan.label_key),
@@ -8688,6 +8813,179 @@ mod tests {
             tasks.iter().any(|task| task.id == TaskId(83)),
             "self-heal should not purge queued manager task history when detection reports not installed"
         );
+    }
+
+    #[test]
+    fn stale_inflight_reconciliation_marks_orphaned_tasks_cancelled() {
+        let store = temp_sqlite_store("stale-inflight-reconcile");
+        store
+            .migrate_to_latest()
+            .expect("sqlite migrations should apply");
+
+        let stale_queued = TaskRecord {
+            id: TaskId(201),
+            manager: ManagerId::Rustup,
+            task_type: TaskType::Uninstall,
+            status: TaskStatus::Queued,
+            created_at: SystemTime::now(),
+        };
+        let stale_running = TaskRecord {
+            id: TaskId(202),
+            manager: ManagerId::Mise,
+            task_type: TaskType::Install,
+            status: TaskStatus::Running,
+            created_at: SystemTime::now(),
+        };
+        let completed = TaskRecord {
+            id: TaskId(203),
+            manager: ManagerId::Asdf,
+            task_type: TaskType::Detection,
+            status: TaskStatus::Completed,
+            created_at: SystemTime::now(),
+        };
+
+        store
+            .create_task(&stale_queued)
+            .expect("queued task insert should succeed");
+        store
+            .create_task(&stale_running)
+            .expect("running task insert should succeed");
+        store
+            .create_task(&completed)
+            .expect("completed task insert should succeed");
+
+        let runtime = AdapterRuntime::new(Vec::<Arc<dyn ManagerAdapter>>::new())
+            .expect("empty adapter runtime should initialize");
+        let tokio_runtime =
+            tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
+
+        let reconciled = super::reconcile_stale_local_inflight_tasks(
+            &store,
+            &runtime,
+            tokio_runtime.handle(),
+            "test_reconcile",
+        );
+        assert_eq!(reconciled, 2);
+
+        let refreshed = store
+            .list_recent_tasks(10)
+            .expect("task listing should succeed");
+        let by_id = refreshed
+            .into_iter()
+            .map(|task| (task.id, task))
+            .collect::<HashMap<_, _>>();
+        assert_eq!(
+            by_id.get(&TaskId(201)).map(|task| task.status),
+            Some(TaskStatus::Cancelled)
+        );
+        assert_eq!(
+            by_id.get(&TaskId(202)).map(|task| task.status),
+            Some(TaskStatus::Cancelled)
+        );
+        assert_eq!(
+            by_id.get(&TaskId(203)).map(|task| task.status),
+            Some(TaskStatus::Completed)
+        );
+
+        let logs = store
+            .list_task_logs(TaskId(201), 10)
+            .expect("task logs should load");
+        assert!(
+            logs.iter()
+                .any(|entry| entry.message.contains("test_reconcile")),
+            "reconciled task log should include reconciliation context"
+        );
+
+        let _ = fs::remove_file(store.database_path());
+    }
+
+    #[test]
+    fn find_matching_inflight_task_does_not_reuse_stale_records() {
+        let store = temp_sqlite_store("find-matching-stale-inflight");
+        store
+            .migrate_to_latest()
+            .expect("sqlite migrations should apply");
+
+        store
+            .create_task(&TaskRecord {
+                id: TaskId(301),
+                manager: ManagerId::Rustup,
+                task_type: TaskType::Install,
+                status: TaskStatus::Queued,
+                created_at: SystemTime::now(),
+            })
+            .expect("queued task insert should succeed");
+
+        let runtime = AdapterRuntime::new(Vec::<Arc<dyn ManagerAdapter>>::new())
+            .expect("empty adapter runtime should initialize");
+        let tokio_runtime =
+            tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
+
+        let match_result = super::find_matching_inflight_task(
+            &store,
+            &runtime,
+            tokio_runtime.handle(),
+            ManagerId::Rustup,
+            TaskType::Install,
+            None,
+            &[],
+        );
+        assert!(match_result.is_none());
+
+        let task = store
+            .list_recent_tasks(10)
+            .expect("task listing should succeed")
+            .into_iter()
+            .find(|entry| entry.id == TaskId(301))
+            .expect("task should still exist after reconciliation");
+        assert_eq!(task.status, TaskStatus::Cancelled);
+
+        let _ = fs::remove_file(store.database_path());
+    }
+
+    #[test]
+    fn has_recent_refresh_or_detection_ignores_and_reconciles_stale_records() {
+        let store = temp_sqlite_store("refresh-guard-stale-inflight");
+        store
+            .migrate_to_latest()
+            .expect("sqlite migrations should apply");
+
+        store
+            .create_task(&TaskRecord {
+                id: TaskId(401),
+                manager: ManagerId::HomebrewFormula,
+                task_type: TaskType::Refresh,
+                status: TaskStatus::Queued,
+                created_at: SystemTime::now(),
+            })
+            .expect("queued refresh task insert should succeed");
+
+        let runtime = AdapterRuntime::new(Vec::<Arc<dyn ManagerAdapter>>::new())
+            .expect("empty adapter runtime should initialize");
+        let tokio_runtime =
+            tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
+        let enabled = HashMap::from([(ManagerId::HomebrewFormula, true)]);
+
+        let has_inflight = super::has_recent_refresh_or_detection(
+            &store,
+            &runtime,
+            tokio_runtime.handle(),
+            &enabled,
+        );
+        assert!(
+            !has_inflight,
+            "stale inflight task should not block refresh/detection trigger"
+        );
+
+        let task = store
+            .list_recent_tasks(10)
+            .expect("task listing should succeed")
+            .into_iter()
+            .find(|entry| entry.id == TaskId(401))
+            .expect("task should still exist");
+        assert_eq!(task.status, TaskStatus::Cancelled);
+
+        let _ = fs::remove_file(store.database_path());
     }
 
     #[test]

@@ -820,6 +820,11 @@ impl RunningProcess for TokioRunningProcess {
             let mut hard_timeout_state = HardTimeoutState::new(timeout, task_type, started_instant);
             let mut hard_timeout_prompt_started_at: Option<tokio::time::Instant> = None;
             let mut activity_channel_open = true;
+            let allow_hard_timeout_prompt = task_id.is_some()
+                && matches!(
+                    task_type,
+                    TaskType::Install | TaskType::Uninstall | TaskType::Upgrade
+                );
 
             let status = loop {
                 tokio::select! {
@@ -895,7 +900,9 @@ impl RunningProcess for TokioRunningProcess {
                             .as_millis()
                     );
 
-                    if let Some(task_id) = task_id {
+                    if allow_hard_timeout_prompt
+                        && let Some(task_id) = task_id
+                    {
                         match crate::execution::timeout_prompt_store::take_decision(task_id) {
                             Some(
                                 crate::execution::timeout_prompt_store::TimeoutPromptDecision::Wait,
@@ -911,6 +918,7 @@ impl RunningProcess for TokioRunningProcess {
                                         .effective_timeout(started_instant)
                                         .as_millis()
                                 );
+                                crate::execution::record_task_log_note(message.as_str());
                                 tracing::info!(
                                     manager = ?manager,
                                     task_type = ?task_type,
@@ -934,6 +942,9 @@ impl RunningProcess for TokioRunningProcess {
                             ) => {
                                 hard_timeout_prompt_started_at = None;
                                 crate::execution::timeout_prompt_store::clear_prompt(task_id);
+                                crate::execution::record_task_log_note(
+                                    "[helm] user selected stop after hard-timeout prompt"
+                                );
                                 timeout_state = Some((
                                     "hard_timeout",
                                     format!("{base_timeout_reason}; user selected stop"),
@@ -957,6 +968,7 @@ impl RunningProcess for TokioRunningProcess {
                                         prompt.task_id.0,
                                         prompt.suggested_extension_seconds
                                     );
+                                    crate::execution::record_task_log_note(message.as_str());
                                     tracing::warn!(
                                         manager = ?manager,
                                         task_type = ?task_type,
@@ -982,6 +994,9 @@ impl RunningProcess for TokioRunningProcess {
                                 }
                                 hard_timeout_prompt_started_at = None;
                                 crate::execution::timeout_prompt_store::clear_prompt(task_id);
+                                crate::execution::record_task_log_note(
+                                    "[helm] hard-timeout prompt expired without user response"
+                                );
                                 timeout_state = Some((
                                     "hard_timeout",
                                     format!(
@@ -992,6 +1007,7 @@ impl RunningProcess for TokioRunningProcess {
                             }
                         }
                     } else {
+                        crate::execution::record_task_log_note(base_timeout_reason.as_str());
                         timeout_state = Some(("hard_timeout", base_timeout_reason));
                     }
                 }
@@ -1012,6 +1028,9 @@ impl RunningProcess for TokioRunningProcess {
                 });
 
                 if let Some((timeout_code, timeout_reason)) = timeout_state {
+                    crate::execution::record_task_log_note(
+                        format!("[helm] timeout event ({timeout_code}): {timeout_reason}").as_str(),
+                    );
                     if let Some(pid) = pid {
                         let pgid = -(pid as libc::pid_t);
                         unsafe {

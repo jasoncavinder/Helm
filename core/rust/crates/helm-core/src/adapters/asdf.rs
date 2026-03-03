@@ -31,12 +31,12 @@ const ASDF_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
 
 const ASDF_COMMAND: &str = "asdf";
 const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
-const LIST_TIMEOUT: Duration = Duration::from_secs(120);
-const SEARCH_TIMEOUT: Duration = Duration::from_secs(60);
-const MUTATION_TIMEOUT: Duration = Duration::from_secs(600);
-const INSTALL_TIMEOUT: Duration = Duration::from_secs(20 * 60);
-const INSTALL_IDLE_TIMEOUT: Duration = Duration::from_secs(180);
-const MANAGER_UPDATE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+const LIST_TIMEOUT: Duration = Duration::from_secs(180);
+const SEARCH_TIMEOUT: Duration = Duration::from_secs(90);
+const MUTATION_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+const INSTALL_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+const INSTALL_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
+const MANAGER_UPDATE_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AsdfDetectOutput {
@@ -172,8 +172,36 @@ impl<S: AsdfSource> ManagerAdapter for AsdfAdapter<S> {
                 }))
             }
             AdapterRequest::Uninstall(uninstall_request) => {
-                if uninstall_request.package.name == "__self__" {
+                let (uninstall_target, remove_shell_setup) =
+                    parse_self_uninstall_target(uninstall_request.package.name.as_str())?;
+                if uninstall_target == "__self__" {
                     let _ = self.source.self_uninstall()?;
+                    if remove_shell_setup {
+                        match crate::post_install_setup::remove_helm_managed_post_install_setup(
+                            ManagerId::Asdf,
+                        ) {
+                            Ok(result) => {
+                                crate::execution::record_task_log_note(result.summary().as_str());
+                                if !result.malformed_files.is_empty() {
+                                    crate::execution::record_task_log_note(
+                                        format!(
+                                            "helm-managed asdf setup markers were malformed in {} shell startup file(s); left unchanged",
+                                            result.malformed_files.len()
+                                        )
+                                        .as_str(),
+                                    );
+                                }
+                            }
+                            Err(error) => {
+                                crate::execution::record_task_log_note(
+                                    format!(
+                                        "failed to remove Helm-managed asdf shell setup block(s): {error}"
+                                    )
+                                    .as_str(),
+                                );
+                            }
+                        }
+                    }
                     return Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                         package: uninstall_request.package,
                         action: ManagerAction::Uninstall,
@@ -424,6 +452,14 @@ fn parse_install_source(version: Option<&str>) -> AdapterResult<AsdfInstallSourc
         kind: CoreErrorKind::InvalidInput,
         message: format!("unsupported asdf install source: {version}"),
     })
+}
+
+fn parse_self_uninstall_target(raw: &str) -> AdapterResult<(&str, bool)> {
+    let (base, remove_shell_setup) = crate::manager_lifecycle::strip_shell_setup_cleanup_suffix(raw);
+    if base == "__self__" {
+        return Ok((base, remove_shell_setup));
+    }
+    Ok((raw, false))
 }
 
 fn parse_asdf_version(output: &str) -> Option<String> {
@@ -684,7 +720,8 @@ mod tests {
     #[test]
     fn parses_asdf_manager_install_source() {
         assert_eq!(
-            parse_install_source(Some("scriptInstaller:officialDownload")).expect("source should parse"),
+            parse_install_source(Some("scriptInstaller:officialDownload"))
+                .expect("source should parse"),
             AsdfInstallSource::OfficialDownload
         );
         assert_eq!(

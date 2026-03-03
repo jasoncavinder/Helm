@@ -38,8 +38,8 @@ const HOMEBREW_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
 const HOMEBREW_COMMAND: &str = "brew";
 const HOMEBREW_CLEANUP_MARKER: &str = "@@helm.cleanup";
 const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
-const LIST_TIMEOUT: Duration = Duration::from_secs(60);
-const SEARCH_TIMEOUT: Duration = Duration::from_secs(30);
+const LIST_TIMEOUT: Duration = Duration::from_secs(120);
+const SEARCH_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HomebrewDetectOutput {
@@ -48,7 +48,7 @@ pub struct HomebrewDetectOutput {
 }
 
 const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(4 * 60 * 60);
-const LIFECYCLE_IDLE_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+const LIFECYCLE_IDLE_TIMEOUT: Duration = Duration::from_secs(45 * 60);
 const PIN_TIMEOUT: Duration = Duration::from_secs(300);
 
 pub trait HomebrewSource: Send + Sync {
@@ -150,12 +150,42 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                 {
                     return Err(error.clone());
                 }
-                if let Some(spec) = parsed_uninstall
+                if let Some(spec) = parsed_uninstall.as_ref()
                     && matches!(spec.cleanup_mode, HomebrewUninstallCleanupMode::FullCleanup)
                 {
                     let cleanup_output = perform_manager_full_cleanup(spec.requested_manager)?;
                     if !cleanup_output.trim().is_empty() {
                         crate::execution::record_task_log_note(cleanup_output.as_str());
+                    }
+                }
+                if let Some(spec) = parsed_uninstall.as_ref()
+                    && spec.remove_helm_managed_shell_setup
+                {
+                    match crate::post_install_setup::remove_helm_managed_post_install_setup(
+                        spec.requested_manager,
+                    ) {
+                        Ok(result) => {
+                            crate::execution::record_task_log_note(result.summary().as_str());
+                            if !result.malformed_files.is_empty() {
+                                crate::execution::record_task_log_note(
+                                    format!(
+                                        "helm-managed {} setup markers were malformed in {} shell startup file(s); left unchanged",
+                                        spec.requested_manager.as_str(),
+                                        result.malformed_files.len()
+                                    )
+                                    .as_str(),
+                                );
+                            }
+                        }
+                        Err(error) => {
+                            crate::execution::record_task_log_note(
+                                format!(
+                                    "failed to remove Helm-managed {} shell setup block(s): {error}",
+                                    spec.requested_manager.as_str()
+                                )
+                                .as_str(),
+                            );
+                        }
                     }
                 }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {

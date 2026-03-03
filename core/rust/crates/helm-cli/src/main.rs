@@ -7039,18 +7039,21 @@ fn cmd_doctor_repair(
                     let manager_instances = store_handle
                         .list_install_instances(Some(manager))
                         .map_err(|error| {
-                            format!("failed to list manager install instances for repair apply: {error}")
+                            format!(
+                                "failed to list manager install instances for repair apply: {error}"
+                            )
                         })?;
-                    let automation_result = helm_core::post_install_setup::apply_recommended_post_install_setup(
-                        manager,
-                        Some(manager_instances.as_slice()),
-                    )
-                    .map_err(|error| {
-                        format!(
-                            "failed to apply recommended post-install setup for '{}': {error}",
-                            manager.as_str()
+                    let automation_result =
+                        helm_core::post_install_setup::apply_recommended_post_install_setup(
+                            manager,
+                            Some(manager_instances.as_slice()),
                         )
-                    })?;
+                        .map_err(|error| {
+                            format!(
+                                "failed to apply recommended post-install setup for '{}': {error}",
+                                manager.as_str()
+                            )
+                        })?;
                     if options.json {
                         emit_json_payload(
                             "helm.cli.v1.doctor.repair.apply_post_install_setup",
@@ -7069,11 +7072,7 @@ fn cmd_doctor_repair(
                             automation_result.rc_file.display()
                         );
                     }
-                    cmd_managers_detect(
-                        store_handle,
-                        options,
-                        &[manager.as_str().to_string()],
-                    )
+                    cmd_managers_detect(store_handle, options, &[manager.as_str().to_string()])
                 }
             }
         }
@@ -12182,6 +12181,7 @@ fn parse_manager_mutation_args(
             homebrew_cleanup_mode,
             mise_cleanup_mode,
             mise_config_removal,
+            remove_helm_managed_shell_setup: None,
         }
     } else if uninstall_command {
         helm_core::manager_lifecycle::ManagerUninstallOptions {

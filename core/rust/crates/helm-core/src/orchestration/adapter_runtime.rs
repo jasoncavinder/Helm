@@ -16,7 +16,6 @@ use crate::models::{
     Capability, CoreError, CoreErrorKind, DetectionInfo, ManagerAction, ManagerId,
     NewTaskLogRecord, TaskId, TaskLogLevel, TaskRecord, TaskStatus, TaskType,
 };
-use crate::post_install_setup::evaluate_manager_post_install_setup;
 use crate::orchestration::{
     AdapterExecutionRuntime, AdapterTaskSnapshot, AdapterTaskTerminalState, CancellationMode,
     OrchestrationResult,
@@ -24,6 +23,7 @@ use crate::orchestration::{
 use crate::persistence::{
     DetectionStore, ManagerPreference, PackageStore, SearchCacheStore, TaskStore,
 };
+use crate::post_install_setup::evaluate_manager_post_install_setup;
 
 const TASK_PERSIST_RETRY_ATTEMPTS: usize = 3;
 const TASK_PERSIST_RETRY_DELAY_MS: u64 = 15;
@@ -615,7 +615,8 @@ impl AdapterRuntime {
         let action = request.action();
         let task_type = task_type_for_action(action);
 
-        if !self.manager_is_enabled_from_snapshot(manager, enablement_snapshot) {
+        let allow_when_disabled = action == ManagerAction::Uninstall;
+        if !allow_when_disabled && !self.manager_is_enabled_from_snapshot(manager, enablement_snapshot) {
             return Err(CoreError {
                 manager: Some(manager),
                 task: Some(task_type),

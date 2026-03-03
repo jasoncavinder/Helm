@@ -2,6 +2,13 @@ use crate::models::{ManagerId, ManagerInstallInstance};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+const RUSTUP_SETUP_START_MARKER: &str = "# >>> Helm managed rustup setup >>>";
+const RUSTUP_SETUP_END_MARKER: &str = "# <<< Helm managed rustup setup <<<";
+const MISE_SETUP_START_MARKER: &str = "# >>> Helm managed mise setup >>>";
+const MISE_SETUP_END_MARKER: &str = "# <<< Helm managed mise setup <<<";
+const ASDF_SETUP_START_MARKER: &str = "# >>> Helm managed asdf setup >>>";
+const ASDF_SETUP_END_MARKER: &str = "# <<< Helm managed asdf setup <<<";
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PostInstallRequirementStatus {
     pub requirement_id: &'static str,
@@ -37,6 +44,32 @@ pub struct PostInstallAutomationResult {
     pub rc_file: PathBuf,
     pub changed: bool,
     pub summary: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PostInstallSetupTeardownResult {
+    pub manager: ManagerId,
+    pub scanned_files: usize,
+    pub modified_files: usize,
+    pub removed_blocks: usize,
+    pub malformed_files: Vec<PathBuf>,
+}
+
+impl PostInstallSetupTeardownResult {
+    pub fn summary(&self) -> String {
+        if self.removed_blocks == 0 {
+            return format!(
+                "no Helm-managed {} shell setup blocks were found",
+                self.manager.as_str()
+            );
+        }
+        format!(
+            "removed {} Helm-managed {} shell setup block(s) from {} shell startup file(s)",
+            self.removed_blocks,
+            self.manager.as_str(),
+            self.modified_files
+        )
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -152,6 +185,59 @@ fn asdf_requirement_status(ctx: &ShellSetupContext) -> PostInstallRequirementSta
         met,
         detail: "shell startup config includes asdf shims PATH entry",
     }
+}
+
+fn setup_markers_for_manager(manager: ManagerId) -> Option<(&'static str, &'static str)> {
+    match manager {
+        ManagerId::Rustup => Some((RUSTUP_SETUP_START_MARKER, RUSTUP_SETUP_END_MARKER)),
+        ManagerId::Mise => Some((MISE_SETUP_START_MARKER, MISE_SETUP_END_MARKER)),
+        ManagerId::Asdf => Some((ASDF_SETUP_START_MARKER, ASDF_SETUP_END_MARKER)),
+        _ => None,
+    }
+}
+
+fn strip_marked_setup_blocks(
+    content: &str,
+    start_marker: &str,
+    end_marker: &str,
+) -> Result<(String, usize), String> {
+    let mut remaining = content;
+    let mut rebuilt = String::new();
+    let mut removed_blocks = 0usize;
+
+    loop {
+        let Some(start_idx) = remaining.find(start_marker) else {
+            if remaining.contains(end_marker) {
+                return Err("found end marker without matching start marker".to_string());
+            }
+            rebuilt.push_str(remaining);
+            break;
+        };
+
+        rebuilt.push_str(&remaining[..start_idx]);
+        let after_start = &remaining[(start_idx + start_marker.len())..];
+        let Some(end_rel_idx) = after_start.find(end_marker) else {
+            return Err("found start marker without matching end marker".to_string());
+        };
+
+        let after_end = &after_start[(end_rel_idx + end_marker.len())..];
+        let after_block = if let Some(rest) = after_end.strip_prefix("\r\n") {
+            rest
+        } else if let Some(rest) = after_end.strip_prefix('\n') {
+            rest
+        } else {
+            after_end
+        };
+
+        remaining = after_block;
+        removed_blocks += 1;
+    }
+
+    while rebuilt.contains("\n\n\n") {
+        rebuilt = rebuilt.replace("\n\n\n", "\n\n");
+    }
+
+    Ok((rebuilt, removed_blocks))
 }
 
 fn setup_block_for_manager(manager: ManagerId, shell_name: &str) -> Option<String> {
@@ -296,11 +382,62 @@ pub fn apply_recommended_post_install_setup(
     apply_recommended_post_install_setup_with_context(manager, manager_install_instances, &ctx)
 }
 
+pub fn remove_helm_managed_post_install_setup(
+    manager: ManagerId,
+) -> Result<PostInstallSetupTeardownResult, String> {
+    let ctx = ShellSetupContext::from_environment().ok_or_else(|| {
+        format!(
+            "HOME/SHELL environment is unavailable; cannot remove {} post-install setup",
+            manager.as_str()
+        )
+    })?;
+    let (start_marker, end_marker) = setup_markers_for_manager(manager).ok_or_else(|| {
+        format!(
+            "manager '{}' does not expose Helm-managed shell setup teardown",
+            manager.as_str()
+        )
+    })?;
+
+    let mut scanned_files = 0usize;
+    let mut modified_files = 0usize;
+    let mut removed_blocks = 0usize;
+    let mut malformed_files = Vec::new();
+
+    for rc_file in &ctx.rc_files {
+        let Ok(content) = fs::read_to_string(rc_file) else {
+            continue;
+        };
+        scanned_files += 1;
+
+        match strip_marked_setup_blocks(content.as_str(), start_marker, end_marker) {
+            Ok((updated, removed)) => {
+                if removed == 0 {
+                    continue;
+                }
+                fs::write(rc_file, updated).map_err(|error| {
+                    format!("failed to write shell config '{}': {error}", rc_file.display())
+                })?;
+                modified_files += 1;
+                removed_blocks += removed;
+            }
+            Err(_) => malformed_files.push(rc_file.clone()),
+        }
+    }
+
+    Ok(PostInstallSetupTeardownResult {
+        manager,
+        scanned_files,
+        modified_files,
+        removed_blocks,
+        malformed_files,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         ShellSetupContext, apply_recommended_post_install_setup_with_context,
-        rc_candidates_for_shell, report_for_manager,
+        rc_candidates_for_shell, report_for_manager, strip_marked_setup_blocks,
     };
     use crate::models::{
         AutomationLevel, InstallInstanceIdentityKind, InstallProvenance, ManagerId,
@@ -357,12 +494,8 @@ mod tests {
         let home = temp_root("rustup-missing");
         let ctx = context_with_shell(home.as_path(), "zsh");
         let instances = vec![sample_instance(ManagerId::Rustup)];
-        let report = report_for_manager(
-            ManagerId::Rustup,
-            Some(instances.as_slice()),
-            &ctx,
-        )
-        .expect("report should be present");
+        let report = report_for_manager(ManagerId::Rustup, Some(instances.as_slice()), &ctx)
+            .expect("report should be present");
         assert!(report.has_unmet_required());
         assert_eq!(report.unmet_count(), 1);
     }
@@ -378,12 +511,8 @@ mod tests {
         .expect("zshrc should be writable");
         let ctx = context_with_shell(home.as_path(), "zsh");
         let instances = vec![sample_instance(ManagerId::Asdf)];
-        let report = report_for_manager(
-            ManagerId::Asdf,
-            Some(instances.as_slice()),
-            &ctx,
-        )
-        .expect("report should be present");
+        let report = report_for_manager(ManagerId::Asdf, Some(instances.as_slice()), &ctx)
+            .expect("report should be present");
         assert!(!report.has_unmet_required());
     }
 
@@ -395,12 +524,8 @@ mod tests {
             .expect("zshrc should be writable");
         let ctx = context_with_shell(home.as_path(), "zsh");
         let instances = vec![sample_instance(ManagerId::Mise)];
-        let report = report_for_manager(
-            ManagerId::Mise,
-            Some(instances.as_slice()),
-            &ctx,
-        )
-        .expect("report should be present");
+        let report = report_for_manager(ManagerId::Mise, Some(instances.as_slice()), &ctx)
+            .expect("report should be present");
         assert!(!report.has_unmet_required());
     }
 
@@ -409,9 +534,7 @@ mod tests {
         let home = temp_root("unsupported");
         let ctx = context_with_shell(home.as_path(), "zsh");
         let instances = vec![sample_instance(ManagerId::Npm)];
-        assert!(
-            report_for_manager(ManagerId::Npm, Some(instances.as_slice()), &ctx).is_none()
-        );
+        assert!(report_for_manager(ManagerId::Npm, Some(instances.as_slice()), &ctx).is_none());
     }
 
     #[test]
@@ -436,5 +559,39 @@ mod tests {
         )
         .expect("second setup should succeed");
         assert!(!second.changed);
+    }
+
+    #[test]
+    fn strip_marked_setup_blocks_removes_bounded_content() {
+        let input = r#"# before
+# >>> Helm managed asdf setup >>>
+export PATH="${ASDF_DATA_DIR:-$HOME/.asdf}/shims:$PATH"
+# <<< Helm managed asdf setup <<<
+# after
+"#;
+        let (updated, removed) = strip_marked_setup_blocks(
+            input,
+            super::ASDF_SETUP_START_MARKER,
+            super::ASDF_SETUP_END_MARKER,
+        )
+        .expect("strip should succeed");
+        assert_eq!(removed, 1);
+        assert!(!updated.contains("Helm managed asdf setup"));
+        assert!(updated.contains("# before"));
+        assert!(updated.contains("# after"));
+    }
+
+    #[test]
+    fn strip_marked_setup_blocks_rejects_unbalanced_markers() {
+        let input = r#"# >>> Helm managed rustup setup >>>
+source "$HOME/.cargo/env"
+"#;
+        let error = strip_marked_setup_blocks(
+            input,
+            super::RUSTUP_SETUP_START_MARKER,
+            super::RUSTUP_SETUP_END_MARKER,
+        )
+        .expect_err("unbalanced block should fail");
+        assert!(error.contains("start marker"));
     }
 }

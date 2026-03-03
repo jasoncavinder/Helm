@@ -1,6 +1,7 @@
 use crate::adapters::AdapterRequest;
 use crate::manager_lifecycle::{
     HomebrewUninstallCleanupMode, parse_homebrew_manager_uninstall_package_name,
+    strip_shell_setup_cleanup_suffix,
 };
 use crate::models::{
     AutomationLevel, InstallProvenance, ManagerId, ManagerInstallInstance, ManagerUninstallPreview,
@@ -64,6 +65,10 @@ pub fn build_manager_uninstall_preview(
     let mut seen_directories = HashSet::new();
     let homebrew_uninstall_spec = uninstall_request_package_name(context.request)
         .and_then(parse_homebrew_manager_uninstall_package_name);
+    let self_request_shell_cleanup_requested = uninstall_request_package_name(context.request)
+        .map(strip_shell_setup_cleanup_suffix)
+        .map(|(_, remove)| remove)
+        .unwrap_or(false);
 
     if context.target_manager == ManagerId::Rustup || context.strategy == StrategyKind::RustupSelf {
         append_rustup_uninstall_impact(
@@ -74,6 +79,7 @@ pub fn build_manager_uninstall_preview(
             &mut seen_files,
             &mut seen_directories,
             context.active_instance,
+            self_request_shell_cleanup_requested,
         );
     } else if context.target_manager == ManagerId::Mise {
         append_mise_uninstall_impact(
@@ -84,8 +90,11 @@ pub fn build_manager_uninstall_preview(
             &mut seen_directories,
             context.active_instance,
             uninstall_request_package_name(context.request),
+            self_request_shell_cleanup_requested,
         );
-    } else if context.target_manager == ManagerId::Asdf || context.strategy == StrategyKind::AsdfSelf {
+    } else if context.target_manager == ManagerId::Asdf
+        || context.strategy == StrategyKind::AsdfSelf
+    {
         append_asdf_uninstall_impact(
             &mut files_removed,
             &mut directories_removed,
@@ -93,6 +102,7 @@ pub fn build_manager_uninstall_preview(
             &mut seen_files,
             &mut seen_directories,
             context.active_instance,
+            self_request_shell_cleanup_requested,
         );
     } else if context.target_manager == ManagerId::HomebrewFormula {
         let formula_name = homebrew_uninstall_spec
@@ -133,6 +143,16 @@ pub fn build_manager_uninstall_preview(
                 &mut seen_files,
                 &mut seen_directories,
                 spec.requested_manager,
+            );
+        }
+        if let Some(spec) = homebrew_uninstall_spec.as_ref()
+            && spec.remove_helm_managed_shell_setup
+        {
+            append_shell_setup_cleanup_impact(
+                spec.requested_manager,
+                &mut files_removed,
+                &mut secondary_effects,
+                &mut seen_files,
             );
         }
     } else if context.target_manager == ManagerId::MacPorts {
@@ -336,6 +356,7 @@ fn append_asdf_uninstall_impact(
     seen_files: &mut HashSet<String>,
     seen_directories: &mut HashSet<String>,
     active_instance: Option<&ManagerInstallInstance>,
+    remove_shell_setup: bool,
 ) {
     if let Some(instance) = active_instance {
         push_impact_path(files_removed, seen_files, instance.display_path.clone());
@@ -357,9 +378,17 @@ fn append_asdf_uninstall_impact(
     secondary_effects.push(
         "asdf-managed plugins and tool versions under .asdf may also be removed.".to_string(),
     );
-    secondary_effects.push(
-        "Shell profile initialization lines are not automatically removed.".to_string(),
-    );
+    if remove_shell_setup {
+        append_shell_setup_cleanup_impact(
+            ManagerId::Asdf,
+            files_removed,
+            secondary_effects,
+            seen_files,
+        );
+    } else {
+        secondary_effects
+            .push("Shell profile initialization lines are not automatically removed.".to_string());
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -369,12 +398,15 @@ enum MiseUninstallPreviewMode {
     FullCleanupRemoveConfig,
 }
 
-fn parse_mise_uninstall_preview_mode(package_name: Option<&str>) -> MiseUninstallPreviewMode {
-    match package_name.unwrap_or("__self__").trim() {
+fn parse_mise_uninstall_preview_mode(package_name: Option<&str>) -> (MiseUninstallPreviewMode, bool) {
+    let (base, remove_shell_setup) =
+        strip_shell_setup_cleanup_suffix(package_name.unwrap_or("__self__"));
+    let mode = match base.trim() {
         "__self__:fullCleanup:keepConfig" => MiseUninstallPreviewMode::FullCleanupKeepConfig,
         "__self__:fullCleanup:removeConfig" => MiseUninstallPreviewMode::FullCleanupRemoveConfig,
         _ => MiseUninstallPreviewMode::ManagerOnlyKeepConfig,
-    }
+    };
+    (mode, remove_shell_setup)
 }
 
 fn append_mise_uninstall_impact(
@@ -385,6 +417,7 @@ fn append_mise_uninstall_impact(
     seen_directories: &mut HashSet<String>,
     active_instance: Option<&ManagerInstallInstance>,
     package_name: Option<&str>,
+    remove_shell_setup: bool,
 ) {
     if let Some(instance) = active_instance {
         push_impact_path(files_removed, seen_files, instance.display_path.clone());
@@ -400,7 +433,7 @@ fn append_mise_uninstall_impact(
     let mise_cache_dir = home.join(".cache/mise");
     let mise_config_dir = home.join(".config/mise");
 
-    match parse_mise_uninstall_preview_mode(package_name) {
+    match parse_mise_uninstall_preview_mode(package_name).0 {
         MiseUninstallPreviewMode::ManagerOnlyKeepConfig => {
             secondary_effects.push(
                 "Manager-only uninstall keeps mise tool installs, cache, and config.".to_string(),
@@ -446,6 +479,14 @@ fn append_mise_uninstall_impact(
             ));
         }
     }
+    if remove_shell_setup {
+        append_shell_setup_cleanup_impact(
+            ManagerId::Mise,
+            files_removed,
+            secondary_effects,
+            seen_files,
+        );
+    }
 }
 
 fn append_rustup_uninstall_impact(
@@ -456,6 +497,7 @@ fn append_rustup_uninstall_impact(
     seen_files: &mut HashSet<String>,
     seen_directories: &mut HashSet<String>,
     active_instance: Option<&ManagerInstallInstance>,
+    remove_shell_setup: bool,
 ) {
     if let Some(instance) = active_instance {
         push_impact_path(files_removed, seen_files, instance.display_path.clone());
@@ -514,6 +556,38 @@ fn append_rustup_uninstall_impact(
     secondary_effects.push(format!(
         "Cargo proxy binaries under '{}' may be removed or relinked.",
         cargo_bin.display()
+    ));
+    if remove_shell_setup {
+        append_shell_setup_cleanup_impact(
+            ManagerId::Rustup,
+            files_removed,
+            secondary_effects,
+            seen_files,
+        );
+    }
+}
+
+fn append_shell_setup_cleanup_impact(
+    manager: ManagerId,
+    files_removed: &mut Vec<UninstallImpactPath>,
+    secondary_effects: &mut Vec<String>,
+    seen_files: &mut HashSet<String>,
+) {
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        for path in [
+            home.join(".zshrc"),
+            home.join(".zprofile"),
+            home.join(".bashrc"),
+            home.join(".bash_profile"),
+            home.join(".profile"),
+            home.join(".config/fish/config.fish"),
+        ] {
+            push_impact_path(files_removed, seen_files, path);
+        }
+    }
+    secondary_effects.push(format!(
+        "Helm-managed {} setup blocks in shell startup files will be removed when bounded markers are present.",
+        manager.as_str()
     ));
 }
 

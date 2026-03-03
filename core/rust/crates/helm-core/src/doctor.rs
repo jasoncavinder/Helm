@@ -139,7 +139,10 @@ pub fn scan_manager_package_state_issues(
         if input
             .homebrew_installed_formulas
             .contains(&normalized_formula)
-            && !manager_has_homebrew_instance_for_formula(input.manager_install_instances, formula_name)
+            && !manager_has_homebrew_instance_for_formula(
+                input.manager_install_instances,
+                formula_name,
+            )
         {
             findings.push(DoctorFinding {
                 finding_code: FINDING_CODE_HOMEBREW_METADATA_ONLY_INSTALL.to_string(),

@@ -472,6 +472,7 @@
   "app.managers.uninstall.config.required": "Choose config handling",
   "app.managers.uninstall.config.keep": "Keep config files",
   "app.managers.uninstall.config.remove": "Remove config files",
+  "app.managers.uninstall.remove_helm_managed_shell_setup": "Remove Helm-managed shell setup",
   "app.managers.alert.disable_blocked.title": "Cannot Disable {manager}",
   "app.managers.alert.disable_blocked.message": "{manager} cannot be disabled because these enabled managers currently depend on it: {dependents}.",
   "app.managers.alert.enable_requires_parent.title": "Enable {manager}?",
