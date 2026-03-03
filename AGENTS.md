@@ -329,6 +329,8 @@ Use prefixes:
 ### Before opening a PR
 - Ensure relevant tests pass (e.g., `cargo test`).
 - Keep PRs focused; split unrelated changes.
+- For `gh pr create` and `gh pr edit`, provide the body via `--body-file <path>` (or `-F <path>`).
+- Do not pass PR markdown with escaped newline sequences (for example, `\\n`) in a single quoted `--body` string.
 
 ### Branch Targeting Rules
 
