@@ -62,6 +62,14 @@ venv/
 
 # Local scratch outputs (ad-hoc test binaries, logs, release staging).
 /artifacts/
+/dev/logs/codex-runs.ndjson
+
+# Codex runtime state (machine/session specific). Keep only repo-scoped
+# configuration + reusable command templates under version control.
+/.codex/*
+!/.codex/config.toml
+!/.codex/commands/
+!/.codex/commands/**
 
 # Root-level temporary notes used during release/debug sessions.
 /TMP_*
