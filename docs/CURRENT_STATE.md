@@ -8,17 +8,18 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.17.7 stable publication complete** with post-release hardening follow-ups merged on `dev`.
+Current documentation baseline: **0.17.8 stable publication complete** with post-release hardening follow-ups merged on `dev`.
 
-Implementation baseline: **0.17.7 stable + post-release hardening follow-ups** with diagnostics/logging delivery, TUI + bundled-CLI parity closure, manager-selection/enablement and onboarding/detection hardening, release-process hardening phases 1-5, and post-`v0.17.5` refresh reliability/diagnostics hardening.
+Implementation baseline: **0.17.8 stable + post-release hardening follow-ups** with diagnostics/logging delivery, TUI + bundled-CLI parity closure, manager-selection/enablement and onboarding/detection hardening, release-process hardening phases 1-5, and post-`v0.17.5` refresh reliability/diagnostics hardening.
 
 See:
 - CHANGELOG.md
 
 Active milestone:
-- latest stable release currently published on `main`: **0.17.7** (pre-1.0 quality-audit remediation + release-gate hardening publication)
+- latest stable release currently published on `main`: **0.17.8** (pre-1.0 quality-audit remediation + release-gate hardening publication)
 - next integration target after stable publication: **0.18.x** (local security groundwork planning + delivery setup)
-- stable publication cut completed for `v0.17.7`:
+- repository operations follow-up on `dev`: repository-local Codex operating model refined for lean context (`project_doc_max_bytes=131072`), policy-only root `AGENTS.md`, workflow Skills under `skills/`, slash-command templates under `.codex/commands/`, and structured local notify logging to `dev/logs/codex-runs.ndjson`.
+- stable publication cut completed for `v0.17.8`:
   - release artifacts, publish-metadata PRs, and post-publish verification checks are complete on `main`.
   - release workflows continue to report fallback publish PR outcomes as follow-up-required (non-red) when publication PR merges are still pending.
 - 0.17.x — Diagnostics & Logging (**stable released on `main`**, RC lineage `v0.17.0-rc.1` through `v0.17.0-rc.5`)
@@ -92,7 +93,7 @@ Active milestone:
   - delivered: manager lifecycle parity sweep follow-up (on `dev`): install planning now supports additional non-system managers through deterministic Homebrew routes (`npm`, `pnpm`, `yarn`, `pip`, `pipx`, `poetry`, `rubygems`, `bundler`, `cargo`, `cargo-binstall`, `podman`, `colima`); install-method surfaces in core/CLI/FFI now expose only planner-supported methods (policy-filtered per environment), and GUI manager capability gating now marks these managers automatable so install/update/uninstall controls stay aligned with executable lifecycle paths.
   - delivered: pre-`v0.17.7` release-gate closure follow-up (on `dev`): runtime queue terminal waits now avoid missed-notify timeout races and emit periodic heartbeat diagnostics while waiting; graceful cancellation now re-checks terminal state before forced abort; request/response orchestration now logs start timestamp, effective timeout (`min(policy_timeout, orchestration_cap)`), retry attempts, terminal status, and cancellation path; Homebrew adapter `clippy::collapsible_if` warnings were removed; process-timeout coverage now verifies timeout termination does not leave child process-group orphans; and rustup orchestration reliability was re-validated with repeated stress runs.
   - delivered: GitHub governance hardening follow-up (on `dev`): per-branch rulesets are now explicit for `main`/`dev`/`docs`/`web` with branch-specific required checks; new `Policy Gate` + `Docs Checks` + `Web Build` workflows enforce branch targeting/scope policy; repository merge settings keep auto-merge/update-branch enabled while delete-branch-on-merge stays off to protect primary branches; blocking ruleset `update` enforcement was removed after protected-ref merge-block diagnostics; CodeQL is now main-focused (push/schedule/manual) to avoid PR gate friction.
-  - `v0.17.7` stable release execution status: complete (validation green + stable tag + GitHub release published)
+  - `v0.17.8` stable release execution status: complete (validation green + stable tag + GitHub release published)
 
 Security rollout staging status:
 - Stage 0 (`<=0.16.x`): planning/docs only (active in `0.16.1`)
@@ -975,4 +976,4 @@ Helm is a **functional control plane for 28 implemented managers** with:
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-0.13.x through 0.17.7 stable checkpoints are complete on `main`; `v0.17.0-rc.1` through `v0.17.0-rc.5` served as the completed RC validation path into stable `0.17.0`, followed by stable patch releases `v0.17.1`, `v0.17.2`, `v0.17.3`, `v0.17.4`, `v0.17.5`, `v0.17.6`, and `v0.17.7`.
+0.13.x through 0.17.8 stable checkpoints are complete on `main`; `v0.17.0-rc.1` through `v0.17.0-rc.5` served as the completed RC validation path into stable `0.17.0`, followed by stable patch releases `v0.17.1`, `v0.17.2`, `v0.17.3`, `v0.17.4`, `v0.17.5`, `v0.17.6`, `v0.17.7`, and `v0.17.8`.

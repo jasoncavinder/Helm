@@ -11,11 +11,11 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-0.18.x doctor/repair foundation execution (post-v0.17.7 stable)
+0.18.x doctor/repair foundation execution (post-v0.17.8 stable)
 ```
 
 Focus:
-- keep `main`/`dev`/`docs`/`web` publication docs and version markers aligned for `v0.17.7`
+- keep `main`/`dev`/`docs`/`web` publication docs and version markers aligned for `v0.17.8`
 - maintain release-process hardening guardrails now that phases 1-5 are complete (preflight, publish verification, drift prevention)
 - execute doctor/repair subsystem foundation in core + FFI + service surfaces
 - ship first repair path for Homebrew metadata-only manager installs via the new repair subsystem
@@ -23,10 +23,11 @@ Focus:
 - sequence `0.18.x` local security groundwork after doctor/repair foundation slice
 - keep launch-at-login scoped to GUI only (no CLI/TUI parity target)
 - track post-mise lifecycle follow-ups: plugin-as-package modeling evaluation and managed-environment install-source policy controls
+- keep the repository-local Codex operating model current (lean `AGENTS`, `skills/`, `.codex/commands/`, notify logging, and `docs/codex/` workflows) so recurring AI workflows remain deterministic and low-friction
 
 Current checkpoint:
-- `v0.17.7` is the current stable release on `main`; pre-1.0 quality-audit remediation and release-gate hardening are now included in stable publication:
-  - release artifacts, metadata publication PRs, and post-publish verification checks completed for `v0.17.7`.
+- `v0.17.8` is the current stable release on `main`; pre-1.0 quality-audit remediation and release-gate hardening are now included in stable publication:
+  - release artifacts, metadata publication PRs, and post-publish verification checks completed for `v0.17.8`.
   - post-`v0.17.7` doctor/repair foundation scaffold delivered on `dev`:
     - added `helm-core` doctor/repair modules with deterministic finding fingerprints, local health report model, and embedded repair knowledge-provider scaffolding
     - manager package-state issue generation now routes through doctor findings and includes fingerprint/severity/evidence plus repair-option metadata
@@ -350,7 +351,7 @@ Current checkpoint:
     - audit-remediation follow-up delivered: stable CLI update metadata now points to published `v0.17.2` CLI release assets with real checksums (no placeholder zeros), and auto-check last-checked timestamps now update only after eligible direct self-managed check attempts instead of policy-gated skips
     - audit-remediation follow-up delivered: distribution profile contract is now centralized in `docs/contracts/distribution-profiles.json` and consumed by shared build orchestration (`scripts/build.sh`, `scripts/release/build_unsigned_variant.sh`, matrix-based `release-all-variants.yml` auxiliary jobs); Swift update-authority mapping now has one source (`AppUpdateConfiguration`), targeted updater policy tests pass on macOS, and GUI checksum-publication symmetry is explicitly documented as deferred while Sparkle remains canonical GUI integrity authority
     - trust-chain future work is now explicitly tracked: detached signatures + signing-key rotation for CLI update artifacts (`docs/roadmap/CLI_DISTRIBUTION_CI_MILESTONES.md`, milestone M5)
-- latest stable release on `main`: `v0.17.7`
+- latest stable release on `main`: `v0.17.8`
 - validation gates are green through the stable cut (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke across `v0.17.0-rc.1` through `v0.17.0-rc.5`)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
@@ -1250,4 +1251,4 @@ Implement:
 - 0.14 stable release alignment for `v0.14.0` is complete (README/website + version artifacts).
 - Distribution/licensing future-state planning documentation is aligned for 0.14 release notes and roadmap planning (no implementation yet).
 - 0.14.x and 0.15.x release execution are complete on `main` (`v0.14.1` and `v0.15.0`).
-- 0.17.7 release execution is complete on `main`; 0.17.x diagnostics/logging delivery and post-`0.17.x` follow-up stabilization are now closed with stable lineage `v0.17.0`, `v0.17.1`, `v0.17.2`, `v0.17.3`, `v0.17.4`, `v0.17.5`, `v0.17.6`, and `v0.17.7`.
+- 0.17.8 release execution is complete on `main`; 0.17.x diagnostics/logging delivery and post-`0.17.x` follow-up stabilization are now closed with stable lineage `v0.17.0`, `v0.17.1`, `v0.17.2`, `v0.17.3`, `v0.17.4`, `v0.17.5`, `v0.17.6`, `v0.17.7`, and `v0.17.8`.
