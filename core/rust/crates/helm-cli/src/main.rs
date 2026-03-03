@@ -11656,9 +11656,11 @@ fn build_manager_mutation_request_with_options(
         }
         "update" => {
             let active_instance = active_manager_install_instance(store, manager)?;
-            let update_plan =
-                helm_core::manager_lifecycle::plan_manager_update(manager, active_instance.as_ref())
-                    .map_err(|error| manager_update_plan_error_message(manager, error))?;
+            let update_plan = helm_core::manager_lifecycle::plan_manager_update(
+                manager,
+                active_instance.as_ref(),
+            )
+            .map_err(|error| manager_update_plan_error_message(manager, error))?;
 
             let request = match &update_plan.target {
                 helm_core::manager_lifecycle::ManagerUpdateTarget::ManagerSelf => {
@@ -11669,7 +11671,8 @@ fn build_manager_mutation_request_with_options(
                 } => {
                     let policy = effective_homebrew_keg_policy(store, formula_name);
                     let cleanup_old_kegs = policy == HomebrewKegPolicy::Cleanup;
-                    let target_name = encode_homebrew_upgrade_target(formula_name, cleanup_old_kegs);
+                    let target_name =
+                        encode_homebrew_upgrade_target(formula_name, cleanup_old_kegs);
                     helm_core::manager_lifecycle::build_update_request(
                         &update_plan,
                         Some(target_name),
