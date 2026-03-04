@@ -1,5 +1,6 @@
 model = "gpt-5.3-codex"
 project_doc_max_bytes = 131072
+model_reasoning_effort = "xhigh"
 
 [skills]
 path = "../ops/codex/skills"

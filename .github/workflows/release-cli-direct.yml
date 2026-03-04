@@ -15,6 +15,11 @@ on:
         description: "Git tag to build and publish CLI assets for (e.g. v0.17.2)"
         required: true
         type: string
+      verify_only:
+        description: "Skip build/publish and only verify metadata on main for the provided tag"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -33,6 +38,7 @@ jobs:
       TAG_NAME: ${{ inputs.tag || github.event.release.tag_name || github.event.inputs.tag }}
       EVENT_NAME: ${{ github.event_name }}
       EVENT_RELEASE_PRERELEASE: ${{ github.event.release.prerelease || '' }}
+      VERIFY_ONLY: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.verify_only == 'true' && 'true' || 'false') || 'false' }}
       LANG: en_US.UTF-8
       LC_ALL: en_US.UTF-8
 
@@ -82,20 +88,38 @@ jobs:
             echo "PUBLISH_PR_URL="
             echo "PUBLISH_FOLLOWUP_REQUIRED=no"
             echo "MAIN_METADATA_SYNCED=unknown"
+            echo "PUBLISH_AUTH_MODE=unknown"
           } >> "$GITHUB_ENV"
 
+      - name: Resolve release publish auth mode
+        if: ${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
+        env:
+          PUBLISH_WITH_PAT: ${{ secrets.RELEASE_PUBLISH_PAT != '' && 'true' || 'false' }}
+        run: |
+          set -euo pipefail
+          if [ "$PUBLISH_WITH_PAT" = "true" ]; then
+            echo "PUBLISH_AUTH_MODE=release_publish_pat" >> "$GITHUB_ENV"
+            echo "[preflight] release metadata publish auth: RELEASE_PUBLISH_PAT"
+          else
+            echo "PUBLISH_AUTH_MODE=github_token" >> "$GITHUB_ENV"
+            echo "::warning::RELEASE_PUBLISH_PAT is not configured; PR checks for publish branches may not run when using github.token."
+          fi
+
       - name: Checkout tag
+        if: ${{ env.VERIFY_ONLY != 'true' }}
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ env.TAG_NAME }}
 
       - name: Install Rust toolchain (macOS targets)
+        if: ${{ env.VERIFY_ONLY != 'true' }}
         uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           toolchain: 1.93.1
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Build CLI binaries (arm64, x86_64, universal)
+        if: ${{ env.VERIFY_ONLY != 'true' }}
         env:
           ASSET_DIR: ${{ github.workspace }}/build/cli-release
         run: |
@@ -167,6 +191,7 @@ jobs:
           PY
 
       - name: Verify CLI binary version matches tag
+        if: ${{ env.VERIFY_ONLY != 'true' }}
         env:
           ASSET_DIR: ${{ github.workspace }}/build/cli-release
         run: |
@@ -184,6 +209,7 @@ jobs:
           echo "[verify] CLI version matches tag: ${ACTUAL_VERSION}"
 
       - name: Generate CLI release provenance manifest
+        if: ${{ env.VERIFY_ONLY != 'true' }}
         env:
           ASSET_DIR: ${{ github.workspace }}/build/cli-release
         run: |
@@ -199,6 +225,7 @@ jobs:
             --tag "$TAG_NAME"
 
       - name: Upload CLI artifacts to workflow run
+        if: ${{ env.VERIFY_ONLY != 'true' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: helm-cli-${{ env.TAG_NAME }}
@@ -211,7 +238,7 @@ jobs:
             build/cli-release/provenance-${{ env.TAG_NAME }}.json
 
       - name: Upload CLI binaries to GitHub release
-        if: ${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
+        if: ${{ (github.event_name == 'release' || github.event_name == 'workflow_dispatch') && env.VERIFY_ONLY != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           ASSET_DIR: ${{ github.workspace }}/build/cli-release
@@ -227,9 +254,10 @@ jobs:
           echo "RELEASE_ARTIFACTS_UPLOADED=yes" >> "$GITHUB_ENV"
 
       - name: Publish website CLI latest metadata via PR
-        if: ${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
+        if: ${{ (github.event_name == 'release' || github.event_name == 'workflow_dispatch') && env.VERIFY_ONLY != 'true' }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_PUBLISH_PAT != '' && secrets.RELEASE_PUBLISH_PAT || github.token }}
+          PUBLISH_WITH_PAT: ${{ secrets.RELEASE_PUBLISH_PAT != '' && 'true' || 'false' }}
           ASSET_DIR: ${{ github.workspace }}/build/cli-release
         run: |
           set -euo pipefail
@@ -267,12 +295,8 @@ jobs:
             PR_NUMBER="$EXISTING_PR"
             echo "[publish] PR already exists for $PUBLISH_BRANCH (#$PR_NUMBER)."
           else
-            PR_URL="$(gh pr create \
-              --repo "$GITHUB_REPOSITORY" \
-              --base main \
-              --head "$PUBLISH_BRANCH" \
-              --title "chore(release): publish CLI latest metadata for ${TAG_NAME}" \
-              --body "$(cat <<EOF
+            PR_BODY_FILE="$RUNNER_TEMP/release-cli-publish-pr-body.md"
+            cat > "$PR_BODY_FILE" <<EOF
           This PR was auto-generated by \`release-cli-direct.yml\`.
 
           It publishes CLI direct-update metadata for \`${TAG_NAME}\`:
@@ -282,7 +306,12 @@ jobs:
           Merge this PR to update:
           - \`${TARGET_ENDPOINT}\`
           EOF
-          )" 2>&1)" || {
+            PR_URL="$(gh pr create \
+              --repo "$GITHUB_REPOSITORY" \
+              --base main \
+              --head "$PUBLISH_BRANCH" \
+              --title "chore(release): publish CLI latest metadata for ${TAG_NAME}" \
+              --body-file "$PR_BODY_FILE" 2>&1)" || {
               echo "::error::Unable to create CLI publish PR via GitHub Actions token."
               echo "::error::Fallback branch was pushed: ${PUBLISH_BRANCH}"
               echo "::error::Open manual PR: https://github.com/${GITHUB_REPOSITORY}/compare/main...${PUBLISH_BRANCH}?expand=1"
@@ -307,16 +336,24 @@ jobs:
             echo "PUBLISH_PR_URL=${PR_URL}"
           } >> "$GITHUB_ENV"
 
+          if [ "$PUBLISH_WITH_PAT" != "true" ]; then
+            echo "::notice::Follow-up required: merge publish PR #${PR_NUMBER} (${PR_URL}). Configure RELEASE_PUBLISH_PAT to allow required checks + auto-merge on publish branches."
+            echo "PUBLISH_FOLLOWUP_REQUIRED=yes" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
           if gh pr merge --repo "$GITHUB_REPOSITORY" --squash --auto "$PR_NUMBER"; then
             echo "[publish] Auto-merge enabled for CLI publish PR #${PR_NUMBER}."
           else
             echo "::warning::Unable to enable auto-merge for CLI publish PR #${PR_NUMBER}."
             echo "::warning::Manual merge may be required."
+            echo "PUBLISH_FOLLOWUP_REQUIRED=yes" >> "$GITHUB_ENV"
+            exit 0
           fi
 
           MERGED_AT=""
           PR_URL=""
-          for i in {1..40}; do
+          for i in {1..24}; do
             read -r PR_STATE MERGED_AT PR_URL <<<"$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json state,mergedAt,url --jq '[.state, (.mergedAt // ""), .url] | @tsv')"
             if [ -n "$MERGED_AT" ]; then
               echo "[publish] CLI publish PR #${PR_NUMBER} merged at ${MERGED_AT}."
@@ -324,20 +361,21 @@ jobs:
             fi
 
             if [ "$PR_STATE" != "OPEN" ]; then
-              echo "::error::CLI publish PR #${PR_NUMBER} is not open and was not merged."
-              echo "::error::PR URL: ${PR_URL}"
-              exit 1
+              echo "::warning::CLI publish PR #${PR_NUMBER} is no longer open but not merged."
+              echo "::warning::PR URL: ${PR_URL}"
+              echo "PUBLISH_FOLLOWUP_REQUIRED=yes" >> "$GITHUB_ENV"
+              exit 0
             fi
 
-            echo "[publish] Waiting for CLI publish PR #${PR_NUMBER} to merge (attempt ${i}/40)..."
-            sleep 30
+            echo "[publish] Waiting for CLI publish PR #${PR_NUMBER} to merge (attempt ${i}/24)..."
+            sleep 15
           done
 
           if [ -z "$MERGED_AT" ]; then
             echo "::warning::CLI publish PR #${PR_NUMBER} was not merged within the workflow wait window."
             echo "::warning::PR URL: ${PR_URL}"
-            echo "::warning::Merge the PR and rerun this workflow."
-            echo "::notice::Follow-up required: merge CLI publish PR #${PR_NUMBER} (${PR_URL}), then rerun this workflow to confirm metadata sync."
+            echo "::warning::Merge the PR and run workflow_dispatch for release-cli-direct.yml with verify_only=true."
+            echo "::notice::Follow-up required: merge CLI publish PR #${PR_NUMBER} (${PR_URL}), then run verify_only dispatch to confirm metadata sync."
             echo "PUBLISH_FOLLOWUP_REQUIRED=yes" >> "$GITHUB_ENV"
           fi
 
@@ -395,7 +433,7 @@ jobs:
             fi
             echo "::error::CLI latest metadata on main does not match release tag."
             echo "::error::expected=${EXPECTED_VERSION} actual=${ACTUAL_VERSION} file=${TARGET_PATH}"
-            echo "::error::If fallback publishing was required, merge branch chore/publish-cli-updates-${TAG_NAME} and rerun this workflow."
+            echo "::error::If fallback publishing was required, merge branch chore/publish-cli-updates-${TAG_NAME}-${CLI_RELEASE_CHANNEL} and run workflow_dispatch with verify_only=true."
             exit 1
           fi
 
@@ -412,6 +450,7 @@ jobs:
           artifacts_uploaded="${RELEASE_ARTIFACTS_UPLOADED:-no}"
           publish_pr_opened="${PUBLISH_PR_OPENED:-no}"
           main_metadata_synced="${MAIN_METADATA_SYNCED:-unknown}"
+          publish_auth_mode="${PUBLISH_AUTH_MODE:-unknown}"
           publish_pr_number="${PUBLISH_PR_NUMBER:-}"
           publish_pr_url="${PUBLISH_PR_URL:-}"
           publish_followup_required="${PUBLISH_FOLLOWUP_REQUIRED:-no}"
@@ -419,7 +458,9 @@ jobs:
           {
             echo "## Release CLI Publication Summary"
             echo ""
+            echo "- Verify only run: ${VERIFY_ONLY}"
             echo "- Artifacts uploaded: ${artifacts_uploaded}"
+            echo "- Publish auth mode: ${publish_auth_mode}"
             echo "- Publish PR opened: ${publish_pr_opened}"
             echo "- Main metadata synced: ${main_metadata_synced}"
             if [ -n "${publish_pr_number}" ]; then
@@ -429,7 +470,7 @@ jobs:
               echo ""
               echo "Follow-up required:"
               echo "1. Merge publish PR #${publish_pr_number}"
-              echo "2. Rerun this workflow to verify main metadata sync"
+              echo "2. Run workflow_dispatch for release-cli-direct.yml with tag=${TAG_NAME} and verify_only=true"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 

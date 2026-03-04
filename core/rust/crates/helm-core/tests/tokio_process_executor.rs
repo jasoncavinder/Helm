@@ -176,9 +176,9 @@ async fn hard_timeout_extends_for_active_install_process() {
         TaskType::Install,
         ManagerAction::Install,
         CommandSpec::new("/bin/sh")
-            .args(["-c", "for i in 1 2 3 4; do echo tick; sleep 0.12; done"]),
+            .args(["-c", "for i in 1 2 3 4 5 6; do echo tick; sleep 0.11; done"]),
     )
-    .timeout(Duration::from_millis(350))
+    .timeout(Duration::from_millis(600))
     .idle_timeout(Duration::from_secs(5));
 
     let handle = spawn_validated(&executor, request).expect("spawn should succeed");

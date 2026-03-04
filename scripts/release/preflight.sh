@@ -631,6 +631,23 @@ PY
   else
     info "required release secrets are present"
   fi
+
+  local has_release_publish_pat
+  has_release_publish_pat="$(python3 - "$secrets_json" <<'PY'
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+present = {item["name"] for item in payload}
+print("yes" if "RELEASE_PUBLISH_PAT" in present else "no")
+PY
+)"
+
+  if [ "$has_release_publish_pat" = "yes" ]; then
+    info "optional release publish PAT secret is present (RELEASE_PUBLISH_PAT)"
+  else
+    warn "optional secret RELEASE_PUBLISH_PAT is missing; publish PR checks may not run when release workflows use github.token fallback"
+  fi
 }
 
 parse_args() {
