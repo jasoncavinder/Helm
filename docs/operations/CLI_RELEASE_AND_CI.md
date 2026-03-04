@@ -321,7 +321,8 @@ UI remediation path:
 ### 5.3 Set/Verify Release Secrets
 
 Existing DMG release workflow (`release-macos-dmg.yml`) still requires current Apple/signing secrets.
-CLI release workflow relies on `github.token` for release uploads + PR publication and does not add new required secrets.
+Release workflows still use `github.token` for release-asset uploads, but publish-PR automation now prefers optional `RELEASE_PUBLISH_PAT`.
+If `RELEASE_PUBLISH_PAT` is missing, workflows fall back to `github.token`, which can prevent required PR checks from firing on publish branches and may require manual/admin merge follow-up.
 
 To set or rotate secrets:
 
@@ -333,14 +334,16 @@ gh secret set MACOS_KEYCHAIN_PASSWORD
 gh secret set HELM_SPARKLE_FEED_URL
 gh secret set HELM_SPARKLE_PUBLIC_ED_KEY
 gh secret set HELM_SPARKLE_PRIVATE_ED_KEY
+gh secret set RELEASE_PUBLISH_PAT
 ```
 
 ### 5.4 Trigger CLI Release Publication Manually
 
-Use this to backfill existing tags (for example `v0.17.3`) or rerun publication:
+Use this to backfill existing tags (for example `v0.17.3`) or run metadata verification-only after publish PR merge:
 
 ```bash
 gh workflow run release-cli-direct.yml -f tag=v0.17.3
+gh workflow run release-cli-direct.yml -f tag=v0.17.3 -f verify_only=true
 gh run list --workflow "Release CLI Direct Installer" --limit 5
 gh run view <run-id> --log
 ```
@@ -363,12 +366,19 @@ Outcome semantics:
 
 - hard failures are retained for build/signing/notarization/upload/PR-creation faults
 - if publication PR automation succeeds but PR merge is still pending, the run can complete with follow-up required (non-red terminal state)
-- when follow-up is required: merge the publish PR and rerun the workflow to confirm `Main metadata synced: yes`
+- when follow-up is required: merge the publish PR, then dispatch the same workflow with `verify_only=true` to confirm `Main metadata synced: yes` without rebuilding artifacts
 - release logs now use phase prefixes to simplify triage:
   - `[preflight]` for auth/scope/policy setup checks
   - `[build]` for compile/package/notarization execution
   - `[publish]` for release asset and publish-PR operations
   - `[verify]` for metadata consistency and final checkpoint output
+
+Verify-only dispatch examples after publish PR merge:
+
+```bash
+gh workflow run release-cli-direct.yml -f tag=vX.Y.Z -f verify_only=true
+gh workflow run release-macos-dmg.yml -f tag=vX.Y.Z -f verify_only=true
+```
 
 ### 5.6 Verify Publish-PR Merge Checkpoint
 

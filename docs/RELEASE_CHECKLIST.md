@@ -35,6 +35,7 @@ This checklist is required before creating a release tag on `main`.
 - [ ] Confirm preflight reports token scopes include `repo` and `workflow`.
 - [ ] Confirm preflight validates required release workflows are present and enabled.
 - [ ] Confirm preflight validates required DMG/signing/update secrets are present.
+- [ ] Confirm optional `RELEASE_PUBLISH_PAT` is configured (recommended) so release-generated publish PRs can receive required checks and auto-merge normally.
 - [ ] Confirm preflight validates `main` ruleset publish-PR bypass policy (prefer GitHub Actions app `pull_request` bypass when available; otherwise use `Repository admin` `pull_request` fallback; no `always` bypass actors).
 - [ ] Confirm preflight snapshot sanity passes for stable tags (`origin/main` appcast + `cli/latest.json` in sync and behind target tag).
 - [ ] Confirm crash/error reporting policy remains local-only for the release line and no automatic remote telemetry path was introduced (`docs/operations/CRASH_REPORTING_POLICY.md`).
@@ -46,7 +47,7 @@ This checklist is required before creating a release tag on `main`.
   - `Artifacts uploaded: yes`
   - `Publish PR opened: yes/no`
   - `Main metadata synced: yes/no`
-- [ ] If workflow summary reports follow-up required (publish PR still open), merge the publish PR and rerun the workflow to verify `Main metadata synced: yes`.
+- [ ] If workflow summary reports follow-up required (publish PR still open), merge the publish PR and run workflow_dispatch with `verify_only=true` for the corresponding release workflow to verify `Main metadata synced: yes` without rebuilding artifacts.
 - [ ] Confirm release publication verification status is green after publish PR merge:
   - `Release Publish Verify`
   - `Appcast Drift Guard`
