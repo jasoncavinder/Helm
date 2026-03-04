@@ -1,0 +1,19 @@
+{
+  "version": "0.17.7",
+  "channel": "stable",
+  "published_at": "2026-02-26T01:32:49Z",
+  "downloads": {
+    "universal": {
+      "url": "https://github.com/jasoncavinder/Helm/releases/download/v0.17.7/helm-cli-v0.17.7-darwin-universal",
+      "sha256": "8ffd8e6f3b986b5ea4cc98ac97b42a81717cafb5cc96471bb76d541313a40c5c"
+    },
+    "arm64": {
+      "url": "https://github.com/jasoncavinder/Helm/releases/download/v0.17.7/helm-cli-v0.17.7-darwin-arm64",
+      "sha256": "ebb4514cac4bc0382bcfd0316309f5cc8ea30de9e99f82c38ebca0148e37f5b0"
+    },
+    "x86_64": {
+      "url": "https://github.com/jasoncavinder/Helm/releases/download/v0.17.7/helm-cli-v0.17.7-darwin-x86_64",
+      "sha256": "44efaea6933873a340f58ec2c9a2b8ae848490a4c845ae0a5cebe0c6c6e2492b"
+    }
+  }
+}

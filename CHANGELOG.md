@@ -54,6 +54,32 @@ Patch `0.17.6` hardens refresh reliability and diagnostics after the `v0.17.5` r
 ### Fixed
 - Process execution no longer fails immediately when a previously recorded working directory no longer exists; executor now falls back to a valid existing directory before spawn.
 
+## [0.17.5] - 2026-02-24
+
+Patch `0.17.5` ships manager eligibility-policy enforcement, first-run CLI onboarding, and task/about UX hardening after `0.17.4`.
+
+### Added
+- Manager eligibility policy matrix and enforcement for system-managed executables:
+  - RubyGems `/usr/bin/gem`
+  - Bundler `/usr/bin/bundle`
+  - pip `/usr/bin/python3|pip|pip3`
+- CLI first-run onboarding flow with terminal prompts, onboarding status/run/reset commands, and script-oriented first-run flags:
+  - `--accept-license`
+  - `--accept-defaults`
+- Manual failed-task dismissal action in task rows.
+
+### Changed
+- Failed tasks are now retained until replacement, manual dismissal, manager disable/uninstall cleanup, or local-data reset.
+- About overlay is simplified to product/version/copyright focus with update-available indication only.
+- Settings section order is now `General -> Managers -> CLI -> Service Health -> Support & Feedback -> Advanced`.
+- Reset Local Data now closes Control Center so the app re-enters onboarding on next interaction.
+
+### Fixed
+- Enabling ineligible managers is now blocked with structured/localized remediation; stale enabled state is auto-healed to disabled.
+- Runtime task submission now hard-stops ineligible managers (policy-blocked state treated as disabled).
+- CLI shim status now resolves home-directory paths robustly for settings diagnostics.
+- Manager disable now purges manager-scoped persisted task records.
+
 ## [0.17.4] - 2026-02-24
 
 Patch `0.17.4` packages the first ratatui-powered Helm TUI, bundled-app CLI shim workflows, and post-`0.17.3` GUI/CLI parity closures.

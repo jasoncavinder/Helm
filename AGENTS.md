@@ -156,3 +156,4 @@ Suggested role pattern:
 - Prefer targeted verification before broad sweeps.
 - If uncertain, ask instead of guessing.
 - Keep docs, code, and tests consistent.
+- For `gh pr create` and `gh pr edit`, pass markdown via `--body-file` (or `-F`) to avoid literal `\n` sequences in PR text.

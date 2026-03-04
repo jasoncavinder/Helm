@@ -220,6 +220,54 @@ struct SettingsSectionView: View {
                     }
                 }
 
+                SettingsCard(title: L10n.App.Settings.CLI.section.localized, icon: "terminal", fill: cardFill) {
+                    ServiceHealthStatusRow(
+                        title: L10n.App.Settings.CLI.status.localized,
+                        value: helmCliStatusLabel
+                    )
+                    ServiceHealthStatusRow(
+                        title: L10n.App.Settings.CLI.shimPath.localized,
+                        value: core.helmCliShimPath,
+                        multiline: true
+                    )
+                    if let bundledPath = core.helmCliBundledPath, !bundledPath.isEmpty {
+                        ServiceHealthStatusRow(
+                            title: L10n.App.Settings.CLI.bundledPath.localized,
+                            value: bundledPath,
+                            multiline: true
+                        )
+                    }
+
+                    Text(L10n.App.Settings.CLI.description.localized)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    Divider()
+
+                    SettingsActionButton(
+                        title: helmCliActionTitle,
+                        badges: [],
+                        isProminent: false,
+                        useSystemStyle: true
+                    ) {
+                        if core.helmCliShimInstalled {
+                            core.removeHelmCliShim()
+                        } else {
+                            core.installHelmCliShim()
+                        }
+                    }
+                    .disabled(
+                        core.helmCliShimOperationInProgress ||
+                        (!core.helmCliBundledAvailable && !core.helmCliShimInstalled)
+                    )
+
+                    if let statusMessage = core.helmCliShimStatusMessage, !statusMessage.isEmpty {
+                        Text(statusMessage)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
                 SettingsCard(title: L10n.App.Settings.Section.managers.localized, icon: "shield.lefthalf.filled", fill: cardFill) {
                     Toggle(L10n.App.Settings.Label.safeMode.localized, isOn: Binding(
                         get: { core.safeModeEnabled },
