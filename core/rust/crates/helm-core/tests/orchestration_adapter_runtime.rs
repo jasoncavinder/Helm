@@ -702,13 +702,22 @@ async fn detect_persists_install_instances_alongside_detection_rows() {
     let path = test_db_path("orchestration-runtime-detect-install-instances");
     let store = Arc::new(SqliteStore::new(&path));
     store.migrate_to_latest().unwrap();
+    let rustup_path = std::env::temp_dir().join(format!(
+        "helm-rustup-test-{}-{}.bin",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock before unix epoch")
+            .as_nanos()
+    ));
+    std::fs::write(&rustup_path, b"#!/bin/sh\nexit 0\n").unwrap();
 
     let adapter: Arc<dyn ManagerAdapter> = Arc::new(TestAdapter::with_capabilities(
         ManagerId::Rustup,
         &[Capability::Detect, Capability::Refresh],
         AdapterBehavior::Succeeds(AdapterResponse::Detection(DetectionInfo {
             installed: true,
-            executable_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+            executable_path: Some(rustup_path.clone()),
             version: Some("1.28.2".to_string()),
         })),
     ));
@@ -747,6 +756,8 @@ async fn detect_persists_install_instances_alongside_detection_rows() {
         persisted,
         "expected rustup detection and install instances to persist"
     );
+
+    let _ = std::fs::remove_file(rustup_path);
 }
 
 #[tokio::test]
