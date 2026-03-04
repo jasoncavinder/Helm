@@ -35,7 +35,7 @@ Validate updater/appcast readiness without performing release publication action
 
 ## Steps executed
 
-1. Run `skills/sparkle-appcast-checklist/scripts/run-checklist.sh [tag]`.
+1. Run `ops/codex/skills/sparkle-appcast-checklist/scripts/run-checklist.sh [tag]`.
 2. Execute policy/contract checks in non-destructive mode.
 3. Optionally run full rehearsal only when explicitly enabled.
 4. Return checklist outcome and manual follow-up steps.

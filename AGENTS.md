@@ -2,7 +2,7 @@
 
 This file defines the minimum operating policy for AI agents in Helm.
 
-Keep this file policy-only. Put repeatable procedures in `skills/`.
+Keep this file policy-only. Put repeatable procedures in `ops/codex/skills/`.
 
 ## 1) Repo Overview
 
@@ -93,7 +93,7 @@ When proposing:
 
 - say why the workflow qualifies
 - recommend using `skill-generator` to scaffold the new reusable skill
-- offer to implement under `skills/<skill-name>/`
+- offer to implement under `ops/codex/skills/<skill-name>/`
 - keep AGENTS policy-only and move procedure details into skill docs/scripts
 
 When Codex detects a repeated workflow or multi-step manual procedure that could be reused, it should recommend `skill-generator`.
@@ -108,8 +108,8 @@ Trigger signals include:
 
 Candidate-mining policy:
 
-- if `docs/codex/SKILL_CANDIDATES.md` exists and is older than 7 days, recommend running `scripts/codex/skill-mine.sh`
-- when a task appears repetitive, check `docs/codex/SKILL_CANDIDATES.md` before inventing a new skill
+- if `ops/codex/docs/SKILL_CANDIDATES.md` exists and is older than 7 days, recommend running `ops/codex/scripts/skill-mine.sh`
+- when a task appears repetitive, check `ops/codex/docs/SKILL_CANDIDATES.md` before inventing a new skill
 
 ## 7) Notify / MCP / Apps / Multi-Agent Guidance
 

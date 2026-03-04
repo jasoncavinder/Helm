@@ -18,7 +18,7 @@ See:
 Active milestone:
 - latest stable release currently published on `main`: **0.17.8** (pre-1.0 quality-audit remediation + release-gate hardening publication)
 - next integration target after stable publication: **0.18.x** (local security groundwork planning + delivery setup)
-- repository operations follow-up on `dev`: repository-local Codex operating model refined for lean context (`project_doc_max_bytes=131072`), policy-only root `AGENTS.md`, workflow Skills under `skills/`, slash-command templates under `.codex/commands/`, and structured local notify logging to `dev/logs/codex-runs.ndjson`.
+- repository operations follow-up on `dev`: repository-local Codex operating model refined for lean context (`project_doc_max_bytes=131072`), policy-only root `AGENTS.md`, workflow Skills under `ops/codex/skills/`, slash-command templates under `.codex/commands/`, and structured local notify logging to `dev/logs/codex-runs.ndjson`.
 - stable publication cut completed for `v0.17.8`:
   - release artifacts, publish-metadata PRs, and post-publish verification checks are complete on `main`.
   - release workflows continue to report fallback publish PR outcomes as follow-up-required (non-red) when publication PR merges are still pending.

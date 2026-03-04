@@ -34,7 +34,7 @@ Turn remediation backlog items into small, verified, low-risk changes.
 
 ## Steps executed
 
-1. Run `skills/audit-remediation-batch/scripts/remediation-backlog-status.py [ID ...]`.
+1. Run `ops/codex/skills/audit-remediation-batch/scripts/remediation-backlog-status.py [ID ...]`.
 2. Select a coherent small batch by area/dependency.
 3. Implement minimal fixes and run targeted tests.
 4. Update `docs/audits/remediation-log.md` and backlog status lines.

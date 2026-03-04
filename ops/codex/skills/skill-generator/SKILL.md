@@ -7,7 +7,7 @@ description: Convert a repeated workflow or conversation process into a reusable
 
 ## Purpose
 
-Convert repeated Helm workflows into reusable skills under `skills/` through a spec-first process: workflow -> WORKFLOW SPEC -> generated skill.
+Convert repeated Helm workflows into reusable skills under `ops/codex/skills/` through a spec-first process: workflow -> WORKFLOW SPEC -> generated skill.
 
 ## When this Skill should trigger
 
@@ -31,10 +31,10 @@ Also trigger when Codex detects repeated commands, long checklists, fragile sequ
 ## Outputs generated
 
 - a confirmed WORKFLOW SPEC
-- `skills/<skill-name>/SKILL.md`
-- `skills/<skill-name>/scripts/` (if needed)
-- `skills/<skill-name>/resources/` (if needed)
-- update to `docs/codex/USAGE.md` documenting the new skill and invocation guidance
+- `ops/codex/skills/<skill-name>/SKILL.md`
+- `ops/codex/skills/<skill-name>/scripts/` (if needed)
+- `ops/codex/skills/<skill-name>/resources/` (if needed)
+- update to `ops/codex/docs/USAGE.md` documenting the new skill and invocation guidance
 
 ## Safety rules
 
@@ -49,9 +49,9 @@ Also trigger when Codex detects repeated commands, long checklists, fragile sequ
 1. Extract workflow steps from the conversation/process.
 2. Produce a WORKFLOW SPEC in the required format.
 3. Show the spec to the user and confirm skill name + scope.
-4. Generate `skills/<skill-name>/SKILL.md` from the spec.
+4. Generate `ops/codex/skills/<skill-name>/SKILL.md` from the spec.
 5. Create optional `scripts/` and `resources/` directories when requested.
-6. Update `docs/codex/USAGE.md` with the new skill.
+6. Update `ops/codex/docs/USAGE.md` with the new skill.
 
 ## WORKFLOW SPEC format (required)
 
@@ -88,7 +88,7 @@ Optional extension:
 
 Use the generator script with a spec file:
 
-- `skills/skill-generator/scripts/create_skill.sh --spec <workflow-spec.md> --confirm-name`
+- `ops/codex/skills/skill-generator/scripts/create_skill.sh --spec <workflow-spec.md> --confirm-name`
 
 Useful options:
 

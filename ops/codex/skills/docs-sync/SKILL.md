@@ -37,5 +37,5 @@ Prevent drift between implementation and Helm source-of-truth documentation.
 
 1. Determine impacted docs (`CURRENT_STATE`, `NEXT_STEPS`, `DECISIONS`, `ARCHITECTURE` when needed).
 2. Apply minimal updates that match implementation reality.
-3. Run `skills/docs-sync/scripts/docs-sync-check.sh`.
+3. Run `ops/codex/skills/docs-sync/scripts/docs-sync-check.sh`.
 4. Report final docs delta and any open questions.

@@ -23,7 +23,7 @@ Focus:
 - sequence `0.18.x` local security groundwork after doctor/repair foundation slice
 - keep launch-at-login scoped to GUI only (no CLI/TUI parity target)
 - track post-mise lifecycle follow-ups: plugin-as-package modeling evaluation and managed-environment install-source policy controls
-- keep the repository-local Codex operating model current (lean `AGENTS`, `skills/`, `.codex/commands/`, notify logging, and `docs/codex/` workflows) so recurring AI workflows remain deterministic and low-friction
+- keep the repository-local Codex operating model current (lean `AGENTS`, `ops/codex/skills/`, `.codex/commands/`, notify logging, and `ops/codex/docs/` workflows) so recurring AI workflows remain deterministic and low-friction
 
 Current checkpoint:
 - `v0.17.8` is the current stable release on `main`; pre-1.0 quality-audit remediation and release-gate hardening are now included in stable publication:

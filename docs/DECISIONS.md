@@ -668,7 +668,7 @@ Initial implemented manager scope:
 Adopt a repository-local Codex operating model with:
 
 - repo-scoped instructions layering (`AGENTS.md` + subtree `AGENTS.md` files)
-- reusable workflow Skills under `skills/`
+- reusable workflow Skills under `ops/codex/skills/`
 - repo-local Codex config (`.codex/config.toml`) using lean `project_doc_max_bytes` (`131072`)
 - reusable slash-command templates under `.codex/commands/`
 - structured local notify logging on `agent-turn-complete` to `dev/logs/codex-runs.ndjson`
