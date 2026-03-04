@@ -6,16 +6,16 @@
     <description>Helm direct-channel updates</description>
     <language>en</language>
     <item>
-      <title>Helm 0.17.7</title>
-      <pubDate>Thu, 26 Feb 2026 01:51:26 +0000</pubDate>
-      <sparkle:releaseNotesLink>https://helmapp.dev/updates/release-notes/v0.17.7.html</sparkle:releaseNotesLink>
+      <title>Helm 0.17.8</title>
+      <pubDate>Wed, 04 Mar 2026 00:49:54 +0000</pubDate>
+      <sparkle:releaseNotesLink>https://helmapp.dev/updates/release-notes/v0.17.8.html</sparkle:releaseNotesLink>
       <enclosure
-        url="https://github.com/jasoncavinder/Helm/releases/download/v0.17.7/Helm-v0.17.7-macos-universal.dmg"
-        sparkle:version="17007900"
-        sparkle:shortVersionString="0.17.7"
-        sparkle:edSignature="yZQh77z/Vwk/u+JOZmjUyFAfd54JuZ1MqJba0UdwJ8gOPkXpOzSNctc+W3wmqUKRp0LnqKEArsatacUJhy9PAQ=="
+        url="https://github.com/jasoncavinder/Helm/releases/download/v0.17.8/Helm-v0.17.8-macos-universal.dmg"
+        sparkle:version="17008900"
+        sparkle:shortVersionString="0.17.8"
+        sparkle:edSignature="SXqqdt0lLRutE9Ch4GIKTaZpUUKgLaIxJJoUP+soiSz6wxC/2iDT4CbNTTwsHCx3/hQtESGKigaeaneU7FABDA=="
          sparkle:minimumSystemVersion="11.0"
-        length="24621552"
+        length="27038160"
         type="application/octet-stream"/>
     </item>
   </channel>
