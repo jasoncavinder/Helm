@@ -40,6 +40,13 @@ extension HelmCore {
     }
 
     func dismissTask(_ task: TaskItem) {
+        if task.id.hasPrefix(Self.localManagerActionTaskIdPrefix) {
+            localManagerActionTasks.removeValue(forKey: task.id)
+            localManagerActionTaskCreatedAt.removeValue(forKey: task.id)
+            activeTasks.removeAll { $0.id == task.id }
+            return
+        }
+
         guard !task.isRunning,
               task.status.lowercased() == "failed",
               let taskId = Int64(task.id) else { return }
@@ -58,6 +65,36 @@ extension HelmCore {
                         taskType: task.taskType
                     )
                 }
+            }
+        }
+    }
+
+    func respondTaskTimeoutPrompt(taskId: UInt64, waitForCompletion: Bool, completion: ((Bool) -> Void)? = nil) {
+        guard let service = service() else {
+            completion?(false)
+            return
+        }
+
+        service.respondTaskTimeoutPrompt(taskId: Int64(taskId), waitForCompletion: waitForCompletion) { [weak self] success in
+            DispatchQueue.main.async {
+                guard let self else {
+                    completion?(success)
+                    return
+                }
+                if success {
+                    self.fetchTasks()
+                    self.fetchTaskTimeoutPrompts()
+                } else {
+                    logger.warning(
+                        "respondTaskTimeoutPrompt(\(taskId), wait=\(waitForCompletion)) returned false"
+                    )
+                    self.recordLastError(
+                        source: "core.actions",
+                        action: "respondTaskTimeoutPrompt",
+                        taskType: "diagnostics"
+                    )
+                }
+                completion?(success)
             }
         }
     }
@@ -111,6 +148,7 @@ extension HelmCore {
                 self.registerManagerActionTask(
                     managerId: package.managerId,
                     taskId: UInt64(taskId),
+                    taskType: "package_upgrade",
                     description: self.upgradeActionDescription(for: package),
                     inProgressText: L10n.App.Managers.Operation.upgrading.localized
                 )
@@ -493,6 +531,7 @@ extension HelmCore {
     }
 
     func pinPackage(_ package: PackageItem) {
+        guard canPinPackage(package), !pinActionPackageIds.contains(package.id) else { return }
         DispatchQueue.main.async {
             self.pinActionPackageIds.insert(package.id)
         }
@@ -531,6 +570,7 @@ extension HelmCore {
     }
 
     func unpinPackage(_ package: PackageItem) {
+        guard canPinPackage(package), !pinActionPackageIds.contains(package.id) else { return }
         DispatchQueue.main.async {
             self.pinActionPackageIds.insert(package.id)
         }
@@ -567,7 +607,12 @@ extension HelmCore {
         }
     }
 
-    func setManagerEnabled(_ managerId: String, enabled: Bool) {
+    func setManagerEnabled(_ managerId: String, enabled: Bool, completion: ((Bool) -> Void)? = nil) {
+        if isManagerUninstalling(managerId) {
+            completion?(false)
+            return
+        }
+
         if enabled,
            let status = managerStatuses[managerId],
            status.isEligible == false
@@ -582,6 +627,24 @@ extension HelmCore {
                 managerId: managerId,
                 taskType: "settings"
             )
+            completion?(false)
+            return
+        }
+
+        if enabled,
+           let status = managerStatuses[managerId],
+           status.packageStateIssues?.contains(where: { issue in
+               issue.issueCode == "post_install_setup_required"
+           }) == true
+        {
+            recordLastError(
+                message: "service.error.manager_setup_required".localized,
+                source: "core.actions",
+                action: "setManagerEnabled.setup_required",
+                managerId: managerId,
+                taskType: "settings"
+            )
+            completion?(false)
             return
         }
 
@@ -592,6 +655,7 @@ extension HelmCore {
                 managerId: managerId,
                 taskType: "settings"
             )
+            completion?(false)
             return
         }
 
@@ -610,6 +674,7 @@ extension HelmCore {
                             taskType: "settings"
                         )
                     }
+                    completion?(false)
                     return
                 }
 
@@ -627,6 +692,7 @@ extension HelmCore {
                     includePinned: self.upgradePlanIncludePinned,
                     allowOsUpdates: self.upgradePlanAllowOsUpdates
                 )
+                completion?(true)
             }
         }
     }
@@ -673,6 +739,8 @@ extension HelmCore {
         managerOperations.removeValue(forKey: managerId)
         if let taskId = managerActionTaskByManager.removeValue(forKey: managerId) {
             managerActionTaskDescriptions.removeValue(forKey: taskId)
+            managerActionTaskTypes.removeValue(forKey: taskId)
+            managerActionTaskSubmittedAt.removeValue(forKey: taskId)
         }
 
         upgradeActionTaskByPackage = upgradeActionTaskByPackage.filter { !$0.key.hasPrefix(packageIdPrefix) }
@@ -709,6 +777,9 @@ extension HelmCore {
     }
 
     func setManagerSelectedExecutablePath(_ managerId: String, selectedPath: String?) {
+        if isManagerUninstalling(managerId) {
+            return
+        }
         service()?.setManagerSelectedExecutablePath(managerId: managerId, selectedPath: selectedPath) { [weak self] success in
             guard let self else { return }
             if !success {
@@ -725,8 +796,100 @@ extension HelmCore {
         }
     }
 
-    func setManagerInstallMethod(_ managerId: String, installMethod: String?) {
-        service()?.setManagerInstallMethod(managerId: managerId, installMethod: installMethod) { [weak self] success in
+    func setManagerActiveInstallInstance(
+        _ managerId: String,
+        instanceId: String,
+        completion: ((Bool) -> Void)? = nil
+    ) {
+        if isManagerUninstalling(managerId) {
+            completion?(false)
+            return
+        }
+        service()?.setManagerActiveInstallInstance(managerId: managerId, instanceId: instanceId) { [weak self] success in
+            guard let self else { return }
+            if !success {
+                logger.error("setManagerActiveInstallInstance(\(managerId), \(instanceId)) failed")
+                self.recordLastError(
+                    source: "core.actions",
+                    action: "setManagerActiveInstallInstance",
+                    managerId: managerId,
+                    taskType: "settings"
+                )
+                DispatchQueue.main.async {
+                    completion?(false)
+                }
+                return
+            }
+            self.fetchManagerStatus()
+            self.triggerDetection(for: managerId)
+            DispatchQueue.main.async {
+                completion?(true)
+            }
+        }
+    }
+
+    func acknowledgeManagerMultiInstanceState(
+        _ managerId: String,
+        completion: ((Bool) -> Void)? = nil
+    ) {
+        service()?.acknowledgeManagerMultiInstanceState(managerId: managerId) { [weak self] success in
+            guard let self else { return }
+            if !success {
+                logger.error("acknowledgeManagerMultiInstanceState(\(managerId)) failed")
+                self.recordLastError(
+                    source: "core.actions",
+                    action: "acknowledgeManagerMultiInstanceState",
+                    managerId: managerId,
+                    taskType: "settings"
+                )
+            }
+            self.fetchManagerStatus()
+            DispatchQueue.main.async {
+                completion?(success)
+            }
+        }
+    }
+
+    func clearManagerMultiInstanceAck(
+        _ managerId: String,
+        completion: ((Bool) -> Void)? = nil
+    ) {
+        service()?.clearManagerMultiInstanceAck(managerId: managerId) { [weak self] success in
+            guard let self else { return }
+            if !success {
+                logger.error("clearManagerMultiInstanceAck(\(managerId)) failed")
+                self.recordLastError(
+                    source: "core.actions",
+                    action: "clearManagerMultiInstanceAck",
+                    managerId: managerId,
+                    taskType: "settings"
+                )
+            }
+            self.fetchManagerStatus()
+            DispatchQueue.main.async {
+                completion?(success)
+            }
+        }
+    }
+
+    func setManagerInstallMethod(
+        _ managerId: String,
+        installMethod: String?,
+        completion: ((Bool) -> Void)? = nil
+    ) {
+        if isManagerUninstalling(managerId) {
+            DispatchQueue.main.async {
+                completion?(false)
+            }
+            return
+        }
+        guard let service = service() else {
+            DispatchQueue.main.async {
+                completion?(false)
+            }
+            return
+        }
+        service.setManagerInstallMethod(managerId: managerId, installMethod: installMethod) { [weak self] success in
             guard let self else { return }
             if !success {
                 logger.error("setManagerInstallMethod(\(managerId), \(installMethod ?? "nil")) failed")
@@ -736,20 +899,39 @@ extension HelmCore {
                     managerId: managerId,
                     taskType: "settings"
                 )
+                DispatchQueue.main.async {
+                    completion?(false)
+                }
                 return
             }
             self.fetchManagerStatus()
+            DispatchQueue.main.async {
+                completion?(true)
+            }
         }
     }
 
     func setManagerTimeoutProfile(
         _ managerId: String,
         hardTimeoutSeconds: Int?,
-        idleTimeoutSeconds: Int?
+        idleTimeoutSeconds: Int?,
+        completion: ((Bool) -> Void)? = nil
     ) {
+        if isManagerUninstalling(managerId) {
+            DispatchQueue.main.async {
+                completion?(false)
+            }
+            return
+        }
         let hardValue = Int64(hardTimeoutSeconds ?? 0)
         let idleValue = Int64(idleTimeoutSeconds ?? 0)
-        service()?.setManagerTimeoutProfile(
+        guard let service = service() else {
+            DispatchQueue.main.async {
+                completion?(false)
+            }
+            return
+        }
+        service.setManagerTimeoutProfile(
             managerId: managerId,
             hardTimeoutSeconds: hardValue,
             idleTimeoutSeconds: idleValue
@@ -765,13 +947,25 @@ extension HelmCore {
                     managerId: managerId,
                     taskType: "settings"
                 )
+                DispatchQueue.main.async {
+                    completion?(false)
+                }
                 return
             }
             self.fetchManagerStatus()
+            DispatchQueue.main.async {
+                completion?(true)
+            }
         }
     }
 
-    func installManager(_ managerId: String) {
+    func installManager(
+        _ managerId: String,
+        options: ManagerInstallActionOptions? = nil
+    ) {
+        if isManagerUninstalling(managerId) {
+            return
+        }
         DispatchQueue.main.async {
             self.managerOperations[managerId] = L10n.App.Managers.Operation.startingInstall.localized
         }
@@ -791,7 +985,33 @@ extension HelmCore {
             managerId: managerId,
             taskType: "install",
             operation: { completion in
-            svc.installManager(managerId: managerId) { completion($0) }
+            let encodedOptions: String?
+            if let options {
+                do {
+                    let data = try JSONEncoder().encode(options)
+                    encodedOptions = String(data: data, encoding: .utf8)
+                } catch {
+                    logger.error(
+                        "installManager(\(managerId)) failed to encode install options: \(error.localizedDescription)"
+                    )
+                    self.recordLastError(
+                        source: "core.actions",
+                        action: "installManager.options_encode_failed",
+                        managerId: managerId,
+                        taskType: "install"
+                    )
+                    completion(-1)
+                    return
+                }
+            } else {
+                encodedOptions = nil
+            }
+            svc.installManagerWithOptions(
+                managerId: managerId,
+                optionsJson: encodedOptions
+            ) {
+                completion($0)
+            }
         }, fallback: Int64(-1)) { [weak self] taskId in
             DispatchQueue.main.async {
                 guard let self = self, let taskId = taskId else { return }
@@ -806,12 +1026,18 @@ extension HelmCore {
                     self.consumeLastServiceErrorKey { serviceErrorKey in
                         self.managerOperations[managerId] =
                             serviceErrorKey?.localized ?? L10n.App.Managers.Operation.installFailed.localized
+                        self.registerLocalManagerActionFailureTask(
+                            managerId: managerId,
+                            taskType: "install",
+                            description: self.managerActionDescription(action: "Install", managerId: managerId)
+                        )
                     }
                     return
                 }
                 self.registerManagerActionTask(
                     managerId: managerId,
                     taskId: UInt64(taskId),
+                    taskType: "manager_install",
                     description: self.managerActionDescription(action: "Install", managerId: managerId),
                     inProgressText: L10n.App.Managers.Operation.installing.localized
                 )
@@ -819,7 +1045,114 @@ extension HelmCore {
         }
     }
 
+    func applyManagerPackageStateIssueRepair(
+        managerId: String,
+        sourceManagerId: String,
+        packageName: String,
+        issueCode: String,
+        optionId: String
+    ) {
+        if isManagerUninstalling(managerId) {
+            return
+        }
+        let isManagerInstallRepair = optionId == "reinstall_manager_via_homebrew"
+        let isManagerSetupRepair = optionId == "apply_post_install_setup_defaults"
+        if isManagerInstallRepair {
+            DispatchQueue.main.async {
+                self.managerOperations[managerId] = L10n.App.Managers.Operation.startingInstall.localized
+            }
+        } else if isManagerSetupRepair {
+            DispatchQueue.main.async {
+                self.managerOperations[managerId] = L10n.App.Managers.Operation.verifying.localized
+            }
+        }
+        guard let svc = service() else {
+            recordLastError(
+                source: "core.actions",
+                action: "applyManagerPackageStateIssueRepair.service_unavailable",
+                managerId: managerId,
+                taskType: "repair"
+            )
+            return
+        }
+
+        withTimeout(
+            300,
+            source: "core.actions",
+            action: "applyManagerPackageStateIssueRepair",
+            managerId: managerId,
+            taskType: "repair",
+            operation: { completion in
+                svc.applyManagerPackageStateIssueRepair(
+                    managerId: managerId,
+                    sourceManagerId: sourceManagerId,
+                    packageName: packageName,
+                    issueCode: issueCode,
+                    optionId: optionId
+                ) {
+                    completion($0)
+                }
+            },
+            fallback: Int64(-1)
+        ) { [weak self] taskId in
+            DispatchQueue.main.async {
+                guard let self, let taskId else { return }
+                if taskId < 0 {
+                    logger.error(
+                        "applyManagerPackageStateIssueRepair(\(managerId), \(issueCode), \(optionId)) failed"
+                    )
+                    self.recordLastError(
+                        source: "core.actions",
+                        action: "applyManagerPackageStateIssueRepair.queue_failed",
+                        managerId: managerId,
+                        taskType: "repair"
+                    )
+                    if isManagerInstallRepair {
+                        self.consumeLastServiceErrorKey { serviceErrorKey in
+                            self.managerOperations[managerId] =
+                                serviceErrorKey?.localized
+                                ?? L10n.App.Managers.Operation.installFailed.localized
+                        }
+                    } else if isManagerSetupRepair {
+                        self.consumeLastServiceErrorKey { serviceErrorKey in
+                            self.managerOperations[managerId] = serviceErrorKey?.localized
+                                ?? L10n.Common.error.localized
+                        }
+                    }
+                    return
+                }
+
+                if isManagerInstallRepair {
+                    self.registerManagerActionTask(
+                        managerId: managerId,
+                        taskId: UInt64(taskId),
+                        taskType: "manager_install",
+                        description: self.managerActionDescription(
+                            action: "Install",
+                            managerId: managerId
+                        ),
+                        inProgressText: L10n.App.Managers.Operation.installing.localized
+                    )
+                } else if isManagerSetupRepair {
+                    self.registerManagerActionTask(
+                        managerId: managerId,
+                        taskId: UInt64(taskId),
+                        taskType: "manager_setup",
+                        description: self.managerActionDescription(
+                            action: "Finish Setup",
+                            managerId: managerId
+                        ),
+                        inProgressText: L10n.App.Managers.Operation.verifying.localized
+                    )
+                }
+            }
+        }
+    }
+
     func updateManager(_ managerId: String) {
+        if isManagerUninstalling(managerId) {
+            return
+        }
         DispatchQueue.main.async {
             self.managerOperations[managerId] = L10n.App.Managers.Operation.startingUpdate.localized
         }
@@ -860,6 +1193,7 @@ extension HelmCore {
                 self.registerManagerActionTask(
                     managerId: managerId,
                     taskId: UInt64(taskId),
+                    taskType: "manager_update",
                     description: self.managerActionDescription(action: "Update", managerId: managerId),
                     inProgressText: L10n.App.Managers.Operation.updating.localized
                 )
@@ -867,7 +1201,173 @@ extension HelmCore {
         }
     }
 
-    func uninstallManager(_ managerId: String) {
+    func previewManagerUninstall(
+        _ managerId: String,
+        allowUnknownProvenance: Bool = false,
+        completion: @escaping (ManagerUninstallPreview?) -> Void
+    ) {
+        previewManagerUninstall(
+            managerId,
+            options: ManagerUninstallActionOptions(
+                allowUnknownProvenance: allowUnknownProvenance,
+                homebrewCleanupMode: nil,
+                miseCleanupMode: nil,
+                miseConfigRemoval: nil,
+                removeHelmManagedShellSetup: nil
+            ),
+            completion: completion
+        )
+    }
+
+    func previewManagerUninstall(
+        _ managerId: String,
+        options: ManagerUninstallActionOptions?,
+        completion: @escaping (ManagerUninstallPreview?) -> Void
+    ) {
+        guard let svc = service() else {
+            recordLastError(
+                source: "core.actions",
+                action: "previewManagerUninstall.service_unavailable",
+                managerId: managerId,
+                taskType: "uninstall"
+            )
+            DispatchQueue.main.async {
+                completion(nil)
+            }
+            return
+        }
+
+        withTimeout(
+            120,
+            source: "core.actions",
+            action: "previewManagerUninstall",
+            managerId: managerId,
+            taskType: "uninstall",
+            operation: { timeoutCompletion in
+                let encodedOptions: String?
+                if let options {
+                    do {
+                        let data = try JSONEncoder().encode(options)
+                        encodedOptions = String(data: data, encoding: .utf8)
+                    } catch {
+                        logger.error(
+                            "previewManagerUninstall(\(managerId)) failed to encode options: \(error.localizedDescription)"
+                        )
+                        self.recordLastError(
+                            source: "core.actions",
+                            action: "previewManagerUninstall.options_encode_failed",
+                            managerId: managerId,
+                            taskType: "uninstall"
+                        )
+                        timeoutCompletion(nil)
+                        return
+                    }
+                } else {
+                    encodedOptions = nil
+                }
+                svc.previewManagerUninstallWithOptions(
+                    managerId: managerId,
+                    optionsJson: encodedOptions
+                ) { timeoutCompletion($0) }
+            },
+            fallback: String?.none
+        ) { [weak self] jsonString in
+            guard let self else { return }
+            guard let jsonString,
+                  let data = jsonString.data(using: .utf8),
+                  let preview: ManagerUninstallPreview = self.decodeCorePayload(
+                    ManagerUninstallPreview.self,
+                    from: data,
+                    decodeContext: "previewManagerUninstall",
+                    source: "core.actions",
+                    action: "previewManagerUninstall.decode",
+                    managerId: managerId,
+                    taskType: "uninstall"
+                  ) else {
+                DispatchQueue.main.async {
+                    completion(nil)
+                }
+                return
+            }
+
+            DispatchQueue.main.async {
+                completion(preview)
+            }
+        }
+    }
+
+    func previewPackageUninstall(
+        _ package: PackageItem,
+        completion: @escaping (PackageUninstallPreview?) -> Void
+    ) {
+        guard let svc = service() else {
+            recordLastError(
+                source: "core.actions",
+                action: "previewPackageUninstall.service_unavailable",
+                managerId: package.managerId,
+                taskType: "uninstall"
+            )
+            DispatchQueue.main.async {
+                completion(nil)
+            }
+            return
+        }
+
+        withTimeout(
+            120,
+            source: "core.actions",
+            action: "previewPackageUninstall",
+            managerId: package.managerId,
+            taskType: "uninstall",
+            operation: { timeoutCompletion in
+                svc.previewPackageUninstall(
+                    managerId: package.managerId,
+                    packageName: package.name
+                ) { timeoutCompletion($0) }
+            },
+            fallback: String?.none
+        ) { [weak self] jsonString in
+            guard let self else { return }
+            guard let jsonString,
+                  let data = jsonString.data(using: .utf8),
+                  let preview: PackageUninstallPreview = self.decodeCorePayload(
+                    PackageUninstallPreview.self,
+                    from: data,
+                    decodeContext: "previewPackageUninstall",
+                    source: "core.actions",
+                    action: "previewPackageUninstall.decode",
+                    managerId: package.managerId,
+                    taskType: "uninstall"
+                  ) else {
+                DispatchQueue.main.async {
+                    completion(nil)
+                }
+                return
+            }
+
+            DispatchQueue.main.async {
+                completion(preview)
+            }
+        }
+    }
+
+    func uninstallManager(_ managerId: String, allowUnknownProvenance: Bool = false) {
+        uninstallManager(
+            managerId,
+            options: ManagerUninstallActionOptions(
+                allowUnknownProvenance: allowUnknownProvenance,
+                homebrewCleanupMode: nil,
+                miseCleanupMode: nil,
+                miseConfigRemoval: nil,
+                removeHelmManagedShellSetup: nil
+            )
+        )
+    }
+
+    func uninstallManager(_ managerId: String, options: ManagerUninstallActionOptions?) {
+        if isManagerUninstalling(managerId) {
+            return
+        }
         DispatchQueue.main.async {
             self.managerOperations[managerId] = L10n.App.Managers.Operation.startingUninstall.localized
         }
@@ -887,7 +1387,31 @@ extension HelmCore {
             managerId: managerId,
             taskType: "uninstall",
             operation: { completion in
-            svc.uninstallManager(managerId: managerId) { completion($0) }
+                let encodedOptions: String?
+                if let options {
+                    do {
+                        let data = try JSONEncoder().encode(options)
+                        encodedOptions = String(data: data, encoding: .utf8)
+                    } catch {
+                        logger.error(
+                            "uninstallManager(\(managerId)) failed to encode uninstall options: \(error.localizedDescription)"
+                        )
+                        self.recordLastError(
+                            source: "core.actions",
+                            action: "uninstallManager.options_encode_failed",
+                            managerId: managerId,
+                            taskType: "uninstall"
+                        )
+                        completion(-1)
+                        return
+                    }
+                } else {
+                    encodedOptions = nil
+                }
+                svc.uninstallManagerWithUninstallOptions(
+                    managerId: managerId,
+                    optionsJson: encodedOptions
+                ) { completion($0) }
         }, fallback: Int64(-1)) { [weak self] taskId in
             DispatchQueue.main.async {
                 guard let self = self, let taskId = taskId else { return }
@@ -908,6 +1432,7 @@ extension HelmCore {
                 self.registerManagerActionTask(
                     managerId: managerId,
                     taskId: UInt64(taskId),
+                    taskType: "manager_uninstall",
                     description: self.managerActionDescription(action: "Uninstall", managerId: managerId),
                     inProgressText: L10n.App.Managers.Operation.uninstalling.localized
                 )
@@ -915,14 +1440,26 @@ extension HelmCore {
         }
     }
 
+    func verifyManagerPostInstallSetup(_ managerId: String) {
+        _ = managerId
+        fetchManagerStatus()
+        fetchTasks()
+        fetchPackages()
+        fetchOutdatedPackages()
+        refreshCachedAvailablePackages()
+    }
+
     func registerManagerActionTask(
         managerId: String,
         taskId: UInt64,
+        taskType: String,
         description: String,
         inProgressText: String
     ) {
         managerActionTaskDescriptions[taskId] = description
         managerActionTaskByManager[managerId] = taskId
+        managerActionTaskTypes[taskId] = taskType
+        managerActionTaskSubmittedAt[taskId] = Date()
         managerOperations[managerId] = inProgressText
 
         let idString = "\(taskId)"
@@ -942,6 +1479,28 @@ extension HelmCore {
         }
     }
 
+    private func registerLocalManagerActionFailureTask(
+        managerId: String,
+        taskType: String?,
+        description: String
+    ) {
+        let localTaskId = Self.localManagerActionTaskIdPrefix + UUID().uuidString
+        let failedTask = TaskItem(
+            id: localTaskId,
+            description: description,
+            status: "Failed",
+            managerId: managerId,
+            taskType: taskType,
+            labelKey: nil,
+            labelArgs: nil
+        )
+
+        localManagerActionTasks[localTaskId] = failedTask
+        localManagerActionTaskCreatedAt[localTaskId] = Date()
+        activeTasks.removeAll { $0.id == localTaskId }
+        activeTasks.insert(failedTask, at: 0)
+    }
+
     // MARK: - Search Orchestration
 
     func remoteSearchManagerIds() -> [String] {
@@ -950,7 +1509,7 @@ extension HelmCore {
                 return ManagerInfo.all
                     .map(\.id)
                     .filter { supportsRemoteSearch(managerId: $0) }
-                    .filter { detectedManagers.contains($0) }
+                    .filter { isManagerDetected($0) }
             }
             return []
         }
@@ -960,8 +1519,7 @@ extension HelmCore {
             .filter { supportsRemoteSearch(managerId: $0) }
             .filter { managerStatuses[$0]?.isImplemented ?? true }
             .filter { managerStatuses[$0]?.enabled ?? true }
-            .filter { managerStatuses[$0]?.detected ?? true }
-            .filter { detectedManagers.isEmpty || detectedManagers.contains($0) }
+            .filter { isManagerDetected($0) }
     }
 
     func onSearchTextChanged(_ query: String) {

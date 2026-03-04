@@ -9,11 +9,12 @@ use crate::models::{
     OutdatedPackage, PackageRef, TaskId, TaskType,
 };
 
-const RUSTUP_READ_CAPABILITIES: &[Capability] = &[
+const RUSTUP_CAPABILITIES: &[Capability] = &[
     Capability::Detect,
     Capability::Refresh,
     Capability::ListInstalled,
     Capability::ListOutdated,
+    Capability::Install,
     Capability::Uninstall,
     Capability::Upgrade,
 ];
@@ -23,14 +24,17 @@ const RUSTUP_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
     display_name: "rustup",
     category: ManagerCategory::ToolRuntime,
     authority: ManagerAuthority::Authoritative,
-    capabilities: RUSTUP_READ_CAPABILITIES,
+    capabilities: RUSTUP_CAPABILITIES,
 };
 
 const RUSTUP_COMMAND: &str = "rustup";
 const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
-const LIST_TIMEOUT: Duration = Duration::from_secs(60);
+const LIST_TIMEOUT: Duration = Duration::from_secs(120);
+const INSTALL_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+const INSTALL_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 
-const UNINSTALL_TIMEOUT: Duration = Duration::from_secs(60);
+const UNINSTALL_TIMEOUT: Duration = Duration::from_secs(25 * 60);
+const UNINSTALL_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RustupDetectOutput {
@@ -38,10 +42,17 @@ pub struct RustupDetectOutput {
     pub version_output: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RustupInstallSource {
+    OfficialDownload,
+    ExistingBinaryPath(PathBuf),
+}
+
 pub trait RustupSource: Send + Sync {
     fn detect(&self) -> AdapterResult<RustupDetectOutput>;
     fn toolchain_list(&self) -> AdapterResult<String>;
     fn check(&self) -> AdapterResult<String>;
+    fn install_self(&self, source: RustupInstallSource) -> AdapterResult<String>;
     fn update_toolchain(&self, toolchain: &str) -> AdapterResult<String>;
     fn self_uninstall(&self) -> AdapterResult<String>;
     fn self_update(&self) -> AdapterResult<String>;
@@ -95,8 +106,55 @@ impl<S: RustupSource> ManagerAdapter for RustupAdapter<S> {
                 let packages = parse_rustup_check(&raw)?;
                 Ok(AdapterResponse::OutdatedPackages(packages))
             }
+            AdapterRequest::Install(install_request) => {
+                let install_source = parse_install_source(install_request.version.as_deref())?;
+                let _ = self.source.install_self(install_source)?;
+                Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
+                    package: install_request.package,
+                    action: ManagerAction::Install,
+                    before_version: None,
+                    after_version: None,
+                }))
+            }
             AdapterRequest::Uninstall(uninstall_request) => {
+                let (uninstall_target, remove_shell_setup) =
+                    parse_self_uninstall_target(uninstall_request.package.name.as_str())?;
+                if uninstall_target != "__self__" {
+                    return Err(CoreError {
+                        manager: Some(ManagerId::Rustup),
+                        task: Some(TaskType::Uninstall),
+                        action: Some(ManagerAction::Uninstall),
+                        kind: CoreErrorKind::InvalidInput,
+                        message: format!("unsupported rustup uninstall target: {uninstall_target}"),
+                    });
+                }
                 let _ = self.source.self_uninstall()?;
+                if remove_shell_setup {
+                    match crate::post_install_setup::remove_helm_managed_post_install_setup(
+                        ManagerId::Rustup,
+                    ) {
+                        Ok(result) => {
+                            crate::execution::record_task_log_note(result.summary().as_str());
+                            if !result.malformed_files.is_empty() {
+                                crate::execution::record_task_log_note(
+                                    format!(
+                                        "helm-managed rustup setup markers were malformed in {} shell startup file(s); left unchanged",
+                                        result.malformed_files.len()
+                                    )
+                                    .as_str(),
+                                );
+                            }
+                        }
+                        Err(error) => {
+                            crate::execution::record_task_log_note(
+                                format!(
+                                    "failed to remove Helm-managed rustup shell setup block(s): {error}"
+                                )
+                                .as_str(),
+                            );
+                        }
+                    }
+                }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: uninstall_request.package,
                     action: ManagerAction::Uninstall,
@@ -167,9 +225,59 @@ pub fn rustup_self_uninstall_request(task_id: Option<TaskId>) -> ProcessSpawnReq
         task_id,
         TaskType::Uninstall,
         ManagerAction::Uninstall,
-        CommandSpec::new(RUSTUP_COMMAND).args(["self", "uninstall", "-y"]),
+        CommandSpec::new(RUSTUP_COMMAND).args(["--verbose", "self", "uninstall", "-y"]),
         UNINSTALL_TIMEOUT,
     )
+    .idle_timeout(UNINSTALL_IDLE_TIMEOUT)
+}
+
+pub fn rustup_init_install_request(
+    task_id: Option<TaskId>,
+    rustup_init_program: impl Into<PathBuf>,
+) -> ProcessSpawnRequest {
+    rustup_request(
+        task_id,
+        TaskType::Install,
+        ManagerAction::Install,
+        CommandSpec::new(rustup_init_program).args(["-y", "--no-modify-path"]),
+        INSTALL_TIMEOUT,
+    )
+    .idle_timeout(INSTALL_IDLE_TIMEOUT)
+}
+
+pub fn rustup_download_install_script_request(
+    task_id: Option<TaskId>,
+    output_script: &str,
+) -> ProcessSpawnRequest {
+    rustup_request(
+        task_id,
+        TaskType::Install,
+        ManagerAction::Install,
+        CommandSpec::new("curl").args([
+            "--proto",
+            "=https",
+            "--tlsv1.2",
+            "-sSf",
+            "https://sh.rustup.rs",
+            "-o",
+            output_script,
+        ]),
+        INSTALL_TIMEOUT,
+    )
+}
+
+pub fn rustup_run_downloaded_install_script_request(
+    task_id: Option<TaskId>,
+    script_path: &str,
+) -> ProcessSpawnRequest {
+    rustup_request(
+        task_id,
+        TaskType::Install,
+        ManagerAction::Install,
+        CommandSpec::new("sh").args([script_path, "-y", "--no-modify-path"]),
+        INSTALL_TIMEOUT,
+    )
+    .idle_timeout(INSTALL_IDLE_TIMEOUT)
 }
 
 pub fn rustup_self_update_request(task_id: Option<TaskId>) -> ProcessSpawnRequest {
@@ -209,6 +317,51 @@ fn rustup_request(
         request = request.task_id(task_id);
     }
     request
+}
+
+fn parse_install_source(version: Option<&str>) -> AdapterResult<RustupInstallSource> {
+    let Some(version) = version.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(RustupInstallSource::OfficialDownload);
+    };
+    if version.eq_ignore_ascii_case("officialDownload") {
+        return Ok(RustupInstallSource::OfficialDownload);
+    }
+    if let Some(path) = version.strip_prefix("existingBinaryPath:") {
+        let path = path.trim();
+        if path.is_empty() {
+            return Err(CoreError {
+                manager: Some(ManagerId::Rustup),
+                task: Some(TaskType::Install),
+                action: Some(ManagerAction::Install),
+                kind: CoreErrorKind::InvalidInput,
+                message: "rustup existingBinaryPath install source requires a non-empty path"
+                    .to_string(),
+            });
+        }
+        return Ok(RustupInstallSource::ExistingBinaryPath(PathBuf::from(path)));
+    }
+    Err(CoreError {
+        manager: Some(ManagerId::Rustup),
+        task: Some(TaskType::Install),
+        action: Some(ManagerAction::Install),
+        kind: CoreErrorKind::InvalidInput,
+        message: format!("unsupported rustup install source: {version}"),
+    })
+}
+
+fn parse_self_uninstall_target(raw: &str) -> AdapterResult<(&str, bool)> {
+    let (base, remove_shell_setup) =
+        crate::manager_lifecycle::strip_shell_setup_cleanup_suffix(raw);
+    if base == "__self__" {
+        return Ok((base, remove_shell_setup));
+    }
+    Err(CoreError {
+        manager: Some(ManagerId::Rustup),
+        task: Some(TaskType::Uninstall),
+        action: Some(ManagerAction::Uninstall),
+        kind: CoreErrorKind::InvalidInput,
+        message: format!("unsupported rustup uninstall target: {raw}"),
+    })
 }
 
 fn parse_rustup_version(output: &str) -> Option<String> {
@@ -320,12 +473,16 @@ mod tests {
         AdapterRequest, AdapterResponse, AdapterResult, DetectRequest, ListInstalledRequest,
         ListOutdatedRequest, ManagerAdapter,
     };
-    use crate::models::{CoreErrorKind, ManagerAction, ManagerId, TaskId, TaskType};
+    use crate::models::{ManagerAction, ManagerId, TaskId, TaskType};
 
     use super::{
-        RustupAdapter, RustupDetectOutput, RustupSource, parse_rustup_check, parse_rustup_version,
-        parse_toolchain_list, rustup_check_request, rustup_detect_request,
-        rustup_self_update_request, rustup_toolchain_list_request, rustup_toolchain_update_request,
+        INSTALL_IDLE_TIMEOUT, INSTALL_TIMEOUT, RustupAdapter, RustupDetectOutput,
+        RustupInstallSource, RustupSource, UNINSTALL_IDLE_TIMEOUT, UNINSTALL_TIMEOUT,
+        parse_install_source, parse_rustup_check, parse_rustup_version, parse_toolchain_list,
+        rustup_check_request, rustup_detect_request, rustup_download_install_script_request,
+        rustup_init_install_request, rustup_run_downloaded_install_script_request,
+        rustup_self_uninstall_request, rustup_self_update_request, rustup_toolchain_list_request,
+        rustup_toolchain_update_request,
     };
 
     const VERSION_FIXTURE: &str = include_str!("../../tests/fixtures/rustup/version.txt");
@@ -416,20 +573,37 @@ mod tests {
     }
 
     #[test]
-    fn adapter_rejects_unsupported_install_action() {
+    fn adapter_executes_install_action() {
         let source = FixtureSource::default();
         let adapter = RustupAdapter::new(source);
 
-        let error = adapter
+        let result = adapter
             .execute(AdapterRequest::Install(crate::adapters::InstallRequest {
                 package: crate::models::PackageRef {
                     manager: ManagerId::Rustup,
-                    name: "stable".to_string(),
+                    name: "__self__".to_string(),
                 },
                 version: None,
             }))
-            .unwrap_err();
-        assert_eq!(error.kind, CoreErrorKind::UnsupportedCapability);
+            .unwrap();
+        assert!(matches!(result, AdapterResponse::Mutation(_)));
+    }
+
+    #[test]
+    fn adapter_executes_install_action_with_existing_binary_source() {
+        let source = FixtureSource::default();
+        let adapter = RustupAdapter::new(source);
+
+        let result = adapter
+            .execute(AdapterRequest::Install(crate::adapters::InstallRequest {
+                package: crate::models::PackageRef {
+                    manager: ManagerId::Rustup,
+                    name: "__self__".to_string(),
+                },
+                version: Some("existingBinaryPath:/tmp/rustup-init".to_string()),
+            }))
+            .unwrap();
+        assert!(matches!(result, AdapterResponse::Mutation(_)));
     }
 
     #[test]
@@ -523,6 +697,101 @@ mod tests {
     }
 
     #[test]
+    fn self_uninstall_request_sets_hard_and_idle_timeouts() {
+        let request = rustup_self_uninstall_request(Some(TaskId(7)));
+        assert_eq!(request.task_id, Some(TaskId(7)));
+        assert_eq!(
+            request.command.args,
+            vec![
+                "--verbose".to_string(),
+                "self".to_string(),
+                "uninstall".to_string(),
+                "-y".to_string()
+            ]
+        );
+        assert_eq!(request.timeout, Some(UNINSTALL_TIMEOUT));
+        assert_eq!(request.idle_timeout, Some(UNINSTALL_IDLE_TIMEOUT));
+    }
+
+    #[test]
+    fn rustup_init_install_request_sets_hard_and_idle_timeouts() {
+        let request = rustup_init_install_request(Some(TaskId(6)), "rustup-init");
+        assert_eq!(request.task_id, Some(TaskId(6)));
+        assert_eq!(request.command.program, PathBuf::from("rustup-init"));
+        assert_eq!(
+            request.command.args,
+            vec!["-y".to_string(), "--no-modify-path".to_string(),]
+        );
+        assert_eq!(request.timeout, Some(INSTALL_TIMEOUT));
+        assert_eq!(request.idle_timeout, Some(INSTALL_IDLE_TIMEOUT));
+    }
+
+    #[test]
+    fn rustup_download_install_script_request_uses_expected_command() {
+        let request = rustup_download_install_script_request(Some(TaskId(10)), "/tmp/rustup.sh");
+        assert_eq!(request.task_id, Some(TaskId(10)));
+        assert_eq!(request.command.program, PathBuf::from("curl"));
+        assert_eq!(
+            request.command.args,
+            vec![
+                "--proto".to_string(),
+                "=https".to_string(),
+                "--tlsv1.2".to_string(),
+                "-sSf".to_string(),
+                "https://sh.rustup.rs".to_string(),
+                "-o".to_string(),
+                "/tmp/rustup.sh".to_string(),
+            ]
+        );
+        assert_eq!(request.timeout, Some(INSTALL_TIMEOUT));
+    }
+
+    #[test]
+    fn rustup_run_downloaded_install_script_request_uses_expected_command() {
+        let request =
+            rustup_run_downloaded_install_script_request(Some(TaskId(11)), "/tmp/rustup.sh");
+        assert_eq!(request.task_id, Some(TaskId(11)));
+        assert_eq!(request.command.program, PathBuf::from("sh"));
+        assert_eq!(
+            request.command.args,
+            vec![
+                "/tmp/rustup.sh".to_string(),
+                "-y".to_string(),
+                "--no-modify-path".to_string(),
+            ]
+        );
+        assert_eq!(request.timeout, Some(INSTALL_TIMEOUT));
+        assert_eq!(request.idle_timeout, Some(INSTALL_IDLE_TIMEOUT));
+    }
+
+    #[test]
+    fn parse_install_source_defaults_to_official_download() {
+        assert_eq!(
+            parse_install_source(None).expect("source should parse"),
+            RustupInstallSource::OfficialDownload
+        );
+        assert_eq!(
+            parse_install_source(Some("officialDownload")).expect("source should parse"),
+            RustupInstallSource::OfficialDownload
+        );
+    }
+
+    #[test]
+    fn parse_install_source_supports_existing_binary_path() {
+        assert_eq!(
+            parse_install_source(Some("existingBinaryPath:/tmp/rustup-init"))
+                .expect("source should parse"),
+            RustupInstallSource::ExistingBinaryPath(PathBuf::from("/tmp/rustup-init"))
+        );
+    }
+
+    #[test]
+    fn parse_install_source_rejects_invalid_values() {
+        assert!(parse_install_source(Some("existingBinaryPath:")).is_err());
+        assert!(parse_install_source(Some("bad-source")).is_err());
+    }
+
+    #[test]
     fn toolchain_update_command_spec_uses_structured_args() {
         let request =
             rustup_toolchain_update_request(Some(TaskId(8)), "stable-x86_64-apple-darwin");
@@ -558,6 +827,10 @@ mod tests {
 
         fn check(&self) -> AdapterResult<String> {
             Ok(CHECK_FIXTURE.to_string())
+        }
+
+        fn install_self(&self, _source: RustupInstallSource) -> AdapterResult<String> {
+            Ok(String::new())
         }
 
         fn self_uninstall(&self) -> AdapterResult<String> {

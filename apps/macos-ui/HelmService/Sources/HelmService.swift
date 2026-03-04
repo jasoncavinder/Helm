@@ -70,6 +70,24 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(String(cString: cString))
     }
 
+    func listTaskTimeoutPrompts(withReply reply: @escaping (String?) -> Void) {
+        guard let cString = helm_list_task_timeout_prompts() else {
+            logger.warning("helm_list_task_timeout_prompts returned nil")
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(cString) }
+        reply(String(cString: cString))
+    }
+
+    func respondTaskTimeoutPrompt(taskId: Int64, waitForCompletion: Bool, withReply reply: @escaping (Bool) -> Void) {
+        let result = helm_respond_task_timeout_prompt(taskId, waitForCompletion)
+        logger.info(
+            "helm_respond_task_timeout_prompt(\(taskId), wait=\(waitForCompletion)) result: \(result)"
+        )
+        reply(result)
+    }
+
     func triggerRefresh(withReply reply: @escaping (Bool) -> Void) {
         let result = helm_trigger_refresh()
         logger.info("helm_trigger_refresh result: \(result)")
@@ -79,6 +97,14 @@ class HelmService: NSObject, HelmServiceProtocol {
     func triggerDetection(withReply reply: @escaping (Bool) -> Void) {
         let result = helm_trigger_detection()
         logger.info("helm_trigger_detection result: \(result)")
+        reply(result)
+    }
+
+    func triggerDetectionForManager(managerId: String, withReply reply: @escaping (Bool) -> Void) {
+        let result = managerId.withCString { manager in
+            helm_trigger_detection_for_manager(manager)
+        }
+        logger.info("helm_trigger_detection_for_manager(\(managerId)) result: \(result)")
         reply(result)
     }
 
@@ -128,6 +154,45 @@ class HelmService: NSObject, HelmServiceProtocol {
         }
         defer { helm_free_string(cString) }
         reply(String(cString: cString))
+    }
+
+    func doctorScan(withReply reply: @escaping (String?) -> Void) {
+        guard let cString = helm_doctor_scan() else {
+            logger.warning("helm_doctor_scan returned nil")
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(cString) }
+        reply(String(cString: cString))
+    }
+
+    func getSharedOnboardingState(withReply reply: @escaping (Bool, String?) -> Void) {
+        let completed = helm_get_cli_onboarding_completed()
+        guard let cString = helm_get_cli_accepted_license_terms_version() else {
+            reply(completed, nil)
+            return
+        }
+        defer { helm_free_string(cString) }
+        reply(completed, String(cString: cString))
+    }
+
+    func setSharedOnboardingCompleted(completed: Bool, withReply reply: @escaping (Bool) -> Void) {
+        let result = helm_set_cli_onboarding_completed(completed)
+        logger.info("helm_set_cli_onboarding_completed(\(completed)) result: \(result)")
+        reply(result)
+    }
+
+    func setSharedAcceptedLicenseTermsVersion(version: String?, withReply reply: @escaping (Bool) -> Void) {
+        let result: Bool
+        if let version {
+            result = version.withCString { versionPtr in
+                helm_set_cli_accepted_license_terms_version(versionPtr)
+            }
+        } else {
+            result = helm_set_cli_accepted_license_terms_version(nil)
+        }
+        logger.info("helm_set_cli_accepted_license_terms_version(\(version ?? "nil")) result: \(result)")
+        reply(result)
     }
 
     func getSafeMode(withReply reply: @escaping (Bool) -> Void) {
@@ -218,6 +283,20 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(taskId)
     }
 
+    func previewPackageUninstall(managerId: String, packageName: String, withReply reply: @escaping (String?) -> Void) {
+        guard let cString = managerId.withCString({ manager in
+            packageName.withCString { package in
+                helm_preview_package_uninstall(manager, package)
+            }
+        }) else {
+            logger.warning("helm_preview_package_uninstall(\(managerId), \(packageName)) returned nil")
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(cString) }
+        reply(String(cString: cString))
+    }
+
     func listPins(withReply reply: @escaping (String?) -> Void) {
         guard let cString = helm_list_pins() else {
             logger.warning("helm_list_pins returned nil")
@@ -282,6 +361,32 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(result)
     }
 
+    func setManagerActiveInstallInstance(managerId: String, instanceId: String, withReply reply: @escaping (Bool) -> Void) {
+        let result = managerId.withCString { manager in
+            instanceId.withCString { instance in
+                helm_set_manager_active_install_instance(manager, instance)
+            }
+        }
+        logger.info("helm_set_manager_active_install_instance(\(managerId), \(instanceId)) result: \(result)")
+        reply(result)
+    }
+
+    func acknowledgeManagerMultiInstanceState(managerId: String, withReply reply: @escaping (Bool) -> Void) {
+        let result = managerId.withCString { manager in
+            helm_ack_manager_multi_instance_state(manager)
+        }
+        logger.info("helm_ack_manager_multi_instance_state(\(managerId)) result: \(result)")
+        reply(result)
+    }
+
+    func clearManagerMultiInstanceAck(managerId: String, withReply reply: @escaping (Bool) -> Void) {
+        let result = managerId.withCString { manager in
+            helm_clear_manager_multi_instance_ack(manager)
+        }
+        logger.info("helm_clear_manager_multi_instance_ack(\(managerId)) result: \(result)")
+        reply(result)
+    }
+
     func setManagerInstallMethod(managerId: String, installMethod: String?, withReply reply: @escaping (Bool) -> Void) {
         let result: Bool
         if let installMethod {
@@ -314,9 +419,77 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(result)
     }
 
+    func previewManagerUninstall(
+        managerId: String,
+        allowUnknownProvenance: Bool,
+        withReply reply: @escaping (String?) -> Void
+    ) {
+        let optionsJson = allowUnknownProvenance
+            ? #"{"allowUnknownProvenance":true}"#
+            : nil
+        previewManagerUninstallWithOptions(
+            managerId: managerId,
+            optionsJson: optionsJson,
+            withReply: reply
+        )
+    }
+
+    func previewManagerUninstallWithOptions(
+        managerId: String,
+        optionsJson: String?,
+        withReply reply: @escaping (String?) -> Void
+    ) {
+        let cString: UnsafeMutablePointer<CChar>?
+        if let optionsJson {
+            cString = managerId.withCString { manager in
+                optionsJson.withCString { options in
+                    helm_preview_manager_uninstall_with_options(manager, options)
+                }
+            }
+        } else {
+            cString = managerId.withCString { manager in
+                helm_preview_manager_uninstall_with_options(manager, nil)
+            }
+        }
+        guard let cString else {
+            logger.warning(
+                "helm_preview_manager_uninstall_with_options(\(managerId), options=\(optionsJson ?? "nil")) returned nil"
+            )
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(cString) }
+        reply(String(cString: cString))
+    }
+
     func installManager(managerId: String, withReply reply: @escaping (Int64) -> Void) {
-        let taskId = managerId.withCString { helm_install_manager($0) }
-        logger.info("helm_install_manager(\(managerId)) result: \(taskId)")
+        installManagerWithOptions(
+            managerId: managerId,
+            optionsJson: nil,
+            withReply: reply
+        )
+    }
+
+    func installManagerWithOptions(
+        managerId: String,
+        optionsJson: String?,
+        withReply reply: @escaping (Int64) -> Void
+    ) {
+        let taskId: Int64
+        if let optionsJson {
+            taskId = managerId.withCString { manager in
+                optionsJson.withCString { options in
+                    helm_install_manager_with_options(manager, options)
+                }
+            }
+        } else {
+            taskId = managerId.withCString { manager in
+                helm_install_manager_with_options(manager, nil)
+            }
+        }
+        logger.info(
+            "helm_install_manager_with_options(\(managerId), options=\(optionsJson ?? "nil")) result: \(taskId)"
+        )
         reply(taskId)
     }
 
@@ -326,9 +499,80 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(taskId)
     }
 
+    func applyManagerPackageStateIssueRepair(
+        managerId: String,
+        sourceManagerId: String,
+        packageName: String,
+        issueCode: String,
+        optionId: String,
+        withReply reply: @escaping (Int64) -> Void
+    ) {
+        let taskId = managerId.withCString { manager in
+            sourceManagerId.withCString { sourceManager in
+                packageName.withCString { package in
+                    issueCode.withCString { issue in
+                        optionId.withCString { option in
+                            helm_apply_manager_package_state_issue_repair(
+                                manager,
+                                sourceManager,
+                                package,
+                                issue,
+                                option
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        logger.info(
+            "helm_apply_manager_package_state_issue_repair(\(managerId), \(sourceManagerId), \(packageName), \(issueCode), \(optionId)) result: \(taskId)"
+        )
+        reply(taskId)
+    }
+
     func uninstallManager(managerId: String, withReply reply: @escaping (Int64) -> Void) {
-        let taskId = managerId.withCString { helm_uninstall_manager($0) }
-        logger.info("helm_uninstall_manager(\(managerId)) result: \(taskId)")
+        uninstallManagerWithOptions(
+            managerId: managerId,
+            allowUnknownProvenance: false,
+            withReply: reply
+        )
+    }
+
+    func uninstallManagerWithOptions(
+        managerId: String,
+        allowUnknownProvenance: Bool,
+        withReply reply: @escaping (Int64) -> Void
+    ) {
+        let optionsJson = allowUnknownProvenance
+            ? #"{"allowUnknownProvenance":true}"#
+            : nil
+        uninstallManagerWithUninstallOptions(
+            managerId: managerId,
+            optionsJson: optionsJson,
+            withReply: reply
+        )
+    }
+
+    func uninstallManagerWithUninstallOptions(
+        managerId: String,
+        optionsJson: String?,
+        withReply reply: @escaping (Int64) -> Void
+    ) {
+        let taskId: Int64
+        if let optionsJson {
+            taskId = managerId.withCString { manager in
+                optionsJson.withCString { options in
+                    helm_uninstall_manager_with_uninstall_options(manager, options)
+                }
+            }
+        } else {
+            taskId = managerId.withCString { manager in
+                helm_uninstall_manager_with_uninstall_options(manager, nil)
+            }
+        }
+        logger.info(
+            "helm_uninstall_manager_with_uninstall_options(\(managerId), options=\(optionsJson ?? "nil")) result: \(taskId)"
+        )
         reply(taskId)
     }
 

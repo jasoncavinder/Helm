@@ -32,16 +32,27 @@ use helm_core::execution::{
     ManagerTimeoutProfile, TaskOutputRecord, TokioProcessExecutor,
     replace_manager_execution_preferences,
 };
+use helm_core::managed_automation_policy::{
+    ManagedAutomationPolicyMode, apply_managed_automation_policy,
+};
+use helm_core::manager_dependencies::provenance_dependency_manager;
+use helm_core::manager_instances::{install_instance_fingerprint, resolve_multi_instance_state};
 use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
     CachedSearchResult, Capability, DetectionInfo, HomebrewKegPolicy, InstalledPackage,
-    ManagerAuthority, ManagerId, OutdatedPackage, PackageRef, PinKind, PinRecord, SearchQuery,
-    TaskId, TaskLogLevel, TaskRecord, TaskStatus,
+    ManagerAuthority, ManagerId, ManagerInstallInstance, ManagerUninstallPreview, OutdatedPackage,
+    PackageRef, PackageUninstallPreview, PinKind, PinRecord, SearchQuery, StrategyKind, TaskId,
+    TaskLogLevel, TaskRecord, TaskStatus,
 };
 use helm_core::orchestration::{AdapterRuntime, AdapterTaskTerminalState, CancellationMode};
 use helm_core::persistence::{DetectionStore, PackageStore, PinStore, SearchCacheStore, TaskStore};
 use helm_core::registry;
 use helm_core::sqlite::SqliteStore;
+use helm_core::uninstall_preview::{
+    DEFAULT_MANAGER_UNINSTALL_SAFE_BLAST_RADIUS_THRESHOLD, ManagerUninstallPreviewContext,
+    PackageUninstallPreviewContext, build_manager_uninstall_preview,
+    build_package_uninstall_preview,
+};
 use semver::Version;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -73,8 +84,16 @@ const CLI_LICENSE_TERMS_VERSION: &str = "helm-source-available-license-v1.0-pre1
 const CLI_LICENSE_TERMS_URL: &str = "https://github.com/jasoncavinder/Helm/blob/main/LICENSE";
 const CLI_ACCEPT_LICENSE_ENV: &str = "HELM_ACCEPT_LICENSE";
 const CLI_ACCEPT_DEFAULTS_ENV: &str = "HELM_ACCEPT_DEFAULTS";
+const MANAGED_INSTALL_METHOD_POLICY_ENV: &str = "HELM_MANAGED_INSTALL_METHOD_POLICY";
+const MANAGED_INSTALL_METHOD_POLICY_ALLOW_RESTRICTED_ENV: &str =
+    "HELM_MANAGED_INSTALL_METHOD_POLICY_ALLOW_RESTRICTED";
+const MANAGED_AUTOMATION_POLICY_ENV: &str = "HELM_MANAGED_AUTOMATION_POLICY";
 static CLI_TOKIO_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
 static EXECUTABLE_DISCOVERY_CACHE: OnceLock<Mutex<HashMap<ManagerId, Vec<String>>>> =
+    OnceLock::new();
+static MANAGER_INSTALL_METHOD_POLICY_CONTEXT: OnceLock<ManagerInstallMethodPolicyContext> =
+    OnceLock::new();
+static MANAGER_AUTOMATION_POLICY_CONTEXT: OnceLock<ManagerAutomationPolicyContext> =
     OnceLock::new();
 static COORDINATOR_REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
 static CLI_VERBOSE: AtomicBool = AtomicBool::new(false);
@@ -100,7 +119,7 @@ const BASH_COMPLETION_SCRIPT: &str = r#"_helm_complete() {
             COMPREPLY=( $(compgen -W "list show logs output follow cancel help" -- "${cur}") )
             ;;
         managers)
-            COMPREPLY=( $(compgen -W "list show detect enable disable install update uninstall executables install-methods priority help" -- "${cur}") )
+            COMPREPLY=( $(compgen -W "list show detect enable disable install update uninstall executables install-methods instances priority help" -- "${cur}") )
             ;;
         settings)
             COMPREPLY=( $(compgen -W "list get set reset help" -- "${cur}") )
@@ -109,7 +128,7 @@ const BASH_COMPLETION_SCRIPT: &str = r#"_helm_complete() {
             COMPREPLY=( $(compgen -W "summary task manager provenance export help" -- "${cur}") )
             ;;
         doctor)
-            COMPREPLY=( $(compgen -W "summary task manager provenance export help" -- "${cur}") )
+            COMPREPLY=( $(compgen -W "scan repair help" -- "${cur}") )
             ;;
         onboarding)
             COMPREPLY=( $(compgen -W "status run reset help" -- "${cur}") )
@@ -165,7 +184,7 @@ case $words[2] in
     _values 'subcommand' list show logs output follow cancel help
     ;;
   managers)
-    _values 'subcommand' list show detect enable disable install update uninstall executables install-methods priority help
+    _values 'subcommand' list show detect enable disable install update uninstall executables install-methods instances priority help
     ;;
   settings)
     _values 'subcommand' list get set reset help
@@ -174,7 +193,7 @@ case $words[2] in
     _values 'subcommand' summary task manager provenance export help
     ;;
   doctor)
-    _values 'subcommand' summary task manager provenance export help
+    _values 'subcommand' scan repair help
     ;;
   onboarding)
     _values 'subcommand' status run reset help
@@ -196,10 +215,10 @@ complete -c helm -n "__fish_use_subcommand" -a "status refresh search ls package
 complete -c helm -n "__fish_seen_subcommand_from packages" -a "list search show install uninstall upgrade pin unpin keg-policy help"
 complete -c helm -n "__fish_seen_subcommand_from updates" -a "list summary preview run help"
 complete -c helm -n "__fish_seen_subcommand_from tasks" -a "list show logs output follow cancel help"
-complete -c helm -n "__fish_seen_subcommand_from managers" -a "list show detect enable disable install update uninstall executables install-methods priority help"
+complete -c helm -n "__fish_seen_subcommand_from managers" -a "list show detect enable disable install update uninstall executables install-methods instances priority help"
 complete -c helm -n "__fish_seen_subcommand_from settings" -a "list get set reset help"
 complete -c helm -n "__fish_seen_subcommand_from diagnostics" -a "summary task manager provenance export help"
-complete -c helm -n "__fish_seen_subcommand_from doctor" -a "summary task manager provenance export help"
+complete -c helm -n "__fish_seen_subcommand_from doctor" -a "scan repair help"
 complete -c helm -n "__fish_seen_subcommand_from onboarding" -a "status run reset help"
 complete -c helm -n "__fish_seen_subcommand_from self" -a "status check update uninstall auto-check help"
 complete -c helm -n "__fish_seen_subcommand_from auto-check" -a "status enable disable frequency help"
@@ -356,6 +375,21 @@ struct CliManagerStatus {
     is_eligible: bool,
     ineligible_reason_code: Option<String>,
     ineligible_reason_message: Option<String>,
+    install_instance_count: usize,
+    multi_instance_state: String,
+    multi_instance_acknowledged: bool,
+    multi_instance_fingerprint: Option<String>,
+    active_provenance: Option<String>,
+    active_confidence: Option<f64>,
+    active_decision_margin: Option<f64>,
+    active_automation_level: Option<String>,
+    active_uninstall_strategy: Option<String>,
+    active_update_strategy: Option<String>,
+    active_remediation_strategy: Option<String>,
+    active_explanation_primary: Option<String>,
+    active_explanation_secondary: Option<String>,
+    competing_provenance: Option<String>,
+    competing_confidence: Option<f64>,
 }
 
 #[derive(Serialize)]
@@ -401,6 +435,49 @@ struct CliManagerInstallMethodsStatus {
     manager_id: String,
     install_methods: Vec<String>,
     selected_install_method: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CliManagerInstallInstance {
+    manager_id: String,
+    instance_id: String,
+    identity_kind: String,
+    identity_value: String,
+    display_path: String,
+    canonical_path: Option<String>,
+    alias_paths: Vec<String>,
+    is_active: bool,
+    version: Option<String>,
+    provenance: String,
+    confidence: f64,
+    decision_margin: Option<f64>,
+    automation_level: String,
+    uninstall_strategy: String,
+    update_strategy: String,
+    remediation_strategy: String,
+    explanation_primary: Option<String>,
+    explanation_secondary: Option<String>,
+    competing_provenance: Option<String>,
+    competing_confidence: Option<f64>,
+}
+
+#[derive(Debug, Clone)]
+struct ParsedManagerMutationArgs {
+    manager: ManagerId,
+    preview: bool,
+    yes: bool,
+    allow_unknown_provenance: bool,
+    install_method_override: Option<String>,
+    install_options: helm_core::manager_lifecycle::ManagerInstallOptions,
+    uninstall_options: helm_core::manager_lifecycle::ManagerUninstallOptions,
+}
+
+#[derive(Debug, Clone)]
+struct ManagerUninstallPlan {
+    target_manager: ManagerId,
+    request: AdapterRequest,
+    preview: ManagerUninstallPreview,
 }
 
 #[derive(Clone, Debug)]
@@ -1272,6 +1349,7 @@ fn command_help_topic_exists(command: Command, path: &[String]) -> bool {
                             | "uninstall"
                             | "executables"
                             | "install-methods"
+                            | "instances"
                             | "priority"
                     )
                 );
@@ -1283,10 +1361,15 @@ fn command_help_topic_exists(command: Command, path: &[String]) -> bool {
                         | ("executables", "set")
                         | ("install-methods", "list")
                         | ("install-methods", "set")
+                        | ("instances", "ack")
+                        | ("instances", "clear-ack")
                         | ("priority", "list")
                         | ("priority", "set")
                         | ("priority", "reset")
                 );
+            }
+            if path.len() == 3 {
+                return (path[0].as_str(), path[1].as_str()) == ("instances", "set-active");
             }
             false
         }
@@ -1295,13 +1378,26 @@ fn command_help_topic_exists(command: Command, path: &[String]) -> bool {
                 || (path.len() == 1
                     && matches!(first(path), Some("list" | "get" | "set" | "reset")))
         }
-        Command::Diagnostics | Command::Doctor => {
+        Command::Diagnostics => {
             path.is_empty()
                 || (path.len() == 1
                     && matches!(
                         first(path),
                         Some("summary" | "task" | "manager" | "provenance" | "export")
                     ))
+        }
+        Command::Doctor => {
+            if path.is_empty() {
+                return true;
+            }
+            if path.len() == 1 {
+                return matches!(first(path), Some("scan" | "repair"));
+            }
+            if path.len() == 2 {
+                return (path[0].as_str(), path[1].as_str()) == ("repair", "plan")
+                    || (path[0].as_str(), path[1].as_str()) == ("repair", "apply");
+            }
+            false
         }
         Command::Onboarding => {
             path.is_empty()
@@ -2115,7 +2211,7 @@ fn cmd_packages_mutation(
     command_args: &[String],
 ) -> Result<(), String> {
     let allow_version = matches!(subcommand, "install" | "pin");
-    let parsed = parse_package_mutation_args(command_args, allow_version)?;
+    let parsed = parse_package_mutation_args(subcommand, command_args, allow_version)?;
     let package = PackageRef {
         manager: parsed.manager,
         name: parsed.package_name.clone(),
@@ -2134,6 +2230,35 @@ fn cmd_packages_mutation(
     let supports_native_unpin = registry::manager(parsed.manager)
         .map(|descriptor| descriptor.capabilities.contains(&Capability::Unpin))
         .unwrap_or(false);
+    let package_uninstall_preview = if subcommand == "uninstall" {
+        Some(build_package_uninstall_preview_for_package(
+            store.as_ref(),
+            &package,
+        )?)
+    } else {
+        None
+    };
+
+    if let Some(preview) = package_uninstall_preview.as_ref() {
+        if parsed.preview {
+            if options.json {
+                emit_json_payload(
+                    "helm.cli.v1.packages.uninstall.preview",
+                    json!({ "preview": preview }),
+                );
+            } else {
+                print_package_uninstall_preview(preview);
+            }
+            return Ok(());
+        }
+
+        if preview.requires_yes && !parsed.yes {
+            return Err(
+                "packages uninstall requires --yes for this blast radius. Run 'helm packages uninstall <name|name@manager> --manager <id> --preview' first, then rerun with --yes."
+                    .to_string(),
+            );
+        }
+    }
 
     let coordinator_request = match subcommand {
         "install" => Some(CoordinatorSubmitRequest::Install {
@@ -2216,7 +2341,8 @@ fn cmd_packages_mutation(
                         "package_name": parsed.package_name,
                         "action": subcommand,
                         "accepted": true,
-                        "mode": "detach"
+                        "mode": "detach",
+                        "uninstall_preview": package_uninstall_preview
                     }),
                 );
             } else {
@@ -2227,6 +2353,12 @@ fn cmd_packages_mutation(
                     parsed.manager.as_str(),
                     task_id
                 );
+                if let Some(preview) = package_uninstall_preview.as_ref() {
+                    println!(
+                        "  blast_radius_score: {} (requires_confirmation={})",
+                        preview.blast_radius_score, preview.requires_yes
+                    );
+                }
             }
         } else if options.json {
             emit_json_payload(
@@ -2267,12 +2399,13 @@ fn cmd_packages_mutation(
                     emit_json_payload(
                         &format!("helm.cli.v1.packages.{}", subcommand),
                         json!({
-                            "task_id": task_id,
-                            "manager_id": manager_id,
+                                "task_id": task_id,
+                                "manager_id": manager_id,
                             "package_name": package_name,
                             "action": action,
                             "before_version": before_version,
-                            "after_version": after_version
+                            "after_version": after_version,
+                            "uninstall_preview": package_uninstall_preview
                         }),
                     );
                 } else {
@@ -2280,6 +2413,12 @@ fn cmd_packages_mutation(
                         "Package {} {} via manager '{}' (task #{})",
                         package_name, subcommand, manager_id, task_id
                     );
+                    if let Some(preview) = package_uninstall_preview.as_ref() {
+                        println!(
+                            "  blast_radius_score: {} (requires_confirmation={})",
+                            preview.blast_radius_score, preview.requires_yes
+                        );
+                    }
                 }
             }
             _ => {
@@ -2296,7 +2435,8 @@ fn cmd_packages_mutation(
                 "task_id": null,
                 "manager_id": parsed.manager.as_str(),
                 "package_name": parsed.package_name,
-                "action": subcommand
+                "action": subcommand,
+                "uninstall_preview": package_uninstall_preview
             }),
         );
     } else {
@@ -2306,6 +2446,12 @@ fn cmd_packages_mutation(
             subcommand,
             parsed.manager.as_str()
         );
+        if let Some(preview) = package_uninstall_preview.as_ref() {
+            println!(
+                "  blast_radius_score: {} (requires_confirmation={})",
+                preview.blast_radius_score, preview.requires_yes
+            );
+        }
     }
 
     Ok(())
@@ -3246,6 +3392,7 @@ fn cmd_managers(
         "install-methods" => {
             cmd_managers_install_methods(store.as_ref(), options, &command_args[1..])
         }
+        "instances" => cmd_managers_instances(store.as_ref(), options, &command_args[1..]),
         "priority" => cmd_managers_priority(store.as_ref(), options, &command_args[1..]),
         "install" | "update" | "uninstall" => cmd_managers_mutation(
             store.clone(),
@@ -3292,6 +3439,66 @@ fn cmd_managers(
                     "  selected_install_method: {}",
                     row.selected_install_method.as_deref().unwrap_or("-")
                 );
+                println!("  install_instance_count: {}", row.install_instance_count);
+                println!("  multi_instance_state: {}", row.multi_instance_state);
+                println!(
+                    "  multi_instance_acknowledged: {}",
+                    row.multi_instance_acknowledged
+                );
+                println!(
+                    "  multi_instance_fingerprint: {}",
+                    row.multi_instance_fingerprint.as_deref().unwrap_or("-")
+                );
+                println!(
+                    "  active_provenance: {}",
+                    row.active_provenance.as_deref().unwrap_or("-")
+                );
+                println!(
+                    "  active_confidence: {}",
+                    row.active_confidence
+                        .map(|value| format!("{value:.2}"))
+                        .unwrap_or_else(|| "-".to_string())
+                );
+                println!(
+                    "  active_decision_margin: {}",
+                    row.active_decision_margin
+                        .map(|value| format!("{value:.2}"))
+                        .unwrap_or_else(|| "-".to_string())
+                );
+                println!(
+                    "  active_automation_level: {}",
+                    row.active_automation_level.as_deref().unwrap_or("-")
+                );
+                println!(
+                    "  active_uninstall_strategy: {}",
+                    row.active_uninstall_strategy.as_deref().unwrap_or("-")
+                );
+                println!(
+                    "  active_update_strategy: {}",
+                    row.active_update_strategy.as_deref().unwrap_or("-")
+                );
+                println!(
+                    "  active_remediation_strategy: {}",
+                    row.active_remediation_strategy.as_deref().unwrap_or("-")
+                );
+                println!(
+                    "  active_explanation_primary: {}",
+                    row.active_explanation_primary.as_deref().unwrap_or("-")
+                );
+                println!(
+                    "  active_explanation_secondary: {}",
+                    row.active_explanation_secondary.as_deref().unwrap_or("-")
+                );
+                println!(
+                    "  competing_provenance: {}",
+                    row.competing_provenance.as_deref().unwrap_or("-")
+                );
+                println!(
+                    "  competing_confidence: {}",
+                    row.competing_confidence
+                        .map(|value| format!("{value:.2}"))
+                        .unwrap_or_else(|| "-".to_string())
+                );
                 println!("  eligible: {}", row.is_eligible);
                 if !row.is_eligible {
                     println!(
@@ -3324,6 +3531,21 @@ fn cmd_managers(
                     );
                     let code = eligibility.reason_code.unwrap_or("manager.ineligible");
                     return Err(format!("{reason} (reason_code={code})"));
+                }
+            } else {
+                let enabled_map = manager_enabled_map(store.as_ref())?;
+                let dependents =
+                    enabled_dependents_for_manager(store.as_ref(), &enabled_map, manager_id)?;
+                if !dependents.is_empty() {
+                    return Err(format!(
+                        "cannot disable manager '{}': enabled managers depend on it ({})",
+                        manager_id.as_str(),
+                        dependents
+                            .iter()
+                            .map(|id| id.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
                 }
             }
             store
@@ -3371,7 +3593,7 @@ fn cmd_managers(
             Ok(())
         }
         _ => Err(format!(
-            "unsupported managers subcommand '{}'; currently supported: list, show, detect, enable, disable, install, update, uninstall, executables, install-methods, priority",
+            "unsupported managers subcommand '{}'; currently supported: list, show, detect, enable, disable, install, update, uninstall, executables, install-methods, instances, priority",
             command_args[0]
         )),
     }
@@ -3413,6 +3635,15 @@ fn cmd_managers_list(store: &SqliteStore, options: GlobalOptions) -> Result<(), 
             .or(manager.executable_path.as_deref())
             .unwrap_or("-");
         let method = manager.selected_install_method.as_deref().unwrap_or("-");
+        let provenance = manager.active_provenance.as_deref().unwrap_or("-");
+        let confidence = manager
+            .active_confidence
+            .map(|value| format!("{value:.2}"))
+            .unwrap_or_else(|| "-".to_string());
+        let margin = manager
+            .active_decision_margin
+            .map(|value| format!("{value:.2}"))
+            .unwrap_or_else(|| "-".to_string());
         let flags = format!(
             "{}{}{}",
             if manager.is_detection_only {
@@ -3428,13 +3659,18 @@ fn cmd_managers_list(store: &SqliteStore, options: GlobalOptions) -> Result<(), 
             }
         );
         println!(
-            "  {} [{}|{}] {} exec={} method={} exec_diag={}{}",
+            "  {} [{}|{}] {} exec={} method={} prov={} conf={} margin={} inst={} multi={} exec_diag={}{}",
             manager.manager_id,
             state,
             detected,
             version,
             executable,
             method,
+            provenance,
+            confidence,
+            margin,
+            manager.install_instance_count,
+            manager.multi_instance_state,
             manager.executable_path_diagnostic,
             flags
         );
@@ -3557,16 +3793,67 @@ fn cmd_managers_mutation(
     subcommand: &str,
     command_args: &[String],
 ) -> Result<(), String> {
-    if command_args.len() != 1 {
-        return Err(format!(
-            "managers {} requires exactly one manager id",
-            subcommand
-        ));
-    }
-    let manager = parse_manager_id(&command_args[0])?;
+    let parsed = parse_manager_mutation_args(subcommand, command_args)?;
+    let manager = parsed.manager;
+    let install_method_override = if subcommand == "install" {
+        resolve_install_method_override_for_install(
+            store.as_ref(),
+            manager,
+            &options,
+            parsed.install_method_override.clone(),
+        )?
+    } else {
+        parsed.install_method_override.clone()
+    };
 
-    let (target_manager, request) =
-        build_manager_mutation_request(store.as_ref(), manager, subcommand)?;
+    let (target_manager, request, uninstall_preview) = if subcommand == "uninstall" {
+        if parsed.preview {
+            let preview_plan = build_manager_uninstall_plan_with_options(
+                store.as_ref(),
+                manager,
+                parsed.allow_unknown_provenance,
+                true,
+                parsed.uninstall_options.clone(),
+            )?;
+            if options.json {
+                emit_json_payload(
+                    "helm.cli.v1.managers.uninstall.preview",
+                    json!({ "preview": preview_plan.preview }),
+                );
+            } else {
+                print_manager_uninstall_preview(&preview_plan.preview);
+            }
+            if !parsed.yes {
+                return Ok(());
+            }
+        }
+
+        let plan = build_manager_uninstall_plan_with_options(
+            store.as_ref(),
+            manager,
+            parsed.allow_unknown_provenance,
+            false,
+            parsed.uninstall_options.clone(),
+        )?;
+        if plan.preview.requires_yes && !parsed.yes {
+            return Err(
+                "managers uninstall requires --yes for this blast radius. Run 'helm managers uninstall <manager-id> --preview' first, then rerun with --yes."
+                    .to_string(),
+            );
+        }
+
+        (plan.target_manager, plan.request, Some(plan.preview))
+    } else {
+        let (target_manager, request) = build_manager_mutation_request_with_options(
+            store.as_ref(),
+            manager,
+            subcommand,
+            install_method_override,
+            parsed.install_options.clone(),
+        )?;
+        (target_manager, request, None)
+    };
+
     let submit_request = adapter_request_to_coordinator_submit(request)?;
     let response = coordinator_submit_request(
         store.as_ref(),
@@ -3588,7 +3875,8 @@ fn cmd_managers_mutation(
                     "target_manager_id": target_manager.as_str(),
                     "action": subcommand,
                     "accepted": true,
-                    "mode": "detach"
+                    "mode": "detach",
+                    "uninstall_preview": uninstall_preview
                 }),
             );
         } else {
@@ -3599,6 +3887,12 @@ fn cmd_managers_mutation(
                 target_manager.as_str(),
                 task_id
             );
+            if let Some(preview) = uninstall_preview.as_ref() {
+                println!(
+                    "  blast_radius_score: {} (requires_yes={})",
+                    preview.blast_radius_score, preview.requires_yes
+                );
+            }
         }
         return Ok(());
     }
@@ -3621,7 +3915,8 @@ fn cmd_managers_mutation(
                         "package_name": package_name,
                         "action": action,
                         "before_version": before_version,
-                        "after_version": after_version
+                        "after_version": after_version,
+                        "uninstall_preview": uninstall_preview
                     }),
                 );
             } else {
@@ -3632,6 +3927,12 @@ fn cmd_managers_mutation(
                     target_manager.as_str(),
                     task_id
                 );
+                if let Some(preview) = uninstall_preview.as_ref() {
+                    println!(
+                        "  blast_radius_score: {} (requires_yes={})",
+                        preview.blast_radius_score, preview.requires_yes
+                    );
+                }
             }
             Ok(())
         }
@@ -3639,6 +3940,192 @@ fn cmd_managers_mutation(
             "managers {} returned unexpected coordinator payload",
             subcommand
         )),
+    }
+}
+
+fn print_manager_uninstall_preview(preview: &ManagerUninstallPreview) {
+    println!("Manager Uninstall Preview");
+    println!("  manager_id: {}", preview.requested_manager_id);
+    println!("  target_manager_id: {}", preview.target_manager_id);
+    println!("  package_name: {}", preview.package_name);
+    println!("  strategy: {}", preview.strategy);
+    println!(
+        "  provenance: {}",
+        preview.provenance.as_deref().unwrap_or("-")
+    );
+    println!(
+        "  automation_level: {}",
+        preview.automation_level.as_deref().unwrap_or("-")
+    );
+    println!(
+        "  confidence: {}",
+        preview
+            .confidence
+            .map(|value| format!("{value:.2}"))
+            .unwrap_or_else(|| "-".to_string())
+    );
+    println!(
+        "  decision_margin: {}",
+        preview
+            .decision_margin
+            .map(|value| format!("{value:.2}"))
+            .unwrap_or_else(|| "-".to_string())
+    );
+    println!("  blast_radius_score: {}", preview.blast_radius_score);
+    println!("  requires_yes: {}", preview.requires_yes);
+    println!(
+        "  confidence_requires_confirmation: {}",
+        preview.confidence_requires_confirmation
+    );
+    println!("  unknown_provenance: {}", preview.unknown_provenance);
+    println!(
+        "  unknown_override_required: {}",
+        preview.unknown_override_required
+    );
+    println!("  used_unknown_override: {}", preview.used_unknown_override);
+    println!("  legacy_fallback_used: {}", preview.legacy_fallback_used);
+    println!("  read_only_blocked: {}", preview.read_only_blocked);
+    println!(
+        "  explanation_primary: {}",
+        preview.explanation_primary.as_deref().unwrap_or("-")
+    );
+    println!(
+        "  explanation_secondary: {}",
+        preview.explanation_secondary.as_deref().unwrap_or("-")
+    );
+    println!(
+        "  competing_provenance: {}",
+        preview.competing_provenance.as_deref().unwrap_or("-")
+    );
+    println!(
+        "  competing_confidence: {}",
+        preview
+            .competing_confidence
+            .map(|value| format!("{value:.2}"))
+            .unwrap_or_else(|| "-".to_string())
+    );
+    if preview.summary_lines.is_empty() {
+        println!("  summary_lines: -");
+    } else {
+        println!("  summary_lines:");
+        for line in &preview.summary_lines {
+            println!("    - {line}");
+        }
+    }
+    if preview.files_removed.is_empty() {
+        println!("  files_removed: -");
+    } else {
+        println!("  files_removed:");
+        for entry in &preview.files_removed {
+            println!(
+                "    - {} ({})",
+                entry.path,
+                if entry.exists { "exists" } else { "missing" }
+            );
+        }
+    }
+    if preview.directories_removed.is_empty() {
+        println!("  directories_removed: -");
+    } else {
+        println!("  directories_removed:");
+        for entry in &preview.directories_removed {
+            println!(
+                "    - {} ({})",
+                entry.path,
+                if entry.exists { "exists" } else { "missing" }
+            );
+        }
+    }
+    if preview.secondary_effects.is_empty() {
+        println!("  secondary_effects: -");
+    } else {
+        println!("  secondary_effects:");
+        for effect in &preview.secondary_effects {
+            println!("    - {}", effect);
+        }
+    }
+}
+
+fn print_package_uninstall_preview(preview: &PackageUninstallPreview) {
+    println!("Package Uninstall Preview");
+    println!("  manager_id: {}", preview.manager_id);
+    println!("  package_name: {}", preview.package_name);
+    println!("  blast_radius_score: {}", preview.blast_radius_score);
+    println!("  requires_yes: {}", preview.requires_yes);
+    println!(
+        "  confidence_requires_confirmation: {}",
+        preview.confidence_requires_confirmation
+    );
+    println!(
+        "  manager_provenance: {}",
+        preview.manager_provenance.as_deref().unwrap_or("-")
+    );
+    println!(
+        "  manager_automation_level: {}",
+        preview.manager_automation_level.as_deref().unwrap_or("-")
+    );
+    println!(
+        "  manager_uninstall_strategy: {}",
+        preview.manager_uninstall_strategy.as_deref().unwrap_or("-")
+    );
+    println!(
+        "  explanation_primary: {}",
+        preview.explanation_primary.as_deref().unwrap_or("-")
+    );
+    println!(
+        "  explanation_secondary: {}",
+        preview.explanation_secondary.as_deref().unwrap_or("-")
+    );
+    println!(
+        "  competing_provenance: {}",
+        preview.competing_provenance.as_deref().unwrap_or("-")
+    );
+    println!(
+        "  competing_confidence: {}",
+        preview
+            .competing_confidence
+            .map(|value| format!("{value:.2}"))
+            .unwrap_or_else(|| "-".to_string())
+    );
+    if preview.summary_lines.is_empty() {
+        println!("  summary_lines: -");
+    } else {
+        println!("  summary_lines:");
+        for line in &preview.summary_lines {
+            println!("    - {line}");
+        }
+    }
+    if preview.files_removed.is_empty() {
+        println!("  files_removed: -");
+    } else {
+        println!("  files_removed:");
+        for entry in &preview.files_removed {
+            println!(
+                "    - {} ({})",
+                entry.path,
+                if entry.exists { "exists" } else { "missing" }
+            );
+        }
+    }
+    if preview.directories_removed.is_empty() {
+        println!("  directories_removed: -");
+    } else {
+        println!("  directories_removed:");
+        for entry in &preview.directories_removed {
+            println!(
+                "    - {} ({})",
+                entry.path,
+                if entry.exists { "exists" } else { "missing" }
+            );
+        }
+    }
+    if preview.secondary_effects.is_empty() {
+        println!("  secondary_effects: -");
+    } else {
+        println!("  secondary_effects:");
+        for effect in &preview.secondary_effects {
+            println!("    - {}", effect);
+        }
     }
 }
 
@@ -3795,6 +4282,15 @@ fn cmd_managers_install_methods(
             let manager = parse_manager_id(&command_args[1])?;
             let selected_method = parse_selected_install_method_arg(manager, &command_args[2])?;
             let selected_ref = selected_method.as_deref();
+            if let Some(method) = selected_ref
+                && !manager_install_method_allowed_for_selection(manager, method)
+            {
+                return Err(format!(
+                    "manager '{}' install method '{}' is blocked by managed policy",
+                    manager.as_str(),
+                    method
+                ));
+            }
             store
                 .set_manager_selected_install_method(manager, selected_ref)
                 .map_err(|error| format!("failed to set selected install method: {error}"))?;
@@ -3826,6 +4322,203 @@ fn cmd_managers_install_methods(
             command_args[0]
         )),
     }
+}
+
+fn cmd_managers_instances(
+    store: &SqliteStore,
+    options: GlobalOptions,
+    command_args: &[String],
+) -> Result<(), String> {
+    if let Some(subcommand) = command_args.first().map(String::as_str) {
+        match subcommand {
+            "ack" => {
+                if command_args.len() != 2 {
+                    return Err(
+                        "managers instances ack requires exactly one manager id".to_string()
+                    );
+                }
+                let manager = parse_manager_id(&command_args[1])?;
+                let message = acknowledge_manager_multi_instance_state(store, manager)?;
+                let manager_status = list_managers(store)?
+                    .into_iter()
+                    .find(|row| row.manager_id == manager.as_str())
+                    .ok_or_else(|| format!("manager '{}' not found", manager.as_str()))?;
+                if options.json {
+                    emit_json_payload(
+                        "helm.cli.v1.managers.instances.ack",
+                        json!({
+                            "manager_id": manager.as_str(),
+                            "acknowledged": true,
+                            "multi_instance_state": manager_status.multi_instance_state,
+                            "multi_instance_acknowledged": manager_status.multi_instance_acknowledged,
+                            "multi_instance_fingerprint": manager_status.multi_instance_fingerprint
+                        }),
+                    );
+                } else {
+                    println!("{message}");
+                }
+                return Ok(());
+            }
+            "clear-ack" => {
+                if command_args.len() != 2 {
+                    return Err(
+                        "managers instances clear-ack requires exactly one manager id".to_string(),
+                    );
+                }
+                let manager = parse_manager_id(&command_args[1])?;
+                let message = clear_manager_multi_instance_ack(store, manager)?;
+                let manager_status = list_managers(store)?
+                    .into_iter()
+                    .find(|row| row.manager_id == manager.as_str())
+                    .ok_or_else(|| format!("manager '{}' not found", manager.as_str()))?;
+                if options.json {
+                    emit_json_payload(
+                        "helm.cli.v1.managers.instances.clear_ack",
+                        json!({
+                            "manager_id": manager.as_str(),
+                            "acknowledged": false,
+                            "multi_instance_state": manager_status.multi_instance_state,
+                            "multi_instance_acknowledged": manager_status.multi_instance_acknowledged,
+                            "multi_instance_fingerprint": manager_status.multi_instance_fingerprint
+                        }),
+                    );
+                } else {
+                    println!("{message}");
+                }
+                return Ok(());
+            }
+            "set-active" => {
+                if command_args.len() != 3 {
+                    return Err(
+                        "managers instances set-active requires <manager-id> and <instance-id>"
+                            .to_string(),
+                    );
+                }
+                let manager = parse_manager_id(&command_args[1])?;
+                let instance_id = command_args[2].trim();
+                let message = set_manager_active_install_instance(store, manager, instance_id)?;
+                let manager_status = list_managers(store)?
+                    .into_iter()
+                    .find(|row| row.manager_id == manager.as_str())
+                    .ok_or_else(|| format!("manager '{}' not found", manager.as_str()))?;
+                if options.json {
+                    emit_json_payload(
+                        "helm.cli.v1.managers.instances.set_active",
+                        json!({
+                            "manager_id": manager.as_str(),
+                            "instance_id": instance_id,
+                            "selected_executable_path": manager_status.selected_executable_path,
+                            "multi_instance_state": manager_status.multi_instance_state,
+                            "multi_instance_acknowledged": manager_status.multi_instance_acknowledged
+                        }),
+                    );
+                } else {
+                    println!("{message}");
+                }
+                return Ok(());
+            }
+            _ => {}
+        }
+    }
+
+    if command_args.len() > 1 {
+        return Err("managers instances accepts zero or one manager id".to_string());
+    }
+
+    let manager_filter = if let Some(raw) = command_args.first() {
+        Some(parse_manager_id(raw)?)
+    } else {
+        None
+    };
+
+    let instances = list_manager_install_instances(store, manager_filter)?;
+
+    if options.json {
+        emit_json_payload(
+            "helm.cli.v1.managers.instances",
+            json!({
+                "manager_id": manager_filter.as_ref().map(|manager| manager.as_str().to_string()),
+                "instances": instances
+            }),
+        );
+        return Ok(());
+    }
+
+    match manager_filter {
+        Some(manager) => println!("Manager instances: {}", manager.as_str()),
+        None => println!("Manager instances"),
+    }
+
+    if instances.is_empty() {
+        println!("  -");
+        return Ok(());
+    }
+
+    let manager_multi_instance_state: HashMap<String, (String, bool)> = list_managers(store)?
+        .into_iter()
+        .map(|manager| {
+            (
+                manager.manager_id,
+                (
+                    manager.multi_instance_state,
+                    manager.multi_instance_acknowledged,
+                ),
+            )
+        })
+        .collect();
+
+    for instance in instances {
+        let (multi_state, multi_acknowledged) = manager_multi_instance_state
+            .get(&instance.manager_id)
+            .map(|(state, acknowledged)| (state.as_str(), *acknowledged))
+            .unwrap_or(("none", false));
+        println!(
+            "  {} [{}] prov={} conf={:.2} margin={} automation={} active={} multi={} ack={}",
+            instance.manager_id,
+            instance.instance_id,
+            instance.provenance,
+            instance.confidence,
+            instance
+                .decision_margin
+                .map(|value| format!("{value:.2}"))
+                .unwrap_or_else(|| "-".to_string()),
+            instance.automation_level,
+            instance.is_active,
+            multi_state,
+            multi_acknowledged
+        );
+        println!(
+            "    path={} canonical={}",
+            instance.display_path,
+            instance.canonical_path.as_deref().unwrap_or("-")
+        );
+        println!(
+            "    identity={}({}) uninstall={} update={} remediation={}",
+            instance.identity_kind,
+            instance.identity_value,
+            instance.uninstall_strategy,
+            instance.update_strategy,
+            instance.remediation_strategy
+        );
+        if !instance.alias_paths.is_empty() {
+            println!("    aliases={}", instance.alias_paths.join(", "));
+        }
+        if let Some(primary) = instance.explanation_primary.as_deref() {
+            println!("    why={primary}");
+        }
+        if let Some(secondary) = instance.explanation_secondary.as_deref() {
+            println!("    why2={secondary}");
+        }
+        if let Some(competing) = instance.competing_provenance.as_deref() {
+            let competing_confidence = instance
+                .competing_confidence
+                .map(|value| format!("{value:.2}"))
+                .unwrap_or_else(|| "-".to_string());
+            println!("    competing={competing} ({competing_confidence})");
+        }
+    }
+
+    Ok(())
 }
 
 fn cmd_managers_priority(
@@ -6146,7 +6839,7 @@ fn cmd_doctor(
     command_args: &[String],
 ) -> Result<(), String> {
     if command_args.is_empty() {
-        return cmd_diagnostics_provenance(options);
+        return cmd_doctor_scan(store, options);
     }
     if is_help_token(&command_args[0]) {
         if options.json {
@@ -6156,7 +6849,238 @@ fn cmd_doctor(
         }
         return Ok(());
     }
-    cmd_diagnostics(store, options, command_args)
+    match command_args[0].as_str() {
+        "scan" => cmd_doctor_scan(store, options),
+        "repair" => cmd_doctor_repair(store, options, &command_args[1..]),
+        other => Err(format!(
+            "unsupported doctor subcommand '{}'; currently supported: scan, repair",
+            other
+        )),
+    }
+}
+
+fn cmd_doctor_scan(store: &SqliteStore, options: GlobalOptions) -> Result<(), String> {
+    let installed_packages = store
+        .list_installed()
+        .map_err(|error| format!("failed to list installed packages for doctor scan: {error}"))?;
+    let install_instances = store
+        .list_install_instances(None)
+        .map_err(|error| format!("failed to list install instances for doctor scan: {error}"))?;
+    let mut instances_by_manager: HashMap<ManagerId, Vec<ManagerInstallInstance>> = HashMap::new();
+    for instance in install_instances {
+        instances_by_manager
+            .entry(instance.manager)
+            .or_default()
+            .push(instance);
+    }
+    let report = helm_core::doctor::scan_package_state_report(
+        ManagerId::ALL,
+        &instances_by_manager,
+        installed_packages.as_slice(),
+    );
+
+    if options.json {
+        emit_json_payload("helm.cli.v1.doctor.scan", json!({ "report": report }));
+        return Ok(());
+    }
+
+    println!("Doctor Health: {}", report.health.as_str());
+    println!(
+        "Findings: {} (warnings: {}, errors: {})",
+        report.summary.total_findings, report.summary.warnings, report.summary.errors
+    );
+    if report.findings.is_empty() {
+        println!("No findings detected.");
+        return Ok(());
+    }
+    println!();
+    for finding in report.findings {
+        println!(
+            "- [{}] {} ({})",
+            finding.severity.as_str(),
+            finding.summary,
+            finding.issue_code
+        );
+        if let Some(source) = finding.source_manager_id {
+            println!("  source_manager: {source}");
+        }
+        if let Some(package) = finding.package_name {
+            println!("  package: {package}");
+        }
+        println!("  fingerprint: {}", finding.fingerprint);
+    }
+    Ok(())
+}
+
+fn cmd_doctor_repair(
+    store: &SqliteStore,
+    options: GlobalOptions,
+    command_args: &[String],
+) -> Result<(), String> {
+    if command_args.is_empty() || is_help_token(&command_args[0]) {
+        if options.json {
+            emit_help_json_payload(Some(Command::Doctor), &["repair".to_string()], true);
+        } else {
+            print_doctor_repair_help();
+        }
+        return Ok(());
+    }
+
+    match command_args[0].as_str() {
+        "plan" => {
+            if command_args.len() != 5 {
+                return Err(
+                    "doctor repair plan requires: <manager-id> <source-manager-id> <package-name> <issue-code>"
+                        .to_string(),
+                );
+            }
+            let manager = parse_manager_id(&command_args[1])?;
+            let source_manager = parse_manager_id(&command_args[2])?;
+            let package_name = command_args[3].trim();
+            let issue_code = command_args[4].trim();
+            let plan = helm_core::repair::plan_for_issue(
+                manager,
+                source_manager,
+                package_name,
+                issue_code,
+            )
+            .ok_or_else(|| {
+                format!(
+                    "no repair plan available for manager='{}' source='{}' package='{}' issue='{}'",
+                    manager.as_str(),
+                    source_manager.as_str(),
+                    package_name,
+                    issue_code
+                )
+            })?;
+
+            if options.json {
+                emit_json_payload("helm.cli.v1.doctor.repair.plan", json!({ "plan": plan }));
+                return Ok(());
+            }
+
+            println!(
+                "Repair plan for {} / {} / {}:",
+                manager.as_str(),
+                source_manager.as_str(),
+                package_name
+            );
+            println!(
+                "  fingerprint: {}\n  knowledge: {} ({})",
+                plan.fingerprint, plan.knowledge_source, plan.knowledge_version
+            );
+            for option in plan.options {
+                println!(
+                    "  - {} [{}]{}",
+                    option.option_id,
+                    option.action.as_str(),
+                    if option.recommended {
+                        " (recommended)"
+                    } else {
+                        ""
+                    }
+                );
+                println!("    {}", option.description);
+            }
+            Ok(())
+        }
+        "apply" => {
+            if command_args.len() != 6 {
+                return Err(
+                    "doctor repair apply requires: <manager-id> <source-manager-id> <package-name> <issue-code> <option-id>"
+                        .to_string(),
+                );
+            }
+            let manager = parse_manager_id(&command_args[1])?;
+            let source_manager = parse_manager_id(&command_args[2])?;
+            let package_name = command_args[3].trim().to_string();
+            let issue_code = command_args[4].trim();
+            let option_id = command_args[5].trim();
+            let plan = helm_core::repair::plan_for_issue(
+                manager,
+                source_manager,
+                package_name.as_str(),
+                issue_code,
+            )
+            .ok_or_else(|| {
+                format!(
+                    "no repair plan available for manager='{}' source='{}' package='{}' issue='{}'",
+                    manager.as_str(),
+                    source_manager.as_str(),
+                    package_name,
+                    issue_code
+                )
+            })?;
+            let option = helm_core::repair::resolve_option(&plan, option_id)
+                .ok_or_else(|| format!("unknown repair option '{}'", option_id))?;
+
+            let store_handle = Arc::new(SqliteStore::new(store.database_path().to_path_buf()));
+            store_handle
+                .migrate_to_latest()
+                .map_err(|error| format!("failed to initialize store for repair apply: {error}"))?;
+
+            match option.action {
+                helm_core::repair::RepairAction::ReinstallManagerViaHomebrew => {
+                    let args = vec![
+                        manager.as_str().to_string(),
+                        "--method".to_string(),
+                        "homebrew".to_string(),
+                    ];
+                    cmd_managers_mutation(store_handle, options, "install", args.as_slice())
+                }
+                helm_core::repair::RepairAction::RemoveStalePackageEntry => {
+                    let args = vec![
+                        format!("{}@{}", package_name, source_manager.as_str()),
+                        "--yes".to_string(),
+                    ];
+                    cmd_packages_mutation(store_handle, options, "uninstall", args.as_slice())
+                }
+                helm_core::repair::RepairAction::ApplyPostInstallSetupDefaults => {
+                    let manager_instances = store_handle
+                        .list_install_instances(Some(manager))
+                        .map_err(|error| {
+                            format!(
+                                "failed to list manager install instances for repair apply: {error}"
+                            )
+                        })?;
+                    let automation_result =
+                        helm_core::post_install_setup::apply_recommended_post_install_setup(
+                            manager,
+                            Some(manager_instances.as_slice()),
+                        )
+                        .map_err(|error| {
+                            format!(
+                                "failed to apply recommended post-install setup for '{}': {error}",
+                                manager.as_str()
+                            )
+                        })?;
+                    if options.json {
+                        emit_json_payload(
+                            "helm.cli.v1.doctor.repair.apply_post_install_setup",
+                            json!({
+                                "manager": manager.as_str(),
+                                "changed": automation_result.changed,
+                                "rc_file": automation_result.rc_file.display().to_string(),
+                                "summary": automation_result.summary
+                            }),
+                        );
+                    } else {
+                        println!(
+                            "Applied post-install setup for {}: {} ({})",
+                            manager.as_str(),
+                            automation_result.summary,
+                            automation_result.rc_file.display()
+                        );
+                    }
+                    cmd_managers_detect(store_handle, options, &[manager.as_str().to_string()])
+                }
+            }
+        }
+        other => Err(format!(
+            "unsupported doctor repair subcommand '{}'; currently supported: plan, apply",
+            other
+        )),
+    }
 }
 
 fn cmd_completion(options: GlobalOptions, command_args: &[String]) -> Result<(), String> {
@@ -8411,6 +9335,8 @@ struct ParsedPackageMutationArgs {
     package_name: String,
     manager: ManagerId,
     version: Option<String>,
+    preview: bool,
+    yes: bool,
 }
 
 fn parse_package_show_args(command_args: &[String]) -> Result<(String, Option<ManagerId>), String> {
@@ -8449,6 +9375,7 @@ fn parse_package_show_args(command_args: &[String]) -> Result<(String, Option<Ma
 }
 
 fn parse_package_mutation_args(
+    subcommand: &str,
     command_args: &[String],
     allow_version: bool,
 ) -> Result<ParsedPackageMutationArgs, String> {
@@ -8459,6 +9386,9 @@ fn parse_package_mutation_args(
     let (package_name, mut selector_manager) = parse_package_selector(&command_args[0])?;
     let mut manager: Option<ManagerId> = selector_manager.take();
     let mut version: Option<String> = None;
+    let uninstall_command = subcommand == "uninstall";
+    let mut preview = false;
+    let mut yes = false;
 
     let mut index = 1usize;
     while index < command_args.len() {
@@ -8494,6 +9424,14 @@ fn parse_package_mutation_args(
                 version = Some(value);
                 index += 2;
             }
+            "--preview" if uninstall_command => {
+                preview = true;
+                index += 1;
+            }
+            "--yes" if uninstall_command => {
+                yes = true;
+                index += 1;
+            }
             other => {
                 return Err(format!("unsupported package mutation argument '{other}'"));
             }
@@ -8507,6 +9445,8 @@ fn parse_package_mutation_args(
         package_name,
         manager,
         version,
+        preview,
+        yes,
     })
 }
 
@@ -9050,6 +9990,55 @@ fn manager_enabled_map(store: &SqliteStore) -> Result<HashMap<ManagerId, bool>, 
     Ok(map)
 }
 
+fn active_install_instances_by_manager(
+    store: &SqliteStore,
+) -> Result<HashMap<ManagerId, ManagerInstallInstance>, String> {
+    let mut grouped: HashMap<ManagerId, Vec<ManagerInstallInstance>> = HashMap::new();
+    for instance in store
+        .list_install_instances(None)
+        .map_err(|error| format!("failed to list manager install instances: {error}"))?
+    {
+        grouped.entry(instance.manager).or_default().push(instance);
+    }
+
+    let mut active = HashMap::new();
+    for (manager, mut instances) in grouped {
+        instances.sort_by(|left, right| {
+            if left.is_active != right.is_active {
+                return right.is_active.cmp(&left.is_active);
+            }
+            left.instance_id.cmp(&right.instance_id)
+        });
+        if let Some(instance) = instances.into_iter().next() {
+            active.insert(manager, instance);
+        }
+    }
+
+    Ok(active)
+}
+
+fn enabled_dependents_for_manager(
+    store: &SqliteStore,
+    enabled_map: &HashMap<ManagerId, bool>,
+    manager: ManagerId,
+) -> Result<Vec<ManagerId>, String> {
+    let active_instances = active_install_instances_by_manager(store)?;
+    let mut dependents = Vec::new();
+    for candidate in ManagerId::ALL {
+        if candidate == manager || !enabled_map.get(&candidate).copied().unwrap_or(true) {
+            continue;
+        }
+        let Some(instance) = active_instances.get(&candidate) else {
+            continue;
+        };
+        if provenance_dependency_manager(candidate, instance.provenance) == Some(manager) {
+            dependents.push(candidate);
+        }
+    }
+    dependents.sort_by_key(|id| id.as_str());
+    Ok(dependents)
+}
+
 fn apply_manager_enablement_self_heal(store: &SqliteStore) -> Result<(), String> {
     let detections: HashMap<ManagerId, DetectionInfo> = store
         .list_detections()
@@ -9152,10 +10141,12 @@ fn search_local_for_enabled(
     Ok(results
         .into_iter()
         .filter(|result| {
-            enabled_map
-                .get(&result.result.package.manager)
-                .copied()
-                .unwrap_or(true)
+            manager_participates_in_package_search(result.result.package.manager)
+                && manager_participates_in_package_search(result.source_manager)
+                && enabled_map
+                    .get(&result.result.package.manager)
+                    .copied()
+                    .unwrap_or(true)
                 && enabled_map
                     .get(&result.source_manager)
                     .copied()
@@ -9203,11 +10194,18 @@ fn search_remote_for_enabled(
     manager_filter: Option<ManagerId>,
     enabled_map: &HashMap<ManagerId, bool>,
 ) -> Result<(Vec<CachedSearchResult>, Vec<String>), String> {
+    if manager_filter.is_some_and(|manager| !manager_participates_in_package_search(manager)) {
+        return Ok((Vec::new(), Vec::new()));
+    }
+
     let managers = list_managers(store.as_ref())?;
     let mut target_managers = managers
         .into_iter()
         .filter_map(|row| {
             let manager_id = row.manager_id.parse::<ManagerId>().ok()?;
+            if !manager_participates_in_package_search(manager_id) {
+                return None;
+            }
             if manager_filter.is_some() && manager_filter != Some(manager_id) {
                 return None;
             }
@@ -9261,6 +10259,10 @@ fn search_remote_for_enabled(
     }
 
     Ok((remote_results, remote_errors))
+}
+
+fn manager_participates_in_package_search(manager: ManagerId) -> bool {
+    helm_core::registry::manager_participates_in_package_search(manager)
 }
 
 fn list_tasks_for_enabled(
@@ -9544,6 +10546,9 @@ fn list_managers(store: &SqliteStore) -> Result<Vec<CliManagerStatus>, String> {
     let preferences = store
         .list_manager_preferences()
         .map_err(|error| format!("failed to list manager preferences: {error}"))?;
+    let install_instances = store
+        .list_install_instances(None)
+        .map_err(|error| format!("failed to list manager install instances: {error}"))?;
 
     let detection_map: HashMap<ManagerId, helm_core::models::DetectionInfo> =
         detections.into_iter().collect();
@@ -9551,11 +10556,54 @@ fn list_managers(store: &SqliteStore) -> Result<Vec<CliManagerStatus>, String> {
         .into_iter()
         .map(|preference| (preference.manager, preference))
         .collect();
+    let mut install_instance_map: HashMap<ManagerId, Vec<ManagerInstallInstance>> = HashMap::new();
+    for instance in install_instances {
+        let instance = apply_manager_automation_policy(&instance);
+        install_instance_map
+            .entry(instance.manager)
+            .or_default()
+            .push(instance);
+    }
+    let mut multi_instance_ack_fingerprints: HashMap<ManagerId, Option<String>> = HashMap::new();
+    for manager in ManagerId::ALL {
+        let fingerprint = store
+            .manager_multi_instance_ack_fingerprint(manager)
+            .map_err(|error| {
+                format!(
+                    "failed to read manager multi-instance acknowledgement fingerprint: {error}"
+                )
+            })?;
+        multi_instance_ack_fingerprints.insert(manager, normalize_nonempty(fingerprint));
+    }
+    for instances in install_instance_map.values_mut() {
+        instances.sort_by(|left, right| {
+            right
+                .is_active
+                .cmp(&left.is_active)
+                .then_with(|| left.instance_id.cmp(&right.instance_id))
+        });
+    }
 
     let mut rows = Vec::with_capacity(registry::managers().len());
     for descriptor in registry::managers() {
         let detection = detection_map.get(&descriptor.id);
         let preference = preference_map.get(&descriptor.id);
+        let manager_install_instances = install_instance_map.get(&descriptor.id);
+        let active_instance = manager_install_instances
+            .and_then(|instances| instances.iter().find(|instance| instance.is_active))
+            .or_else(|| manager_install_instances.and_then(|instances| instances.first()));
+        let acknowledged_fingerprint = multi_instance_ack_fingerprints
+            .get(&descriptor.id)
+            .and_then(|value| value.as_deref());
+        let (multi_instance_state, multi_instance_fingerprint, multi_instance_acknowledged) =
+            resolve_multi_instance_state(
+                manager_install_instances.into_iter().flat_map(|instances| {
+                    instances
+                        .iter()
+                        .map(|instance| instance.instance_id.as_str())
+                }),
+                acknowledged_fingerprint,
+            );
         let active_executable_path = detection.and_then(|info| info.executable_path.as_deref());
         let executable_paths = if detection.map(|info| info.installed).unwrap_or(false) {
             collect_manager_executable_paths(descriptor.id, active_executable_path)
@@ -9628,6 +10676,36 @@ fn list_managers(store: &SqliteStore) -> Result<Vec<CliManagerStatus>, String> {
             is_eligible: eligibility.is_eligible,
             ineligible_reason_code: eligibility.reason_code.map(str::to_string),
             ineligible_reason_message: eligibility.reason_message.map(str::to_string),
+            install_instance_count: install_instance_map
+                .get(&descriptor.id)
+                .map(|instances| instances.len())
+                .unwrap_or(0),
+            multi_instance_state: multi_instance_state.as_str().to_string(),
+            multi_instance_acknowledged,
+            multi_instance_fingerprint,
+            active_provenance: active_instance
+                .map(|instance| instance.provenance.as_str().to_string()),
+            active_confidence: active_instance.map(|instance| instance.confidence),
+            active_decision_margin: active_instance.and_then(|instance| instance.decision_margin),
+            active_automation_level: active_instance
+                .map(|instance| instance.automation_level.as_str().to_string()),
+            active_uninstall_strategy: active_instance
+                .map(|instance| instance.uninstall_strategy.as_str().to_string()),
+            active_update_strategy: active_instance
+                .map(|instance| instance.update_strategy.as_str().to_string()),
+            active_remediation_strategy: active_instance
+                .map(|instance| instance.remediation_strategy.as_str().to_string()),
+            active_explanation_primary: active_instance
+                .and_then(|instance| normalize_nonempty(instance.explanation_primary.clone())),
+            active_explanation_secondary: active_instance
+                .and_then(|instance| normalize_nonempty(instance.explanation_secondary.clone())),
+            competing_provenance: active_instance.and_then(|instance| {
+                instance
+                    .competing_provenance
+                    .map(|value| value.as_str().to_string())
+            }),
+            competing_confidence: active_instance
+                .and_then(|instance| instance.competing_confidence),
         });
     }
 
@@ -9659,6 +10737,151 @@ fn list_managers(store: &SqliteStore) -> Result<Vec<CliManagerStatus>, String> {
         left.manager_id.cmp(&right.manager_id)
     });
     Ok(rows)
+}
+
+fn list_manager_install_instances(
+    store: &SqliteStore,
+    manager: Option<ManagerId>,
+) -> Result<Vec<CliManagerInstallInstance>, String> {
+    let rows = store
+        .list_install_instances(manager)
+        .map_err(|error| format!("failed to list manager install instances: {error}"))?;
+
+    let mut result = rows
+        .into_iter()
+        .map(|instance| {
+            let instance = apply_manager_automation_policy(&instance);
+            CliManagerInstallInstance {
+                manager_id: instance.manager.as_str().to_string(),
+                instance_id: instance.instance_id,
+                identity_kind: instance.identity_kind.as_str().to_string(),
+                identity_value: instance.identity_value,
+                display_path: instance.display_path.to_string_lossy().to_string(),
+                canonical_path: instance
+                    .canonical_path
+                    .as_ref()
+                    .map(|path| path.to_string_lossy().to_string()),
+                alias_paths: instance
+                    .alias_paths
+                    .iter()
+                    .map(|path| path.to_string_lossy().to_string())
+                    .collect(),
+                is_active: instance.is_active,
+                version: instance.version,
+                provenance: instance.provenance.as_str().to_string(),
+                confidence: instance.confidence,
+                decision_margin: instance.decision_margin,
+                automation_level: instance.automation_level.as_str().to_string(),
+                uninstall_strategy: instance.uninstall_strategy.as_str().to_string(),
+                update_strategy: instance.update_strategy.as_str().to_string(),
+                remediation_strategy: instance.remediation_strategy.as_str().to_string(),
+                explanation_primary: instance.explanation_primary,
+                explanation_secondary: instance.explanation_secondary,
+                competing_provenance: instance
+                    .competing_provenance
+                    .map(|value| value.as_str().to_string()),
+                competing_confidence: instance.competing_confidence,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    result.sort_by(|left, right| {
+        left.manager_id
+            .cmp(&right.manager_id)
+            .then_with(|| right.is_active.cmp(&left.is_active))
+            .then_with(|| left.instance_id.cmp(&right.instance_id))
+    });
+    Ok(result)
+}
+
+fn set_manager_active_install_instance(
+    store: &SqliteStore,
+    manager: ManagerId,
+    instance_id: &str,
+) -> Result<String, String> {
+    let target = normalize_nonempty(Some(instance_id.to_string()))
+        .ok_or_else(|| "instance id must not be empty".to_string())?;
+    let mut instances = store
+        .list_install_instances(Some(manager))
+        .map_err(|error| format!("failed to list manager install instances: {error}"))?;
+    if instances.is_empty() {
+        return Err(format!(
+            "manager '{}' has no detected install instances",
+            manager.as_str()
+        ));
+    }
+    let Some(selected_index) = instances
+        .iter()
+        .position(|instance| instance.instance_id.trim() == target.as_str())
+    else {
+        return Err(format!(
+            "manager '{}' install instance '{}' not found",
+            manager.as_str(),
+            target
+        ));
+    };
+
+    let selected_path = instances[selected_index]
+        .display_path
+        .to_string_lossy()
+        .to_string();
+    for (index, instance) in instances.iter_mut().enumerate() {
+        instance.is_active = index == selected_index;
+    }
+
+    store
+        .replace_install_instances(manager, &instances)
+        .map_err(|error| {
+            format!("failed to persist manager install instance selection: {error}")
+        })?;
+    store
+        .set_manager_selected_executable_path(manager, Some(selected_path.as_str()))
+        .map_err(|error| format!("failed to set selected executable path: {error}"))?;
+    store
+        .set_manager_multi_instance_ack_fingerprint(manager, None)
+        .map_err(|error| format!("failed to clear multi-instance acknowledgement: {error}"))?;
+
+    Ok(format!(
+        "Manager '{}' active install instance set to '{}' ({})",
+        manager.as_str(),
+        target,
+        selected_path
+    ))
+}
+
+fn acknowledge_manager_multi_instance_state(
+    store: &SqliteStore,
+    manager: ManagerId,
+) -> Result<String, String> {
+    let instances = store
+        .list_install_instances(Some(manager))
+        .map_err(|error| format!("failed to list manager install instances: {error}"))?;
+    let Some(fingerprint) = install_instance_fingerprint(&instances) else {
+        return Err(format!(
+            "manager '{}' does not currently have multiple install instances to acknowledge",
+            manager.as_str()
+        ));
+    };
+    store
+        .set_manager_multi_instance_ack_fingerprint(manager, Some(fingerprint.as_str()))
+        .map_err(|error| format!("failed to persist multi-instance acknowledgement: {error}"))?;
+    Ok(format!(
+        "Manager '{}' multi-instance state acknowledged.",
+        manager.as_str()
+    ))
+}
+
+fn clear_manager_multi_instance_ack(
+    store: &SqliteStore,
+    manager: ManagerId,
+) -> Result<String, String> {
+    store
+        .set_manager_multi_instance_ack_fingerprint(manager, None)
+        .map_err(|error| format!("failed to clear multi-instance acknowledgement: {error}"))?;
+    Ok(format!(
+        "Manager '{}' multi-instance acknowledgement cleared.",
+        manager.as_str()
+    ))
 }
 
 fn manager_executable_status(
@@ -9764,19 +10987,23 @@ fn manager_install_methods_status(
         .into_iter()
         .map(|preference| (preference.manager, preference))
         .collect();
+    let context = manager_install_method_policy_context();
     let selected_install_method = normalize_install_method(
         manager,
         preferences
             .get(&manager)
             .and_then(|preference| preference.selected_install_method.clone()),
-    );
+    )
+    .filter(|method| install_method_allowed_by_policy(manager, method, context));
+    let install_methods = manager_install_method_candidates(manager)
+        .into_iter()
+        .filter(|method| install_method_allowed_by_policy(manager, method, context))
+        .map(|method| method.to_string())
+        .collect::<Vec<_>>();
 
     Ok(CliManagerInstallMethodsStatus {
         manager_id: manager.as_str().to_string(),
-        install_methods: manager_install_method_candidates(manager)
-            .iter()
-            .map(|candidate| (*candidate).to_string())
-            .collect(),
+        install_methods,
         selected_install_method,
     })
 }
@@ -9811,7 +11038,8 @@ fn parse_selected_install_method_arg(
         return Ok(None);
     }
 
-    if manager_install_method_candidates(manager).contains(&raw) {
+    let candidates = manager_install_method_candidates(manager);
+    if candidates.contains(&raw) {
         return Ok(Some(raw.to_string()));
     }
 
@@ -9819,7 +11047,7 @@ fn parse_selected_install_method_arg(
         "unsupported install method '{}' for manager '{}' (supported: {})",
         raw,
         manager.as_str(),
-        manager_install_method_candidates(manager).join(", ")
+        candidates.join(", ")
     ))
 }
 
@@ -9853,37 +11081,8 @@ fn manager_executable_candidates(id: ManagerId) -> &'static [&'static str] {
     }
 }
 
-fn manager_install_method_candidates(id: ManagerId) -> &'static [&'static str] {
-    match id {
-        ManagerId::Mise => &["homebrew", "scriptInstaller", "macports", "cargoInstall"],
-        ManagerId::Asdf => &["scriptInstaller", "homebrew"],
-        ManagerId::Rustup => &["rustupInstaller", "homebrew"],
-        ManagerId::HomebrewFormula => &["homebrew", "scriptInstaller"],
-        ManagerId::SoftwareUpdate => &["softwareUpdate"],
-        ManagerId::MacPorts => &["macports", "officialInstaller"],
-        ManagerId::NixDarwin => &["scriptInstaller", "homebrew"],
-        ManagerId::Npm => &["mise", "asdf", "homebrew", "officialInstaller"],
-        ManagerId::Pnpm => &["corepack", "homebrew", "npm", "scriptInstaller"],
-        ManagerId::Yarn => &["corepack", "homebrew", "npm", "scriptInstaller"],
-        ManagerId::Poetry => &["pipx", "homebrew", "pip", "officialInstaller"],
-        ManagerId::RubyGems => &["systemProvided", "homebrew", "asdf", "mise"],
-        ManagerId::Bundler => &["gem", "systemProvided", "homebrew", "asdf", "mise"],
-        ManagerId::Pip => &["systemProvided", "homebrew", "asdf", "mise"],
-        ManagerId::Pipx => &["homebrew", "pip"],
-        ManagerId::Cargo => &["rustupInstaller", "homebrew"],
-        ManagerId::CargoBinstall => &["scriptInstaller", "cargoInstall", "homebrew"],
-        ManagerId::Mas => &["homebrew", "macports", "appStore", "officialInstaller"],
-        ManagerId::Sparkle => &["notManageable"],
-        ManagerId::Setapp => &["setapp", "notManageable"],
-        ManagerId::HomebrewCask => &["homebrew"],
-        ManagerId::DockerDesktop => &["officialInstaller", "homebrew", "setapp"],
-        ManagerId::Podman => &["officialInstaller", "homebrew", "macports"],
-        ManagerId::Colima => &["homebrew", "macports", "mise"],
-        ManagerId::ParallelsDesktop => &["officialInstaller", "setapp", "notManageable"],
-        ManagerId::XcodeCommandLineTools => &["xcodeSelect", "appStore"],
-        ManagerId::Rosetta2 => &["softwareUpdate"],
-        ManagerId::FirmwareUpdates => &["systemProvided"],
-    }
+fn manager_install_method_candidates(id: ManagerId) -> Vec<&'static str> {
+    helm_core::manager_lifecycle::manager_supported_install_methods(id)
 }
 
 fn normalize_path_string(path: &std::path::Path) -> Option<String> {
@@ -10172,202 +11371,350 @@ fn homebrew_dependency_available(store: &SqliteStore) -> bool {
         .is_empty()
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ManagerInstallMethodPolicyTag {
+    Allowed,
+    ManagedRestricted,
+    Blocked,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ManagerInstallMethodPolicyContext {
+    managed_environment: bool,
+    allow_restricted_methods: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ManagerAutomationPolicyContext {
+    mode: ManagedAutomationPolicyMode,
+}
+
+fn manager_install_method_policy_context() -> ManagerInstallMethodPolicyContext {
+    *MANAGER_INSTALL_METHOD_POLICY_CONTEXT.get_or_init(|| {
+        let managed_override = env_flag_enabled(MANAGED_INSTALL_METHOD_POLICY_ENV);
+        let allow_restricted_methods =
+            env_flag_enabled(MANAGED_INSTALL_METHOD_POLICY_ALLOW_RESTRICTED_ENV);
+        let managed_from_provenance = env::current_exe()
+            .ok()
+            .map(|path| detect_install_provenance(&path))
+            .map(|provenance| {
+                provenance.channel == InstallChannel::Managed
+                    || provenance.update_policy == UpdatePolicy::Managed
+            })
+            .unwrap_or(false);
+
+        ManagerInstallMethodPolicyContext {
+            managed_environment: managed_override || managed_from_provenance,
+            allow_restricted_methods,
+        }
+    })
+}
+
+fn parse_managed_automation_policy_mode(raw: &str) -> Option<ManagedAutomationPolicyMode> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "automatic" | "auto" | "none" | "off" => Some(ManagedAutomationPolicyMode::Automatic),
+        "needs_confirmation" | "confirm" | "confirmation" => {
+            Some(ManagedAutomationPolicyMode::NeedsConfirmation)
+        }
+        "read_only" | "readonly" => Some(ManagedAutomationPolicyMode::ReadOnly),
+        _ => None,
+    }
+}
+
+fn manager_automation_policy_context() -> ManagerAutomationPolicyContext {
+    *MANAGER_AUTOMATION_POLICY_CONTEXT.get_or_init(|| {
+        let explicit_mode = env::var(MANAGED_AUTOMATION_POLICY_ENV)
+            .ok()
+            .and_then(|value| parse_managed_automation_policy_mode(value.as_str()));
+        let mode = explicit_mode.unwrap_or_else(|| {
+            if manager_install_method_policy_context().managed_environment {
+                ManagedAutomationPolicyMode::NeedsConfirmation
+            } else {
+                ManagedAutomationPolicyMode::Automatic
+            }
+        });
+        ManagerAutomationPolicyContext { mode }
+    })
+}
+
+fn apply_manager_automation_policy(instance: &ManagerInstallInstance) -> ManagerInstallInstance {
+    apply_managed_automation_policy(instance, manager_automation_policy_context().mode)
+}
+
+fn manager_install_method_policy_tag(
+    manager: ManagerId,
+    method: &str,
+) -> ManagerInstallMethodPolicyTag {
+    match registry::manager_install_method_spec(manager, method).map(|spec| spec.policy_tag) {
+        Some(registry::InstallMethodPolicyTag::Allowed) => ManagerInstallMethodPolicyTag::Allowed,
+        Some(registry::InstallMethodPolicyTag::ManagedRestricted) => {
+            ManagerInstallMethodPolicyTag::ManagedRestricted
+        }
+        Some(registry::InstallMethodPolicyTag::BlockedByPolicy) | None => {
+            ManagerInstallMethodPolicyTag::Blocked
+        }
+    }
+}
+
+fn install_method_allowed_by_policy(
+    manager: ManagerId,
+    method: &str,
+    context: ManagerInstallMethodPolicyContext,
+) -> bool {
+    match manager_install_method_policy_tag(manager, method) {
+        ManagerInstallMethodPolicyTag::Allowed => true,
+        ManagerInstallMethodPolicyTag::ManagedRestricted => {
+            !context.managed_environment || context.allow_restricted_methods
+        }
+        ManagerInstallMethodPolicyTag::Blocked => false,
+    }
+}
+
+fn manager_helm_supported_install_methods(id: ManagerId) -> Vec<&'static str> {
+    helm_core::manager_lifecycle::manager_supported_install_methods(id)
+}
+
+fn manager_supported_install_methods_for_install(
+    manager: ManagerId,
+) -> Result<Vec<&'static str>, String> {
+    let planner_supported = manager_helm_supported_install_methods(manager);
+    let context = manager_install_method_policy_context();
+    let supported = planner_supported
+        .iter()
+        .copied()
+        .filter(|method| install_method_allowed_by_policy(manager, method, context))
+        .collect::<Vec<_>>();
+    if !supported.is_empty() {
+        return Ok(supported);
+    }
+    if !planner_supported.is_empty() {
+        return Err(format!(
+            "manager '{}' install methods are currently blocked by managed policy",
+            manager.as_str()
+        ));
+    }
+    Ok(Vec::new())
+}
+
+fn manager_install_method_allowed_for_selection(manager: ManagerId, method: &str) -> bool {
+    install_method_allowed_by_policy(manager, method, manager_install_method_policy_context())
+}
+
+fn can_prompt_install_method_selection(options: &GlobalOptions) -> bool {
+    !options.json && can_run_interactive_onboarding()
+}
+
+fn prompt_install_method_choice(
+    manager: ManagerId,
+    supported_methods: &[&str],
+) -> Result<String, String> {
+    println!("Select install method for manager '{}':", manager.as_str());
+    for (index, method) in supported_methods.iter().enumerate() {
+        println!("  {}) {}", index + 1, method);
+    }
+
+    loop {
+        let input = prompt_line(&format!(
+            "Select method [1-{}] (default 1): ",
+            supported_methods.len()
+        ))?;
+        let selected = if input.is_empty() {
+            "1".to_string()
+        } else {
+            input
+        };
+        if let Ok(index) = selected.parse::<usize>()
+            && (1..=supported_methods.len()).contains(&index)
+        {
+            return Ok(supported_methods[index - 1].to_string());
+        }
+        eprintln!(
+            "Please select one of: {}",
+            (1..=supported_methods.len())
+                .map(|value| value.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+}
+
+fn resolve_install_method_override_decision(
+    manager: ManagerId,
+    explicit_override: Option<String>,
+    persisted_selected: Option<String>,
+    supported_methods: &[&str],
+    can_prompt_interactive: bool,
+) -> Result<Option<String>, String> {
+    if let Some(explicit_override) = explicit_override {
+        return Ok(Some(explicit_override));
+    }
+
+    let persisted_supported =
+        persisted_selected.filter(|method| supported_methods.contains(&method.as_str()));
+    if let Some(persisted_supported) = persisted_supported {
+        return Ok(Some(persisted_supported));
+    }
+
+    if supported_methods.is_empty() {
+        return Ok(None);
+    }
+    if supported_methods.len() == 1 {
+        return Ok(Some(supported_methods[0].to_string()));
+    }
+    if can_prompt_interactive {
+        return prompt_install_method_choice(manager, supported_methods).map(Some);
+    }
+
+    Err(format!(
+        "managers install '{}' requires --method <method-id> in non-interactive mode (supported: {})",
+        manager.as_str(),
+        supported_methods.join(", ")
+    ))
+}
+
+fn resolve_install_method_override_for_install(
+    store: &SqliteStore,
+    manager: ManagerId,
+    options: &GlobalOptions,
+    explicit_override: Option<String>,
+) -> Result<Option<String>, String> {
+    let supported_methods = manager_supported_install_methods_for_install(manager)?;
+    if let Some(method) = explicit_override.as_deref()
+        && !supported_methods.contains(&method)
+    {
+        return Err(format!(
+            "managers install '{}' does not allow --method '{}' in the current policy context (supported: {})",
+            manager.as_str(),
+            method,
+            supported_methods.join(", ")
+        ));
+    }
+    resolve_install_method_override_decision(
+        manager,
+        explicit_override,
+        manager_selected_install_method(store, manager),
+        supported_methods.as_slice(),
+        can_prompt_install_method_selection(options),
+    )
+}
+
+fn resolve_install_method_override_for_tui(
+    store: &SqliteStore,
+    manager: ManagerId,
+) -> Result<Option<String>, String> {
+    let supported_methods = manager_supported_install_methods_for_install(manager)?;
+    resolve_install_method_override_decision(
+        manager,
+        None,
+        manager_selected_install_method(store, manager),
+        supported_methods.as_slice(),
+        false,
+    )
+    .map_err(|_| {
+        format!(
+            "manager '{}' install method is ambiguous; select one first with 'm' in Managers",
+            manager.as_str()
+        )
+    })
+}
+
 fn build_manager_mutation_request(
     store: &SqliteStore,
     manager: ManagerId,
     subcommand: &str,
+    install_method_override: Option<String>,
 ) -> Result<(ManagerId, AdapterRequest), String> {
-    let selected_method = manager_selected_install_method(store, manager);
-    let homebrew_upgrade_request = |package_name: &str| {
-        let policy = effective_homebrew_keg_policy(store, package_name);
-        let cleanup_old_kegs = policy == HomebrewKegPolicy::Cleanup;
-        AdapterRequest::Upgrade(UpgradeRequest {
-            package: Some(PackageRef {
-                manager: ManagerId::HomebrewFormula,
-                name: encode_homebrew_upgrade_target(package_name, cleanup_old_kegs),
-            }),
-        })
-    };
+    build_manager_mutation_request_with_options(
+        store,
+        manager,
+        subcommand,
+        install_method_override,
+        helm_core::manager_lifecycle::ManagerInstallOptions::default(),
+    )
+}
 
+fn build_manager_mutation_request_with_options(
+    store: &SqliteStore,
+    manager: ManagerId,
+    subcommand: &str,
+    install_method_override: Option<String>,
+    install_options: helm_core::manager_lifecycle::ManagerInstallOptions,
+) -> Result<(ManagerId, AdapterRequest), String> {
+    let selected_method = normalize_install_method(manager, install_method_override)
+        .or_else(|| manager_selected_install_method(store, manager));
     let (target_manager, request) = match subcommand {
-        "install" => match manager {
-            ManagerId::Mise => match selected_method.as_deref() {
-                Some("homebrew") | None => (
-                    ManagerId::HomebrewFormula,
-                    AdapterRequest::Install(InstallRequest {
-                        package: PackageRef {
-                            manager: ManagerId::HomebrewFormula,
-                            name: "mise".to_string(),
-                        },
-                        version: None,
-                    }),
-                ),
-                _ => {
-                    return Err(format!(
-                        "manager '{}' install is unsupported for selected method '{}'",
-                        manager.as_str(),
-                        selected_method.as_deref().unwrap_or("unknown")
-                    ));
+        "install" => {
+            let install_plan = helm_core::manager_lifecycle::plan_manager_install(
+                manager,
+                selected_method.as_deref(),
+                &install_options,
+            )
+            .map_err(|error| {
+                manager_install_plan_error_message(manager, selected_method.as_deref(), error)
+            })?;
+            (install_plan.target_manager, install_plan.request)
+        }
+        "update" => {
+            let active_instance = active_manager_install_instance(store, manager)?;
+            let update_plan = helm_core::manager_lifecycle::plan_manager_update(
+                manager,
+                active_instance.as_ref(),
+            )
+            .map_err(|error| manager_update_plan_error_message(manager, error))?;
+
+            let request = match &update_plan.target {
+                helm_core::manager_lifecycle::ManagerUpdateTarget::ManagerSelf => {
+                    helm_core::manager_lifecycle::build_update_request(&update_plan, None)
                 }
-            },
-            ManagerId::Mas => match selected_method.as_deref() {
-                Some("homebrew") | None => (
-                    ManagerId::HomebrewFormula,
-                    AdapterRequest::Install(InstallRequest {
-                        package: PackageRef {
-                            manager: ManagerId::HomebrewFormula,
-                            name: "mas".to_string(),
-                        },
-                        version: None,
-                    }),
-                ),
-                _ => {
-                    return Err(format!(
-                        "manager '{}' install is unsupported for selected method '{}'",
-                        manager.as_str(),
-                        selected_method.as_deref().unwrap_or("unknown")
-                    ));
+                helm_core::manager_lifecycle::ManagerUpdateTarget::HomebrewFormula {
+                    formula_name,
+                } => {
+                    let policy = effective_homebrew_keg_policy(store, formula_name);
+                    let cleanup_old_kegs = policy == HomebrewKegPolicy::Cleanup;
+                    let target_name =
+                        encode_homebrew_upgrade_target(formula_name, cleanup_old_kegs);
+                    helm_core::manager_lifecycle::build_update_request(
+                        &update_plan,
+                        Some(target_name),
+                    )
                 }
-            },
-            _ => {
-                return Err(format!(
-                    "manager '{}' does not currently support install",
-                    manager.as_str()
-                ));
             }
-        },
-        "update" => match manager {
-            ManagerId::HomebrewFormula => (
-                ManagerId::HomebrewFormula,
-                AdapterRequest::Upgrade(UpgradeRequest {
-                    package: Some(PackageRef {
-                        manager: ManagerId::HomebrewFormula,
+            .ok_or_else(|| {
+                format!(
+                    "manager '{}' update strategy resolution returned an unsupported strategy",
+                    manager.as_str(),
+                )
+            })?;
+
+            (update_plan.target_manager, request)
+        }
+        "uninstall" => match manager {
+            ManagerId::Rustup => (
+                ManagerId::Rustup,
+                AdapterRequest::Uninstall(UninstallRequest {
+                    package: PackageRef {
+                        manager: ManagerId::Rustup,
                         name: "__self__".to_string(),
-                    }),
+                    },
                 }),
             ),
-            ManagerId::Mise => match selected_method.as_deref() {
-                Some("homebrew") | None => {
-                    (ManagerId::HomebrewFormula, homebrew_upgrade_request("mise"))
-                }
-                _ => {
-                    return Err(format!(
-                        "manager '{}' update is unsupported for selected method '{}'",
-                        manager.as_str(),
-                        selected_method.as_deref().unwrap_or("unknown")
-                    ));
-                }
-            },
-            ManagerId::Mas => match selected_method.as_deref() {
-                Some("homebrew") | None => {
-                    (ManagerId::HomebrewFormula, homebrew_upgrade_request("mas"))
-                }
-                _ => {
-                    return Err(format!(
-                        "manager '{}' update is unsupported for selected method '{}'",
-                        manager.as_str(),
-                        selected_method.as_deref().unwrap_or("unknown")
-                    ));
-                }
-            },
-            ManagerId::Rustup => match selected_method.as_deref() {
-                Some("homebrew") => (
-                    ManagerId::HomebrewFormula,
-                    homebrew_upgrade_request("rustup"),
-                ),
-                Some("rustupInstaller") | None => (
-                    ManagerId::Rustup,
-                    AdapterRequest::Upgrade(UpgradeRequest {
-                        package: Some(PackageRef {
-                            manager: ManagerId::Rustup,
-                            name: "__self__".to_string(),
+            _ => {
+                if let Some(formula_name) = manager_homebrew_formula_name(manager) {
+                    (
+                        ManagerId::HomebrewFormula,
+                        AdapterRequest::Uninstall(UninstallRequest {
+                            package: PackageRef {
+                                manager: ManagerId::HomebrewFormula,
+                                name: formula_name.to_string(),
+                            },
                         }),
-                    }),
-                ),
-                _ => {
+                    )
+                } else {
                     return Err(format!(
-                        "manager '{}' update is unsupported for selected method '{}'",
-                        manager.as_str(),
-                        selected_method.as_deref().unwrap_or("unknown")
+                        "manager '{}' does not currently support uninstall",
+                        manager.as_str()
                     ));
                 }
-            },
-            _ => {
-                return Err(format!(
-                    "manager '{}' does not currently support update",
-                    manager.as_str()
-                ));
-            }
-        },
-        "uninstall" => match manager {
-            ManagerId::Mise => match selected_method.as_deref() {
-                Some("homebrew") | None => (
-                    ManagerId::HomebrewFormula,
-                    AdapterRequest::Uninstall(UninstallRequest {
-                        package: PackageRef {
-                            manager: ManagerId::HomebrewFormula,
-                            name: "mise".to_string(),
-                        },
-                    }),
-                ),
-                _ => {
-                    return Err(format!(
-                        "manager '{}' uninstall is unsupported for selected method '{}'",
-                        manager.as_str(),
-                        selected_method.as_deref().unwrap_or("unknown")
-                    ));
-                }
-            },
-            ManagerId::Mas => match selected_method.as_deref() {
-                Some("homebrew") | None => (
-                    ManagerId::HomebrewFormula,
-                    AdapterRequest::Uninstall(UninstallRequest {
-                        package: PackageRef {
-                            manager: ManagerId::HomebrewFormula,
-                            name: "mas".to_string(),
-                        },
-                    }),
-                ),
-                _ => {
-                    return Err(format!(
-                        "manager '{}' uninstall is unsupported for selected method '{}'",
-                        manager.as_str(),
-                        selected_method.as_deref().unwrap_or("unknown")
-                    ));
-                }
-            },
-            ManagerId::Rustup => match selected_method.as_deref() {
-                Some("homebrew") => (
-                    ManagerId::HomebrewFormula,
-                    AdapterRequest::Uninstall(UninstallRequest {
-                        package: PackageRef {
-                            manager: ManagerId::HomebrewFormula,
-                            name: "rustup".to_string(),
-                        },
-                    }),
-                ),
-                Some("rustupInstaller") | None => (
-                    ManagerId::Rustup,
-                    AdapterRequest::Uninstall(UninstallRequest {
-                        package: PackageRef {
-                            manager: ManagerId::Rustup,
-                            name: "__self__".to_string(),
-                        },
-                    }),
-                ),
-                _ => {
-                    return Err(format!(
-                        "manager '{}' uninstall is unsupported for selected method '{}'",
-                        manager.as_str(),
-                        selected_method.as_deref().unwrap_or("unknown")
-                    ));
-                }
-            },
-            _ => {
-                return Err(format!(
-                    "manager '{}' does not currently support uninstall",
-                    manager.as_str()
-                ));
             }
         },
         _ => {
@@ -10386,6 +11733,679 @@ fn build_manager_mutation_request(
     }
 
     Ok((target_manager, request))
+}
+
+fn manager_install_plan_error_message(
+    manager: ManagerId,
+    selected_method: Option<&str>,
+    error: helm_core::manager_lifecycle::ManagerInstallPlanError,
+) -> String {
+    match error {
+        helm_core::manager_lifecycle::ManagerInstallPlanError::UnsupportedManager => {
+            format!(
+                "manager '{}' does not currently support install",
+                manager.as_str()
+            )
+        }
+        helm_core::manager_lifecycle::ManagerInstallPlanError::UnsupportedMethod => {
+            format!(
+                "manager '{}' install is unsupported for selected method '{}'",
+                manager.as_str(),
+                selected_method.unwrap_or("unknown")
+            )
+        }
+        helm_core::manager_lifecycle::ManagerInstallPlanError::InvalidRustupBinaryPath => {
+            "rustup install source 'existingBinaryPath' requires a non-empty absolute binary path"
+                .to_string()
+        }
+        helm_core::manager_lifecycle::ManagerInstallPlanError::InvalidMiseBinaryPath => {
+            "mise install source 'existingBinaryPath' requires a non-empty absolute binary path"
+                .to_string()
+        }
+    }
+}
+
+fn manager_update_plan_error_message(
+    manager: ManagerId,
+    error: helm_core::manager_lifecycle::ManagerUpdatePlanError,
+) -> String {
+    match error {
+        helm_core::manager_lifecycle::ManagerUpdatePlanError::UnsupportedManager => {
+            format!(
+                "manager '{}' does not currently support update",
+                manager.as_str()
+            )
+        }
+        helm_core::manager_lifecycle::ManagerUpdatePlanError::ReadOnly => {
+            format!(
+                "manager '{}' update is blocked because active provenance is read-only",
+                manager.as_str(),
+            )
+        }
+        helm_core::manager_lifecycle::ManagerUpdatePlanError::AmbiguousProvenance => {
+            format!(
+                "manager '{}' update provenance is ambiguous; inspect with `helm managers instances {}` and choose an explicit path before updating.",
+                manager.as_str(),
+                manager.as_str(),
+            )
+        }
+        helm_core::manager_lifecycle::ManagerUpdatePlanError::FormulaUnresolved => {
+            format!(
+                "manager '{}' update provenance resolved to homebrew but formula ownership could not be determined from active install instance; inspect with `helm managers instances {}` and refresh detection before retrying.",
+                manager.as_str(),
+                manager.as_str(),
+            )
+        }
+    }
+}
+
+fn parse_rustup_install_source_arg(
+    raw: &str,
+) -> Result<helm_core::manager_lifecycle::RustupInstallSource, String> {
+    match raw.trim() {
+        "officialDownload" | "official-download" | "official_download" => {
+            Ok(helm_core::manager_lifecycle::RustupInstallSource::OfficialDownload)
+        }
+        "existingBinaryPath" | "existing-binary-path" | "existing_binary_path" => {
+            Ok(helm_core::manager_lifecycle::RustupInstallSource::ExistingBinaryPath)
+        }
+        other => Err(format!(
+            "unsupported rustup install source '{}'; supported: officialDownload, existingBinaryPath",
+            other
+        )),
+    }
+}
+
+fn parse_mise_install_source_arg(
+    raw: &str,
+) -> Result<helm_core::manager_lifecycle::MiseInstallSource, String> {
+    match raw.trim() {
+        "officialDownload" | "official-download" | "official_download" => {
+            Ok(helm_core::manager_lifecycle::MiseInstallSource::OfficialDownload)
+        }
+        "existingBinaryPath" | "existing-binary-path" | "existing_binary_path" => {
+            Ok(helm_core::manager_lifecycle::MiseInstallSource::ExistingBinaryPath)
+        }
+        other => Err(format!(
+            "unsupported mise install source '{}'; supported: officialDownload, existingBinaryPath",
+            other
+        )),
+    }
+}
+
+fn parse_mise_cleanup_mode_arg(
+    raw: &str,
+) -> Result<helm_core::manager_lifecycle::MiseUninstallCleanupMode, String> {
+    match raw.trim() {
+        "managerOnly" | "manager-only" | "manager_only" => {
+            Ok(helm_core::manager_lifecycle::MiseUninstallCleanupMode::ManagerOnly)
+        }
+        "fullCleanup" | "full-cleanup" | "full_cleanup" => {
+            Ok(helm_core::manager_lifecycle::MiseUninstallCleanupMode::FullCleanup)
+        }
+        other => Err(format!(
+            "unsupported mise cleanup mode '{}'; supported: managerOnly, fullCleanup",
+            other
+        )),
+    }
+}
+
+fn parse_mise_config_removal_arg(
+    raw: &str,
+) -> Result<helm_core::manager_lifecycle::MiseUninstallConfigRemoval, String> {
+    match raw.trim() {
+        "keepConfig" | "keep-config" | "keep_config" => {
+            Ok(helm_core::manager_lifecycle::MiseUninstallConfigRemoval::KeepConfig)
+        }
+        "removeConfig" | "remove-config" | "remove_config" => {
+            Ok(helm_core::manager_lifecycle::MiseUninstallConfigRemoval::RemoveConfig)
+        }
+        other => Err(format!(
+            "unsupported mise config removal mode '{}'; supported: keepConfig, removeConfig",
+            other
+        )),
+    }
+}
+
+fn parse_homebrew_cleanup_mode_arg(
+    raw: &str,
+) -> Result<helm_core::manager_lifecycle::HomebrewUninstallCleanupMode, String> {
+    match raw.trim() {
+        "managerOnly" | "manager-only" | "manager_only" => {
+            Ok(helm_core::manager_lifecycle::HomebrewUninstallCleanupMode::ManagerOnly)
+        }
+        "fullCleanup" | "full-cleanup" | "full_cleanup" => {
+            Ok(helm_core::manager_lifecycle::HomebrewUninstallCleanupMode::FullCleanup)
+        }
+        other => Err(format!(
+            "unsupported homebrew cleanup mode '{}'; supported: managerOnly, fullCleanup",
+            other
+        )),
+    }
+}
+
+fn parse_manager_mutation_args(
+    subcommand: &str,
+    command_args: &[String],
+) -> Result<ParsedManagerMutationArgs, String> {
+    let mut manager: Option<ManagerId> = None;
+    let mut preview = false;
+    let mut yes = false;
+    let mut allow_unknown_provenance = false;
+    let mut install_method_raw: Option<String> = None;
+    let mut rustup_install_source: Option<helm_core::manager_lifecycle::RustupInstallSource> = None;
+    let mut rustup_binary_path: Option<String> = None;
+    let mut mise_install_source: Option<helm_core::manager_lifecycle::MiseInstallSource> = None;
+    let mut mise_binary_path: Option<String> = None;
+    let mut homebrew_cleanup_mode: Option<
+        helm_core::manager_lifecycle::HomebrewUninstallCleanupMode,
+    > = None;
+    let mut mise_cleanup_mode: Option<helm_core::manager_lifecycle::MiseUninstallCleanupMode> =
+        None;
+    let mut mise_config_removal: Option<helm_core::manager_lifecycle::MiseUninstallConfigRemoval> =
+        None;
+
+    let uninstall_command = subcommand == "uninstall";
+    let install_command = subcommand == "install";
+    let mut index = 0usize;
+    while index < command_args.len() {
+        match command_args[index].as_str() {
+            "--preview" if uninstall_command => {
+                preview = true;
+                index += 1;
+            }
+            "--yes" if uninstall_command => {
+                yes = true;
+                index += 1;
+            }
+            "--allow-unknown-provenance" if uninstall_command => {
+                allow_unknown_provenance = true;
+                index += 1;
+            }
+            "--homebrew-cleanup-mode" if uninstall_command => {
+                if index + 1 >= command_args.len() {
+                    return Err(
+                        "managers uninstall --homebrew-cleanup-mode requires a mode value"
+                            .to_string(),
+                    );
+                }
+                if homebrew_cleanup_mode.is_some() {
+                    return Err(
+                        "managers uninstall --homebrew-cleanup-mode specified multiple times"
+                            .to_string(),
+                    );
+                }
+                homebrew_cleanup_mode = Some(parse_homebrew_cleanup_mode_arg(
+                    command_args[index + 1].as_str(),
+                )?);
+                index += 2;
+            }
+            "--mise-cleanup-mode" if uninstall_command => {
+                if index + 1 >= command_args.len() {
+                    return Err(
+                        "managers uninstall --mise-cleanup-mode requires a mode value".to_string(),
+                    );
+                }
+                if mise_cleanup_mode.is_some() {
+                    return Err(
+                        "managers uninstall --mise-cleanup-mode specified multiple times"
+                            .to_string(),
+                    );
+                }
+                mise_cleanup_mode = Some(parse_mise_cleanup_mode_arg(
+                    command_args[index + 1].as_str(),
+                )?);
+                index += 2;
+            }
+            "--mise-config-removal" if uninstall_command => {
+                if index + 1 >= command_args.len() {
+                    return Err(
+                        "managers uninstall --mise-config-removal requires a mode value"
+                            .to_string(),
+                    );
+                }
+                if mise_config_removal.is_some() {
+                    return Err(
+                        "managers uninstall --mise-config-removal specified multiple times"
+                            .to_string(),
+                    );
+                }
+                mise_config_removal = Some(parse_mise_config_removal_arg(
+                    command_args[index + 1].as_str(),
+                )?);
+                index += 2;
+            }
+            "--method" if install_command => {
+                if index + 1 >= command_args.len() {
+                    return Err("managers install --method requires a method id".to_string());
+                }
+                if install_method_raw.is_some() {
+                    return Err("managers install --method specified multiple times".to_string());
+                }
+                install_method_raw = Some(command_args[index + 1].clone());
+                index += 2;
+            }
+            "--rustup-install-source" if install_command => {
+                if index + 1 >= command_args.len() {
+                    return Err(
+                        "managers install --rustup-install-source requires a source value"
+                            .to_string(),
+                    );
+                }
+                if rustup_install_source.is_some() {
+                    return Err(
+                        "managers install --rustup-install-source specified multiple times"
+                            .to_string(),
+                    );
+                }
+                rustup_install_source = Some(parse_rustup_install_source_arg(
+                    command_args[index + 1].as_str(),
+                )?);
+                index += 2;
+            }
+            "--rustup-binary-path" if install_command => {
+                if index + 1 >= command_args.len() {
+                    return Err(
+                        "managers install --rustup-binary-path requires a file path".to_string()
+                    );
+                }
+                if rustup_binary_path.is_some() {
+                    return Err(
+                        "managers install --rustup-binary-path specified multiple times"
+                            .to_string(),
+                    );
+                }
+                rustup_binary_path = Some(command_args[index + 1].clone());
+                index += 2;
+            }
+            "--mise-install-source" if install_command => {
+                if index + 1 >= command_args.len() {
+                    return Err(
+                        "managers install --mise-install-source requires a source value"
+                            .to_string(),
+                    );
+                }
+                if mise_install_source.is_some() {
+                    return Err(
+                        "managers install --mise-install-source specified multiple times"
+                            .to_string(),
+                    );
+                }
+                mise_install_source = Some(parse_mise_install_source_arg(
+                    command_args[index + 1].as_str(),
+                )?);
+                index += 2;
+            }
+            "--mise-binary-path" if install_command => {
+                if index + 1 >= command_args.len() {
+                    return Err(
+                        "managers install --mise-binary-path requires a file path".to_string()
+                    );
+                }
+                if mise_binary_path.is_some() {
+                    return Err(
+                        "managers install --mise-binary-path specified multiple times".to_string(),
+                    );
+                }
+                mise_binary_path = Some(command_args[index + 1].clone());
+                index += 2;
+            }
+            flag if flag.starts_with("--") => {
+                if uninstall_command {
+                    return Err(format!(
+                        "unsupported managers uninstall argument '{}'; supported: <manager-id>, --preview, --yes, --allow-unknown-provenance, --homebrew-cleanup-mode <managerOnly|fullCleanup>, --mise-cleanup-mode <managerOnly|fullCleanup>, --mise-config-removal <keepConfig|removeConfig>",
+                        flag
+                    ));
+                }
+                if install_command {
+                    return Err(format!(
+                        "unsupported managers install argument '{}'; supported: <manager-id>, --method <method-id>, --rustup-install-source <officialDownload|existingBinaryPath>, --rustup-binary-path <path>, --mise-install-source <officialDownload|existingBinaryPath>, --mise-binary-path <path>",
+                        flag
+                    ));
+                }
+                return Err(format!(
+                    "unsupported managers {} argument '{}'; expected exactly one <manager-id>",
+                    subcommand, flag
+                ));
+            }
+            value => {
+                if manager.is_some() {
+                    return Err(format!(
+                        "managers {} requires exactly one manager id",
+                        subcommand
+                    ));
+                }
+                manager = Some(parse_manager_id(value)?);
+                index += 1;
+            }
+        };
+    }
+
+    let manager = manager
+        .ok_or_else(|| format!("managers {} requires exactly one manager id", subcommand))?;
+    let install_method_override = install_method_raw
+        .map(|raw| parse_selected_install_method_arg(manager, raw.as_str()))
+        .transpose()?
+        .flatten();
+    let install_options = if install_command {
+        if manager != ManagerId::Rustup
+            && (rustup_install_source.is_some() || rustup_binary_path.is_some())
+        {
+            return Err(
+                "managers install rustup install-source flags are only supported for manager 'rustup'"
+                    .to_string(),
+            );
+        }
+        if manager != ManagerId::Mise
+            && (mise_install_source.is_some() || mise_binary_path.is_some())
+        {
+            return Err(
+                "managers install mise install-source flags are only supported for manager 'mise'"
+                    .to_string(),
+            );
+        }
+
+        let mut source = rustup_install_source;
+        if rustup_binary_path.is_some() {
+            match source {
+                Some(helm_core::manager_lifecycle::RustupInstallSource::OfficialDownload) => {
+                    return Err(
+                        "managers install --rustup-binary-path is incompatible with --rustup-install-source officialDownload"
+                            .to_string(),
+                    );
+                }
+                Some(helm_core::manager_lifecycle::RustupInstallSource::ExistingBinaryPath) => {}
+                None => {
+                    source =
+                        Some(helm_core::manager_lifecycle::RustupInstallSource::ExistingBinaryPath);
+                }
+            }
+        }
+
+        let mut mise_source = mise_install_source;
+        if mise_binary_path.is_some() {
+            match mise_source {
+                Some(helm_core::manager_lifecycle::MiseInstallSource::OfficialDownload) => {
+                    return Err(
+                        "managers install --mise-binary-path is incompatible with --mise-install-source officialDownload"
+                            .to_string(),
+                    );
+                }
+                Some(helm_core::manager_lifecycle::MiseInstallSource::ExistingBinaryPath) => {}
+                None => {
+                    mise_source =
+                        Some(helm_core::manager_lifecycle::MiseInstallSource::ExistingBinaryPath);
+                }
+            }
+        }
+
+        if manager == ManagerId::Rustup {
+            helm_core::manager_lifecycle::ManagerInstallOptions {
+                rustup_install_source: source,
+                rustup_binary_path,
+                ..helm_core::manager_lifecycle::ManagerInstallOptions::default()
+            }
+        } else if manager == ManagerId::Mise {
+            helm_core::manager_lifecycle::ManagerInstallOptions {
+                mise_install_source: mise_source,
+                mise_binary_path,
+                ..helm_core::manager_lifecycle::ManagerInstallOptions::default()
+            }
+        } else {
+            helm_core::manager_lifecycle::ManagerInstallOptions::default()
+        }
+    } else {
+        helm_core::manager_lifecycle::ManagerInstallOptions::default()
+    };
+
+    if uninstall_command
+        && manager != ManagerId::Mise
+        && (mise_cleanup_mode.is_some() || mise_config_removal.is_some())
+    {
+        return Err(
+            "managers uninstall mise cleanup flags are only supported for manager 'mise'"
+                .to_string(),
+        );
+    }
+    let uninstall_options = if uninstall_command && manager == ManagerId::Mise {
+        helm_core::manager_lifecycle::ManagerUninstallOptions {
+            homebrew_cleanup_mode,
+            mise_cleanup_mode,
+            mise_config_removal,
+            remove_helm_managed_shell_setup: None,
+        }
+    } else if uninstall_command {
+        helm_core::manager_lifecycle::ManagerUninstallOptions {
+            homebrew_cleanup_mode,
+            ..helm_core::manager_lifecycle::ManagerUninstallOptions::default()
+        }
+    } else {
+        helm_core::manager_lifecycle::ManagerUninstallOptions::default()
+    };
+
+    Ok(ParsedManagerMutationArgs {
+        manager,
+        preview,
+        yes,
+        allow_unknown_provenance,
+        install_method_override,
+        install_options,
+        uninstall_options,
+    })
+}
+
+#[cfg(test)]
+fn build_manager_uninstall_plan(
+    store: &SqliteStore,
+    manager: ManagerId,
+    allow_unknown_provenance: bool,
+    preview_only: bool,
+) -> Result<ManagerUninstallPlan, String> {
+    build_manager_uninstall_plan_with_options(
+        store,
+        manager,
+        allow_unknown_provenance,
+        preview_only,
+        helm_core::manager_lifecycle::ManagerUninstallOptions::default(),
+    )
+}
+
+fn build_manager_uninstall_plan_with_options(
+    store: &SqliteStore,
+    manager: ManagerId,
+    allow_unknown_provenance: bool,
+    preview_only: bool,
+    uninstall_options: helm_core::manager_lifecycle::ManagerUninstallOptions,
+) -> Result<ManagerUninstallPlan, String> {
+    let active_instance = active_manager_install_instance(store, manager)?;
+    match helm_core::manager_lifecycle::plan_manager_uninstall_route_with_options(
+        manager,
+        active_instance.as_ref(),
+        allow_unknown_provenance,
+        preview_only,
+        &uninstall_options,
+    ) {
+        Ok(route) => build_provenance_manager_uninstall_plan(
+            store,
+            manager,
+            active_instance,
+            preview_only,
+            route,
+        ),
+        Err(helm_core::manager_lifecycle::ManagerUninstallRouteError::UnsupportedManager) => {
+            // Remaining managers stay intentionally gated here until their uninstall strategy
+            // can be proven safe and deterministic for provenance-first routing.
+            let (target_manager, request) =
+                build_manager_mutation_request(store, manager, "uninstall", None)?;
+            let strategy = active_instance
+                .as_ref()
+                .map(|instance| instance.uninstall_strategy)
+                .unwrap_or(StrategyKind::InteractivePrompt);
+            let preview = build_manager_uninstall_preview(
+                store,
+                ManagerUninstallPreviewContext {
+                    requested_manager: manager,
+                    target_manager,
+                    request: &request,
+                    strategy,
+                    active_instance: active_instance.as_ref(),
+                    unknown_override_required: false,
+                    used_unknown_override: false,
+                    legacy_fallback_used: true,
+                },
+                DEFAULT_MANAGER_UNINSTALL_SAFE_BLAST_RADIUS_THRESHOLD,
+            );
+
+            if preview.read_only_blocked && !preview_only {
+                return Err(
+                    "manager uninstall is blocked because active provenance is read-only"
+                        .to_string(),
+                );
+            }
+            if target_manager == ManagerId::HomebrewFormula
+                && !homebrew_dependency_available(store)
+                && !preview_only
+            {
+                return Err(
+                    "homebrew is required for this manager operation but was not detected on this system"
+                        .to_string(),
+                );
+            }
+
+            Ok(ManagerUninstallPlan {
+                target_manager,
+                request,
+                preview,
+            })
+        }
+        Err(error) => Err(manager_uninstall_route_error_message(manager, error)),
+    }
+}
+
+fn build_provenance_manager_uninstall_plan(
+    store: &SqliteStore,
+    manager: ManagerId,
+    active_instance: Option<ManagerInstallInstance>,
+    preview_only: bool,
+    route: helm_core::manager_lifecycle::ManagerUninstallRoutePlan,
+) -> Result<ManagerUninstallPlan, String> {
+    let preview = build_manager_uninstall_preview(
+        store,
+        ManagerUninstallPreviewContext {
+            requested_manager: manager,
+            target_manager: route.target_manager,
+            request: &route.request,
+            strategy: route.strategy,
+            active_instance: active_instance.as_ref(),
+            unknown_override_required: route.unknown_override_required,
+            used_unknown_override: route.used_unknown_override,
+            legacy_fallback_used: false,
+        },
+        DEFAULT_MANAGER_UNINSTALL_SAFE_BLAST_RADIUS_THRESHOLD,
+    );
+
+    if preview.read_only_blocked && !preview_only {
+        return Err(format!(
+            "manager '{}' uninstall is blocked because active provenance is read-only",
+            manager.as_str(),
+        ));
+    }
+    if preview.unknown_override_required && !route.used_unknown_override && !preview_only {
+        return Err(format!(
+            "manager '{}' uninstall provenance is ambiguous; rerun with --preview to inspect blast radius, then pass --allow-unknown-provenance --yes to continue.",
+            manager.as_str(),
+        ));
+    }
+    if route.target_manager == ManagerId::HomebrewFormula
+        && !homebrew_dependency_available(store)
+        && !preview_only
+    {
+        return Err(
+            "homebrew is required for this manager operation but was not detected on this system"
+                .to_string(),
+        );
+    }
+
+    Ok(ManagerUninstallPlan {
+        target_manager: route.target_manager,
+        request: route.request,
+        preview,
+    })
+}
+
+fn manager_uninstall_route_error_message(
+    manager: ManagerId,
+    error: helm_core::manager_lifecycle::ManagerUninstallRouteError,
+) -> String {
+    match error {
+        helm_core::manager_lifecycle::ManagerUninstallRouteError::UnsupportedManager => {
+            format!(
+                "manager '{}' does not currently support uninstall",
+                manager.as_str()
+            )
+        }
+        helm_core::manager_lifecycle::ManagerUninstallRouteError::AmbiguousProvenance => {
+            format!(
+                "manager '{}' uninstall provenance is ambiguous; rerun with --preview to inspect blast radius, then pass --allow-unknown-provenance --yes to continue.",
+                manager.as_str(),
+            )
+        }
+        helm_core::manager_lifecycle::ManagerUninstallRouteError::FormulaUnresolved => {
+            format!(
+                "manager '{}' uninstall provenance resolved to homebrew but formula ownership could not be determined from active install instance; inspect with `helm managers instances {}` and refresh detection before retrying.",
+                manager.as_str(),
+                manager.as_str(),
+            )
+        }
+        helm_core::manager_lifecycle::ManagerUninstallRouteError::InvalidOptions => {
+            format!(
+                "manager '{}' uninstall options are invalid for the selected strategy; review mise cleanup/config flags and retry.",
+                manager.as_str()
+            )
+        }
+    }
+}
+
+fn manager_homebrew_formula_name(manager: ManagerId) -> Option<&'static str> {
+    helm_core::manager_lifecycle::manager_homebrew_formula_name(manager)
+}
+
+#[cfg(test)]
+fn homebrew_formula_name_from_path(path: &Path) -> Option<String> {
+    helm_core::manager_lifecycle::homebrew_formula_name_from_path(path)
+}
+
+fn active_manager_install_instance(
+    store: &SqliteStore,
+    manager: ManagerId,
+) -> Result<Option<ManagerInstallInstance>, String> {
+    let mut instances = store
+        .list_install_instances(Some(manager))
+        .map_err(|error| format!("failed to list manager install instances: {error}"))?;
+    instances.sort_by(|left, right| {
+        right
+            .is_active
+            .cmp(&left.is_active)
+            .then_with(|| left.instance_id.cmp(&right.instance_id))
+    });
+    Ok(instances
+        .into_iter()
+        .next()
+        .map(|instance| apply_manager_automation_policy(&instance)))
+}
+
+fn build_package_uninstall_preview_for_package(
+    store: &SqliteStore,
+    package: &PackageRef,
+) -> Result<PackageUninstallPreview, String> {
+    let active_instance = active_manager_install_instance(store, package.manager)?;
+    Ok(build_package_uninstall_preview(
+        PackageUninstallPreviewContext {
+            package,
+            active_instance: active_instance.as_ref(),
+        },
+        DEFAULT_MANAGER_UNINSTALL_SAFE_BLAST_RADIUS_THRESHOLD,
+    ))
 }
 
 fn parse_manager_id(raw: &str) -> Result<ManagerId, String> {
@@ -11245,6 +13265,10 @@ fn print_managers_help_topic(path: &[String]) -> bool {
                 print_managers_install_methods_help();
                 return true;
             }
+            "instances" => {
+                print_managers_instances_help();
+                return true;
+            }
             "priority" => {
                 print_managers_priority_help();
                 return true;
@@ -11271,6 +13295,14 @@ fn print_managers_help_topic(path: &[String]) -> bool {
                 print_managers_install_methods_set_help();
                 return true;
             }
+            ("instances", "ack") => {
+                print_managers_instances_ack_help();
+                return true;
+            }
+            ("instances", "clear-ack") => {
+                print_managers_instances_clear_ack_help();
+                return true;
+            }
             ("priority", "list") => {
                 print_managers_priority_list_help();
                 return true;
@@ -11285,6 +13317,11 @@ fn print_managers_help_topic(path: &[String]) -> bool {
             }
             _ => {}
         }
+    }
+
+    if path.len() == 3 && (path[0].as_str(), path[1].as_str()) == ("instances", "set-active") {
+        print_managers_instances_set_active_help();
+        return true;
     }
 
     false
@@ -11446,7 +13483,33 @@ fn print_doctor_help_topic(path: &[String]) -> bool {
         print_doctor_help();
         return true;
     }
-    print_diagnostics_help_topic(path)
+    if path.len() == 1 {
+        match path[0].as_str() {
+            "scan" => {
+                print_doctor_scan_help();
+                return true;
+            }
+            "repair" => {
+                print_doctor_repair_help();
+                return true;
+            }
+            _ => {}
+        }
+    }
+    if path.len() == 2 && path[0] == "repair" {
+        match path[1].as_str() {
+            "plan" => {
+                print_doctor_repair_plan_help();
+                return true;
+            }
+            "apply" => {
+                print_doctor_repair_apply_help();
+                return true;
+            }
+            _ => {}
+        }
+    }
+    false
 }
 
 fn print_help() {
@@ -11479,15 +13542,15 @@ fn print_help() {
     println!("  tasks [list|show|logs|output|follow|cancel]");
     println!("                         Inspect task state/logs/output and cancellation status");
     println!(
-        "  managers [list|show|detect|enable|disable|install|update|uninstall|executables|install-methods|priority]"
+        "  managers [list|show|detect|enable|disable|install|update|uninstall|executables|install-methods|instances|priority]"
     );
     println!("                         Manager status, enablement, and selection controls");
     println!("  settings [list|get|set|reset]");
     println!("                         Read and update selected settings");
     println!("  diagnostics [summary|task|manager|provenance|export]");
     println!("                         Read diagnostics snapshots and export support data");
-    println!("  doctor [summary|task|manager|provenance|export]");
-    println!("                         Diagnostics alias; default shows provenance");
+    println!("  doctor [scan|repair]");
+    println!("                         Doctor scans and repair workflows");
     println!("  onboarding [status|run|reset]");
     println!("                         Inspect/run/reset CLI first-run onboarding state");
     println!("  self [status|check|update|uninstall|auto-check]");
@@ -11548,7 +13611,7 @@ fn print_packages_help() {
     println!("  search <query> [--manager <id>] [--local|--remote] [--limit <n>]");
     println!("  show <name> [--manager <id>]");
     println!("  install <name|name@manager> --manager <id> [--version <v>]");
-    println!("  uninstall <name|name@manager> --manager <id>");
+    println!("  uninstall <name|name@manager> --manager <id> [--preview] [--yes]");
     println!("  upgrade <name|name@manager> --manager <id>");
     println!("  pin <name|name@manager> --manager <id> [--version <v>]");
     println!("  unpin <name|name@manager> --manager <id>");
@@ -11595,10 +13658,12 @@ fn print_packages_install_help() {
 
 fn print_packages_uninstall_help() {
     println!("USAGE:");
-    println!("  helm packages uninstall <name|name@manager> --manager <id>");
+    println!("  helm packages uninstall <name|name@manager> --manager <id> [--preview] [--yes]");
     println!();
     println!("DESCRIPTION:");
-    println!("  Uninstall a package via the selected manager.");
+    println!(
+        "  Uninstall a package via the selected manager. Use --preview to inspect blast radius."
+    );
 }
 
 fn print_packages_upgrade_help() {
@@ -11806,6 +13871,10 @@ fn print_managers_help() {
     println!("  executables set <manager-id> <path|path-default>");
     println!("  install-methods list <manager-id>");
     println!("  install-methods set <manager-id> <method-id|default>");
+    println!("  instances [<manager-id>]");
+    println!("  instances ack <manager-id>");
+    println!("  instances clear-ack <manager-id>");
+    println!("  instances set-active <manager-id> <instance-id>");
     println!("  priority list");
     println!("  priority set <manager-id> --rank <n>");
     println!("  priority reset");
@@ -11858,10 +13927,22 @@ fn print_managers_disable_help() {
 
 fn print_managers_install_help() {
     println!("USAGE:");
-    println!("  helm managers install <manager-id>");
+    println!(
+        "  helm managers install <manager-id> [--method <method-id>] [--rustup-install-source <officialDownload|existingBinaryPath>] [--rustup-binary-path <path>] [--mise-install-source <officialDownload|existingBinaryPath>] [--mise-binary-path <path>]"
+    );
     println!();
     println!("DESCRIPTION:");
-    println!("  Install a supported manager via selected install method routing.");
+    println!("  Install a supported manager.");
+    println!("  Use --method for a one-off method override without changing saved preferences.");
+    println!(
+        "  If method choice is ambiguous, interactive TTY prompts; non-interactive mode requires --method."
+    );
+    println!(
+        "  rustup-only: --rustup-install-source selects official download vs existing binary path. --rustup-binary-path implies existingBinaryPath when source is omitted."
+    );
+    println!(
+        "  mise-only: --mise-install-source selects script installer source mode. --mise-binary-path implies existingBinaryPath when source is omitted."
+    );
 }
 
 fn print_managers_update_help() {
@@ -11869,15 +13950,22 @@ fn print_managers_update_help() {
     println!("  helm managers update <manager-id>");
     println!();
     println!("DESCRIPTION:");
-    println!("  Update a supported manager via selected install method routing.");
+    println!("  Update a supported manager via manager-specific routing.");
 }
 
 fn print_managers_uninstall_help() {
     println!("USAGE:");
-    println!("  helm managers uninstall <manager-id>");
+    println!(
+        "  helm managers uninstall <manager-id> [--preview] [--yes] [--allow-unknown-provenance] [--homebrew-cleanup-mode <managerOnly|fullCleanup>] [--mise-cleanup-mode <managerOnly|fullCleanup>] [--mise-config-removal <keepConfig|removeConfig>]"
+    );
     println!();
     println!("DESCRIPTION:");
-    println!("  Uninstall a supported manager via selected install method routing.");
+    println!(
+        "  Uninstall a supported manager via detected provenance strategy with blast-radius preview."
+    );
+    println!("  homebrew-routed managers: --homebrew-cleanup-mode defaults to managerOnly.");
+    println!("  mise-only: --mise-cleanup-mode defaults to managerOnly.");
+    println!("  mise-only: fullCleanup requires --mise-config-removal keepConfig|removeConfig.");
 }
 
 fn print_managers_executables_help() {
@@ -11928,6 +14016,43 @@ fn print_managers_install_methods_set_help() {
     println!();
     println!("DESCRIPTION:");
     println!("  Persist install-method preference (or reset to default behavior).");
+}
+
+fn print_managers_instances_help() {
+    println!("USAGE:");
+    println!("  helm managers instances [<manager-id>]");
+    println!("  helm managers instances ack <manager-id>");
+    println!("  helm managers instances clear-ack <manager-id>");
+    println!("  helm managers instances set-active <manager-id> <instance-id>");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Show detected install instances with provenance, confidence, and explainability.");
+    println!("  Use ack/clear-ack to manage multi-instance acknowledgement state.");
+    println!("  Use set-active to select which detected install instance Helm manages.");
+}
+
+fn print_managers_instances_ack_help() {
+    println!("USAGE:");
+    println!("  helm managers instances ack <manager-id>");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Acknowledge an intentional multi-install manager state.");
+}
+
+fn print_managers_instances_clear_ack_help() {
+    println!("USAGE:");
+    println!("  helm managers instances clear-ack <manager-id>");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Clear the stored multi-install acknowledgement for a manager.");
+}
+
+fn print_managers_instances_set_active_help() {
+    println!("USAGE:");
+    println!("  helm managers instances set-active <manager-id> <instance-id>");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Set the active managed install instance and clear any prior acknowledgement.");
 }
 
 fn print_managers_priority_help() {
@@ -12063,12 +14188,55 @@ fn print_diagnostics_help() {
 fn print_doctor_help() {
     println!("USAGE:");
     println!("  helm doctor");
-    println!("  helm doctor provenance");
-    println!("  helm doctor <summary|task|manager|provenance|export> [args]");
+    println!("  helm doctor scan");
+    println!("  helm doctor repair <plan|apply> ...");
+    println!("  helm doctor <scan|repair> [args]");
     println!();
     println!("DESCRIPTION:");
-    println!("  Alias for the diagnostics namespace.");
-    println!("  Without subcommands, doctor defaults to install provenance output.");
+    println!("  Local health scanning and targeted repair workflows.");
+    println!("  Without subcommands, doctor defaults to scan.");
+    println!("  Use 'helm diagnostics ...' for diagnostics namespaces.");
+}
+
+fn print_doctor_scan_help() {
+    println!("USAGE:");
+    println!("  helm doctor scan");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Run local doctor detectors and print a health report.");
+}
+
+fn print_doctor_repair_help() {
+    println!("USAGE:");
+    println!(
+        "  helm doctor repair plan <manager-id> <source-manager-id> <package-name> <issue-code>"
+    );
+    println!(
+        "  helm doctor repair apply <manager-id> <source-manager-id> <package-name> <issue-code> <option-id>"
+    );
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Plan or apply a known repair for a doctor finding fingerprint.");
+}
+
+fn print_doctor_repair_plan_help() {
+    println!("USAGE:");
+    println!(
+        "  helm doctor repair plan <manager-id> <source-manager-id> <package-name> <issue-code>"
+    );
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Show available repair options for a specific issue.");
+}
+
+fn print_doctor_repair_apply_help() {
+    println!("USAGE:");
+    println!(
+        "  helm doctor repair apply <manager-id> <source-manager-id> <package-name> <issue-code> <option-id>"
+    );
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Apply a specific repair option and queue the resulting task.");
 }
 
 fn print_diagnostics_summary_help() {
@@ -12229,8 +14397,9 @@ mod tests {
         cmd_updates_run, command_help_topic_exists, coordinator_transport_for_cancel,
         coordinator_transport_for_submit, coordinator_transport_for_workflow,
         count_upgrade_step_failures, ensure_cli_onboarding_completed, exit_code_for_error,
-        failure_class_hint, manager_operation_failure_error, mark_exit_code, parse_args,
-        parse_args_with_tty, parse_homebrew_keg_policy_arg, parse_manager_id, parse_search_args,
+        failure_class_hint, list_managers, manager_operation_failure_error, mark_exit_code,
+        parse_args, parse_args_with_tty, parse_homebrew_keg_policy_arg, parse_manager_id,
+        parse_manager_mutation_args, parse_package_mutation_args, parse_search_args,
         parse_structured_terminal_error_message, parse_updates_run_preview_args,
         provenance_can_self_update, raw_args_request_json, raw_args_request_ndjson,
         read_update_bytes_with_limit, remove_install_marker_if_channel, resolve_redirect_url,
@@ -12239,7 +14408,10 @@ mod tests {
         strip_exit_code_marker, upgrade_request_name,
     };
     use helm_core::execution::TaskOutputRecord;
-    use helm_core::models::DetectionInfo;
+    use helm_core::models::{
+        AutomationLevel, DetectionInfo, InstallInstanceIdentityKind, InstallProvenance,
+        ManagerInstallInstance, StrategyKind,
+    };
     use helm_core::persistence::DetectionStore;
     use helm_core::sqlite::SqliteStore;
     use serde_json::json;
@@ -12268,6 +14440,19 @@ mod tests {
             .expect("clock should be after epoch")
             .as_nanos();
         std::env::temp_dir().join(format!("helm-cli-self-heal-{name}-{nanos}.sqlite3"))
+    }
+
+    fn seed_homebrew_detected(store: &SqliteStore) {
+        store
+            .upsert_detection(
+                ManagerId::HomebrewFormula,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                    version: Some("4.4.0".to_string()),
+                },
+            )
+            .expect("homebrew detection should persist");
     }
 
     #[cfg(unix)]
@@ -12615,6 +14800,16 @@ mod tests {
             .expect("search query args should parse");
         assert_eq!(command, Command::Search);
         assert_eq!(args, vec!["-foo".to_string()]);
+    }
+
+    #[test]
+    fn package_search_excludes_rustup_manager() {
+        assert!(!super::manager_participates_in_package_search(
+            ManagerId::Rustup
+        ));
+        assert!(super::manager_participates_in_package_search(
+            ManagerId::HomebrewFormula
+        ));
     }
 
     #[test]
@@ -13023,6 +15218,26 @@ mod tests {
             &["executables".to_string(), "set".to_string()]
         ));
         assert!(command_help_topic_exists(
+            Command::Managers,
+            &["instances".to_string()]
+        ));
+        assert!(command_help_topic_exists(
+            Command::Managers,
+            &["instances".to_string(), "ack".to_string()]
+        ));
+        assert!(command_help_topic_exists(
+            Command::Managers,
+            &["instances".to_string(), "clear-ack".to_string()]
+        ));
+        assert!(command_help_topic_exists(
+            Command::Managers,
+            &[
+                "instances".to_string(),
+                "set-active".to_string(),
+                "<instance-id>".to_string()
+            ]
+        ));
+        assert!(command_help_topic_exists(
             Command::SelfCmd,
             &["auto-check".to_string(), "frequency".to_string()]
         ));
@@ -13038,6 +15253,567 @@ mod tests {
             Command::Updates,
             &["unknown".to_string()]
         ));
+    }
+
+    #[test]
+    fn list_managers_includes_active_install_instance_metadata() {
+        let db_path = temp_db_path("manager-instance-metadata");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .upsert_detection(
+                ManagerId::Rustup,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(PathBuf::from("/opt/homebrew/bin/rustup")),
+                    version: Some("1.28.2".to_string()),
+                },
+            )
+            .expect("rustup detection should persist");
+        store
+            .replace_install_instances(
+                ManagerId::Rustup,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Rustup,
+                    instance_id: "rustup-homebrew".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/opt/homebrew/Cellar/rustup/1.28.2/bin/rustup".to_string(),
+                    display_path: PathBuf::from("/opt/homebrew/bin/rustup"),
+                    canonical_path: Some(PathBuf::from(
+                        "/opt/homebrew/Cellar/rustup/1.28.2/bin/rustup",
+                    )),
+                    alias_paths: vec![PathBuf::from("/opt/homebrew/bin/rustup")],
+                    is_active: true,
+                    version: Some("1.28.2".to_string()),
+                    provenance: InstallProvenance::Homebrew,
+                    confidence: 0.94,
+                    decision_margin: Some(0.53),
+                    automation_level: AutomationLevel::Automatic,
+                    uninstall_strategy: StrategyKind::HomebrewFormula,
+                    update_strategy: StrategyKind::HomebrewFormula,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some("path is in Homebrew Cellar".to_string()),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::RustupInit),
+                    competing_confidence: Some(0.41),
+                }],
+            )
+            .expect("rustup instance should persist");
+
+        let managers = list_managers(&store).expect("manager list should load");
+        let rustup = managers
+            .into_iter()
+            .find(|manager| manager.manager_id == "rustup")
+            .expect("rustup manager row should exist");
+
+        assert_eq!(rustup.install_instance_count, 1);
+        assert_eq!(rustup.active_provenance.as_deref(), Some("homebrew"));
+        assert_eq!(rustup.active_automation_level.as_deref(), Some("automatic"));
+        assert_eq!(
+            rustup.active_uninstall_strategy.as_deref(),
+            Some("homebrew_formula")
+        );
+        assert_eq!(
+            rustup.active_update_strategy.as_deref(),
+            Some("homebrew_formula")
+        );
+        assert_eq!(rustup.competing_provenance.as_deref(), Some("rustup_init"));
+        assert_eq!(rustup.active_decision_margin, Some(0.53));
+        assert!(
+            rustup.active_confidence.unwrap_or_default() >= 0.90,
+            "expected confidence >= 0.90"
+        );
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn list_managers_reports_multi_instance_state_transitions() {
+        let db_path = temp_db_path("manager-multi-instance-state");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+
+        let homebrew = ManagerInstallInstance {
+            manager: ManagerId::Rustup,
+            instance_id: "rustup-homebrew".to_string(),
+            identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+            identity_value: "/opt/homebrew/Cellar/rustup/1.28.2/bin/rustup".to_string(),
+            display_path: PathBuf::from("/opt/homebrew/bin/rustup"),
+            canonical_path: Some(PathBuf::from(
+                "/opt/homebrew/Cellar/rustup/1.28.2/bin/rustup",
+            )),
+            alias_paths: vec![PathBuf::from("/opt/homebrew/bin/rustup")],
+            is_active: false,
+            version: Some("1.28.2".to_string()),
+            provenance: InstallProvenance::Homebrew,
+            confidence: 0.94,
+            decision_margin: Some(0.53),
+            automation_level: AutomationLevel::Automatic,
+            uninstall_strategy: StrategyKind::HomebrewFormula,
+            update_strategy: StrategyKind::HomebrewFormula,
+            remediation_strategy: StrategyKind::ManualRemediation,
+            explanation_primary: Some("path is in Homebrew Cellar".to_string()),
+            explanation_secondary: None,
+            competing_provenance: Some(InstallProvenance::RustupInit),
+            competing_confidence: Some(0.41),
+        };
+        let user = ManagerInstallInstance {
+            manager: ManagerId::Rustup,
+            instance_id: "rustup-user".to_string(),
+            identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+            identity_value: "/Users/test/.cargo/bin/rustup".to_string(),
+            display_path: PathBuf::from("/Users/test/.cargo/bin/rustup"),
+            canonical_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+            alias_paths: vec![PathBuf::from("/Users/test/.cargo/bin/rustup")],
+            is_active: true,
+            version: Some("1.28.2".to_string()),
+            provenance: InstallProvenance::RustupInit,
+            confidence: 0.92,
+            decision_margin: Some(0.30),
+            automation_level: AutomationLevel::Automatic,
+            uninstall_strategy: StrategyKind::RustupSelf,
+            update_strategy: StrategyKind::RustupSelf,
+            remediation_strategy: StrategyKind::RustupSelf,
+            explanation_primary: Some("path is under CARGO_HOME/bin".to_string()),
+            explanation_secondary: None,
+            competing_provenance: Some(InstallProvenance::Homebrew),
+            competing_confidence: Some(0.45),
+        };
+
+        store
+            .replace_install_instances(ManagerId::Rustup, &[homebrew.clone(), user.clone()])
+            .expect("rustup instances should persist");
+
+        let managers = list_managers(&store).expect("manager list should load");
+        let rustup = managers
+            .into_iter()
+            .find(|manager| manager.manager_id == "rustup")
+            .expect("rustup manager row should exist");
+        assert_eq!(rustup.multi_instance_state, "attention_needed");
+        assert!(!rustup.multi_instance_acknowledged);
+        let acknowledged_fingerprint = rustup
+            .multi_instance_fingerprint
+            .as_deref()
+            .expect("fingerprint should be present")
+            .to_string();
+
+        store
+            .set_manager_multi_instance_ack_fingerprint(
+                ManagerId::Rustup,
+                Some(acknowledged_fingerprint.as_str()),
+            )
+            .expect("manager acknowledgement should persist");
+
+        let managers = list_managers(&store).expect("manager list should load");
+        let rustup = managers
+            .into_iter()
+            .find(|manager| manager.manager_id == "rustup")
+            .expect("rustup manager row should exist");
+        assert_eq!(rustup.multi_instance_state, "acknowledged");
+        assert!(rustup.multi_instance_acknowledged);
+        assert_eq!(
+            rustup.multi_instance_fingerprint.as_deref(),
+            Some(acknowledged_fingerprint.as_str())
+        );
+
+        let mut extra = user;
+        extra.instance_id = "rustup-extra".to_string();
+        extra.identity_value = "/Users/test/.local/bin/rustup".to_string();
+        extra.display_path = PathBuf::from("/Users/test/.local/bin/rustup");
+        extra.canonical_path = Some(PathBuf::from("/Users/test/.local/bin/rustup"));
+        extra.is_active = false;
+
+        store
+            .replace_install_instances(ManagerId::Rustup, &[homebrew, extra])
+            .expect("updated rustup instances should persist");
+
+        let managers = list_managers(&store).expect("manager list should load");
+        let rustup = managers
+            .into_iter()
+            .find(|manager| manager.manager_id == "rustup")
+            .expect("rustup manager row should exist");
+        assert_eq!(rustup.multi_instance_state, "attention_needed");
+        assert!(!rustup.multi_instance_acknowledged);
+        assert_ne!(
+            rustup.multi_instance_fingerprint.as_deref(),
+            Some(acknowledged_fingerprint.as_str())
+        );
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn set_manager_active_install_instance_switches_active_and_clears_ack() {
+        let db_path = temp_db_path("manager-set-active-install-instance");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+
+        let make_instance =
+            |instance_id: &str, display_path: &str, active: bool| ManagerInstallInstance {
+                manager: ManagerId::Rustup,
+                instance_id: instance_id.to_string(),
+                identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                identity_value: display_path.to_string(),
+                display_path: PathBuf::from(display_path),
+                canonical_path: Some(PathBuf::from(display_path)),
+                alias_paths: vec![PathBuf::from(display_path)],
+                is_active: active,
+                version: Some("1.28.2".to_string()),
+                provenance: InstallProvenance::RustupInit,
+                confidence: 0.92,
+                decision_margin: Some(0.30),
+                automation_level: AutomationLevel::Automatic,
+                uninstall_strategy: StrategyKind::RustupSelf,
+                update_strategy: StrategyKind::RustupSelf,
+                remediation_strategy: StrategyKind::RustupSelf,
+                explanation_primary: Some("path is under CARGO_HOME/bin".to_string()),
+                explanation_secondary: None,
+                competing_provenance: Some(InstallProvenance::Homebrew),
+                competing_confidence: Some(0.45),
+            };
+
+        let homebrew = make_instance("rustup-homebrew", "/opt/homebrew/bin/rustup", false);
+        let user = make_instance("rustup-user", "/Users/test/.cargo/bin/rustup", true);
+        store
+            .replace_install_instances(ManagerId::Rustup, &[homebrew, user])
+            .expect("rustup instances should persist");
+        store
+            .set_manager_multi_instance_ack_fingerprint(ManagerId::Rustup, Some("ack"))
+            .expect("multi-instance ack should persist");
+
+        let message = super::set_manager_active_install_instance(
+            &store,
+            ManagerId::Rustup,
+            "rustup-homebrew",
+        )
+        .expect("active instance selection should succeed");
+        assert!(message.contains("rustup-homebrew"));
+
+        let rows = store
+            .list_install_instances(Some(ManagerId::Rustup))
+            .expect("manager instances should load");
+        let active_ids = rows
+            .iter()
+            .filter(|instance| instance.is_active)
+            .map(|instance| instance.instance_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(active_ids, vec!["rustup-homebrew"]);
+        assert_eq!(
+            store
+                .manager_multi_instance_ack_fingerprint(ManagerId::Rustup)
+                .expect("manager ack should load"),
+            None
+        );
+
+        let selected_path = store
+            .list_manager_preferences()
+            .expect("manager preferences should load")
+            .into_iter()
+            .find(|preference| preference.manager == ManagerId::Rustup)
+            .and_then(|preference| preference.selected_executable_path);
+        assert_eq!(selected_path.as_deref(), Some("/opt/homebrew/bin/rustup"));
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn acknowledge_manager_multi_instance_state_requires_multiple_instances() {
+        let db_path = temp_db_path("manager-multi-instance-ack");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+
+        let single = ManagerInstallInstance {
+            manager: ManagerId::Rustup,
+            instance_id: "rustup-user".to_string(),
+            identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+            identity_value: "/Users/test/.cargo/bin/rustup".to_string(),
+            display_path: PathBuf::from("/Users/test/.cargo/bin/rustup"),
+            canonical_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+            alias_paths: vec![PathBuf::from("/Users/test/.cargo/bin/rustup")],
+            is_active: true,
+            version: Some("1.28.2".to_string()),
+            provenance: InstallProvenance::RustupInit,
+            confidence: 0.92,
+            decision_margin: Some(0.30),
+            automation_level: AutomationLevel::Automatic,
+            uninstall_strategy: StrategyKind::RustupSelf,
+            update_strategy: StrategyKind::RustupSelf,
+            remediation_strategy: StrategyKind::RustupSelf,
+            explanation_primary: Some("path is under CARGO_HOME/bin".to_string()),
+            explanation_secondary: None,
+            competing_provenance: Some(InstallProvenance::Homebrew),
+            competing_confidence: Some(0.45),
+        };
+        store
+            .replace_install_instances(ManagerId::Rustup, std::slice::from_ref(&single))
+            .expect("single rustup instance should persist");
+
+        let error = super::acknowledge_manager_multi_instance_state(&store, ManagerId::Rustup)
+            .expect_err("single-instance ack should fail");
+        assert!(
+            error.contains("does not currently have multiple install instances"),
+            "unexpected error: {error}"
+        );
+
+        let mut first = single;
+        first.is_active = true;
+        let mut second = first.clone();
+        second.instance_id = "rustup-homebrew".to_string();
+        second.identity_value = "/opt/homebrew/bin/rustup".to_string();
+        second.display_path = PathBuf::from("/opt/homebrew/bin/rustup");
+        second.canonical_path = Some(PathBuf::from("/opt/homebrew/bin/rustup"));
+        second.is_active = false;
+        second.provenance = InstallProvenance::Homebrew;
+        second.uninstall_strategy = StrategyKind::HomebrewFormula;
+        second.update_strategy = StrategyKind::HomebrewFormula;
+        store
+            .replace_install_instances(ManagerId::Rustup, &[first, second])
+            .expect("multi-instance rustup state should persist");
+
+        super::acknowledge_manager_multi_instance_state(&store, ManagerId::Rustup)
+            .expect("multi-instance ack should succeed");
+        assert!(
+            store
+                .manager_multi_instance_ack_fingerprint(ManagerId::Rustup)
+                .expect("manager ack should load")
+                .is_some(),
+            "expected persisted multi-instance acknowledgement fingerprint"
+        );
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn list_manager_install_instances_sorts_active_first_then_instance_id() {
+        let db_path = temp_db_path("manager-instances-sort-active-first");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Rustup,
+                &[
+                    ManagerInstallInstance {
+                        manager: ManagerId::Rustup,
+                        instance_id: "z-inactive".to_string(),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: "/Users/test/.cargo/bin/rustup".to_string(),
+                        display_path: PathBuf::from("/Users/test/.cargo/bin/rustup"),
+                        canonical_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+                        alias_paths: vec![PathBuf::from("/Users/test/.cargo/bin/rustup")],
+                        is_active: false,
+                        version: Some("1.28.2".to_string()),
+                        provenance: InstallProvenance::RustupInit,
+                        confidence: 0.92,
+                        decision_margin: Some(0.30),
+                        automation_level: AutomationLevel::Automatic,
+                        uninstall_strategy: StrategyKind::RustupSelf,
+                        update_strategy: StrategyKind::RustupSelf,
+                        remediation_strategy: StrategyKind::RustupSelf,
+                        explanation_primary: Some(
+                            "inactive path is under CARGO_HOME/bin".to_string(),
+                        ),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::Homebrew),
+                        competing_confidence: Some(0.45),
+                    },
+                    ManagerInstallInstance {
+                        manager: ManagerId::Rustup,
+                        instance_id: "a-active".to_string(),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: "/opt/homebrew/Cellar/rustup/1.28.2/bin/rustup".to_string(),
+                        display_path: PathBuf::from("/opt/homebrew/bin/rustup"),
+                        canonical_path: Some(PathBuf::from(
+                            "/opt/homebrew/Cellar/rustup/1.28.2/bin/rustup",
+                        )),
+                        alias_paths: vec![PathBuf::from("/opt/homebrew/bin/rustup")],
+                        is_active: true,
+                        version: Some("1.28.2".to_string()),
+                        provenance: InstallProvenance::Homebrew,
+                        confidence: 0.94,
+                        decision_margin: Some(0.53),
+                        automation_level: AutomationLevel::Automatic,
+                        uninstall_strategy: StrategyKind::HomebrewFormula,
+                        update_strategy: StrategyKind::HomebrewFormula,
+                        remediation_strategy: StrategyKind::ManualRemediation,
+                        explanation_primary: Some("path is in Homebrew Cellar".to_string()),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::RustupInit),
+                        competing_confidence: Some(0.41),
+                    },
+                    ManagerInstallInstance {
+                        manager: ManagerId::Rustup,
+                        instance_id: "b-inactive".to_string(),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: "/Users/test/.local/bin/rustup".to_string(),
+                        display_path: PathBuf::from("/Users/test/.local/bin/rustup"),
+                        canonical_path: Some(PathBuf::from("/Users/test/.local/bin/rustup")),
+                        alias_paths: vec![PathBuf::from("/Users/test/.local/bin/rustup")],
+                        is_active: false,
+                        version: Some("1.28.2".to_string()),
+                        provenance: InstallProvenance::Unknown,
+                        confidence: 0.44,
+                        decision_margin: Some(0.05),
+                        automation_level: AutomationLevel::NeedsConfirmation,
+                        uninstall_strategy: StrategyKind::InteractivePrompt,
+                        update_strategy: StrategyKind::InteractivePrompt,
+                        remediation_strategy: StrategyKind::ManualRemediation,
+                        explanation_primary: Some(
+                            "insufficient or conflicting rustup provenance evidence".to_string(),
+                        ),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::Homebrew),
+                        competing_confidence: Some(0.40),
+                    },
+                ],
+            )
+            .expect("rustup instances should persist");
+
+        let instances = super::list_manager_install_instances(&store, Some(ManagerId::Rustup))
+            .expect("manager instances should load");
+        assert_eq!(instances.len(), 3);
+        assert_eq!(instances[0].instance_id, "a-active");
+        assert!(instances[0].is_active);
+        assert_eq!(instances[1].instance_id, "b-inactive");
+        assert!(!instances[1].is_active);
+        assert_eq!(instances[2].instance_id, "z-inactive");
+        assert!(!instances[2].is_active);
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn manager_list_summary_matches_instances_surface_when_no_active_instance_exists() {
+        let db_path = temp_db_path("manager-list-summary-no-active-instance");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .upsert_detection(
+                ManagerId::Rustup,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(PathBuf::from("/opt/homebrew/bin/rustup")),
+                    version: Some("1.28.2".to_string()),
+                },
+            )
+            .expect("rustup detection should persist");
+        store
+            .replace_install_instances(
+                ManagerId::Rustup,
+                &[
+                    ManagerInstallInstance {
+                        manager: ManagerId::Rustup,
+                        instance_id: "z-inactive".to_string(),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: "/Users/test/.cargo/bin/rustup".to_string(),
+                        display_path: PathBuf::from("/Users/test/.cargo/bin/rustup"),
+                        canonical_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+                        alias_paths: vec![PathBuf::from("/Users/test/.cargo/bin/rustup")],
+                        is_active: false,
+                        version: Some("1.28.2".to_string()),
+                        provenance: InstallProvenance::RustupInit,
+                        confidence: 0.92,
+                        decision_margin: Some(0.30),
+                        automation_level: AutomationLevel::Automatic,
+                        uninstall_strategy: StrategyKind::RustupSelf,
+                        update_strategy: StrategyKind::RustupSelf,
+                        remediation_strategy: StrategyKind::RustupSelf,
+                        explanation_primary: Some(
+                            "inactive path is under CARGO_HOME/bin".to_string(),
+                        ),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::Homebrew),
+                        competing_confidence: Some(0.45),
+                    },
+                    ManagerInstallInstance {
+                        manager: ManagerId::Rustup,
+                        instance_id: "a-inactive".to_string(),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: "/opt/homebrew/Cellar/rustup/1.28.2/bin/rustup".to_string(),
+                        display_path: PathBuf::from("/opt/homebrew/bin/rustup"),
+                        canonical_path: Some(PathBuf::from(
+                            "/opt/homebrew/Cellar/rustup/1.28.2/bin/rustup",
+                        )),
+                        alias_paths: vec![PathBuf::from("/opt/homebrew/bin/rustup")],
+                        is_active: false,
+                        version: Some("1.28.2".to_string()),
+                        provenance: InstallProvenance::Homebrew,
+                        confidence: 0.94,
+                        decision_margin: Some(0.53),
+                        automation_level: AutomationLevel::Automatic,
+                        uninstall_strategy: StrategyKind::HomebrewFormula,
+                        update_strategy: StrategyKind::HomebrewFormula,
+                        remediation_strategy: StrategyKind::ManualRemediation,
+                        explanation_primary: Some("path is in Homebrew Cellar".to_string()),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::RustupInit),
+                        competing_confidence: Some(0.41),
+                    },
+                ],
+            )
+            .expect("rustup instances should persist");
+
+        let managers = list_managers(&store).expect("manager list should load");
+        let rustup = managers
+            .into_iter()
+            .find(|manager| manager.manager_id == "rustup")
+            .expect("rustup manager row should exist");
+        let instances = super::list_manager_install_instances(&store, Some(ManagerId::Rustup))
+            .expect("manager instances should load");
+        let selected = instances
+            .iter()
+            .find(|instance| instance.is_active)
+            .or_else(|| instances.first())
+            .expect("instance list should not be empty");
+
+        assert_eq!(
+            rustup.active_provenance.as_deref(),
+            Some(selected.provenance.as_str())
+        );
+        assert_eq!(rustup.active_confidence, Some(selected.confidence));
+        assert_eq!(rustup.active_decision_margin, selected.decision_margin);
+        assert_eq!(
+            rustup.active_automation_level.as_deref(),
+            Some(selected.automation_level.as_str())
+        );
+        assert_eq!(
+            rustup.active_uninstall_strategy.as_deref(),
+            Some(selected.uninstall_strategy.as_str())
+        );
+        assert_eq!(
+            rustup.active_update_strategy.as_deref(),
+            Some(selected.update_strategy.as_str())
+        );
+        assert_eq!(
+            rustup.active_remediation_strategy.as_deref(),
+            Some(selected.remediation_strategy.as_str())
+        );
+        assert_eq!(
+            rustup.active_explanation_primary.as_deref(),
+            selected.explanation_primary.as_deref()
+        );
+        assert_eq!(
+            rustup.active_explanation_secondary.as_deref(),
+            selected.explanation_secondary.as_deref()
+        );
+        assert_eq!(
+            rustup.competing_provenance.as_deref(),
+            selected.competing_provenance.as_deref()
+        );
+        assert_eq!(rustup.competing_confidence, selected.competing_confidence);
+
+        let _ = fs::remove_file(db_path);
     }
 
     #[test]
@@ -13098,6 +15874,4684 @@ mod tests {
         )
         .expect_err("duplicate --manager should fail");
         assert!(error.contains("specified multiple times"));
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_uninstall_accepts_preview_confirmation_flags() {
+        let parsed = parse_manager_mutation_args(
+            "uninstall",
+            &[
+                "--preview".to_string(),
+                "rustup".to_string(),
+                "--yes".to_string(),
+                "--allow-unknown-provenance".to_string(),
+            ],
+        )
+        .expect("uninstall args should parse");
+
+        assert_eq!(parsed.manager, ManagerId::Rustup);
+        assert!(parsed.preview);
+        assert!(parsed.yes);
+        assert!(parsed.allow_unknown_provenance);
+        assert_eq!(parsed.install_method_override, None);
+        assert_eq!(
+            parsed.uninstall_options,
+            helm_core::manager_lifecycle::ManagerUninstallOptions::default()
+        );
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_uninstall_accepts_homebrew_cleanup_options() {
+        let parsed = parse_manager_mutation_args(
+            "uninstall",
+            &[
+                "rustup".to_string(),
+                "--homebrew-cleanup-mode".to_string(),
+                "fullCleanup".to_string(),
+            ],
+        )
+        .expect("homebrew cleanup options should parse");
+
+        assert_eq!(parsed.manager, ManagerId::Rustup);
+        assert_eq!(
+            parsed.uninstall_options.homebrew_cleanup_mode,
+            Some(helm_core::manager_lifecycle::HomebrewUninstallCleanupMode::FullCleanup)
+        );
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_uninstall_accepts_mise_cleanup_options() {
+        let parsed = parse_manager_mutation_args(
+            "uninstall",
+            &[
+                "mise".to_string(),
+                "--preview".to_string(),
+                "--mise-cleanup-mode".to_string(),
+                "fullCleanup".to_string(),
+                "--mise-config-removal".to_string(),
+                "removeConfig".to_string(),
+            ],
+        )
+        .expect("mise uninstall cleanup options should parse");
+
+        assert_eq!(parsed.manager, ManagerId::Mise);
+        assert_eq!(
+            parsed.uninstall_options.mise_cleanup_mode,
+            Some(helm_core::manager_lifecycle::MiseUninstallCleanupMode::FullCleanup)
+        );
+        assert_eq!(
+            parsed.uninstall_options.mise_config_removal,
+            Some(helm_core::manager_lifecycle::MiseUninstallConfigRemoval::RemoveConfig)
+        );
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_uninstall_rejects_mise_cleanup_flags_for_non_mise_manager() {
+        let error = parse_manager_mutation_args(
+            "uninstall",
+            &[
+                "rustup".to_string(),
+                "--mise-cleanup-mode".to_string(),
+                "fullCleanup".to_string(),
+            ],
+        )
+        .expect_err("non-mise managers should reject mise cleanup flags");
+        assert!(error.contains("only supported for manager 'mise'"));
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_uninstall_rejects_invalid_mise_cleanup_mode() {
+        let error = parse_manager_mutation_args(
+            "uninstall",
+            &[
+                "mise".to_string(),
+                "--mise-cleanup-mode".to_string(),
+                "invalid".to_string(),
+            ],
+        )
+        .expect_err("invalid mise cleanup mode should fail");
+        assert!(error.contains("unsupported mise cleanup mode"));
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_uninstall_rejects_invalid_homebrew_cleanup_mode() {
+        let error = parse_manager_mutation_args(
+            "uninstall",
+            &[
+                "rustup".to_string(),
+                "--homebrew-cleanup-mode".to_string(),
+                "invalid".to_string(),
+            ],
+        )
+        .expect_err("invalid homebrew cleanup mode should fail");
+        assert!(error.contains("unsupported homebrew cleanup mode"));
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_uninstall_rejects_invalid_mise_config_removal_mode() {
+        let error = parse_manager_mutation_args(
+            "uninstall",
+            &[
+                "mise".to_string(),
+                "--mise-config-removal".to_string(),
+                "invalid".to_string(),
+            ],
+        )
+        .expect_err("invalid mise config-removal mode should fail");
+        assert!(error.contains("unsupported mise config removal mode"));
+    }
+
+    #[test]
+    fn parse_package_mutation_args_uninstall_accepts_preview_confirmation_flags() {
+        let parsed = parse_package_mutation_args(
+            "uninstall",
+            &[
+                "git".to_string(),
+                "--manager".to_string(),
+                "homebrew_formula".to_string(),
+                "--preview".to_string(),
+                "--yes".to_string(),
+            ],
+            false,
+        )
+        .expect("package uninstall args should parse");
+
+        assert_eq!(parsed.package_name, "git");
+        assert_eq!(parsed.manager, ManagerId::HomebrewFormula);
+        assert!(parsed.preview);
+        assert!(parsed.yes);
+        assert_eq!(parsed.version, None);
+    }
+
+    #[test]
+    fn parse_package_mutation_args_upgrade_rejects_uninstall_only_flags() {
+        let error = parse_package_mutation_args(
+            "upgrade",
+            &[
+                "ripgrep".to_string(),
+                "--manager".to_string(),
+                "homebrew_formula".to_string(),
+                "--preview".to_string(),
+            ],
+            false,
+        )
+        .expect_err("upgrade should reject uninstall-only preview flag");
+        assert!(error.contains("unsupported package mutation argument '--preview'"));
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_install_accepts_method_override() {
+        let parsed = parse_manager_mutation_args(
+            "install",
+            &[
+                "mise".to_string(),
+                "--method".to_string(),
+                "homebrew".to_string(),
+            ],
+        )
+        .expect("install args with method override should parse");
+
+        assert_eq!(parsed.manager, ManagerId::Mise);
+        assert_eq!(parsed.install_method_override.as_deref(), Some("homebrew"));
+        assert!(!parsed.preview);
+        assert!(!parsed.yes);
+        assert!(!parsed.allow_unknown_provenance);
+        assert_eq!(parsed.install_options.rustup_install_source, None);
+        assert_eq!(parsed.install_options.rustup_binary_path, None);
+        assert_eq!(parsed.install_options.mise_install_source, None);
+        assert_eq!(parsed.install_options.mise_binary_path, None);
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_install_rejects_duplicate_method_override() {
+        let error = parse_manager_mutation_args(
+            "install",
+            &[
+                "mise".to_string(),
+                "--method".to_string(),
+                "homebrew".to_string(),
+                "--method".to_string(),
+                "scriptInstaller".to_string(),
+            ],
+        )
+        .expect_err("duplicate --method should fail");
+        assert!(error.contains("specified multiple times"));
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_uninstall_rejects_method_override() {
+        let error = parse_manager_mutation_args(
+            "uninstall",
+            &[
+                "rustup".to_string(),
+                "--method".to_string(),
+                "homebrew".to_string(),
+            ],
+        )
+        .expect_err("uninstall should reject install-method override");
+        assert!(error.contains("unsupported managers uninstall argument '--method'"));
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_install_accepts_rustup_source_options() {
+        let parsed = parse_manager_mutation_args(
+            "install",
+            &[
+                "rustup".to_string(),
+                "--rustup-install-source".to_string(),
+                "existingBinaryPath".to_string(),
+                "--rustup-binary-path".to_string(),
+                "/tmp/rustup-init".to_string(),
+            ],
+        )
+        .expect("rustup install source options should parse");
+
+        assert_eq!(parsed.manager, ManagerId::Rustup);
+        assert_eq!(
+            parsed.install_options.rustup_install_source,
+            Some(helm_core::manager_lifecycle::RustupInstallSource::ExistingBinaryPath)
+        );
+        assert_eq!(
+            parsed.install_options.rustup_binary_path.as_deref(),
+            Some("/tmp/rustup-init")
+        );
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_install_infers_existing_binary_source_from_path() {
+        let parsed = parse_manager_mutation_args(
+            "install",
+            &[
+                "rustup".to_string(),
+                "--rustup-binary-path".to_string(),
+                "/tmp/rustup-init".to_string(),
+            ],
+        )
+        .expect("rustup binary path should imply existing-binary source");
+
+        assert_eq!(
+            parsed.install_options.rustup_install_source,
+            Some(helm_core::manager_lifecycle::RustupInstallSource::ExistingBinaryPath)
+        );
+        assert_eq!(
+            parsed.install_options.rustup_binary_path.as_deref(),
+            Some("/tmp/rustup-init")
+        );
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_install_rejects_rustup_source_flags_for_non_rustup_manager() {
+        let error = parse_manager_mutation_args(
+            "install",
+            &[
+                "mise".to_string(),
+                "--rustup-install-source".to_string(),
+                "officialDownload".to_string(),
+            ],
+        )
+        .expect_err("non-rustup managers should reject rustup install-source flags");
+        assert!(error.contains("only supported for manager 'rustup'"));
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_install_rejects_invalid_rustup_source_value() {
+        let error = parse_manager_mutation_args(
+            "install",
+            &[
+                "rustup".to_string(),
+                "--rustup-install-source".to_string(),
+                "invalid".to_string(),
+            ],
+        )
+        .expect_err("invalid rustup source should fail");
+        assert!(error.contains("unsupported rustup install source"));
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_install_accepts_mise_source_options() {
+        let parsed = parse_manager_mutation_args(
+            "install",
+            &[
+                "mise".to_string(),
+                "--mise-install-source".to_string(),
+                "existingBinaryPath".to_string(),
+                "--mise-binary-path".to_string(),
+                "/tmp/mise".to_string(),
+            ],
+        )
+        .expect("mise install source options should parse");
+
+        assert_eq!(parsed.manager, ManagerId::Mise);
+        assert_eq!(
+            parsed.install_options.mise_install_source,
+            Some(helm_core::manager_lifecycle::MiseInstallSource::ExistingBinaryPath)
+        );
+        assert_eq!(
+            parsed.install_options.mise_binary_path.as_deref(),
+            Some("/tmp/mise")
+        );
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_install_infers_mise_existing_binary_source_from_path() {
+        let parsed = parse_manager_mutation_args(
+            "install",
+            &[
+                "mise".to_string(),
+                "--mise-binary-path".to_string(),
+                "/tmp/mise".to_string(),
+            ],
+        )
+        .expect("mise binary path should imply existing-binary source");
+
+        assert_eq!(
+            parsed.install_options.mise_install_source,
+            Some(helm_core::manager_lifecycle::MiseInstallSource::ExistingBinaryPath)
+        );
+        assert_eq!(
+            parsed.install_options.mise_binary_path.as_deref(),
+            Some("/tmp/mise")
+        );
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_install_rejects_mise_source_flags_for_non_mise_manager() {
+        let error = parse_manager_mutation_args(
+            "install",
+            &[
+                "rustup".to_string(),
+                "--mise-install-source".to_string(),
+                "officialDownload".to_string(),
+            ],
+        )
+        .expect_err("non-mise managers should reject mise install-source flags");
+        assert!(error.contains("only supported for manager 'mise'"));
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_install_rejects_invalid_mise_source_value() {
+        let error = parse_manager_mutation_args(
+            "install",
+            &[
+                "mise".to_string(),
+                "--mise-install-source".to_string(),
+                "invalid".to_string(),
+            ],
+        )
+        .expect_err("invalid mise source should fail");
+        assert!(error.contains("unsupported mise install source"));
+    }
+
+    #[test]
+    fn install_method_resolution_requires_explicit_method_in_non_interactive_ambiguous_case() {
+        let error = super::resolve_install_method_override_decision(
+            ManagerId::Mise,
+            None,
+            None,
+            &["homebrew", "scriptInstaller"],
+            false,
+        )
+        .expect_err("non-interactive ambiguous install method should require --method");
+        assert!(error.contains("--method"));
+        assert!(error.contains("supported: homebrew, scriptInstaller"));
+    }
+
+    #[test]
+    fn install_method_resolution_uses_explicit_override_without_prompt() {
+        let resolved = super::resolve_install_method_override_decision(
+            ManagerId::Mise,
+            Some("homebrew".to_string()),
+            None,
+            &["homebrew", "scriptInstaller"],
+            false,
+        )
+        .expect("explicit override should be accepted");
+        assert_eq!(resolved.as_deref(), Some("homebrew"));
+    }
+
+    #[test]
+    fn install_method_resolution_uses_persisted_selection_without_override() {
+        let resolved = super::resolve_install_method_override_decision(
+            ManagerId::Mise,
+            None,
+            Some("homebrew".to_string()),
+            &["homebrew", "scriptInstaller"],
+            false,
+        )
+        .expect("persisted selection should avoid explicit method requirement");
+        assert_eq!(resolved.as_deref(), Some("homebrew"));
+    }
+
+    #[test]
+    fn install_method_resolution_ignores_unsupported_persisted_selection() {
+        let resolved = super::resolve_install_method_override_decision(
+            ManagerId::Mise,
+            None,
+            Some("scriptInstaller".to_string()),
+            &["homebrew"],
+            false,
+        )
+        .expect("single supported method should be selected when persisted value is unsupported");
+        assert_eq!(resolved.as_deref(), Some("homebrew"));
+    }
+
+    #[test]
+    fn managed_install_method_policy_blocks_restricted_methods_by_default() {
+        let context = super::ManagerInstallMethodPolicyContext {
+            managed_environment: true,
+            allow_restricted_methods: false,
+        };
+        assert!(!super::install_method_allowed_by_policy(
+            ManagerId::Mas,
+            "appStore",
+            context
+        ));
+        assert!(super::install_method_allowed_by_policy(
+            ManagerId::Mas,
+            "homebrew",
+            context
+        ));
+    }
+
+    #[test]
+    fn managed_install_method_policy_allows_restricted_methods_with_override() {
+        let context = super::ManagerInstallMethodPolicyContext {
+            managed_environment: true,
+            allow_restricted_methods: true,
+        };
+        assert!(super::install_method_allowed_by_policy(
+            ManagerId::Mise,
+            "scriptInstaller",
+            context
+        ));
+    }
+
+    #[test]
+    fn parse_managed_automation_policy_mode_accepts_aliases() {
+        assert_eq!(
+            super::parse_managed_automation_policy_mode("automatic"),
+            Some(super::ManagedAutomationPolicyMode::Automatic)
+        );
+        assert_eq!(
+            super::parse_managed_automation_policy_mode("confirm"),
+            Some(super::ManagedAutomationPolicyMode::NeedsConfirmation)
+        );
+        assert_eq!(
+            super::parse_managed_automation_policy_mode("read_only"),
+            Some(super::ManagedAutomationPolicyMode::ReadOnly)
+        );
+    }
+
+    #[test]
+    fn parse_managed_automation_policy_mode_rejects_unknown_values() {
+        assert_eq!(super::parse_managed_automation_policy_mode(""), None);
+        assert_eq!(
+            super::parse_managed_automation_policy_mode("definitely-not-a-mode"),
+            None
+        );
+    }
+
+    #[test]
+    fn manager_install_methods_status_filters_blocked_not_manageable_method() {
+        let db_path = temp_db_path("manager-install-method-status-blocked-filter");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+
+        let status = super::manager_install_methods_status(&store, ManagerId::Sparkle)
+            .expect("sparkle install-method status should resolve");
+        assert!(status.install_methods.is_empty());
+        assert!(status.selected_install_method.is_none());
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn manager_install_method_selection_blocks_not_manageable_method() {
+        assert!(!super::manager_install_method_allowed_for_selection(
+            ManagerId::Sparkle,
+            "notManageable"
+        ));
+    }
+
+    #[test]
+    fn homebrew_formula_name_map_includes_expanded_manager_set() {
+        assert_eq!(
+            super::manager_homebrew_formula_name(ManagerId::Asdf),
+            Some("asdf")
+        );
+        assert_eq!(
+            super::manager_homebrew_formula_name(ManagerId::Mise),
+            Some("mise")
+        );
+        assert_eq!(
+            super::manager_homebrew_formula_name(ManagerId::Mas),
+            Some("mas")
+        );
+        assert_eq!(
+            super::manager_homebrew_formula_name(ManagerId::Pnpm),
+            Some("pnpm")
+        );
+        assert_eq!(
+            super::manager_homebrew_formula_name(ManagerId::Yarn),
+            Some("yarn")
+        );
+        assert_eq!(
+            super::manager_homebrew_formula_name(ManagerId::Pipx),
+            Some("pipx")
+        );
+        assert_eq!(
+            super::manager_homebrew_formula_name(ManagerId::Poetry),
+            Some("poetry")
+        );
+        assert_eq!(
+            super::manager_homebrew_formula_name(ManagerId::CargoBinstall),
+            Some("cargo-binstall")
+        );
+        assert_eq!(
+            super::manager_homebrew_formula_name(ManagerId::Podman),
+            Some("podman")
+        );
+        assert_eq!(
+            super::manager_homebrew_formula_name(ManagerId::Colima),
+            Some("colima")
+        );
+        assert_eq!(super::manager_homebrew_formula_name(ManagerId::Npm), None);
+        assert_eq!(
+            super::manager_homebrew_formula_name(ManagerId::DockerDesktop),
+            None
+        );
+    }
+
+    #[test]
+    fn homebrew_formula_name_from_path_extracts_cellar_formula() {
+        let formula = super::homebrew_formula_name_from_path(Path::new(
+            "/opt/homebrew/Cellar/python@3.12/3.12.9_1/bin/pip3",
+        ));
+        assert_eq!(formula.as_deref(), Some("python@3.12"));
+    }
+
+    #[test]
+    fn homebrew_formula_name_from_path_returns_none_without_cellar() {
+        let formula = super::homebrew_formula_name_from_path(Path::new("/opt/homebrew/bin/npm"));
+        assert_eq!(formula, None);
+    }
+
+    #[test]
+    fn parse_manager_mutation_args_rejects_uninstall_flags_for_update() {
+        let error =
+            parse_manager_mutation_args("update", &["rustup".to_string(), "--yes".to_string()])
+                .expect_err("update should reject uninstall-only flags");
+        assert!(error.contains("unsupported managers update argument '--yes'"));
+    }
+
+    #[test]
+    fn homebrew_update_request_prefers_provenance_strategy() {
+        let db_path = temp_db_path("homebrew-update-provenance-strategy");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        seed_homebrew_detected(&store);
+        store
+            .replace_install_instances(
+                ManagerId::HomebrewFormula,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::HomebrewFormula,
+                    instance_id: "homebrew-instance-update".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/opt/homebrew/Cellar/brew/4.4.1/bin/brew".to_string(),
+                    display_path: PathBuf::from("/opt/homebrew/bin/brew"),
+                    canonical_path: Some(PathBuf::from("/opt/homebrew/Cellar/brew/4.4.1/bin/brew")),
+                    alias_paths: vec![PathBuf::from("/opt/homebrew/bin/brew")],
+                    is_active: true,
+                    version: Some("4.4.1".to_string()),
+                    provenance: InstallProvenance::Homebrew,
+                    confidence: 0.92,
+                    decision_margin: Some(0.34),
+                    automation_level: AutomationLevel::Automatic,
+                    uninstall_strategy: StrategyKind::HomebrewFormula,
+                    update_strategy: StrategyKind::HomebrewFormula,
+                    remediation_strategy: StrategyKind::HomebrewFormula,
+                    explanation_primary: Some(
+                        "canonical path is inside Homebrew Cellar for brew".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::SourceBuild),
+                    competing_confidence: Some(0.35),
+                }],
+            )
+            .expect("install instance should persist");
+
+        let (target_manager, request) = super::build_manager_mutation_request(
+            &store,
+            ManagerId::HomebrewFormula,
+            "update",
+            None,
+        )
+        .expect("homebrew update request should build");
+        assert_eq!(target_manager, ManagerId::HomebrewFormula);
+        match request {
+            super::AdapterRequest::Upgrade(upgrade) => {
+                let package = upgrade
+                    .package
+                    .expect("homebrew self update package should exist");
+                assert_eq!(package.manager, ManagerId::HomebrewFormula);
+                assert_eq!(package.name, "__self__");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn npm_update_request_uses_homebrew_parent_formula_from_active_instance() {
+        let db_path = temp_db_path("npm-update-homebrew-parent-formula");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .upsert_detection(
+                ManagerId::HomebrewFormula,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                    version: Some("4.4.0".to_string()),
+                },
+            )
+            .expect("homebrew detection should persist");
+        store
+            .replace_install_instances(
+                ManagerId::Npm,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Npm,
+                    instance_id: "npm-instance-update".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/opt/homebrew/Cellar/node/22.14.0/bin/npm".to_string(),
+                    display_path: PathBuf::from("/opt/homebrew/bin/npm"),
+                    canonical_path: Some(PathBuf::from(
+                        "/opt/homebrew/Cellar/node/22.14.0/bin/npm",
+                    )),
+                    alias_paths: vec![PathBuf::from("/opt/homebrew/bin/npm")],
+                    is_active: true,
+                    version: Some("10.9.2".to_string()),
+                    provenance: InstallProvenance::Homebrew,
+                    confidence: 0.89,
+                    decision_margin: Some(0.28),
+                    automation_level: AutomationLevel::Automatic,
+                    uninstall_strategy: StrategyKind::HomebrewFormula,
+                    update_strategy: StrategyKind::HomebrewFormula,
+                    remediation_strategy: StrategyKind::HomebrewFormula,
+                    explanation_primary: Some(
+                        "canonical path is inside Homebrew Cellar for node".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::SourceBuild),
+                    competing_confidence: Some(0.35),
+                }],
+            )
+            .expect("npm install instance should persist");
+
+        let (target_manager, request) =
+            super::build_manager_mutation_request(&store, ManagerId::Npm, "update", None)
+                .expect("npm update request should build");
+        assert_eq!(target_manager, ManagerId::HomebrewFormula);
+        match request {
+            super::AdapterRequest::Upgrade(upgrade) => {
+                let package = upgrade.package.expect("homebrew node package should exist");
+                assert_eq!(package.manager, ManagerId::HomebrewFormula);
+                assert!(package.name.contains("node"));
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn dynamic_homebrew_parent_managers_update_request_resolves_parent_formula() {
+        let cases = [
+            (
+                ManagerId::Pip,
+                "/opt/homebrew/Cellar/python@3.12/3.12.9_1/bin/pip3",
+                "/opt/homebrew/bin/pip3",
+                "python@3.12",
+            ),
+            (
+                ManagerId::RubyGems,
+                "/opt/homebrew/Cellar/ruby/3.4.1/bin/gem",
+                "/opt/homebrew/bin/gem",
+                "ruby",
+            ),
+            (
+                ManagerId::Bundler,
+                "/opt/homebrew/Cellar/ruby/3.4.1/bin/bundle3.4",
+                "/opt/homebrew/bin/bundle3.4",
+                "ruby",
+            ),
+            (
+                ManagerId::Cargo,
+                "/opt/homebrew/Cellar/rust/1.86.0/bin/cargo",
+                "/opt/homebrew/bin/cargo",
+                "rust",
+            ),
+        ];
+
+        for (manager, canonical_path, display_path, expected_formula) in cases {
+            let db_path = temp_db_path(
+                format!("{}-update-homebrew-parent-formula", manager.as_str()).as_str(),
+            );
+            let store = SqliteStore::new(&db_path);
+            store
+                .migrate_to_latest()
+                .expect("store migration should succeed");
+            store
+                .upsert_detection(
+                    ManagerId::HomebrewFormula,
+                    &DetectionInfo {
+                        installed: true,
+                        executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                        version: Some("4.4.0".to_string()),
+                    },
+                )
+                .expect("homebrew detection should persist");
+            store
+                .replace_install_instances(
+                    manager,
+                    &[ManagerInstallInstance {
+                        manager,
+                        instance_id: format!("{}-instance-update", manager.as_str()),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: canonical_path.to_string(),
+                        display_path: PathBuf::from(display_path),
+                        canonical_path: Some(PathBuf::from(canonical_path)),
+                        alias_paths: vec![PathBuf::from(display_path)],
+                        is_active: true,
+                        version: Some("1.0.0".to_string()),
+                        provenance: InstallProvenance::Homebrew,
+                        confidence: 0.89,
+                        decision_margin: Some(0.28),
+                        automation_level: AutomationLevel::Automatic,
+                        uninstall_strategy: StrategyKind::HomebrewFormula,
+                        update_strategy: StrategyKind::HomebrewFormula,
+                        remediation_strategy: StrategyKind::HomebrewFormula,
+                        explanation_primary: Some(
+                            "canonical path is inside Homebrew Cellar".to_string(),
+                        ),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::SourceBuild),
+                        competing_confidence: Some(0.35),
+                    }],
+                )
+                .expect("manager install instance should persist");
+
+            let (target_manager, request) =
+                super::build_manager_mutation_request(&store, manager, "update", None)
+                    .expect("dynamic manager update request should build");
+            assert_eq!(target_manager, ManagerId::HomebrewFormula);
+            match request {
+                super::AdapterRequest::Upgrade(upgrade) => {
+                    let package = upgrade
+                        .package
+                        .expect("homebrew parent formula package should exist");
+                    assert_eq!(package.manager, ManagerId::HomebrewFormula);
+                    assert!(
+                        package.name.starts_with(expected_formula),
+                        "expected '{}' prefix in package '{}'",
+                        expected_formula,
+                        package.name
+                    );
+                }
+                other => panic!("unexpected request: {other:?}"),
+            }
+
+            let _ = fs::remove_file(db_path);
+        }
+    }
+
+    #[test]
+    fn pip_update_request_blocks_read_only_provenance() {
+        let db_path = temp_db_path("pip-update-read-only");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .upsert_detection(
+                ManagerId::HomebrewFormula,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                    version: Some("4.4.0".to_string()),
+                },
+            )
+            .expect("homebrew detection should persist");
+        store
+            .replace_install_instances(
+                ManagerId::Pip,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Pip,
+                    instance_id: "pip-read-only-update".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/usr/bin/pip3".to_string(),
+                    display_path: PathBuf::from("/usr/bin/pip3"),
+                    canonical_path: Some(PathBuf::from("/usr/bin/pip3")),
+                    alias_paths: vec![PathBuf::from("/usr/bin/pip3")],
+                    is_active: true,
+                    version: Some("24.0".to_string()),
+                    provenance: InstallProvenance::System,
+                    confidence: 0.94,
+                    decision_margin: Some(0.48),
+                    automation_level: AutomationLevel::ReadOnly,
+                    uninstall_strategy: StrategyKind::ReadOnly,
+                    update_strategy: StrategyKind::ReadOnly,
+                    remediation_strategy: StrategyKind::ReadOnly,
+                    explanation_primary: Some(
+                        "system pip installation is read-only in Helm".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::Homebrew),
+                    competing_confidence: Some(0.21),
+                }],
+            )
+            .expect("pip install instance should persist");
+
+        let error = super::build_manager_mutation_request(&store, ManagerId::Pip, "update", None)
+            .expect_err("read-only update should be blocked");
+        assert!(error.contains("read-only"));
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn dynamic_homebrew_parent_managers_update_request_blocks_read_only_provenance() {
+        let cases = [
+            (ManagerId::Npm, "npm"),
+            (ManagerId::Pip, "pip3"),
+            (ManagerId::RubyGems, "gem"),
+            (ManagerId::Bundler, "bundle"),
+            (ManagerId::Cargo, "cargo"),
+        ];
+
+        for (manager, executable_name) in cases {
+            let db_path = temp_db_path(format!("{}-update-read-only", manager.as_str()).as_str());
+            let store = SqliteStore::new(&db_path);
+            store
+                .migrate_to_latest()
+                .expect("store migration should succeed");
+            store
+                .upsert_detection(
+                    ManagerId::HomebrewFormula,
+                    &DetectionInfo {
+                        installed: true,
+                        executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                        version: Some("4.4.0".to_string()),
+                    },
+                )
+                .expect("homebrew detection should persist");
+            store
+                .replace_install_instances(
+                    manager,
+                    &[ManagerInstallInstance {
+                        manager,
+                        instance_id: format!("{}-read-only-update", manager.as_str()),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: format!("/usr/bin/{}", executable_name),
+                        display_path: PathBuf::from(format!("/usr/bin/{}", executable_name)),
+                        canonical_path: Some(PathBuf::from(format!(
+                            "/usr/bin/{}",
+                            executable_name
+                        ))),
+                        alias_paths: vec![PathBuf::from(format!("/usr/bin/{}", executable_name))],
+                        is_active: true,
+                        version: Some("1.0.0".to_string()),
+                        provenance: InstallProvenance::System,
+                        confidence: 0.94,
+                        decision_margin: Some(0.48),
+                        automation_level: AutomationLevel::ReadOnly,
+                        uninstall_strategy: StrategyKind::ReadOnly,
+                        update_strategy: StrategyKind::ReadOnly,
+                        remediation_strategy: StrategyKind::ReadOnly,
+                        explanation_primary: Some(
+                            "system installation is read-only in Helm".to_string(),
+                        ),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::Homebrew),
+                        competing_confidence: Some(0.21),
+                    }],
+                )
+                .expect("manager install instance should persist");
+
+            let error = super::build_manager_mutation_request(&store, manager, "update", None)
+                .expect_err("read-only update should be blocked");
+            assert!(error.contains("read-only"));
+
+            let _ = fs::remove_file(db_path);
+        }
+    }
+
+    #[test]
+    fn dynamic_homebrew_parent_managers_update_request_errors_when_formula_unresolved() {
+        let cases = [
+            (
+                ManagerId::Pip,
+                "/opt/homebrew/bin/pip3",
+                "/opt/homebrew/bin/pip3",
+            ),
+            (
+                ManagerId::RubyGems,
+                "/opt/homebrew/bin/gem",
+                "/opt/homebrew/bin/gem",
+            ),
+            (
+                ManagerId::Bundler,
+                "/opt/homebrew/bin/bundle3.4",
+                "/opt/homebrew/bin/bundle3.4",
+            ),
+            (
+                ManagerId::Cargo,
+                "/opt/homebrew/bin/cargo",
+                "/opt/homebrew/bin/cargo",
+            ),
+        ];
+
+        for (manager, canonical_path, display_path) in cases {
+            let db_path = temp_db_path(
+                format!("{}-update-homebrew-formula-unresolved", manager.as_str()).as_str(),
+            );
+            let store = SqliteStore::new(&db_path);
+            store
+                .migrate_to_latest()
+                .expect("store migration should succeed");
+            store
+                .upsert_detection(
+                    ManagerId::HomebrewFormula,
+                    &DetectionInfo {
+                        installed: true,
+                        executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                        version: Some("4.4.0".to_string()),
+                    },
+                )
+                .expect("homebrew detection should persist");
+            store
+                .replace_install_instances(
+                    manager,
+                    &[ManagerInstallInstance {
+                        manager,
+                        instance_id: format!("{}-unresolved-update", manager.as_str()),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: canonical_path.to_string(),
+                        display_path: PathBuf::from(display_path),
+                        canonical_path: Some(PathBuf::from(canonical_path)),
+                        alias_paths: vec![PathBuf::from(display_path)],
+                        is_active: true,
+                        version: Some("1.0.0".to_string()),
+                        provenance: InstallProvenance::Homebrew,
+                        confidence: 0.80,
+                        decision_margin: Some(0.20),
+                        automation_level: AutomationLevel::NeedsConfirmation,
+                        uninstall_strategy: StrategyKind::HomebrewFormula,
+                        update_strategy: StrategyKind::HomebrewFormula,
+                        remediation_strategy: StrategyKind::HomebrewFormula,
+                        explanation_primary: Some(
+                            "path indicates Homebrew ownership but formula could not be resolved"
+                                .to_string(),
+                        ),
+                        explanation_secondary: None,
+                        competing_provenance: None,
+                        competing_confidence: None,
+                    }],
+                )
+                .expect("manager install instance should persist");
+
+            let error = super::build_manager_mutation_request(&store, manager, "update", None)
+                .expect_err("update should fail when formula ownership cannot be derived");
+            assert!(error.contains("formula ownership could not be determined"));
+            assert!(error.contains(&format!("helm managers instances {}", manager.as_str())));
+
+            let _ = fs::remove_file(db_path);
+        }
+    }
+
+    #[test]
+    fn dynamic_homebrew_parent_managers_update_request_blocks_ambiguous_provenance() {
+        let db_path = temp_db_path("pip-update-ambiguous");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .upsert_detection(
+                ManagerId::HomebrewFormula,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                    version: Some("4.4.0".to_string()),
+                },
+            )
+            .expect("homebrew detection should persist");
+        store
+            .replace_install_instances(
+                ManagerId::Pip,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Pip,
+                    instance_id: "pip-ambiguous-update".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/opt/homebrew/Cellar/python@3.12/3.12.9_1/bin/pip3"
+                        .to_string(),
+                    display_path: PathBuf::from("/opt/homebrew/bin/pip3"),
+                    canonical_path: Some(PathBuf::from(
+                        "/opt/homebrew/Cellar/python@3.12/3.12.9_1/bin/pip3",
+                    )),
+                    alias_paths: vec![PathBuf::from("/opt/homebrew/bin/pip3")],
+                    is_active: true,
+                    version: Some("24.0".to_string()),
+                    provenance: InstallProvenance::Unknown,
+                    confidence: 0.47,
+                    decision_margin: Some(0.05),
+                    automation_level: AutomationLevel::NeedsConfirmation,
+                    uninstall_strategy: StrategyKind::InteractivePrompt,
+                    update_strategy: StrategyKind::InteractivePrompt,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some(
+                        "insufficient or conflicting pip provenance evidence".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::Homebrew),
+                    competing_confidence: Some(0.42),
+                }],
+            )
+            .expect("pip install instance should persist");
+
+        let error = super::build_manager_mutation_request(&store, ManagerId::Pip, "update", None)
+            .expect_err("ambiguous update should be blocked");
+        assert!(error.contains("ambiguous"));
+        assert!(error.contains("helm managers instances pip"));
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn npm_update_request_errors_when_formula_ownership_is_unresolved() {
+        let db_path = temp_db_path("npm-update-homebrew-formula-unresolved");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .upsert_detection(
+                ManagerId::HomebrewFormula,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                    version: Some("4.4.0".to_string()),
+                },
+            )
+            .expect("homebrew detection should persist");
+        store
+            .replace_install_instances(
+                ManagerId::Npm,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Npm,
+                    instance_id: "npm-unresolved-update".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/opt/homebrew/bin/npm".to_string(),
+                    display_path: PathBuf::from("/opt/homebrew/bin/npm"),
+                    canonical_path: Some(PathBuf::from("/opt/homebrew/bin/npm")),
+                    alias_paths: vec![PathBuf::from("/opt/homebrew/bin/npm")],
+                    is_active: true,
+                    version: Some("10.9.2".to_string()),
+                    provenance: InstallProvenance::Homebrew,
+                    confidence: 0.80,
+                    decision_margin: Some(0.20),
+                    automation_level: AutomationLevel::NeedsConfirmation,
+                    uninstall_strategy: StrategyKind::HomebrewFormula,
+                    update_strategy: StrategyKind::HomebrewFormula,
+                    remediation_strategy: StrategyKind::HomebrewFormula,
+                    explanation_primary: Some(
+                        "npm path indicates Homebrew ownership but formula could not be resolved"
+                            .to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: None,
+                    competing_confidence: None,
+                }],
+            )
+            .expect("npm install instance should persist");
+
+        let error = super::build_manager_mutation_request(&store, ManagerId::Npm, "update", None)
+            .expect_err("npm update should fail when formula ownership cannot be derived");
+        assert!(error.contains("formula ownership could not be determined"));
+        assert!(error.contains("helm managers instances npm"));
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn homebrew_update_request_blocks_ambiguous_provenance() {
+        let db_path = temp_db_path("homebrew-update-ambiguous");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::HomebrewFormula,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::HomebrewFormula,
+                    instance_id: "homebrew-instance-ambiguous".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/Users/test/tools/brew".to_string(),
+                    display_path: PathBuf::from("/Users/test/tools/brew"),
+                    canonical_path: Some(PathBuf::from("/Users/test/tools/brew")),
+                    alias_paths: vec![PathBuf::from("/Users/test/tools/brew")],
+                    is_active: true,
+                    version: Some("4.4.1".to_string()),
+                    provenance: InstallProvenance::Unknown,
+                    confidence: 0.40,
+                    decision_margin: Some(0.05),
+                    automation_level: AutomationLevel::ReadOnly,
+                    uninstall_strategy: StrategyKind::InteractivePrompt,
+                    update_strategy: StrategyKind::InteractivePrompt,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some(
+                        "insufficient or conflicting homebrew provenance evidence".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::Homebrew),
+                    competing_confidence: Some(0.39),
+                }],
+            )
+            .expect("install instance should persist");
+
+        let error = super::build_manager_mutation_request(
+            &store,
+            ManagerId::HomebrewFormula,
+            "update",
+            None,
+        )
+        .expect_err("ambiguous homebrew update should be blocked");
+        assert!(error.contains("ambiguous"));
+        assert!(error.contains("helm managers instances homebrew_formula"));
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn asdf_update_request_prefers_provenance_strategy_over_install_method() {
+        let db_path = temp_db_path("asdf-update-provenance-strategy");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .set_manager_selected_install_method(ManagerId::Asdf, Some("scriptInstaller"))
+            .expect("asdf install method preference should persist");
+        store
+            .upsert_detection(
+                ManagerId::HomebrewFormula,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                    version: Some("4.4.0".to_string()),
+                },
+            )
+            .expect("homebrew detection should persist");
+        store
+            .replace_install_instances(
+                ManagerId::Asdf,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Asdf,
+                    instance_id: "asdf-instance-update".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/opt/homebrew/Cellar/asdf/0.15.0/bin/asdf".to_string(),
+                    display_path: PathBuf::from("/opt/homebrew/bin/asdf"),
+                    canonical_path: Some(PathBuf::from(
+                        "/opt/homebrew/Cellar/asdf/0.15.0/bin/asdf",
+                    )),
+                    alias_paths: vec![PathBuf::from("/opt/homebrew/bin/asdf")],
+                    is_active: true,
+                    version: Some("0.15.0".to_string()),
+                    provenance: InstallProvenance::Homebrew,
+                    confidence: 0.91,
+                    decision_margin: Some(0.32),
+                    automation_level: AutomationLevel::Automatic,
+                    uninstall_strategy: StrategyKind::HomebrewFormula,
+                    update_strategy: StrategyKind::HomebrewFormula,
+                    remediation_strategy: StrategyKind::HomebrewFormula,
+                    explanation_primary: Some(
+                        "canonical path is inside Homebrew Cellar for asdf".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::Asdf),
+                    competing_confidence: Some(0.35),
+                }],
+            )
+            .expect("install instance should persist");
+
+        let (target_manager, request) =
+            super::build_manager_mutation_request(&store, ManagerId::Asdf, "update", None)
+                .expect("asdf update request should build");
+        assert_eq!(target_manager, ManagerId::HomebrewFormula);
+        match request {
+            super::AdapterRequest::Upgrade(upgrade) => {
+                let package = upgrade.package.expect("homebrew asdf package should exist");
+                assert_eq!(package.manager, ManagerId::HomebrewFormula);
+                assert!(package.name.contains("asdf"));
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn asdf_update_request_blocks_ambiguous_provenance() {
+        let db_path = temp_db_path("asdf-update-ambiguous");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Asdf,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Asdf,
+                    instance_id: "asdf-instance-ambiguous".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/Users/test/.asdf/bin/asdf".to_string(),
+                    display_path: PathBuf::from("/Users/test/.asdf/bin/asdf"),
+                    canonical_path: Some(PathBuf::from("/Users/test/.asdf/bin/asdf")),
+                    alias_paths: vec![PathBuf::from("/Users/test/.asdf/bin/asdf")],
+                    is_active: true,
+                    version: Some("0.15.0".to_string()),
+                    provenance: InstallProvenance::Asdf,
+                    confidence: 0.92,
+                    decision_margin: Some(0.30),
+                    automation_level: AutomationLevel::NeedsConfirmation,
+                    uninstall_strategy: StrategyKind::InteractivePrompt,
+                    update_strategy: StrategyKind::InteractivePrompt,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some(
+                        "asdf executable path indicates asdf-managed layout".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::Homebrew),
+                    competing_confidence: Some(0.35),
+                }],
+            )
+            .expect("install instance should persist");
+
+        let error = super::build_manager_mutation_request(&store, ManagerId::Asdf, "update", None)
+            .expect_err("ambiguous asdf update should be blocked");
+        assert!(error.contains("ambiguous"));
+        assert!(error.contains("helm managers instances asdf"));
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn mise_update_request_prefers_provenance_strategy_over_install_method() {
+        let db_path = temp_db_path("mise-update-provenance-strategy");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .set_manager_selected_install_method(ManagerId::Mise, Some("scriptInstaller"))
+            .expect("mise install method preference should persist");
+        store
+            .upsert_detection(
+                ManagerId::HomebrewFormula,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                    version: Some("4.4.0".to_string()),
+                },
+            )
+            .expect("homebrew detection should persist");
+        store
+            .replace_install_instances(
+                ManagerId::Mise,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Mise,
+                    instance_id: "mise-instance-update".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/opt/homebrew/Cellar/mise/2025.1.0/bin/mise".to_string(),
+                    display_path: PathBuf::from("/opt/homebrew/bin/mise"),
+                    canonical_path: Some(PathBuf::from(
+                        "/opt/homebrew/Cellar/mise/2025.1.0/bin/mise",
+                    )),
+                    alias_paths: vec![PathBuf::from("/opt/homebrew/bin/mise")],
+                    is_active: true,
+                    version: Some("2025.1.0".to_string()),
+                    provenance: InstallProvenance::Homebrew,
+                    confidence: 0.91,
+                    decision_margin: Some(0.32),
+                    automation_level: AutomationLevel::Automatic,
+                    uninstall_strategy: StrategyKind::HomebrewFormula,
+                    update_strategy: StrategyKind::HomebrewFormula,
+                    remediation_strategy: StrategyKind::HomebrewFormula,
+                    explanation_primary: Some(
+                        "canonical path is inside Homebrew Cellar for mise".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::SourceBuild),
+                    competing_confidence: Some(0.37),
+                }],
+            )
+            .expect("install instance should persist");
+
+        let (target_manager, request) =
+            super::build_manager_mutation_request(&store, ManagerId::Mise, "update", None)
+                .expect("mise update request should build");
+        assert_eq!(target_manager, ManagerId::HomebrewFormula);
+        match request {
+            super::AdapterRequest::Upgrade(upgrade) => {
+                let package = upgrade.package.expect("homebrew mise package should exist");
+                assert_eq!(package.manager, ManagerId::HomebrewFormula);
+                assert!(package.name.contains("mise"));
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn mise_update_request_blocks_ambiguous_provenance() {
+        let db_path = temp_db_path("mise-update-ambiguous");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Mise,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Mise,
+                    instance_id: "mise-instance-ambiguous".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/usr/local/bin/mise".to_string(),
+                    display_path: PathBuf::from("/usr/local/bin/mise"),
+                    canonical_path: Some(PathBuf::from("/usr/local/bin/mise")),
+                    alias_paths: vec![PathBuf::from("/usr/local/bin/mise")],
+                    is_active: true,
+                    version: Some("2025.1.0".to_string()),
+                    provenance: InstallProvenance::Unknown,
+                    confidence: 0.47,
+                    decision_margin: Some(0.05),
+                    automation_level: AutomationLevel::NeedsConfirmation,
+                    uninstall_strategy: StrategyKind::InteractivePrompt,
+                    update_strategy: StrategyKind::InteractivePrompt,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some(
+                        "insufficient or conflicting mise provenance evidence".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::Homebrew),
+                    competing_confidence: Some(0.43),
+                }],
+            )
+            .expect("install instance should persist");
+
+        let error = super::build_manager_mutation_request(&store, ManagerId::Mise, "update", None)
+            .expect_err("ambiguous mise update should be blocked");
+        assert!(error.contains("ambiguous"));
+        assert!(error.contains("helm managers instances mise"));
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn mas_update_request_prefers_provenance_strategy_over_install_method() {
+        let db_path = temp_db_path("mas-update-provenance-strategy");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .set_manager_selected_install_method(ManagerId::Mas, Some("appStore"))
+            .expect("mas install method preference should persist");
+        store
+            .upsert_detection(
+                ManagerId::HomebrewFormula,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                    version: Some("4.4.0".to_string()),
+                },
+            )
+            .expect("homebrew detection should persist");
+        store
+            .replace_install_instances(
+                ManagerId::Mas,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Mas,
+                    instance_id: "mas-instance-update".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/opt/homebrew/Cellar/mas/1.8.8/bin/mas".to_string(),
+                    display_path: PathBuf::from("/opt/homebrew/bin/mas"),
+                    canonical_path: Some(PathBuf::from("/opt/homebrew/Cellar/mas/1.8.8/bin/mas")),
+                    alias_paths: vec![PathBuf::from("/opt/homebrew/bin/mas")],
+                    is_active: true,
+                    version: Some("1.8.8".to_string()),
+                    provenance: InstallProvenance::Homebrew,
+                    confidence: 0.90,
+                    decision_margin: Some(0.31),
+                    automation_level: AutomationLevel::Automatic,
+                    uninstall_strategy: StrategyKind::HomebrewFormula,
+                    update_strategy: StrategyKind::HomebrewFormula,
+                    remediation_strategy: StrategyKind::HomebrewFormula,
+                    explanation_primary: Some(
+                        "canonical path is inside Homebrew Cellar for mas".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::SourceBuild),
+                    competing_confidence: Some(0.38),
+                }],
+            )
+            .expect("install instance should persist");
+
+        let (target_manager, request) =
+            super::build_manager_mutation_request(&store, ManagerId::Mas, "update", None)
+                .expect("mas update request should build");
+        assert_eq!(target_manager, ManagerId::HomebrewFormula);
+        match request {
+            super::AdapterRequest::Upgrade(upgrade) => {
+                let package = upgrade.package.expect("homebrew mas package should exist");
+                assert_eq!(package.manager, ManagerId::HomebrewFormula);
+                assert!(package.name.contains("mas"));
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn pnpm_update_request_prefers_provenance_strategy() {
+        let db_path = temp_db_path("pnpm-update-provenance-strategy");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .upsert_detection(
+                ManagerId::HomebrewFormula,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                    version: Some("4.4.0".to_string()),
+                },
+            )
+            .expect("homebrew detection should persist");
+        store
+            .replace_install_instances(
+                ManagerId::Pnpm,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Pnpm,
+                    instance_id: "pnpm-instance-update".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/opt/homebrew/Cellar/pnpm/9.15.0/bin/pnpm".to_string(),
+                    display_path: PathBuf::from("/opt/homebrew/bin/pnpm"),
+                    canonical_path: Some(PathBuf::from(
+                        "/opt/homebrew/Cellar/pnpm/9.15.0/bin/pnpm",
+                    )),
+                    alias_paths: vec![PathBuf::from("/opt/homebrew/bin/pnpm")],
+                    is_active: true,
+                    version: Some("9.15.0".to_string()),
+                    provenance: InstallProvenance::Homebrew,
+                    confidence: 0.90,
+                    decision_margin: Some(0.30),
+                    automation_level: AutomationLevel::Automatic,
+                    uninstall_strategy: StrategyKind::HomebrewFormula,
+                    update_strategy: StrategyKind::HomebrewFormula,
+                    remediation_strategy: StrategyKind::HomebrewFormula,
+                    explanation_primary: Some(
+                        "canonical path is inside Homebrew Cellar for pnpm".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::SourceBuild),
+                    competing_confidence: Some(0.36),
+                }],
+            )
+            .expect("install instance should persist");
+
+        let (target_manager, request) =
+            super::build_manager_mutation_request(&store, ManagerId::Pnpm, "update", None)
+                .expect("pnpm update request should build");
+        assert_eq!(target_manager, ManagerId::HomebrewFormula);
+        match request {
+            super::AdapterRequest::Upgrade(upgrade) => {
+                let package = upgrade.package.expect("homebrew pnpm package should exist");
+                assert_eq!(package.manager, ManagerId::HomebrewFormula);
+                assert!(package.name.contains("pnpm"));
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn pnpm_update_request_blocks_ambiguous_provenance() {
+        let db_path = temp_db_path("pnpm-update-ambiguous");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Pnpm,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Pnpm,
+                    instance_id: "pnpm-instance-ambiguous".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/Users/test/.local/bin/pnpm".to_string(),
+                    display_path: PathBuf::from("/Users/test/.local/bin/pnpm"),
+                    canonical_path: Some(PathBuf::from("/Users/test/.local/bin/pnpm")),
+                    alias_paths: vec![PathBuf::from("/Users/test/.local/bin/pnpm")],
+                    is_active: true,
+                    version: Some("9.15.0".to_string()),
+                    provenance: InstallProvenance::Unknown,
+                    confidence: 0.49,
+                    decision_margin: Some(0.05),
+                    automation_level: AutomationLevel::NeedsConfirmation,
+                    uninstall_strategy: StrategyKind::InteractivePrompt,
+                    update_strategy: StrategyKind::InteractivePrompt,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some(
+                        "insufficient or conflicting pnpm provenance evidence".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::Homebrew),
+                    competing_confidence: Some(0.44),
+                }],
+            )
+            .expect("install instance should persist");
+
+        let error = super::build_manager_mutation_request(&store, ManagerId::Pnpm, "update", None)
+            .expect_err("ambiguous pnpm update should be blocked");
+        assert!(error.contains("ambiguous"));
+        assert!(error.contains("helm managers instances pnpm"));
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn one_to_one_homebrew_managers_update_request_prefers_provenance_strategy() {
+        let cases = [
+            (ManagerId::Pnpm, "pnpm"),
+            (ManagerId::Yarn, "yarn"),
+            (ManagerId::Pipx, "pipx"),
+            (ManagerId::Poetry, "poetry"),
+            (ManagerId::CargoBinstall, "cargo-binstall"),
+            (ManagerId::Podman, "podman"),
+            (ManagerId::Colima, "colima"),
+        ];
+
+        for (manager, formula_name) in cases {
+            let db_path =
+                temp_db_path(format!("{}-update-provenance-strategy", manager.as_str()).as_str());
+            let store = SqliteStore::new(&db_path);
+            store
+                .migrate_to_latest()
+                .expect("store migration should succeed");
+            store
+                .upsert_detection(
+                    ManagerId::HomebrewFormula,
+                    &DetectionInfo {
+                        installed: true,
+                        executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                        version: Some("4.4.0".to_string()),
+                    },
+                )
+                .expect("homebrew detection should persist");
+            store
+                .replace_install_instances(
+                    manager,
+                    &[ManagerInstallInstance {
+                        manager,
+                        instance_id: format!("{}-instance-update", manager.as_str()),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: format!(
+                            "/opt/homebrew/Cellar/{}/1.0.0/bin/{}",
+                            formula_name,
+                            manager.as_str()
+                        ),
+                        display_path: PathBuf::from(format!(
+                            "/opt/homebrew/bin/{}",
+                            manager.as_str()
+                        )),
+                        canonical_path: Some(PathBuf::from(format!(
+                            "/opt/homebrew/Cellar/{}/1.0.0/bin/{}",
+                            formula_name,
+                            manager.as_str()
+                        ))),
+                        alias_paths: vec![PathBuf::from(format!(
+                            "/opt/homebrew/bin/{}",
+                            manager.as_str()
+                        ))],
+                        is_active: true,
+                        version: Some("1.0.0".to_string()),
+                        provenance: InstallProvenance::Homebrew,
+                        confidence: 0.90,
+                        decision_margin: Some(0.30),
+                        automation_level: AutomationLevel::Automatic,
+                        uninstall_strategy: StrategyKind::HomebrewFormula,
+                        update_strategy: StrategyKind::HomebrewFormula,
+                        remediation_strategy: StrategyKind::HomebrewFormula,
+                        explanation_primary: Some(
+                            "canonical path is inside Homebrew Cellar".to_string(),
+                        ),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::SourceBuild),
+                        competing_confidence: Some(0.35),
+                    }],
+                )
+                .expect("manager install instance should persist");
+
+            let (target_manager, request) =
+                super::build_manager_mutation_request(&store, manager, "update", None)
+                    .expect("update request should build");
+            assert_eq!(target_manager, ManagerId::HomebrewFormula);
+            match request {
+                super::AdapterRequest::Upgrade(upgrade) => {
+                    let package = upgrade.package.expect("homebrew package should exist");
+                    assert_eq!(package.manager, ManagerId::HomebrewFormula);
+                    assert!(
+                        package.name.starts_with(formula_name),
+                        "expected formula '{}' in package '{}'",
+                        formula_name,
+                        package.name
+                    );
+                }
+                other => panic!("unexpected request: {other:?}"),
+            }
+
+            let _ = fs::remove_file(db_path);
+        }
+    }
+
+    #[test]
+    fn one_to_one_homebrew_managers_update_request_blocks_ambiguous_provenance() {
+        let cases = [
+            (ManagerId::Pnpm, "pnpm"),
+            (ManagerId::Yarn, "yarn"),
+            (ManagerId::Pipx, "pipx"),
+            (ManagerId::Poetry, "poetry"),
+            (ManagerId::CargoBinstall, "cargo-binstall"),
+            (ManagerId::Podman, "podman"),
+            (ManagerId::Colima, "colima"),
+        ];
+
+        for (manager, formula_name) in cases {
+            let db_path = temp_db_path(format!("{}-update-ambiguous", manager.as_str()).as_str());
+            let store = SqliteStore::new(&db_path);
+            store
+                .migrate_to_latest()
+                .expect("store migration should succeed");
+            store
+                .upsert_detection(
+                    ManagerId::HomebrewFormula,
+                    &DetectionInfo {
+                        installed: true,
+                        executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                        version: Some("4.4.0".to_string()),
+                    },
+                )
+                .expect("homebrew detection should persist");
+            store
+                .replace_install_instances(
+                    manager,
+                    &[ManagerInstallInstance {
+                        manager,
+                        instance_id: format!("{}-ambiguous-update", manager.as_str()),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: format!(
+                            "/opt/homebrew/Cellar/{}/1.0.0/bin/{}",
+                            formula_name,
+                            manager.as_str()
+                        ),
+                        display_path: PathBuf::from(format!(
+                            "/opt/homebrew/bin/{}",
+                            manager.as_str()
+                        )),
+                        canonical_path: Some(PathBuf::from(format!(
+                            "/opt/homebrew/Cellar/{}/1.0.0/bin/{}",
+                            formula_name,
+                            manager.as_str()
+                        ))),
+                        alias_paths: vec![PathBuf::from(format!(
+                            "/opt/homebrew/bin/{}",
+                            manager.as_str()
+                        ))],
+                        is_active: true,
+                        version: Some("1.0.0".to_string()),
+                        provenance: InstallProvenance::Unknown,
+                        confidence: 0.49,
+                        decision_margin: Some(0.05),
+                        automation_level: AutomationLevel::NeedsConfirmation,
+                        uninstall_strategy: StrategyKind::InteractivePrompt,
+                        update_strategy: StrategyKind::InteractivePrompt,
+                        remediation_strategy: StrategyKind::ManualRemediation,
+                        explanation_primary: Some(
+                            "insufficient or conflicting provenance evidence".to_string(),
+                        ),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::Homebrew),
+                        competing_confidence: Some(0.44),
+                    }],
+                )
+                .expect("manager install instance should persist");
+
+            let error = super::build_manager_mutation_request(&store, manager, "update", None)
+                .expect_err("ambiguous update should block");
+            assert!(error.contains("ambiguous"));
+            assert!(error.contains(&format!("helm managers instances {}", manager.as_str())));
+
+            let _ = fs::remove_file(db_path);
+        }
+    }
+
+    #[test]
+    fn one_to_one_homebrew_managers_update_request_blocks_read_only_provenance() {
+        let cases = [
+            (ManagerId::Pnpm, "pnpm"),
+            (ManagerId::Yarn, "yarn"),
+            (ManagerId::Pipx, "pipx"),
+            (ManagerId::Poetry, "poetry"),
+            (ManagerId::CargoBinstall, "cargo-binstall"),
+            (ManagerId::Podman, "podman"),
+            (ManagerId::Colima, "colima"),
+        ];
+
+        for (manager, executable_name) in cases {
+            let db_path = temp_db_path(format!("{}-update-read-only", manager.as_str()).as_str());
+            let store = SqliteStore::new(&db_path);
+            store
+                .migrate_to_latest()
+                .expect("store migration should succeed");
+            store
+                .upsert_detection(
+                    ManagerId::HomebrewFormula,
+                    &DetectionInfo {
+                        installed: true,
+                        executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                        version: Some("4.4.0".to_string()),
+                    },
+                )
+                .expect("homebrew detection should persist");
+            store
+                .replace_install_instances(
+                    manager,
+                    &[ManagerInstallInstance {
+                        manager,
+                        instance_id: format!("{}-read-only-update", manager.as_str()),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: format!("/usr/bin/{}", executable_name),
+                        display_path: PathBuf::from(format!("/usr/bin/{}", executable_name)),
+                        canonical_path: Some(PathBuf::from(format!(
+                            "/usr/bin/{}",
+                            executable_name
+                        ))),
+                        alias_paths: vec![PathBuf::from(format!("/usr/bin/{}", executable_name))],
+                        is_active: true,
+                        version: Some("1.0.0".to_string()),
+                        provenance: InstallProvenance::System,
+                        confidence: 0.95,
+                        decision_margin: Some(0.50),
+                        automation_level: AutomationLevel::ReadOnly,
+                        uninstall_strategy: StrategyKind::ReadOnly,
+                        update_strategy: StrategyKind::ReadOnly,
+                        remediation_strategy: StrategyKind::ReadOnly,
+                        explanation_primary: Some(
+                            "system installation is read-only in Helm".to_string(),
+                        ),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::Homebrew),
+                        competing_confidence: Some(0.20),
+                    }],
+                )
+                .expect("manager install instance should persist");
+
+            let error = super::build_manager_mutation_request(&store, manager, "update", None)
+                .expect_err("read-only update should block");
+            assert!(error.contains("read-only"));
+
+            let _ = fs::remove_file(db_path);
+        }
+    }
+
+    #[test]
+    fn rustup_update_request_prefers_provenance_strategy_over_install_method() {
+        let db_path = temp_db_path("rustup-update-provenance-strategy");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .set_manager_selected_install_method(ManagerId::Rustup, Some("homebrew"))
+            .expect("rustup install method preference should persist");
+        store
+            .replace_install_instances(
+                ManagerId::Rustup,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Rustup,
+                    instance_id: "rustup-instance-update".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/Users/test/.cargo/bin/rustup".to_string(),
+                    display_path: PathBuf::from("/Users/test/.cargo/bin/rustup"),
+                    canonical_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+                    alias_paths: vec![PathBuf::from("/Users/test/.cargo/bin/rustup")],
+                    is_active: true,
+                    version: Some("1.28.2".to_string()),
+                    provenance: InstallProvenance::RustupInit,
+                    confidence: 0.91,
+                    decision_margin: Some(0.32),
+                    automation_level: AutomationLevel::Automatic,
+                    uninstall_strategy: StrategyKind::RustupSelf,
+                    update_strategy: StrategyKind::RustupSelf,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some("rustup binary is under CARGO_HOME/bin".to_string()),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::Homebrew),
+                    competing_confidence: Some(0.45),
+                }],
+            )
+            .expect("install instance should persist");
+
+        let (target_manager, request) =
+            super::build_manager_mutation_request(&store, ManagerId::Rustup, "update", None)
+                .expect("rustup update request should build");
+        assert_eq!(target_manager, ManagerId::Rustup);
+        match request {
+            super::AdapterRequest::Upgrade(upgrade) => {
+                let package = upgrade
+                    .package
+                    .expect("rustup self update package should exist");
+                assert_eq!(package.manager, ManagerId::Rustup);
+                assert_eq!(package.name, "__self__");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn rustup_update_request_blocks_ambiguous_provenance() {
+        let db_path = temp_db_path("rustup-update-ambiguous");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Rustup,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Rustup,
+                    instance_id: "rustup-instance-ambiguous".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/Users/test/.cargo/bin/rustup".to_string(),
+                    display_path: PathBuf::from("/Users/test/.cargo/bin/rustup"),
+                    canonical_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+                    alias_paths: vec![PathBuf::from("/Users/test/.cargo/bin/rustup")],
+                    is_active: true,
+                    version: Some("1.28.2".to_string()),
+                    provenance: InstallProvenance::Unknown,
+                    confidence: 0.44,
+                    decision_margin: Some(0.04),
+                    automation_level: AutomationLevel::NeedsConfirmation,
+                    uninstall_strategy: StrategyKind::InteractivePrompt,
+                    update_strategy: StrategyKind::InteractivePrompt,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some(
+                        "insufficient or conflicting rustup provenance evidence".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::RustupInit),
+                    competing_confidence: Some(0.40),
+                }],
+            )
+            .expect("install instance should persist");
+
+        let error =
+            super::build_manager_mutation_request(&store, ManagerId::Rustup, "update", None)
+                .expect_err("ambiguous rustup update should be blocked");
+        assert!(error.contains("ambiguous"));
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn rustup_update_request_uses_active_instance_in_multi_install() {
+        let db_path = temp_db_path("rustup-update-multi-install");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        seed_homebrew_detected(&store);
+        store
+            .replace_install_instances(
+                ManagerId::Rustup,
+                &[
+                    ManagerInstallInstance {
+                        manager: ManagerId::Rustup,
+                        instance_id: "rustup-homebrew-active".to_string(),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: "/opt/homebrew/Cellar/rustup/1.28.2/bin/rustup".to_string(),
+                        display_path: PathBuf::from("/opt/homebrew/bin/rustup"),
+                        canonical_path: Some(PathBuf::from(
+                            "/opt/homebrew/Cellar/rustup/1.28.2/bin/rustup",
+                        )),
+                        alias_paths: vec![PathBuf::from("/opt/homebrew/bin/rustup")],
+                        is_active: true,
+                        version: Some("1.28.2".to_string()),
+                        provenance: InstallProvenance::Homebrew,
+                        confidence: 0.93,
+                        decision_margin: Some(0.31),
+                        automation_level: AutomationLevel::Automatic,
+                        uninstall_strategy: StrategyKind::HomebrewFormula,
+                        update_strategy: StrategyKind::HomebrewFormula,
+                        remediation_strategy: StrategyKind::HomebrewFormula,
+                        explanation_primary: Some("active path is in Homebrew Cellar".to_string()),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::RustupInit),
+                        competing_confidence: Some(0.41),
+                    },
+                    ManagerInstallInstance {
+                        manager: ManagerId::Rustup,
+                        instance_id: "rustup-self-inactive".to_string(),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: "/Users/test/.cargo/bin/rustup".to_string(),
+                        display_path: PathBuf::from("/Users/test/.cargo/bin/rustup"),
+                        canonical_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+                        alias_paths: vec![PathBuf::from("/Users/test/.cargo/bin/rustup")],
+                        is_active: false,
+                        version: Some("1.28.2".to_string()),
+                        provenance: InstallProvenance::RustupInit,
+                        confidence: 0.92,
+                        decision_margin: Some(0.30),
+                        automation_level: AutomationLevel::Automatic,
+                        uninstall_strategy: StrategyKind::RustupSelf,
+                        update_strategy: StrategyKind::RustupSelf,
+                        remediation_strategy: StrategyKind::RustupSelf,
+                        explanation_primary: Some(
+                            "inactive path is under CARGO_HOME/bin".to_string(),
+                        ),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::Homebrew),
+                        competing_confidence: Some(0.45),
+                    },
+                ],
+            )
+            .expect("install instances should persist");
+
+        let (target_manager, request) =
+            super::build_manager_mutation_request(&store, ManagerId::Rustup, "update", None)
+                .expect("multi-install update request should build");
+        assert_eq!(target_manager, ManagerId::HomebrewFormula);
+        match request {
+            super::AdapterRequest::Upgrade(upgrade) => {
+                let package = upgrade
+                    .package
+                    .expect("homebrew rustup package should exist");
+                assert_eq!(package.manager, ManagerId::HomebrewFormula);
+                assert!(package.name.contains("rustup"));
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn manager_install_request_prefers_cli_method_override_over_saved_preference() {
+        let db_path = temp_db_path("manager-install-cli-method-override");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        seed_homebrew_detected(&store);
+        store
+            .set_manager_selected_install_method(ManagerId::Mise, Some("homebrew"))
+            .expect("persisting mise install preference should succeed");
+
+        let (target_manager, request) =
+            super::build_manager_mutation_request(&store, ManagerId::Mise, "install", None)
+                .expect("saved method should drive install route");
+        assert_eq!(target_manager, ManagerId::HomebrewFormula);
+        match request {
+            super::AdapterRequest::Install(install) => {
+                assert_eq!(install.package.manager, ManagerId::HomebrewFormula);
+                assert_eq!(install.package.name, "mise");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        let (target_manager, request) = super::build_manager_mutation_request(
+            &store,
+            ManagerId::Mise,
+            "install",
+            Some("scriptInstaller".to_string()),
+        )
+        .expect("cli method override should supersede saved preference");
+        assert_eq!(target_manager, ManagerId::Mise);
+        match request {
+            super::AdapterRequest::Install(install) => {
+                assert_eq!(install.package.manager, ManagerId::Mise);
+                assert_eq!(install.package.name, "__self__");
+                assert_eq!(
+                    install.version.as_deref(),
+                    Some("scriptInstaller:officialDownload")
+                );
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn asdf_install_request_defaults_to_script_installer_and_allows_homebrew_override() {
+        let db_path = temp_db_path("asdf-install-method-routing");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        seed_homebrew_detected(&store);
+        store
+            .set_manager_selected_install_method(ManagerId::Asdf, Some("scriptInstaller"))
+            .expect("persisting script installer preference should succeed");
+
+        let (target_manager, request) =
+            super::build_manager_mutation_request(&store, ManagerId::Asdf, "install", None)
+                .expect("saved script installer preference should resolve install request");
+        assert_eq!(target_manager, ManagerId::Asdf);
+        match request {
+            super::AdapterRequest::Install(install) => {
+                assert_eq!(install.package.manager, ManagerId::Asdf);
+                assert_eq!(install.package.name, "__self__");
+                assert_eq!(
+                    install.version.as_deref(),
+                    Some("scriptInstaller:officialDownload")
+                );
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        let (target_manager, request) = super::build_manager_mutation_request(
+            &store,
+            ManagerId::Asdf,
+            "install",
+            Some("homebrew".to_string()),
+        )
+        .expect("cli method override should recover asdf install route");
+        assert_eq!(target_manager, ManagerId::HomebrewFormula);
+        match request {
+            super::AdapterRequest::Install(install) => {
+                assert_eq!(install.package.manager, ManagerId::HomebrewFormula);
+                assert_eq!(install.package.name, "asdf");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn rustup_install_request_defaults_to_rustup_installer_and_allows_homebrew_override() {
+        let db_path = temp_db_path("rustup-install-method-routing");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        seed_homebrew_detected(&store);
+        store
+            .set_manager_selected_install_method(ManagerId::Rustup, Some("rustupInstaller"))
+            .expect("persisting rustup preferred method should succeed");
+
+        let (target_manager, request) =
+            super::build_manager_mutation_request(&store, ManagerId::Rustup, "install", None)
+                .expect("saved rustup installer preference should resolve install request");
+        assert_eq!(target_manager, ManagerId::Rustup);
+        match request {
+            super::AdapterRequest::Install(install) => {
+                assert_eq!(install.package.manager, ManagerId::Rustup);
+                assert_eq!(install.package.name, "__self__");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        let (target_manager, request) = super::build_manager_mutation_request(
+            &store,
+            ManagerId::Rustup,
+            "install",
+            Some("homebrew".to_string()),
+        )
+        .expect("cli method override should recover rustup install route");
+        assert_eq!(target_manager, ManagerId::HomebrewFormula);
+        match request {
+            super::AdapterRequest::Install(install) => {
+                assert_eq!(install.package.manager, ManagerId::HomebrewFormula);
+                assert_eq!(install.package.name, "rustup");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        let (target_manager, request) = super::build_manager_mutation_request_with_options(
+            &store,
+            ManagerId::Rustup,
+            "install",
+            Some("rustupInstaller".to_string()),
+            helm_core::manager_lifecycle::ManagerInstallOptions {
+                rustup_install_source: Some(
+                    helm_core::manager_lifecycle::RustupInstallSource::ExistingBinaryPath,
+                ),
+                rustup_binary_path: Some("/tmp/rustup-init".to_string()),
+                ..helm_core::manager_lifecycle::ManagerInstallOptions::default()
+            },
+        )
+        .expect("rustup existing-binary install source should map into install request");
+        assert_eq!(target_manager, ManagerId::Rustup);
+        match request {
+            super::AdapterRequest::Install(install) => {
+                assert_eq!(
+                    install.version.as_deref(),
+                    Some("existingBinaryPath:/tmp/rustup-init")
+                );
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn resolve_install_method_override_for_tui_prefers_supported_method() {
+        let db_path = temp_db_path("manager-install-method-tui-resolution");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .set_manager_selected_install_method(ManagerId::Mise, Some("scriptInstaller"))
+            .expect("persisting mise method should succeed");
+
+        let override_method =
+            super::resolve_install_method_override_for_tui(&store, ManagerId::Mise)
+                .expect("tui method resolution should succeed");
+        assert_eq!(override_method.as_deref(), Some("scriptInstaller"));
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn manager_uninstall_plan_ignores_saved_install_method_preference() {
+        let db_path = temp_db_path("manager-uninstall-ignores-install-method");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .set_manager_selected_install_method(ManagerId::Mise, Some("scriptInstaller"))
+            .expect("persisting mise selected install method should succeed");
+        store
+            .upsert_detection(
+                ManagerId::HomebrewFormula,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                    version: Some("4.4.0".to_string()),
+                },
+            )
+            .expect("homebrew detection should persist");
+        store
+            .replace_install_instances(
+                ManagerId::Mise,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Mise,
+                    instance_id: "mise-homebrew-active-preference-ignored".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/opt/homebrew/Cellar/mise/2026.2.8/bin/mise".to_string(),
+                    display_path: PathBuf::from("/opt/homebrew/bin/mise"),
+                    canonical_path: Some(PathBuf::from(
+                        "/opt/homebrew/Cellar/mise/2026.2.8/bin/mise",
+                    )),
+                    alias_paths: vec![PathBuf::from("/opt/homebrew/bin/mise")],
+                    is_active: true,
+                    version: Some("2026.2.8".to_string()),
+                    provenance: InstallProvenance::Homebrew,
+                    confidence: 0.94,
+                    decision_margin: Some(0.32),
+                    automation_level: AutomationLevel::Automatic,
+                    uninstall_strategy: StrategyKind::HomebrewFormula,
+                    update_strategy: StrategyKind::HomebrewFormula,
+                    remediation_strategy: StrategyKind::HomebrewFormula,
+                    explanation_primary: Some(
+                        "canonical path is inside Homebrew Cellar for mise".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::SourceBuild),
+                    competing_confidence: Some(0.22),
+                }],
+            )
+            .expect("mise install instance should persist");
+
+        let plan = super::build_manager_uninstall_plan(&store, ManagerId::Mise, false, false)
+            .expect("uninstall plan should not depend on saved install method");
+        assert_eq!(plan.target_manager, ManagerId::HomebrewFormula);
+        match plan.request {
+            super::AdapterRequest::Uninstall(uninstall) => {
+                assert_eq!(uninstall.package.manager, ManagerId::HomebrewFormula);
+                assert_eq!(uninstall.package.name, "mise");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn asdf_uninstall_plan_uses_active_homebrew_strategy() {
+        let db_path = temp_db_path("asdf-uninstall-active-homebrew");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .upsert_detection(
+                ManagerId::HomebrewFormula,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                    version: Some("4.4.0".to_string()),
+                },
+            )
+            .expect("homebrew detection should persist");
+        store
+            .replace_install_instances(
+                ManagerId::Asdf,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Asdf,
+                    instance_id: "asdf-homebrew-active".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/opt/homebrew/Cellar/asdf/0.15.0/bin/asdf".to_string(),
+                    display_path: PathBuf::from("/opt/homebrew/bin/asdf"),
+                    canonical_path: Some(PathBuf::from(
+                        "/opt/homebrew/Cellar/asdf/0.15.0/bin/asdf",
+                    )),
+                    alias_paths: vec![PathBuf::from("/opt/homebrew/bin/asdf")],
+                    is_active: true,
+                    version: Some("0.15.0".to_string()),
+                    provenance: InstallProvenance::Homebrew,
+                    confidence: 0.91,
+                    decision_margin: Some(0.33),
+                    automation_level: AutomationLevel::Automatic,
+                    uninstall_strategy: StrategyKind::HomebrewFormula,
+                    update_strategy: StrategyKind::HomebrewFormula,
+                    remediation_strategy: StrategyKind::HomebrewFormula,
+                    explanation_primary: Some(
+                        "canonical path is inside Homebrew Cellar for asdf".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::Asdf),
+                    competing_confidence: Some(0.35),
+                }],
+            )
+            .expect("asdf install instance should persist");
+
+        let plan = super::build_manager_uninstall_plan(&store, ManagerId::Asdf, false, false)
+            .expect("asdf uninstall plan should build from active strategy");
+        assert_eq!(plan.target_manager, ManagerId::HomebrewFormula);
+        match plan.request {
+            super::AdapterRequest::Uninstall(uninstall) => {
+                assert_eq!(uninstall.package.manager, ManagerId::HomebrewFormula);
+                assert_eq!(uninstall.package.name, "asdf");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+        assert_eq!(plan.preview.strategy, "homebrew_formula");
+        assert!(!plan.preview.legacy_fallback_used);
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn asdf_uninstall_plan_blocks_ambiguous_provenance_without_override() {
+        let db_path = temp_db_path("asdf-uninstall-ambiguous-no-override");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Asdf,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Asdf,
+                    instance_id: "asdf-ambiguous".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/Users/test/.asdf/bin/asdf".to_string(),
+                    display_path: PathBuf::from("/Users/test/.asdf/bin/asdf"),
+                    canonical_path: Some(PathBuf::from("/Users/test/.asdf/bin/asdf")),
+                    alias_paths: vec![PathBuf::from("/Users/test/.asdf/bin/asdf")],
+                    is_active: true,
+                    version: Some("0.15.0".to_string()),
+                    provenance: InstallProvenance::Asdf,
+                    confidence: 0.92,
+                    decision_margin: Some(0.30),
+                    automation_level: AutomationLevel::NeedsConfirmation,
+                    uninstall_strategy: StrategyKind::InteractivePrompt,
+                    update_strategy: StrategyKind::InteractivePrompt,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some(
+                        "asdf executable path indicates asdf-managed layout".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::Homebrew),
+                    competing_confidence: Some(0.35),
+                }],
+            )
+            .expect("asdf install instance should persist");
+
+        let error = super::build_manager_uninstall_plan(&store, ManagerId::Asdf, false, false)
+            .expect_err("ambiguous asdf uninstall strategy should block without override");
+        assert!(error.contains("ambiguous"));
+        assert!(error.contains("allow-unknown-provenance"));
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn asdf_uninstall_preview_allows_ambiguous_provenance_without_override() {
+        let db_path = temp_db_path("asdf-uninstall-ambiguous-preview");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Asdf,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Asdf,
+                    instance_id: "asdf-ambiguous-preview".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/Users/test/.asdf/bin/asdf".to_string(),
+                    display_path: PathBuf::from("/Users/test/.asdf/bin/asdf"),
+                    canonical_path: Some(PathBuf::from("/Users/test/.asdf/bin/asdf")),
+                    alias_paths: vec![PathBuf::from("/Users/test/.asdf/bin/asdf")],
+                    is_active: true,
+                    version: Some("0.15.0".to_string()),
+                    provenance: InstallProvenance::Asdf,
+                    confidence: 0.92,
+                    decision_margin: Some(0.30),
+                    automation_level: AutomationLevel::NeedsConfirmation,
+                    uninstall_strategy: StrategyKind::InteractivePrompt,
+                    update_strategy: StrategyKind::InteractivePrompt,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some(
+                        "asdf executable path indicates asdf-managed layout".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::Homebrew),
+                    competing_confidence: Some(0.35),
+                }],
+            )
+            .expect("asdf install instance should persist");
+
+        let plan = super::build_manager_uninstall_plan(&store, ManagerId::Asdf, false, true)
+            .expect("preview path should allow ambiguous uninstall routing");
+        assert_eq!(plan.target_manager, ManagerId::HomebrewFormula);
+        assert!(plan.preview.unknown_override_required);
+        assert!(!plan.preview.used_unknown_override);
+        assert_eq!(plan.preview.strategy, "homebrew_formula");
+        assert!(!plan.preview.legacy_fallback_used);
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn asdf_uninstall_plan_allows_ambiguous_provenance_with_override() {
+        let db_path = temp_db_path("asdf-uninstall-ambiguous-with-override");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .upsert_detection(
+                ManagerId::HomebrewFormula,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                    version: Some("4.4.0".to_string()),
+                },
+            )
+            .expect("homebrew detection should persist");
+        store
+            .replace_install_instances(
+                ManagerId::Asdf,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Asdf,
+                    instance_id: "asdf-ambiguous-override".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/Users/test/.asdf/bin/asdf".to_string(),
+                    display_path: PathBuf::from("/Users/test/.asdf/bin/asdf"),
+                    canonical_path: Some(PathBuf::from("/Users/test/.asdf/bin/asdf")),
+                    alias_paths: vec![PathBuf::from("/Users/test/.asdf/bin/asdf")],
+                    is_active: true,
+                    version: Some("0.15.0".to_string()),
+                    provenance: InstallProvenance::Asdf,
+                    confidence: 0.92,
+                    decision_margin: Some(0.30),
+                    automation_level: AutomationLevel::NeedsConfirmation,
+                    uninstall_strategy: StrategyKind::InteractivePrompt,
+                    update_strategy: StrategyKind::InteractivePrompt,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some(
+                        "asdf executable path indicates asdf-managed layout".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::Homebrew),
+                    competing_confidence: Some(0.35),
+                }],
+            )
+            .expect("asdf install instance should persist");
+
+        let plan = super::build_manager_uninstall_plan(&store, ManagerId::Asdf, true, false)
+            .expect("override should allow ambiguous uninstall strategy planning");
+        assert_eq!(plan.target_manager, ManagerId::HomebrewFormula);
+        assert!(plan.preview.unknown_override_required);
+        assert!(plan.preview.used_unknown_override);
+        assert_eq!(plan.preview.strategy, "homebrew_formula");
+        assert!(!plan.preview.legacy_fallback_used);
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn asdf_uninstall_read_only_strategy_blocks_mutation_and_allows_preview() {
+        let db_path = temp_db_path("asdf-uninstall-read-only");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Asdf,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Asdf,
+                    instance_id: "asdf-read-only".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/usr/bin/asdf".to_string(),
+                    display_path: PathBuf::from("/usr/bin/asdf"),
+                    canonical_path: Some(PathBuf::from("/usr/bin/asdf")),
+                    alias_paths: vec![PathBuf::from("/usr/bin/asdf")],
+                    is_active: true,
+                    version: Some("0.15.0".to_string()),
+                    provenance: InstallProvenance::System,
+                    confidence: 0.95,
+                    decision_margin: Some(0.50),
+                    automation_level: AutomationLevel::ReadOnly,
+                    uninstall_strategy: StrategyKind::ReadOnly,
+                    update_strategy: StrategyKind::ReadOnly,
+                    remediation_strategy: StrategyKind::ReadOnly,
+                    explanation_primary: Some(
+                        "system asdf installation is read-only in Helm".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::Homebrew),
+                    competing_confidence: Some(0.20),
+                }],
+            )
+            .expect("asdf install instance should persist");
+
+        let error = super::build_manager_uninstall_plan(&store, ManagerId::Asdf, false, false)
+            .expect_err("read-only uninstall should block mutation");
+        assert!(error.contains("read-only"));
+
+        let plan = super::build_manager_uninstall_plan(&store, ManagerId::Asdf, false, true)
+            .expect("preview should remain available for read-only uninstall");
+        assert_eq!(plan.target_manager, ManagerId::Asdf);
+        match plan.request {
+            super::AdapterRequest::Uninstall(uninstall) => {
+                assert_eq!(uninstall.package.manager, ManagerId::Asdf);
+                assert_eq!(uninstall.package.name, "__self__");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+        assert_eq!(plan.preview.strategy, "read_only");
+        assert!(plan.preview.read_only_blocked);
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn mise_uninstall_plan_uses_active_homebrew_strategy() {
+        let db_path = temp_db_path("mise-uninstall-active-homebrew");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .upsert_detection(
+                ManagerId::HomebrewFormula,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                    version: Some("4.4.0".to_string()),
+                },
+            )
+            .expect("homebrew detection should persist");
+        store
+            .replace_install_instances(
+                ManagerId::Mise,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Mise,
+                    instance_id: "mise-homebrew-active".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/opt/homebrew/Cellar/mise/2025.1.0/bin/mise".to_string(),
+                    display_path: PathBuf::from("/opt/homebrew/bin/mise"),
+                    canonical_path: Some(PathBuf::from(
+                        "/opt/homebrew/Cellar/mise/2025.1.0/bin/mise",
+                    )),
+                    alias_paths: vec![PathBuf::from("/opt/homebrew/bin/mise")],
+                    is_active: true,
+                    version: Some("2025.1.0".to_string()),
+                    provenance: InstallProvenance::Homebrew,
+                    confidence: 0.92,
+                    decision_margin: Some(0.34),
+                    automation_level: AutomationLevel::Automatic,
+                    uninstall_strategy: StrategyKind::HomebrewFormula,
+                    update_strategy: StrategyKind::HomebrewFormula,
+                    remediation_strategy: StrategyKind::HomebrewFormula,
+                    explanation_primary: Some(
+                        "canonical path is inside Homebrew Cellar for mise".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::SourceBuild),
+                    competing_confidence: Some(0.33),
+                }],
+            )
+            .expect("mise install instance should persist");
+
+        let plan = super::build_manager_uninstall_plan(&store, ManagerId::Mise, false, false)
+            .expect("mise uninstall plan should build from active strategy");
+        assert_eq!(plan.target_manager, ManagerId::HomebrewFormula);
+        match plan.request {
+            super::AdapterRequest::Uninstall(uninstall) => {
+                assert_eq!(uninstall.package.manager, ManagerId::HomebrewFormula);
+                assert_eq!(uninstall.package.name, "mise");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+        assert_eq!(plan.preview.strategy, "homebrew_formula");
+        assert!(!plan.preview.legacy_fallback_used);
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn mise_uninstall_plan_blocks_ambiguous_provenance_without_override() {
+        let db_path = temp_db_path("mise-uninstall-unknown-no-override");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Mise,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Mise,
+                    instance_id: "mise-unknown".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/usr/local/bin/mise".to_string(),
+                    display_path: PathBuf::from("/usr/local/bin/mise"),
+                    canonical_path: Some(PathBuf::from("/usr/local/bin/mise")),
+                    alias_paths: vec![PathBuf::from("/usr/local/bin/mise")],
+                    is_active: true,
+                    version: Some("2025.1.0".to_string()),
+                    provenance: InstallProvenance::Unknown,
+                    confidence: 0.49,
+                    decision_margin: Some(0.06),
+                    automation_level: AutomationLevel::NeedsConfirmation,
+                    uninstall_strategy: StrategyKind::InteractivePrompt,
+                    update_strategy: StrategyKind::InteractivePrompt,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some(
+                        "insufficient or conflicting mise provenance evidence".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::Homebrew),
+                    competing_confidence: Some(0.44),
+                }],
+            )
+            .expect("mise install instance should persist");
+
+        let error = super::build_manager_uninstall_plan(&store, ManagerId::Mise, false, false)
+            .expect_err("ambiguous uninstall strategy should block without override");
+        assert!(error.contains("ambiguous"));
+        assert!(error.contains("allow-unknown-provenance"));
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn mise_uninstall_preview_allows_ambiguous_provenance_without_override() {
+        let db_path = temp_db_path("mise-uninstall-unknown-preview");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Mise,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Mise,
+                    instance_id: "mise-unknown-preview".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/usr/local/bin/mise".to_string(),
+                    display_path: PathBuf::from("/usr/local/bin/mise"),
+                    canonical_path: Some(PathBuf::from("/usr/local/bin/mise")),
+                    alias_paths: vec![PathBuf::from("/usr/local/bin/mise")],
+                    is_active: true,
+                    version: Some("2025.1.0".to_string()),
+                    provenance: InstallProvenance::Unknown,
+                    confidence: 0.48,
+                    decision_margin: Some(0.05),
+                    automation_level: AutomationLevel::NeedsConfirmation,
+                    uninstall_strategy: StrategyKind::InteractivePrompt,
+                    update_strategy: StrategyKind::InteractivePrompt,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some(
+                        "insufficient or conflicting mise provenance evidence".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::Homebrew),
+                    competing_confidence: Some(0.43),
+                }],
+            )
+            .expect("mise install instance should persist");
+
+        let plan = super::build_manager_uninstall_plan(&store, ManagerId::Mise, false, true)
+            .expect("preview path should allow ambiguous uninstall routing");
+        assert_eq!(plan.target_manager, ManagerId::Mise);
+        assert!(plan.preview.unknown_provenance);
+        assert!(plan.preview.unknown_override_required);
+        assert!(!plan.preview.used_unknown_override);
+        assert_eq!(plan.preview.strategy, "interactive_prompt");
+        assert!(!plan.preview.legacy_fallback_used);
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn mas_uninstall_plan_uses_active_homebrew_strategy() {
+        let db_path = temp_db_path("mas-uninstall-active-homebrew");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .upsert_detection(
+                ManagerId::HomebrewFormula,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                    version: Some("4.4.0".to_string()),
+                },
+            )
+            .expect("homebrew detection should persist");
+        store
+            .replace_install_instances(
+                ManagerId::Mas,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Mas,
+                    instance_id: "mas-homebrew-active".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/opt/homebrew/Cellar/mas/1.8.8/bin/mas".to_string(),
+                    display_path: PathBuf::from("/opt/homebrew/bin/mas"),
+                    canonical_path: Some(PathBuf::from("/opt/homebrew/Cellar/mas/1.8.8/bin/mas")),
+                    alias_paths: vec![PathBuf::from("/opt/homebrew/bin/mas")],
+                    is_active: true,
+                    version: Some("1.8.8".to_string()),
+                    provenance: InstallProvenance::Homebrew,
+                    confidence: 0.91,
+                    decision_margin: Some(0.33),
+                    automation_level: AutomationLevel::Automatic,
+                    uninstall_strategy: StrategyKind::HomebrewFormula,
+                    update_strategy: StrategyKind::HomebrewFormula,
+                    remediation_strategy: StrategyKind::HomebrewFormula,
+                    explanation_primary: Some(
+                        "canonical path is inside Homebrew Cellar for mas".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::SourceBuild),
+                    competing_confidence: Some(0.35),
+                }],
+            )
+            .expect("mas install instance should persist");
+
+        let plan = super::build_manager_uninstall_plan(&store, ManagerId::Mas, false, false)
+            .expect("mas uninstall plan should build from active strategy");
+        assert_eq!(plan.target_manager, ManagerId::HomebrewFormula);
+        match plan.request {
+            super::AdapterRequest::Uninstall(uninstall) => {
+                assert_eq!(uninstall.package.manager, ManagerId::HomebrewFormula);
+                assert_eq!(uninstall.package.name, "mas");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+        assert_eq!(plan.preview.strategy, "homebrew_formula");
+        assert!(!plan.preview.legacy_fallback_used);
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn podman_uninstall_plan_uses_active_homebrew_strategy() {
+        let db_path = temp_db_path("podman-uninstall-active-homebrew");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .upsert_detection(
+                ManagerId::HomebrewFormula,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                    version: Some("4.4.0".to_string()),
+                },
+            )
+            .expect("homebrew detection should persist");
+        store
+            .replace_install_instances(
+                ManagerId::Podman,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Podman,
+                    instance_id: "podman-homebrew-active".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/opt/homebrew/Cellar/podman/5.0.0/bin/podman".to_string(),
+                    display_path: PathBuf::from("/opt/homebrew/bin/podman"),
+                    canonical_path: Some(PathBuf::from(
+                        "/opt/homebrew/Cellar/podman/5.0.0/bin/podman",
+                    )),
+                    alias_paths: vec![PathBuf::from("/opt/homebrew/bin/podman")],
+                    is_active: true,
+                    version: Some("5.0.0".to_string()),
+                    provenance: InstallProvenance::Homebrew,
+                    confidence: 0.91,
+                    decision_margin: Some(0.34),
+                    automation_level: AutomationLevel::Automatic,
+                    uninstall_strategy: StrategyKind::HomebrewFormula,
+                    update_strategy: StrategyKind::HomebrewFormula,
+                    remediation_strategy: StrategyKind::HomebrewFormula,
+                    explanation_primary: Some(
+                        "canonical path is inside Homebrew Cellar for podman".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::SourceBuild),
+                    competing_confidence: Some(0.33),
+                }],
+            )
+            .expect("podman install instance should persist");
+
+        let plan = super::build_manager_uninstall_plan(&store, ManagerId::Podman, false, false)
+            .expect("podman uninstall plan should build from active strategy");
+        assert_eq!(plan.target_manager, ManagerId::HomebrewFormula);
+        match plan.request {
+            super::AdapterRequest::Uninstall(uninstall) => {
+                assert_eq!(uninstall.package.manager, ManagerId::HomebrewFormula);
+                assert_eq!(uninstall.package.name, "podman");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+        assert_eq!(plan.preview.strategy, "homebrew_formula");
+        assert!(!plan.preview.legacy_fallback_used);
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn podman_uninstall_plan_blocks_ambiguous_provenance_without_override() {
+        let db_path = temp_db_path("podman-uninstall-ambiguous-no-override");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Podman,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Podman,
+                    instance_id: "podman-ambiguous".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/Users/test/.local/bin/podman".to_string(),
+                    display_path: PathBuf::from("/Users/test/.local/bin/podman"),
+                    canonical_path: Some(PathBuf::from("/Users/test/.local/bin/podman")),
+                    alias_paths: vec![PathBuf::from("/Users/test/.local/bin/podman")],
+                    is_active: true,
+                    version: Some("5.0.0".to_string()),
+                    provenance: InstallProvenance::Unknown,
+                    confidence: 0.48,
+                    decision_margin: Some(0.06),
+                    automation_level: AutomationLevel::NeedsConfirmation,
+                    uninstall_strategy: StrategyKind::InteractivePrompt,
+                    update_strategy: StrategyKind::InteractivePrompt,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some(
+                        "insufficient or conflicting podman provenance evidence".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::Homebrew),
+                    competing_confidence: Some(0.42),
+                }],
+            )
+            .expect("podman install instance should persist");
+
+        let error = super::build_manager_uninstall_plan(&store, ManagerId::Podman, false, false)
+            .expect_err("ambiguous podman uninstall strategy should block without override");
+        assert!(error.contains("ambiguous"));
+        assert!(error.contains("allow-unknown-provenance"));
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn one_to_one_homebrew_managers_uninstall_plan_uses_active_strategy() {
+        let cases = [
+            (ManagerId::Pnpm, "pnpm"),
+            (ManagerId::Yarn, "yarn"),
+            (ManagerId::Pipx, "pipx"),
+            (ManagerId::Poetry, "poetry"),
+            (ManagerId::CargoBinstall, "cargo-binstall"),
+            (ManagerId::Podman, "podman"),
+            (ManagerId::Colima, "colima"),
+        ];
+
+        for (manager, formula_name) in cases {
+            let db_path =
+                temp_db_path(format!("{}-uninstall-active-homebrew", manager.as_str()).as_str());
+            let store = SqliteStore::new(&db_path);
+            store
+                .migrate_to_latest()
+                .expect("store migration should succeed");
+            store
+                .upsert_detection(
+                    ManagerId::HomebrewFormula,
+                    &DetectionInfo {
+                        installed: true,
+                        executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                        version: Some("4.4.0".to_string()),
+                    },
+                )
+                .expect("homebrew detection should persist");
+            store
+                .replace_install_instances(
+                    manager,
+                    &[ManagerInstallInstance {
+                        manager,
+                        instance_id: format!("{}-instance-uninstall", manager.as_str()),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: format!(
+                            "/opt/homebrew/Cellar/{}/1.0.0/bin/{}",
+                            formula_name,
+                            manager.as_str()
+                        ),
+                        display_path: PathBuf::from(format!(
+                            "/opt/homebrew/bin/{}",
+                            manager.as_str()
+                        )),
+                        canonical_path: Some(PathBuf::from(format!(
+                            "/opt/homebrew/Cellar/{}/1.0.0/bin/{}",
+                            formula_name,
+                            manager.as_str()
+                        ))),
+                        alias_paths: vec![PathBuf::from(format!(
+                            "/opt/homebrew/bin/{}",
+                            manager.as_str()
+                        ))],
+                        is_active: true,
+                        version: Some("1.0.0".to_string()),
+                        provenance: InstallProvenance::Homebrew,
+                        confidence: 0.90,
+                        decision_margin: Some(0.30),
+                        automation_level: AutomationLevel::Automatic,
+                        uninstall_strategy: StrategyKind::HomebrewFormula,
+                        update_strategy: StrategyKind::HomebrewFormula,
+                        remediation_strategy: StrategyKind::HomebrewFormula,
+                        explanation_primary: Some(
+                            "canonical path is inside Homebrew Cellar".to_string(),
+                        ),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::SourceBuild),
+                        competing_confidence: Some(0.35),
+                    }],
+                )
+                .expect("manager install instance should persist");
+
+            let plan = super::build_manager_uninstall_plan(&store, manager, false, false)
+                .expect("uninstall plan should build");
+            assert_eq!(plan.target_manager, ManagerId::HomebrewFormula);
+            match plan.request {
+                super::AdapterRequest::Uninstall(uninstall) => {
+                    assert_eq!(uninstall.package.manager, ManagerId::HomebrewFormula);
+                    assert_eq!(uninstall.package.name, formula_name);
+                }
+                other => panic!("unexpected request: {other:?}"),
+            }
+            assert_eq!(plan.preview.strategy, "homebrew_formula");
+            assert!(!plan.preview.legacy_fallback_used);
+
+            let _ = fs::remove_file(db_path);
+        }
+    }
+
+    #[test]
+    fn one_to_one_homebrew_managers_uninstall_plan_blocks_ambiguous_without_override() {
+        let cases = [
+            (ManagerId::Pnpm, "pnpm"),
+            (ManagerId::Yarn, "yarn"),
+            (ManagerId::Pipx, "pipx"),
+            (ManagerId::Poetry, "poetry"),
+            (ManagerId::CargoBinstall, "cargo-binstall"),
+            (ManagerId::Podman, "podman"),
+            (ManagerId::Colima, "colima"),
+        ];
+
+        for (manager, formula_name) in cases {
+            let db_path = temp_db_path(
+                format!("{}-uninstall-ambiguous-no-override", manager.as_str()).as_str(),
+            );
+            let store = SqliteStore::new(&db_path);
+            store
+                .migrate_to_latest()
+                .expect("store migration should succeed");
+            store
+                .replace_install_instances(
+                    manager,
+                    &[ManagerInstallInstance {
+                        manager,
+                        instance_id: format!("{}-ambiguous-uninstall", manager.as_str()),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: format!(
+                            "/opt/homebrew/Cellar/{}/1.0.0/bin/{}",
+                            formula_name,
+                            manager.as_str()
+                        ),
+                        display_path: PathBuf::from(format!(
+                            "/opt/homebrew/bin/{}",
+                            manager.as_str()
+                        )),
+                        canonical_path: Some(PathBuf::from(format!(
+                            "/opt/homebrew/Cellar/{}/1.0.0/bin/{}",
+                            formula_name,
+                            manager.as_str()
+                        ))),
+                        alias_paths: vec![PathBuf::from(format!(
+                            "/opt/homebrew/bin/{}",
+                            manager.as_str()
+                        ))],
+                        is_active: true,
+                        version: Some("1.0.0".to_string()),
+                        provenance: InstallProvenance::Unknown,
+                        confidence: 0.49,
+                        decision_margin: Some(0.05),
+                        automation_level: AutomationLevel::NeedsConfirmation,
+                        uninstall_strategy: StrategyKind::InteractivePrompt,
+                        update_strategy: StrategyKind::InteractivePrompt,
+                        remediation_strategy: StrategyKind::ManualRemediation,
+                        explanation_primary: Some(
+                            "insufficient or conflicting provenance evidence".to_string(),
+                        ),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::Homebrew),
+                        competing_confidence: Some(0.44),
+                    }],
+                )
+                .expect("manager install instance should persist");
+
+            let error = super::build_manager_uninstall_plan(&store, manager, false, false)
+                .expect_err("ambiguous uninstall should block without override");
+            assert!(error.contains("ambiguous"));
+            assert!(error.contains("allow-unknown-provenance"));
+
+            let _ = fs::remove_file(db_path);
+        }
+    }
+
+    #[test]
+    fn one_to_one_homebrew_managers_uninstall_preview_allows_ambiguous_without_override() {
+        let cases = [
+            (ManagerId::Pnpm, "pnpm"),
+            (ManagerId::Yarn, "yarn"),
+            (ManagerId::Pipx, "pipx"),
+            (ManagerId::Poetry, "poetry"),
+            (ManagerId::CargoBinstall, "cargo-binstall"),
+            (ManagerId::Podman, "podman"),
+            (ManagerId::Colima, "colima"),
+        ];
+
+        for (manager, formula_name) in cases {
+            let db_path =
+                temp_db_path(format!("{}-uninstall-ambiguous-preview", manager.as_str()).as_str());
+            let store = SqliteStore::new(&db_path);
+            store
+                .migrate_to_latest()
+                .expect("store migration should succeed");
+            store
+                .replace_install_instances(
+                    manager,
+                    &[ManagerInstallInstance {
+                        manager,
+                        instance_id: format!("{}-ambiguous-preview", manager.as_str()),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: format!(
+                            "/opt/homebrew/Cellar/{}/1.0.0/bin/{}",
+                            formula_name,
+                            manager.as_str()
+                        ),
+                        display_path: PathBuf::from(format!(
+                            "/opt/homebrew/bin/{}",
+                            manager.as_str()
+                        )),
+                        canonical_path: Some(PathBuf::from(format!(
+                            "/opt/homebrew/Cellar/{}/1.0.0/bin/{}",
+                            formula_name,
+                            manager.as_str()
+                        ))),
+                        alias_paths: vec![PathBuf::from(format!(
+                            "/opt/homebrew/bin/{}",
+                            manager.as_str()
+                        ))],
+                        is_active: true,
+                        version: Some("1.0.0".to_string()),
+                        provenance: InstallProvenance::Unknown,
+                        confidence: 0.49,
+                        decision_margin: Some(0.05),
+                        automation_level: AutomationLevel::NeedsConfirmation,
+                        uninstall_strategy: StrategyKind::InteractivePrompt,
+                        update_strategy: StrategyKind::InteractivePrompt,
+                        remediation_strategy: StrategyKind::ManualRemediation,
+                        explanation_primary: Some(
+                            "insufficient or conflicting provenance evidence".to_string(),
+                        ),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::Homebrew),
+                        competing_confidence: Some(0.44),
+                    }],
+                )
+                .expect("manager install instance should persist");
+
+            let plan = super::build_manager_uninstall_plan(&store, manager, false, true)
+                .expect("preview should allow ambiguous uninstall routing");
+            assert_eq!(plan.target_manager, ManagerId::HomebrewFormula);
+            assert!(plan.preview.unknown_override_required);
+            assert!(!plan.preview.used_unknown_override);
+            assert_eq!(plan.preview.strategy, "homebrew_formula");
+            assert!(!plan.preview.legacy_fallback_used);
+
+            let _ = fs::remove_file(db_path);
+        }
+    }
+
+    #[test]
+    fn one_to_one_homebrew_managers_uninstall_plan_allows_ambiguous_with_override() {
+        let cases = [
+            (ManagerId::Pnpm, "pnpm"),
+            (ManagerId::Yarn, "yarn"),
+            (ManagerId::Pipx, "pipx"),
+            (ManagerId::Poetry, "poetry"),
+            (ManagerId::CargoBinstall, "cargo-binstall"),
+            (ManagerId::Podman, "podman"),
+            (ManagerId::Colima, "colima"),
+        ];
+
+        for (manager, formula_name) in cases {
+            let db_path = temp_db_path(
+                format!("{}-uninstall-ambiguous-with-override", manager.as_str()).as_str(),
+            );
+            let store = SqliteStore::new(&db_path);
+            store
+                .migrate_to_latest()
+                .expect("store migration should succeed");
+            store
+                .upsert_detection(
+                    ManagerId::HomebrewFormula,
+                    &DetectionInfo {
+                        installed: true,
+                        executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                        version: Some("4.4.0".to_string()),
+                    },
+                )
+                .expect("homebrew detection should persist");
+            store
+                .replace_install_instances(
+                    manager,
+                    &[ManagerInstallInstance {
+                        manager,
+                        instance_id: format!("{}-ambiguous-override", manager.as_str()),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: format!(
+                            "/opt/homebrew/Cellar/{}/1.0.0/bin/{}",
+                            formula_name,
+                            manager.as_str()
+                        ),
+                        display_path: PathBuf::from(format!(
+                            "/opt/homebrew/bin/{}",
+                            manager.as_str()
+                        )),
+                        canonical_path: Some(PathBuf::from(format!(
+                            "/opt/homebrew/Cellar/{}/1.0.0/bin/{}",
+                            formula_name,
+                            manager.as_str()
+                        ))),
+                        alias_paths: vec![PathBuf::from(format!(
+                            "/opt/homebrew/bin/{}",
+                            manager.as_str()
+                        ))],
+                        is_active: true,
+                        version: Some("1.0.0".to_string()),
+                        provenance: InstallProvenance::Unknown,
+                        confidence: 0.49,
+                        decision_margin: Some(0.05),
+                        automation_level: AutomationLevel::NeedsConfirmation,
+                        uninstall_strategy: StrategyKind::InteractivePrompt,
+                        update_strategy: StrategyKind::InteractivePrompt,
+                        remediation_strategy: StrategyKind::ManualRemediation,
+                        explanation_primary: Some(
+                            "insufficient or conflicting provenance evidence".to_string(),
+                        ),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::Homebrew),
+                        competing_confidence: Some(0.44),
+                    }],
+                )
+                .expect("manager install instance should persist");
+
+            let plan = super::build_manager_uninstall_plan(&store, manager, true, false)
+                .expect("override should allow ambiguous uninstall planning");
+            assert_eq!(plan.target_manager, ManagerId::HomebrewFormula);
+            assert!(plan.preview.unknown_override_required);
+            assert!(plan.preview.used_unknown_override);
+            assert_eq!(plan.preview.strategy, "homebrew_formula");
+            assert!(!plan.preview.legacy_fallback_used);
+
+            let _ = fs::remove_file(db_path);
+        }
+    }
+
+    #[test]
+    fn one_to_one_homebrew_managers_uninstall_read_only_blocks_mutation_and_allows_preview() {
+        let cases = [
+            (ManagerId::Pnpm, "pnpm"),
+            (ManagerId::Yarn, "yarn"),
+            (ManagerId::Pipx, "pipx"),
+            (ManagerId::Poetry, "poetry"),
+            (ManagerId::CargoBinstall, "cargo-binstall"),
+            (ManagerId::Podman, "podman"),
+            (ManagerId::Colima, "colima"),
+        ];
+
+        for (manager, executable_name) in cases {
+            let db_path =
+                temp_db_path(format!("{}-uninstall-read-only", manager.as_str()).as_str());
+            let store = SqliteStore::new(&db_path);
+            store
+                .migrate_to_latest()
+                .expect("store migration should succeed");
+            store
+                .replace_install_instances(
+                    manager,
+                    &[ManagerInstallInstance {
+                        manager,
+                        instance_id: format!("{}-read-only-uninstall", manager.as_str()),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: format!("/usr/bin/{}", executable_name),
+                        display_path: PathBuf::from(format!("/usr/bin/{}", executable_name)),
+                        canonical_path: Some(PathBuf::from(format!(
+                            "/usr/bin/{}",
+                            executable_name
+                        ))),
+                        alias_paths: vec![PathBuf::from(format!("/usr/bin/{}", executable_name))],
+                        is_active: true,
+                        version: Some("1.0.0".to_string()),
+                        provenance: InstallProvenance::System,
+                        confidence: 0.95,
+                        decision_margin: Some(0.50),
+                        automation_level: AutomationLevel::ReadOnly,
+                        uninstall_strategy: StrategyKind::ReadOnly,
+                        update_strategy: StrategyKind::ReadOnly,
+                        remediation_strategy: StrategyKind::ReadOnly,
+                        explanation_primary: Some(
+                            "system installation is read-only in Helm".to_string(),
+                        ),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::Homebrew),
+                        competing_confidence: Some(0.20),
+                    }],
+                )
+                .expect("manager install instance should persist");
+
+            let error = super::build_manager_uninstall_plan(&store, manager, false, false)
+                .expect_err("read-only uninstall should block mutation");
+            assert!(error.contains("read-only"));
+
+            let plan = super::build_manager_uninstall_plan(&store, manager, false, true)
+                .expect("preview should remain available for read-only uninstall");
+            assert_eq!(plan.target_manager, manager);
+            match plan.request {
+                super::AdapterRequest::Uninstall(uninstall) => {
+                    assert_eq!(uninstall.package.manager, manager);
+                    assert_eq!(uninstall.package.name, "__self__");
+                }
+                other => panic!("unexpected request: {other:?}"),
+            }
+            assert_eq!(plan.preview.strategy, "read_only");
+            assert!(plan.preview.read_only_blocked);
+            assert!(!plan.preview.legacy_fallback_used);
+
+            let _ = fs::remove_file(db_path);
+        }
+    }
+
+    #[test]
+    fn one_to_one_homebrew_manager_uninstall_read_only_blocks_mutation_and_allows_preview() {
+        let db_path = temp_db_path("yarn-uninstall-read-only");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Yarn,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Yarn,
+                    instance_id: "yarn-read-only".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/usr/bin/yarn".to_string(),
+                    display_path: PathBuf::from("/usr/bin/yarn"),
+                    canonical_path: Some(PathBuf::from("/usr/bin/yarn")),
+                    alias_paths: vec![PathBuf::from("/usr/bin/yarn")],
+                    is_active: true,
+                    version: Some("1.22.22".to_string()),
+                    provenance: InstallProvenance::System,
+                    confidence: 0.95,
+                    decision_margin: Some(0.50),
+                    automation_level: AutomationLevel::ReadOnly,
+                    uninstall_strategy: StrategyKind::ReadOnly,
+                    update_strategy: StrategyKind::ReadOnly,
+                    remediation_strategy: StrategyKind::ReadOnly,
+                    explanation_primary: Some(
+                        "system yarn installation is read-only in Helm".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::Homebrew),
+                    competing_confidence: Some(0.20),
+                }],
+            )
+            .expect("yarn install instance should persist");
+
+        let error = super::build_manager_uninstall_plan(&store, ManagerId::Yarn, false, false)
+            .expect_err("read-only uninstall should block mutation");
+        assert!(error.contains("read-only"));
+
+        let plan = super::build_manager_uninstall_plan(&store, ManagerId::Yarn, false, true)
+            .expect("preview should remain available for read-only uninstall");
+        assert_eq!(plan.target_manager, ManagerId::Yarn);
+        match plan.request {
+            super::AdapterRequest::Uninstall(uninstall) => {
+                assert_eq!(uninstall.package.manager, ManagerId::Yarn);
+                assert_eq!(uninstall.package.name, "__self__");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+        assert_eq!(plan.preview.strategy, "read_only");
+        assert!(plan.preview.read_only_blocked);
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn npm_uninstall_plan_uses_homebrew_parent_formula_from_active_instance() {
+        let db_path = temp_db_path("npm-uninstall-homebrew-parent-formula");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .upsert_detection(
+                ManagerId::HomebrewFormula,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                    version: Some("4.4.0".to_string()),
+                },
+            )
+            .expect("homebrew detection should persist");
+        store
+            .replace_install_instances(
+                ManagerId::Npm,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Npm,
+                    instance_id: "npm-instance-uninstall".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/opt/homebrew/Cellar/node/22.14.0/bin/npm".to_string(),
+                    display_path: PathBuf::from("/opt/homebrew/bin/npm"),
+                    canonical_path: Some(PathBuf::from(
+                        "/opt/homebrew/Cellar/node/22.14.0/bin/npm",
+                    )),
+                    alias_paths: vec![PathBuf::from("/opt/homebrew/bin/npm")],
+                    is_active: true,
+                    version: Some("10.9.2".to_string()),
+                    provenance: InstallProvenance::Homebrew,
+                    confidence: 0.89,
+                    decision_margin: Some(0.28),
+                    automation_level: AutomationLevel::Automatic,
+                    uninstall_strategy: StrategyKind::HomebrewFormula,
+                    update_strategy: StrategyKind::HomebrewFormula,
+                    remediation_strategy: StrategyKind::HomebrewFormula,
+                    explanation_primary: Some(
+                        "canonical path is inside Homebrew Cellar for node".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::SourceBuild),
+                    competing_confidence: Some(0.35),
+                }],
+            )
+            .expect("npm install instance should persist");
+
+        let plan = super::build_manager_uninstall_plan(&store, ManagerId::Npm, false, false)
+            .expect("npm uninstall plan should build");
+        assert_eq!(plan.target_manager, ManagerId::HomebrewFormula);
+        match plan.request {
+            super::AdapterRequest::Uninstall(uninstall) => {
+                assert_eq!(uninstall.package.manager, ManagerId::HomebrewFormula);
+                assert_eq!(uninstall.package.name, "node");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+        assert_eq!(plan.preview.strategy, "homebrew_formula");
+        assert!(!plan.preview.legacy_fallback_used);
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn dynamic_homebrew_parent_managers_uninstall_plan_resolves_parent_formula() {
+        let cases = [
+            (
+                ManagerId::Pip,
+                "/opt/homebrew/Cellar/python@3.12/3.12.9_1/bin/pip3",
+                "/opt/homebrew/bin/pip3",
+                "python@3.12",
+            ),
+            (
+                ManagerId::RubyGems,
+                "/opt/homebrew/Cellar/ruby/3.4.1/bin/gem",
+                "/opt/homebrew/bin/gem",
+                "ruby",
+            ),
+            (
+                ManagerId::Bundler,
+                "/opt/homebrew/Cellar/ruby/3.4.1/bin/bundle3.4",
+                "/opt/homebrew/bin/bundle3.4",
+                "ruby",
+            ),
+            (
+                ManagerId::Cargo,
+                "/opt/homebrew/Cellar/rust/1.86.0/bin/cargo",
+                "/opt/homebrew/bin/cargo",
+                "rust",
+            ),
+        ];
+
+        for (manager, canonical_path, display_path, expected_formula) in cases {
+            let db_path = temp_db_path(
+                format!("{}-uninstall-homebrew-parent-formula", manager.as_str()).as_str(),
+            );
+            let store = SqliteStore::new(&db_path);
+            store
+                .migrate_to_latest()
+                .expect("store migration should succeed");
+            store
+                .upsert_detection(
+                    ManagerId::HomebrewFormula,
+                    &DetectionInfo {
+                        installed: true,
+                        executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                        version: Some("4.4.0".to_string()),
+                    },
+                )
+                .expect("homebrew detection should persist");
+            store
+                .replace_install_instances(
+                    manager,
+                    &[ManagerInstallInstance {
+                        manager,
+                        instance_id: format!("{}-instance-uninstall", manager.as_str()),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: canonical_path.to_string(),
+                        display_path: PathBuf::from(display_path),
+                        canonical_path: Some(PathBuf::from(canonical_path)),
+                        alias_paths: vec![PathBuf::from(display_path)],
+                        is_active: true,
+                        version: Some("1.0.0".to_string()),
+                        provenance: InstallProvenance::Homebrew,
+                        confidence: 0.89,
+                        decision_margin: Some(0.28),
+                        automation_level: AutomationLevel::Automatic,
+                        uninstall_strategy: StrategyKind::HomebrewFormula,
+                        update_strategy: StrategyKind::HomebrewFormula,
+                        remediation_strategy: StrategyKind::HomebrewFormula,
+                        explanation_primary: Some(
+                            "canonical path is inside Homebrew Cellar".to_string(),
+                        ),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::SourceBuild),
+                        competing_confidence: Some(0.35),
+                    }],
+                )
+                .expect("manager install instance should persist");
+
+            let plan = super::build_manager_uninstall_plan(&store, manager, false, false)
+                .expect("dynamic manager uninstall plan should build");
+            assert_eq!(plan.target_manager, ManagerId::HomebrewFormula);
+            match plan.request {
+                super::AdapterRequest::Uninstall(uninstall) => {
+                    assert_eq!(uninstall.package.manager, ManagerId::HomebrewFormula);
+                    assert_eq!(uninstall.package.name, expected_formula);
+                }
+                other => panic!("unexpected request: {other:?}"),
+            }
+
+            let _ = fs::remove_file(db_path);
+        }
+    }
+
+    #[test]
+    fn npm_uninstall_plan_errors_when_formula_ownership_is_unresolved() {
+        let db_path = temp_db_path("npm-uninstall-homebrew-formula-unresolved");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Npm,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Npm,
+                    instance_id: "npm-unresolved-uninstall".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/opt/homebrew/bin/npm".to_string(),
+                    display_path: PathBuf::from("/opt/homebrew/bin/npm"),
+                    canonical_path: Some(PathBuf::from("/opt/homebrew/bin/npm")),
+                    alias_paths: vec![PathBuf::from("/opt/homebrew/bin/npm")],
+                    is_active: true,
+                    version: Some("10.9.2".to_string()),
+                    provenance: InstallProvenance::Homebrew,
+                    confidence: 0.80,
+                    decision_margin: Some(0.20),
+                    automation_level: AutomationLevel::NeedsConfirmation,
+                    uninstall_strategy: StrategyKind::HomebrewFormula,
+                    update_strategy: StrategyKind::HomebrewFormula,
+                    remediation_strategy: StrategyKind::HomebrewFormula,
+                    explanation_primary: Some(
+                        "npm path indicates Homebrew ownership but formula could not be resolved"
+                            .to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: None,
+                    competing_confidence: None,
+                }],
+            )
+            .expect("npm install instance should persist");
+
+        let error = super::build_manager_uninstall_plan(&store, ManagerId::Npm, false, false)
+            .expect_err("npm uninstall should fail when formula ownership cannot be derived");
+        assert!(error.contains("formula ownership could not be determined"));
+        assert!(error.contains("helm managers instances npm"));
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn dynamic_homebrew_parent_managers_uninstall_plan_errors_when_formula_unresolved() {
+        let cases = [
+            (
+                ManagerId::Pip,
+                "/opt/homebrew/bin/pip3",
+                "/opt/homebrew/bin/pip3",
+            ),
+            (
+                ManagerId::RubyGems,
+                "/opt/homebrew/bin/gem",
+                "/opt/homebrew/bin/gem",
+            ),
+            (
+                ManagerId::Bundler,
+                "/opt/homebrew/bin/bundle3.4",
+                "/opt/homebrew/bin/bundle3.4",
+            ),
+            (
+                ManagerId::Cargo,
+                "/opt/homebrew/bin/cargo",
+                "/opt/homebrew/bin/cargo",
+            ),
+        ];
+
+        for (manager, canonical_path, display_path) in cases {
+            let db_path = temp_db_path(
+                format!("{}-uninstall-homebrew-formula-unresolved", manager.as_str()).as_str(),
+            );
+            let store = SqliteStore::new(&db_path);
+            store
+                .migrate_to_latest()
+                .expect("store migration should succeed");
+            store
+                .replace_install_instances(
+                    manager,
+                    &[ManagerInstallInstance {
+                        manager,
+                        instance_id: format!("{}-unresolved-uninstall", manager.as_str()),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: canonical_path.to_string(),
+                        display_path: PathBuf::from(display_path),
+                        canonical_path: Some(PathBuf::from(canonical_path)),
+                        alias_paths: vec![PathBuf::from(display_path)],
+                        is_active: true,
+                        version: Some("1.0.0".to_string()),
+                        provenance: InstallProvenance::Homebrew,
+                        confidence: 0.80,
+                        decision_margin: Some(0.20),
+                        automation_level: AutomationLevel::NeedsConfirmation,
+                        uninstall_strategy: StrategyKind::HomebrewFormula,
+                        update_strategy: StrategyKind::HomebrewFormula,
+                        remediation_strategy: StrategyKind::HomebrewFormula,
+                        explanation_primary: Some(
+                            "path indicates Homebrew ownership but formula could not be resolved"
+                                .to_string(),
+                        ),
+                        explanation_secondary: None,
+                        competing_provenance: None,
+                        competing_confidence: None,
+                    }],
+                )
+                .expect("manager install instance should persist");
+
+            let error = super::build_manager_uninstall_plan(&store, manager, false, false)
+                .expect_err("uninstall should fail when formula ownership cannot be derived");
+            assert!(error.contains("formula ownership could not be determined"));
+            assert!(error.contains(&format!("helm managers instances {}", manager.as_str())));
+
+            let _ = fs::remove_file(db_path);
+        }
+    }
+
+    #[test]
+    fn dynamic_homebrew_parent_managers_uninstall_plan_blocks_ambiguous_without_override() {
+        let cases = [
+            (
+                ManagerId::Pip,
+                "/opt/homebrew/Cellar/python@3.12/3.12.9_1/bin/pip3",
+                "/opt/homebrew/bin/pip3",
+            ),
+            (
+                ManagerId::RubyGems,
+                "/opt/homebrew/Cellar/ruby/3.4.1/bin/gem",
+                "/opt/homebrew/bin/gem",
+            ),
+            (
+                ManagerId::Bundler,
+                "/opt/homebrew/Cellar/ruby/3.4.1/bin/bundle3.4",
+                "/opt/homebrew/bin/bundle3.4",
+            ),
+            (
+                ManagerId::Cargo,
+                "/opt/homebrew/Cellar/rust/1.86.0/bin/cargo",
+                "/opt/homebrew/bin/cargo",
+            ),
+        ];
+
+        for (manager, canonical_path, display_path) in cases {
+            let db_path = temp_db_path(
+                format!("{}-uninstall-ambiguous-no-override", manager.as_str()).as_str(),
+            );
+            let store = SqliteStore::new(&db_path);
+            store
+                .migrate_to_latest()
+                .expect("store migration should succeed");
+            store
+                .replace_install_instances(
+                    manager,
+                    &[ManagerInstallInstance {
+                        manager,
+                        instance_id: format!("{}-ambiguous-uninstall", manager.as_str()),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: canonical_path.to_string(),
+                        display_path: PathBuf::from(display_path),
+                        canonical_path: Some(PathBuf::from(canonical_path)),
+                        alias_paths: vec![PathBuf::from(display_path)],
+                        is_active: true,
+                        version: Some("1.0.0".to_string()),
+                        provenance: InstallProvenance::Unknown,
+                        confidence: 0.49,
+                        decision_margin: Some(0.04),
+                        automation_level: AutomationLevel::NeedsConfirmation,
+                        uninstall_strategy: StrategyKind::InteractivePrompt,
+                        update_strategy: StrategyKind::InteractivePrompt,
+                        remediation_strategy: StrategyKind::ManualRemediation,
+                        explanation_primary: Some(
+                            "insufficient or conflicting provenance evidence".to_string(),
+                        ),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::Homebrew),
+                        competing_confidence: Some(0.45),
+                    }],
+                )
+                .expect("manager install instance should persist");
+
+            let error = super::build_manager_uninstall_plan(&store, manager, false, false)
+                .expect_err("ambiguous uninstall strategy should block without override");
+            assert!(error.contains("ambiguous"));
+            assert!(error.contains("allow-unknown-provenance"));
+
+            let _ = fs::remove_file(db_path);
+        }
+    }
+
+    #[test]
+    fn dynamic_homebrew_parent_managers_uninstall_preview_allows_ambiguous_without_override() {
+        let cases = [
+            (
+                ManagerId::Pip,
+                "/opt/homebrew/Cellar/python@3.12/3.12.9_1/bin/pip3",
+                "/opt/homebrew/bin/pip3",
+            ),
+            (
+                ManagerId::RubyGems,
+                "/opt/homebrew/Cellar/ruby/3.4.1/bin/gem",
+                "/opt/homebrew/bin/gem",
+            ),
+            (
+                ManagerId::Bundler,
+                "/opt/homebrew/Cellar/ruby/3.4.1/bin/bundle3.4",
+                "/opt/homebrew/bin/bundle3.4",
+            ),
+            (
+                ManagerId::Cargo,
+                "/opt/homebrew/Cellar/rust/1.86.0/bin/cargo",
+                "/opt/homebrew/bin/cargo",
+            ),
+        ];
+
+        for (manager, canonical_path, display_path) in cases {
+            let db_path =
+                temp_db_path(format!("{}-uninstall-ambiguous-preview", manager.as_str()).as_str());
+            let store = SqliteStore::new(&db_path);
+            store
+                .migrate_to_latest()
+                .expect("store migration should succeed");
+            store
+                .replace_install_instances(
+                    manager,
+                    &[ManagerInstallInstance {
+                        manager,
+                        instance_id: format!("{}-ambiguous-preview", manager.as_str()),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: canonical_path.to_string(),
+                        display_path: PathBuf::from(display_path),
+                        canonical_path: Some(PathBuf::from(canonical_path)),
+                        alias_paths: vec![PathBuf::from(display_path)],
+                        is_active: true,
+                        version: Some("1.0.0".to_string()),
+                        provenance: InstallProvenance::Unknown,
+                        confidence: 0.49,
+                        decision_margin: Some(0.04),
+                        automation_level: AutomationLevel::NeedsConfirmation,
+                        uninstall_strategy: StrategyKind::InteractivePrompt,
+                        update_strategy: StrategyKind::InteractivePrompt,
+                        remediation_strategy: StrategyKind::ManualRemediation,
+                        explanation_primary: Some(
+                            "insufficient or conflicting provenance evidence".to_string(),
+                        ),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::Homebrew),
+                        competing_confidence: Some(0.45),
+                    }],
+                )
+                .expect("manager install instance should persist");
+
+            let plan = super::build_manager_uninstall_plan(&store, manager, false, true)
+                .expect("preview path should allow ambiguous uninstall routing");
+            assert_eq!(plan.target_manager, ManagerId::HomebrewFormula);
+            assert!(plan.preview.unknown_override_required);
+            assert!(!plan.preview.used_unknown_override);
+            assert_eq!(plan.preview.strategy, "homebrew_formula");
+            assert!(!plan.preview.legacy_fallback_used);
+
+            let _ = fs::remove_file(db_path);
+        }
+    }
+
+    #[test]
+    fn dynamic_homebrew_parent_managers_uninstall_plan_allows_ambiguous_with_override() {
+        let cases = [
+            (
+                ManagerId::Pip,
+                "/opt/homebrew/Cellar/python@3.12/3.12.9_1/bin/pip3",
+                "/opt/homebrew/bin/pip3",
+            ),
+            (
+                ManagerId::RubyGems,
+                "/opt/homebrew/Cellar/ruby/3.4.1/bin/gem",
+                "/opt/homebrew/bin/gem",
+            ),
+            (
+                ManagerId::Bundler,
+                "/opt/homebrew/Cellar/ruby/3.4.1/bin/bundle3.4",
+                "/opt/homebrew/bin/bundle3.4",
+            ),
+            (
+                ManagerId::Cargo,
+                "/opt/homebrew/Cellar/rust/1.86.0/bin/cargo",
+                "/opt/homebrew/bin/cargo",
+            ),
+        ];
+
+        for (manager, canonical_path, display_path) in cases {
+            let db_path = temp_db_path(
+                format!("{}-uninstall-ambiguous-with-override", manager.as_str()).as_str(),
+            );
+            let store = SqliteStore::new(&db_path);
+            store
+                .migrate_to_latest()
+                .expect("store migration should succeed");
+            store
+                .upsert_detection(
+                    ManagerId::HomebrewFormula,
+                    &DetectionInfo {
+                        installed: true,
+                        executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                        version: Some("4.4.0".to_string()),
+                    },
+                )
+                .expect("homebrew detection should persist");
+            store
+                .replace_install_instances(
+                    manager,
+                    &[ManagerInstallInstance {
+                        manager,
+                        instance_id: format!("{}-ambiguous-override", manager.as_str()),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: canonical_path.to_string(),
+                        display_path: PathBuf::from(display_path),
+                        canonical_path: Some(PathBuf::from(canonical_path)),
+                        alias_paths: vec![PathBuf::from(display_path)],
+                        is_active: true,
+                        version: Some("1.0.0".to_string()),
+                        provenance: InstallProvenance::Unknown,
+                        confidence: 0.49,
+                        decision_margin: Some(0.04),
+                        automation_level: AutomationLevel::NeedsConfirmation,
+                        uninstall_strategy: StrategyKind::InteractivePrompt,
+                        update_strategy: StrategyKind::InteractivePrompt,
+                        remediation_strategy: StrategyKind::ManualRemediation,
+                        explanation_primary: Some(
+                            "insufficient or conflicting provenance evidence".to_string(),
+                        ),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::Homebrew),
+                        competing_confidence: Some(0.45),
+                    }],
+                )
+                .expect("manager install instance should persist");
+
+            let plan = super::build_manager_uninstall_plan(&store, manager, true, false)
+                .expect("override should allow ambiguous uninstall strategy planning");
+            assert_eq!(plan.target_manager, ManagerId::HomebrewFormula);
+            assert!(plan.preview.unknown_override_required);
+            assert!(plan.preview.used_unknown_override);
+            assert_eq!(plan.preview.strategy, "homebrew_formula");
+            assert!(!plan.preview.legacy_fallback_used);
+
+            let _ = fs::remove_file(db_path);
+        }
+    }
+
+    #[test]
+    fn dynamic_homebrew_parent_managers_uninstall_read_only_blocks_mutation_and_allows_preview() {
+        let cases = [
+            (ManagerId::Npm, "npm"),
+            (ManagerId::Pip, "pip3"),
+            (ManagerId::RubyGems, "gem"),
+            (ManagerId::Bundler, "bundle"),
+            (ManagerId::Cargo, "cargo"),
+        ];
+
+        for (manager, executable_name) in cases {
+            let db_path =
+                temp_db_path(format!("{}-uninstall-read-only", manager.as_str()).as_str());
+            let store = SqliteStore::new(&db_path);
+            store
+                .migrate_to_latest()
+                .expect("store migration should succeed");
+            store
+                .replace_install_instances(
+                    manager,
+                    &[ManagerInstallInstance {
+                        manager,
+                        instance_id: format!("{}-read-only-uninstall", manager.as_str()),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: format!("/usr/bin/{}", executable_name),
+                        display_path: PathBuf::from(format!("/usr/bin/{}", executable_name)),
+                        canonical_path: Some(PathBuf::from(format!(
+                            "/usr/bin/{}",
+                            executable_name
+                        ))),
+                        alias_paths: vec![PathBuf::from(format!("/usr/bin/{}", executable_name))],
+                        is_active: true,
+                        version: Some("1.0.0".to_string()),
+                        provenance: InstallProvenance::System,
+                        confidence: 0.94,
+                        decision_margin: Some(0.48),
+                        automation_level: AutomationLevel::ReadOnly,
+                        uninstall_strategy: StrategyKind::ReadOnly,
+                        update_strategy: StrategyKind::ReadOnly,
+                        remediation_strategy: StrategyKind::ReadOnly,
+                        explanation_primary: Some(
+                            "system installation is read-only in Helm".to_string(),
+                        ),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::Homebrew),
+                        competing_confidence: Some(0.21),
+                    }],
+                )
+                .expect("manager install instance should persist");
+
+            let error = super::build_manager_uninstall_plan(&store, manager, false, false)
+                .expect_err("read-only uninstall should block mutation");
+            assert!(error.contains("read-only"));
+
+            let plan = super::build_manager_uninstall_plan(&store, manager, false, true)
+                .expect("preview should remain available for read-only uninstall");
+            assert_eq!(plan.target_manager, manager);
+            assert_eq!(plan.preview.strategy, "read_only");
+            assert!(plan.preview.read_only_blocked);
+            assert!(!plan.preview.legacy_fallback_used);
+
+            let _ = fs::remove_file(db_path);
+        }
+    }
+
+    #[test]
+    fn npm_uninstall_plan_blocks_ambiguous_provenance_without_override() {
+        let db_path = temp_db_path("npm-uninstall-ambiguous-no-override");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Npm,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Npm,
+                    instance_id: "npm-ambiguous".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/opt/homebrew/Cellar/node/22.14.0/bin/npm".to_string(),
+                    display_path: PathBuf::from("/opt/homebrew/bin/npm"),
+                    canonical_path: Some(PathBuf::from(
+                        "/opt/homebrew/Cellar/node/22.14.0/bin/npm",
+                    )),
+                    alias_paths: vec![PathBuf::from("/opt/homebrew/bin/npm")],
+                    is_active: true,
+                    version: Some("10.9.2".to_string()),
+                    provenance: InstallProvenance::Unknown,
+                    confidence: 0.49,
+                    decision_margin: Some(0.04),
+                    automation_level: AutomationLevel::NeedsConfirmation,
+                    uninstall_strategy: StrategyKind::InteractivePrompt,
+                    update_strategy: StrategyKind::InteractivePrompt,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some(
+                        "insufficient or conflicting npm provenance evidence".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::Homebrew),
+                    competing_confidence: Some(0.45),
+                }],
+            )
+            .expect("npm install instance should persist");
+
+        let error = super::build_manager_uninstall_plan(&store, ManagerId::Npm, false, false)
+            .expect_err("ambiguous npm uninstall strategy should block without override");
+        assert!(error.contains("ambiguous"));
+        assert!(error.contains("allow-unknown-provenance"));
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn npm_uninstall_preview_allows_ambiguous_provenance_without_override() {
+        let db_path = temp_db_path("npm-uninstall-ambiguous-preview");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Npm,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Npm,
+                    instance_id: "npm-ambiguous-preview".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/opt/homebrew/Cellar/node/22.14.0/bin/npm".to_string(),
+                    display_path: PathBuf::from("/opt/homebrew/bin/npm"),
+                    canonical_path: Some(PathBuf::from(
+                        "/opt/homebrew/Cellar/node/22.14.0/bin/npm",
+                    )),
+                    alias_paths: vec![PathBuf::from("/opt/homebrew/bin/npm")],
+                    is_active: true,
+                    version: Some("10.9.2".to_string()),
+                    provenance: InstallProvenance::Unknown,
+                    confidence: 0.49,
+                    decision_margin: Some(0.04),
+                    automation_level: AutomationLevel::NeedsConfirmation,
+                    uninstall_strategy: StrategyKind::InteractivePrompt,
+                    update_strategy: StrategyKind::InteractivePrompt,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some(
+                        "insufficient or conflicting npm provenance evidence".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::Homebrew),
+                    competing_confidence: Some(0.45),
+                }],
+            )
+            .expect("npm install instance should persist");
+
+        let plan = super::build_manager_uninstall_plan(&store, ManagerId::Npm, false, true)
+            .expect("preview path should allow ambiguous uninstall routing");
+        assert_eq!(plan.target_manager, ManagerId::HomebrewFormula);
+        assert!(plan.preview.unknown_override_required);
+        assert!(!plan.preview.used_unknown_override);
+        assert_eq!(plan.preview.strategy, "homebrew_formula");
+        assert!(!plan.preview.legacy_fallback_used);
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn npm_uninstall_plan_allows_ambiguous_provenance_with_override() {
+        let db_path = temp_db_path("npm-uninstall-ambiguous-with-override");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .upsert_detection(
+                ManagerId::HomebrewFormula,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(PathBuf::from("/opt/homebrew/bin/brew")),
+                    version: Some("4.4.0".to_string()),
+                },
+            )
+            .expect("homebrew detection should persist");
+        store
+            .replace_install_instances(
+                ManagerId::Npm,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Npm,
+                    instance_id: "npm-ambiguous-override".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/opt/homebrew/Cellar/node/22.14.0/bin/npm".to_string(),
+                    display_path: PathBuf::from("/opt/homebrew/bin/npm"),
+                    canonical_path: Some(PathBuf::from(
+                        "/opt/homebrew/Cellar/node/22.14.0/bin/npm",
+                    )),
+                    alias_paths: vec![PathBuf::from("/opt/homebrew/bin/npm")],
+                    is_active: true,
+                    version: Some("10.9.2".to_string()),
+                    provenance: InstallProvenance::Unknown,
+                    confidence: 0.49,
+                    decision_margin: Some(0.04),
+                    automation_level: AutomationLevel::NeedsConfirmation,
+                    uninstall_strategy: StrategyKind::InteractivePrompt,
+                    update_strategy: StrategyKind::InteractivePrompt,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some(
+                        "insufficient or conflicting npm provenance evidence".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::Homebrew),
+                    competing_confidence: Some(0.45),
+                }],
+            )
+            .expect("npm install instance should persist");
+
+        let plan = super::build_manager_uninstall_plan(&store, ManagerId::Npm, true, false)
+            .expect("override should allow ambiguous uninstall strategy planning");
+        assert_eq!(plan.target_manager, ManagerId::HomebrewFormula);
+        assert!(plan.preview.unknown_override_required);
+        assert!(plan.preview.used_unknown_override);
+        assert_eq!(plan.preview.strategy, "homebrew_formula");
+        assert!(!plan.preview.legacy_fallback_used);
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn rustup_uninstall_request_defaults_to_rustup_self_without_method_routing() {
+        let db_path = temp_db_path("rustup-uninstall-default-self");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .set_manager_selected_install_method(ManagerId::Rustup, Some("homebrew"))
+            .expect("rustup install method preference should persist");
+
+        let (target_manager, request) =
+            super::build_manager_mutation_request(&store, ManagerId::Rustup, "uninstall", None)
+                .expect("rustup uninstall fallback should route to rustup self");
+        assert_eq!(target_manager, ManagerId::Rustup);
+        match request {
+            super::AdapterRequest::Uninstall(uninstall) => {
+                assert_eq!(uninstall.package.manager, ManagerId::Rustup);
+                assert_eq!(uninstall.package.name, "__self__");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn rustup_uninstall_plan_uses_active_instance_in_multi_install() {
+        let db_path = temp_db_path("rustup-uninstall-multi-install");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Rustup,
+                &[
+                    ManagerInstallInstance {
+                        manager: ManagerId::Rustup,
+                        instance_id: "rustup-self-active".to_string(),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: "/Users/test/.cargo/bin/rustup".to_string(),
+                        display_path: PathBuf::from("/Users/test/.cargo/bin/rustup"),
+                        canonical_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+                        alias_paths: vec![PathBuf::from("/Users/test/.cargo/bin/rustup")],
+                        is_active: true,
+                        version: Some("1.28.2".to_string()),
+                        provenance: InstallProvenance::RustupInit,
+                        confidence: 0.92,
+                        decision_margin: Some(0.30),
+                        automation_level: AutomationLevel::Automatic,
+                        uninstall_strategy: StrategyKind::RustupSelf,
+                        update_strategy: StrategyKind::RustupSelf,
+                        remediation_strategy: StrategyKind::RustupSelf,
+                        explanation_primary: Some(
+                            "active path is under CARGO_HOME/bin".to_string(),
+                        ),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::Homebrew),
+                        competing_confidence: Some(0.45),
+                    },
+                    ManagerInstallInstance {
+                        manager: ManagerId::Rustup,
+                        instance_id: "rustup-homebrew-inactive".to_string(),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: "/opt/homebrew/Cellar/rustup/1.28.2/bin/rustup".to_string(),
+                        display_path: PathBuf::from("/opt/homebrew/bin/rustup"),
+                        canonical_path: Some(PathBuf::from(
+                            "/opt/homebrew/Cellar/rustup/1.28.2/bin/rustup",
+                        )),
+                        alias_paths: vec![PathBuf::from("/opt/homebrew/bin/rustup")],
+                        is_active: false,
+                        version: Some("1.28.2".to_string()),
+                        provenance: InstallProvenance::Homebrew,
+                        confidence: 0.93,
+                        decision_margin: Some(0.31),
+                        automation_level: AutomationLevel::Automatic,
+                        uninstall_strategy: StrategyKind::HomebrewFormula,
+                        update_strategy: StrategyKind::HomebrewFormula,
+                        remediation_strategy: StrategyKind::HomebrewFormula,
+                        explanation_primary: Some(
+                            "inactive path is in Homebrew Cellar".to_string(),
+                        ),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::RustupInit),
+                        competing_confidence: Some(0.41),
+                    },
+                ],
+            )
+            .expect("install instances should persist");
+
+        let plan = super::build_manager_uninstall_plan(&store, ManagerId::Rustup, false, false)
+            .expect("multi-install uninstall plan should build");
+        assert_eq!(plan.target_manager, ManagerId::Rustup);
+        assert_eq!(plan.preview.strategy, "rustup_self");
+        assert!(!plan.preview.legacy_fallback_used);
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn rustup_uninstall_plan_prefers_provenance_strategy_over_install_method() {
+        let db_path = temp_db_path("rustup-uninstall-provenance-strategy");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .set_manager_selected_install_method(ManagerId::Rustup, Some("homebrew"))
+            .expect("rustup install method preference should persist");
+        store
+            .replace_install_instances(
+                ManagerId::Rustup,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Rustup,
+                    instance_id: "rustup-instance".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/Users/test/.cargo/bin/rustup".to_string(),
+                    display_path: PathBuf::from("/Users/test/.cargo/bin/rustup"),
+                    canonical_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+                    alias_paths: vec![PathBuf::from("/Users/test/.cargo/bin/rustup")],
+                    is_active: true,
+                    version: Some("1.28.2".to_string()),
+                    provenance: InstallProvenance::RustupInit,
+                    confidence: 0.92,
+                    decision_margin: Some(0.35),
+                    automation_level: AutomationLevel::Automatic,
+                    uninstall_strategy: StrategyKind::RustupSelf,
+                    update_strategy: StrategyKind::RustupSelf,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some("rustup binary is under CARGO_HOME/bin".to_string()),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::Homebrew),
+                    competing_confidence: Some(0.51),
+                }],
+            )
+            .expect("install instance should persist");
+
+        let plan = super::build_manager_uninstall_plan(&store, ManagerId::Rustup, false, false)
+            .expect("rustup uninstall plan should build");
+        assert_eq!(plan.target_manager, ManagerId::Rustup);
+        match plan.request {
+            super::AdapterRequest::Uninstall(uninstall) => {
+                assert_eq!(uninstall.package.manager, ManagerId::Rustup);
+                assert_eq!(uninstall.package.name, "__self__");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+        assert_eq!(plan.preview.strategy, "rustup_self");
+        assert!(!plan.preview.legacy_fallback_used);
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn rustup_uninstall_plan_blocks_ambiguous_provenance_without_override() {
+        let db_path = temp_db_path("rustup-uninstall-unknown-no-override");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Rustup,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Rustup,
+                    instance_id: "rustup-unknown".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/Users/test/.cargo/bin/rustup".to_string(),
+                    display_path: PathBuf::from("/Users/test/.cargo/bin/rustup"),
+                    canonical_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+                    alias_paths: vec![PathBuf::from("/Users/test/.cargo/bin/rustup")],
+                    is_active: true,
+                    version: Some("1.28.2".to_string()),
+                    provenance: InstallProvenance::Unknown,
+                    confidence: 0.44,
+                    decision_margin: Some(0.04),
+                    automation_level: AutomationLevel::NeedsConfirmation,
+                    uninstall_strategy: StrategyKind::InteractivePrompt,
+                    update_strategy: StrategyKind::InteractivePrompt,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some(
+                        "insufficient or conflicting rustup provenance evidence".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::RustupInit),
+                    competing_confidence: Some(0.40),
+                }],
+            )
+            .expect("install instance should persist");
+
+        let error = super::build_manager_uninstall_plan(&store, ManagerId::Rustup, false, false)
+            .expect_err("ambiguous uninstall strategy should block without override");
+        assert!(error.contains("ambiguous"));
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn rustup_uninstall_preview_allows_ambiguous_provenance_without_override() {
+        let db_path = temp_db_path("rustup-uninstall-unknown-preview");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Rustup,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Rustup,
+                    instance_id: "rustup-unknown-preview".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/Users/test/.cargo/bin/rustup".to_string(),
+                    display_path: PathBuf::from("/Users/test/.cargo/bin/rustup"),
+                    canonical_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+                    alias_paths: vec![PathBuf::from("/Users/test/.cargo/bin/rustup")],
+                    is_active: true,
+                    version: Some("1.28.2".to_string()),
+                    provenance: InstallProvenance::Unknown,
+                    confidence: 0.44,
+                    decision_margin: Some(0.04),
+                    automation_level: AutomationLevel::NeedsConfirmation,
+                    uninstall_strategy: StrategyKind::InteractivePrompt,
+                    update_strategy: StrategyKind::InteractivePrompt,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some(
+                        "insufficient or conflicting rustup provenance evidence".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::RustupInit),
+                    competing_confidence: Some(0.40),
+                }],
+            )
+            .expect("install instance should persist");
+
+        let plan = super::build_manager_uninstall_plan(&store, ManagerId::Rustup, false, true)
+            .expect("preview path should allow ambiguous uninstall routing");
+        assert_eq!(plan.target_manager, ManagerId::Rustup);
+        assert!(plan.preview.unknown_provenance);
+        assert!(plan.preview.unknown_override_required);
+        assert!(!plan.preview.used_unknown_override);
+        assert!(plan.preview.requires_yes);
+        assert!(
+            plan.preview
+                .summary_lines
+                .iter()
+                .any(|line| line.contains("requires explicit override"))
+        );
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn rustup_uninstall_preview_requires_yes_for_high_blast_radius() {
+        let db_path = temp_db_path("rustup-uninstall-yes-gate");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Rustup,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Rustup,
+                    instance_id: "rustup-self".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/Users/test/.cargo/bin/rustup".to_string(),
+                    display_path: PathBuf::from("/Users/test/.cargo/bin/rustup"),
+                    canonical_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+                    alias_paths: vec![PathBuf::from("/Users/test/.cargo/bin/rustup")],
+                    is_active: true,
+                    version: Some("1.28.2".to_string()),
+                    provenance: InstallProvenance::RustupInit,
+                    confidence: 0.91,
+                    decision_margin: Some(0.31),
+                    automation_level: AutomationLevel::Automatic,
+                    uninstall_strategy: StrategyKind::RustupSelf,
+                    update_strategy: StrategyKind::RustupSelf,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some(
+                        "active rustup looks rustup-init managed".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: None,
+                    competing_confidence: None,
+                }],
+            )
+            .expect("install instance should persist");
+
+        let plan = super::build_manager_uninstall_plan(&store, ManagerId::Rustup, false, false)
+            .expect("rustup uninstall plan should build");
+        assert!(plan.preview.requires_yes);
+        assert!(
+            plan.preview.blast_radius_score
+                >= super::DEFAULT_MANAGER_UNINSTALL_SAFE_BLAST_RADIUS_THRESHOLD
+        );
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn rustup_uninstall_preview_generation_is_deterministic() {
+        let db_path = temp_db_path("rustup-uninstall-preview-deterministic");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Rustup,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Rustup,
+                    instance_id: "rustup-deterministic".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/Users/test/.cargo/bin/rustup".to_string(),
+                    display_path: PathBuf::from("/Users/test/.cargo/bin/rustup"),
+                    canonical_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+                    alias_paths: vec![PathBuf::from("/Users/test/.cargo/bin/rustup")],
+                    is_active: true,
+                    version: Some("1.28.2".to_string()),
+                    provenance: InstallProvenance::RustupInit,
+                    confidence: 0.93,
+                    decision_margin: Some(0.30),
+                    automation_level: AutomationLevel::Automatic,
+                    uninstall_strategy: StrategyKind::RustupSelf,
+                    update_strategy: StrategyKind::RustupSelf,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some(
+                        "active rustup looks rustup-init managed".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: None,
+                    competing_confidence: None,
+                }],
+            )
+            .expect("install instance should persist");
+
+        let first = super::build_manager_uninstall_plan(&store, ManagerId::Rustup, false, true)
+            .expect("first preview should build")
+            .preview;
+        let second = super::build_manager_uninstall_plan(&store, ManagerId::Rustup, false, true)
+            .expect("second preview should build")
+            .preview;
+
+        assert_eq!(first, second);
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn managers_uninstall_requires_yes_message_includes_preview_hint() {
+        let db_path = temp_db_path("managers-uninstall-yes-hint");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Rustup,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Rustup,
+                    instance_id: "rustup-self".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/Users/test/.cargo/bin/rustup".to_string(),
+                    display_path: PathBuf::from("/Users/test/.cargo/bin/rustup"),
+                    canonical_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+                    alias_paths: vec![PathBuf::from("/Users/test/.cargo/bin/rustup")],
+                    is_active: true,
+                    version: Some("1.28.2".to_string()),
+                    provenance: InstallProvenance::RustupInit,
+                    confidence: 0.92,
+                    decision_margin: Some(0.32),
+                    automation_level: AutomationLevel::Automatic,
+                    uninstall_strategy: StrategyKind::RustupSelf,
+                    update_strategy: StrategyKind::RustupSelf,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some(
+                        "active rustup looks rustup-init managed".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: None,
+                    competing_confidence: None,
+                }],
+            )
+            .expect("install instance should persist");
+
+        let error = super::cmd_managers_mutation(
+            Arc::new(store),
+            GlobalOptions::default(),
+            "uninstall",
+            &["rustup".to_string()],
+        )
+        .expect_err("managers uninstall should require --yes");
+        assert!(error.contains("requires --yes"));
+        assert!(error.contains("helm managers uninstall <manager-id> --preview"));
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn managers_uninstall_unknown_provenance_requires_override_hint() {
+        let db_path = temp_db_path("managers-uninstall-unknown-override-hint");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Rustup,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Rustup,
+                    instance_id: "rustup-unknown".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/Users/test/.cargo/bin/rustup".to_string(),
+                    display_path: PathBuf::from("/Users/test/.cargo/bin/rustup"),
+                    canonical_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+                    alias_paths: vec![PathBuf::from("/Users/test/.cargo/bin/rustup")],
+                    is_active: true,
+                    version: Some("1.28.2".to_string()),
+                    provenance: InstallProvenance::Unknown,
+                    confidence: 0.49,
+                    decision_margin: Some(0.05),
+                    automation_level: AutomationLevel::NeedsConfirmation,
+                    uninstall_strategy: StrategyKind::InteractivePrompt,
+                    update_strategy: StrategyKind::InteractivePrompt,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some(
+                        "insufficient or conflicting rustup provenance evidence".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::RustupInit),
+                    competing_confidence: Some(0.44),
+                }],
+            )
+            .expect("install instance should persist");
+
+        let error = super::cmd_managers_mutation(
+            Arc::new(store),
+            GlobalOptions::default(),
+            "uninstall",
+            &["rustup".to_string(), "--yes".to_string()],
+        )
+        .expect_err("ambiguous uninstall should require explicit unknown override");
+        assert!(error.contains("allow-unknown-provenance"));
+        assert!(error.contains("--preview"));
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn packages_uninstall_requires_yes_message_includes_preview_hint() {
+        let db_path = temp_db_path("packages-uninstall-yes-hint");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+
+        let error = super::cmd_packages_mutation(
+            Arc::new(store),
+            GlobalOptions::default(),
+            "uninstall",
+            &[
+                "git".to_string(),
+                "--manager".to_string(),
+                "homebrew_formula".to_string(),
+            ],
+        )
+        .expect_err("packages uninstall should require --yes for homebrew blast radius");
+        assert!(error.contains("requires --yes"));
+        assert!(
+            error.contains("helm packages uninstall <name|name@manager> --manager <id> --preview")
+        );
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn managers_uninstall_preview_smoke_succeeds_for_rustup_multi_install() {
+        let db_path = temp_db_path("managers-uninstall-preview-rustup-multi-install");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Rustup,
+                &[
+                    ManagerInstallInstance {
+                        manager: ManagerId::Rustup,
+                        instance_id: "rustup-homebrew-active".to_string(),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: "/opt/homebrew/Cellar/rustup/1.28.2/bin/rustup".to_string(),
+                        display_path: PathBuf::from("/opt/homebrew/bin/rustup"),
+                        canonical_path: Some(PathBuf::from(
+                            "/opt/homebrew/Cellar/rustup/1.28.2/bin/rustup",
+                        )),
+                        alias_paths: vec![PathBuf::from("/opt/homebrew/bin/rustup")],
+                        is_active: true,
+                        version: Some("1.28.2".to_string()),
+                        provenance: InstallProvenance::Homebrew,
+                        confidence: 0.93,
+                        decision_margin: Some(0.31),
+                        automation_level: AutomationLevel::Automatic,
+                        uninstall_strategy: StrategyKind::HomebrewFormula,
+                        update_strategy: StrategyKind::HomebrewFormula,
+                        remediation_strategy: StrategyKind::HomebrewFormula,
+                        explanation_primary: Some("active path is in Homebrew Cellar".to_string()),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::RustupInit),
+                        competing_confidence: Some(0.41),
+                    },
+                    ManagerInstallInstance {
+                        manager: ManagerId::Rustup,
+                        instance_id: "rustup-self-inactive".to_string(),
+                        identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                        identity_value: "/Users/test/.cargo/bin/rustup".to_string(),
+                        display_path: PathBuf::from("/Users/test/.cargo/bin/rustup"),
+                        canonical_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+                        alias_paths: vec![PathBuf::from("/Users/test/.cargo/bin/rustup")],
+                        is_active: false,
+                        version: Some("1.28.2".to_string()),
+                        provenance: InstallProvenance::RustupInit,
+                        confidence: 0.92,
+                        decision_margin: Some(0.30),
+                        automation_level: AutomationLevel::Automatic,
+                        uninstall_strategy: StrategyKind::RustupSelf,
+                        update_strategy: StrategyKind::RustupSelf,
+                        remediation_strategy: StrategyKind::RustupSelf,
+                        explanation_primary: Some(
+                            "inactive path is under CARGO_HOME/bin".to_string(),
+                        ),
+                        explanation_secondary: None,
+                        competing_provenance: Some(InstallProvenance::Homebrew),
+                        competing_confidence: Some(0.45),
+                    },
+                ],
+            )
+            .expect("install instances should persist");
+
+        super::cmd_managers_mutation(
+            Arc::new(store),
+            GlobalOptions::default(),
+            "uninstall",
+            &["rustup".to_string(), "--preview".to_string()],
+        )
+        .expect("preview should succeed for rustup multi-install state");
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn managers_uninstall_preview_smoke_succeeds_for_unknown_provenance() {
+        let db_path = temp_db_path("managers-uninstall-preview-rustup-unknown");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Rustup,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Rustup,
+                    instance_id: "rustup-unknown".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/Users/test/.cargo/bin/rustup".to_string(),
+                    display_path: PathBuf::from("/Users/test/.cargo/bin/rustup"),
+                    canonical_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+                    alias_paths: vec![PathBuf::from("/Users/test/.cargo/bin/rustup")],
+                    is_active: true,
+                    version: Some("1.28.2".to_string()),
+                    provenance: InstallProvenance::Unknown,
+                    confidence: 0.44,
+                    decision_margin: Some(0.04),
+                    automation_level: AutomationLevel::NeedsConfirmation,
+                    uninstall_strategy: StrategyKind::InteractivePrompt,
+                    update_strategy: StrategyKind::InteractivePrompt,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some(
+                        "insufficient or conflicting rustup provenance evidence".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::RustupInit),
+                    competing_confidence: Some(0.40),
+                }],
+            )
+            .expect("install instance should persist");
+
+        super::cmd_managers_mutation(
+            Arc::new(store),
+            GlobalOptions::default(),
+            "uninstall",
+            &["rustup".to_string(), "--preview".to_string()],
+        )
+        .expect("preview should succeed for unknown provenance");
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn managers_uninstall_unknown_provenance_without_preview_requires_override_hint() {
+        let db_path = temp_db_path("managers-uninstall-unknown-no-preview-override-hint");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .replace_install_instances(
+                ManagerId::Rustup,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Rustup,
+                    instance_id: "rustup-unknown-no-preview".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/Users/test/.cargo/bin/rustup".to_string(),
+                    display_path: PathBuf::from("/Users/test/.cargo/bin/rustup"),
+                    canonical_path: Some(PathBuf::from("/Users/test/.cargo/bin/rustup")),
+                    alias_paths: vec![PathBuf::from("/Users/test/.cargo/bin/rustup")],
+                    is_active: true,
+                    version: Some("1.28.2".to_string()),
+                    provenance: InstallProvenance::Unknown,
+                    confidence: 0.44,
+                    decision_margin: Some(0.04),
+                    automation_level: AutomationLevel::NeedsConfirmation,
+                    uninstall_strategy: StrategyKind::InteractivePrompt,
+                    update_strategy: StrategyKind::InteractivePrompt,
+                    remediation_strategy: StrategyKind::ManualRemediation,
+                    explanation_primary: Some(
+                        "insufficient or conflicting rustup provenance evidence".to_string(),
+                    ),
+                    explanation_secondary: None,
+                    competing_provenance: Some(InstallProvenance::RustupInit),
+                    competing_confidence: Some(0.40),
+                }],
+            )
+            .expect("install instance should persist");
+
+        let error = super::cmd_managers_mutation(
+            Arc::new(store),
+            GlobalOptions::default(),
+            "uninstall",
+            &["rustup".to_string()],
+        )
+        .expect_err("unknown provenance without preview/override should fail");
+        assert!(error.contains("allow-unknown-provenance"));
+        assert!(error.contains("--preview"));
+
+        let _ = fs::remove_file(db_path);
     }
 
     #[test]

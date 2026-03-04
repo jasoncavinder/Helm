@@ -1,14 +1,24 @@
 import Cocoa
 import SwiftUI
 import Combine
+import UserNotifications
+import os.log
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+private let appDelegateLogger = Logger(
+    subsystem: "com.jasoncavinder.Helm",
+    category: "app_delegate"
+)
+
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNotificationCenterDelegate {
     private var statusItem: NSStatusItem?
     private var panel: FloatingPanel!
     private var eventMonitor: EventMonitor?
     private var controlCenterWindowController: NSWindowController?
     private var statusMenu: NSMenu?
+    private var aboutMenuItem: NSMenuItem?
     private var checkForUpdatesMenuItem: NSMenuItem?
+    private var controlCenterMenuItem: NSMenuItem?
+    private var settingsMenuItem: NSMenuItem?
     private var upgradeAllMenuItem: NSMenuItem?
     private var refreshMenuItem: NSMenuItem?
     private var cancellables: Set<AnyCancellable> = []
@@ -16,6 +26,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let core = HelmCore.shared
     private let appUpdate = AppUpdateCoordinator.shared
     private let controlCenterContext = ControlCenterContext()
+    private let notificationCenter = UNUserNotificationCenter.current()
+    private var hasObservedInFlightTasks = false
+    private var announcedTimeoutPromptIds: Set<String> = []
+    private static let timeoutPromptCategoryId = "helm.task.timeout.prompt"
+    private static let timeoutPromptActionWaitId = "helm.task.timeout.prompt.wait"
+    private static let timeoutPromptActionStopId = "helm.task.timeout.prompt.stop"
+    private static let timeoutPromptTaskIdUserInfoKey = "task_id"
+    private static let timeoutPromptIdUserInfoKey = "prompt_id"
     private var isControlCenterVisible: Bool {
         controlCenterWindowController?.window?.isVisible == true
     }
@@ -58,6 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         configureStatusMenu()
         bindStatusItem()
         updateStatusItemAppearance()
+        configureUserNotifications()
 
         eventMonitor = EventMonitor(
             mask: [.leftMouseDown, .rightMouseDown],
@@ -198,6 +217,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 self?.updateControlCenterWindowDragBehavior()
             }
             .store(in: &cancellables)
+
+        core.$taskTimeoutPrompts
+            .receive(on: RunLoop.main)
+            .sink { [weak self] prompts in
+                self?.handleTaskTimeoutPrompts(prompts)
+            }
+            .store(in: &cancellables)
+
+        core.$activeTasks
+            .receive(on: RunLoop.main)
+            .sink { [weak self] tasks in
+                self?.handleActiveTasksUpdated(tasks)
+            }
+            .store(in: &cancellables)
     }
 
     private func resizePopoverIfVisible() {
@@ -328,6 +361,123 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 }
 
+// MARK: - Notifications
+
+private extension AppDelegate {
+    var shouldSuppressTaskNotifications: Bool {
+        panel.isVisible || isControlCenterVisible
+    }
+
+    func configureUserNotifications() {
+        notificationCenter.delegate = self
+
+        let waitAction = UNNotificationAction(
+            identifier: Self.timeoutPromptActionWaitId,
+            title: L10n.App.Tasks.Notification.timeoutPromptActionWait.localized,
+            options: []
+        )
+        let stopAction = UNNotificationAction(
+            identifier: Self.timeoutPromptActionStopId,
+            title: L10n.App.Tasks.Notification.timeoutPromptActionStop.localized,
+            options: [.destructive]
+        )
+        let timeoutPromptCategory = UNNotificationCategory(
+            identifier: Self.timeoutPromptCategoryId,
+            actions: [waitAction, stopAction],
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
+        notificationCenter.setNotificationCategories([timeoutPromptCategory])
+
+        notificationCenter.requestAuthorization(options: [.alert, .sound]) { granted, error in
+            if let error {
+                appDelegateLogger.warning("notification authorization request failed: \(error.localizedDescription, privacy: .public)")
+                return
+            }
+            appDelegateLogger.info("notification authorization granted=\(granted, privacy: .public)")
+        }
+    }
+
+    func handleTaskTimeoutPrompts(_ prompts: [CoreTaskTimeoutPrompt]) {
+        let activePromptIds = Set(prompts.map(\.id))
+        announcedTimeoutPromptIds.formIntersection(activePromptIds)
+
+        guard !shouldSuppressTaskNotifications else { return }
+        for prompt in prompts {
+            guard !announcedTimeoutPromptIds.contains(prompt.id) else { continue }
+            postTaskTimeoutPromptNotification(prompt)
+            announcedTimeoutPromptIds.insert(prompt.id)
+        }
+    }
+
+    func handleActiveTasksUpdated(_ tasks: [TaskItem]) {
+        let hasInFlight = tasks.contains(where: \.isRunning)
+        if hasInFlight {
+            hasObservedInFlightTasks = true
+            return
+        }
+        guard hasObservedInFlightTasks else { return }
+        hasObservedInFlightTasks = false
+
+        guard !shouldSuppressTaskNotifications else { return }
+        postTasksCompletedNotification()
+    }
+
+    func postTaskTimeoutPromptNotification(_ prompt: CoreTaskTimeoutPrompt) {
+        let managerName = core.normalizedManagerName(prompt.manager)
+        let content = UNMutableNotificationContent()
+        content.title = L10n.App.Tasks.Notification.timeoutPromptTitle.localized(
+            with: ["manager": managerName]
+        )
+        content.body = L10n.App.Tasks.Notification.timeoutPromptMessage.localized(
+            with: [
+                "manager": managerName,
+                "grace_seconds": Int(prompt.graceSeconds),
+                "extension_seconds": Int(prompt.suggestedExtensionSeconds)
+            ]
+        )
+        content.sound = .default
+        content.categoryIdentifier = Self.timeoutPromptCategoryId
+        content.userInfo = [
+            Self.timeoutPromptTaskIdUserInfoKey: NSNumber(value: Int64(prompt.taskId)),
+            Self.timeoutPromptIdUserInfoKey: prompt.id
+        ]
+
+        let request = UNNotificationRequest(
+            identifier: "helm.task.timeout.\(prompt.id)",
+            content: content,
+            trigger: nil
+        )
+        notificationCenter.add(request) { error in
+            if let error {
+                appDelegateLogger.warning(
+                    "failed to post timeout prompt notification for task \(prompt.taskId): \(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
+    }
+
+    func postTasksCompletedNotification() {
+        let content = UNMutableNotificationContent()
+        content.title = L10n.App.Tasks.Notification.allCompleteTitle.localized
+        content.body = L10n.App.Tasks.Notification.allCompleteMessage.localized
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "helm.tasks.completed.\(Int(Date().timeIntervalSince1970))",
+            content: content,
+            trigger: nil
+        )
+        notificationCenter.add(request) { error in
+            if let error {
+                appDelegateLogger.warning(
+                    "failed to post tasks-completed notification: \(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
+    }
+}
+
 // MARK: - Control Center & Status Menu
 
 private extension AppDelegate {
@@ -405,6 +555,7 @@ private extension AppDelegate {
         )
         aboutItem.target = self
         menu.addItem(aboutItem)
+        aboutMenuItem = aboutItem
 
         let checkForUpdatesItem = NSMenuItem(
             title: L10n.App.Overlay.About.checkForUpdates.localized,
@@ -422,6 +573,7 @@ private extension AppDelegate {
         )
         controlCenterItem.target = self
         menu.addItem(controlCenterItem)
+        controlCenterMenuItem = controlCenterItem
 
         menu.addItem(.separator())
 
@@ -453,6 +605,7 @@ private extension AppDelegate {
         settingsMenu.addItem(advancedSettingsItem)
         settingsItem.submenu = settingsMenu
         menu.addItem(settingsItem)
+        settingsMenuItem = settingsItem
 
         menu.addItem(buildSupportMenuItem())
 
@@ -506,10 +659,20 @@ private extension AppDelegate {
     }
 
     func updateStatusMenuState() {
-        checkForUpdatesMenuItem?.isEnabled = appUpdate.canCheckForUpdates && !appUpdate.isCheckingForUpdates
-        checkForUpdatesMenuItem?.toolTip = appUpdate.unavailableReasonLocalizationKey?.localized
-        upgradeAllMenuItem?.isEnabled = !core.outdatedPackages.isEmpty
-        refreshMenuItem?.isEnabled = !core.isRefreshing
+        let onboardingComplete = core.hasCompletedOnboarding
+
+        aboutMenuItem?.isEnabled = onboardingComplete
+        controlCenterMenuItem?.isEnabled = onboardingComplete
+        settingsMenuItem?.isEnabled = onboardingComplete
+
+        checkForUpdatesMenuItem?.isEnabled = onboardingComplete
+            && appUpdate.canCheckForUpdates
+            && !appUpdate.isCheckingForUpdates
+        checkForUpdatesMenuItem?.toolTip = onboardingComplete
+            ? appUpdate.unavailableReasonLocalizationKey?.localized
+            : nil
+        upgradeAllMenuItem?.isEnabled = onboardingComplete && !core.outdatedPackages.isEmpty
+        refreshMenuItem?.isEnabled = onboardingComplete && !core.isRefreshing
     }
 
     func showStatusMenu() {
@@ -576,5 +739,51 @@ extension AppDelegate {
             return
         }
         core.setInteractiveSurfaceVisibility(popoverVisible: panel.isVisible, controlCenterVisible: false)
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound])
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        defer { completionHandler() }
+
+        let userInfo = response.notification.request.content.userInfo
+        if let promptId = userInfo[Self.timeoutPromptIdUserInfoKey] as? String {
+            announcedTimeoutPromptIds.remove(promptId)
+        }
+
+        guard response.notification.request.content.categoryIdentifier == Self.timeoutPromptCategoryId else {
+            return
+        }
+
+        let taskId: UInt64? = {
+            if let value = userInfo[Self.timeoutPromptTaskIdUserInfoKey] as? NSNumber {
+                return value.uint64Value
+            }
+            if let value = userInfo[Self.timeoutPromptTaskIdUserInfoKey] as? String,
+               let parsed = UInt64(value) {
+                return parsed
+            }
+            return nil
+        }()
+
+        guard let taskId else { return }
+        switch response.actionIdentifier {
+        case Self.timeoutPromptActionWaitId:
+            core.respondTaskTimeoutPrompt(taskId: taskId, waitForCompletion: true)
+        case Self.timeoutPromptActionStopId:
+            core.respondTaskTimeoutPrompt(taskId: taskId, waitForCompletion: false)
+        default:
+            break
+        }
     }
 }

@@ -557,6 +557,138 @@ For `1.0`, Helm keeps crash/error reporting local-only and does not ship automat
 - Keeps support workflows functional via explicit diagnostics export without background collection.
 
 ---
+## Decision 033 — Manager Install-Instance Provenance Model (Phase 1)
+
+**Decision:**
+Introduce a dedicated per-manager install-instance model for provenance analysis while preserving existing single-path detection compatibility.
+
+**Policy details:**
+
+- Persist install instances in a dedicated table (`manager_install_instances`, migration v9; `decision_margin` added in migration v10).
+- Each instance uses a deterministic identity model with ordered fallback:
+  - `DevInode` (`dev:ino`) when available
+  - `CanonicalPath` when canonical path is available but inode identity is unavailable
+  - `FallbackHash` (canonical/display path + stable file metadata)
+- Persist identity metadata (`identity_kind`, `identity_value`) and deterministic `instance_id` for continuity across runs even if alias paths change.
+- External ownership evidence (for example `brew`, `pkgutil`) must be:
+  - timeout-bounded
+  - lazy/invoked only for ambiguity resolution
+  - cached per detection run
+  - optional (signal boost only; detection must fail closed and continue)
+- Persist explainability and policy outputs per instance:
+  - `provenance`, `confidence`
+  - `decision_margin` between top and competing provenance scores (when a competing score exists)
+  - top evidence factors
+  - competing provenance and score when relevant
+  - derived `automation_level`, `uninstall_strategy`, `update_strategy`, `remediation_strategy`
+- Managed-policy controls are evaluated at lifecycle runtime/surface projection time (not persisted into provenance records):
+  - install-method policy context: `HELM_MANAGED_INSTALL_METHOD_POLICY`, `HELM_MANAGED_INSTALL_METHOD_POLICY_ALLOW_RESTRICTED`
+  - automation ceiling policy context: `HELM_MANAGED_AUTOMATION_POLICY` (`automatic|needs_confirmation|read_only`)
+  - managed-policy automation ceilings clamp effective automation/strategy behavior conservatively without rewriting stored provenance evidence.
+- Route provenance classification through adapter-level spec hooks:
+  - `rustup` uses explicit scoring rules in Phase 2
+  - non-rustup managers remain explicit `Unknown` stubs with `TODO(provenance-spec)` markers until adapter rules are implemented
+- Non-rustup managers default to `Unknown` provenance in Phase 1 with explicit `TODO(provenance-spec)` markers.
+- Rollout gate:
+  - do not switch manager uninstall routing to provenance-first until instance/provenance stability and multi-install ambiguity tests are validated.
+  - phase 3 controlled exception: rustup manager uninstall is now provenance-first in CLI (with structured blast-radius preview, `--yes` confirmation gate, and explicit unknown-provenance override); non-rustup uninstall remains compatibility-routed until adapter specs are implemented.
+
+**Rationale:**
+
+- Decouples install-method preference from actual provenance detection.
+- Improves safety for multi-install and ambiguous-manager environments.
+- Enables confidence-based automation policy instead of path-only assumptions.
+- Keeps adoption low-risk by preserving existing detection compatibility and delaying routing switch-over.
+
+---
+
+## Decision 034 — Local-First Doctor/Repair Architecture (Phase 1)
+
+**Decision:**
+Introduce dedicated `doctor` and `repair` subsystems in core, with:
+
+- deterministic local finding fingerprints
+- embedded/local knowledge lookup for known remediations
+- repair planning + apply primitives routed through existing task orchestration
+
+Phase-1 scope is intentionally narrow and starts with Homebrew metadata-only manager-install mismatch remediation.
+
+**Policy details:**
+
+- Doctor findings must include:
+  - `finding_code`
+  - `issue_code`
+  - deterministic `fingerprint`
+  - severity and top evidence factors
+- Repair planning maps finding fingerprints to actionable options.
+- External/online lookup is deferred; current release uses embedded knowledge data and explicit TODO seams for future remote providers.
+- Repair execution must reuse existing manager/package mutation pathways and keep task lifecycle visibility/cancellation semantics intact.
+- UI/CLI/TUI should consume the same core finding/repair contracts; surface-level UX can evolve independently.
+
+**Rationale:**
+
+- Creates a stable bridge from current local diagnostics to future online known-fix workflows without hard-coupling current releases to backend availability.
+- Consolidates ad hoc one-off remediation logic behind one subsystem contract.
+- Preserves user trust through deterministic local-first behavior and explainable reasoning prior to backend rollout.
+
+---
+## Decision 035 — Post-Install Setup Is a First-Class Health Gate
+
+**Decision:**
+Treat manager post-install shell/setup requirements as explicit doctor/repair findings and as a manageability gate (not a soft warning).
+
+Initial implemented manager scope:
+
+- `rustup`
+- `mise`
+- `asdf`
+
+**Policy details:**
+
+- Detection/doctor emits `post_install_setup_required` when manager install instances are present but required setup checks are unmet.
+- Manager enablement must be blocked when setup-required findings are present.
+- Repair planning exposes `apply_post_install_setup_defaults` when safe automation is available.
+- GUI/CLI/TUI consume the same issue/repair contract:
+  - user-facing guided steps
+  - explicit verify/check-again path
+  - optional automation path when supported
+- Install flow can optionally request automatic post-install setup completion; default remains opt-in (`off`).
+- Non-implemented managers remain out of scope until adapter-specific setup requirements are defined.
+
+**Rationale:**
+
+- Prevents false "installed/healthy" states when core shell activation is missing.
+- Aligns manager health, enablement policy, and repair UX behind one deterministic contract.
+- Preserves trust by surfacing clear guidance and explicit verification rather than silent assumptions.
+
+---
+## Decision 036 — Repository-Local Codex Operating System
+
+**Decision:**
+Adopt a repository-local Codex operating model with:
+
+- repo-scoped instructions layering (`AGENTS.md` + subtree `AGENTS.md` files)
+- reusable workflow Skills under `ops/codex/skills/`
+- repo-local Codex config (`.codex/config.toml`) using lean `project_doc_max_bytes` (`131072`)
+- reusable slash-command templates under `.codex/commands/`
+- structured local notify logging on `agent-turn-complete` to `dev/logs/codex-runs.ndjson`
+
+**Policy details:**
+
+- Keep policy/invariants in root `AGENTS.md`; move procedures into Skills.
+- Detect repeated/fragile workflows and promote them into Skills instead of expanding root instructions.
+- Keep automation local-first; external MCP integrations remain optional and justified-by-need.
+- Release/publish operations remain explicit-confirmation and dry-run/checklist-first by default.
+- Session observability must avoid secrets and log only minimal structured run metadata.
+
+**Rationale:**
+
+- Reduces instruction repetition and context-window bloat across sessions.
+- Standardizes recurring execution paths (quality gates, remediation batches, updater checks, docs sync).
+- Improves traceability for long-running/multi-step Codex work without introducing remote telemetry.
+- Preserves Helm safety posture while increasing day-to-day operator efficiency.
+
+---
 ## Summary
 
 Helm prioritizes:

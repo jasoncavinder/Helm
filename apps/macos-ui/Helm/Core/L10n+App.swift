@@ -63,6 +63,10 @@ extension L10n {
                 static let unpin = "app.packages.action.unpin"
                 static let upgradePackage = "app.packages.action.upgrade_package"
             }
+            struct Alert {
+                static let uninstallTitle = "app.packages.alert.uninstall.title"
+                static let uninstallMessage = "app.packages.alert.uninstall.message"
+            }
             struct KegPolicy {
                 static let useGlobal = "app.packages.keg_policy.use_global"
                 static let keepOld = "app.packages.keg_policy.keep_old"
@@ -79,6 +83,7 @@ extension L10n {
                 static let disabled = "app.managers.state.disabled"
                 static let notInstalled = "app.managers.state.not_installed"
                 static let comingSoon = "app.managers.state.coming_soon"
+                static let metadataMismatch = "app.managers.state.metadata_mismatch"
             }
             struct Label {
                 static let packageCount = "app.managers.label.package_count"
@@ -142,6 +147,18 @@ extension L10n {
                 static let updateMessage = "app.managers.alert.update.message"
                 static let uninstallTitle = "app.managers.alert.uninstall.title"
                 static let uninstallMessage = "app.managers.alert.uninstall.message"
+                static let disableBlockedTitle = "app.managers.alert.disable_blocked.title"
+                static let disableBlockedMessage = "app.managers.alert.disable_blocked.message"
+                static let enableRequiresParentTitle = "app.managers.alert.enable_requires_parent.title"
+                static let enableRequiresParentMessage = "app.managers.alert.enable_requires_parent.message"
+            }
+            struct Uninstall {
+                struct Details {
+                    static let toggle = "app.managers.uninstall.details.toggle"
+                    static let strategy = "app.managers.uninstall.details.strategy"
+                    static let impacts = "app.managers.uninstall.details.impacts"
+                    static let impactCounts = "app.managers.uninstall.details.impact_counts"
+                }
             }
             struct Operation {
                 static let startingInstall = "app.managers.operation.starting_install"
@@ -153,6 +170,7 @@ extension L10n {
                 static let installing = "app.managers.operation.installing"
                 static let updating = "app.managers.operation.updating"
                 static let uninstalling = "app.managers.operation.uninstalling"
+                static let verifying = "app.managers.operation.verifying"
                 static let upgrading = "app.managers.operation.upgrading"
             }
         }
@@ -439,6 +457,7 @@ extension L10n {
             static let detectionLastTaskId = "app.inspector.detection_last_task_id"
             static let detectionReasonDetected = "app.inspector.detection_reason.detected"
             static let detectionReasonNotDetected = "app.inspector.detection_reason.not_detected"
+            static let detectionReasonInconsistent = "app.inspector.detection_reason.inconsistent"
             static let detectionReasonInProgress = "app.inspector.detection_reason.in_progress"
             static let detectionReasonFailed = "app.inspector.detection_reason.failed"
             static let detectionReasonDisabled = "app.inspector.detection_reason.disabled"
@@ -453,12 +472,44 @@ extension L10n {
             static let disabled = "app.inspector.disabled"
             static let category = "app.inspector.category"
             static let installMethod = "app.inspector.install_method"
+            static let installSource = "app.inspector.install_source"
+            static let installInstanceCount = "app.inspector.install_instance_count"
+            static let provenance = "app.inspector.provenance"
+            static let confidence = "app.inspector.confidence"
+            static let decisionMargin = "app.inspector.decision_margin"
+            static let explanation = "app.inspector.explanation"
+            static let competingProvenance = "app.inspector.competing_provenance"
+            struct MultiInstance {
+                static let attentionTitle = "app.inspector.multi_instance.attention_title"
+                static let attentionMessage = "app.inspector.multi_instance.attention_message"
+                static let acknowledgedTitle = "app.inspector.multi_instance.acknowledged_title"
+                static let acknowledgedMessage = "app.inspector.multi_instance.acknowledged_message"
+                static let keepMultiple = "app.inspector.multi_instance.keep_multiple"
+                static let reevaluate = "app.inspector.multi_instance.reevaluate"
+                static let manageInstance = "app.inspector.multi_instance.manage_instance"
+            }
+            struct PackageStateIssue {
+                struct MetadataOnly {
+                    static let title = "app.inspector.package_state_issue.metadata_only.title"
+                    static let message = "app.inspector.package_state_issue.metadata_only.message"
+                    static let impact = "app.inspector.package_state_issue.metadata_only.impact"
+                    static let repairAction = "app.inspector.package_state_issue.metadata_only.repair_action"
+                    static let removeStaleAction = "app.inspector.package_state_issue.metadata_only.remove_stale_action"
+                    static let detailsToggle = "app.inspector.package_state_issue.metadata_only.details_toggle"
+                    static let detailsSource = "app.inspector.package_state_issue.metadata_only.details_source"
+                    static let detailsPackage = "app.inspector.package_state_issue.metadata_only.details_package"
+                    static let detailsExpectedPaths = "app.inspector.package_state_issue.metadata_only.details_expected_paths"
+                    static let detailsDetectedInstances = "app.inspector.package_state_issue.metadata_only.details_detected_instances"
+                }
+            }
             static let timeoutHard = "app.inspector.timeout_hard"
             static let timeoutIdle = "app.inspector.timeout_idle"
             static let timeoutUseDefault = "app.inspector.timeout.use_default"
             static let timeoutSeconds = "app.inspector.timeout.seconds"
             static let installMethodTagRecommended = "app.inspector.install_method.tag.recommended"
             static let installMethodTagPreferred = "app.inspector.install_method.tag.preferred"
+            static let installMethodTagManagedRestricted = "app.inspector.install_method.tag.managed_restricted"
+            static let installMethodTagBlocked = "app.inspector.install_method.tag.blocked"
             static let viewManager = "app.inspector.view_manager"
             struct InstallMethod {
                 static let automatable = "app.inspector.install_method.automatable"
@@ -484,6 +535,12 @@ extension L10n {
                 static let asdf = "app.inspector.install_method.asdf"
                 static let mise = "app.inspector.install_method.mise"
                 static let notManageable = "app.inspector.install_method.not_manageable"
+            }
+            struct InstallSource {
+                static let officialDownload = "app.inspector.install_source.official_download"
+                static let existingBinaryPath = "app.inspector.install_source.existing_binary_path"
+                static let binaryPathPlaceholder = "app.inspector.install_source.binary_path_placeholder"
+                static let selectBinary = "app.inspector.install_source.select_binary"
             }
         }
         struct Overlay {
@@ -563,6 +620,15 @@ extension L10n.App {
         struct Action {
             static let cancel = "app.tasks.action.cancel"
             static let dismissFailed = "app.tasks.action.dismiss_failed"
+        }
+
+        struct Notification {
+            static let allCompleteTitle = "app.tasks.notification.all_complete.title"
+            static let allCompleteMessage = "app.tasks.notification.all_complete.message"
+            static let timeoutPromptTitle = "app.tasks.notification.timeout_prompt.title"
+            static let timeoutPromptMessage = "app.tasks.notification.timeout_prompt.message"
+            static let timeoutPromptActionWait = "app.tasks.notification.timeout_prompt.action_wait"
+            static let timeoutPromptActionStop = "app.tasks.notification.timeout_prompt.action_stop"
         }
     }
 }

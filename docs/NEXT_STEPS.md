@@ -11,18 +11,29 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-0.18.x planning kickoff (post-v0.17.7 stable)
+0.18.x doctor/repair foundation execution (post-v0.17.8 stable)
 ```
 
 Focus:
-- keep `main`/`dev`/`docs`/`web` publication docs and version markers aligned for `v0.17.7`
+- keep `main`/`dev`/`docs`/`web` publication docs and version markers aligned for `v0.17.8`
 - maintain release-process hardening guardrails now that phases 1-5 are complete (preflight, publish verification, drift prevention)
-- begin execution planning and branch setup for `0.18.x` local security groundwork after stable publication
+- execute doctor/repair subsystem foundation in core + FFI + service surfaces
+- ship first repair path for Homebrew metadata-only manager installs via the new repair subsystem
+- keep repair knowledge lookup local/embedded for now, with explicit TODO seams for future online fingerprint lookup
+- sequence `0.18.x` local security groundwork after doctor/repair foundation slice
 - keep launch-at-login scoped to GUI only (no CLI/TUI parity target)
+- track post-mise lifecycle follow-ups: plugin-as-package modeling evaluation and managed-environment install-source policy controls
+- keep the repository-local Codex operating model current (lean `AGENTS`, `ops/codex/skills/`, `.codex/commands/`, notify logging, and `ops/codex/docs/` workflows) so recurring AI workflows remain deterministic and low-friction
 
 Current checkpoint:
-- `v0.17.7` is the current stable release on `main`; pre-1.0 quality-audit remediation and release-gate hardening are now included in stable publication:
-  - release artifacts, metadata publication PRs, and post-publish verification checks completed for `v0.17.7`.
+- `v0.17.8` is the current stable release on `main`; pre-1.0 quality-audit remediation and release-gate hardening are now included in stable publication:
+  - release artifacts, metadata publication PRs, and post-publish verification checks completed for `v0.17.8`.
+  - post-`v0.17.7` doctor/repair foundation scaffold delivered on `dev`:
+    - added `helm-core` doctor/repair modules with deterministic finding fingerprints, local health report model, and embedded repair knowledge-provider scaffolding
+    - manager package-state issue generation now routes through doctor findings and includes fingerprint/severity/evidence plus repair-option metadata
+    - added repair-apply execution path through FFI + XPC (`helm_apply_manager_package_state_issue_repair`) and migrated GUI metadata-only repair actions to that subsystem
+    - CLI doctor scaffolding now includes `helm doctor scan` and `helm doctor repair plan|apply` for local-first health/repair flows
+    - manager post-install setup slice is now integrated for `rustup`/`mise`/`asdf`: doctor emits `post_install_setup_required`, repair exposes `apply_post_install_setup_defaults`, manager enablement is gated until setup checks pass, GUI inspector provides `Finish Setup` guidance + verify flow + optional install-time auto-setup, and CLI repair apply supports setup-default automation with follow-up detection.
   - post-`0.17.3` `0.17.4` TUI planning slice delivered: detailed ratatui implementation plan documented at `docs/architecture/HELM_TUI_IMPLEMENTATION_PLAN.md` (keyboard model, parity matrix, branding constraints, and ASCII splash-screen contract).
   - post-`0.17.3` `0.17.4` TUI implementation slice delivered: no-arg TTY now launches the ratatui TUI with branded ASCII splash (`logo` + `Helm` + `Take the helm.`), keyboard navigation, command palette/help/confirm overlays, read-only parity panes (updates/packages/tasks/managers/settings/diagnostics), and direct mutation hooks for common manager/package/task actions.
   - post-`0.17.3` `0.17.4` TUI parity-expansion slice delivered: managers pane now supports selected-manager detect/executable/method/priority controls via keyboard, updates pane now supports include-pinned + allow-OS-updates toggles for upgrade workflows, diagnostics pane supports one-key export snapshot writes, task-log detail follows selection movement immediately, and settings pane now exposes integrated self-update status/check/apply controls honoring provenance/channel policy semantics.
@@ -30,6 +41,89 @@ Current checkpoint:
   - post-`0.17.3` `0.17.4` kickoff slice delivered: app now bundles `helm-cli` and Settings includes install/remove controls for a managed `~/.local/bin/helm` shim with app-bundle provenance marker writes.
   - post-`v0.17.6` settings CLI-shim follow-up delivered on `dev`:
     - `Helm.entitlements` and `HelmRelease.entitlements` now include home-relative read/write exceptions for `~/.local/bin/` and `~/.config/helm/` so sandboxed app builds can install/remove the managed CLI shim and marker at the real user-home paths.
+  - post-`v0.17.7` managers inspector interaction hardening follow-up delivered on `dev`:
+    - selected manager-row highlight overlays no longer intercept pointer events, and manager `Update`/`Uninstall`/`View Packages` actions now live in inspector icon controls for UI parity with package inspector actions.
+  - post-`v0.17.7` shared onboarding-state follow-up delivered on `dev`:
+    - GUI onboarding/license acceptance now syncs through shared SQLite onboarding keys (via XPC service + Rust FFI) used by `helm-cli`, with `UserDefaults` retained as a local mirror/backfill path to prevent GUI/CLI first-run-state drift.
+  - post-`v0.17.7` Rust build-toolchain resilience follow-up delivered on `dev`:
+    - `apps/macos-ui/scripts/build_rust.sh` now validates the selected rustup toolchain before running cargo, performs uninstall+reinstall auto-repair for corrupted toolchains when enabled, scopes rust-target list/add operations to the same toolchain, and clears unsupported `LC_ALL=C.UTF-8` in script context to avoid noisy locale warnings in Xcode logs.
+  - post-`v0.17.7` manager-provenance phase 1 groundwork delivered on `dev`:
+    - added per-manager install-instance persistence (`manager_install_instances`, migration v9) including stable identity metadata (`identity_kind`, `identity_value`, deterministic `instance_id`)
+    - runtime detection now persists deduplicated multi-install instances (symlink alias continuity preserved) in addition to legacy single-path detection fields
+    - provenance fields now persist confidence, competing provenance, explainability factors, and strategy/automation policy outputs
+    - rustup now has the first provenance scoring pass with bounded/lazy optional `brew --prefix rustup` evidence, establishing the baseline for later full adapter rollout
+    - `helm-cli` now includes a provenance inspection command (`helm managers instances [<manager-id>]`) and enriched `managers list/show` summaries with active provenance/confidence/automation-strategy metadata for operator visibility
+  - post-`v0.17.7` manager-provenance phase 2 confidence/margin slice delivered on `dev`:
+    - install-instance schema now records provenance decision margin (`decision_margin`, migration v10) in addition to confidence and competing provenance
+    - provenance classification now routes through adapter-level spec hooks (initially rustup-first, later expanded across managers)
+    - confidence thresholds and automation mapping constants are now centralized in shared core policy module `provenance_policy.rs`
+    - rustup provenance scoring now persists decision margin for close races so ambiguous outcomes are diagnosable
+    - rustup provenance heuristics now include default/custom cargo-home fingerprints, asdf/mise-managed layouts, and optional bounded `pkgutil` ownership evidence for ambiguous managed-prefix paths
+    - bounded external provenance probes now emit structured cache/timeout/success diagnostics without blocking detection
+    - provenance test coverage now includes timeout-bounded hung-probe responsiveness checks to guard against external evidence deadlocks
+    - provenance unit coverage now includes threshold/automation boundary assertions plus fail-closed external-probe behavior
+    - identity coverage now includes canonical-path fallback behavior and fallback-hash continuity/reset expectations for non-inode environments
+    - `helm-cli` manager summaries and `helm managers instances` now surface decision-margin values for operator explainability
+    - operator troubleshooting guidance now documents misclassification triage and probe-timeout expectations (`docs/operations/MANAGER_PROVENANCE_TROUBLESHOOTING.md`)
+  - post-`v0.17.7` manager-provenance phase 3 rustup uninstall safety slice delivered on `dev`:
+    - `helm managers uninstall` now supports structured preview mode (`--preview`) and explicit confirmation gating (`--yes`) based on blast-radius scoring
+    - rustup uninstall routing now prefers active install-instance provenance strategy over install-method preference (`homebrew_formula` vs `rustup_self`)
+    - rustup update routing now also prefers active install-instance provenance strategy (`homebrew_formula` vs `rustup_self`) and blocks read-only/ambiguous provenance instead of silently using install-method fallback
+    - rustup remediation strategy outputs are now provenance-specific (`homebrew_formula`/`rustup_self` known ownership, `interactive_prompt` unknown, `read_only` blocked system/enterprise/nix) for deterministic operator guidance
+    - multi-install rustup planner tests now assert active-instance precedence for both update and uninstall routing paths
+    - ambiguous rustup provenance now supports preview-only blast-radius inspection without override, while mutation still blocks unless explicitly overridden with `--allow-unknown-provenance`
+    - uninstall preview payloads now include file/directory impact candidates, secondary effects, and provenance confidence/automation explainability for operator trust (including standardized summary lines and unknown-override/read-only flags across GUI/CLI payloads)
+    - shared manager uninstall-preview model/build logic now lives in `helm-core` (`uninstall_preview.rs`) and is reused by CLI + FFI/UI to keep blast-radius/provenance output aligned
+    - package-manager uninstall preview now uses the same shared core preview module; `helm packages uninstall` now supports `--preview` and threshold-gated `--yes` confirmation with structured blast-radius payloads
+    - uninstall preview generation now has deterministic-output regression coverage to prevent payload drift
+    - TUI manager uninstall confirmation now includes provenance/blast-radius preview summary and supports explicit unknown-provenance override via `Shift+X`
+    - TUI package uninstall confirmation now includes package uninstall preview summary (strategy/provenance/blast radius) before destructive execution
+    - GUI manager inspector uninstall now uses the same backend preview/options path (FFI + XPC), includes blast-radius/provenance summary details in the confirmation alert, blocks read-only automation uninstall execution, and supports explicit unknown-provenance override through uninstall-with-options execution
+    - GUI package uninstall confirmation now uses backend package uninstall preview over the same FFI + XPC path (inspector and popover quick actions) before destructive package uninstall execution
+    - provenance-first uninstall routing is now enabled for `asdf`, `mise`, and `mas` using active install-instance strategy (`homebrew_formula`/`read_only`), with ambiguous/non-homebrew provenance requiring explicit override (`--allow-unknown-provenance`) for mutation and preview allowed without override
+    - `asdf` now has adapter-specific provenance scoring for homebrew vs asdf-managed layouts, and `asdf`/`mise`/`mas` manager update routing now resolves from active install-instance provenance strategy and blocks ambiguous/read-only paths instead of consulting install-method preference
+    - adapter-specific provenance scoring now also covers `npm`/`pnpm`/`yarn`, `pip`/`pipx`/`poetry`, `rubygems`/`bundler` (including version-suffixed executable aliases such as `bundle3.4`), and `cargo`/`cargo-binstall` (including cargo-home layout heuristics for `~/.cargo/bin` and optional `CARGO_HOME/bin`) with conservative ambiguous `/usr/local/bin/*` fallback to `Unknown` (read-only automation); lifecycle routing has now been enabled for the Homebrew one-to-one subset (`pnpm`, `yarn`, `pipx`, `poetry`, `cargo-binstall`, `podman`, `colima`) while higher-ambiguity managers remain gated, and provenance-first manager routing now supports dynamic parent-formula resolution for `npm`/`pip`/`rubygems`/`bundler`/`cargo` when active `Cellar/<formula>` ownership can be derived (with unresolved ownership hard-blocking both update and uninstall). Read-only uninstall planning now follows a shared explicit read-only preview/block path across Homebrew-routed managers so previews do not imply Homebrew removals when automation outcome is read-only, one-to-one Homebrew-manager routing now has looped update/uninstall happy-path plus ambiguous block/preview/override and read-only regression coverage (`pnpm`/`yarn`/`pipx`/`poetry`/`cargo-binstall`/`podman`/`colima`), and dynamic parent-formula managers now have looped unresolved/ambiguous/override/read-only regression coverage across update/uninstall policy paths (`npm`/`pip`/`rubygems`/`bundler`/`cargo`). CLI scripted-mode uninstall tests now also assert command-level flag enforcement (`--yes`, `--allow-unknown-provenance`) and preview-hint messaging for deterministic automation paths, including rustup multi-install and unknown-provenance command-path smoke coverage (`--preview` happy path + non-preview override hint). Manager list/instances parity now has deterministic no-active fallback behavior (instance ordering normalization in manager summary selection) with regression tests to keep `managers list/show` active-provenance fields aligned with `managers instances` surfaces.
+    - follow-up completion now covers guarded/system managers (`softwareupdate`, `macports`, `nix_darwin`, `sparkle`, `setapp`, `homebrew_cask`, `docker_desktop`, `podman`, `colima`, `parallels_desktop`, `xcode_command_line_tools`, `rosetta2`, `firmware_updates`) with adapter-specific provenance tests, and core dispatch no longer depends on per-adapter `TODO(provenance-spec)` fallback stubs; install-instance classification coverage now explicitly verifies ambiguous `/usr/local/bin/*` unknown fallback for app-style managers (`sparkle`, `setapp`, `docker_desktop`, `parallels_desktop`), remaining runtime managers (`npm`, `pnpm`, `pipx`, `poetry`, `rubygems`, `cargo`), guarded-system non-system paths (`softwareupdate`, `xcode_command_line_tools`, `rosetta2`, `firmware_updates`), and nonstandard `macports`/`nix_darwin`/`homebrew_cask` paths.
+  - post-`v0.17.7` manager-provenance API parity follow-up delivered on `dev`:
+    - manager-status FFI/XPC payloads now include per-manager install-instance lists plus active install-instance provenance summary fields (provenance/confidence/decision-margin/automation/strategy/explainability) for GUI parity with CLI provenance trust surfaces
+    - manager inspector now surfaces multi-instance provenance cards (path, provenance, confidence/margin, explanation, competing provenance) so ambiguous rustup layouts are diagnosable without switching to CLI
+    - `helm managers install` now supports scriptable one-off install-method override via `--method <method-id>` without changing persisted manager install-method preferences
+    - ambiguous install-method selection now supports interactive TTY fallback and deterministic non-interactive `--method` requirement errors for script/machine mode consistency
+    - TUI manager install now applies the same install-method resolution policy and blocks ambiguous install submission until method selection is set in Managers (`m` cycle)
+    - GUI manager install now uses an install-method selection sheet before submit, carrying selected-method persistence plus recommendation-rank ordering into the same install policy flow; install-method metadata now includes recommendation reason + policy tags for managed-environment gating stubs
+    - managed-environment install-method gating now runs through a shared policy context (`HELM_MANAGED_INSTALL_METHOD_POLICY`, `HELM_MANAGED_INSTALL_METHOD_POLICY_ALLOW_RESTRICTED`) so CLI/TUI list/cycle flows only expose allowed methods and GUI install/inspector method choices are disabled when blocked by policy, with explicit recommendation/policy badges shown in method labels
+    - manager automation managed-policy ceilings now also flow through shared policy context (`HELM_MANAGED_AUTOMATION_POLICY` with `automatic|needs_confirmation|read_only`, defaulting to `needs_confirmation` when managed-install policy is active) and are applied consistently in CLI + FFI manager-status/instance surfaces and manager lifecycle planning so managed environments can conservatively clamp automation without changing provenance storage
+    - rustup provenance fixtures now include ambiguous `/usr/local` mixed-environment calibration cases that verify bounded external evidence (`brew --prefix rustup`, `pkgutil --file-info`) correctly resolves Homebrew-vs-System ownership outcomes
+    - FFI manager lifecycle routing now matches CLI provenance-first behavior for Homebrew strategy managers: uninstall preview/execute now route `pnpm`/`yarn`/`pipx`/`poetry`/`cargo-binstall`/`podman`/`colima` plus dynamic parent-formula managers (`npm`/`pip`/`rubygems`/`bundler`/`cargo`) through the same strategy/override gates, update routing now uses the same provenance strategy checks, and manager-status install-instance fallback ordering now uses `is_active` then `instance_id` for deterministic CLI/GUI no-active parity; FFI regression coverage now includes one-to-one and parent-formula manager loops plus unresolved-formula and read-only uninstall path assertions.
+  - adapter generalization follow-up delivered on `dev`:
+    - install-method candidates and package-search participation policy now resolve from shared `helm-core` registry metadata (removing duplicated maps in CLI/FFI)
+    - manager-status payloads now include core install-method metadata (`id`, rank/reason, policy tags, hints), and GUI inspector install-method options now resolve from that payload with local hint fallback to avoid per-surface drift
+    - manager install planning now resolves through shared `helm-core::manager_lifecycle::plan_manager_install` so CLI + FFI use one install-method routing/validation path (including rustup install-source payload validation)
+    - manager update/uninstall routing now also resolves through shared `helm-core::manager_lifecycle` planners (`plan_manager_update`, `plan_manager_uninstall_route`) so CLI + FFI consume the same provenance-route outputs and safety gating
+    - provenance score rank/threshold/margin/explainability finalization in `install_instances` now uses one shared helper path
+    - external evidence context now supports generic keyed Homebrew prefix probes (`brew --prefix <formula>`) with lazy per-run caching, timeout bounds, and fail-closed behavior
+    - Homebrew/rustup lifecycle routing helpers (`formula ownership`, `update strategy`, `uninstall strategy`) now live in `helm-core::manager_lifecycle` and are consumed by CLI/FFI wrappers
+  - multi-instance manager attention/override follow-up delivered on `dev`:
+    - manager status now includes shared multi-instance fields (`multi_instance_state`, `multi_instance_acknowledged`, `multi_instance_fingerprint`) in both CLI and FFI/XPC projections.
+    - persisted multi-instance acknowledgements are now keyed by manager and validated against deterministic install-set fingerprints so acknowledgements auto-clear when instance sets change.
+    - active managed install instance can now be explicitly switched by `instance_id` through shared core/FFI/service actions; switching clears stale acknowledgement.
+    - CLI/TUI parity now includes instance-level controls to acknowledge, clear acknowledgement, and set active instance (`helm managers instances ack|clear-ack|set-active` plus TUI keybindings).
+    - GUI inspector now surfaces multi-instance attention and acknowledgement banners with `Keep Multiple`/`Re-evaluate` actions, per-instance `Manage This Instance` actions, and attention health-state signaling when duplicate installs are unacknowledged.
+  - manager dependency enablement-guard follow-up delivered on `dev`:
+    - provenance dependency mapping now resolves through shared core helpers (`manager_dependencies`) reused by runtime recommendation ordering and enable/disable policy checks.
+    - disabling a manager now hard-blocks when enabled dependent managers currently rely on it, with parity enforcement in CLI/TUI flows and FFI service calls.
+    - GUI Managers toggles now preflight dependency transitions and present explicit alerts: disable-block reasons with dependent manager list, and enable-child confirmation that also enables the required parent manager.
+    - service localization now includes explicit dependency-block error messaging for manager enablement failures surfaced through XPC/FFI.
+  - post-`v0.17.7` mise provenance calibration follow-up delivered on `dev`:
+    - `mise` install-instance classification now uses a dedicated adapter scorer (no longer Homebrew-formula-only), with explicit heuristics for Homebrew, script-installer (`~/.local/bin/mise`), cargo-home, npm-global `@jdxcode/mise`, MacPorts, Nix, system, and enterprise-managed prefixes.
+    - ambiguous ownership paths now use bounded optional `brew --prefix mise` and `pkgutil --file-info` evidence as lazy scoring boosts (fail-closed) to avoid detection-pipeline blocking while improving provenance confidence.
+  - post-`v0.17.7` mise lifecycle parity follow-up delivered on `dev`:
+    - `mise` install now supports `scriptInstaller` (recommended/default), `homebrew`, `macports`, and `cargoInstall` across shared lifecycle planning in CLI/FFI/UI.
+    - `mise` uninstall now supports structured cleanup/config options with manager-only default and explicit full-cleanup config choice requirements across CLI/TUI/GUI confirmation flows.
+  - post-`v0.17.7` manager lifecycle parity sweep follow-up delivered on `dev`:
+    - install planning now includes deterministic Homebrew routes for remaining non-system managers (`npm`, `pnpm`, `yarn`, `pip`, `pipx`, `poetry`, `rubygems`, `bundler`, `cargo`, `cargo-binstall`, `podman`, `colima`) so manager install tasks can be submitted consistently from GUI/CLI/TUI.
+    - manager install-method exposure is now planner-backed end-to-end: core filters registry methods to executable planner-supported subsets, CLI install-method list/set/install flows consume the same filtered set with policy enforcement, and FFI manager-status method options now hide unsupported methods.
+    - GUI manager metadata now marks the same manager set as automatable, aligning manager-card/inspector install-update-uninstall controls with the expanded lifecycle planner support.
   - `#93` `feat/v0.17-log-foundation`
   - `#95` `feat/v0.17-structured-error-export`
   - `#96` `feat/v0.17-service-health-panel`
@@ -197,6 +291,26 @@ Current checkpoint:
     - added orchestration diagnostics for request/response waits (start timestamp, effective timeout derived via `min(policy_timeout, orchestration_cap)`, retry attempts, terminal status, cancellation path)
     - removed remaining Rust lint blockers (`clippy::collapsible_if` in Homebrew adapter) and added timeout-orphan regression coverage to ensure child process-group cleanup on timeout
     - revalidated rustup reliability with repeated stress runs and restored the Rust release-gate commands to green (`cargo clippy --workspace -- -D warnings`, `cargo test --workspace`)
+  - post-`v0.17.7` task-progress monitoring + live-feedback follow-up delivered on `dev`:
+    - process idle-timeout tracking now resets on stdout/stderr output and sampled process CPU progress (`proc_pid_rusage` on macOS, `/proc/<pid>/stat` on Linux) so silent-but-active tasks are less likely to false-timeout
+    - rustup self-uninstall now runs with explicit timeout profile tuning (15m hard timeout, 180s idle timeout)
+    - Control Center running-task dropdown now polls and shows both Helm-generated task logs and task stdout/stderr output in a combined live stream
+    - Homebrew lifecycle task defaults now use long-run timeout profiles (4h hard timeout, 30m idle timeout for install/uninstall/upgrade/cleanup), and mutating process execution now applies bounded activity-based hard-timeout extensions so long-running active jobs can continue while still enforcing a cap
+    - hard-timeout handling now emits actionable timeout prompts through core/FFI/XPC before forced termination, and GUI now posts macOS notifications for pending timeout prompts plus all-tasks-complete transitions when Control Center/popover are inactive
+  - post-`v0.17.7` manager install-flow UX follow-up delivered on `dev`:
+    - non-installed managers in inspector now surface an install action instead of a disabled `View Packages` button
+    - manager install flows (Managers list and inspector) now require a confirmation sheet with explicit install-method selection
+    - install confirmation now includes a collapsible advanced section for hard-timeout and idle-timeout profile selection; inspector no longer shows install-method/timeout controls inline
+  - post-`v0.17.7` manager install verification follow-up delivered on `dev`:
+    - successful manager installs now set manager operation state to `Verifying` immediately after the install task completes
+    - verification uses manager-scoped detection/refresh (`triggerDetectionForManager` over XPC/FFI) instead of full detection by default
+    - while verifying, manager state is treated as effectively not installed for manager action/visibility gating until new detection completes
+    - manager verification clears only after a new detection task for that manager reaches terminal state; fallback is full detection if manager-scoped trigger fails or times out
+  - post-`v0.17.7` rustup install-source follow-up delivered on `dev`:
+    - rustup inspector install now exposes `Install Source` when `rustup-init` is selected (`Official Download` default, optional existing `rustup-init` binary path)
+    - manager install transport now supports optional install-options payloads through service + FFI (`helm_install_manager_with_options`)
+    - CLI manager install now supports rustup source/path flags (`--rustup-install-source`, `--rustup-binary-path`) and routes through the same shared install planner validation
+    - rustup manager install now supports official bootstrap-script download execution when no local `rustup-init` binary is available
   - GitHub governance hardening delivered on `dev`:
     - branch rulesets now explicitly enforce `main`/`dev`/`docs`/`web` with branch-specific required checks
     - `Policy Gate` now validates PR base/head/scope policy for all protected branches
@@ -231,13 +345,13 @@ Current checkpoint:
     - parity hardening delivered: GUI+CLI now share coordinator transport authority (FFI bridge + local coordinator host with external-coordinator routing for mutation/cancel flows), self-update policy is now provenance-aware beyond Homebrew-only installs (`direct-script` direct updates + channel-managed guidance), and coordinator hosts now run scheduled due-based auto-check ticks with persisted `auto_check_last_checked_unix`
     - CLI contract hardening delivered: granular task-oriented exit-code mapping (`2` task failure, `3` partial failure, `4` cancellation) and global-flag support for `--json|--ndjson`, `-q|--quiet`, `--no-color`, `--locale <id>`, and `--timeout <seconds>`
     - audit-remediation slice delivered: direct self-update transport failures now emit structured JSON error payloads with actionable guidance in `--json` mode; install provenance marker schema is now centralized at `docs/contracts/install-marker.schema.json` with Rust + installer CI validation; residual CLI recon/dead-code artifacts were removed
-    - audit-remediation follow-up delivered: `helm doctor` top-level alias now routes to diagnostics (defaulting to provenance output), self-update force mode is now restricted to `direct-script` installs only, coordinator auto-check ticks now require direct-script marker policy before endpoint fetches, and direct install/update network paths now enforce allowlisted HTTPS hosts with explicit timeout policy (with opt-in `file://` testing override)
+    - audit-remediation follow-up delivered: `helm doctor` top-level command is now dedicated to doctor workflows (`scan`, `repair`) and defaults to `scan`; diagnostics provenance/export remain under `helm diagnostics ...`, self-update force mode is now restricted to `direct-script` installs only, coordinator auto-check ticks now require direct-script marker policy before endpoint fetches, and direct install/update network paths now enforce allowlisted HTTPS hosts with explicit timeout policy (with opt-in `file://` testing override)
     - audit-remediation follow-up delivered: top-level machine-mode parity now covers help/version/completion/error flows for `--json`/`--ndjson`, NDJSON list payloads now emit one envelope per item (with explicit empty-list envelope behavior), string-based exit-code heuristics are removed in favor of explicit marker-based classification with deterministic runtime fallback (`1`) for untyped errors, CLI release metadata publication now separates stable (`latest.json`) vs prerelease (`latest-rc.json`) pointers; policy-gate now locks CLI metadata mutation to publish/emergency lanes; and scheduled/manual CLI metadata drift guard validation is now added
     - audit-remediation follow-up delivered: Rust-side install-marker writes now use symlink-safe atomic replacement; direct self-update binary replacement now rejects symlink/non-file target paths and enforces bounded payload size (`HELM_CLI_SELF_UPDATE_MAX_DOWNLOAD_BYTES`, default 64 MiB); and release workflows now extend immutable action pinning + per-job token scopes with CLI tag/version verification before publication
     - audit-remediation follow-up delivered: stable CLI update metadata now points to published `v0.17.2` CLI release assets with real checksums (no placeholder zeros), and auto-check last-checked timestamps now update only after eligible direct self-managed check attempts instead of policy-gated skips
     - audit-remediation follow-up delivered: distribution profile contract is now centralized in `docs/contracts/distribution-profiles.json` and consumed by shared build orchestration (`scripts/build.sh`, `scripts/release/build_unsigned_variant.sh`, matrix-based `release-all-variants.yml` auxiliary jobs); Swift update-authority mapping now has one source (`AppUpdateConfiguration`), targeted updater policy tests pass on macOS, and GUI checksum-publication symmetry is explicitly documented as deferred while Sparkle remains canonical GUI integrity authority
     - trust-chain future work is now explicitly tracked: detached signatures + signing-key rotation for CLI update artifacts (`docs/roadmap/CLI_DISTRIBUTION_CI_MILESTONES.md`, milestone M5)
-- latest stable release on `main`: `v0.17.7`
+- latest stable release on `main`: `v0.17.8`
 - validation gates are green through the stable cut (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke across `v0.17.0-rc.1` through `v0.17.0-rc.5`)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
@@ -1137,4 +1251,4 @@ Implement:
 - 0.14 stable release alignment for `v0.14.0` is complete (README/website + version artifacts).
 - Distribution/licensing future-state planning documentation is aligned for 0.14 release notes and roadmap planning (no implementation yet).
 - 0.14.x and 0.15.x release execution are complete on `main` (`v0.14.1` and `v0.15.0`).
-- 0.17.7 release execution is complete on `main`; 0.17.x diagnostics/logging delivery and post-`0.17.x` follow-up stabilization are now closed with stable lineage `v0.17.0`, `v0.17.1`, `v0.17.2`, `v0.17.3`, `v0.17.4`, `v0.17.5`, `v0.17.6`, and `v0.17.7`.
+- 0.17.8 release execution is complete on `main`; 0.17.x diagnostics/logging delivery and post-`0.17.x` follow-up stabilization are now closed with stable lineage `v0.17.0`, `v0.17.1`, `v0.17.2`, `v0.17.3`, `v0.17.4`, `v0.17.5`, `v0.17.6`, `v0.17.7`, and `v0.17.8`.

@@ -6,6 +6,21 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.17.8] - 2026-03-03
+
+Patch `0.17.8` finalizes manager lifecycle parity expansion and hardens managed CLI shim installation behavior.
+
+### Added
+- Expanded manager lifecycle parity across core, CLI, FFI, and GUI surfaces for planner-backed install/update/uninstall flows.
+
+### Changed
+- Manager lifecycle parity sweep was merged into the stable patch line for a single release cut.
+
+### Fixed
+- Managed CLI shim install flow now stages writes through a temporary `.helm.tmp` path before replacement.
+- Managed CLI shim handling now clears quarantine attributes to avoid blocked execution after install.
+- Release preflight now avoids the unsupported `gh secret list --limit` invocation path.
+
 ## [0.17.7] - 2026-02-26
 
 Patch `0.17.7` closes the pre-release quality audit and release-gate blockers with orchestration reliability hardening and lint/test cleanup.

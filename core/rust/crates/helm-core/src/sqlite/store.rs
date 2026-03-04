@@ -5,10 +5,11 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::models::{
-    CachedSearchResult, CoreError, CoreErrorKind, DetectionInfo, HomebrewKegPolicy,
-    InstalledPackage, ManagerId, NewTaskLogRecord, OutdatedPackage, PackageCandidate,
-    PackageKegPolicy, PackageRef, PinKind, PinRecord, TaskId, TaskLogLevel, TaskLogRecord,
-    TaskRecord, TaskStatus, TaskType,
+    AutomationLevel, CachedSearchResult, CoreError, CoreErrorKind, DetectionInfo,
+    HomebrewKegPolicy, InstallInstanceIdentityKind, InstallProvenance, InstalledPackage, ManagerId,
+    ManagerInstallInstance, NewTaskLogRecord, OutdatedPackage, PackageCandidate, PackageKegPolicy,
+    PackageRef, PinKind, PinRecord, StrategyKind, TaskId, TaskLogLevel, TaskLogRecord, TaskRecord,
+    TaskStatus, TaskType,
 };
 use crate::persistence::{
     DetectionStore, ManagerPreference, MigrationStore, PackageStore, PersistenceResult, PinStore,
@@ -1003,6 +1004,247 @@ ORDER BY manager_id
         })
     }
 
+    fn replace_install_instances(
+        &self,
+        manager: ManagerId,
+        instances: &[ManagerInstallInstance],
+    ) -> PersistenceResult<()> {
+        self.with_connection("replace_install_instances", |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction = connection.transaction()?;
+
+            transaction.execute(
+                "DELETE FROM manager_install_instances WHERE manager_id = ?1",
+                params![manager.as_str()],
+            )?;
+
+            if !instances.is_empty() {
+                let mut statement = transaction.prepare(
+                    "
+INSERT INTO manager_install_instances (
+    manager_id,
+    instance_id,
+    identity_kind,
+    identity_value,
+    display_path,
+    canonical_path,
+    alias_paths_json,
+    is_active,
+    version,
+    provenance,
+    confidence,
+    automation_level,
+    uninstall_strategy,
+    update_strategy,
+    remediation_strategy,
+    explanation_primary,
+    explanation_secondary,
+    competing_provenance,
+    competing_confidence,
+    decision_margin,
+    detected_at_unix
+)
+VALUES (
+    ?1, ?2, ?3, ?4, ?5, NULLIF(?6, ''), ?7, ?8, NULLIF(?9, ''), ?10, ?11, ?12, ?13, ?14, ?15, NULLIF(?16, ''), NULLIF(?17, ''), NULLIF(?18, ''), ?19, ?20, strftime('%s', 'now')
+)
+",
+                )?;
+
+                for instance in instances {
+                    let alias_paths: Vec<String> = instance
+                        .alias_paths
+                        .iter()
+                        .map(|path| path.to_string_lossy().to_string())
+                        .collect();
+                    let alias_paths_json = serde_json::to_string(&alias_paths).unwrap_or_else(|_| {
+                        "[]".to_string()
+                    });
+                    statement.execute(params![
+                        manager.as_str(),
+                        instance.instance_id.as_str(),
+                        instance.identity_kind.as_str(),
+                        instance.identity_value.as_str(),
+                        instance.display_path.to_string_lossy().to_string(),
+                        instance
+                            .canonical_path
+                            .as_ref()
+                            .map(|path| path.to_string_lossy().to_string())
+                            .unwrap_or_default(),
+                        alias_paths_json,
+                        bool_to_sqlite(instance.is_active),
+                        instance.version.as_deref().unwrap_or_default(),
+                        instance.provenance.as_str(),
+                        instance.confidence,
+                        instance.automation_level.as_str(),
+                        instance.uninstall_strategy.as_str(),
+                        instance.update_strategy.as_str(),
+                        instance.remediation_strategy.as_str(),
+                        instance.explanation_primary.as_deref().unwrap_or_default(),
+                        instance.explanation_secondary.as_deref().unwrap_or_default(),
+                        instance
+                            .competing_provenance
+                            .map(|value| value.as_str())
+                            .unwrap_or_default(),
+                        instance.competing_confidence,
+                        instance.decision_margin,
+                    ])?;
+                }
+            }
+
+            transaction.commit()?;
+            Ok(())
+        })
+    }
+
+    fn list_install_instances(
+        &self,
+        manager: Option<ManagerId>,
+    ) -> PersistenceResult<Vec<ManagerInstallInstance>> {
+        self.with_connection("list_install_instances", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection.prepare(
+                "
+SELECT manager_id,
+       instance_id,
+       identity_kind,
+       identity_value,
+       display_path,
+       canonical_path,
+       alias_paths_json,
+       is_active,
+       version,
+       provenance,
+       confidence,
+       automation_level,
+       uninstall_strategy,
+       update_strategy,
+       remediation_strategy,
+       explanation_primary,
+       explanation_secondary,
+       competing_provenance,
+       competing_confidence,
+       decision_margin
+FROM manager_install_instances
+WHERE (?1 IS NULL OR manager_id = ?1)
+ORDER BY manager_id, is_active DESC, instance_id
+",
+            )?;
+            let manager_filter = manager.map(|value| value.as_str().to_string());
+            let rows = statement.query_map(params![manager_filter], |row| {
+                let manager_raw: String = row.get(0)?;
+                let instance_id: String = row.get(1)?;
+                let identity_kind_raw: String = row.get(2)?;
+                let identity_value: String = row.get(3)?;
+                let display_path_raw: String = row.get(4)?;
+                let canonical_path_raw: Option<String> = row.get(5)?;
+                let alias_paths_json: String = row.get(6)?;
+                let is_active_raw: i64 = row.get(7)?;
+                let version_raw: Option<String> = row.get(8)?;
+                let provenance_raw: String = row.get(9)?;
+                let confidence: f64 = row.get(10)?;
+                let automation_level_raw: String = row.get(11)?;
+                let uninstall_strategy_raw: String = row.get(12)?;
+                let update_strategy_raw: String = row.get(13)?;
+                let remediation_strategy_raw: String = row.get(14)?;
+                let explanation_primary_raw: Option<String> = row.get(15)?;
+                let explanation_secondary_raw: Option<String> = row.get(16)?;
+                let competing_provenance_raw: Option<String> = row.get(17)?;
+                let competing_confidence: Option<f64> = row.get(18)?;
+                let decision_margin: Option<f64> = row.get(19)?;
+
+                let manager = parse_manager_id(&manager_raw)?;
+                let identity_kind = parse_install_instance_identity_kind(&identity_kind_raw)?;
+                let provenance = parse_install_provenance(&provenance_raw)?;
+                let automation_level = parse_automation_level(&automation_level_raw)?;
+                let uninstall_strategy = parse_strategy_kind(&uninstall_strategy_raw)?;
+                let update_strategy = parse_strategy_kind(&update_strategy_raw)?;
+                let remediation_strategy = parse_strategy_kind(&remediation_strategy_raw)?;
+                let alias_paths_raw: Vec<String> =
+                    serde_json::from_str(&alias_paths_json).unwrap_or_default();
+                let alias_paths = alias_paths_raw
+                    .into_iter()
+                    .map(PathBuf::from)
+                    .collect::<Vec<_>>();
+
+                Ok(ManagerInstallInstance {
+                    manager,
+                    instance_id,
+                    identity_kind,
+                    identity_value,
+                    display_path: PathBuf::from(display_path_raw),
+                    canonical_path: normalize_optional_text(canonical_path_raw).map(PathBuf::from),
+                    alias_paths,
+                    is_active: sqlite_to_bool(is_active_raw),
+                    version: normalize_optional_text(version_raw),
+                    provenance,
+                    confidence,
+                    decision_margin,
+                    automation_level,
+                    uninstall_strategy,
+                    update_strategy,
+                    remediation_strategy,
+                    explanation_primary: normalize_optional_text(explanation_primary_raw),
+                    explanation_secondary: normalize_optional_text(explanation_secondary_raw),
+                    competing_provenance: normalize_optional_text(competing_provenance_raw)
+                        .and_then(|value: String| value.parse::<InstallProvenance>().ok()),
+                    competing_confidence,
+                })
+            })?;
+
+            rows.collect()
+        })
+    }
+
+    fn set_manager_multi_instance_ack_fingerprint(
+        &self,
+        manager: ManagerId,
+        fingerprint: Option<&str>,
+    ) -> PersistenceResult<()> {
+        self.with_connection("set_manager_multi_instance_ack_fingerprint", |connection| {
+            ensure_schema_ready(connection)?;
+            if let Some(value) = fingerprint.map(str::trim).filter(|entry| !entry.is_empty()) {
+                connection.execute(
+                    "
+INSERT INTO manager_multi_instance_ack (
+    manager_id,
+    instances_fingerprint,
+    acknowledged_at_unix
+)
+VALUES (?1, ?2, strftime('%s', 'now'))
+ON CONFLICT(manager_id) DO UPDATE SET
+    instances_fingerprint = excluded.instances_fingerprint,
+    acknowledged_at_unix = excluded.acknowledged_at_unix
+",
+                    params![manager.as_str(), value],
+                )?;
+            } else {
+                connection.execute(
+                    "DELETE FROM manager_multi_instance_ack WHERE manager_id = ?1",
+                    params![manager.as_str()],
+                )?;
+            }
+            Ok(())
+        })
+    }
+
+    fn manager_multi_instance_ack_fingerprint(
+        &self,
+        manager: ManagerId,
+    ) -> PersistenceResult<Option<String>> {
+        self.with_connection("manager_multi_instance_ack_fingerprint", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection.prepare(
+                "SELECT instances_fingerprint
+                 FROM manager_multi_instance_ack
+                 WHERE manager_id = ?1",
+            )?;
+            let value = statement
+                .query_row(params![manager.as_str()], |row| row.get::<_, String>(0))
+                .optional()?;
+            Ok(value.and_then(|entry| normalize_optional_text(Some(entry))))
+        })
+    }
+
     fn set_manager_enabled(&self, manager: ManagerId, enabled: bool) -> PersistenceResult<()> {
         self.with_connection("set_manager_enabled", |connection| {
             ensure_schema_ready(connection)?;
@@ -1654,6 +1896,38 @@ fn parse_manager_id(raw: &str) -> rusqlite::Result<ManagerId> {
         storage_error_sqlite(&format!(
             "unknown manager id '{raw}' found in persisted sqlite record"
         ))
+    })
+}
+
+fn parse_install_instance_identity_kind(
+    raw: &str,
+) -> rusqlite::Result<InstallInstanceIdentityKind> {
+    raw.parse::<InstallInstanceIdentityKind>().map_err(|_| {
+        storage_error_sqlite(&format!(
+            "unknown install identity kind '{raw}' in sqlite record"
+        ))
+    })
+}
+
+fn parse_install_provenance(raw: &str) -> rusqlite::Result<InstallProvenance> {
+    raw.parse::<InstallProvenance>().map_err(|_| {
+        storage_error_sqlite(&format!(
+            "unknown install provenance '{raw}' in sqlite record"
+        ))
+    })
+}
+
+fn parse_automation_level(raw: &str) -> rusqlite::Result<AutomationLevel> {
+    raw.parse::<AutomationLevel>().map_err(|_| {
+        storage_error_sqlite(&format!(
+            "unknown automation level '{raw}' in sqlite record"
+        ))
+    })
+}
+
+fn parse_strategy_kind(raw: &str) -> rusqlite::Result<StrategyKind> {
+    raw.parse::<StrategyKind>().map_err(|_| {
+        storage_error_sqlite(&format!("unknown strategy kind '{raw}' in sqlite record"))
     })
 }
 

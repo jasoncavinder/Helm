@@ -1,4 +1,6 @@
+pub mod task_log_note_store;
 pub mod task_output_store;
+pub mod timeout_prompt_store;
 #[cfg(unix)]
 pub mod tokio_process;
 
@@ -521,6 +523,16 @@ pub fn spawn_validated(
 
 pub fn task_output(task_id: TaskId) -> Option<TaskOutputRecord> {
     task_output_store::get(task_id)
+}
+
+pub fn record_task_log_note(note: &str) {
+    if let Some(task_id) = crate::task_context::current_task_id() {
+        task_log_note_store::append(task_id, note);
+    }
+}
+
+pub fn drain_task_log_notes(task_id: TaskId) -> Vec<String> {
+    task_log_note_store::drain(task_id)
 }
 
 fn invalid_input(

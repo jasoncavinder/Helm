@@ -17,6 +17,8 @@ const MISE_CAPABILITIES: &[Capability] = &[
     Capability::Refresh,
     Capability::ListInstalled,
     Capability::ListOutdated,
+    Capability::Install,
+    Capability::Uninstall,
     Capability::Upgrade,
 ];
 
@@ -30,8 +32,12 @@ const MISE_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
 
 const MISE_COMMAND: &str = "mise";
 const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
-const LIST_TIMEOUT: Duration = Duration::from_secs(60);
-const UPGRADE_TIMEOUT: Duration = Duration::from_secs(300);
+const LIST_TIMEOUT: Duration = Duration::from_secs(120);
+const INSTALL_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+const INSTALL_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
+const UNINSTALL_TIMEOUT: Duration = Duration::from_secs(25 * 60);
+const UNINSTALL_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
+const UPGRADE_TIMEOUT: Duration = Duration::from_secs(600);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MiseDetectOutput {
@@ -39,10 +45,25 @@ pub struct MiseDetectOutput {
     pub version_output: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum MiseInstallSource {
+    OfficialDownload,
+    ExistingBinaryPath(PathBuf),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MiseUninstallMode {
+    ManagerOnlyKeepConfig,
+    FullCleanupKeepConfig,
+    FullCleanupRemoveConfig,
+}
+
 pub trait MiseSource: Send + Sync {
     fn detect(&self) -> AdapterResult<MiseDetectOutput>;
     fn list_installed(&self) -> AdapterResult<String>;
     fn list_outdated(&self) -> AdapterResult<String>;
+    fn install_self(&self, source: MiseInstallSource) -> AdapterResult<String>;
+    fn self_uninstall(&self, mode: MiseUninstallMode) -> AdapterResult<String>;
     fn upgrade_tool(&self, name: &str) -> AdapterResult<String>;
 }
 
@@ -93,6 +114,52 @@ impl<S: MiseSource> ManagerAdapter for MiseAdapter<S> {
                 let raw = self.source.list_outdated()?;
                 let packages = parse_mise_outdated(&raw)?;
                 Ok(AdapterResponse::OutdatedPackages(packages))
+            }
+            AdapterRequest::Install(install_request) => {
+                let source = parse_install_source(install_request.version.as_deref())?;
+                let _ = self.source.install_self(source)?;
+                Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
+                    package: install_request.package,
+                    action: ManagerAction::Install,
+                    before_version: None,
+                    after_version: None,
+                }))
+            }
+            AdapterRequest::Uninstall(uninstall_request) => {
+                let uninstall_spec = parse_uninstall_mode(uninstall_request.package.name.as_str())?;
+                let _ = self.source.self_uninstall(uninstall_spec.mode)?;
+                if uninstall_spec.remove_shell_setup {
+                    match crate::post_install_setup::remove_helm_managed_post_install_setup(
+                        ManagerId::Mise,
+                    ) {
+                        Ok(result) => {
+                            crate::execution::record_task_log_note(result.summary().as_str());
+                            if !result.malformed_files.is_empty() {
+                                crate::execution::record_task_log_note(
+                                    format!(
+                                        "helm-managed mise setup markers were malformed in {} shell startup file(s); left unchanged",
+                                        result.malformed_files.len()
+                                    )
+                                    .as_str(),
+                                );
+                            }
+                        }
+                        Err(error) => {
+                            crate::execution::record_task_log_note(
+                                format!(
+                                    "failed to remove Helm-managed mise shell setup block(s): {error}"
+                                )
+                                .as_str(),
+                            );
+                        }
+                    }
+                }
+                Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
+                    package: uninstall_request.package,
+                    action: ManagerAction::Uninstall,
+                    before_version: None,
+                    after_version: None,
+                }))
             }
             AdapterRequest::Upgrade(upgrade_request) => {
                 let package = upgrade_request.package.unwrap_or(PackageRef {
@@ -163,6 +230,48 @@ pub fn mise_upgrade_request(task_id: Option<TaskId>, name: &str) -> ProcessSpawn
     )
 }
 
+pub fn mise_download_install_script_request(
+    task_id: Option<TaskId>,
+    output_script: &str,
+) -> ProcessSpawnRequest {
+    mise_request(
+        task_id,
+        TaskType::Install,
+        ManagerAction::Install,
+        CommandSpec::new("curl").args(["-fsSL", "https://mise.run", "-o", output_script]),
+        INSTALL_TIMEOUT,
+    )
+}
+
+pub fn mise_run_downloaded_install_script_request(
+    task_id: Option<TaskId>,
+    script_path: &str,
+) -> ProcessSpawnRequest {
+    mise_request(
+        task_id,
+        TaskType::Install,
+        ManagerAction::Install,
+        CommandSpec::new("sh").arg(script_path),
+        INSTALL_TIMEOUT,
+    )
+    .idle_timeout(INSTALL_IDLE_TIMEOUT)
+}
+
+pub fn mise_implode_request(task_id: Option<TaskId>, remove_config: bool) -> ProcessSpawnRequest {
+    let mut command = CommandSpec::new(MISE_COMMAND).args(["implode", "--yes"]);
+    if remove_config {
+        command = command.arg("--config");
+    }
+    mise_request(
+        task_id,
+        TaskType::Uninstall,
+        ManagerAction::Uninstall,
+        command,
+        UNINSTALL_TIMEOUT,
+    )
+    .idle_timeout(UNINSTALL_IDLE_TIMEOUT)
+}
+
 fn mise_request(
     task_id: Option<TaskId>,
     task_type: TaskType,
@@ -189,6 +298,66 @@ fn parse_mise_version(output: &str) -> Option<String> {
         return None;
     }
     Some(version.to_owned())
+}
+
+fn parse_install_source(version: Option<&str>) -> AdapterResult<MiseInstallSource> {
+    let Some(version) = version.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(MiseInstallSource::OfficialDownload);
+    };
+    if version.eq_ignore_ascii_case("scriptInstaller:officialDownload")
+        || version.eq_ignore_ascii_case("officialDownload")
+    {
+        return Ok(MiseInstallSource::OfficialDownload);
+    }
+    if let Some(path) = version.strip_prefix("scriptInstaller:existingBinaryPath:") {
+        let path = path.trim();
+        if path.is_empty() {
+            return Err(CoreError {
+                manager: Some(ManagerId::Mise),
+                task: Some(TaskType::Install),
+                action: Some(ManagerAction::Install),
+                kind: CoreErrorKind::InvalidInput,
+                message: "mise existingBinaryPath install source requires a non-empty path"
+                    .to_string(),
+            });
+        }
+        return Ok(MiseInstallSource::ExistingBinaryPath(PathBuf::from(path)));
+    }
+
+    Err(CoreError {
+        manager: Some(ManagerId::Mise),
+        task: Some(TaskType::Install),
+        action: Some(ManagerAction::Install),
+        kind: CoreErrorKind::InvalidInput,
+        message: format!("unsupported mise install source: {version}"),
+    })
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct MiseUninstallSpec {
+    mode: MiseUninstallMode,
+    remove_shell_setup: bool,
+}
+
+fn parse_uninstall_mode(package_name: &str) -> AdapterResult<MiseUninstallSpec> {
+    let (base_name, remove_shell_setup) =
+        crate::manager_lifecycle::strip_shell_setup_cleanup_suffix(package_name);
+    let mode = match base_name.trim() {
+        "__self__" => MiseUninstallMode::ManagerOnlyKeepConfig,
+        "__self__:fullCleanup:keepConfig" => MiseUninstallMode::FullCleanupKeepConfig,
+        "__self__:fullCleanup:removeConfig" => MiseUninstallMode::FullCleanupRemoveConfig,
+        other => Err(CoreError {
+            manager: Some(ManagerId::Mise),
+            task: Some(TaskType::Uninstall),
+            action: Some(ManagerAction::Uninstall),
+            kind: CoreErrorKind::InvalidInput,
+            message: format!("unsupported mise uninstall mode: {other}"),
+        })?,
+    };
+    Ok(MiseUninstallSpec {
+        mode,
+        remove_shell_setup,
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -281,9 +450,11 @@ mod tests {
     use crate::models::{CoreErrorKind, ManagerAction, ManagerId, TaskId, TaskType};
 
     use super::{
-        MiseAdapter, MiseDetectOutput, MiseSource, mise_detect_request,
-        mise_list_installed_request, mise_list_outdated_request, mise_upgrade_request,
-        parse_mise_installed, parse_mise_outdated, parse_mise_version,
+        MiseAdapter, MiseDetectOutput, MiseSource, MiseUninstallMode, mise_detect_request,
+        mise_download_install_script_request, mise_implode_request, mise_list_installed_request,
+        mise_list_outdated_request, mise_run_downloaded_install_script_request,
+        mise_upgrade_request, parse_install_source, parse_mise_installed, parse_mise_outdated,
+        parse_mise_version, parse_uninstall_mode,
     };
 
     const VERSION_FIXTURE: &str = include_str!("../../tests/fixtures/mise/version.txt");
@@ -393,20 +564,38 @@ mod tests {
     }
 
     #[test]
-    fn adapter_rejects_unsupported_action() {
+    fn adapter_executes_install_request() {
         let source = FixtureSource::default();
         let adapter = MiseAdapter::new(source);
 
-        let error = adapter
+        let result = adapter
             .execute(AdapterRequest::Install(crate::adapters::InstallRequest {
                 package: crate::models::PackageRef {
                     manager: ManagerId::Mise,
-                    name: "node".to_string(),
+                    name: "__self__".to_string(),
                 },
-                version: None,
+                version: Some("scriptInstaller:officialDownload".to_string()),
             }))
-            .unwrap_err();
-        assert_eq!(error.kind, CoreErrorKind::UnsupportedCapability);
+            .unwrap();
+        assert!(matches!(result, AdapterResponse::Mutation(_)));
+    }
+
+    #[test]
+    fn adapter_executes_uninstall_request() {
+        let source = FixtureSource::default();
+        let adapter = MiseAdapter::new(source);
+
+        let result = adapter
+            .execute(AdapterRequest::Uninstall(
+                crate::adapters::UninstallRequest {
+                    package: crate::models::PackageRef {
+                        manager: ManagerId::Mise,
+                        name: "__self__".to_string(),
+                    },
+                },
+            ))
+            .unwrap();
+        assert!(matches!(result, AdapterResponse::Mutation(_)));
     }
 
     #[test]
@@ -473,6 +662,88 @@ mod tests {
         assert_eq!(all_upgrade.action, ManagerAction::Upgrade);
     }
 
+    #[test]
+    fn install_command_specs_use_structured_args() {
+        let download = mise_download_install_script_request(Some(TaskId(77)), "/tmp/mise.sh");
+        assert_eq!(download.task_type, TaskType::Install);
+        assert_eq!(download.action, ManagerAction::Install);
+        assert_eq!(
+            download.command.args,
+            vec![
+                "-fsSL".to_string(),
+                "https://mise.run".to_string(),
+                "-o".to_string(),
+                "/tmp/mise.sh".to_string()
+            ]
+        );
+
+        let run = mise_run_downloaded_install_script_request(None, "/tmp/mise.sh");
+        assert_eq!(run.task_type, TaskType::Install);
+        assert_eq!(run.action, ManagerAction::Install);
+        assert_eq!(run.command.args, vec!["/tmp/mise.sh".to_string()]);
+    }
+
+    #[test]
+    fn uninstall_command_spec_uses_structured_args() {
+        let keep = mise_implode_request(Some(TaskId(88)), false);
+        assert_eq!(keep.task_type, TaskType::Uninstall);
+        assert_eq!(keep.action, ManagerAction::Uninstall);
+        assert_eq!(
+            keep.command.args,
+            vec!["implode".to_string(), "--yes".to_string()]
+        );
+
+        let remove_config = mise_implode_request(None, true);
+        assert_eq!(
+            remove_config.command.args,
+            vec![
+                "implode".to_string(),
+                "--yes".to_string(),
+                "--config".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_install_source_defaults_to_official_download() {
+        assert_eq!(
+            parse_install_source(None).expect("default source should parse"),
+            super::MiseInstallSource::OfficialDownload
+        );
+        assert_eq!(
+            parse_install_source(Some("scriptInstaller:officialDownload"))
+                .expect("source should parse"),
+            super::MiseInstallSource::OfficialDownload
+        );
+    }
+
+    #[test]
+    fn parse_uninstall_mode_supports_known_modes() {
+        assert_eq!(
+            parse_uninstall_mode("__self__")
+                .expect("mode should parse")
+                .mode,
+            MiseUninstallMode::ManagerOnlyKeepConfig
+        );
+        assert_eq!(
+            parse_uninstall_mode("__self__:fullCleanup:keepConfig")
+                .expect("mode should parse")
+                .mode,
+            MiseUninstallMode::FullCleanupKeepConfig
+        );
+        assert_eq!(
+            parse_uninstall_mode("__self__:fullCleanup:removeConfig")
+                .expect("mode should parse")
+                .mode,
+            MiseUninstallMode::FullCleanupRemoveConfig
+        );
+        assert!(
+            parse_uninstall_mode("__self__:removeShellSetup")
+                .expect("mode should parse")
+                .remove_shell_setup
+        );
+    }
+
     #[derive(Default, Clone)]
     struct FixtureSource {
         detect_calls: Arc<AtomicUsize>,
@@ -493,6 +764,14 @@ mod tests {
 
         fn list_outdated(&self) -> AdapterResult<String> {
             Ok(OUTDATED_FIXTURE.to_string())
+        }
+
+        fn install_self(&self, _source: super::MiseInstallSource) -> AdapterResult<String> {
+            Ok(String::new())
+        }
+
+        fn self_uninstall(&self, _mode: MiseUninstallMode) -> AdapterResult<String> {
+            Ok(String::new())
         }
 
         fn upgrade_tool(&self, _name: &str) -> AdapterResult<String> {

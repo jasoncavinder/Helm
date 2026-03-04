@@ -6,14 +6,21 @@ import Foundation
     func listTasks(withReply reply: @escaping (String?) -> Void)
     func getTaskOutput(taskId: Int64, withReply reply: @escaping (String?) -> Void)
     func listTaskLogs(taskId: Int64, limit: Int64, withReply reply: @escaping (String?) -> Void)
+    func listTaskTimeoutPrompts(withReply reply: @escaping (String?) -> Void)
+    func respondTaskTimeoutPrompt(taskId: Int64, waitForCompletion: Bool, withReply reply: @escaping (Bool) -> Void)
     func triggerRefresh(withReply reply: @escaping (Bool) -> Void)
     func triggerDetection(withReply reply: @escaping (Bool) -> Void)
+    func triggerDetectionForManager(managerId: String, withReply reply: @escaping (Bool) -> Void)
     func searchLocal(query: String, withReply reply: @escaping (String?) -> Void)
     func triggerRemoteSearch(query: String, withReply reply: @escaping (Int64) -> Void)
     func triggerRemoteSearchForManager(managerId: String, query: String, withReply reply: @escaping (Int64) -> Void)
     func cancelTask(taskId: Int64, withReply reply: @escaping (Bool) -> Void)
     func dismissTask(taskId: Int64, withReply reply: @escaping (Bool) -> Void)
     func listManagerStatus(withReply reply: @escaping (String?) -> Void)
+    func doctorScan(withReply reply: @escaping (String?) -> Void)
+    func getSharedOnboardingState(withReply reply: @escaping (Bool, String?) -> Void)
+    func setSharedOnboardingCompleted(completed: Bool, withReply reply: @escaping (Bool) -> Void)
+    func setSharedAcceptedLicenseTermsVersion(version: String?, withReply reply: @escaping (Bool) -> Void)
     func getSafeMode(withReply reply: @escaping (Bool) -> Void)
     func setSafeMode(enabled: Bool, withReply reply: @escaping (Bool) -> Void)
     func getHomebrewKegAutoCleanup(withReply reply: @escaping (Bool) -> Void)
@@ -25,11 +32,15 @@ import Foundation
     func upgradePackage(managerId: String, packageName: String, withReply reply: @escaping (Int64) -> Void)
     func installPackage(managerId: String, packageName: String, withReply reply: @escaping (Int64) -> Void)
     func uninstallPackage(managerId: String, packageName: String, withReply reply: @escaping (Int64) -> Void)
+    func previewPackageUninstall(managerId: String, packageName: String, withReply reply: @escaping (String?) -> Void)
     func listPins(withReply reply: @escaping (String?) -> Void)
     func pinPackage(managerId: String, packageName: String, version: String?, withReply reply: @escaping (Bool) -> Void)
     func unpinPackage(managerId: String, packageName: String, withReply reply: @escaping (Bool) -> Void)
     func setManagerEnabled(managerId: String, enabled: Bool, withReply reply: @escaping (Bool) -> Void)
     func setManagerSelectedExecutablePath(managerId: String, selectedPath: String?, withReply reply: @escaping (Bool) -> Void)
+    func setManagerActiveInstallInstance(managerId: String, instanceId: String, withReply reply: @escaping (Bool) -> Void)
+    func acknowledgeManagerMultiInstanceState(managerId: String, withReply reply: @escaping (Bool) -> Void)
+    func clearManagerMultiInstanceAck(managerId: String, withReply reply: @escaping (Bool) -> Void)
     func setManagerInstallMethod(managerId: String, installMethod: String?, withReply reply: @escaping (Bool) -> Void)
     func setManagerTimeoutProfile(
         managerId: String,
@@ -37,9 +48,42 @@ import Foundation
         idleTimeoutSeconds: Int64,
         withReply reply: @escaping (Bool) -> Void
     )
+    func previewManagerUninstall(
+        managerId: String,
+        allowUnknownProvenance: Bool,
+        withReply reply: @escaping (String?) -> Void
+    )
+    func previewManagerUninstallWithOptions(
+        managerId: String,
+        optionsJson: String?,
+        withReply reply: @escaping (String?) -> Void
+    )
+    func installManagerWithOptions(
+        managerId: String,
+        optionsJson: String?,
+        withReply reply: @escaping (Int64) -> Void
+    )
     func installManager(managerId: String, withReply reply: @escaping (Int64) -> Void)
     func updateManager(managerId: String, withReply reply: @escaping (Int64) -> Void)
     func uninstallManager(managerId: String, withReply reply: @escaping (Int64) -> Void)
+    func applyManagerPackageStateIssueRepair(
+        managerId: String,
+        sourceManagerId: String,
+        packageName: String,
+        issueCode: String,
+        optionId: String,
+        withReply reply: @escaping (Int64) -> Void
+    )
+    func uninstallManagerWithOptions(
+        managerId: String,
+        allowUnknownProvenance: Bool,
+        withReply reply: @escaping (Int64) -> Void
+    )
+    func uninstallManagerWithUninstallOptions(
+        managerId: String,
+        optionsJson: String?,
+        withReply reply: @escaping (Int64) -> Void
+    )
     func resetDatabase(withReply reply: @escaping (Bool) -> Void)
     func takeLastErrorKey(withReply reply: @escaping (String?) -> Void)
 }

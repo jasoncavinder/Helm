@@ -161,6 +161,9 @@ struct PackagesSectionView: View {
         .onChange(of: core.managerStatuses.mapValues(\.enabled)) { _ in
             normalizeManagerSelection()
         }
+        .onChange(of: availableManagerIds) { _ in
+            normalizeManagerSelection()
+        }
     }
 
     private var managerLabel: String {

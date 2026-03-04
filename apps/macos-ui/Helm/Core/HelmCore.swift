@@ -258,9 +258,24 @@ struct CoreTaskLogRecord: Codable, Identifiable {
     }
 }
 
+struct CoreTaskTimeoutPrompt: Codable, Identifiable {
+    let taskId: UInt64
+    let manager: String
+    let taskType: String
+    let action: String
+    let requestedAtUnixMs: Int64
+    let graceSeconds: UInt64
+    let suggestedExtensionSeconds: UInt64
+
+    var id: String {
+        "\(taskId):\(requestedAtUnixMs)"
+    }
+}
+
 enum ManagerDetectionDiagnosticReason {
     case detected
     case notDetected
+    case inconsistent
     case inProgress
     case failed
     case disabled
@@ -345,6 +360,7 @@ struct ManagerStatus: Codable {
     let defaultExecutablePath: String?
     let selectedExecutablePath: String?
     let selectedInstallMethod: String?
+    let installMethodOptions: [ManagerInstallMethodStatus]?
     let timeoutHardSeconds: Int?
     let timeoutIdleSeconds: Int?
     let enabled: Bool
@@ -355,10 +371,177 @@ struct ManagerStatus: Codable {
     let supportsPackageInstall: Bool
     let supportsPackageUninstall: Bool
     let supportsPackageUpgrade: Bool
+    let packageStateIssues: [ManagerPackageStateIssue]?
     let isEligible: Bool?
     let ineligibleReasonCode: String?
     let ineligibleReasonMessage: String?
     let ineligibleServiceErrorKey: String?
+    let installInstances: [ManagerInstallInstanceStatus]?
+    let installInstanceCount: Int?
+    let multiInstanceState: String?
+    let multiInstanceAcknowledged: Bool?
+    let multiInstanceFingerprint: String?
+    let activeProvenance: String?
+    let activeConfidence: Double?
+    let activeDecisionMargin: Double?
+    let activeAutomationLevel: String?
+    let activeUninstallStrategy: String?
+    let activeUpdateStrategy: String?
+    let activeRemediationStrategy: String?
+    let activeExplanationPrimary: String?
+    let activeExplanationSecondary: String?
+    let competingProvenance: String?
+    let competingConfidence: Double?
+}
+
+struct ManagerPackageStateIssue: Codable {
+    let sourceManagerId: String
+    let packageName: String
+    let issueCode: String
+    let findingCode: String?
+    let fingerprint: String?
+    let severity: String?
+    let summary: String?
+    let evidencePrimary: String?
+    let evidenceSecondary: String?
+    let knowledgeSource: String?
+    let knowledgeVersion: String?
+    let repairOptions: [ManagerPackageStateIssueRepairOption]?
+}
+
+struct ManagerPackageStateIssueRepairOption: Codable {
+    let optionId: String
+    let action: String
+    let title: String
+    let description: String
+    let recommended: Bool
+    let requiresConfirmation: Bool
+    let automationLevel: String
+}
+
+struct ManagerInstallMethodStatus: Codable {
+    let methodId: String
+    let recommendationRank: Int
+    let recommendationReason: String?
+    let policyTag: String
+    let executablePathHints: [String]?
+    let packageHints: [String]?
+}
+
+struct ManagerInstallInstanceStatus: Codable, Identifiable {
+    let instanceId: String
+    let identityKind: String
+    let identityValue: String
+    let displayPath: String
+    let canonicalPath: String?
+    let aliasPaths: [String]
+    let isActive: Bool
+    let version: String?
+    let provenance: String
+    let confidence: Double
+    let decisionMargin: Double?
+    let automationLevel: String
+    let uninstallStrategy: String
+    let updateStrategy: String
+    let remediationStrategy: String
+    let explanationPrimary: String?
+    let explanationSecondary: String?
+    let competingProvenance: String?
+    let competingConfidence: Double?
+
+    var id: String { instanceId }
+}
+
+struct ManagerUninstallImpactPath: Codable {
+    let path: String
+    let exists: Bool
+}
+
+struct ManagerUninstallPreview: Codable {
+    let requestedManagerId: String
+    let targetManagerId: String
+    let packageName: String
+    let strategy: String
+    let provenance: String?
+    let automationLevel: String?
+    let confidence: Double?
+    let decisionMargin: Double?
+    let explanationPrimary: String?
+    let explanationSecondary: String?
+    let competingProvenance: String?
+    let competingConfidence: Double?
+    let filesRemoved: [ManagerUninstallImpactPath]
+    let directoriesRemoved: [ManagerUninstallImpactPath]
+    let secondaryEffects: [String]
+    let summaryLines: [String]
+    let blastRadiusScore: Int
+    let requiresYes: Bool
+    let confidenceRequiresConfirmation: Bool
+    let unknownProvenance: Bool
+    let unknownOverrideRequired: Bool
+    let usedUnknownOverride: Bool
+    let legacyFallbackUsed: Bool
+    let readOnlyBlocked: Bool
+}
+
+enum ManagerRustupInstallSource: String, Codable {
+    case officialDownload
+    case existingBinaryPath
+}
+
+enum ManagerMiseInstallSource: String, Codable {
+    case officialDownload
+    case existingBinaryPath
+}
+
+enum ManagerMiseUninstallCleanupMode: String, Codable {
+    case managerOnly
+    case fullCleanup
+}
+
+enum ManagerMiseUninstallConfigRemoval: String, Codable {
+    case keepConfig
+    case removeConfig
+}
+
+enum ManagerHomebrewUninstallCleanupMode: String, Codable {
+    case managerOnly
+    case fullCleanup
+}
+
+struct ManagerInstallActionOptions: Codable {
+    let rustupInstallSource: ManagerRustupInstallSource?
+    let rustupBinaryPath: String?
+    let miseInstallSource: ManagerMiseInstallSource?
+    let miseBinaryPath: String?
+    let completePostInstallSetupAutomatically: Bool?
+}
+
+struct ManagerUninstallActionOptions: Codable {
+    let allowUnknownProvenance: Bool?
+    let homebrewCleanupMode: ManagerHomebrewUninstallCleanupMode?
+    let miseCleanupMode: ManagerMiseUninstallCleanupMode?
+    let miseConfigRemoval: ManagerMiseUninstallConfigRemoval?
+    let removeHelmManagedShellSetup: Bool?
+}
+
+struct PackageUninstallPreview: Codable {
+    let managerId: String
+    let packageName: String
+    let filesRemoved: [ManagerUninstallImpactPath]
+    let directoriesRemoved: [ManagerUninstallImpactPath]
+    let secondaryEffects: [String]
+    let summaryLines: [String]
+    let blastRadiusScore: Int
+    let requiresYes: Bool
+    let confidenceRequiresConfirmation: Bool
+    let managerProvenance: String?
+    let managerAutomationLevel: String?
+    let managerUninstallStrategy: String?
+    let explanationPrimary: String?
+    let explanationSecondary: String?
+    let competingProvenance: String?
+    let competingConfidence: Double?
 }
 
 final class HelmOverviewState: ObservableObject {
@@ -457,6 +640,7 @@ final class HelmCore: ObservableObject {
     @Published var activeTasks: [TaskItem] = [] {
         didSet { scheduleDerivedViewStateRefresh() }
     }
+    @Published var taskTimeoutPrompts: [CoreTaskTimeoutPrompt] = []
     @Published var searchResults: [PackageItem] = []
     @Published var cachedAvailablePackages: [PackageItem] = []
     @Published var upgradePlanSteps: [CoreUpgradePlanStep] = []
@@ -475,6 +659,9 @@ final class HelmCore: ObservableObject {
         didSet { scheduleDerivedViewStateRefresh() }
     }
     @Published var managerOperations: [String: String] = [:] {
+        didSet { scheduleDerivedViewStateRefresh() }
+    }
+    @Published var verifyingManagerIds: Set<String> = [] {
         didSet { scheduleDerivedViewStateRefresh() }
     }
     @Published var pinActionPackageIds: Set<String> = []
@@ -522,6 +709,12 @@ final class HelmCore: ObservableObject {
     var activeRemoteSearchTaskIds: Set<Int64> = []
     var managerActionTaskDescriptions: [UInt64: String] = [:]
     var managerActionTaskByManager: [String: UInt64] = [:]
+    var managerActionTaskTypes: [UInt64: String] = [:]
+    var managerActionTaskSubmittedAt: [UInt64: Date] = [:]
+    var managerVerificationAnchorTaskIdByManager: [String: UInt64] = [:]
+    var managerVerificationStartedAtByManager: [String: Date] = [:]
+    var localManagerActionTasks: [String: TaskItem] = [:]
+    var localManagerActionTaskCreatedAt: [String: Date] = [:]
     var upgradeActionTaskByPackage: [String: UInt64] = [:]
     var installActionTaskByPackage: [String: UInt64] = [:]
     var uninstallActionTaskByPackage: [String: UInt64] = [:]
@@ -582,6 +775,93 @@ final class HelmCore: ObservableObject {
         )
     }
 
+    private func persistSharedOnboardingCompleted(_ completed: Bool) {
+        guard let service = service() else { return }
+        service.setSharedOnboardingCompleted(completed: completed) { [weak self] success in
+            guard !success else { return }
+            self?.recordLastError(
+                source: "core.settings",
+                action: "setSharedOnboardingCompleted",
+                taskType: "settings"
+            )
+        }
+    }
+
+    private func persistSharedAcceptedLicenseTermsVersion(_ version: String?) {
+        guard let service = service() else { return }
+        service.setSharedAcceptedLicenseTermsVersion(version: version) { [weak self] success in
+            guard !success else { return }
+            self?.recordLastError(
+                source: "core.settings",
+                action: "setSharedAcceptedLicenseTermsVersion",
+                taskType: "settings"
+            )
+        }
+    }
+
+    private func applyOnboardingStateLocally(completed: Bool, acceptedVersion: String?) {
+        if completed {
+            UserDefaults.standard.set(true, forKey: Self.onboardingCompletedKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: Self.onboardingCompletedKey)
+        }
+        hasCompletedOnboarding = completed
+
+        if let acceptedVersion {
+            UserDefaults.standard.set(acceptedVersion, forKey: Self.acceptedLicenseTermsVersionKey)
+            acceptedLicenseTermsVersion = acceptedVersion
+
+            if let existing = acceptedLicenseTermsAcceptedAtUnix {
+                UserDefaults.standard.set(existing, forKey: Self.acceptedLicenseTermsAcceptedAtUnixKey)
+            } else {
+                let now = Int64(Date().timeIntervalSince1970)
+                UserDefaults.standard.set(now, forKey: Self.acceptedLicenseTermsAcceptedAtUnixKey)
+                acceptedLicenseTermsAcceptedAtUnix = now
+            }
+        } else {
+            UserDefaults.standard.removeObject(forKey: Self.acceptedLicenseTermsVersionKey)
+            UserDefaults.standard.removeObject(forKey: Self.acceptedLicenseTermsAcceptedAtUnixKey)
+            acceptedLicenseTermsVersion = nil
+            acceptedLicenseTermsAcceptedAtUnix = nil
+        }
+    }
+
+    private func syncOnboardingStateWithSharedStore() {
+        guard let service = service() else { return }
+
+        service.getSharedOnboardingState { [weak self] remoteCompleted, remoteAcceptedVersionRaw in
+            guard let self else { return }
+            DispatchQueue.main.async {
+                let localCompleted = self.hasCompletedOnboarding
+                let localAcceptedVersion = self.acceptedLicenseTermsVersion?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let normalizedLocalAcceptedVersion = (localAcceptedVersion?.isEmpty == false)
+                    ? localAcceptedVersion
+                    : nil
+                let remoteAcceptedVersion = remoteAcceptedVersionRaw?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let normalizedRemoteAcceptedVersion = (remoteAcceptedVersion?.isEmpty == false)
+                    ? remoteAcceptedVersion
+                    : nil
+                let remoteHasState = remoteCompleted || normalizedRemoteAcceptedVersion != nil
+                let localHasState = localCompleted || normalizedLocalAcceptedVersion != nil
+
+                if remoteHasState {
+                    self.applyOnboardingStateLocally(
+                        completed: remoteCompleted,
+                        acceptedVersion: normalizedRemoteAcceptedVersion
+                    )
+                    return
+                }
+
+                if localHasState {
+                    self.persistSharedOnboardingCompleted(localCompleted)
+                    self.persistSharedAcceptedLicenseTermsVersion(normalizedLocalAcceptedVersion)
+                }
+            }
+        }
+    }
+
     func setupConnection() {
         let connection = NSXPCConnection(serviceName: "app.jasoncavinder.Helm.HelmService")
         connection.remoteObjectInterface = NSXPCInterface(with: HelmServiceProtocol.self)
@@ -615,6 +895,7 @@ final class HelmCore: ObservableObject {
         fetchSafeMode()
         fetchHomebrewKegAutoCleanup()
         fetchPackageKegPolicies()
+        syncOnboardingStateWithSharedStore()
         scheduleDerivedViewStateRefresh()
     }
 
@@ -654,6 +935,7 @@ final class HelmCore: ObservableObject {
         if now.timeIntervalSince(lastTaskSnapshotRefreshAt) >= taskSnapshotInterval {
             lastTaskSnapshotRefreshAt = now
             fetchTasks()
+            fetchTaskTimeoutPrompts()
         }
 
         let fullSnapshotInterval: TimeInterval = {
@@ -830,6 +1112,27 @@ final class HelmCore: ObservableObject {
         }
     }
 
+    func triggerDetection(for managerId: String, completion: ((Bool) -> Void)? = nil) {
+        logger.info("triggerDetectionForManager called (manager=\(managerId, privacy: .public))")
+        self.lastTaskSnapshotRefreshAt = .distantPast
+        self.lastFullSnapshotRefreshAt = .distantPast
+
+        service()?.triggerDetectionForManager(managerId: managerId) { success in
+            if !success {
+                logger.error("triggerDetectionForManager failed (manager=\(managerId, privacy: .public))")
+                self.recordLastError(
+                    source: "core",
+                    action: "triggerDetectionForManager",
+                    managerId: managerId,
+                    taskType: "detection"
+                )
+            }
+            DispatchQueue.main.async {
+                completion?(success)
+            }
+        }
+    }
+
     func setInteractiveSurfaceVisibility(
         popoverVisible: Bool,
         controlCenterVisible: Bool
@@ -874,6 +1177,7 @@ final class HelmCore: ObservableObject {
     func completeOnboarding() {
         UserDefaults.standard.set(true, forKey: Self.onboardingCompletedKey)
         hasCompletedOnboarding = true
+        persistSharedOnboardingCompleted(true)
     }
 
     func acceptCurrentLicenseTerms(acceptedAt: Date = Date()) {
@@ -888,6 +1192,7 @@ final class HelmCore: ObservableObject {
         )
         acceptedLicenseTermsVersion = Self.currentLicenseTermsVersion
         acceptedLicenseTermsAcceptedAtUnix = acceptedAtUnix
+        persistSharedAcceptedLicenseTermsVersion(Self.currentLicenseTermsVersion)
     }
 
     func resetDatabase(completion: @escaping (Bool) -> Void) {
@@ -903,10 +1208,13 @@ final class HelmCore: ObservableObject {
                     self?.installedPackages = []
                     self?.outdatedPackages = []
                     self?.activeTasks = []
+                    self?.taskTimeoutPrompts = []
                     self?.searchResults = []
                     self?.cachedAvailablePackages = []
                     self?.detectedManagers = []
                     self?.managerStatuses = [:]
+                    self?.managerOperations = [:]
+                    self?.verifyingManagerIds = []
                     self?.packageKegPolicyOverrides = [:]
                     self?.homebrewKegAutoCleanupEnabled = false
                     self?.searchText = ""
@@ -924,6 +1232,14 @@ final class HelmCore: ObservableObject {
                     self?.descriptionLookupTaskIdsByPackage = [:]
                     self?.descriptionLookupLastAttemptByPackage = [:]
                     self?.activeRemoteSearchTaskIds = []
+                    self?.managerActionTaskDescriptions = [:]
+                    self?.managerActionTaskByManager = [:]
+                    self?.managerActionTaskTypes = [:]
+                    self?.managerActionTaskSubmittedAt = [:]
+                    self?.managerVerificationAnchorTaskIdByManager = [:]
+                    self?.managerVerificationStartedAtByManager = [:]
+                    self?.localManagerActionTasks = [:]
+                    self?.localManagerActionTaskCreatedAt = [:]
                     self?.lastObservedTaskId = 0
                     self?.onboardingDetectionAnchorTaskId = 0
                     self?.onboardingDetectionPendingManagers = []
@@ -999,8 +1315,11 @@ final class HelmCore: ObservableObject {
             let status = managerStatuses[manager.id]
             let isImplemented = status?.isImplemented ?? manager.isImplemented
             let isEnabled = status?.enabled ?? true
-            let isDetected = status?.detected ?? false
-            return isImplemented && isEnabled && isDetected
+            let hasSetupRequiredIssue = status?.packageStateIssues?.contains(where: { issue in
+                issue.issueCode == "post_install_setup_required"
+            }) ?? false
+            let isDetected = isManagerDetected(manager.id)
+            return isImplemented && isDetected && (isEnabled || hasSetupRequiredIssue)
         }
 
         let failedManagerIds = Set(
@@ -1018,16 +1337,24 @@ final class HelmCore: ObservableObject {
         var managerHealthById: [String: OperationalHealth] = [:]
         managerHealthById.reserveCapacity(visibleManagers.count)
         for manager in visibleManagers {
+            let multiInstanceAttentionNeeded =
+                managerStatuses[manager.id]?.multiInstanceState == "attention_needed"
+            let setupRequired =
+                managerStatuses[manager.id]?.packageStateIssues?.contains(where: { issue in
+                    issue.issueCode == "post_install_setup_required"
+                }) ?? false
             if failedManagerIds.contains(manager.id) {
                 managerHealthById[manager.id] = .error
             } else if runningManagerIds.contains(manager.id) {
                 managerHealthById[manager.id] = .running
-            } else if outdatedManagerIds.contains(manager.id) {
+            } else if setupRequired || outdatedManagerIds.contains(manager.id) || multiInstanceAttentionNeeded {
                 managerHealthById[manager.id] = .attention
             } else {
                 managerHealthById[manager.id] = .healthy
             }
         }
+
+        let hasManagerAttention = managerHealthById.values.contains(.attention)
 
         let popoverManagerRows = visibleManagers
             .sorted { lhs, rhs in
@@ -1049,7 +1376,7 @@ final class HelmCore: ObservableObject {
             if runningTaskCount > 0 || isRefreshing {
                 return .running
             }
-            if !outdatedPackages.isEmpty {
+            if !outdatedPackages.isEmpty || hasManagerAttention {
                 return .attention
             }
             return .healthy

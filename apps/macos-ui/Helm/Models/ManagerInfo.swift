@@ -73,27 +73,199 @@ enum ManagerDistributionMethod: String, CaseIterable {
     }
 }
 
+enum InstallMethodRecommendationReason: String {
+    case upstreamRecommended
+    case helmPreferredDefault
+}
+
+enum InstallMethodPolicyTag: String {
+    case allowed
+    case managedRestricted
+    case blockedByPolicy
+}
+
+extension InstallMethodRecommendationReason {
+    init?(storageRawValue rawValue: String?) {
+        guard let normalized = rawValue?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !normalized.isEmpty else {
+            return nil
+        }
+        switch normalized {
+        case InstallMethodRecommendationReason.upstreamRecommended.rawValue,
+             "upstream_recommended":
+            self = .upstreamRecommended
+        case InstallMethodRecommendationReason.helmPreferredDefault.rawValue,
+             "helm_preferred_default":
+            self = .helmPreferredDefault
+        default:
+            return nil
+        }
+    }
+}
+
+extension InstallMethodPolicyTag {
+    init(storageRawValue rawValue: String?) {
+        let normalized = rawValue?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        switch normalized {
+        case InstallMethodPolicyTag.blockedByPolicy.rawValue.lowercased(), "blocked_by_policy":
+            self = .blockedByPolicy
+        case InstallMethodPolicyTag.managedRestricted.rawValue.lowercased(), "managed_restricted":
+            self = .managedRestricted
+        default:
+            self = .allowed
+        }
+    }
+}
+
+private let managedInstallMethodPolicyEnv = "HELM_MANAGED_INSTALL_METHOD_POLICY"
+private let managedInstallMethodPolicyAllowRestrictedEnv = "HELM_MANAGED_INSTALL_METHOD_POLICY_ALLOW_RESTRICTED"
+
+struct ManagerInstallMethodPolicyContext {
+    let managedEnvironment: Bool
+    let allowRestrictedMethods: Bool
+
+    static func fromEnvironment(
+        _ environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> ManagerInstallMethodPolicyContext {
+        ManagerInstallMethodPolicyContext(
+            managedEnvironment: envFlagEnabled(
+                key: managedInstallMethodPolicyEnv,
+                environment: environment
+            ),
+            allowRestrictedMethods: envFlagEnabled(
+                key: managedInstallMethodPolicyAllowRestrictedEnv,
+                environment: environment
+            )
+        )
+    }
+}
+
+extension ManagerInstallMethodOption {
+    func isAllowed(in context: ManagerInstallMethodPolicyContext) -> Bool {
+        switch policyTag {
+        case .allowed:
+            return true
+        case .managedRestricted:
+            return !context.managedEnvironment || context.allowRestrictedMethods
+        case .blockedByPolicy:
+            return false
+        }
+    }
+}
+
+private func envFlagEnabled(
+    key: String,
+    environment: [String: String]
+) -> Bool {
+    guard let value = environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !value.isEmpty else {
+        return false
+    }
+    switch value.lowercased() {
+    case "1", "true", "yes", "on":
+        return true
+    default:
+        return false
+    }
+}
+
 struct ManagerInstallMethodOption: Identifiable, Equatable {
     let method: ManagerDistributionMethod
     let isRecommended: Bool
     let isPreferred: Bool
+    let recommendationRank: Int
+    let recommendationReason: InstallMethodRecommendationReason?
+    let policyTag: InstallMethodPolicyTag
     let executablePathHints: [String]
     let packageHints: [String]
 
     var id: String { method.rawValue }
 }
 
+extension ManagerInstallMethodOption {
+    static func fromCoreStatus(
+        _ status: ManagerInstallMethodStatus,
+        fallback: ManagerInstallMethodOption?
+    ) -> ManagerInstallMethodOption? {
+        guard let method = ManagerDistributionMethod(rawValue: status.methodId) else {
+            return nil
+        }
+
+        let recommendationReason = InstallMethodRecommendationReason(
+            storageRawValue: status.recommendationReason
+        )
+        let isRecommended = recommendationReason == .upstreamRecommended
+        let isPreferred = recommendationReason == .helmPreferredDefault
+        let policyTag = InstallMethodPolicyTag(storageRawValue: status.policyTag)
+        let coreExecutableHints = (status.executablePathHints ?? [])
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let corePackageHints = (status.packageHints ?? [])
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        return ManagerInstallMethodOption(
+            method: method,
+            isRecommended: isRecommended,
+            isPreferred: isPreferred,
+            recommendationRank: status.recommendationRank,
+            recommendationReason: recommendationReason,
+            policyTag: policyTag,
+            executablePathHints: coreExecutableHints.isEmpty
+                ? (fallback?.executablePathHints ?? [])
+                : coreExecutableHints,
+            packageHints: corePackageHints.isEmpty
+                ? (fallback?.packageHints ?? [])
+                : corePackageHints
+        )
+    }
+}
+
 private func methodOption(
     _ method: ManagerDistributionMethod,
     recommended: Bool = false,
     preferred: Bool = false,
+    recommendationRank: Int? = nil,
+    recommendationReason: InstallMethodRecommendationReason? = nil,
+    policyTag: InstallMethodPolicyTag = .allowed,
     executablePathHints: [String] = [],
     packageHints: [String] = []
 ) -> ManagerInstallMethodOption {
-    ManagerInstallMethodOption(
+    let resolvedPolicyTag: InstallMethodPolicyTag = {
+        if method == .notManageable && policyTag == .allowed {
+            return .blockedByPolicy
+        }
+        return policyTag
+    }()
+    let resolvedRank = recommendationRank ?? {
+        if recommended {
+            return 0
+        }
+        if preferred {
+            return 10
+        }
+        return 50
+    }()
+    let resolvedReason = recommendationReason ?? {
+        if recommended {
+            return .upstreamRecommended
+        }
+        if preferred {
+            return .helmPreferredDefault
+        }
+        return nil
+    }()
+
+    return ManagerInstallMethodOption(
         method: method,
         isRecommended: recommended,
         isPreferred: preferred,
+        recommendationRank: resolvedRank,
+        recommendationReason: resolvedReason,
+        policyTag: resolvedPolicyTag,
         executablePathHints: executablePathHints,
         packageHints: packageHints
     )
@@ -212,16 +384,18 @@ struct ManagerInfo: Identifiable {
     func selectedInstallMethodOption(
         selectedMethodRawValue: String?,
         executablePath: String?,
-        installedPackages: [PackageItem]
+        installedPackages: [PackageItem],
+        methodOptions: [ManagerInstallMethodOption]? = nil
     ) -> ManagerInstallMethodOption {
+        let resolvedMethodOptions = methodOptions ?? installMethodOptions
         if let selectedMethodRawValue,
-           let explicit = installMethodOptions.first(where: { $0.method.rawValue == selectedMethodRawValue }) {
+           let explicit = resolvedMethodOptions.first(where: { $0.method.rawValue == selectedMethodRawValue }) {
             return explicit
         }
 
         if let executablePath {
             let normalizedPath = executablePath.lowercased()
-            if let pathMatch = installMethodOptions.first(where: { option in
+            if let pathMatch = resolvedMethodOptions.first(where: { option in
                 option.executablePathHints.contains(where: { hint in
                     normalizedPath.contains(hint.lowercased())
                 })
@@ -231,31 +405,43 @@ struct ManagerInfo: Identifiable {
         }
 
         let installedPackageNames = Set(installedPackages.map { $0.name.lowercased() })
-        if let packageMatch = installMethodOptions.first(where: { option in
+        if let packageMatch = resolvedMethodOptions.first(where: { option in
             option.packageHints.contains(where: { installedPackageNames.contains($0.lowercased()) })
         }) {
             return packageMatch
         }
 
-        if let recommended = installMethodOptions.first(where: { $0.isRecommended }) {
+        if let recommended = resolvedMethodOptions.first(where: { $0.isRecommended }) {
             return recommended
         }
-        if let preferred = installMethodOptions.first(where: { $0.isPreferred }) {
+        if let preferred = resolvedMethodOptions.first(where: { $0.isPreferred }) {
             return preferred
         }
-        return installMethodOptions.first ?? methodOption(.notManageable)
+        let rankedFallback = resolvedMethodOptions.sorted { lhs, rhs in
+            if lhs.recommendationRank != rhs.recommendationRank {
+                return lhs.recommendationRank < rhs.recommendationRank
+            }
+            return lhs.method.rawValue < rhs.method.rawValue
+        }.first
+        return rankedFallback ?? methodOption(.notManageable)
     }
 
-    func recommendedExecutablePath(from executablePaths: [String]) -> String? {
+    func recommendedExecutablePath(
+        from executablePaths: [String],
+        methodOptions: [ManagerInstallMethodOption]? = nil
+    ) -> String? {
+        let resolvedMethodOptions = methodOptions ?? installMethodOptions
         let normalizedPaths = executablePaths
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         guard !normalizedPaths.isEmpty else { return nil }
 
-        let recommendedOption =
-            installMethodOptions.first(where: { $0.isRecommended })
-            ?? installMethodOptions.first(where: { $0.isPreferred })
-            ?? installMethodOptions.first
+        let recommendedOption = resolvedMethodOptions.sorted { lhs, rhs in
+            if lhs.recommendationRank != rhs.recommendationRank {
+                return lhs.recommendationRank < rhs.recommendationRank
+            }
+            return lhs.method.rawValue < rhs.method.rawValue
+        }.first
 
         if let recommendedOption {
             for path in normalizedPaths {
@@ -284,15 +470,18 @@ struct ManagerInfo: Identifiable {
             installMethod: .automatable,
             installMethodOptions: [
                 methodOption(
-                    .homebrew,
+                    .scriptInstaller,
                     recommended: true,
                     preferred: true,
+                    executablePathHints: [".local/bin/mise"]
+                ),
+                methodOption(
+                    .homebrew,
                     executablePathHints: ["/opt/homebrew/bin/mise", "/usr/local/bin/mise"],
                     packageHints: ["mise"]
                 ),
-                methodOption(.scriptInstaller, executablePathHints: [".local/bin/mise"]),
-                methodOption(.macports),
-                methodOption(.cargoInstall)
+                methodOption(.macports, policyTag: .managedRestricted),
+                methodOption(.cargoInstall, policyTag: .managedRestricted)
             ]
         ),
         ManagerInfo(
@@ -303,7 +492,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: true,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(
                     .scriptInstaller,
@@ -326,7 +515,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .updateAndUninstall,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(
                     .rustupInstaller,
@@ -429,7 +618,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.mise, recommended: true, preferred: true),
                 methodOption(.asdf),
@@ -445,7 +634,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.corepack, recommended: true, preferred: true),
                 methodOption(.homebrew, packageHints: ["pnpm"]),
@@ -461,7 +650,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.corepack, recommended: true, preferred: true),
                 methodOption(.homebrew, packageHints: ["yarn"]),
@@ -477,7 +666,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.pipx, recommended: true, preferred: true, packageHints: ["poetry"]),
                 methodOption(.homebrew, packageHints: ["poetry"]),
@@ -493,7 +682,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.systemProvided, recommended: true, preferred: true),
                 methodOption(.homebrew),
@@ -509,7 +698,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.gem, recommended: true, preferred: true),
                 methodOption(.systemProvided),
@@ -526,7 +715,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.systemProvided, recommended: true, preferred: true),
                 methodOption(.homebrew),
@@ -542,7 +731,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.homebrew, recommended: true, preferred: true, packageHints: ["pipx"]),
                 methodOption(.pip)
@@ -556,7 +745,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.rustupInstaller, recommended: true, preferred: true),
                 methodOption(.homebrew, packageHints: ["rust"])
@@ -570,7 +759,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.scriptInstaller, recommended: true, preferred: true, packageHints: ["cargo-binstall"]),
                 methodOption(.cargoInstall, packageHints: ["cargo-binstall"]),
@@ -590,9 +779,9 @@ struct ManagerInfo: Identifiable {
             installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.homebrew, recommended: true, preferred: true, packageHints: ["mas"]),
-                methodOption(.macports),
-                methodOption(.appStore),
-                methodOption(.officialInstaller)
+                methodOption(.macports, policyTag: .managedRestricted),
+                methodOption(.appStore, policyTag: .managedRestricted),
+                methodOption(.officialInstaller, policyTag: .managedRestricted)
             ]
         ),
         ManagerInfo(
@@ -663,7 +852,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.officialInstaller, recommended: true, preferred: true),
                 methodOption(.homebrew, packageHints: ["podman"]),
@@ -678,7 +867,7 @@ struct ManagerInfo: Identifiable {
             isImplemented: true,
             isOptional: false,
             isDetectionOnly: false,
-            installMethod: .notManageable,
+            installMethod: .automatable,
             installMethodOptions: [
                 methodOption(.homebrew, recommended: true, preferred: true, packageHints: ["colima"]),
                 methodOption(.macports),

@@ -9,6 +9,8 @@ use crate::adapters::{
     AdapterRequest, AdapterResponse, DetectRequest, ListInstalledRequest, ListOutdatedRequest,
     ManagerAdapter,
 };
+use crate::install_instances::collect_manager_install_instances;
+use crate::manager_dependencies::provenance_requires_manager_dependency;
 use crate::manager_policy::manager_enablement_eligibility;
 use crate::models::{
     Capability, CoreError, CoreErrorKind, DetectionInfo, ManagerAction, ManagerId,
@@ -21,6 +23,7 @@ use crate::orchestration::{
 use crate::persistence::{
     DetectionStore, ManagerPreference, PackageStore, SearchCacheStore, TaskStore,
 };
+use crate::post_install_setup::evaluate_manager_post_install_setup;
 
 const TASK_PERSIST_RETRY_ATTEMPTS: usize = 3;
 const TASK_PERSIST_RETRY_DELAY_MS: u64 = 15;
@@ -211,7 +214,15 @@ impl AdapterRuntime {
         };
 
         let resolved_executable = selected_executable_path.or(detected_executable_path);
+        let setup_required = ds
+            .list_install_instances(Some(manager))
+            .ok()
+            .and_then(|instances| {
+                evaluate_manager_post_install_setup(manager, Some(instances.as_slice()))
+            })
+            .is_some_and(|report| report.has_unmet_required());
         manager_enablement_eligibility(manager, resolved_executable.as_deref()).is_eligible
+            && !setup_required
     }
 
     pub fn is_safe_mode(&self) -> bool {
@@ -604,7 +615,10 @@ impl AdapterRuntime {
         let action = request.action();
         let task_type = task_type_for_action(action);
 
-        if !self.manager_is_enabled_from_snapshot(manager, enablement_snapshot) {
+        let allow_when_disabled = action == ManagerAction::Uninstall;
+        if !allow_when_disabled
+            && !self.manager_is_enabled_from_snapshot(manager, enablement_snapshot)
+        {
             return Err(CoreError {
                 manager: Some(manager),
                 task: Some(task_type),
@@ -970,6 +984,37 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
                 "failed to persist terminal task log"
             );
         }
+
+        let supplemental_notes = crate::execution::drain_task_log_notes(snapshot.runtime.id);
+        for note in supplemental_notes {
+            if let Err(error) = persist_append_task_log(
+                task_store.clone(),
+                NewTaskLogRecord {
+                    task_id: snapshot.runtime.id,
+                    manager: snapshot.runtime.manager,
+                    task_type: snapshot.runtime.task_type,
+                    status: Some(terminal_status),
+                    level: TaskLogLevel::Info,
+                    message: note,
+                    created_at: SystemTime::now(),
+                },
+                snapshot.runtime.manager,
+                snapshot.runtime.task_type,
+                action,
+            )
+            .await
+            {
+                tracing::warn!(
+                    manager = ?manager,
+                    task_id = task_id.0,
+                    task_type = ?task_type,
+                    action = ?action,
+                    kind = ?error.kind,
+                    message = %error.message,
+                    "failed to persist supplemental task log note"
+                );
+            }
+        }
     });
 }
 
@@ -1051,7 +1096,30 @@ async fn persist_detection_response(
     let response = response.clone();
 
     tokio::task::spawn_blocking(move || match response {
-        AdapterResponse::Detection(info) => detection_store.upsert_detection(manager, &info),
+        AdapterResponse::Detection(info) => {
+            detection_store.upsert_detection(manager, &info)?;
+            let mut instances = collect_manager_install_instances(manager, &info);
+            let selected_executable_path = detection_store
+                .list_manager_preferences()?
+                .into_iter()
+                .find(|preference| preference.manager == manager)
+                .and_then(|preference| normalize_nonempty(preference.selected_executable_path));
+            let selected_path_update = reconcile_detected_install_instances(
+                manager,
+                &mut instances,
+                selected_executable_path.as_deref(),
+            );
+
+            detection_store.replace_install_instances(manager, &instances)?;
+            match selected_path_update {
+                SelectedExecutablePathUpdate::Keep => Ok(()),
+                SelectedExecutablePathUpdate::Set(path) => detection_store
+                    .set_manager_selected_executable_path(manager, Some(path.as_str())),
+                SelectedExecutablePathUpdate::Clear => {
+                    detection_store.set_manager_selected_executable_path(manager, None)
+                }
+            }
+        }
         _ => Ok(()),
     })
     .await
@@ -1345,6 +1413,237 @@ fn build_manager_enablement_map(
     enabled_by_manager
 }
 
+fn normalize_nonempty(value: Option<String>) -> Option<String> {
+    value.and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else if trimmed.len() == value.len() {
+            Some(value)
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum SelectedExecutablePathUpdate {
+    Keep,
+    Set(String),
+    Clear,
+}
+
+fn reconcile_detected_install_instances(
+    manager: ManagerId,
+    instances: &mut [crate::models::ManagerInstallInstance],
+    selected_executable_path: Option<&str>,
+) -> SelectedExecutablePathUpdate {
+    let normalized_selected = selected_executable_path
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+
+    if instances.is_empty() {
+        return if normalized_selected.is_some() {
+            SelectedExecutablePathUpdate::Clear
+        } else {
+            SelectedExecutablePathUpdate::Keep
+        };
+    }
+
+    let selected_index = normalized_selected.as_deref().and_then(|value| {
+        let selected_path = PathBuf::from(value);
+        let selected_canonical = selected_path.canonicalize().ok();
+        instances.iter().position(|instance| {
+            instance_matches_selected_path(instance, &selected_path, selected_canonical.as_deref())
+        })
+    });
+
+    let active_index = selected_index
+        .or_else(|| instances.iter().position(|instance| instance.is_active))
+        .unwrap_or_else(|| recommended_active_instance_index(manager, instances));
+
+    for (index, instance) in instances.iter_mut().enumerate() {
+        instance.is_active = index == active_index;
+    }
+
+    let resolved_path = instances[active_index]
+        .display_path
+        .to_string_lossy()
+        .to_string();
+    if normalized_selected.as_deref() == Some(resolved_path.as_str()) {
+        SelectedExecutablePathUpdate::Keep
+    } else {
+        SelectedExecutablePathUpdate::Set(resolved_path)
+    }
+}
+
+fn instance_matches_selected_path(
+    instance: &crate::models::ManagerInstallInstance,
+    selected_path: &std::path::Path,
+    selected_canonical: Option<&std::path::Path>,
+) -> bool {
+    if instance.display_path == selected_path {
+        return true;
+    }
+    if instance
+        .alias_paths
+        .iter()
+        .any(|path| path == selected_path)
+    {
+        return true;
+    }
+    if let Some(canonical_path) = instance.canonical_path.as_deref()
+        && canonical_path == selected_path
+    {
+        return true;
+    }
+    if let Some(selected_canonical) = selected_canonical {
+        if instance
+            .canonical_path
+            .as_deref()
+            .is_some_and(|path| path == selected_canonical)
+        {
+            return true;
+        }
+        if instance
+            .display_path
+            .canonicalize()
+            .ok()
+            .as_deref()
+            .is_some_and(|path| path == selected_canonical)
+        {
+            return true;
+        }
+        if instance
+            .alias_paths
+            .iter()
+            .filter_map(|path| path.canonicalize().ok())
+            .any(|path| path == selected_canonical)
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn recommended_active_instance_index(
+    manager: ManagerId,
+    instances: &[crate::models::ManagerInstallInstance],
+) -> usize {
+    instances
+        .iter()
+        .enumerate()
+        .min_by(|(_, left), (_, right)| compare_instance_recommendation(manager, left, right))
+        .map(|(index, _)| index)
+        .unwrap_or(0)
+}
+
+fn compare_instance_recommendation(
+    manager: ManagerId,
+    left: &crate::models::ManagerInstallInstance,
+    right: &crate::models::ManagerInstallInstance,
+) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+
+    let left_bucket = recommendation_bucket(manager, left.provenance);
+    let right_bucket = recommendation_bucket(manager, right.provenance);
+    if left_bucket != right_bucket {
+        return left_bucket.cmp(&right_bucket);
+    }
+
+    let left_dependency_rank = dependency_manager_rank(manager, left.provenance);
+    let right_dependency_rank = dependency_manager_rank(manager, right.provenance);
+    if left_dependency_rank != right_dependency_rank {
+        return left_dependency_rank.cmp(&right_dependency_rank);
+    }
+
+    let left_class_rank = non_dependency_rank(manager, left.provenance);
+    let right_class_rank = non_dependency_rank(manager, right.provenance);
+    if left_class_rank != right_class_rank {
+        return left_class_rank.cmp(&right_class_rank);
+    }
+
+    let left_automation_rank = automation_rank(left.automation_level);
+    let right_automation_rank = automation_rank(right.automation_level);
+    if left_automation_rank != right_automation_rank {
+        return left_automation_rank.cmp(&right_automation_rank);
+    }
+
+    match right.confidence.partial_cmp(&left.confidence) {
+        Some(Ordering::Equal) | None => {}
+        Some(ordering) => return ordering,
+    }
+
+    left.display_path
+        .to_string_lossy()
+        .cmp(&right.display_path.to_string_lossy())
+}
+
+fn recommendation_bucket(manager: ManagerId, provenance: crate::models::InstallProvenance) -> u8 {
+    if is_official_direct_provenance(manager, provenance) {
+        return 0;
+    }
+    if provenance_requires_manager_dependency(manager, provenance) {
+        return 2;
+    }
+    if provenance == crate::models::InstallProvenance::Unknown {
+        return 3;
+    }
+    1
+}
+
+fn is_official_direct_provenance(
+    manager: ManagerId,
+    provenance: crate::models::InstallProvenance,
+) -> bool {
+    if provenance == crate::models::InstallProvenance::SourceBuild {
+        return true;
+    }
+    matches!(
+        (manager, provenance),
+        (
+            ManagerId::Rustup,
+            crate::models::InstallProvenance::RustupInit
+        ) | (ManagerId::Mise, crate::models::InstallProvenance::Mise)
+    )
+}
+
+fn dependency_manager_rank(manager: ManagerId, provenance: crate::models::InstallProvenance) -> u8 {
+    if !provenance_requires_manager_dependency(manager, provenance) {
+        return u8::MAX / 2;
+    }
+
+    match provenance {
+        crate::models::InstallProvenance::Homebrew => 0,
+        crate::models::InstallProvenance::Macports => 1,
+        crate::models::InstallProvenance::Nix => 2,
+        crate::models::InstallProvenance::Asdf => 3,
+        crate::models::InstallProvenance::Mise => 4,
+        _ => 10,
+    }
+}
+
+fn non_dependency_rank(manager: ManagerId, provenance: crate::models::InstallProvenance) -> u8 {
+    match provenance {
+        crate::models::InstallProvenance::RustupInit if manager == ManagerId::Rustup => 0,
+        crate::models::InstallProvenance::Mise if manager == ManagerId::Mise => 1,
+        crate::models::InstallProvenance::SourceBuild => 2,
+        crate::models::InstallProvenance::System => 3,
+        crate::models::InstallProvenance::EnterpriseManaged => 4,
+        crate::models::InstallProvenance::Unknown => 99,
+        _ => 10,
+    }
+}
+
+fn automation_rank(level: crate::models::AutomationLevel) -> u8 {
+    match level {
+        crate::models::AutomationLevel::Automatic => 0,
+        crate::models::AutomationLevel::NeedsConfirmation => 1,
+        crate::models::AutomationLevel::ReadOnly => 2,
+    }
+}
+
 fn should_retry_transient_refresh_error(
     task_type: TaskType,
     action: ManagerAction,
@@ -1536,14 +1835,18 @@ fn task_type_for_action(action: ManagerAction) -> TaskType {
 #[cfg(test)]
 mod tests {
     use super::{
-        TaskType, build_manager_enablement_map, build_refresh_capability_plan,
+        SelectedExecutablePathUpdate, TaskType, build_manager_enablement_map,
+        build_refresh_capability_plan, reconcile_detected_install_instances,
         reduce_detect_request_result, refresh_wait_budget, should_skip_refresh_lists_after_detect,
     };
     use crate::adapters::AdapterResponse;
     use crate::execution::{
         ManagerTimeoutProfile, clear_manager_timeout_profiles, set_manager_timeout_profile,
     };
-    use crate::models::{CoreError, CoreErrorKind, DetectionInfo, ManagerId};
+    use crate::models::{
+        AutomationLevel, CoreError, CoreErrorKind, DetectionInfo, InstallInstanceIdentityKind,
+        InstallProvenance, ManagerId, ManagerInstallInstance, StrategyKind,
+    };
     use crate::persistence::ManagerPreference;
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -1555,6 +1858,36 @@ mod tests {
         LOCK.get_or_init(|| Mutex::new(()))
             .lock()
             .expect("timeout profile test lock should be available")
+    }
+
+    fn test_instance(
+        manager: ManagerId,
+        id: &str,
+        path: &str,
+        provenance: InstallProvenance,
+    ) -> ManagerInstallInstance {
+        ManagerInstallInstance {
+            manager,
+            instance_id: id.to_string(),
+            identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+            identity_value: path.to_string(),
+            display_path: PathBuf::from(path),
+            canonical_path: None,
+            alias_paths: vec![PathBuf::from(path)],
+            is_active: false,
+            version: Some("1.0.0".to_string()),
+            provenance,
+            confidence: 0.9,
+            decision_margin: Some(0.2),
+            automation_level: AutomationLevel::Automatic,
+            uninstall_strategy: StrategyKind::InteractivePrompt,
+            update_strategy: StrategyKind::InteractivePrompt,
+            remediation_strategy: StrategyKind::ManualRemediation,
+            explanation_primary: None,
+            explanation_secondary: None,
+            competing_provenance: None,
+            competing_confidence: None,
+        }
     }
 
     #[test]
@@ -1736,5 +2069,64 @@ mod tests {
         );
         let expected = HashMap::from([(ManagerId::Npm, true)]);
         assert_eq!(map, expected);
+    }
+
+    #[test]
+    fn reconcile_detected_instances_selects_rustup_init_when_selected_missing() {
+        let mut instances = vec![
+            test_instance(
+                ManagerId::Rustup,
+                "homebrew",
+                "/opt/homebrew/bin/rustup",
+                InstallProvenance::Homebrew,
+            ),
+            test_instance(
+                ManagerId::Rustup,
+                "rustup-init",
+                "/Users/test/.cargo/bin/rustup",
+                InstallProvenance::RustupInit,
+            ),
+        ];
+        let update = reconcile_detected_install_instances(
+            ManagerId::Rustup,
+            &mut instances,
+            Some("/tmp/removed-rustup"),
+        );
+
+        assert_eq!(
+            update,
+            SelectedExecutablePathUpdate::Set("/Users/test/.cargo/bin/rustup".to_string())
+        );
+        assert_eq!(instances[1].is_active, true);
+        assert_eq!(instances[0].is_active, false);
+    }
+
+    #[test]
+    fn reconcile_detected_instances_keeps_matching_selected_path() {
+        let mut instances = vec![test_instance(
+            ManagerId::Rustup,
+            "rustup-init",
+            "/Users/test/.cargo/bin/rustup",
+            InstallProvenance::RustupInit,
+        )];
+        let update = reconcile_detected_install_instances(
+            ManagerId::Rustup,
+            &mut instances,
+            Some("/Users/test/.cargo/bin/rustup"),
+        );
+
+        assert_eq!(update, SelectedExecutablePathUpdate::Keep);
+        assert!(instances[0].is_active);
+    }
+
+    #[test]
+    fn reconcile_detected_instances_clears_selected_path_when_none_detected() {
+        let mut instances: Vec<ManagerInstallInstance> = Vec::new();
+        let update = reconcile_detected_install_instances(
+            ManagerId::Rustup,
+            &mut instances,
+            Some("/opt/homebrew/bin/rustup"),
+        );
+        assert_eq!(update, SelectedExecutablePathUpdate::Clear);
     }
 }

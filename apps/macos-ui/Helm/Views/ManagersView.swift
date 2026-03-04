@@ -1,11 +1,22 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+private struct ManagerDependencyAlertState: Identifiable {
+    enum Kind {
+        case disableBlocked(managerId: String, dependents: [String])
+        case enableRequiresParent(managerId: String, parentManagerId: String)
+    }
+
+    let id = UUID()
+    let kind: Kind
+}
+
 struct ManagersSectionView: View {
     private let core = HelmCore.shared
     @ObservedObject private var managersState = HelmCore.shared.managersState
     @EnvironmentObject private var context: ControlCenterContext
     @State private var draggedManagerId: String?
+    @State private var managerDependencyAlert: ManagerDependencyAlertState?
 
     private var groupedManagers: [(authority: ManagerAuthority, managers: [ManagerInfo])] {
         [
@@ -46,6 +57,7 @@ struct ManagersSectionView: View {
                                     outdatedCount: managersState.outdatedCountByManager[manager.id, default: 0],
                                     packageCount: managersState.installedCountByManager[manager.id, default: 0],
                                     operationStatus: managersState.managerOperationsById[manager.id],
+                                    isManagerUninstalling: core.isManagerUninstalling(manager.id),
                                     isSelected: context.selectedManagerId == manager.id,
                                     onSelect: {
                                         context.selectedManagerId = manager.id
@@ -55,10 +67,22 @@ struct ManagersSectionView: View {
                                     },
                                     onViewPackages: {
                                         context.selectedManagerId = manager.id
-                                        context.managerFilterId = manager.id
+                                        context.selectedPackageId = nil
                                         context.selectedTaskId = nil
                                         context.selectedUpgradePlanStepId = nil
+                                        context.managerFilterId = manager.id
                                         context.selectedSection = .packages
+                                    },
+                                    onInstallManager: {
+                                        context.selectedManagerId = manager.id
+                                        context.selectedPackageId = nil
+                                        context.selectedTaskId = nil
+                                        context.selectedUpgradePlanStepId = nil
+                                        context.selectedSection = .managers
+                                        context.requestManagerInstallSheet(for: manager.id)
+                                    },
+                                    onToggleEnabled: { enabled in
+                                        handleManagerToggle(managerId: manager.id, enable: enabled)
                                     }
                                 )
                                 .onDrag {
@@ -97,6 +121,94 @@ struct ManagersSectionView: View {
             draggedManagerId = nil
             context.suppressWindowBackgroundDragging = false
         }
+        .alert(item: $managerDependencyAlert) { alertState in
+            switch alertState.kind {
+            case let .disableBlocked(managerId, dependents):
+                return Alert(
+                    title: Text(
+                        L10n.App.Managers.Alert.disableBlockedTitle.localized(
+                            with: ["manager": localizedManagerDisplayName(managerId)]
+                        )
+                    ),
+                    message: Text(
+                        L10n.App.Managers.Alert.disableBlockedMessage.localized(
+                            with: [
+                                "manager": localizedManagerDisplayName(managerId),
+                                "dependents": localizedDependentManagerList(dependents)
+                            ]
+                        )
+                    ),
+                    dismissButton: .default(Text(L10n.Common.ok.localized))
+                )
+            case let .enableRequiresParent(managerId, parentManagerId):
+                return Alert(
+                    title: Text(
+                        L10n.App.Managers.Alert.enableRequiresParentTitle.localized(
+                            with: ["manager": localizedManagerDisplayName(managerId)]
+                        )
+                    ),
+                    message: Text(
+                        L10n.App.Managers.Alert.enableRequiresParentMessage.localized(
+                            with: [
+                                "manager": localizedManagerDisplayName(managerId),
+                                "parent": localizedManagerDisplayName(parentManagerId)
+                            ]
+                        )
+                    ),
+                    primaryButton: .default(Text(L10n.Common.continue.localized)) {
+                        core.setManagerEnabled(parentManagerId, enabled: true) { success in
+                            guard success else { return }
+                            core.setManagerEnabled(managerId, enabled: true)
+                        }
+                    },
+                    secondaryButton: .cancel(Text(L10n.Common.cancel.localized))
+                )
+            }
+        }
+    }
+
+    private func handleManagerToggle(managerId: String, enable: Bool) {
+        guard let status = managersState.managerStatusesById[managerId] else {
+            core.setManagerEnabled(managerId, enabled: enable)
+            return
+        }
+
+        if !enable {
+            let dependents = ManagerDependencyResolver.enabledDependents(
+                of: managerId,
+                statuses: managersState.managerStatusesById
+            )
+            if !dependents.isEmpty {
+                managerDependencyAlert = .init(
+                    kind: .disableBlocked(managerId: managerId, dependents: dependents)
+                )
+                return
+            }
+            core.setManagerEnabled(managerId, enabled: false)
+            return
+        }
+
+        if let parentManagerId = ManagerDependencyResolver.dependencyManagerId(
+            for: managerId,
+            provenance: status.activeProvenance
+        ),
+            let parentStatus = managersState.managerStatusesById[parentManagerId],
+            !parentStatus.enabled
+        {
+            managerDependencyAlert = .init(
+                kind: .enableRequiresParent(
+                    managerId: managerId,
+                    parentManagerId: parentManagerId
+                )
+            )
+            return
+        }
+
+        core.setManagerEnabled(managerId, enabled: true)
+    }
+
+    private func localizedDependentManagerList(_ managerIds: [String]) -> String {
+        managerIds.map(localizedManagerDisplayName).joined(separator: ", ")
     }
 }
 
@@ -109,31 +221,15 @@ private struct ManagerSectionRow: View {
     let outdatedCount: Int
     let packageCount: Int
     let operationStatus: String?
+    let isManagerUninstalling: Bool
     let isSelected: Bool
     let onSelect: () -> Void
     let onViewPackages: () -> Void
-
-    @State private var confirmAction: ConfirmAction?
-
-    private enum ConfirmAction: Identifiable {
-        case install
-        case update
-        case uninstall
-
-        var id: String {
-            switch self {
-            case .install:
-                return "install"
-            case .update:
-                return "update"
-            case .uninstall:
-                return "uninstall"
-            }
-        }
-    }
+    let onInstallManager: () -> Void
+    let onToggleEnabled: (Bool) -> Void
 
     private var detected: Bool {
-        status?.detected ?? false
+        core.isManagerDetected(manager.id)
     }
 
     private var enabled: Bool {
@@ -163,6 +259,25 @@ private struct ManagerSectionRow: View {
         ineligibleReason != nil && !enabled
     }
 
+    private var packageActionEnabled: Bool {
+        packageCount > 0 && enabled && !isManagerUninstalling
+    }
+
+    private var installActionEnabled: Bool {
+        manager.canInstall && !isManagerUninstalling
+    }
+
+    private var metadataMismatchIssueSummary: String? {
+        guard let issue = status?.packageStateIssues?.first(where: { issue in
+            issue.issueCode == "metadata_only_install"
+        }) else {
+            return nil
+        }
+        return L10n.App.Managers.State.metadataMismatch.localized(with: [
+            "package": issue.packageName
+        ])
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
@@ -188,6 +303,11 @@ private struct ManagerSectionRow: View {
                             .font(.caption)
                             .foregroundColor(outdatedCount == 0 ? HelmTheme.textSecondary : HelmTheme.stateAttention)
                     }
+                    if let metadataMismatchIssueSummary {
+                        Text(metadataMismatchIssueSummary)
+                            .font(.caption2)
+                            .foregroundColor(HelmTheme.stateAttention)
+                    }
                 }
 
                 Spacer()
@@ -210,50 +330,44 @@ private struct ManagerSectionRow: View {
                     Toggle("", isOn: Binding(
                         get: { enabled },
                         set: { _ in
-                            core.setManagerEnabled(manager.id, enabled: !enabled)
+                            onToggleEnabled(!enabled)
                         }
                     ))
                     .toggleStyle(.switch)
                     .labelsHidden()
                     .scaleEffect(0.75)
-                    .disabled(enableToggleDisabled)
+                    .disabled(enableToggleDisabled || isManagerUninstalling)
                 }
             }
 
             HStack(spacing: 8) {
-                if manager.canInstall && !detected {
-                    Button(L10n.Common.install.localized) {
-                        confirmAction = .install
-                    }
-                    .helmPointer()
-                }
-                if manager.canUpdate && detected && enabled {
-                    Button(L10n.Common.update.localized) {
-                        confirmAction = .update
-                    }
-                    .helmPointer()
-                }
-                if manager.canUninstall && detected && enabled {
-                    Button(L10n.Common.uninstall.localized) {
-                        confirmAction = .uninstall
-                    }
-                    .helmPointer()
-                }
-
-                Spacer()
-
                 if enabled && outdatedCount > 0 {
                     Button(L10n.App.Settings.Action.upgradeAll.localized) {
                         core.upgradeAllPackages(forManagerId: manager.id)
                     }
-                    .helmPointer()
+                    .disabled(isManagerUninstalling)
+                    .helmPointer(enabled: !isManagerUninstalling)
                 }
 
-                Button(L10n.App.Managers.Action.viewPackages.localized) {
-                    onViewPackages()
+                Spacer()
+
+                if detected {
+                    managerCardActionButton(
+                        symbol: "shippingbox",
+                        tooltip: L10n.App.Managers.Action.viewPackages.localized,
+                        enabled: packageActionEnabled
+                    ) {
+                        onViewPackages()
+                    }
+                } else if manager.canInstall {
+                    managerCardActionButton(
+                        symbol: "arrow.down.circle",
+                        tooltip: L10n.Common.install.localized,
+                        enabled: installActionEnabled
+                    ) {
+                        onInstallManager()
+                    }
                 }
-                .disabled(packageCount == 0 || !enabled)
-                .helmPointer(enabled: packageCount > 0 && enabled)
             }
             .font(.caption)
 
@@ -272,6 +386,7 @@ private struct ManagerSectionRow: View {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .strokeBorder(isSelected ? HelmTheme.selectionStroke : Color.clear, lineWidth: 0.9)
                 )
+                .allowsHitTesting(false)
         )
         .padding(.horizontal, 20)
         .contentShape(Rectangle())
@@ -286,32 +401,24 @@ private struct ManagerSectionRow: View {
             detected ? (enabled ? L10n.App.Managers.State.enabled.localized : L10n.App.Managers.State.disabled.localized) : L10n.App.Managers.State.notInstalled.localized,
             L10n.App.Managers.Label.packageCount.localized(with: ["count": packageCount])
         ].joined(separator: ", "))
-        .alert(item: $confirmAction) { action in
-            switch action {
-            case .install:
-                return Alert(
-                    title: Text(L10n.App.Managers.Alert.installTitle.localized(with: ["manager": localizedManagerDisplayName(manager.id)])),
-                    message: Text(L10n.App.Managers.Alert.installMessage.localized(with: ["manager_short": manager.shortName])),
-                    primaryButton: .default(Text(L10n.Common.install.localized)) { core.installManager(manager.id) },
-                    secondaryButton: .cancel()
-                )
-            case .update:
-                return Alert(
-                    title: Text(L10n.App.Managers.Alert.updateTitle.localized(with: ["manager": localizedManagerDisplayName(manager.id)])),
-                    message: Text(L10n.App.Managers.Alert.updateMessage.localized),
-                    primaryButton: .default(Text(L10n.Common.update.localized)) { core.updateManager(manager.id) },
-                    secondaryButton: .cancel()
-                )
-            case .uninstall:
-                return Alert(
-                    title: Text(L10n.App.Managers.Alert.uninstallTitle.localized(with: ["manager": localizedManagerDisplayName(manager.id)])),
-                    message: Text(L10n.App.Managers.Alert.uninstallMessage.localized(with: ["manager_short": manager.shortName])),
-                    primaryButton: .destructive(Text(L10n.Common.uninstall.localized)) { core.uninstallManager(manager.id) },
-                    secondaryButton: .cancel()
-                )
-            }
-        }
     }
+
+    private func managerCardActionButton(
+        symbol: String,
+        tooltip: String,
+        enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+        }
+        .buttonStyle(HelmIconButtonStyle())
+        .help(tooltip)
+        .accessibilityLabel(tooltip)
+        .disabled(!enabled)
+        .helmPointer(enabled: enabled)
+    }
+
 }
 
 // Backward compatibility wrapper for legacy references.

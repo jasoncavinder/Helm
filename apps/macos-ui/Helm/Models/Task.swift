@@ -19,7 +19,7 @@ struct TaskItem: Identifiable {
     }
 
     var supportsInlineDetails: Bool {
-        isRunning || isFailed
+        true
     }
 
     /// Sort order: running first, then queued, then terminal states.

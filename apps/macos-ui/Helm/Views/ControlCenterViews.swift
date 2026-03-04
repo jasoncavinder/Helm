@@ -394,12 +394,12 @@ private struct ControlCenterSectionHostView: View {
         case .packages:
             PackagesSectionView()
                 .spotlightAnchor("ccPackages")
-        case .tasks:
-            TasksSectionView()
-                .spotlightAnchor("ccTasks")
         case .managers:
             ManagersSectionView()
                 .spotlightAnchor("ccManagers")
+        case .tasks:
+            TasksSectionView()
+                .spotlightAnchor("ccTasks")
         case .settings:
             SettingsSectionView()
                 .spotlightAnchor("ccSettings")

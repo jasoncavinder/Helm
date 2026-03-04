@@ -4,8 +4,8 @@ enum ControlCenterSection: String, CaseIterable, Identifiable {
     case overview
     case updates
     case packages
-    case tasks
     case managers
+    case tasks
     case settings
 
     var id: String { rawValue }
@@ -136,6 +136,8 @@ final class ControlCenterContext: ObservableObject {
     @Published var controlCenterSearchFocusToken: Int = 0
     @Published var isPopoverOverlayVisible: Bool = false
     @Published var suppressWindowBackgroundDragging: Bool = false
+    @Published var managerInstallSheetRequestManagerId: String?
+    @Published var managerInstallSheetRequestToken: Int = 0
 
     func presentUpgradeSheet(in host: UpgradeSheetHost) {
         upgradeSheetHost = host
@@ -179,6 +181,11 @@ final class ControlCenterContext: ObservableObject {
             clearInspectorSelection()
             selectedManagerId = retainedManagerId
         }
+    }
+
+    func requestManagerInstallSheet(for managerId: String) {
+        managerInstallSheetRequestManagerId = managerId
+        managerInstallSheetRequestToken += 1
     }
 }
 

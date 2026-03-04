@@ -11,7 +11,20 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ---
 
-## Unreleased
+## 0.17.8 — 2026-03-03
+
+Patch `0.17.8` finalizes manager lifecycle parity expansion and managed CLI shim hardening.
+
+### Added
+- Expanded manager lifecycle parity across core, CLI, FFI, and GUI for planner-backed manager install/update/uninstall paths.
+
+### Changed
+- Merged the manager lifecycle parity sweep into one stable patch cut.
+
+### Fixed
+- Managed CLI shim installs now stage through a temporary `.helm.tmp` file before replacement.
+- Managed CLI shim flow now clears quarantine attributes to avoid blocked execution.
+- Release preflight now avoids the unsupported `gh secret list --limit` invocation path.
 
 ## 0.17.7 — 2026-02-26
 
@@ -54,44 +67,6 @@ Patch `0.17.5` finalized the release-process hardening phases delivered after `v
 - Added release preflight and runbook operator scripts for `prepare`, `tag`, `publish`, and `verify`.
 - Release workflows now keep hard failures for true artifact/signing issues while reporting follow-up-required status for open metadata publish PRs.
 - Added publish verification and drift-guard checkpoints to reduce release metadata divergence risk.
-
-## 0.17.4 — 2026-02-24
-
-Patch `0.17.4` packages the first ratatui-powered Helm TUI, bundled-app CLI shim workflows, and post-`0.17.3` GUI/CLI parity closures.
-
-### Added
-- No-arg TTY launch now opens a ratatui/crossterm TUI with branded splash, keyboard-first navigation, and workflows for updates/packages/tasks/managers/settings/diagnostics.
-- GUI Settings now supports installing/removing a managed `~/.local/bin/helm` shim that resolves to the app-bundled CLI and writes app-bundle install provenance.
-- CLI now supports smart uninstall via `helm self uninstall` with channel-aware behavior.
-
-### Changed
-- Launch-at-login now supports macOS 11+ with a dual-path implementation:
-  - macOS 13+: `SMAppService.mainApp`
-  - macOS 11/12: embedded login-helper fallback via `SMLoginItemSetEnabled`
-- GUI/CLI/TUI parity expanded for progressive local+remote search, per-package Homebrew keg-policy controls, manager-scoped bulk upgrade execution, and TUI package install actions.
-
-### Fixed
-- TUI filter mode now exits correctly when the filter text is erased.
-- Help/completion contracts now include the expanded self-management command surface (`self uninstall`).
-
-## 0.17.3 — 2026-02-23
-
-Patch `0.17.3` finalizes post-`0.17.2` CLI parity hardening and release-channel safety guardrails.
-
-### Added
-- `helm doctor` is now a first-class top-level diagnostics alias (defaulting to provenance output).
-- Install-provenance and distribution-profile contracts are now centralized as machine-readable schema files.
-- Dedicated CLI update-metadata drift checks were added to release automation workflows.
-
-### Changed
-- CLI self-update behavior is now policy-driven across install channels, with deterministic direct-script force handling and explicit channel-managed guidance.
-- GUI and CLI now converge on a shared coordinator authority path for mutation/cancellation flow consistency.
-- Top-level machine output behavior is now consistently enforced for `--json` and `--ndjson` help/version/completion/error paths.
-
-### Fixed
-- Self-update/install safety now rejects symlink targets for marker writes and binary replacement, and enforces bounded update payload size.
-- Direct install/update fetch paths now enforce allowlisted HTTPS hosts with explicit timeout policy (with opt-in `file://` testing override).
-- Exit-code mapping now uses explicit markers for task failure/partial/cancelled semantics, with deterministic runtime fallback to `1`.
 
 ## 0.17.2 — 2026-02-22
 

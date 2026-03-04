@@ -216,7 +216,150 @@ ALTER TABLE manager_preferences_backup RENAME TO manager_preferences;
 "#,
 };
 
-const MIGRATIONS: [SqliteMigration; 8] = [
+const MIGRATION_0009: SqliteMigration = SqliteMigration {
+    version: 9,
+    name: "add_manager_install_instances",
+    up_sql: r#"
+CREATE TABLE IF NOT EXISTS manager_install_instances (
+    manager_id TEXT NOT NULL,
+    instance_id TEXT NOT NULL,
+    identity_kind TEXT NOT NULL,
+    identity_value TEXT NOT NULL,
+    display_path TEXT NOT NULL,
+    canonical_path TEXT,
+    alias_paths_json TEXT NOT NULL DEFAULT '[]',
+    is_active INTEGER NOT NULL DEFAULT 0,
+    version TEXT,
+    provenance TEXT NOT NULL DEFAULT 'unknown',
+    confidence REAL NOT NULL DEFAULT 0.0,
+    automation_level TEXT NOT NULL DEFAULT 'needs_confirmation',
+    uninstall_strategy TEXT NOT NULL DEFAULT 'interactive_prompt',
+    update_strategy TEXT NOT NULL DEFAULT 'interactive_prompt',
+    remediation_strategy TEXT NOT NULL DEFAULT 'manual_remediation',
+    explanation_primary TEXT,
+    explanation_secondary TEXT,
+    competing_provenance TEXT,
+    competing_confidence REAL,
+    detected_at_unix INTEGER NOT NULL,
+    PRIMARY KEY (manager_id, instance_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_manager_install_instances_manager_active
+    ON manager_install_instances (manager_id, is_active DESC, detected_at_unix DESC);
+
+CREATE INDEX IF NOT EXISTS idx_manager_install_instances_identity
+    ON manager_install_instances (manager_id, identity_kind, identity_value);
+"#,
+    down_sql: r#"
+DROP INDEX IF EXISTS idx_manager_install_instances_identity;
+DROP INDEX IF EXISTS idx_manager_install_instances_manager_active;
+DROP TABLE IF EXISTS manager_install_instances;
+"#,
+};
+
+const MIGRATION_0010: SqliteMigration = SqliteMigration {
+    version: 10,
+    name: "add_install_instance_decision_margin",
+    up_sql: r#"
+ALTER TABLE manager_install_instances ADD COLUMN decision_margin REAL;
+"#,
+    down_sql: r#"
+CREATE TABLE manager_install_instances_backup (
+    manager_id TEXT NOT NULL,
+    instance_id TEXT NOT NULL,
+    identity_kind TEXT NOT NULL,
+    identity_value TEXT NOT NULL,
+    display_path TEXT NOT NULL,
+    canonical_path TEXT,
+    alias_paths_json TEXT NOT NULL DEFAULT '[]',
+    is_active INTEGER NOT NULL DEFAULT 0,
+    version TEXT,
+    provenance TEXT NOT NULL DEFAULT 'unknown',
+    confidence REAL NOT NULL DEFAULT 0.0,
+    automation_level TEXT NOT NULL DEFAULT 'needs_confirmation',
+    uninstall_strategy TEXT NOT NULL DEFAULT 'interactive_prompt',
+    update_strategy TEXT NOT NULL DEFAULT 'interactive_prompt',
+    remediation_strategy TEXT NOT NULL DEFAULT 'manual_remediation',
+    explanation_primary TEXT,
+    explanation_secondary TEXT,
+    competing_provenance TEXT,
+    competing_confidence REAL,
+    detected_at_unix INTEGER NOT NULL,
+    PRIMARY KEY (manager_id, instance_id)
+);
+
+INSERT INTO manager_install_instances_backup (
+    manager_id,
+    instance_id,
+    identity_kind,
+    identity_value,
+    display_path,
+    canonical_path,
+    alias_paths_json,
+    is_active,
+    version,
+    provenance,
+    confidence,
+    automation_level,
+    uninstall_strategy,
+    update_strategy,
+    remediation_strategy,
+    explanation_primary,
+    explanation_secondary,
+    competing_provenance,
+    competing_confidence,
+    detected_at_unix
+)
+SELECT
+    manager_id,
+    instance_id,
+    identity_kind,
+    identity_value,
+    display_path,
+    canonical_path,
+    alias_paths_json,
+    is_active,
+    version,
+    provenance,
+    confidence,
+    automation_level,
+    uninstall_strategy,
+    update_strategy,
+    remediation_strategy,
+    explanation_primary,
+    explanation_secondary,
+    competing_provenance,
+    competing_confidence,
+    detected_at_unix
+FROM manager_install_instances;
+
+DROP TABLE manager_install_instances;
+ALTER TABLE manager_install_instances_backup RENAME TO manager_install_instances;
+
+CREATE INDEX IF NOT EXISTS idx_manager_install_instances_manager_active
+    ON manager_install_instances (manager_id, is_active DESC, detected_at_unix DESC);
+
+CREATE INDEX IF NOT EXISTS idx_manager_install_instances_identity
+    ON manager_install_instances (manager_id, identity_kind, identity_value);
+"#,
+};
+
+const MIGRATION_0011: SqliteMigration = SqliteMigration {
+    version: 11,
+    name: "add_manager_multi_instance_ack",
+    up_sql: r#"
+CREATE TABLE IF NOT EXISTS manager_multi_instance_ack (
+    manager_id TEXT PRIMARY KEY,
+    instances_fingerprint TEXT NOT NULL,
+    acknowledged_at_unix INTEGER NOT NULL
+);
+"#,
+    down_sql: r#"
+DROP TABLE IF EXISTS manager_multi_instance_ack;
+"#,
+};
+
+const MIGRATIONS: [SqliteMigration; 11] = [
     MIGRATION_0001,
     MIGRATION_0002,
     MIGRATION_0003,
@@ -225,6 +368,9 @@ const MIGRATIONS: [SqliteMigration; 8] = [
     MIGRATION_0006,
     MIGRATION_0007,
     MIGRATION_0008,
+    MIGRATION_0009,
+    MIGRATION_0010,
+    MIGRATION_0011,
 ];
 
 pub fn migrations() -> &'static [SqliteMigration] {

@@ -47,3 +47,74 @@ func localizedManagerDisplayName(_ managerId: String) -> String {
         return managerId.replacingOccurrences(of: "_", with: " ").capitalized
     }
 }
+
+enum ManagerDependencyResolver {
+    static func dependencyManagerId(for managerId: String, provenance: String?) -> String? {
+        let normalized = normalizedProvenance(provenance)
+        switch normalized {
+        case "homebrew":
+            return "homebrew_formula"
+        case "macports":
+            return "macports"
+        case "nix":
+            return "nix_darwin"
+        case "asdf":
+            return "asdf"
+        case "mise":
+            return managerId == "mise" ? nil : "mise"
+        default:
+            return nil
+        }
+    }
+
+    static func dependencyManagerId(
+        for managerId: String,
+        installMethod: ManagerDistributionMethod
+    ) -> String? {
+        switch installMethod {
+        case .homebrew:
+            return "homebrew_formula"
+        case .macports:
+            return "macports"
+        case .npm:
+            return "npm"
+        case .pip:
+            return "pip"
+        case .pipx:
+            return "pipx"
+        case .gem:
+            return "rubygems"
+        case .cargoInstall:
+            return "cargo"
+        case .asdf:
+            return "asdf"
+        case .mise:
+            return managerId == "mise" ? nil : "mise"
+        case .rustupInstaller:
+            return managerId == "rustup" ? nil : "rustup"
+        case .appStore, .setapp, .officialInstaller, .scriptInstaller, .corepack,
+             .xcodeSelect, .softwareUpdate, .systemProvided, .notManageable:
+            return nil
+        }
+    }
+
+    static func enabledDependents(
+        of managerId: String,
+        statuses: [String: ManagerStatus]
+    ) -> [String] {
+        statuses.values
+            .filter { status in
+                status.managerId != managerId &&
+                    status.enabled &&
+                    dependencyManagerId(for: status.managerId, provenance: status.activeProvenance) == managerId
+            }
+            .map(\.managerId)
+            .sorted()
+    }
+
+    private static func normalizedProvenance(_ value: String?) -> String {
+        value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+    }
+}

@@ -85,7 +85,6 @@ extension HelmCore {
         }
     }
 
-    // swiftlint:disable:next function_body_length
     func fetchTasks() {
         guard let svc = service() else { return }
         withTimeout(
@@ -113,17 +112,18 @@ extension HelmCore {
                 if let maxTaskId = coreTasks.map(\.id).max() {
                     self.lastObservedTaskId = max(self.lastObservedTaskId, maxTaskId)
                 }
+                let coreTaskIds = Set(coreTasks.map(\.id))
 
                 let previousFailed = self.previousFailedTaskCount
 
-                self.activeTasks = coreTasks.map { task in
+                let coreTaskItems = coreTasks.map { task in
                     let overrideDescription = self.managerActionTaskDescriptions[task.id]
                     let managerName = self.normalizedManagerName(task.manager)
                     let taskLabel = self.localizedTaskLabel(from: task)
                     return TaskItem(
                         id: "\(task.id)",
-                        description: overrideDescription
-                            ?? taskLabel
+                        description: taskLabel
+                            ?? overrideDescription
                             ?? L10n.App.Tasks.fallbackDescription.localized(with: [
                                 "task_type": self.localizedTaskType(task.taskType),
                                 "manager": managerName
@@ -135,13 +135,18 @@ extension HelmCore {
                         labelArgs: task.labelArgs
                     )
                 }
-                .sorted { $0.statusSortOrder < $1.statusSortOrder }
                 self.syncManagerOperations(from: coreTasks)
                 self.syncUpgradeActions(from: coreTasks)
                 self.syncInstallActions(from: coreTasks)
                 self.syncUninstallActions(from: coreTasks)
                 self.syncUpgradePlanProjection(from: coreTasks)
                 self.syncPackageDescriptionLookups(from: coreTasks)
+                self.activeTasks = (
+                    coreTaskItems
+                    + self.pendingManagerActionPlaceholderTasks(excluding: coreTaskIds)
+                    + self.pendingLocalManagerActionTasks()
+                )
+                .sorted { $0.statusSortOrder < $1.statusSortOrder }
 
                 // Announce new task failures to VoiceOver
                 let currentFailed = self.activeTasks.filter({ $0.status.lowercased() == "failed" }).count
@@ -153,23 +158,29 @@ extension HelmCore {
                 }
                 self.previousFailedTaskCount = currentFailed
 
-                // Derive detection status from Detection-type tasks specifically.
-                // Tasks are ordered most-recent-first. A manager is "detected" if
-                // its latest detection task completed successfully.
-                var latestDetectionByManager: [String: String] = [:]
-                for task in coreTasks {
-                    guard task.taskType.lowercased() == "detection" else { continue }
-                    if latestDetectionByManager[task.manager] == nil {
-                        latestDetectionByManager[task.manager] = task.status.lowercased()
+                // Detection truth should come from manager status payloads when available.
+                // Task terminal state alone ("completed") does not imply "detected = true".
+                if self.managerStatuses.isEmpty {
+                    // Startup fallback while manager status has not been fetched yet.
+                    var latestDetectionByManager: [String: String] = [:]
+                    for task in coreTasks {
+                        guard task.taskType.lowercased() == "detection" else { continue }
+                        if latestDetectionByManager[task.manager] == nil {
+                            latestDetectionByManager[task.manager] = task.status.lowercased()
+                        }
                     }
-                }
-                var detected = Set<String>()
-                for (manager, status) in latestDetectionByManager {
-                    if status == "completed" {
+                    var detected = Set<String>()
+                    for (manager, status) in latestDetectionByManager where status == "completed" {
                         detected.insert(manager)
                     }
+                    self.detectedManagers = detected
+                } else {
+                    self.detectedManagers = Set(
+                        self.managerStatuses.compactMap { entry in
+                            entry.value.detected ? entry.key : nil
+                        }
+                    )
                 }
-                self.detectedManagers = detected
                 self.updateOnboardingDetectionProgress(from: coreTasks)
 
                 let isRunning = coreTasks.contains {
@@ -240,6 +251,70 @@ extension HelmCore {
         }
     }
 
+    private func pendingManagerActionPlaceholderTasks(excluding coreTaskIds: Set<UInt64>) -> [TaskItem] {
+        let now = Date()
+        return managerActionTaskByManager.compactMap { managerId, taskId in
+            guard !coreTaskIds.contains(taskId) else { return nil }
+            guard let submittedAt = managerActionTaskSubmittedAt[taskId] else { return nil }
+            guard now.timeIntervalSince(submittedAt) < Self.managerActionTaskMissingGraceSeconds else {
+                return nil
+            }
+
+            let trackedType = managerActionTaskTypes[taskId]?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            let action = managerActionLabelAction(for: trackedType)
+            let description = managerActionTaskDescriptions[taskId]
+                ?? managerActionDescription(action: action, managerId: managerId)
+
+            return TaskItem(
+                id: "\(taskId)",
+                description: description,
+                status: "Queued",
+                managerId: managerId,
+                taskType: managerActionPlaceholderTaskType(for: trackedType),
+                labelKey: nil,
+                labelArgs: nil
+            )
+        }
+    }
+
+    private func pendingLocalManagerActionTasks() -> [TaskItem] {
+        let now = Date()
+        let expiredTaskIds = localManagerActionTaskCreatedAt.compactMap { taskId, createdAt in
+            now.timeIntervalSince(createdAt) >= Self.localManagerActionTaskRetentionSeconds ? taskId : nil
+        }
+        for taskId in expiredTaskIds {
+            localManagerActionTaskCreatedAt.removeValue(forKey: taskId)
+            localManagerActionTasks.removeValue(forKey: taskId)
+        }
+        return localManagerActionTasks.values.map { $0 }
+    }
+
+    private func managerActionLabelAction(for trackedType: String?) -> String {
+        switch trackedType {
+        case "manager_install":
+            return "Install"
+        case "manager_uninstall":
+            return "Uninstall"
+        default:
+            return "Update"
+        }
+    }
+
+    private func managerActionPlaceholderTaskType(for trackedType: String?) -> String? {
+        switch trackedType {
+        case "manager_install":
+            return "install"
+        case "manager_uninstall":
+            return "uninstall"
+        case "manager_update":
+            return "upgrade"
+        default:
+            return nil
+        }
+    }
+
     func fetchSearchResults(query: String) {
         guard !query.trimmingCharacters(in: .whitespaces).isEmpty else {
             DispatchQueue.main.async {
@@ -265,8 +340,9 @@ extension HelmCore {
             }
 
             DispatchQueue.main.async {
+                let filteredResults = results.filter { $0.sourceManager != "rustup" }
                 let resolvedSummaryIds = Set(
-                    results.compactMap { result -> String? in
+                    filteredResults.compactMap { result -> String? in
                         guard let summary = result.summary?.trimmingCharacters(in: .whitespacesAndNewlines),
                               !summary.isEmpty else {
                             return nil
@@ -275,7 +351,7 @@ extension HelmCore {
                     }
                 )
 
-                self.searchResults = results.map { result in
+                self.searchResults = filteredResults.map { result in
                     PackageItem(
                         id: "\(result.sourceManager):\(result.name)",
                         name: result.name,
@@ -311,7 +387,7 @@ extension HelmCore {
                     .union(self.outdatedPackages.map(\.id))
                 var dedupedById: [String: PackageItem] = [:]
 
-                for result in results {
+                for result in results where result.sourceManager != "rustup" {
                     let id = "\(result.sourceManager):\(result.name)"
                     guard !excludedIds.contains(id) else { continue }
                     let candidate = PackageItem(
@@ -386,6 +462,11 @@ extension HelmCore {
                     map[status.managerId] = status
                 }
                 self.managerStatuses = map
+                self.detectedManagers = Set(
+                    map.compactMap { entry in
+                        entry.value.detected ? entry.key : nil
+                    }
+                )
                 self.pruneOnboardingDetectionForDisabledManagers()
             }
         }
@@ -476,6 +557,40 @@ extension HelmCore {
                 return
             }
             completion(logs)
+        }
+    }
+
+    func fetchTaskTimeoutPrompts() {
+        guard let svc = service() else { return }
+        withTimeout(
+            10,
+            source: "core.fetching",
+            action: "listTaskTimeoutPrompts",
+            taskType: "diagnostics",
+            operation: { completion in
+                svc.listTaskTimeoutPrompts { completion($0) }
+            }
+        ) { [weak self] jsonString in
+            guard let self = self else { return }
+            guard let jsonString = jsonString,
+                  let data = jsonString.data(using: .utf8),
+                  let prompts: [CoreTaskTimeoutPrompt] = self.decodeCorePayload(
+                    [CoreTaskTimeoutPrompt].self,
+                    from: data,
+                    decodeContext: "fetchTaskTimeoutPrompts",
+                    source: "core.fetching",
+                    action: "listTaskTimeoutPrompts.decode",
+                    taskType: "diagnostics"
+                  ) else {
+                DispatchQueue.main.async {
+                    self.taskTimeoutPrompts = []
+                }
+                return
+            }
+
+            DispatchQueue.main.async {
+                self.taskTimeoutPrompts = prompts
+            }
         }
     }
 

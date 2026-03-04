@@ -1,574 +1,159 @@
-# AGENTS.md — Helm AI Development Guidelines
+# AGENTS.md — Helm Codex Operating Guide (Lean)
 
-This file defines how AI agents (Codex, Copilot, Claude, etc.) should behave
-when working in the Helm repository.
+This file defines the minimum operating policy for AI agents in Helm.
 
-Helm is an infrastructure-grade macOS application. Code quality, safety,
-and architectural clarity are more important than speed or shortcuts.
+Keep this file policy-only. Put repeatable procedures in `ops/codex/skills/`.
 
----
+## 1) Repo Overview
 
-## 1. Source of Truth
+Helm is an infrastructure-grade macOS package/update control center with three layers:
 
-Helm's behavior is defined by structured documentation. AI agents must consult these documents 
-before making changes.
+- UI: `apps/macos-ui/` (SwiftUI presentation)
+- Service boundary: `service/macos-service/` (process/control boundary)
+- Core: `core/rust/` (adapters, orchestration, policy, persistence)
 
-### Required Reading (Always Load First)
+## 2) Component Map
 
-- `docs/PROJECT_BRIEF.md` — authoritative product and architecture specification
-- `docs/CURRENT_STATE.md` — current implementation status and known gaps
-- `docs/NEXT_STEPS.md` — prioritized upcoming work
-- `docs/architecture/MANAGER_ELIGIBILITY_POLICY.md` — detected-vs-manageable manager policy matrix and enforcement rules
+Primary work areas:
 
-Agents must not begin implementation until these documents have been read.
+- `core/rust/`: core logic, adapters, orchestration, CLI/FFI crates
+- `apps/macos-ui/`: macOS UI, bridge code, localized resources, UI scripts
+- `service/macos-service/`: background/runtime service boundary
+- `scripts/`: release/test/ops automation
+- `docs/`: product truth, architecture, decisions, current state, next steps
+- `web/`: website/docs site content and build
 
----
+## 3) Required Read Before Implementation
 
-### Supporting Documents (Load When Relevant)
+Read these before code changes:
 
-- `docs/ARCHITECTURE.md` — canonical system design and invariants
-- `docs/ROADMAP.md` — milestone sequencing and feature planning
-- `docs/DECISIONS.md` — architectural decisions (ADR-style)
-- `docs/DEFINITION_OF_DONE.md` — 1.0 release criteria
-- `docs/VERSIONING.md` — semantic versioning strategy and release flow
-- `docs/RELEASE_CHECKLIST.md` — required ship checklist and tag steps
-- `docs/I18N_STRATEGY.md` — localization requirements
-- `docs/INTERFACES.md` — stable contracts between Helm subsystems
-- `docs/legal/CLA.md` — contributor license agreement
+- `docs/PROJECT_BRIEF.md`
+- `docs/CURRENT_STATE.md`
+- `docs/NEXT_STEPS.md`
+- `docs/architecture/MANAGER_ELIGIBILITY_POLICY.md`
 
----
+If behavior or policy changes, update the source-of-truth docs that changed reality.
 
-### Precedence Rules
+## 4) Safety Rules (Non-Negotiable)
 
-If conflicts occur:
+- Never construct shell commands via string concatenation in product code.
+- Keep UI presentation-only; business logic belongs in service/core.
+- Keep core deterministic and testable.
+- Use structured process arguments and task-based execution.
+- Respect authority ordering and cancellation expectations.
+- Keep user-facing text localized; maintain locale parity between:
+  - `locales/`
+  - `apps/macos-ui/Helm/Resources/locales/`
+- Do not touch secrets/signing/notarization credentials/certificates/profiles.
+- Do not run destructive commands (for example `rm -rf`, branch deletion, cache purges) without explicit user approval.
+- Do not auto-publish releases/appcasts/website deploys.
+- Release and appcast work must remain dry-run/checklist-first unless user explicitly confirms mutation.
 
-1. `docs/PROJECT_BRIEF.md` (product truth)
-2. `docs/ARCHITECTURE.md` (system invariants)
-3. `docs/CURRENT_STATE.md` (reality)
-4. `docs/DECISIONS.md` (decisions override plans)
-5. `docs/ROADMAP.md` (intent)
+Branch safety:
 
-If unclear:
-- Ask for clarification instead of guessing.
+- Never commit directly to long-lived branches: `main`, `dev`, `docs`, `web`.
+- Verify branch first (`git branch --show-current`) before edits.
+- If on a long-lived branch, create a task branch first.
 
----
+Sandbox note for macOS tooling:
 
-## 2. Architectural Principles (Non-Negotiable)
+- If sandboxed `xcodebuild`/`simctl` output appears unreliable, re-run outside sandbox (with approval) before concluding host toolchain failure.
 
-### 2.1 Layered Architecture
-Helm consists of three distinct layers:
+## 5) Skill Trigger Catalog
 
-1. **UI (SwiftUI)**
-   - Pure presentation.
-   - No business logic.
-   - Reads state and emits intents.
+Use these existing Skills when triggers match:
 
-2. **Service Boundary (macOS background service / XPC-style)**
-   - Owns process execution.
-   - Handles privilege escalation.
-   - Enforces cancellation and exclusivity.
+- `run-quality-gate`
+  - Trigger: PR-readiness, CI-like validation, cross-layer refactors.
+- `audit-remediation-batch`
+  - Trigger: remediation IDs/backlog batches, security/maintainability hardening.
+- `sparkle-appcast-checklist`
+  - Trigger: updater/appcast/release-readiness checks (dry-run by default).
+- `adapter-bug-triage-regression-test`
+  - Trigger: manager-specific defects, parser/provenance/policy drift.
+- `docs-sync`
+  - Trigger: behavior/policy/release-line changes needing source-of-truth doc alignment.
+- `skill-generator`
+  - Trigger: user asks to convert a repeated workflow/process into a reusable skill.
+  - Required flow: workflow -> WORKFLOW SPEC -> user confirmation -> generated skill.
 
-3. **Core (Rust)**
-   - Manager adapters.
-   - Task orchestration.
-   - Parsing and normalization.
-   - Persistence API (SQLite).
+If auto-trigger is missed, users may explicitly request a skill by name.
 
-Do not collapse layers or bypass boundaries for convenience.
+## 6) When to Propose a New Skill
 
----
+Propose creating a new skill when any of these conditions are true:
 
-### 2.2 Rust Core Expectations
+- workflow repeats 3+ times
+- workflow is a multi-step checklist
+- workflow depends on a fragile command sequence
+- workflow is CI-like and repeated
+- workflow is a release/packaging process with repeatable gates
 
-The Rust core must:
-- Be UI-agnostic.
-- Avoid shell invocation strings.
-- Use structured command arguments.
-- Be deterministic and testable.
-- Avoid global mutable state.
+When proposing:
 
-Adapters must declare:
-- Supported capabilities.
-- Authority level.
-- Whether actions are mutating or read-only.
+- say why the workflow qualifies
+- recommend using `skill-generator` to scaffold the new reusable skill
+- offer to implement under `ops/codex/skills/<skill-name>/`
+- keep AGENTS policy-only and move procedure details into skill docs/scripts
 
----
+When Codex detects a repeated workflow or multi-step manual procedure that could be reused, it should recommend `skill-generator`.
 
-## 2.3 Architectural Invariants (Non-Negotiable)
+Trigger signals include:
 
-The following rules must never be violated:
+- repeated commands
+- long checklists
+- fragile workflows
+- CI-like processes
+- packaging/release flows
 
-- No shell command construction via string concatenation
-- UI layer contains no business logic
-- Rust core is deterministic and testable
-- All operations execute through tasks
-- Authority ordering is respected
-- Tasks must be cancelable at process level
-- All user-facing text must be localized (no hardcoded strings)
-- Locale files exist in two synced directories: `locales/` (canonical source) and `apps/macos-ui/Helm/Resources/locales/` (app resource mirror). CI enforces parity via `diff -ru`. Always update both when changing locale strings.
+Candidate-mining policy:
 
-If a change would violate these, stop and ask.
+- if `ops/codex/docs/SKILL_CANDIDATES.md` exists and is older than 7 days, recommend running `ops/codex/scripts/skill-mine.sh`
+- when a task appears repetitive, check `ops/codex/docs/SKILL_CANDIDATES.md` before inventing a new skill
 
----
+## 7) Notify / MCP / Apps / Multi-Agent Guidance
 
-## 3. Manager Adapter Model
+Notify:
 
-Each package manager is implemented as an adapter module.
+- Recommend notify logging for long-running, multi-step, CI-like, or release-like tasks.
+- Use `dev/logs/codex-runs.ndjson` to review repeated workflows and decide which should become skills.
 
-Adapters must:
-- Implement a shared trait/interface.
-- Declare supported capabilities explicitly.
-- Gracefully handle missing or malformed output.
-- Never assume human-readable output is stable.
+MCP:
 
-Adapters must NOT:
-- Assume exclusive ownership of a toolchain.
-- Modify project-local dependencies by default.
-- Perform bulk operations unless explicitly required.
+- Default to local-first.
+- Recommend MCP only when required context is external and repeatedly blocks progress.
+- Do not add MCP by default; propose it with rationale.
 
----
+`/apps`:
 
-## 4. Task & Concurrency Model
+Codex should recommend `/apps` when:
 
-- Tasks across different managers may run in parallel.
-- Tasks using the same manager MUST run serially.
-- Tasks must be cancelable at the process level.
-- Cancellation should be cooperative where possible.
+- a task depends on external services
+- issue tracking or GitHub automation is needed
+- a workflow would benefit from integration tooling
 
-Task types include:
-- detection
-- refresh
-- search
-- install
-- uninstall
-- upgrade
-- pin / unpin
+Use app integrations only when they reduce manual burden safely.
 
-Never fake completion or cancellation.
+Multi-agent:
 
----
+Recommend multi-agent execution when tasks involve:
 
-## 5. Search Behavior (Critical UX Requirement)
+- large codebase exploration
+- refactors across many modules
+- implementation + testing + review as distinct lanes
+- audit remediation batches
 
-Search must be:
-- Local-first.
-- Progressive.
-- Cancelable.
+Suggested role pattern:
 
-Rules:
-- Local cache search returns instantly.
-- Remote search is automatically triggered after a debounce.
-- Remote searches must be cancellable when the query changes.
-- Remote results enrich the cache and UI incrementally.
-- Cached results must record:
-  - source manager
-  - originating query
-  - timestamp
+- Explorer
+- Implementer
+- Tester
+- Reviewer
 
----
+## 8) Working Style
 
-## 6. Package Pinning Rules
-
-- Prefer native manager pinning when available.
-- Fall back to virtual pinning enforced by Helm.
-- Pinned packages:
-  - Are excluded from bulk upgrades.
-  - Are excluded from automatic mode unless explicitly overridden.
-- Pin state must be visible and persisted.
-
----
-
-## 7. Safety & Error Handling
-
-- Never construct shell commands via string concatenation.
-- Always use structured process arguments.
-- Timeouts and retries must be reasonable and configurable.
-- Errors must be attributed to:
-  - manager
-  - task
-  - action
-- Prefer explicit errors over silent failure.
-
----
-
-## 8. Persistence
-
-- SQLite is the canonical store for state and cache.
-- Schema must be versioned.
-- Migrations must be explicit and reversible where possible.
-- Avoid duplicating derived state that can be recomputed cheaply.
-
----
-
-## 9. Logging
-
-- Logs must be structured and contextual.
-- Include manager name, task ID, and action.
-- Logging must not block the UI.
-
----
-
-## 10. Testing Expectations
-
-- Parsing logic must have unit tests with fixed fixtures.
-- Adapter behavior must be unit tested.
-- Orchestration logic must have integration tests.
-- Tests should favor determinism over realism.
-
----
-
-## 11. Scope Discipline
-
-AI agents must:
-- Work incrementally.
-- Commit small, coherent changes.
-- Avoid speculative features not described in the brief.
-- Ask before introducing new dependencies or frameworks.
-
-AI agents must NOT:
-- Rewrite large portions of code without request.
-- Introduce UI polish prematurely.
-- Add telemetry, analytics, or network services.
-
-### 11.1 Generated Artifacts
-
-- `apps/macos-ui/Generated/HelmVersion.xcconfig` is build-generated (updated by the macOS build flow/scripts).
-- Treat changes to this file as incidental build output unless the task is explicitly about version/build metadata generation.
-- Do not include this file in feature/fix commits by default.
-- If this file changes unexpectedly during work:
-  - leave it unstaged, or
-  - ask the user before including it in a commit.
-
----
-
-## 12. Communication Style
-
-When uncertain:
-- Ask clarifying questions.
-- Explain tradeoffs briefly.
-- Prefer correctness over cleverness.
-
-When implementing:
-- Be explicit.
-- Be boring.
-- Be predictable.
-
-Helm is infrastructure. Treat it like one.
-
----
-
-## 13. Git Workflow (Required)
-
-### Branch model
-- `main`: stable/releasable branch; protected.
-- `dev`: code integration branch; protected; app/core/runtime work merges here first.
-- `docs`: documentation integration branch; protected; docs/policy/licensing docs work merges here first.
-- `web`: website integration branch; protected; website work under `web/` merges here first.
-- Feature branches:
-  - code work: branch from `dev`, open PRs to `dev` (`feat/...`, `fix/...`, `chore/...`, `test/...`, `refactor/...`)
-  - docs work: branch from `docs`, open PRs to `docs` (`docs-*`)
-  - website work: branch from `web`, open PRs to `web` (`web-*`)
-- Hotfixes: branch from `main` as `hotfix/...`, merge to `main`, then back-merge/cherry-pick to each impacted integration branch (`dev`, `docs`, `web` as applicable).
-
-### Rules
-- Do not commit directly to long-lived branches: `main`, `dev`, `docs`, `web`.
-- Exception: direct commits to `main` are allowed when explicitly instructed by the user/repo owner in the current session.
-- Prefer PR-based updates for all long-lived branches.
-- Do not rewrite published history (no force-push) unless explicitly instructed.
-- Prefer small, coherent commits.
-
-### Mandatory Branch Safety Gate (Start of Every Task)
-- Before any edits, agents MUST verify the current branch (`git branch --show-current`).
-- If currently on a long-lived branch (`main`, `dev`, `docs`, `web`), agents MUST create and switch to a task branch before changing files.
-- Task-branch base must match change type:
-  - code/config/runtime changes -> branch from `dev`
-  - docs-only changes -> branch from `docs` (`docs-*` branch naming)
-  - website-only changes -> branch from `web` (`web-*` branch naming)
-- Agents MUST NOT “start work on main and move files later”; branch selection happens first.
-- If changes were accidentally made on a long-lived branch, agents must stop and ask the user how to proceed before continuing.
-
-### GitHub Enforcement Model (Rulesets + Checks)
-
-GitHub branch rulesets enforce the branch model. Agents must assume these are active and design PRs accordingly.
-
-- `main` required checks:
-  - `Policy Gate`
-  - `Rust Core Tests`
-  - `Xcode Build Check`
-  - `hardcoded-ui-strings`
-  - `Semgrep scan`
-  - `Lint Swift`
-- `dev` required checks:
-  - `Policy Gate`
-  - `Rust Core Tests`
-  - `Xcode Build Check`
-  - `hardcoded-ui-strings`
-  - `Semgrep scan`
-  - `Lint Swift`
-- `docs` required checks:
-  - `Policy Gate`
-  - `Docs Checks`
-- `web` required checks:
-  - `Policy Gate`
-  - `Web Build`
-
-Operational repo settings:
-- Auto-merge is enabled.
-- Update-branch is enabled.
-- Delete branch on merge is disabled (protects primary branches from accidental deletion during promotion PRs).
-
-Agent expectations:
-- Treat `Policy Gate` as authoritative for branch/PR target policy.
-- Do not rely on direct-push fallback behavior for release metadata publication.
-- Release metadata publication to `main` is PR-based via `chore/publish-updates-<tag>`.
-
-### Commit messages
-Use prefixes:
-- `feat:`, `fix:`, `chore:`, `docs:`, `test:`, `refactor:`
-
-### Before opening a PR
-- Ensure relevant tests pass (e.g., `cargo test`).
-- Keep PRs focused; split unrelated changes.
-- For `gh pr create` and `gh pr edit`, provide the body via `--body-file <path>` (or `-F <path>`).
-- Do not pass PR markdown with escaped newline sequences (for example, `\\n`) in a single quoted `--body` string.
-
-### Branch Targeting Rules
-
-Helm uses different integration branches depending on change type.
-
-#### Code Changes
-- Branch from `dev`
-- Open PRs targeting `dev`
-
-#### Documentation-Only Changes
-- Use `docs-*` branches
-- Branch from `docs`
-- Open PRs targeting `docs`
-
-#### Website-Only Changes
-- Use `web-*` branches
-- Branch from `web`
-- Open PRs targeting `web`
-
-Documentation-only changes include:
-- README updates
-- docs/ directory changes
-- licensing, CLA, or policy updates
-
-If a change includes both code and documentation:
-- Prefer merging into `dev`
-- Or split into separate PRs if appropriate
-
-If a change includes both documentation and website updates (without app code):
-- Prefer split PRs (`docs` and `web`) unless explicitly instructed to combine.
-
-Promotion to stable `main`:
-- App releases: merge `dev` -> `main`
-- Docs publishes: merge `docs` -> `main`
-- Website publishes: merge `web` -> `main`
-
-Agents must select the correct base branch before starting work.
-If unsure, ask for clarification.
-
----
-
-## 14. Licensing Constraints
-
-Helm is not open source at this stage.
-
-AI agents must not:
-- suggest licensing changes without explicit instruction
-- introduce third-party code incompatible with a source-available commercial future
-- assume MIT/Apache-style reuse permissions
-
-All contributions are subject to the CLA.
-
----
-
-## 15. Context Management (Critical)
-
-Helm uses repository documents as persistent memory for AI agents.
-
-Documentation is the system of record.
-
----
-
-### Required Behavior
-
-When making changes, agents MUST update documentation when relevant:
-
-- `docs/CURRENT_STATE.md` — reflect actual implementation
-- `docs/NEXT_STEPS.md` — update priorities and completed work
-- `docs/DECISIONS.md` — record architectural decisions
-- `docs/ARCHITECTURE.md` — only when system design changes
-
----
-
-### Consistency Rule
-
-Code, tests, and documentation must remain consistent.
-
-If inconsistencies are found:
-
-1. Prefer updating documentation to match reality
-2. If unsure, pause and ask for clarification
-
----
-
-### Forbidden
-
-- Do not leave documentation stale
-- Do not implement features not reflected in NEXT_STEPS or ROADMAP without approval
-
----
-
-## 16. Worktrees & Multi-Agent Coordination (Critical)
-
-Helm supports multiple AI agents working concurrently using Git worktrees.
-
-Each agent operates in a separate working directory with its own branch.
-
-### 16.1 Worktree Isolation
-
-Agents MUST:
-- Only operate within the current working directory
-- Never assume control of other worktrees
-- Never modify files outside their worktree
-
-Each worktree corresponds to a single agent session.
-
----
-
-### 16.2 Branch Ownership
-
-Each agent is responsible for its own branch.
-
-Recommended naming:
-
-- `agent/codex/...`
-- `agent/claude/...`
-- `agent/gemini/...`
-
-Agents MUST NOT:
-- Commit to another agent's branch
-- Reuse another agent's branch without explicit instruction
-
----
-
-### 16.3 Synchronization with Base Branch
-
-Before starting work, agents MUST:
-
-1. Fetch latest changes:
-   ```bash
-   git fetch origin
-````
-
-2. Update their branch:
-
-   Preferred default for published/shared branches (no history rewrite):
-   ```bash
-   # code branches
-   git merge origin/dev
-   ```
-
-   ```bash
-   # documentation branches
-   git merge origin/docs
-   ```
-
-   ```bash
-   # website branches
-   git merge origin/web
-   ```
-
-   ```bash
-   # hotfix/release branches based on stable
-   git merge origin/main
-   ```
-
-   Rebase is allowed only when safe (typically before first push):
-
-   ```bash
-   # code branches
-   git rebase origin/dev
-   ```
-
-   ```bash
-   # documentation branches
-   git rebase origin/docs
-   ```
-
-   ```bash
-   # website branches
-   git rebase origin/web
-   ```
-
-   ```bash
-   # hotfix/release branches based on stable
-   git rebase origin/main
-   ```
-
-Agents must ensure their branch is up-to-date before making changes.
-Agents must not force-push rebased history unless explicitly instructed by the repo owner in the current session.
-
----
-
-### 16.4 Task Isolation
-
-Agents should avoid modifying the same files concurrently.
-
-If a change requires touching shared or high-risk files:
-
-* Prefer coordination via documentation
-* Or ask for clarification
-
-Large overlapping edits increase merge conflict risk.
-
----
-
-### 16.5 Commit Discipline
-
-Agents MUST:
-
-* Make small, focused commits
-* Avoid bundling unrelated changes
-* Use clear commit messages
-
-Agents SHOULD:
-
-* Commit frequently during long tasks
-
----
-
-### 16.6 Pull Requests
-
-Agents should:
-
-* Push their branch to origin
-* Open a PR targeting the correct base branch (`dev`, `docs`, `web`, or `main`)
-* Keep PRs small and focused
-
----
-
-### 16.7 Safety Rule
-
-If uncertain about:
-
-* branch selection
-* merge target
-* overlapping work
-
-Agents must pause and ask instead of guessing.
-
----
-
-### 16.8 Shared State Coordination
-
-Agents should consult:
-
-- `docs/NEXT_STEPS.md` for task prioritization
-- `docs/CURRENT_STATE.md` for current implementation
-- `docs/DECISIONS.md` for architectural constraints
-
-Agents should not duplicate work already described as in-progress or completed.
+- Be explicit, deterministic, and minimal.
+- Prefer targeted verification before broad sweeps.
+- If uncertain, ask instead of guessing.
+- Keep docs, code, and tests consistent.
+- For `gh pr create` and `gh pr edit`, pass markdown via `--body-file` (or `-F`) to avoid literal `\n` sequences in PR text.

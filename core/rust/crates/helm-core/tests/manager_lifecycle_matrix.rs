@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use helm_core::adapters::asdf::AsdfDetectOutput;
+use helm_core::adapters::asdf::{AsdfDetectOutput, AsdfInstallSource};
 use helm_core::adapters::homebrew::HomebrewDetectOutput;
 use helm_core::adapters::npm::NpmDetectOutput;
 use helm_core::adapters::{
@@ -53,16 +53,28 @@ impl AsdfSource for AsdfLifecycleSource {
         Ok(String::new())
     }
 
-    fn install(&self, _plugin: &str, _version: Option<&str>) -> AdapterResult<String> {
+    fn install_plugin(&self, _plugin: &str, _version: Option<&str>) -> AdapterResult<String> {
         Ok("installed".to_string())
     }
 
-    fn uninstall(&self, _plugin: &str, _version: &str) -> AdapterResult<String> {
+    fn uninstall_plugin(&self, _plugin: &str, _version: &str) -> AdapterResult<String> {
         Ok("uninstalled".to_string())
     }
 
-    fn upgrade(&self, _plugin: Option<&str>) -> AdapterResult<String> {
+    fn upgrade_plugins(&self, _plugin: Option<&str>) -> AdapterResult<String> {
         Ok("upgraded".to_string())
+    }
+
+    fn install_self(&self, _source: AsdfInstallSource) -> AdapterResult<String> {
+        Ok("asdf installed".to_string())
+    }
+
+    fn self_uninstall(&self) -> AdapterResult<String> {
+        Ok("asdf removed".to_string())
+    }
+
+    fn self_update(&self) -> AdapterResult<String> {
+        Ok("asdf updated".to_string())
     }
 }
 
