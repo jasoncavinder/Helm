@@ -104,9 +104,12 @@ jobs:
                 report_error "hotfix/cli-updates-emergency-* branches may only change web/public/updates release publish paths."
               fi
 
+              # Allow primary-branch sync PRs from dev -> main to carry previously
+              # published CLI metadata files forward without forcing a publish-* branch.
               if [[ "$cli_update_metadata_touched" == "true" ]] \
                 && [[ ! "$HEAD_REF" =~ ^chore/publish-cli-updates- ]] \
-                && [[ ! "$HEAD_REF" =~ ^hotfix/cli-updates-emergency- ]]; then
+                && [[ ! "$HEAD_REF" =~ ^hotfix/cli-updates-emergency- ]] \
+                && [[ "$HEAD_REF" != "dev" ]]; then
                 report_error "CLI update metadata files may only be changed via chore/publish-cli-updates-* or hotfix/cli-updates-emergency-* branches."
               fi
               ;;
