@@ -7,7 +7,7 @@
 <p align="center">
   <em>Take the helm.</em>
   <br>
-  A native macOS menu bar app for unified package manager control.
+  A macOS control center and CLI for unified package manager control.
   <br>
   <strong>Pre-1.0 &middot; v0.17.8</strong>
 </p>
@@ -66,6 +66,45 @@ Install the latest release DMG from GitHub Releases:
 - https://github.com/jasoncavinder/Helm/releases
 
 DMG builds target **Any Mac (Apple Silicon + Intel)** on **macOS 11+ (Big Sur)** and use standard drag-to-`Applications` installation.
+
+## Install Methods (Current)
+
+### 1) macOS App (DMG)
+
+Download the latest DMG from GitHub Releases:
+- https://github.com/jasoncavinder/Helm/releases/latest
+
+Release assets include:
+- `Helm-v<version>-macos-universal.dmg`
+- `Helm.dmg`
+
+### 2) CLI (curl installer)
+
+Install the latest CLI (`helm`) to `~/.local/bin`:
+
+```bash
+curl -fsSL https://helmapp.dev/cli/install.sh | sh
+```
+
+Installer behavior:
+- installs `helm` into `~/.local/bin` by default
+- writes install provenance to `~/.config/helm/install.json`
+
+### 3) CLI (manual binary download)
+
+Download and install a release binary directly from GitHub Releases:
+- `helm-cli-v<version>-darwin-universal`
+- `helm-cli-v<version>-darwin-arm64`
+- `helm-cli-v<version>-darwin-x86_64`
+
+Then place it on your `PATH` as `helm` (for example `~/.local/bin/helm`) and make it executable.
+
+### 4) Build from source (local development install)
+
+```bash
+cargo build -p helm-cli --release --manifest-path core/rust/Cargo.toml
+install -m 0755 core/rust/target/release/helm ~/.local/bin/helm
+```
 
 ## Helm CLI (Bundled)
 
