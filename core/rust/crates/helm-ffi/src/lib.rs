@@ -10661,7 +10661,9 @@ mod tests {
     fn individual_package_install_support_is_scoped_to_supported_managers() {
         assert!(manager_allows_individual_package_install(ManagerId::Asdf));
         assert!(manager_allows_individual_package_install(ManagerId::Npm));
-        assert!(manager_allows_individual_package_install(ManagerId::MacPorts));
+        assert!(manager_allows_individual_package_install(
+            ManagerId::MacPorts
+        ));
         assert!(manager_allows_individual_package_install(ManagerId::Mise));
         assert!(manager_allows_individual_package_install(
             ManagerId::HomebrewFormula
