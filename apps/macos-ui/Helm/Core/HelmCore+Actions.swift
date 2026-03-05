@@ -1,6 +1,8 @@
 import Foundation
 import os.log
 
+// swiftlint:disable file_length
+
 private let logger = Logger(subsystem: "com.jasoncavinder.Helm", category: "core.actions")
 
 extension HelmCore {
