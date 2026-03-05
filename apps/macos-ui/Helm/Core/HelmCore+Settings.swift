@@ -457,6 +457,103 @@ extension HelmCore {
         }
     }
 
+    func fetchPackageManagerPreferences() {
+        service()?.listPackageManagerPreferences { [weak self] jsonString in
+            guard let self = self,
+                  let jsonString = jsonString,
+                  let data = jsonString.data(using: .utf8),
+                  let entries: [CorePackageManagerPreference] = self.decodeSettingsPayload(
+                    [CorePackageManagerPreference].self,
+                    from: data,
+                    decodeContext: "fetchPackageManagerPreferences",
+                    action: "listPackageManagerPreferences.decode",
+                    taskType: "settings"
+                  ) else { return }
+
+            DispatchQueue.main.async {
+                var preferences: [String: String] = [:]
+                for entry in entries {
+                    let packageName = self.normalizedPackagePreferenceKey(entry.packageName)
+                    let managerId = entry.managerId.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !packageName.isEmpty, !managerId.isEmpty else { continue }
+                    preferences[packageName] = managerId
+                }
+                self.packageManagerPreferencesByName = preferences
+            }
+        }
+    }
+
+    func preferredManagerId(forPackageName packageName: String) -> String? {
+        let key = normalizedPackagePreferenceKey(packageName)
+        guard !key.isEmpty else { return nil }
+        return packageManagerPreferencesByName[key]
+    }
+
+    func setPreferredManagerId(
+        _ managerId: String?,
+        forPackageName packageName: String,
+        completion: ((Bool) -> Void)? = nil
+    ) {
+        let normalizedPackageName = normalizedPackagePreferenceKey(packageName)
+        guard !normalizedPackageName.isEmpty else {
+            completion?(false)
+            return
+        }
+
+        let normalizedManagerId: String? = {
+            guard let managerId else { return nil }
+            let trimmed = managerId.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }()
+
+        guard let service = service() else {
+            recordLastError(
+                source: "core.settings",
+                action: "setPackageManagerPreference.service_unavailable",
+                taskType: "settings"
+            )
+            completion?(false)
+            return
+        }
+
+        service.setPackageManagerPreference(
+            packageName: normalizedPackageName,
+            managerId: normalizedManagerId
+        ) { [weak self] success in
+            DispatchQueue.main.async {
+                guard let self else {
+                    completion?(success)
+                    return
+                }
+
+                if success {
+                    var updatedPreferences = self.packageManagerPreferencesByName
+                    if let normalizedManagerId {
+                        updatedPreferences[normalizedPackageName] = normalizedManagerId
+                    } else {
+                        updatedPreferences.removeValue(forKey: normalizedPackageName)
+                    }
+                    self.packageManagerPreferencesByName = updatedPreferences
+                } else {
+                    logger.error(
+                        "setPackageManagerPreference(\(normalizedPackageName), \(normalizedManagerId ?? "nil")) failed"
+                    )
+                    self.recordLastError(
+                        source: "core.settings",
+                        action: "setPackageManagerPreference",
+                        taskType: "settings"
+                    )
+                }
+
+                completion?(success)
+            }
+        }
+    }
+
+    private func normalizedPackagePreferenceKey(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
     func kegPolicySelection(for package: PackageItem) -> KegPolicySelection {
         guard package.managerId == "homebrew_formula" else { return .useGlobal }
 

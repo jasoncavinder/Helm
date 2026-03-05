@@ -345,6 +345,11 @@ struct CorePackageKegPolicy: Codable {
     let policy: HomebrewKegPolicyOverride
 }
 
+struct CorePackageManagerPreference: Codable {
+    let packageName: String
+    let managerId: String
+}
+
 enum KegPolicySelection {
     case useGlobal
     case keep
@@ -670,9 +675,11 @@ final class HelmCore: ObservableObject {
     @Published var uninstallActionPackageIds: Set<String> = []
     @Published var packageDescriptionLoadingIds: Set<String> = []
     @Published var packageDescriptionUnavailableIds: Set<String> = []
+    @Published var packageDescriptionSummaryByKey: [String: String] = [:]
     @Published var onboardingDetectionInProgress: Bool = false
     @Published var homebrewKegAutoCleanupEnabled: Bool = false
     @Published var packageKegPolicyOverrides: [String: HomebrewKegPolicyOverride] = [:]
+    @Published var packageManagerPreferencesByName: [String: String] = [:]
     @Published var safeModeEnabled: Bool = false
     @Published var lastError: String?
     @Published var lastErrorAttribution: CoreErrorAttribution?
@@ -706,6 +713,7 @@ final class HelmCore: ObservableObject {
     var connection: NSXPCConnection?
     var lastRefreshTrigger: Date?
     var searchDebounceTimer: Timer?
+    var localSearchRequestGeneration: UInt64 = 0
     var activeRemoteSearchTaskIds: Set<Int64> = []
     var managerActionTaskDescriptions: [UInt64: String] = [:]
     var managerActionTaskByManager: [String: UInt64] = [:]
@@ -717,9 +725,10 @@ final class HelmCore: ObservableObject {
     var localManagerActionTaskCreatedAt: [String: Date] = [:]
     var upgradeActionTaskByPackage: [String: UInt64] = [:]
     var installActionTaskByPackage: [String: UInt64] = [:]
+    var installActionNormalizedNameByPackageId: [String: String] = [:]
     var uninstallActionTaskByPackage: [String: UInt64] = [:]
     var descriptionLookupTaskIdsByPackage: [String: Set<UInt64>] = [:]
-    var descriptionLookupLastAttemptByPackage: [String: Date] = [:]
+    var descriptionLookupPackageById: [String: PackageItem] = [:]
     var lastObservedTaskId: UInt64 = 0
     var onboardingDetectionAnchorTaskId: UInt64 = 0
     var onboardingDetectionPendingManagers: Set<String> = []
@@ -895,6 +904,7 @@ final class HelmCore: ObservableObject {
         fetchSafeMode()
         fetchHomebrewKegAutoCleanup()
         fetchPackageKegPolicies()
+        fetchPackageManagerPreferences()
         syncOnboardingStateWithSharedStore()
         scheduleDerivedViewStateRefresh()
     }
@@ -1082,7 +1092,6 @@ final class HelmCore: ObservableObject {
             } else {
                 DispatchQueue.main.async {
                     self.triggerFullSnapshotRefresh()
-                    self.triggerAvailablePackagesWarmupSearch()
                 }
             }
         }
@@ -1216,6 +1225,7 @@ final class HelmCore: ObservableObject {
                     self?.managerOperations = [:]
                     self?.verifyingManagerIds = []
                     self?.packageKegPolicyOverrides = [:]
+                    self?.packageManagerPreferencesByName = [:]
                     self?.homebrewKegAutoCleanupEnabled = false
                     self?.searchText = ""
                     self?.isRefreshing = false
@@ -1226,11 +1236,13 @@ final class HelmCore: ObservableObject {
                     self?.uninstallActionPackageIds = []
                     self?.packageDescriptionLoadingIds = []
                     self?.packageDescriptionUnavailableIds = []
+                    self?.packageDescriptionSummaryByKey = [:]
                     self?.upgradeActionTaskByPackage = [:]
                     self?.installActionTaskByPackage = [:]
+                    self?.installActionNormalizedNameByPackageId = [:]
                     self?.uninstallActionTaskByPackage = [:]
                     self?.descriptionLookupTaskIdsByPackage = [:]
-                    self?.descriptionLookupLastAttemptByPackage = [:]
+                    self?.descriptionLookupPackageById = [:]
                     self?.activeRemoteSearchTaskIds = []
                     self?.managerActionTaskDescriptions = [:]
                     self?.managerActionTaskByManager = [:]
@@ -1416,12 +1428,16 @@ final class HelmCore: ObservableObject {
         )
     }
 
-    func renderedPackageDescription(for package: PackageItem) -> PackageDescriptionRenderer.RenderedDescription? {
+    func renderedPackageDescription(
+        for package: PackageItem,
+        summaryOverride: String? = nil
+    ) -> PackageDescriptionRenderer.RenderedDescription? {
+        let summaryText = summaryOverride ?? package.summary
         let key = [
             package.id,
             package.version,
             package.latestVersion ?? "",
-            package.summary ?? ""
+            summaryText ?? ""
         ].joined(separator: "|")
 
         if let cached = packageDescriptionRenderCache[key] {
@@ -1434,7 +1450,7 @@ final class HelmCore: ObservableObject {
             }
         }
 
-        let rendered = PackageDescriptionRenderer.render(package.summary)
+        let rendered = PackageDescriptionRenderer.render(summaryText)
         packageDescriptionRenderCache[key] =
             rendered.map(PackageDescriptionRenderCacheEntry.rendered)
             ?? PackageDescriptionRenderCacheEntry.none

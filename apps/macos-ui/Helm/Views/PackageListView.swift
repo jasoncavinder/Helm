@@ -6,25 +6,13 @@ struct PackagesSectionView: View {
     @State private var selectedStatusFilter: PackageStatus?
     @State private var showPinnedOnly = false
     @State private var selectedManagerId: String?
-
-    private var allPackages: [PackageItem] {
-        core.allKnownPackages
-    }
-
-    private var availableManagerIds: [String] {
-        Array(Set(allPackages.map(\.managerId))).sorted {
-            localizedManagerDisplayName($0).localizedCaseInsensitiveCompare(localizedManagerDisplayName($1)) == .orderedAscending
-        }
-    }
-
-    private var displayedPackages: [ConsolidatedPackageItem] {
-        core.filteredPackages(
-            query: context.searchQuery,
-            managerId: selectedManagerId ?? context.managerFilterId,
-            statusFilter: selectedStatusFilter,
-            pinnedOnly: showPinnedOnly
-        )
-    }
+    @State private var showInstallManagerSheet = false
+    @State private var installSelectionPackage: PackageItem?
+    @State private var selectedInstallManagerId: String?
+    @State private var availableManagerIds: [String] = []
+    @State private var displayedPackages: [ConsolidatedPackageItem] = []
+    @State private var installableAvailablePackageNames: Set<String> = []
+    @State private var installActionPackageNames: Set<String> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -108,43 +96,48 @@ struct PackagesSectionView: View {
             }
 
             if displayedPackages.isEmpty {
-                Spacer()
                 Text(L10n.App.Packages.State.noPackagesFound.localized)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 4)
                 Spacer()
             } else {
+                let rows = displayedPackages
+                let activeManagerFilterId = selectedManagerId ?? context.managerFilterId
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(displayedPackages.indices), id: \.self) { index in
-                            let packageRow = displayedPackages[index]
-                            let package = packageRow.package
-                            PackageRowView(
-                                package: package,
-                                managerDisplayNames: packageRow.managerDisplayNames,
-                                isSelected: packageRow.containsPackageId(context.selectedPackageId),
-                                isUpgradeActionInFlight: core.upgradeActionPackageIds.contains(package.id),
-                                onUpgrade: core.canUpgradeIndividually(package)
-                                    ? { core.upgradePackage(package) }
-                                    : nil
+                    LazyVStack(alignment: .leading, spacing: 6) {
+                        ForEach(rows) { packageRow in
+                            let preferredManagerId = activeManagerFilterId
+                                ?? core.preferredManagerId(forPackageName: packageRow.package.name)
+                            let package = packageRow.actionTarget(preferredManagerId: preferredManagerId)
+                            let primaryAction = primaryPackageAction(
+                                for: package,
+                                managerConstraint: activeManagerFilterId
                             )
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                context.selectedPackageId = package.id
-                                context.selectedManagerId = package.managerId
-                                context.selectedTaskId = nil
-                                context.selectedUpgradePlanStepId = nil
-                            }
-                            .helmPointer()
+                            HStack(spacing: 8) {
+                                PackageRowView(
+                                    package: package,
+                                    managerDisplayNames: packageRow.managerDisplayNames,
+                                    isSelected: packageRow.containsPackageId(context.selectedPackageId)
+                                )
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    context.selectedPackageId = package.id
+                                    context.selectedManagerId = package.managerId
+                                    context.selectedTaskId = nil
+                                    context.selectedUpgradePlanStepId = nil
+                                }
+                                .helmPointer()
 
-                            if index < displayedPackages.count - 1 {
-                                Divider()
+                                primaryActionButton(for: primaryAction)
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.trailing, 8)
                         }
                     }
                     .padding(.vertical, 4)
                 }
-                .helmCardSurface(cornerRadius: 12)
             }
         }
         .padding(20)
@@ -156,13 +149,39 @@ struct PackagesSectionView: View {
             if context.searchQuery != core.searchText {
                 context.searchQuery = core.searchText
             }
-            normalizeManagerSelection()
+            refreshPackageSnapshots()
+            if normalizeManagerSelection() {
+                refreshPackageSnapshots()
+            }
         }
         .onChange(of: core.managerStatuses.mapValues(\.enabled)) { _ in
-            normalizeManagerSelection()
+            refreshPackageSnapshots()
+            if normalizeManagerSelection() {
+                refreshPackageSnapshots()
+            }
         }
         .onChange(of: availableManagerIds) { _ in
-            normalizeManagerSelection()
+            if normalizeManagerSelection() {
+                refreshPackageSnapshots()
+            }
+        }
+        .onChange(of: core.installedPackages) { _ in refreshPackageSnapshots() }
+        .onChange(of: core.outdatedPackages) { _ in refreshPackageSnapshots() }
+        .onChange(of: core.cachedAvailablePackages) { _ in refreshPackageSnapshots() }
+        .onChange(of: core.searchResults) { _ in
+            let hasQuery = !context.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            if hasQuery {
+                refreshPackageSnapshots()
+            }
+        }
+        .onChange(of: core.installActionPackageIds) { _ in refreshPackageSnapshots() }
+        .onChange(of: context.searchQuery) { _ in refreshPackageSnapshots() }
+        .onChange(of: selectedStatusFilter) { _ in refreshPackageSnapshots() }
+        .onChange(of: showPinnedOnly) { _ in refreshPackageSnapshots() }
+        .onChange(of: selectedManagerId) { _ in refreshPackageSnapshots() }
+        .onChange(of: context.managerFilterId) { _ in refreshPackageSnapshots() }
+        .sheet(isPresented: $showInstallManagerSheet) {
+            installManagerSheet
         }
     }
 
@@ -176,14 +195,187 @@ struct PackagesSectionView: View {
         return L10n.App.Packages.Filter.allManagers.localized
     }
 
-    private func normalizeManagerSelection() {
+    private func normalizeManagerSelection() -> Bool {
+        var changed = false
         if let selectedManagerId, !availableManagerIds.contains(selectedManagerId) {
             self.selectedManagerId = nil
+            changed = true
         }
         if let managerFilterId = context.managerFilterId, !availableManagerIds.contains(managerFilterId) {
             context.managerFilterId = nil
+            changed = true
+        }
+        return changed
+    }
+
+    private func refreshPackageSnapshots() {
+        let allPackages = core.allKnownPackages
+        availableManagerIds = Array(Set(allPackages.map(\.managerId))).sorted {
+            localizedManagerDisplayName($0).localizedCaseInsensitiveCompare(localizedManagerDisplayName($1)) == .orderedAscending
+        }
+        var installableNames = Set<String>()
+        for package in allPackages {
+            let normalizedName = normalizedPackageName(package.name)
+            if package.status == .available, core.canInstallPackage(package, includeAlternates: false) {
+                installableNames.insert(normalizedName)
+            }
+        }
+        installableAvailablePackageNames = installableNames
+        installActionPackageNames = core.installActionInFlightPackageNames(knownPackages: allPackages)
+        displayedPackages = core.filteredPackages(
+            query: context.searchQuery,
+            managerId: selectedManagerId ?? context.managerFilterId,
+            statusFilter: selectedStatusFilter,
+            pinnedOnly: showPinnedOnly,
+            knownPackages: allPackages
+        )
+    }
+
+    private func normalizedPackageName(_ packageName: String) -> String {
+        packageName
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+    }
+
+    private func primaryPackageAction(
+        for package: PackageItem,
+        managerConstraint: String?
+    ) -> PrimaryPackageAction {
+        if package.pinned, core.canPinPackage(package) {
+            let inFlight = core.pinActionPackageIds.contains(package.id)
+            return PrimaryPackageAction(
+                symbol: "pin.slash",
+                tooltip: L10n.App.Packages.Action.unpin.localized,
+                enabled: !inFlight,
+                inFlight: inFlight,
+                action: { core.unpinPackage(package) }
+            )
+        }
+
+        if package.status == .available {
+            let packageName = normalizedPackageName(package.name)
+            let inFlight = installActionPackageNames.contains(packageName)
+            let canInstall = managerConstraint == nil
+                ? installableAvailablePackageNames.contains(packageName)
+                : core.canInstallPackage(package, includeAlternates: false)
+            return PrimaryPackageAction(
+                symbol: "arrow.down.circle",
+                tooltip: L10n.App.Packages.Action.install.localized,
+                enabled: canInstall && !inFlight,
+                inFlight: inFlight,
+                action: { startInstallAction(for: package, managerConstraint: managerConstraint) }
+            )
+        }
+
+        let inFlight = core.upgradeActionPackageIds.contains(package.id)
+        let canUpgrade = core.canUpgradeIndividually(package)
+        return PrimaryPackageAction(
+            symbol: "arrow.up.circle",
+            tooltip: L10n.App.Packages.Action.upgradePackage.localized,
+            enabled: canUpgrade && !inFlight,
+            inFlight: inFlight,
+            action: { core.upgradePackage(package) }
+        )
+    }
+
+    private func primaryActionButton(for action: PrimaryPackageAction) -> some View {
+        Button(action: { action.action?() }) {
+            Image(systemName: action.symbol)
+        }
+        .buttonStyle(HelmIconButtonStyle())
+        .help(action.tooltip)
+        .accessibilityLabel(action.tooltip)
+        .disabled(!action.enabled || action.inFlight)
+        .helmPointer(enabled: action.enabled && !action.inFlight)
+        .padding(.trailing, 4)
+    }
+
+    private var installSelectionCandidates: [PackageItem] {
+        guard let installSelectionPackage else { return [] }
+        return core.installCandidates(for: installSelectionPackage).filter {
+            core.canInstallPackage($0, includeAlternates: false)
         }
     }
+
+    private var selectedInstallCandidate: PackageItem? {
+        if let selectedInstallManagerId,
+           let matched = installSelectionCandidates.first(where: { $0.managerId == selectedInstallManagerId }) {
+            return matched
+        }
+        return installSelectionCandidates.first
+    }
+
+    private var installManagerSheet: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(
+                "\(L10n.App.Packages.Action.install.localized) \(installSelectionPackage?.name ?? "")"
+            )
+            .font(.headline)
+
+            Picker(
+                L10n.App.Inspector.manager.localized,
+                selection: Binding(
+                    get: { selectedInstallCandidate?.managerId ?? "" },
+                    set: { selectedInstallManagerId = $0 }
+                )
+            ) {
+                ForEach(installSelectionCandidates, id: \.managerId) { candidate in
+                    Text(localizedManagerDisplayName(candidate.managerId))
+                        .tag(candidate.managerId)
+                }
+            }
+            .pickerStyle(.radioGroup)
+
+            HStack(spacing: 8) {
+                Spacer()
+                Button(L10n.Common.cancel.localized) {
+                    dismissInstallManagerSheet()
+                }
+                Button(L10n.Common.install.localized) {
+                    guard let selectedInstallCandidate else { return }
+                    dismissInstallManagerSheet()
+                    core.installPackage(selectedInstallCandidate)
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(selectedInstallCandidate == nil)
+            }
+        }
+        .padding(18)
+        .frame(width: 320)
+    }
+
+    private func startInstallAction(
+        for package: PackageItem,
+        managerConstraint: String? = nil
+    ) {
+        let candidates = core.installCandidates(for: package).filter {
+            guard core.canInstallPackage($0, includeAlternates: false) else { return false }
+            guard let managerConstraint else { return true }
+            return $0.managerId == managerConstraint
+        }
+        guard !candidates.isEmpty else { return }
+        if candidates.count == 1, let candidate = candidates.first {
+            core.installPackage(candidate)
+            return
+        }
+        installSelectionPackage = package
+        selectedInstallManagerId = candidates.first?.managerId
+        showInstallManagerSheet = true
+    }
+
+    private func dismissInstallManagerSheet() {
+        showInstallManagerSheet = false
+        installSelectionPackage = nil
+        selectedInstallManagerId = nil
+    }
+}
+
+private struct PrimaryPackageAction {
+    let symbol: String
+    let tooltip: String
+    let enabled: Bool
+    let inFlight: Bool
+    let action: (() -> Void)?
 }
 
 // Backward compatibility wrapper for legacy references.

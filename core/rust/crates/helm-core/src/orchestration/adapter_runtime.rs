@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
+use serde::Serialize;
 use tracing::instrument;
 
 use crate::adapters::{
@@ -34,6 +35,10 @@ const REFRESH_WAIT_POLICY_TIMEOUT_REFRESH_SECS: u64 = 180;
 const REFRESH_WAIT_ORCHESTRATION_CAP_DETECTION_SECS: u64 = 120;
 const REFRESH_WAIT_ORCHESTRATION_CAP_SEARCH_SECS: u64 = 180;
 const REFRESH_WAIT_ORCHESTRATION_CAP_REFRESH_SECS: u64 = 300;
+const FAILURE_DIAGNOSTIC_SCHEMA: &str = "helm.task.failure_diagnostic";
+const FAILURE_DIAGNOSTIC_SCHEMA_VERSION: u8 = 1;
+const FAILURE_DIAGNOSTIC_COMMAND_MAX_CHARS: usize = 240;
+const FAILURE_DIAGNOSTIC_EXCERPT_MAX_CHARS: usize = 320;
 
 #[derive(Clone)]
 pub struct AdapterRuntime {
@@ -72,6 +77,60 @@ struct RefreshWaitBudget {
     orchestration_cap: Duration,
     effective_timeout: Duration,
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct FailureIssueClassification {
+    key: &'static str,
+    owner: &'static str,
+    confidence: &'static str,
+    summary: &'static str,
+    recommended_probes: &'static [&'static str],
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct TaskFailureDiagnosticEntry {
+    level: TaskLogLevel,
+    message: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct FailureDiagnosticEnvelope {
+    schema: &'static str,
+    schema_version: u8,
+    fingerprint: String,
+    task_id: u64,
+    manager_id: String,
+    task_type: String,
+    error_code: String,
+    issue_key: String,
+    issue_owner: String,
+    issue_confidence: String,
+    issue_summary: String,
+    command: Option<String>,
+    cwd: Option<String>,
+    program_path: Option<String>,
+    path_snippet: Option<String>,
+    termination_reason: Option<String>,
+    exit_code: Option<i32>,
+    error_excerpt: String,
+    stderr_excerpt: Option<String>,
+    recommended_probes: Vec<String>,
+}
+
+const GENERIC_PROBES: [&str; 2] = [
+    "helm tasks logs <task-id> --limit 250",
+    "helm tasks output <task-id>",
+];
+const HOMEBREW_MANIFEST_AS_FORMULA_PROBES: [&str; 3] = [
+    "brew update --debug",
+    "brew upgrade --formula --dry-run <package>",
+    "brew doctor",
+];
+const HOMEBREW_API_CACHE_PERMISSION_PROBES: [&str; 3] = [
+    "brew doctor",
+    "ls -ld ~/Library/Caches/Homebrew ~/Library/Caches/Homebrew/api",
+    "brew update --debug",
+];
 
 impl AdapterRuntime {
     pub fn new(
@@ -955,7 +1014,7 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
         let terminal_status = snapshot.runtime.status;
         let terminal_error = terminal_error_details(&snapshot);
         let terminal_level = task_log_level_for_status(terminal_status);
-        let terminal_message = task_log_message_for_status(terminal_status, terminal_error);
+        let terminal_message = task_log_message_for_status(terminal_status, terminal_error.clone());
 
         if let Err(error) = persist_append_task_log(
             task_store.clone(),
@@ -983,6 +1042,37 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
                 message = %error.message,
                 "failed to persist terminal task log"
             );
+        }
+
+        let failure_diagnostics = build_failure_diagnostic_entries(&snapshot, terminal_error);
+        for diagnostic in failure_diagnostics {
+            if let Err(error) = persist_append_task_log(
+                task_store.clone(),
+                NewTaskLogRecord {
+                    task_id: snapshot.runtime.id,
+                    manager: snapshot.runtime.manager,
+                    task_type: snapshot.runtime.task_type,
+                    status: Some(terminal_status),
+                    level: diagnostic.level,
+                    message: diagnostic.message,
+                    created_at: SystemTime::now(),
+                },
+                snapshot.runtime.manager,
+                snapshot.runtime.task_type,
+                action,
+            )
+            .await
+            {
+                tracing::warn!(
+                    manager = ?manager,
+                    task_id = task_id.0,
+                    task_type = ?task_type,
+                    action = ?action,
+                    kind = ?error.kind,
+                    message = %error.message,
+                    "failed to persist failure diagnostic task log"
+                );
+            }
         }
 
         let supplemental_notes = crate::execution::drain_task_log_notes(snapshot.runtime.id);
@@ -1272,6 +1362,230 @@ fn task_log_message_for_status(
             .map(|details| format!("task failed [{}]: {}", details.code, details.message))
             .unwrap_or_else(|| "task failed".to_string()),
     }
+}
+
+fn build_failure_diagnostic_entries(
+    snapshot: &AdapterTaskSnapshot,
+    terminal_error: Option<TaskTerminalErrorDetails>,
+) -> Vec<TaskFailureDiagnosticEntry> {
+    if snapshot.runtime.status != TaskStatus::Failed {
+        return Vec::new();
+    }
+    let Some(terminal_error) = terminal_error else {
+        return Vec::new();
+    };
+
+    let task_output = crate::execution::task_output(snapshot.runtime.id);
+    let envelope = build_failure_diagnostic_envelope(snapshot, &terminal_error, task_output);
+    let summary = format!(
+        "[diagnostic] failure fingerprint={} issue={} owner={} confidence={}",
+        envelope.fingerprint, envelope.issue_key, envelope.issue_owner, envelope.issue_confidence
+    );
+    let serialized = serde_json::to_string(&envelope).unwrap_or_else(|error| {
+        format!(
+            "{{\"schema\":\"{}\",\"schema_version\":{},\"error\":\"serialization_failed\",\"message\":\"{}\"}}",
+            FAILURE_DIAGNOSTIC_SCHEMA,
+            FAILURE_DIAGNOSTIC_SCHEMA_VERSION,
+            truncate_for_diagnostic(error.to_string().as_str(), FAILURE_DIAGNOSTIC_EXCERPT_MAX_CHARS)
+        )
+    });
+
+    vec![
+        TaskFailureDiagnosticEntry {
+            level: TaskLogLevel::Warn,
+            message: summary,
+        },
+        TaskFailureDiagnosticEntry {
+            level: TaskLogLevel::Info,
+            message: format!("[diagnostic.v1] {serialized}"),
+        },
+    ]
+}
+
+fn build_failure_diagnostic_envelope(
+    snapshot: &AdapterTaskSnapshot,
+    terminal_error: &TaskTerminalErrorDetails,
+    task_output: Option<crate::execution::TaskOutputRecord>,
+) -> FailureDiagnosticEnvelope {
+    let error_excerpt = truncate_for_diagnostic(
+        terminal_error.message.as_str(),
+        FAILURE_DIAGNOSTIC_EXCERPT_MAX_CHARS,
+    );
+    let stderr_excerpt = task_output
+        .as_ref()
+        .and_then(|record| record.stderr.as_deref())
+        .map(|value| truncate_for_diagnostic(value, FAILURE_DIAGNOSTIC_EXCERPT_MAX_CHARS));
+    let command = task_output
+        .as_ref()
+        .and_then(|record| record.command.as_deref())
+        .map(|value| truncate_for_diagnostic(value, FAILURE_DIAGNOSTIC_COMMAND_MAX_CHARS));
+    let combined_text = match stderr_excerpt.as_deref() {
+        Some(stderr) => format!("{}\n{stderr}", terminal_error.message),
+        None => terminal_error.message.clone(),
+    };
+
+    let issue = classify_failure_issue(snapshot.runtime.manager, combined_text.as_str());
+    let fingerprint = failure_fingerprint(
+        snapshot.runtime.manager,
+        snapshot.runtime.task_type,
+        terminal_error.code.as_str(),
+        task_output.as_ref().and_then(|record| record.exit_code),
+        issue.key,
+        combined_text.as_str(),
+    );
+
+    let mut recommended_probes = issue
+        .recommended_probes
+        .iter()
+        .map(|probe| probe.to_string())
+        .collect::<Vec<_>>();
+    if let Some(command) = command.as_ref() {
+        recommended_probes.push(format!("run_direct_command: {command}"));
+    }
+
+    FailureDiagnosticEnvelope {
+        schema: FAILURE_DIAGNOSTIC_SCHEMA,
+        schema_version: FAILURE_DIAGNOSTIC_SCHEMA_VERSION,
+        fingerprint,
+        task_id: snapshot.runtime.id.0,
+        manager_id: snapshot.runtime.manager.as_str().to_string(),
+        task_type: task_type_code(snapshot.runtime.task_type).to_string(),
+        error_code: terminal_error.code.clone(),
+        issue_key: issue.key.to_string(),
+        issue_owner: issue.owner.to_string(),
+        issue_confidence: issue.confidence.to_string(),
+        issue_summary: issue.summary.to_string(),
+        command,
+        cwd: task_output.as_ref().and_then(|record| record.cwd.clone()),
+        program_path: task_output
+            .as_ref()
+            .and_then(|record| record.program_path.clone()),
+        path_snippet: task_output
+            .as_ref()
+            .and_then(|record| record.path_snippet.clone()),
+        termination_reason: task_output
+            .as_ref()
+            .and_then(|record| record.termination_reason.clone()),
+        exit_code: task_output.as_ref().and_then(|record| record.exit_code),
+        error_excerpt,
+        stderr_excerpt,
+        recommended_probes,
+    }
+}
+
+fn classify_failure_issue(manager: ManagerId, combined_text: &str) -> FailureIssueClassification {
+    if manager == ManagerId::HomebrewFormula {
+        let normalized = normalize_failure_text(combined_text);
+        if normalized.contains("no available formula with the name \"formula.jws.json\"")
+            || (normalized.contains("formulaunavailableerror")
+                && normalized.contains("formula.jws.json"))
+        {
+            return FailureIssueClassification {
+                key: "homebrew.api_manifest_treated_as_formula",
+                owner: "homebrew",
+                confidence: "high",
+                summary: "Homebrew reported an API metadata manifest filename as a formula target.",
+                recommended_probes: &HOMEBREW_MANIFEST_AS_FORMULA_PROBES,
+            };
+        }
+
+        if normalized.contains("operation not permitted @ apply2files")
+            && normalized.contains("/homebrew/api/formula.jws.json")
+        {
+            return FailureIssueClassification {
+                key: "homebrew.api_cache_permission_denied",
+                owner: "local_configuration",
+                confidence: "high",
+                summary: "Homebrew could not write API cache metadata (permission denied on formula.jws.json).",
+                recommended_probes: &HOMEBREW_API_CACHE_PERMISSION_PROBES,
+            };
+        }
+    }
+
+    FailureIssueClassification {
+        key: "unclassified_process_failure",
+        owner: "undetermined",
+        confidence: "low",
+        summary: "No known failure signature matched this process failure.",
+        recommended_probes: &GENERIC_PROBES,
+    }
+}
+
+fn failure_fingerprint(
+    manager: ManagerId,
+    task_type: TaskType,
+    error_code: &str,
+    exit_code: Option<i32>,
+    issue_key: &str,
+    normalized_text: &str,
+) -> String {
+    let payload = format!(
+        "{}|{}|{}|{}|{}|{}",
+        manager.as_str(),
+        task_type_code(task_type),
+        error_code.trim().to_ascii_lowercase(),
+        exit_code
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "none".to_string()),
+        issue_key.to_ascii_lowercase(),
+        normalize_failure_text(normalized_text),
+    );
+    format!("failure-v1-{}", fnv1a64_hex(payload.as_bytes()))
+}
+
+fn task_type_code(task_type: TaskType) -> &'static str {
+    match task_type {
+        TaskType::Detection => "detection",
+        TaskType::Refresh => "refresh",
+        TaskType::Search => "search",
+        TaskType::Install => "install",
+        TaskType::Uninstall => "uninstall",
+        TaskType::Upgrade => "upgrade",
+        TaskType::Pin => "pin",
+        TaskType::Unpin => "unpin",
+    }
+}
+
+fn normalize_failure_text(text: &str) -> String {
+    let mut normalized = String::with_capacity(text.len());
+    let mut prior_was_whitespace = false;
+    for character in text.chars() {
+        if character.is_whitespace() {
+            if !prior_was_whitespace {
+                normalized.push(' ');
+                prior_was_whitespace = true;
+            }
+            continue;
+        }
+        normalized.push(character.to_ascii_lowercase());
+        prior_was_whitespace = false;
+    }
+    normalized.trim().to_string()
+}
+
+fn fnv1a64_hex(bytes: &[u8]) -> String {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in bytes {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("{hash:016x}")
+}
+
+fn truncate_for_diagnostic(value: &str, max_chars: usize) -> String {
+    let trimmed = value.trim();
+    if max_chars == 0 {
+        return String::new();
+    }
+    let mut rendered = String::new();
+    for (index, character) in trimmed.chars().enumerate() {
+        if index >= max_chars {
+            rendered.push_str("...");
+            return rendered;
+        }
+        rendered.push(character);
+    }
+    rendered
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1835,23 +2149,30 @@ fn task_type_for_action(action: ManagerAction) -> TaskType {
 #[cfg(test)]
 mod tests {
     use super::{
-        SelectedExecutablePathUpdate, TaskType, build_manager_enablement_map,
-        build_refresh_capability_plan, reconcile_detected_install_instances,
-        reduce_detect_request_result, refresh_wait_budget, should_skip_refresh_lists_after_detect,
+        SelectedExecutablePathUpdate, TaskTerminalErrorDetails, TaskType,
+        build_failure_diagnostic_envelope, build_manager_enablement_map,
+        build_refresh_capability_plan, classify_failure_issue, failure_fingerprint,
+        reconcile_detected_install_instances, reduce_detect_request_result, refresh_wait_budget,
+        should_skip_refresh_lists_after_detect, task_type_code, truncate_for_diagnostic,
     };
     use crate::adapters::AdapterResponse;
     use crate::execution::{
-        ManagerTimeoutProfile, clear_manager_timeout_profiles, set_manager_timeout_profile,
+        ManagerTimeoutProfile, TaskOutputRecord, clear_manager_timeout_profiles,
+        set_manager_timeout_profile,
     };
     use crate::models::{
         AutomationLevel, CoreError, CoreErrorKind, DetectionInfo, InstallInstanceIdentityKind,
-        InstallProvenance, ManagerId, ManagerInstallInstance, StrategyKind,
+        InstallProvenance, ManagerAction, ManagerId, ManagerInstallInstance, StrategyKind, TaskId,
+        TaskStatus,
+    };
+    use crate::orchestration::{
+        AdapterTaskSnapshot, AdapterTaskTerminalState, TaskRuntimeSnapshot,
     };
     use crate::persistence::ManagerPreference;
     use std::collections::HashMap;
     use std::path::PathBuf;
     use std::sync::{Mutex, OnceLock};
-    use std::time::Duration;
+    use std::time::{Duration, SystemTime};
 
     fn timeout_profile_test_guard() -> std::sync::MutexGuard<'static, ()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -2128,5 +2449,126 @@ mod tests {
             Some("/opt/homebrew/bin/rustup"),
         );
         assert_eq!(update, SelectedExecutablePathUpdate::Clear);
+    }
+
+    fn failed_snapshot(
+        task_id: TaskId,
+        manager: ManagerId,
+        task_type: TaskType,
+        error: CoreError,
+    ) -> AdapterTaskSnapshot {
+        AdapterTaskSnapshot {
+            runtime: TaskRuntimeSnapshot {
+                id: task_id,
+                manager,
+                task_type,
+                status: TaskStatus::Failed,
+                created_at: SystemTime::now(),
+                started_at: None,
+                finished_at: None,
+                error_message: Some(error.message.clone()),
+            },
+            terminal_state: Some(AdapterTaskTerminalState::Failed(error)),
+        }
+    }
+
+    #[test]
+    fn classify_failure_issue_detects_homebrew_manifest_formula_signature() {
+        let issue = classify_failure_issue(
+            ManagerId::HomebrewFormula,
+            "FormulaUnavailableError: No available formula with the name \"formula.jws.json\"",
+        );
+        assert_eq!(issue.key, "homebrew.api_manifest_treated_as_formula");
+        assert_eq!(issue.owner, "homebrew");
+        assert_eq!(issue.confidence, "high");
+    }
+
+    #[test]
+    fn failure_fingerprint_is_deterministic() {
+        let first = failure_fingerprint(
+            ManagerId::HomebrewFormula,
+            TaskType::Upgrade,
+            "process_failure",
+            Some(1),
+            "homebrew.api_manifest_treated_as_formula",
+            "No available formula with the name \"formula.jws.json\"",
+        );
+        let second = failure_fingerprint(
+            ManagerId::HomebrewFormula,
+            TaskType::Upgrade,
+            "process_failure",
+            Some(1),
+            "homebrew.api_manifest_treated_as_formula",
+            "No available formula with the name \"formula.jws.json\"",
+        );
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn build_failure_diagnostic_envelope_includes_issue_key_and_command_context() {
+        let task_id = TaskId(4242);
+        let snapshot = failed_snapshot(
+            task_id,
+            ManagerId::HomebrewFormula,
+            TaskType::Upgrade,
+            CoreError {
+                manager: Some(ManagerId::HomebrewFormula),
+                task: Some(TaskType::Upgrade),
+                action: Some(ManagerAction::Upgrade),
+                kind: CoreErrorKind::ProcessFailure,
+                message:
+                    "process exited with code 1: FormulaUnavailableError: No available formula with the name \"formula.jws.json\""
+                        .to_string(),
+            },
+        );
+        let envelope = build_failure_diagnostic_envelope(
+            &snapshot,
+            &TaskTerminalErrorDetails {
+                code: "process_failure".to_string(),
+                message:
+                    "process exited with code 1: FormulaUnavailableError: No available formula with the name \"formula.jws.json\""
+                        .to_string(),
+            },
+            Some(TaskOutputRecord {
+                command: Some("brew upgrade ada-url".to_string()),
+                cwd: Some("/Users/test".to_string()),
+                program_path: Some("/opt/homebrew/bin/brew".to_string()),
+                path_snippet: Some("/opt/homebrew/bin:/usr/bin".to_string()),
+                started_at_unix_ms: None,
+                finished_at_unix_ms: None,
+                duration_ms: None,
+                exit_code: Some(1),
+                termination_reason: Some("error".to_string()),
+                error_code: Some("non_zero_exit".to_string()),
+                error_message: Some("process exited with code 1".to_string()),
+                stdout: None,
+                stderr: Some(
+                    "Error: FormulaUnavailableError: No available formula with the name \"formula.jws.json\""
+                        .to_string(),
+                ),
+            }),
+        );
+
+        assert_eq!(envelope.task_id, task_id.0);
+        assert_eq!(
+            envelope.issue_key,
+            "homebrew.api_manifest_treated_as_formula"
+        );
+        assert_eq!(envelope.command, Some("brew upgrade ada-url".to_string()));
+        assert_eq!(envelope.task_type, task_type_code(TaskType::Upgrade));
+        assert_eq!(envelope.exit_code, Some(1));
+        assert!(
+            envelope
+                .recommended_probes
+                .iter()
+                .any(|probe| probe.contains("brew update --debug")),
+            "expected Homebrew diagnostic probes to be present"
+        );
+    }
+
+    #[test]
+    fn truncate_for_diagnostic_appends_ascii_ellipsis() {
+        let value = truncate_for_diagnostic("abcdef", 3);
+        assert_eq!(value, "abc...");
     }
 }

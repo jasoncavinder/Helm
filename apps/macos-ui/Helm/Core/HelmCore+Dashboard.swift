@@ -3,6 +3,13 @@ import os.log
 
 private let taskSyncLogger = Logger(subsystem: "com.jasoncavinder.Helm", category: "core.tasks")
 
+struct PackageDescriptionLookupCandidate {
+    let managerId: String
+    let packageName: String
+    let version: String?
+    let lookupKey: String
+}
+
 extension HelmCore {
     static let managerActionTaskMissingGraceSeconds: TimeInterval = 12
     static let localManagerActionTaskIdPrefix = "local-manager-action-"
@@ -65,16 +72,20 @@ extension HelmCore {
         query: String,
         managerId: String?,
         statusFilter: PackageStatus?,
-        pinnedOnly: Bool = false
+        pinnedOnly: Bool = false,
+        knownPackages: [PackageItem]? = nil
     ) -> [ConsolidatedPackageItem] {
-        consolidatePackages(
+        let sourcePackages = knownPackages ?? allKnownPackages
+        let consolidated = consolidatePackages(
             filteredPackagesRaw(
                 query: query,
                 managerId: managerId,
                 statusFilter: statusFilter,
-                pinnedOnly: pinnedOnly
+                pinnedOnly: pinnedOnly,
+                knownPackages: sourcePackages
             )
         )
+        return sortConsolidatedPackagesForQuery(consolidated, query: query)
     }
 
     /// Returns manager-scoped package rows used as canonical action targets.
@@ -82,9 +93,10 @@ extension HelmCore {
         query: String,
         managerId: String?,
         statusFilter: PackageStatus?,
-        pinnedOnly: Bool
+        pinnedOnly: Bool,
+        knownPackages: [PackageItem]? = nil
     ) -> [PackageItem] {
-        var base = allKnownPackages
+        var base = knownPackages ?? allKnownPackages
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
         if !trimmed.isEmpty {
@@ -207,11 +219,70 @@ extension HelmCore {
             && !isManagerUninstalling(package.managerId)
     }
 
-    func canInstallPackage(_ package: PackageItem) -> Bool {
-        package.status == .available
-            && (managerStatuses[package.managerId]?.supportsPackageInstall ?? false)
-            && isManagerEnabled(package.managerId)
-            && !isManagerUninstalling(package.managerId)
+    func canInstallPackage(_ package: PackageItem, includeAlternates: Bool = true) -> Bool {
+        if canInstallPackageDirect(package) {
+            return true
+        }
+        guard includeAlternates, package.status == .available else {
+            return false
+        }
+        return installCandidates(for: package).contains { canInstallPackage($0, includeAlternates: false) }
+    }
+
+    func installActionInFlightPackageNames(knownPackages: [PackageItem]? = nil) -> Set<String> {
+        let packageNameById = Dictionary(
+            uniqueKeysWithValues: (knownPackages ?? allKnownPackages).map {
+                ($0.id, PackageActionTracking.normalizedPackageName($0.name))
+            }
+        )
+        return PackageActionTracking.inFlightInstallNames(
+            installActionPackageIds: installActionPackageIds,
+            packageNameById: packageNameById,
+            trackedNamesByPackageId: installActionNormalizedNameByPackageId
+        )
+    }
+
+    func isInstallActionInFlight(for package: PackageItem, knownPackages: [PackageItem]? = nil) -> Bool {
+        let normalizedPackageName = PackageActionTracking.normalizedPackageName(package.name)
+        guard !normalizedPackageName.isEmpty else {
+            return installActionPackageIds.contains(package.id)
+        }
+        return installActionInFlightPackageNames(knownPackages: knownPackages)
+            .contains(normalizedPackageName)
+    }
+
+    func installCandidates(for package: PackageItem) -> [PackageItem] {
+        guard package.status == .available else { return [] }
+        let normalizedName = package.name
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !normalizedName.isEmpty else { return [] }
+
+        var candidatesByManager: [String: PackageItem] = [:]
+        for candidate in allKnownPackages where candidate.status == .available {
+            let candidateName = candidate.name
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            guard candidateName == normalizedName else { continue }
+
+            if let existing = candidatesByManager[candidate.managerId] {
+                candidatesByManager[candidate.managerId] = preferredInstallCandidate(existing, candidate)
+            } else {
+                candidatesByManager[candidate.managerId] = candidate
+            }
+        }
+
+        if candidatesByManager[package.managerId] == nil {
+            candidatesByManager[package.managerId] = package
+        }
+
+        return candidatesByManager.values.sorted(by: installCandidateOrdering)
+    }
+
+    func preferredInstallCandidate(for package: PackageItem) -> PackageItem? {
+        let candidates = installCandidates(for: package)
+        return candidates.first(where: { canInstallPackage($0, includeAlternates: false) })
+            ?? candidates.first
     }
 
     func canUninstallPackage(_ package: PackageItem) -> Bool {
@@ -223,7 +294,6 @@ extension HelmCore {
 
     func canPinPackage(_ package: PackageItem) -> Bool {
         package.status != .available
-            && package.managerId == "homebrew_formula"
             && isManagerEnabled(package.managerId)
             && !isManagerUninstalling(package.managerId)
     }
@@ -258,6 +328,90 @@ extension HelmCore {
             return status.detected
         }
         return detectedManagers.contains(managerId)
+    }
+
+    func packageDescriptionLookupKey(
+        managerId: String,
+        packageName: String,
+        version: String?
+    ) -> String {
+        let normalizedManagerId = managerId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedPackageName = packageName
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let normalizedVersion = normalizedDescriptionVersionToken(version) ?? ""
+        return "\(normalizedManagerId)|\(normalizedPackageName)|\(normalizedVersion)"
+    }
+
+    func packageDescriptionSummary(for package: PackageItem) -> String? {
+        for candidate in packageDescriptionLookupCandidates(for: package) {
+            if let summary = packageDescriptionSummaryByKey[candidate.lookupKey] {
+                let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    return trimmed
+                }
+            }
+        }
+        let fallback = package.summary?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if fallback?.isEmpty == false {
+            return fallback
+        }
+        return nil
+    }
+
+    func hasPackageDescriptionSummary(packageId: String) -> Bool {
+        let package = descriptionLookupPackageById[packageId]
+            ?? allKnownPackages.first(where: { $0.id == packageId })
+        guard let package else { return false }
+        return packageDescriptionSummary(for: package) != nil
+    }
+
+    func packageDescriptionLookupCandidates(for package: PackageItem) -> [PackageDescriptionLookupCandidate] {
+        let normalizedName = package.name
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !normalizedName.isEmpty else { return [] }
+
+        var preferredByManager: [String: PackageItem] = [:]
+        for candidate in allKnownPackages {
+            let candidateName = candidate.name
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            guard candidateName == normalizedName else { continue }
+            if let existing = preferredByManager[candidate.managerId] {
+                preferredByManager[candidate.managerId] = preferredDescriptionLookupPackage(existing, candidate)
+            } else {
+                preferredByManager[candidate.managerId] = candidate
+            }
+        }
+
+        if preferredByManager[package.managerId] == nil {
+            preferredByManager[package.managerId] = package
+        }
+
+        return preferredByManager.values
+            .sorted { lhs, rhs in
+                let lhsPriority = managerPriorityRank(for: lhs.managerId)
+                let rhsPriority = managerPriorityRank(for: rhs.managerId)
+                if lhsPriority != rhsPriority {
+                    return lhsPriority < rhsPriority
+                }
+                return normalizedManagerName(lhs.managerId)
+                    .localizedCaseInsensitiveCompare(normalizedManagerName(rhs.managerId)) == .orderedAscending
+            }
+            .map { candidate in
+                let targetVersion = packageDescriptionTargetVersion(for: candidate)
+                return PackageDescriptionLookupCandidate(
+                    managerId: candidate.managerId,
+                    packageName: candidate.name,
+                    version: targetVersion,
+                    lookupKey: packageDescriptionLookupKey(
+                        managerId: candidate.managerId,
+                        packageName: candidate.name,
+                        version: targetVersion
+                    )
+                )
+            }
     }
 
     func syncManagerOperations(from coreTasks: [CoreTaskRecord]) {
@@ -508,6 +662,7 @@ extension HelmCore {
             guard let status = statusById[taskId] else {
                 installActionTaskByPackage.removeValue(forKey: packageId)
                 installActionPackageIds.remove(packageId)
+                installActionNormalizedNameByPackageId.removeValue(forKey: packageId)
                 continue
             }
             if inFlightStates.contains(status) {
@@ -516,6 +671,7 @@ extension HelmCore {
 
             installActionTaskByPackage.removeValue(forKey: packageId)
             installActionPackageIds.remove(packageId)
+            installActionNormalizedNameByPackageId.removeValue(forKey: packageId)
             if status == "completed" {
                 shouldRefreshSnapshots = true
             }
@@ -633,16 +789,12 @@ extension HelmCore {
             descriptionLookupTaskIdsByPackage.removeValue(forKey: packageId)
             packageDescriptionLoadingIds.remove(packageId)
 
-            let summary = allKnownPackages
-                .first(where: { $0.id == packageId })?
-                .summary?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-
-            if summary?.isEmpty == false {
+            if hasPackageDescriptionSummary(packageId: packageId) {
                 packageDescriptionUnavailableIds.remove(packageId)
             } else {
                 packageDescriptionUnavailableIds.insert(packageId)
             }
+            descriptionLookupPackageById.removeValue(forKey: packageId)
         }
     }
 
@@ -725,6 +877,147 @@ extension HelmCore {
         let trimmedCandidate = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedCandidate.isEmpty else { return }
         package.summary = trimmedCandidate
+    }
+
+    private func preferredDescriptionLookupPackage(_ lhs: PackageItem, _ rhs: PackageItem) -> PackageItem {
+        let lhsUpgradable = lhs.status == .upgradable && !lhs.pinned
+        let rhsUpgradable = rhs.status == .upgradable && !rhs.pinned
+        if lhsUpgradable != rhsUpgradable {
+            return lhsUpgradable ? lhs : rhs
+        }
+
+        let lhsAvailable = lhs.status == .available
+        let rhsAvailable = rhs.status == .available
+        if lhsAvailable != rhsAvailable {
+            return lhsAvailable ? lhs : rhs
+        }
+
+        let lhsVersion = normalizedDescriptionVersionToken(lhs.version)
+        let rhsVersion = normalizedDescriptionVersionToken(rhs.version)
+        if lhsVersion == nil, rhsVersion != nil {
+            return rhs
+        }
+        if lhsVersion != nil, rhsVersion == nil {
+            return lhs
+        }
+        if let lhsVersion, let rhsVersion {
+            let order = lhsVersion.compare(rhsVersion, options: [.numeric, .caseInsensitive])
+            if order != .orderedSame {
+                return order == .orderedDescending ? lhs : rhs
+            }
+        }
+
+        let lhsSummary = lhs.summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let rhsSummary = rhs.summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if lhsSummary.isEmpty != rhsSummary.isEmpty {
+            return lhsSummary.isEmpty ? rhs : lhs
+        }
+        return lhs
+    }
+
+    private func packageDescriptionTargetVersion(for package: PackageItem) -> String? {
+        if package.status == .upgradable && !package.pinned {
+            let latest = normalizedDescriptionVersionToken(package.latestVersion)
+            if let latest {
+                return latest
+            }
+        }
+        return normalizedDescriptionVersionToken(package.version)
+    }
+
+    private func normalizedDescriptionVersionToken(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return nil }
+        let unknownLabel = L10n.Common.unknown.localized.lowercased()
+        if normalized.lowercased() == unknownLabel {
+            return nil
+        }
+        return normalized
+    }
+
+    private func canInstallPackageDirect(_ package: PackageItem) -> Bool {
+        package.status == .available
+            && (managerStatuses[package.managerId]?.supportsPackageInstall ?? false)
+            && isManagerEnabled(package.managerId)
+            && !isManagerUninstalling(package.managerId)
+    }
+
+    private func preferredInstallCandidate(_ lhs: PackageItem, _ rhs: PackageItem) -> PackageItem {
+        let lhsVersion = normalizedDescriptionVersionToken(lhs.version)
+        let rhsVersion = normalizedDescriptionVersionToken(rhs.version)
+        if lhsVersion == nil, rhsVersion != nil {
+            return rhs
+        }
+        if lhsVersion != nil, rhsVersion == nil {
+            return lhs
+        }
+        if let lhsVersion, let rhsVersion {
+            let order = lhsVersion.compare(rhsVersion, options: [.numeric, .caseInsensitive])
+            if order != .orderedSame {
+                return order == .orderedDescending ? lhs : rhs
+            }
+        }
+
+        let lhsSummary = lhs.summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let rhsSummary = rhs.summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if lhsSummary.isEmpty != rhsSummary.isEmpty {
+            return lhsSummary.isEmpty ? rhs : lhs
+        }
+        return lhs
+    }
+
+    private func installCandidateOrdering(_ lhs: PackageItem, _ rhs: PackageItem) -> Bool {
+        let lhsInstallable = canInstallPackage(lhs, includeAlternates: false)
+        let rhsInstallable = canInstallPackage(rhs, includeAlternates: false)
+        if lhsInstallable != rhsInstallable {
+            return lhsInstallable && !rhsInstallable
+        }
+
+        let lhsPriority = managerPriorityRank(for: lhs.managerId)
+        let rhsPriority = managerPriorityRank(for: rhs.managerId)
+        if lhsPriority != rhsPriority {
+            return lhsPriority < rhsPriority
+        }
+
+        return normalizedManagerName(lhs.managerId)
+            .localizedCaseInsensitiveCompare(normalizedManagerName(rhs.managerId)) == .orderedAscending
+    }
+
+    private func sortConsolidatedPackagesForQuery(
+        _ packages: [ConsolidatedPackageItem],
+        query: String
+    ) -> [ConsolidatedPackageItem] {
+        let queryToken = exactMatchComparableToken(query)
+        guard !queryToken.isEmpty else { return packages }
+
+        let indexedPackages = Array(packages.enumerated())
+        return indexedPackages
+            .sorted { lhs, rhs in
+                let lhsExact = exactMatchComparableToken(lhs.element.package.name) == queryToken
+                let rhsExact = exactMatchComparableToken(rhs.element.package.name) == queryToken
+                if lhsExact != rhsExact {
+                    return lhsExact && !rhsExact
+                }
+                return lhs.offset < rhs.offset
+            }
+            .map(\.element)
+    }
+
+    private func exactMatchComparableToken(_ value: String) -> String {
+        let normalized = value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !normalized.isEmpty else { return "" }
+        guard let atIndex = normalized.lastIndex(of: "@"),
+              atIndex != normalized.startIndex else {
+            return normalized
+        }
+        let suffix = normalized[normalized.index(after: atIndex)...]
+        guard suffix.first?.isNumber == true else {
+            return normalized
+        }
+        return String(normalized[..<atIndex])
     }
 
     private func consolidatePackages(_ packages: [PackageItem]) -> [ConsolidatedPackageItem] {

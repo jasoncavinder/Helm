@@ -2158,6 +2158,16 @@ fn cmd_packages_show(
             ));
         }
     } else if rows.len() > 1 {
+        let preferred_manager = store
+            .package_manager_preference(package_name.as_str())
+            .map_err(|error| format!("failed to read package manager preference: {error}"))?;
+
+        if let Some(preferred_manager) = preferred_manager {
+            rows.retain(|row| row.manager_id == preferred_manager.as_str());
+        }
+    }
+
+    if rows.len() > 1 {
         let managers = rows
             .iter()
             .map(|row| row.manager_id.clone())

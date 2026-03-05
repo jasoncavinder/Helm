@@ -9,7 +9,7 @@ use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
-use helm_core::persistence::{DetectionStore, TaskStore};
+use helm_core::persistence::{DetectionStore, PackageStore, PinStore, TaskStore};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
@@ -20,11 +20,11 @@ use serde_json::json;
 
 use super::provenance::{InstallChannel, UpdatePolicy};
 use super::{
-    CachedSearchResult, CliDiagnosticsSummary, CliManagerInstallInstance, CliManagerStatus,
-    CliTaskLogRecord, CliTaskRecord, CoordinatorSubmitRequest, CoordinatorWorkflowRequest,
-    ExecutionMode, InstalledPackage, ManagerId, OutdatedPackage, PackageRef,
-    SELF_UPDATE_ALLOW_ROOT_ENV, SqliteStore, TASK_FETCH_LIMIT, TaskId,
-    acknowledge_manager_multi_instance_state, adapter_request_to_coordinator_submit,
+    CachedSearchResult, Capability, CliDiagnosticsSummary, CliManagerInstallInstance,
+    CliManagerStatus, CliTaskLogRecord, CliTaskRecord, CoordinatorSubmitRequest,
+    CoordinatorWorkflowRequest, ExecutionMode, InstalledPackage, ManagerId, OutdatedPackage,
+    PackageRef, PinKind, PinRecord, SELF_UPDATE_ALLOW_ROOT_ENV, SqliteStore, TASK_FETCH_LIMIT,
+    TaskId, acknowledge_manager_multi_instance_state, adapter_request_to_coordinator_submit,
     build_diagnostics_summary, build_manager_mutation_request,
     build_manager_uninstall_plan_with_options, build_package_uninstall_preview_for_package,
     cancel_inflight_tasks_for_manager, channel_managed_check_status,
@@ -35,7 +35,7 @@ use super::{
     list_manager_install_instances, list_managers, list_outdated_for_enabled,
     list_tasks_for_enabled, manager_enabled_map, manager_enablement_eligibility_for_store,
     manager_executable_status, manager_install_methods_status, manager_priority_entries,
-    provenance_can_self_update, provenance_recommended_action,
+    provenance_can_self_update, provenance_recommended_action, registry,
     resolve_install_method_override_for_tui, search_local_for_enabled,
     set_manager_active_install_instance, set_manager_priority_rank, task_log_to_cli_record,
     task_to_cli_task, write_setting,
@@ -381,6 +381,7 @@ struct PackageRow {
     pinned: bool,
     summary: Option<String>,
     homebrew_keg_policy: Option<String>,
+    preferred_manager: Option<ManagerId>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -1378,21 +1379,61 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
             }
         }
         KeyCode::Char('g') => {
-            app.move_cursor(-(usize::MAX as i32 / 2));
-            if app.section == Section::Tasks {
-                let _ = app.refresh_task_logs(store);
-            }
-            if app.section == Section::Managers {
-                let _ = app.refresh_selected_manager_controls(store);
+            if app.section == Section::Packages
+                && let Some(package) = app.selected_package()
+            {
+                match store.set_package_manager_preference(
+                    package.package_name.as_str(),
+                    Some(package.manager),
+                ) {
+                    Ok(()) => {
+                        app.note_success(format!(
+                            "Preferred manager for '{}' set to {}.",
+                            package.package_name,
+                            package.manager.as_str()
+                        ));
+                        app.reload(store)?;
+                    }
+                    Err(error) => app.note_error(format!(
+                        "failed to set preferred manager for '{}': {}",
+                        package.package_name, error
+                    )),
+                }
+            } else {
+                app.move_cursor(-(usize::MAX as i32 / 2));
+                if app.section == Section::Tasks {
+                    let _ = app.refresh_task_logs(store);
+                }
+                if app.section == Section::Managers {
+                    let _ = app.refresh_selected_manager_controls(store);
+                }
             }
         }
         KeyCode::Char('G') => {
-            app.move_cursor(i32::MAX / 2);
-            if app.section == Section::Tasks {
-                let _ = app.refresh_task_logs(store);
-            }
-            if app.section == Section::Managers {
-                let _ = app.refresh_selected_manager_controls(store);
+            if app.section == Section::Packages
+                && let Some(package) = app.selected_package()
+            {
+                match store.set_package_manager_preference(package.package_name.as_str(), None) {
+                    Ok(()) => {
+                        app.note_success(format!(
+                            "Preferred manager for '{}' cleared.",
+                            package.package_name
+                        ));
+                        app.reload(store)?;
+                    }
+                    Err(error) => app.note_error(format!(
+                        "failed to clear preferred manager for '{}': {}",
+                        package.package_name, error
+                    )),
+                }
+            } else {
+                app.move_cursor(i32::MAX / 2);
+                if app.section == Section::Tasks {
+                    let _ = app.refresh_task_logs(store);
+                }
+                if app.section == Section::Managers {
+                    let _ = app.refresh_selected_manager_controls(store);
+                }
             }
         }
         KeyCode::Home => {
@@ -2009,17 +2050,51 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
             package_name,
             pinned,
         } => {
-            let response = if pinned {
-                coordinator_submit_request(
-                    store,
-                    manager,
-                    CoordinatorSubmitRequest::Unpin {
-                        package_name: package_name.clone(),
-                    },
-                    ExecutionMode::Wait,
-                )?
-            } else {
-                coordinator_submit_request(
+            let supports_native_pin = registry::manager(manager)
+                .map(|descriptor| descriptor.capabilities.contains(&Capability::Pin))
+                .unwrap_or(false);
+            let supports_native_unpin = registry::manager(manager)
+                .map(|descriptor| descriptor.capabilities.contains(&Capability::Unpin))
+                .unwrap_or(false);
+
+            if pinned {
+                if supports_native_unpin {
+                    let response = coordinator_submit_request(
+                        store,
+                        manager,
+                        CoordinatorSubmitRequest::Unpin {
+                            package_name: package_name.clone(),
+                        },
+                        ExecutionMode::Wait,
+                    )?;
+                    Ok(format!(
+                        "Unpin requested for '{}@{}' (task #{}).",
+                        package_name,
+                        manager.as_str(),
+                        response.task_id.unwrap_or(0)
+                    ))
+                } else {
+                    let package = PackageRef {
+                        manager,
+                        name: package_name.clone(),
+                    };
+                    let package_key = format!("{}:{}", manager.as_str(), package_name);
+                    store
+                        .remove_pin(&package_key)
+                        .map_err(|error| format!("failed to remove pin record: {error}"))?;
+                    store
+                        .set_snapshot_pinned(&package, false)
+                        .map_err(|error| {
+                            format!("failed to unmark package pinned in snapshot: {error}")
+                        })?;
+                    Ok(format!(
+                        "Virtual unpin applied for '{}@{}'.",
+                        package_name,
+                        manager.as_str()
+                    ))
+                }
+            } else if supports_native_pin {
+                let response = coordinator_submit_request(
                     store,
                     manager,
                     CoordinatorSubmitRequest::Pin {
@@ -2027,16 +2102,35 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
                         version: None,
                     },
                     ExecutionMode::Wait,
-                )?
-            };
-            let action_name = if pinned { "Unpin" } else { "Pin" };
-            Ok(format!(
-                "{} requested for '{}@{}' (task #{}).",
-                action_name,
-                package_name,
-                manager.as_str(),
-                response.task_id.unwrap_or(0)
-            ))
+                )?;
+                Ok(format!(
+                    "Pin requested for '{}@{}' (task #{}).",
+                    package_name,
+                    manager.as_str(),
+                    response.task_id.unwrap_or(0)
+                ))
+            } else {
+                let package = PackageRef {
+                    manager,
+                    name: package_name.clone(),
+                };
+                store
+                    .upsert_pin(&PinRecord {
+                        package: package.clone(),
+                        kind: PinKind::Virtual,
+                        pinned_version: None,
+                        created_at: SystemTime::now(),
+                    })
+                    .map_err(|error| format!("failed to persist pin record: {error}"))?;
+                store.set_snapshot_pinned(&package, true).map_err(|error| {
+                    format!("failed to mark package pinned in snapshot: {error}")
+                })?;
+                Ok(format!(
+                    "Virtual pin applied for '{}@{}'.",
+                    package_name,
+                    manager.as_str()
+                ))
+            }
         }
         ConfirmAction::SetPackageKegPolicy {
             package_name,
@@ -2814,20 +2908,34 @@ fn render_list_pane(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState) 
                 .map(|row| match row.kind {
                     PackageRowKind::Installed => {
                         let pinned = if row.pinned { " [pinned]" } else { "" };
+                        let preferred = if row.preferred_manager == Some(row.manager) {
+                            " [preferred]"
+                        } else {
+                            ""
+                        };
                         ListItem::new(format!(
-                            "{}@{}  {}{}",
+                            "{}@{}  {}{}{}",
                             row.package_name,
                             row.manager.as_str(),
                             row.installed_version.as_deref().unwrap_or("-"),
-                            pinned
+                            pinned,
+                            preferred
                         ))
                     }
-                    PackageRowKind::Available => ListItem::new(format!(
-                        "{}@{}  available {}",
-                        row.package_name,
-                        row.manager.as_str(),
-                        row.candidate_version.as_deref().unwrap_or("-")
-                    )),
+                    PackageRowKind::Available => {
+                        let preferred = if row.preferred_manager == Some(row.manager) {
+                            " [preferred]"
+                        } else {
+                            ""
+                        };
+                        ListItem::new(format!(
+                            "{}@{}  available {}{}",
+                            row.package_name,
+                            row.manager.as_str(),
+                            row.candidate_version.as_deref().unwrap_or("-"),
+                            preferred
+                        ))
+                    }
                 })
                 .collect::<Vec<_>>();
             render_list(
@@ -3020,6 +3128,16 @@ fn render_detail_pane(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState
                         PackageRowKind::Available => "available",
                     }
                 )));
+                if let Some(preferred_manager) = package.preferred_manager {
+                    lines.push(Line::from(format!(
+                        "Preferred manager: {}",
+                        preferred_manager.as_str()
+                    )));
+                    lines.push(Line::from(format!(
+                        "Selected manager preferred: {}",
+                        package.manager == preferred_manager
+                    )));
+                }
                 if let Some(policy) = package.homebrew_keg_policy.as_deref() {
                     lines.push(Line::from(format!("Homebrew keg policy: {}", policy)));
                 }
@@ -3034,6 +3152,9 @@ fn render_detail_pane(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState
                         lines.push(Line::from("Actions: [i] install"));
                     }
                 }
+                lines.push(Line::from(
+                    "         [g] set preferred manager  [G] clear preferred manager",
+                ));
                 if package.manager == ManagerId::HomebrewFormula {
                     lines.push(Line::from(
                         "         [K] cycle Homebrew keg policy (default/cleanup/keep)",
@@ -3519,6 +3640,7 @@ fn render_help_overlay(frame: &mut ratatui::Frame<'_>, app: &AppState) {
         Line::from("  Packages:  i install selected available package"),
         Line::from("             u upgrade selected installed package"),
         Line::from("             x uninstall selected installed package, p pin/unpin"),
+        Line::from("             g set preferred manager, G clear preferred manager"),
         Line::from("             K cycle Homebrew keg policy override"),
         Line::from("  Tasks:     c cancel task"),
         Line::from("  Managers:  e enable/disable, i install, u update, x uninstall"),
@@ -3740,9 +3862,17 @@ fn build_package_rows(
         .filter(|entry| entry.package.manager == ManagerId::HomebrewFormula)
         .map(|entry| (entry.package.name, entry.policy))
         .collect();
+    let package_manager_preferences: HashMap<String, ManagerId> = store
+        .list_package_manager_preferences()
+        .map_err(|error| format!("failed to list package manager preferences: {error}"))?
+        .into_iter()
+        .map(|entry| (entry.package_name, entry.manager))
+        .collect();
 
     let mut rows_by_key: HashMap<(ManagerId, String), PackageRow> = HashMap::new();
     for package in installed {
+        let preference_key = package.package.name.trim().to_ascii_lowercase();
+        let preferred_manager = package_manager_preferences.get(&preference_key).copied();
         let homebrew_keg_policy = if package.package.manager == ManagerId::HomebrewFormula {
             let policy = homebrew_overrides
                 .get(package.package.name.as_str())
@@ -3768,6 +3898,7 @@ fn build_package_rows(
                 pinned: package.pinned,
                 summary: None,
                 homebrew_keg_policy,
+                preferred_manager,
             },
         );
     }
@@ -3786,6 +3917,8 @@ fn build_package_rows(
             continue;
         }
 
+        let preference_key = package_name.trim().to_ascii_lowercase();
+        let preferred_manager = package_manager_preferences.get(&preference_key).copied();
         let homebrew_keg_policy = if manager == ManagerId::HomebrewFormula {
             let policy = homebrew_overrides
                 .get(package_name.as_str())
@@ -3812,6 +3945,7 @@ fn build_package_rows(
                 pinned: false,
                 summary: result.result.summary.clone(),
                 homebrew_keg_policy,
+                preferred_manager,
             },
         );
     }
@@ -3833,6 +3967,17 @@ fn build_package_rows(
             .cmp(&right.package_name.to_ascii_lowercase());
         if name_cmp != std::cmp::Ordering::Equal {
             return name_cmp;
+        }
+        if let Some(preferred_manager) = left.preferred_manager.or(right.preferred_manager) {
+            let left_is_preferred = left.manager == preferred_manager;
+            let right_is_preferred = right.manager == preferred_manager;
+            if left_is_preferred != right_is_preferred {
+                return if left_is_preferred {
+                    std::cmp::Ordering::Less
+                } else {
+                    std::cmp::Ordering::Greater
+                };
+            }
         }
         left.manager.as_str().cmp(right.manager.as_str())
     });
@@ -3892,10 +4037,24 @@ fn apply_filter_backspace(app: &mut AppState) {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppState, ConfirmAction, InputMode, apply_filter_backspace,
+        AppState, ConfirmAction, InputMode, apply_filter_backspace, execute_confirmed_action,
         manager_participates_in_package_search, next_choice_index, normalized_nonempty,
     };
-    use crate::ManagerId;
+    use crate::{ManagerId, PackageRef, PinKind, SqliteStore};
+    use helm_core::models::InstalledPackage;
+    use helm_core::persistence::{PackageStore, PinStore};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn test_store_path(test_name: &str) -> std::path::PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|value| value.as_nanos())
+            .unwrap_or_default();
+        std::env::temp_dir().join(format!(
+            "helm-cli-tui-{test_name}-{}-{nanos}.db",
+            std::process::id()
+        ))
+    }
 
     #[test]
     fn next_choice_index_wraps_forward() {
@@ -4035,5 +4194,85 @@ mod tests {
         assert!(manager_participates_in_package_search(
             ManagerId::HomebrewFormula
         ));
+    }
+
+    #[test]
+    fn toggle_pin_for_virtual_manager_persists_pin_record_and_snapshot_state() {
+        let db_path = test_store_path("toggle-pin-virtual");
+        let store = SqliteStore::new(db_path.clone());
+        store
+            .migrate_to_latest()
+            .expect("failed to migrate test sqlite store");
+
+        let package = PackageRef {
+            manager: ManagerId::Pip,
+            name: "certifi".to_string(),
+        };
+        store
+            .upsert_installed(&[InstalledPackage {
+                package: package.clone(),
+                installed_version: Some("2026.1.4".to_string()),
+                pinned: false,
+            }])
+            .expect("failed to seed installed package");
+
+        let pin_message = execute_confirmed_action(
+            &store,
+            ConfirmAction::TogglePin {
+                manager: ManagerId::Pip,
+                package_name: "certifi".to_string(),
+                pinned: false,
+            },
+        )
+        .expect("virtual pin action should succeed");
+        assert!(pin_message.contains("Virtual pin applied"));
+
+        let pins = store
+            .list_pins()
+            .expect("failed to list pins after virtual pin");
+        assert_eq!(pins.len(), 1);
+        assert_eq!(pins[0].package.manager, ManagerId::Pip);
+        assert_eq!(pins[0].package.name, "certifi");
+        assert_eq!(pins[0].kind, PinKind::Virtual);
+
+        let installed_after_pin = store
+            .list_installed()
+            .expect("failed to list installed packages after virtual pin");
+        let certifi_after_pin = installed_after_pin
+            .iter()
+            .find(|entry| {
+                entry.package.manager == ManagerId::Pip && entry.package.name == "certifi"
+            })
+            .expect("expected pip certifi after virtual pin");
+        assert!(certifi_after_pin.pinned);
+
+        let unpin_message = execute_confirmed_action(
+            &store,
+            ConfirmAction::TogglePin {
+                manager: ManagerId::Pip,
+                package_name: "certifi".to_string(),
+                pinned: true,
+            },
+        )
+        .expect("virtual unpin action should succeed");
+        assert!(unpin_message.contains("Virtual unpin applied"));
+
+        let pins_after_unpin = store
+            .list_pins()
+            .expect("failed to list pins after virtual unpin");
+        assert!(pins_after_unpin.is_empty());
+
+        let installed_after_unpin = store
+            .list_installed()
+            .expect("failed to list installed packages after virtual unpin");
+        let certifi_after_unpin = installed_after_unpin
+            .iter()
+            .find(|entry| {
+                entry.package.manager == ManagerId::Pip && entry.package.name == "certifi"
+            })
+            .expect("expected pip certifi after virtual unpin");
+        assert!(!certifi_after_unpin.pinned);
+
+        let _ = std::fs::remove_file(db_path);
     }
 }

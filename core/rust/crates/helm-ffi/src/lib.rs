@@ -50,6 +50,8 @@
 //! | `helm_set_homebrew_keg_auto_cleanup` | Settings |
 //! | `helm_list_package_keg_policies` | Keg policies |
 //! | `helm_set_package_keg_policy` | Keg policies |
+//! | `helm_list_package_manager_preferences` | Package manager preferences |
+//! | `helm_set_package_manager_preference` | Package manager preferences |
 //! | `helm_preview_upgrade_plan` | Upgrade |
 //! | `helm_upgrade_all` | Upgrade |
 //! | `helm_upgrade_package` | Upgrade |
@@ -2351,12 +2353,17 @@ fn queue_remote_search_task(
     manager: ManagerId,
     query: &str,
 ) -> Result<helm_core::models::TaskId, &'static str> {
+    let normalized_query = query.trim();
+    if normalized_query.is_empty() {
+        return Err(SERVICE_ERROR_INVALID_INPUT);
+    }
+
     if !can_submit_remote_search(runtime, manager) {
         return Err(SERVICE_ERROR_UNSUPPORTED_CAPABILITY);
     }
 
-    let label_key = search_label_key_for_query(query);
-    let label_args = search_label_args(manager, query);
+    let label_key = search_label_key_for_query(normalized_query);
+    let label_args = search_label_args(manager, normalized_query);
 
     if let Some(existing) = find_matching_inflight_task(
         store,
@@ -2372,7 +2379,7 @@ fn queue_remote_search_task(
 
     let request = AdapterRequest::Search(SearchRequest {
         query: SearchQuery {
-            text: query.trim().to_string(),
+            text: normalized_query.to_string(),
             issued_at: std::time::SystemTime::now(),
         },
     });
@@ -2386,7 +2393,7 @@ fn queue_remote_search_task(
             eprintln!(
                 "Failed to queue remote search for manager {} with query '{}': {}",
                 manager.as_str(),
-                query.trim(),
+                normalized_query,
                 error
             );
             Err(SERVICE_ERROR_PROCESS_FAILURE)
@@ -2425,7 +2432,10 @@ fn supports_individual_package_install(runtime: &AdapterRuntime, manager: Manage
 fn manager_allows_individual_package_install(manager: ManagerId) -> bool {
     matches!(
         manager,
-        ManagerId::HomebrewFormula
+        ManagerId::Asdf
+            | ManagerId::HomebrewFormula
+            | ManagerId::MacPorts
+            | ManagerId::Mise
             | ManagerId::Npm
             | ManagerId::Pnpm
             | ManagerId::Yarn
@@ -5569,6 +5579,46 @@ pub extern "C" fn helm_list_package_keg_policies() -> *mut c_char {
     }
 }
 
+/// List per-package manager preferences as JSON.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_list_package_manager_preferences() -> *mut c_char {
+    let guard = lock_or_recover(&STATE, "state");
+    let state = match guard.as_ref() {
+        Some(s) => s,
+        None => return std::ptr::null_mut(),
+    };
+
+    #[derive(serde::Serialize)]
+    struct FfiPackageManagerPreference {
+        package_name: String,
+        manager_id: String,
+    }
+
+    let preferences = match state.store.list_package_manager_preferences() {
+        Ok(entries) => entries
+            .into_iter()
+            .map(|entry| FfiPackageManagerPreference {
+                package_name: entry.package_name,
+                manager_id: entry.manager.as_str().to_string(),
+            })
+            .collect::<Vec<_>>(),
+        Err(error) => {
+            eprintln!("Failed to list package manager preferences: {error}");
+            return std::ptr::null_mut();
+        }
+    };
+
+    let json = match serde_json::to_string(&preferences) {
+        Ok(json) => json,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    match CString::new(json) {
+        Ok(c_string) => c_string.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
 /// Set per-package Homebrew keg policy override.
 ///
 /// `policy_mode` values:
@@ -5633,6 +5683,61 @@ pub unsafe extern "C" fn helm_set_package_keg_policy(
     };
 
     state.store.set_package_keg_policy(&package, policy).is_ok()
+}
+
+/// Set or clear per-package manager preference.
+///
+/// Pass null for `manager_id` to clear preference.
+///
+/// # Safety
+///
+/// `package_name` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+/// `manager_id` may be null; when non-null it must point to a NUL-terminated UTF-8 C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_set_package_manager_preference(
+    package_name: *const c_char,
+    manager_id: *const c_char,
+) -> bool {
+    if package_name.is_null() {
+        return false;
+    }
+
+    let package_name = {
+        let c_str = unsafe { CStr::from_ptr(package_name) };
+        match c_str.to_str() {
+            Ok(value) if !value.trim().is_empty() => value.trim().to_string(),
+            _ => return false,
+        }
+    };
+
+    let manager = if manager_id.is_null() {
+        None
+    } else {
+        let c_str = unsafe { CStr::from_ptr(manager_id) };
+        match c_str
+            .to_str()
+            .ok()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            Some(value) => match value.parse::<ManagerId>() {
+                Ok(manager) => Some(manager),
+                Err(_) => return false,
+            },
+            None => None,
+        }
+    };
+
+    let guard = lock_or_recover(&STATE, "state");
+    let state = match guard.as_ref() {
+        Some(s) => s,
+        None => return false,
+    };
+
+    state
+        .store
+        .set_package_manager_preference(package_name.as_str(), manager)
+        .is_ok()
 }
 
 /// Build an ordered upgrade execution plan from cached outdated snapshot as JSON.
@@ -8600,9 +8705,9 @@ pub unsafe extern "C" fn helm_free_string(s: *mut c_char) {
 #[cfg(test)]
 mod tests {
     use super::{
-        FfiUpgradePlanStep, SERVICE_ERROR_UNSUPPORTED_CAPABILITY, build_manager_statuses,
-        build_manager_uninstall_plan, build_manager_uninstall_preview, build_visible_tasks,
-        collect_upgrade_all_targets, homebrew_probe_candidates,
+        FfiUpgradePlanStep, SERVICE_ERROR_INVALID_INPUT, SERVICE_ERROR_UNSUPPORTED_CAPABILITY,
+        build_manager_statuses, build_manager_uninstall_plan, build_manager_uninstall_preview,
+        build_visible_tasks, collect_upgrade_all_targets, homebrew_probe_candidates,
         manager_allows_individual_package_install, manager_authority_key,
         manager_participates_in_package_search, manager_uninstall_label_for_route,
         parse_homebrew_config_version, push_upgrade_plan_step,
@@ -8937,6 +9042,30 @@ mod tests {
             .find(|entry| entry.id == TaskId(301))
             .expect("task should still exist after reconciliation");
         assert_eq!(task.status, TaskStatus::Cancelled);
+
+        let _ = fs::remove_file(store.database_path());
+    }
+
+    #[test]
+    fn queue_remote_search_task_rejects_empty_query_before_capability_checks() {
+        let store = temp_sqlite_store("queue-remote-search-empty-query");
+        store
+            .migrate_to_latest()
+            .expect("sqlite migrations should apply");
+
+        let runtime = AdapterRuntime::new(Vec::<Arc<dyn ManagerAdapter>>::new())
+            .expect("empty adapter runtime should initialize");
+        let tokio_runtime =
+            tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
+
+        let result = super::queue_remote_search_task(
+            &store,
+            &runtime,
+            tokio_runtime.handle(),
+            ManagerId::Npm,
+            "   ",
+        );
+        assert_eq!(result, Err(SERVICE_ERROR_INVALID_INPUT));
 
         let _ = fs::remove_file(store.database_path());
     }
@@ -10530,7 +10659,10 @@ mod tests {
 
     #[test]
     fn individual_package_install_support_is_scoped_to_supported_managers() {
+        assert!(manager_allows_individual_package_install(ManagerId::Asdf));
         assert!(manager_allows_individual_package_install(ManagerId::Npm));
+        assert!(manager_allows_individual_package_install(ManagerId::MacPorts));
+        assert!(manager_allows_individual_package_install(ManagerId::Mise));
         assert!(manager_allows_individual_package_install(
             ManagerId::HomebrewFormula
         ));

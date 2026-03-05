@@ -666,96 +666,126 @@ private func copyTextToClipboard(_ text: String) {
 private struct InspectorPackageDetailView: View {
     @ObservedObject private var core = HelmCore.shared
     @EnvironmentObject private var context: ControlCenterContext
-    @State private var renderedPackageDescription: PackageDescriptionRenderer.RenderedDescription?
     @State private var loadingPackageUninstallPreview = false
-    @State private var confirmPackageUninstall: ConfirmPackageUninstallAction?
+    @State private var inspectorAlert: InspectorPackageAlert?
     let package: PackageItem
 
-    private enum ConfirmPackageUninstallAction: Identifiable {
-        case uninstall(preview: PackageUninstallPreview)
-        case uninstallFallback
+    private struct ManagerSwitchAlertContext: Identifiable {
+        let packageName: String
+        let selectedManagerId: String
+        let title: String
+        let message: String
+
+        var id: String {
+            "\(packageName.lowercased())-\(selectedManagerId)"
+        }
+    }
+
+    private enum InspectorPackageAlert: Identifiable {
+        case uninstall(package: PackageItem, preview: PackageUninstallPreview)
+        case uninstallFallback(package: PackageItem)
+        case switchManager(ManagerSwitchAlertContext)
 
         var id: String {
             switch self {
-            case let .uninstall(preview):
-                return "uninstall-\(preview.packageName)-\(preview.blastRadiusScore)"
-            case .uninstallFallback:
-                return "uninstall-fallback"
+            case let .uninstall(package, preview):
+                return "uninstall-\(package.id)-\(preview.blastRadiusScore)"
+            case let .uninstallFallback(package):
+                return "uninstall-fallback-\(package.id)"
+            case let .switchManager(context):
+                return "switch-manager-\(context.id)"
             }
         }
     }
 
+    private var managerCandidates: [PackageItem] {
+        packageCandidates(for: package)
+    }
+
+    private var installedManagerCandidates: [PackageItem] {
+        managerCandidates.filter { $0.status != .available }
+    }
+
+    private var installedProvenanceManagerPackage: PackageItem? {
+        installedManagerCandidates.first
+    }
+
+    private var recommendedManagerPackage: PackageItem {
+        if let preferredInstalled = installedProvenanceManagerPackage {
+            return preferredInstalled
+        }
+        if let preferredAvailable = managerCandidates.first(where: { $0.status == .available }) {
+            return preferredAvailable
+        }
+        return managerCandidates.first ?? package
+    }
+
+    private var selectedManagerId: String {
+        if let preferredManagerId = core.preferredManagerId(forPackageName: package.name),
+           managerCandidates.contains(where: { $0.managerId == preferredManagerId }) {
+            return preferredManagerId
+        }
+        return recommendedManagerPackage.managerId
+    }
+
+    private var activePackage: PackageItem {
+        managerCandidates.first(where: { $0.managerId == selectedManagerId }) ?? recommendedManagerPackage
+    }
+
     private var supportsKegPolicyOverride: Bool {
-        package.managerId == "homebrew_formula" && package.status != .available
+        activePackage.managerId == "homebrew_formula" && activePackage.status != .available
     }
 
     private var kegPolicySelection: KegPolicySelection {
-        core.kegPolicySelection(for: package)
+        core.kegPolicySelection(for: activePackage)
+    }
+
+    private var currentVersionText: String {
+        normalizedVersionText(activePackage.version) ?? L10n.Common.unknown.localized
+    }
+
+    private var latestVersionText: String? {
+        guard activePackage.status == .upgradable else { return nil }
+        return normalizedVersionText(activePackage.latestVersion)
+    }
+
+    private var resolvedPackageSummary: String? {
+        core.packageDescriptionSummary(for: activePackage)
+    }
+
+    private var renderedPackageDescription: PackageDescriptionRenderer.RenderedDescription? {
+        core.renderedPackageDescription(for: activePackage, summaryOverride: resolvedPackageSummary)
+    }
+
+    private var descriptionLoadingView: some View {
+        HStack(spacing: 6) {
+            ProgressView()
+                .controlSize(.small)
+                .scaleEffect(0.8)
+            Text(L10n.App.Inspector.descriptionLoading.localized)
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(package.name)
-                .font(.title3.weight(.semibold))
-
-            InspectorField(label: L10n.App.Inspector.manager.localized) {
-                Text(localizedManagerDisplayName(package.managerId))
-                    .font(.callout)
-            }
-
-            // Status badge
-            HStack(spacing: 6) {
-                Image(systemName: package.status.iconName)
-                    .foregroundColor(package.status.iconColor)
-                Text(package.status.displayName)
-                    .font(.callout.weight(.medium))
-                    .foregroundColor(package.status.iconColor)
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(L10n.App.Inspector.packageStatus.localized)
-            .accessibilityValue(package.status.displayName)
-
-            InspectorField(label: L10n.App.Inspector.installed.localized) {
-                Text(package.version)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(activePackage.name)
+                    .font(.title3.weight(.semibold))
+                Text(currentVersionText)
                     .font(.caption.monospacedDigit())
+                    .foregroundColor(.secondary)
             }
 
-            if let latest = package.latestVersion {
+            if let latestVersionText {
                 InspectorField(label: L10n.App.Inspector.latest.localized) {
-                    Text(latest)
+                    Text(latestVersionText)
                         .font(.caption.monospacedDigit())
                 }
             }
 
-            if supportsKegPolicyOverride {
-                kegPolicyMenuField
-            }
-
-            if package.pinned {
-                HStack(spacing: 6) {
-                    Image(systemName: "pin.fill")
-                        .foregroundColor(.orange)
-                        .font(.caption)
-                    Text(L10n.App.Inspector.pinned.localized)
-                        .font(.callout)
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(L10n.App.Inspector.pinned.localized)
-            }
-
-            if package.restartRequired {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange)
-                        .font(.caption)
-                    Text(L10n.App.Inspector.restartRequired.localized)
-                        .font(.callout)
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(L10n.App.Inspector.restartRequired.localized)
-            }
-
-            InspectorField(label: L10n.App.Inspector.description.localized) {
+            Group {
                 if let renderedPackageDescription {
                     switch renderedPackageDescription {
                     case .plain(let text):
@@ -765,46 +795,52 @@ private struct InspectorPackageDetailView: View {
                         InspectorAttributedText(attributedText: attributed)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                } else if core.packageDescriptionLoadingIds.contains(package.id) {
-                    Text(L10n.App.Inspector.descriptionLoading.localized)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                } else if core.packageDescriptionUnavailableIds.contains(package.id) {
+                } else if core.packageDescriptionLoadingIds.contains(activePackage.id) {
+                    descriptionLoadingView
+                } else if core.packageDescriptionUnavailableIds.contains(activePackage.id) {
                     Text(L10n.App.Inspector.descriptionUnavailable.localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 } else {
-                    Text(L10n.App.Inspector.descriptionLoading.localized)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    descriptionLoadingView
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             packageActionRow
 
+            if supportsKegPolicyOverride {
+                kegPolicyMenuField
+            }
+
+            managerSelectionField
+
+            packageIdField
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear {
-            core.ensurePackageDescription(for: package)
-            refreshRenderedPackageDescription()
+            ensurePersistedManagerSelection()
+            core.ensurePackageDescription(for: activePackage)
         }
         .onChange(of: package.id) { _ in
-            core.ensurePackageDescription(for: package)
-            refreshRenderedPackageDescription()
+            ensurePersistedManagerSelection()
+            core.ensurePackageDescription(for: activePackage)
         }
         .onChange(of: package.summary) { _ in
-            core.ensurePackageDescription(for: package)
-            refreshRenderedPackageDescription()
+            core.ensurePackageDescription(for: activePackage)
         }
-        .alert(item: $confirmPackageUninstall) { action in
+        .onChange(of: selectedManagerId) { _ in
+            core.ensurePackageDescription(for: activePackage)
+        }
+        .alert(item: $inspectorAlert) { action in
             switch action {
-            case let .uninstall(preview):
-                let message = packageUninstallAlertMessage(preview)
+            case let .uninstall(targetPackage, preview):
+                let message = packageUninstallAlertMessage(preview, package: targetPackage)
                 if preview.managerAutomationLevel == "read_only" {
                     return Alert(
                         title: Text(
                             L10n.App.Packages.Alert.uninstallTitle.localized(
-                                with: ["package": package.name]
+                                with: ["package": targetPackage.name]
                             )
                         ),
                         message: Text(message),
@@ -812,34 +848,43 @@ private struct InspectorPackageDetailView: View {
                     )
                 }
                 return Alert(
-                    title: Text(
-                        L10n.App.Packages.Alert.uninstallTitle.localized(
-                            with: ["package": package.name]
-                        )
-                    ),
-                    message: Text(message),
-                    primaryButton: .destructive(Text(L10n.Common.uninstall.localized)) {
-                        core.uninstallPackage(package)
-                    },
-                    secondaryButton: .cancel()
-                )
-            case .uninstallFallback:
+                        title: Text(
+                            L10n.App.Packages.Alert.uninstallTitle.localized(
+                                with: ["package": targetPackage.name]
+                            )
+                        ),
+                        message: Text(message),
+                        primaryButton: .destructive(Text(L10n.Common.uninstall.localized)) {
+                            core.uninstallPackage(targetPackage)
+                        },
+                        secondaryButton: .cancel()
+                    )
+            case let .uninstallFallback(targetPackage):
                 return Alert(
                     title: Text(
                         L10n.App.Packages.Alert.uninstallTitle.localized(
-                            with: ["package": package.name]
+                            with: ["package": targetPackage.name]
                         )
                     ),
                     message: Text(
                         L10n.App.Packages.Alert.uninstallMessage.localized(
                             with: [
-                                "package": package.name,
-                                "manager": localizedManagerDisplayName(package.managerId),
+                                "package": targetPackage.name,
+                                "manager": localizedManagerDisplayName(targetPackage.managerId),
                             ]
                         )
                     ),
                     primaryButton: .destructive(Text(L10n.Common.uninstall.localized)) {
-                        core.uninstallPackage(package)
+                        core.uninstallPackage(targetPackage)
+                    },
+                    secondaryButton: .cancel()
+                )
+            case let .switchManager(switchContext):
+                return Alert(
+                    title: Text(switchContext.title),
+                    message: Text(switchContext.message),
+                    primaryButton: .default(Text(L10n.Common.continue.localized)) {
+                        persistManagerSelection(switchContext.selectedManagerId)
                     },
                     secondaryButton: .cancel()
                 )
@@ -847,15 +892,11 @@ private struct InspectorPackageDetailView: View {
         }
     }
 
-    private func refreshRenderedPackageDescription() {
-        renderedPackageDescription = core.renderedPackageDescription(for: package)
-    }
-
     private var kegPolicyMenuField: some View {
         InspectorField(label: L10n.App.Packages.Label.homebrewKegPolicy.localized) {
             Menu {
                 Button {
-                    core.setKegPolicySelection(for: package, selection: .useGlobal)
+                    core.setKegPolicySelection(for: activePackage, selection: .useGlobal)
                 } label: {
                     HStack(spacing: 8) {
                         Text(L10n.App.Packages.KegPolicy.useGlobal.localized)
@@ -866,7 +907,7 @@ private struct InspectorPackageDetailView: View {
                 }
 
                 Button {
-                    core.setKegPolicySelection(for: package, selection: .keep)
+                    core.setKegPolicySelection(for: activePackage, selection: .keep)
                 } label: {
                     HStack(spacing: 8) {
                         Text(L10n.App.Packages.KegPolicy.keepOld.localized)
@@ -877,7 +918,7 @@ private struct InspectorPackageDetailView: View {
                 }
 
                 Button {
-                    core.setKegPolicySelection(for: package, selection: .cleanup)
+                    core.setKegPolicySelection(for: activePackage, selection: .cleanup)
                 } label: {
                     HStack(spacing: 8) {
                         Text(L10n.App.Packages.KegPolicy.cleanupOld.localized)
@@ -900,83 +941,125 @@ private struct InspectorPackageDetailView: View {
         }
     }
 
-    private var packageActionRow: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                if core.canInstallPackage(package) {
-                    packageActionButton(
-                        symbol: "arrow.down.circle",
-                        tooltip: L10n.App.Packages.Action.install.localized,
-                        enabled: !core.installActionPackageIds.contains(package.id)
-                    ) {
-                        core.installPackage(package)
+    private var managerSelectionField: some View {
+        InspectorField(label: L10n.App.Inspector.manager.localized) {
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(managerCandidates, id: \.managerId) { candidate in
+                    let isActive = candidate.managerId == selectedManagerId
+                    Button {
+                        requestManagerSwitch(to: candidate)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: isActive ? "checkmark.circle.fill" : "circle")
+                                .foregroundColor(isActive ? HelmTheme.proAccent : HelmTheme.textSecondary)
+                                .font(.caption)
+                            Text(localizedManagerDisplayName(candidate.managerId))
+                                .font(.callout)
+                                .foregroundColor(.primary)
+                            Spacer(minLength: 0)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .buttonStyle(.plain)
+                    .disabled(isActive)
+                    .helmPointer(enabled: !isActive)
                 }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
 
-                if core.canUninstallPackage(package) {
-                    packageActionButton(
-                        symbol: "trash",
-                        tooltip: L10n.App.Packages.Action.uninstall.localized,
-                        enabled: !core.uninstallActionPackageIds.contains(package.id)
-                            && !loadingPackageUninstallPreview
-                    ) {
-                        requestPackageUninstallConfirmation()
-                    }
-                }
-
-                if core.canUpgradeIndividually(package) {
-                    packageActionButton(
-                        symbol: "arrow.up.circle",
-                        tooltip: L10n.Common.update.localized,
-                        enabled: !core.upgradeActionPackageIds.contains(package.id)
-                    ) {
-                        core.upgradePackage(package)
-                    }
-                }
-
-                if core.canPinPackage(package) {
-                    packageActionButton(
-                        symbol: package.pinned ? "pin.slash" : "pin",
-                        tooltip: package.pinned
-                            ? L10n.App.Packages.Action.unpin.localized
-                            : L10n.App.Packages.Action.pin.localized,
-                        enabled: !core.pinActionPackageIds.contains(package.id)
-                    ) {
-                        if package.pinned {
-                            core.unpinPackage(package)
-                        } else {
-                            core.pinPackage(package)
+    private var packageIdField: some View {
+        InspectorField(label: L10n.App.Inspector.packageId.localized) {
+            if managerCandidates.count <= 1 {
+                Text(activePackage.id)
+                    .font(.caption.monospacedDigit())
+                    .foregroundColor(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(managerCandidates, id: \.managerId) { candidate in
+                        HStack(spacing: 6) {
+                            Text(localizedManagerDisplayName(candidate.managerId))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text(candidate.id)
+                                .font(.caption.monospacedDigit())
+                                .foregroundColor(.secondary)
                         }
                     }
                 }
+            }
+        }
+    }
 
+    private var packageActionRow: some View {
+        HStack(spacing: 6) {
+            if activePackage.status == .available {
                 packageActionButton(
-                    symbol: "slider.horizontal.3",
-                    tooltip: L10n.App.Inspector.viewManager.localized,
-                    enabled: true
+                    symbol: "arrow.down.circle",
+                    tooltip: L10n.App.Packages.Action.install.localized,
+                    enabled: core.canInstallPackage(activePackage, includeAlternates: false)
+                        && !core.installActionPackageIds.contains(activePackage.id)
                 ) {
-                    context.selectedManagerId = package.managerId
-                    context.selectedPackageId = nil
-                    context.selectedTaskId = nil
-                    context.selectedUpgradePlanStepId = nil
-                    context.selectedSection = .managers
+                    core.installPackage(activePackage, includeAlternates: false)
                 }
-
-                Spacer(minLength: 0)
             }
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(L10n.App.Inspector.packageId.localized)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Text(package.id)
-                    .font(.caption.monospacedDigit())
-                    .foregroundColor(.secondary)
+            if core.canUninstallPackage(activePackage) {
+                packageActionButton(
+                    symbol: "trash",
+                    tooltip: L10n.App.Packages.Action.uninstall.localized,
+                    enabled: !core.uninstallActionPackageIds.contains(activePackage.id)
+                        && !loadingPackageUninstallPreview
+                ) {
+                    requestPackageUninstallConfirmation(for: activePackage)
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(L10n.App.Inspector.packageId.localized)
-            .accessibilityValue(package.id)
+
+            if activePackage.status == .upgradable {
+                packageActionButton(
+                    symbol: "arrow.up.circle",
+                    tooltip: L10n.App.Packages.Action.update.localized,
+                    enabled: core.canUpgradeIndividually(activePackage)
+                        && !core.upgradeActionPackageIds.contains(activePackage.id)
+                ) {
+                    core.upgradePackage(activePackage)
+                }
+            }
+
+            if core.canPinPackage(activePackage) {
+                if activePackage.pinned {
+                    packageActionButton(
+                        symbol: "pin.slash",
+                        tooltip: L10n.App.Packages.Action.unpin.localized,
+                        enabled: !core.pinActionPackageIds.contains(activePackage.id)
+                    ) {
+                        core.unpinPackage(activePackage)
+                    }
+                } else {
+                    packageActionButton(
+                        symbol: "pin",
+                        tooltip: L10n.App.Packages.Action.pin.localized,
+                        enabled: !core.pinActionPackageIds.contains(activePackage.id)
+                    ) {
+                        core.pinPackage(activePackage)
+                    }
+                }
+            }
+
+            packageActionButton(
+                symbol: "slider.horizontal.3",
+                tooltip: L10n.App.Inspector.viewManager.localized,
+                enabled: true
+            ) {
+                context.selectedManagerId = activePackage.managerId
+                context.selectedPackageId = nil
+                context.selectedTaskId = nil
+                context.selectedUpgradePlanStepId = nil
+                context.selectedSection = .managers
+            }
+
+            Spacer(minLength: 0)
         }
     }
 
@@ -1007,24 +1090,24 @@ private struct InspectorPackageDetailView: View {
         .helmPointer(enabled: enabled)
     }
 
-    private func requestPackageUninstallConfirmation() {
+    private func requestPackageUninstallConfirmation(for targetPackage: PackageItem) {
         loadingPackageUninstallPreview = true
-        core.previewPackageUninstall(package) { preview in
+        core.previewPackageUninstall(targetPackage) { preview in
             loadingPackageUninstallPreview = false
             if let preview {
-                confirmPackageUninstall = .uninstall(preview: preview)
+                inspectorAlert = .uninstall(package: targetPackage, preview: preview)
                 return
             }
-            confirmPackageUninstall = .uninstallFallback
+            inspectorAlert = .uninstallFallback(package: targetPackage)
         }
     }
 
-    private func packageUninstallAlertMessage(_ preview: PackageUninstallPreview) -> String {
+    private func packageUninstallAlertMessage(_ preview: PackageUninstallPreview, package targetPackage: PackageItem) -> String {
         var sections = [
             L10n.App.Packages.Alert.uninstallMessage.localized(
                 with: [
-                    "package": package.name,
-                    "manager": localizedManagerDisplayName(package.managerId),
+                    "package": targetPackage.name,
+                    "manager": localizedManagerDisplayName(targetPackage.managerId),
                 ]
             )
         ]
@@ -1039,6 +1122,174 @@ private struct InspectorPackageDetailView: View {
         }
 
         return sections.joined(separator: "\n\n")
+    }
+
+    private func requestManagerSwitch(to candidate: PackageItem) {
+        let currentPackage = activePackage
+        guard candidate.managerId != currentPackage.managerId else { return }
+
+        let packageName = currentPackage.name
+        let currentManagerName = localizedManagerDisplayName(currentPackage.managerId)
+        let selectedManagerName = localizedManagerDisplayName(candidate.managerId)
+        let recommendedManagerName = localizedManagerDisplayName(recommendedManagerPackage.managerId)
+
+        var warnings = [
+            "app.packages.alert.switch_manager.use_selected".localized(with: [
+                "selected_manager": selectedManagerName,
+                "current_manager": currentManagerName,
+                "package": packageName,
+            ])
+        ]
+
+        if candidate.managerId != recommendedManagerPackage.managerId {
+            warnings.append(
+                "app.packages.alert.switch_manager.recommended".localized(with: [
+                    "recommended_manager": recommendedManagerName,
+                ])
+            )
+        }
+
+        if let provenancePackage = installedProvenanceManagerPackage {
+            if installedManagerCandidates.count == 1,
+               provenancePackage.managerId != candidate.managerId {
+                let provenanceManagerName = localizedManagerDisplayName(provenancePackage.managerId)
+                warnings.append(
+                    "app.packages.alert.switch_manager.installed_conflict".localized(with: [
+                        "package": packageName,
+                        "provenance_manager": provenanceManagerName,
+                        "selected_manager": selectedManagerName,
+                    ])
+                )
+            } else if installedManagerCandidates.count > 1, candidate.status == .available {
+                let installedManagers = installedManagerCandidates
+                    .map { localizedManagerDisplayName($0.managerId) }
+                    .joined(separator: ", ")
+                warnings.append(
+                    "app.packages.alert.switch_manager.multi_installed_conflict".localized(with: [
+                        "package": packageName,
+                        "installed_managers": installedManagers,
+                        "selected_manager": selectedManagerName,
+                    ])
+                )
+            }
+        }
+
+        if candidate.status == .available,
+           !core.canInstallPackage(candidate, includeAlternates: false) {
+            warnings.append(
+                "app.packages.alert.switch_manager.unavailable_install".localized(with: [
+                    "selected_manager": selectedManagerName,
+                ])
+            )
+        }
+
+        inspectorAlert = .switchManager(
+            ManagerSwitchAlertContext(
+                packageName: packageName,
+                selectedManagerId: candidate.managerId,
+                title: "app.packages.alert.switch_manager.title".localized,
+                message: warnings.joined(separator: "\n\n")
+            )
+        )
+    }
+
+    private func persistManagerSelection(_ managerId: String) {
+        core.setPreferredManagerId(managerId, forPackageName: package.name)
+    }
+
+    private func ensurePersistedManagerSelection() {
+        if let preferredManagerId = core.preferredManagerId(forPackageName: package.name),
+           managerCandidates.contains(where: { $0.managerId == preferredManagerId }) {
+            return
+        }
+        persistManagerSelection(recommendedManagerPackage.managerId)
+    }
+
+    private func packageCandidates(for package: PackageItem) -> [PackageItem] {
+        let normalizedName = normalizedPackageName(package.name)
+        guard !normalizedName.isEmpty else { return [package] }
+
+        var candidatesByManager: [String: PackageItem] = [:]
+        for candidate in core.allKnownPackages {
+            guard normalizedPackageName(candidate.name) == normalizedName else { continue }
+            if let existing = candidatesByManager[candidate.managerId] {
+                candidatesByManager[candidate.managerId] = preferredCandidate(existing, candidate)
+            } else {
+                candidatesByManager[candidate.managerId] = candidate
+            }
+        }
+
+        if candidatesByManager[package.managerId] == nil {
+            candidatesByManager[package.managerId] = package
+        }
+
+        return candidatesByManager.values.sorted(by: managerCandidateOrdering)
+    }
+
+    private func preferredCandidate(_ lhs: PackageItem, _ rhs: PackageItem) -> PackageItem {
+        let lhsRank = packageStatusSortRank(lhs.status)
+        let rhsRank = packageStatusSortRank(rhs.status)
+        if lhsRank != rhsRank {
+            return lhsRank < rhsRank ? lhs : rhs
+        }
+
+        let lhsVersionKnown = normalizedVersionText(lhs.version) != nil
+        let rhsVersionKnown = normalizedVersionText(rhs.version) != nil
+        if lhsVersionKnown != rhsVersionKnown {
+            return lhsVersionKnown ? lhs : rhs
+        }
+
+        let lhsVersion = normalizedVersionText(lhs.version)
+        let rhsVersion = normalizedVersionText(rhs.version)
+        if let lhsVersion, let rhsVersion {
+            let order = lhsVersion.compare(rhsVersion, options: [.numeric, .caseInsensitive])
+            if order != .orderedSame {
+                return order == .orderedDescending ? lhs : rhs
+            }
+        }
+
+        let lhsSummary = lhs.summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let rhsSummary = rhs.summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if lhsSummary.isEmpty != rhsSummary.isEmpty {
+            return lhsSummary.isEmpty ? rhs : lhs
+        }
+
+        return lhs
+    }
+
+    private func managerCandidateOrdering(_ lhs: PackageItem, _ rhs: PackageItem) -> Bool {
+        let lhsPriority = core.managerPriorityRank(for: lhs.managerId)
+        let rhsPriority = core.managerPriorityRank(for: rhs.managerId)
+        if lhsPriority != rhsPriority {
+            return lhsPriority < rhsPriority
+        }
+        return localizedManagerDisplayName(lhs.managerId)
+            .localizedCaseInsensitiveCompare(localizedManagerDisplayName(rhs.managerId)) == .orderedAscending
+    }
+
+    private func packageStatusSortRank(_ status: PackageStatus) -> Int {
+        switch status {
+        case .upgradable:
+            return 0
+        case .installed:
+            return 1
+        case .available:
+            return 2
+        }
+    }
+
+    private func normalizedPackageName(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private func normalizedVersionText(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return nil }
+        if normalized.lowercased() == L10n.Common.unknown.localized.lowercased() {
+            return nil
+        }
+        return normalized
     }
 }
 

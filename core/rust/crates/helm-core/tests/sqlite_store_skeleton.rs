@@ -358,6 +358,44 @@ fn package_keg_policy_roundtrip_and_clear() {
 }
 
 #[test]
+fn package_manager_preference_roundtrip_and_clear() {
+    let path = test_db_path("package-manager-preference-roundtrip");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    assert_eq!(store.package_manager_preference("certifi").unwrap(), None);
+
+    store
+        .set_package_manager_preference(" certifi ", Some(ManagerId::Pip))
+        .unwrap();
+    assert_eq!(
+        store.package_manager_preference("CERTIFI").unwrap(),
+        Some(ManagerId::Pip)
+    );
+
+    store
+        .set_package_manager_preference("CERTIFI", Some(ManagerId::HomebrewFormula))
+        .unwrap();
+    assert_eq!(
+        store.package_manager_preference("certifi").unwrap(),
+        Some(ManagerId::HomebrewFormula)
+    );
+
+    let listed = store.list_package_manager_preferences().unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].package_name, "certifi");
+    assert_eq!(listed[0].manager, ManagerId::HomebrewFormula);
+
+    store
+        .set_package_manager_preference("certifi", None)
+        .unwrap();
+    assert_eq!(store.package_manager_preference("certifi").unwrap(), None);
+    assert!(store.list_package_manager_preferences().unwrap().is_empty());
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn list_installed_marks_package_pinned_when_pin_record_exists() {
     let path = test_db_path("installed-pin-overlay");
     let store = SqliteStore::new(&path);
@@ -965,7 +1003,7 @@ fn upsert_and_query_search_cache_roundtrip() {
 }
 
 #[test]
-fn search_cache_keeps_single_package_entry_and_preserves_summary() {
+fn search_cache_deduplicates_same_version_and_preserves_summary() {
     let path = test_db_path("search-preserve-summary");
     let store = SqliteStore::new(&path);
     store.migrate_to_latest().unwrap();
@@ -992,7 +1030,7 @@ fn search_cache_keeps_single_package_entry_and_preserves_summary() {
                 manager: ManagerId::HomebrewFormula,
                 name: "ripgrep".to_string(),
             },
-            version: None,
+            version: Some("14.1.0".to_string()),
             summary: None,
         },
         source_manager: ManagerId::HomebrewFormula,
@@ -1005,7 +1043,7 @@ fn search_cache_keeps_single_package_entry_and_preserves_summary() {
     assert_eq!(
         all.len(),
         1,
-        "package cache should deduplicate by manager/name"
+        "package cache should deduplicate by manager/name/version"
     );
     assert_eq!(all[0].result.package.name, "ripgrep");
     assert_eq!(all[0].result.version.as_deref(), Some("14.1.0"));
@@ -1015,6 +1053,57 @@ fn search_cache_keeps_single_package_entry_and_preserves_summary() {
         "summary should be preserved when newer response omits it"
     );
     assert_eq!(all[0].originating_query, "rg");
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn search_cache_retains_distinct_versions_for_same_package() {
+    let path = test_db_path("search-keep-distinct-versions");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let now = SystemTime::now();
+    let first = CachedSearchResult {
+        result: PackageCandidate {
+            package: PackageRef {
+                manager: ManagerId::HomebrewFormula,
+                name: "ripgrep".to_string(),
+            },
+            version: Some("14.1.0".to_string()),
+            summary: Some("line-oriented search tool".to_string()),
+        },
+        source_manager: ManagerId::HomebrewFormula,
+        originating_query: "rip".to_string(),
+        cached_at: now,
+    };
+    let second = CachedSearchResult {
+        result: PackageCandidate {
+            package: PackageRef {
+                manager: ManagerId::HomebrewFormula,
+                name: "ripgrep".to_string(),
+            },
+            version: Some("14.2.0".to_string()),
+            summary: Some("line-oriented search tool".to_string()),
+        },
+        source_manager: ManagerId::HomebrewFormula,
+        originating_query: "rip".to_string(),
+        cached_at: now + Duration::from_secs(1),
+    };
+
+    store.upsert_search_results(&[first, second]).unwrap();
+
+    let all = store.query_local("ripgrep", 10).unwrap();
+    assert_eq!(all.len(), 2, "distinct versions should both be retained");
+
+    let versions: std::collections::HashSet<String> = all
+        .iter()
+        .filter_map(|entry| entry.result.version.clone())
+        .collect();
+    assert_eq!(
+        versions,
+        std::collections::HashSet::from(["14.1.0".to_string(), "14.2.0".to_string()])
+    );
 
     let _ = std::fs::remove_file(path);
 }

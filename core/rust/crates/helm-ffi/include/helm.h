@@ -167,6 +167,11 @@ bool helm_set_homebrew_keg_auto_cleanup(bool enabled);
 char *helm_list_package_keg_policies(void);
 
 /**
+ * List per-package manager preferences as JSON.
+ */
+char *helm_list_package_manager_preferences(void);
+
+/**
  * Set per-package Homebrew keg policy override.
  *
  * `policy_mode` values:
@@ -182,6 +187,18 @@ char *helm_list_package_keg_policies(void);
 bool helm_set_package_keg_policy(const char *manager_id,
                                  const char *package_name,
                                  int32_t policy_mode);
+
+/**
+ * Set or clear per-package manager preference.
+ *
+ * Pass null for `manager_id` to clear preference.
+ *
+ * # Safety
+ *
+ * `package_name` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ * `manager_id` may be null; when non-null it must point to a NUL-terminated UTF-8 C string.
+ */
+bool helm_set_package_manager_preference(const char *package_name, const char *manager_id);
 
 /**
  * Build an ordered upgrade execution plan from cached outdated snapshot as JSON.

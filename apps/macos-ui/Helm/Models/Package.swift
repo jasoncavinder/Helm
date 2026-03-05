@@ -78,6 +78,16 @@ struct ConsolidatedPackageItem: Identifiable {
         return memberPackages.contains { $0.id == packageId }
     }
 
+    func actionTarget(preferredManagerId: String?) -> PackageItem {
+        guard let managerId = PackageConsolidationPolicy.preferredManagerId(
+            managerIds: managerIds,
+            preferredManagerId: preferredManagerId
+        ) else {
+            return package
+        }
+        return memberPackages.first(where: { $0.managerId == managerId }) ?? package
+    }
+
     static func consolidate(
         _ packages: [PackageItem],
         localizedManagerName: (String) -> String
@@ -127,6 +137,8 @@ struct ConsolidatedPackageItem: Identifiable {
             rhsPinned: rhs.pinned,
             lhsRestartRequired: lhs.restartRequired,
             rhsRestartRequired: rhs.restartRequired,
+            lhsVersion: lhs.version,
+            rhsVersion: rhs.version,
             lhsManagerId: lhs.managerId,
             rhsManagerId: rhs.managerId,
             localizedManagerName: localizedManagerDisplayName,

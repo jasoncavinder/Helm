@@ -430,23 +430,44 @@ extension HelmCore {
         UpgradePreviewPlanner.planStepId(managerId: task.managerId, labelArgs: task.labelArgs)
     }
 
-    func installPackage(_ package: PackageItem) {
-        guard canInstallPackage(package), !installActionPackageIds.contains(package.id) else { return }
+    func installPackage(_ package: PackageItem, includeAlternates: Bool = true) {
+        let targetPackage: PackageItem?
+        if canInstallPackage(package, includeAlternates: false) {
+            targetPackage = package
+        } else if includeAlternates {
+            targetPackage = preferredInstallCandidate(for: package)
+        } else {
+            targetPackage = nil
+        }
+
+        guard let targetPackage,
+              canInstallPackage(targetPackage, includeAlternates: false),
+              !installActionPackageIds.contains(targetPackage.id) else { return }
+
+        let normalizedTargetPackageName = PackageActionTracking.normalizedPackageName(
+            targetPackage.name
+        )
+        guard !normalizedTargetPackageName.isEmpty,
+              !installActionInFlightPackageNames().contains(normalizedTargetPackageName) else { return }
 
         DispatchQueue.main.async {
-            self.installActionPackageIds.insert(package.id)
+            self.installActionPackageIds.insert(targetPackage.id)
+            self.installActionNormalizedNameByPackageId[targetPackage.id] = normalizedTargetPackageName
         }
 
         guard let service = service() else {
-            logger.error("installPackage(\(package.managerId):\(package.name)) failed: service unavailable")
+            logger.error(
+                "installPackage(\(targetPackage.managerId):\(targetPackage.name)) failed: service unavailable"
+            )
             recordLastError(
                 source: "core.actions",
                 action: "installPackage.service_unavailable",
-                managerId: package.managerId,
+                managerId: targetPackage.managerId,
                 taskType: "install"
             )
             DispatchQueue.main.async {
-                self.installActionPackageIds.remove(package.id)
+                self.installActionPackageIds.remove(targetPackage.id)
+                self.installActionNormalizedNameByPackageId.removeValue(forKey: targetPackage.id)
             }
             return
         }
@@ -455,27 +476,28 @@ extension HelmCore {
             300,
             source: "core.actions",
             action: "installPackage",
-            managerId: package.managerId,
+            managerId: targetPackage.managerId,
             taskType: "install",
             operation: { completion in
-            service.installPackage(managerId: package.managerId, packageName: package.name) { completion($0) }
+            service.installPackage(managerId: targetPackage.managerId, packageName: targetPackage.name) { completion($0) }
         }, fallback: Int64(-1)) { [weak self] taskId in
             DispatchQueue.main.async {
                 guard let self = self, let taskId = taskId else { return }
                 if taskId < 0 {
-                    self.installActionTaskByPackage.removeValue(forKey: package.id)
-                    self.installActionPackageIds.remove(package.id)
-                    logger.error("installPackage(\(package.managerId):\(package.name)) failed")
+                    self.installActionTaskByPackage.removeValue(forKey: targetPackage.id)
+                    self.installActionPackageIds.remove(targetPackage.id)
+                    self.installActionNormalizedNameByPackageId.removeValue(forKey: targetPackage.id)
+                    logger.error("installPackage(\(targetPackage.managerId):\(targetPackage.name)) failed")
                     self.recordLastError(
                         source: "core.actions",
                         action: "installPackage.queue_failed",
-                        managerId: package.managerId,
+                        managerId: targetPackage.managerId,
                         taskType: "install"
                     )
                     return
                 }
 
-                self.installActionTaskByPackage[package.id] = UInt64(taskId)
+                self.installActionTaskByPackage[targetPackage.id] = UInt64(taskId)
             }
         }
     }
@@ -749,6 +771,9 @@ extension HelmCore {
 
         upgradeActionPackageIds = Set(upgradeActionPackageIds.filter { !$0.hasPrefix(packageIdPrefix) })
         installActionPackageIds = Set(installActionPackageIds.filter { !$0.hasPrefix(packageIdPrefix) })
+        installActionNormalizedNameByPackageId = installActionNormalizedNameByPackageId.filter {
+            !$0.key.hasPrefix(packageIdPrefix)
+        }
         uninstallActionPackageIds = Set(uninstallActionPackageIds.filter { !$0.hasPrefix(packageIdPrefix) })
         pinActionPackageIds = Set(pinActionPackageIds.filter { !$0.hasPrefix(packageIdPrefix) })
 
@@ -759,8 +784,12 @@ extension HelmCore {
         descriptionLookupTaskIdsByPackage = descriptionLookupTaskIdsByPackage.filter {
             !$0.key.hasPrefix(packageIdPrefix)
         }
-        descriptionLookupLastAttemptByPackage = descriptionLookupLastAttemptByPackage.filter {
+        descriptionLookupPackageById = descriptionLookupPackageById.filter {
             !$0.key.hasPrefix(packageIdPrefix)
+        }
+        let descriptionSummaryPrefix = "\(managerId.lowercased())|"
+        packageDescriptionSummaryByKey = packageDescriptionSummaryByKey.filter {
+            !$0.key.hasPrefix(descriptionSummaryPrefix)
         }
 
         if selectedManagerFilter == managerId {
@@ -1523,8 +1552,10 @@ extension HelmCore {
     }
 
     func onSearchTextChanged(_ query: String) {
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+
         // 1. Instant local cache query
-        fetchSearchResults(query: query)
+        fetchSearchResults(query: normalizedQuery)
 
         // 2. Cancel in-flight remote search
         cancelActiveRemoteSearch()
@@ -1534,18 +1565,24 @@ extension HelmCore {
         searchDebounceTimer = nil
 
         // 4. If empty, clear state and return
-        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else {
+        guard !normalizedQuery.isEmpty else {
             isSearching = false
             return
         }
 
         // 5. Start 300ms debounce timer for remote search
         searchDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
-            self?.triggerRemoteSearch(query: query)
+            self?.triggerRemoteSearch(query: normalizedQuery)
         }
     }
 
     func triggerRemoteSearch(query: String) {
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedQuery.isEmpty else {
+            isSearching = false
+            return
+        }
+
         let managerIds = remoteSearchManagerIds()
         guard !managerIds.isEmpty else {
             isSearching = false
@@ -1554,7 +1591,7 @@ extension HelmCore {
 
         isSearching = true
         for managerId in managerIds {
-            service()?.triggerRemoteSearchForManager(managerId: managerId, query: query) { [weak self] taskId in
+            service()?.triggerRemoteSearchForManager(managerId: managerId, query: normalizedQuery) { [weak self] taskId in
                 DispatchQueue.main.async {
                     guard let self = self else { return }
                     if taskId >= 0 {
@@ -1568,18 +1605,6 @@ extension HelmCore {
                             taskType: "search"
                         )
                     }
-                }
-            }
-        }
-    }
-
-    func triggerAvailablePackagesWarmupSearch() {
-        let managerIds = remoteSearchManagerIds()
-        guard !managerIds.isEmpty else { return }
-        for managerId in managerIds {
-            service()?.triggerRemoteSearchForManager(managerId: managerId, query: "") { taskId in
-                if taskId < 0 {
-                    logger.debug("warmup search for \(managerId) was not queued")
                 }
             }
         }
@@ -1616,55 +1641,111 @@ extension HelmCore {
     }
 
     func ensurePackageDescription(for package: PackageItem) {
-        guard supportsRemoteSearch(managerId: package.managerId),
-              managerStatuses[package.managerId]?.enabled ?? true else {
+        final class DescriptionLookupSubmissionTracker {
+            var remaining: Int
+            var queuedTaskCount: Int = 0
+
+            init(remaining: Int) {
+                self.remaining = remaining
+            }
+        }
+
+        descriptionLookupPackageById[package.id] = package
+        let candidates = packageDescriptionLookupCandidates(for: package)
+        guard !candidates.isEmpty else {
             packageDescriptionLoadingIds.remove(package.id)
             packageDescriptionUnavailableIds.insert(package.id)
             return
         }
 
-        let hasCachedSummary = {
-            guard let summary = package.summary?.trimmingCharacters(in: .whitespacesAndNewlines) else { return false }
-            return !summary.isEmpty
-        }()
-        let now = Date()
-        if hasCachedSummary,
-           let lastAttempt = descriptionLookupLastAttemptByPackage[package.id],
-           now.timeIntervalSince(lastAttempt) < 30 {
+        let hasCachedSummary = packageDescriptionSummary(for: package) != nil
+        if hasCachedSummary {
             packageDescriptionUnavailableIds.remove(package.id)
-            return
         }
-        if !hasCachedSummary && packageDescriptionLoadingIds.contains(package.id) {
+
+        var missingByManager: [String: PackageDescriptionLookupCandidate] = [:]
+        for candidate in candidates {
+            if packageDescriptionSummaryByKey[candidate.lookupKey] != nil {
+                continue
+            }
+            guard supportsRemoteSearch(managerId: candidate.managerId),
+                  managerStatuses[candidate.managerId]?.enabled ?? true else {
+                continue
+            }
+            missingByManager[candidate.managerId] = candidate
+        }
+
+        let lookupCandidates = missingByManager.values.sorted { lhs, rhs in
+            let lhsPriority = managerPriorityRank(for: lhs.managerId)
+            let rhsPriority = managerPriorityRank(for: rhs.managerId)
+            if lhsPriority != rhsPriority {
+                return lhsPriority < rhsPriority
+            }
+            return normalizedManagerName(lhs.managerId)
+                .localizedCaseInsensitiveCompare(normalizedManagerName(rhs.managerId)) == .orderedAscending
+        }
+
+        guard !lookupCandidates.isEmpty else {
+            packageDescriptionLoadingIds.remove(package.id)
+            if hasCachedSummary {
+                packageDescriptionUnavailableIds.remove(package.id)
+            } else {
+                packageDescriptionUnavailableIds.insert(package.id)
+            }
             return
         }
 
-        descriptionLookupLastAttemptByPackage[package.id] = now
-        packageDescriptionUnavailableIds.remove(package.id)
-        if !hasCachedSummary {
+        if let inFlightTaskIds = descriptionLookupTaskIdsByPackage[package.id], !inFlightTaskIds.isEmpty {
             packageDescriptionLoadingIds.insert(package.id)
+            return
         }
 
-        service()?.triggerRemoteSearchForManager(managerId: package.managerId, query: package.name) { [weak self] taskId in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                if taskId < 0 {
-                    self.packageDescriptionLoadingIds.remove(package.id)
-                    if !hasCachedSummary {
-                        self.packageDescriptionUnavailableIds.insert(package.id)
-                    }
-                    self.recordLastError(
-                        source: "core.actions",
-                        action: "ensurePackageDescription.triggerRemoteSearchForManager",
-                        managerId: package.managerId,
-                        taskType: "search"
-                    )
-                    return
-                }
+        guard let service = service() else {
+            packageDescriptionLoadingIds.remove(package.id)
+            if hasCachedSummary {
+                packageDescriptionUnavailableIds.remove(package.id)
+            } else {
+                packageDescriptionUnavailableIds.insert(package.id)
+            }
+            return
+        }
 
-                var taskIds = self.descriptionLookupTaskIdsByPackage[package.id] ?? Set<UInt64>()
-                taskIds.insert(UInt64(taskId))
-                self.descriptionLookupTaskIdsByPackage[package.id] = taskIds
-                self.activeRemoteSearchTaskIds.insert(taskId)
+        packageDescriptionUnavailableIds.remove(package.id)
+        packageDescriptionLoadingIds.insert(package.id)
+
+        let tracker = DescriptionLookupSubmissionTracker(remaining: lookupCandidates.count)
+        for candidate in lookupCandidates {
+            service.triggerRemoteSearchForManager(managerId: candidate.managerId, query: package.name) { [weak self] taskId in
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+
+                    if taskId >= 0 {
+                        var taskIds = self.descriptionLookupTaskIdsByPackage[package.id] ?? Set<UInt64>()
+                        taskIds.insert(UInt64(taskId))
+                        self.descriptionLookupTaskIdsByPackage[package.id] = taskIds
+                        self.activeRemoteSearchTaskIds.insert(taskId)
+                        tracker.queuedTaskCount += 1
+                    } else {
+                        self.recordLastError(
+                            source: "core.actions",
+                            action: "ensurePackageDescription.triggerRemoteSearchForManager",
+                            managerId: candidate.managerId,
+                            taskType: "search"
+                        )
+                    }
+
+                    tracker.remaining -= 1
+                    guard tracker.remaining == 0 else { return }
+
+                    if tracker.queuedTaskCount == 0 {
+                        self.packageDescriptionLoadingIds.remove(package.id)
+                        if self.hasPackageDescriptionSummary(packageId: package.id) {
+                            self.packageDescriptionUnavailableIds.remove(package.id)
+                        } else {
+                            self.packageDescriptionUnavailableIds.insert(package.id)
+                        }
+                    }
+                }
             }
         }
     }

@@ -237,6 +237,31 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(result)
     }
 
+    func listPackageManagerPreferences(withReply reply: @escaping (String?) -> Void) {
+        guard let cString = helm_list_package_manager_preferences() else {
+            logger.warning("helm_list_package_manager_preferences returned nil")
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(cString) }
+        reply(String(cString: cString))
+    }
+
+    func setPackageManagerPreference(packageName: String, managerId: String?, withReply reply: @escaping (Bool) -> Void) {
+        let result = packageName.withCString { package in
+            if let managerId {
+                return managerId.withCString { manager in
+                    helm_set_package_manager_preference(package, manager)
+                }
+            }
+            return helm_set_package_manager_preference(package, nil)
+        }
+        logger.info(
+            "helm_set_package_manager_preference(\(packageName), \(managerId ?? "nil")) result: \(result)"
+        )
+        reply(result)
+    }
+
     func previewUpgradePlan(includePinned: Bool, allowOsUpdates: Bool, withReply reply: @escaping (String?) -> Void) {
         guard let cString = helm_preview_upgrade_plan(includePinned, allowOsUpdates) else {
             logger.warning("helm_preview_upgrade_plan returned nil")
