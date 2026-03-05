@@ -8,6 +8,8 @@
 	<string>$(HELM_SPARKLE_ENABLED)</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>LSFileQuarantineEnabled</key>
+	<false/>
 	<key>SUEnableInstallerLauncherService</key>
 	<true/>
 	<key>SUAllowsDowngrades</key>

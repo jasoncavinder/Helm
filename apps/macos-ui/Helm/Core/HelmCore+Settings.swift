@@ -1145,13 +1145,13 @@ private enum HelmCliShimInstaller {
                 disallowSymlinkTarget: false,
                 stagingFileName: ".helm.tmp"
             )
-            let quarantineCleared = try removeQuarantineAttributeIfPresent(at: shimURL)
+            let quarantineStatus = try removeQuarantineAttributeIfPresent(at: shimURL)
             try writeInstallMarker(
                 markerURL: markerURL,
                 version: bundleVersion(bundle: bundle)
             )
             logger.info(
-                "Helm CLI shim post-install attributes. shim=\(shimURL.path, privacy: .public), quarantine_cleared=\(quarantineCleared, privacy: .public)"
+                "Helm CLI shim post-install attributes. shim=\(shimURL.path, privacy: .public), quarantine_status=\(quarantineStatus.logValue, privacy: .public)"
             )
         } catch {
             throw Error.ioFailure(description: error.localizedDescription)
@@ -1329,8 +1329,25 @@ private enum HelmCliShimInstaller {
         )
     }
 
+    private enum QuarantineRemovalStatus {
+        case cleared
+        case notPresent
+        case notPermitted(errorCode: Int32)
+
+        var logValue: String {
+            switch self {
+            case .cleared:
+                return "cleared"
+            case .notPresent:
+                return "not_present"
+            case .notPermitted(let errorCode):
+                return "not_permitted:\(errorCode)"
+            }
+        }
+    }
+
     @discardableResult
-    private static func removeQuarantineAttributeIfPresent(at url: URL) throws -> Bool {
+    private static func removeQuarantineAttributeIfPresent(at url: URL) throws -> QuarantineRemovalStatus {
         let attributeName = "com.apple.quarantine"
         let result = url.path.withCString { pathPointer in
             attributeName.withCString { attributePointer in
@@ -1338,12 +1355,21 @@ private enum HelmCliShimInstaller {
             }
         }
         if result == 0 {
-            return true
+            return .cleared
         }
 
         let errorCode = errno
         if errorCode == ENOATTR {
-            return false
+            return .notPresent
+        }
+
+        // App sandbox file exceptions can still deny xattr mutation on some hosts/configurations.
+        // The shim itself is already written and executable; treat this as best-effort and continue.
+        if errorCode == EPERM || errorCode == EACCES || errorCode == ENOTSUP || errorCode == ENOSYS {
+            logger.warning(
+                "Unable to clear quarantine xattr for Helm CLI shim due to host/sandbox limits. path=\(url.path, privacy: .public), errno=\(errorCode, privacy: .public)"
+            )
+            return .notPermitted(errorCode: errorCode)
         }
 
         let errorMessage = String(cString: strerror(errorCode))
@@ -1428,7 +1454,7 @@ private enum HelmCliShimInstaller {
                     url,
                     withItemAt: tempURL,
                     backupItemName: nil,
-                    options: []
+                    options: [.usingNewMetadataOnly]
                 )
             } else {
                 try fileManager.moveItem(at: tempURL, to: url)
