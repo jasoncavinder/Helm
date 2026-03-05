@@ -316,14 +316,19 @@ extension HelmCore {
     }
 
     func fetchSearchResults(query: String) {
-        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else {
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        localSearchRequestGeneration &+= 1
+        let requestGeneration = localSearchRequestGeneration
+
+        guard !normalizedQuery.isEmpty else {
             DispatchQueue.main.async {
+                guard self.localSearchRequestGeneration == requestGeneration else { return }
                 self.searchResults = []
             }
             return
         }
 
-        service()?.searchLocal(query: query) { [weak self] jsonString in
+        service()?.searchLocal(query: normalizedQuery) { [weak self] jsonString in
             guard let self = self,
                   let jsonString = jsonString,
                   let data = jsonString.data(using: .utf8),
@@ -335,25 +340,54 @@ extension HelmCore {
                     action: "searchLocal.decode",
                     taskType: "search"
                   ) else {
-                DispatchQueue.main.async { self?.searchResults = [] }
+                DispatchQueue.main.async {
+                    guard let self, self.localSearchRequestGeneration == requestGeneration else { return }
+                    self.searchResults = []
+                }
                 return
             }
 
             DispatchQueue.main.async {
+                guard self.localSearchRequestGeneration == requestGeneration else { return }
                 let filteredResults = results.filter { $0.sourceManager != "rustup" }
+                self.mergePackageDescriptionSummaryIndex(from: filteredResults)
+                let installedOrOutdatedIds = Set(self.installedPackages.map(\.id))
+                    .union(self.outdatedPackages.map(\.id))
                 let resolvedSummaryIds = Set(
                     filteredResults.compactMap { result -> String? in
                         guard let summary = result.summary?.trimmingCharacters(in: .whitespacesAndNewlines),
                               !summary.isEmpty else {
                             return nil
                         }
-                        return "\(result.sourceManager):\(result.name)"
+                        let stableId = self.stablePackageId(
+                            managerId: result.sourceManager,
+                            packageName: result.name
+                        )
+                        if installedOrOutdatedIds.contains(stableId) {
+                            return stableId
+                        }
+                        return self.availablePackageId(
+                            managerId: result.sourceManager,
+                            packageName: result.name,
+                            version: result.version
+                        )
                     }
                 )
 
                 self.searchResults = filteredResults.map { result in
-                    PackageItem(
-                        id: "\(result.sourceManager):\(result.name)",
+                    let stableId = self.stablePackageId(
+                        managerId: result.sourceManager,
+                        packageName: result.name
+                    )
+                    let packageId = installedOrOutdatedIds.contains(stableId)
+                        ? stableId
+                        : self.availablePackageId(
+                            managerId: result.sourceManager,
+                            packageName: result.name,
+                            version: result.version
+                        )
+                    return PackageItem(
+                        id: packageId,
                         name: result.name,
                         version: result.version ?? "",
                         managerId: result.sourceManager,
@@ -364,6 +398,7 @@ extension HelmCore {
                 }
                 self.packageDescriptionUnavailableIds.subtract(resolvedSummaryIds)
                 self.packageDescriptionLoadingIds.subtract(resolvedSummaryIds)
+                self.reconcilePackageDescriptionLookupState()
             }
         }
     }
@@ -383,13 +418,24 @@ extension HelmCore {
                   ) else { return }
 
             DispatchQueue.main.async {
-                let excludedIds = Set(self.installedPackages.map(\.id))
+                let filteredSearchCache = results.filter { $0.sourceManager != "rustup" }
+                self.rebuildPackageDescriptionSummaryIndex(from: filteredSearchCache)
+                let excludedStableIds = Set(self.installedPackages.map(\.id))
                     .union(self.outdatedPackages.map(\.id))
                 var dedupedById: [String: PackageItem] = [:]
 
-                for result in results where result.sourceManager != "rustup" {
-                    let id = "\(result.sourceManager):\(result.name)"
-                    guard !excludedIds.contains(id) else { continue }
+                for result in filteredSearchCache {
+                    let stableId = self.stablePackageId(
+                        managerId: result.sourceManager,
+                        packageName: result.name
+                    )
+                    guard !excludedStableIds.contains(stableId) else { continue }
+
+                    let id = self.availablePackageId(
+                        managerId: result.sourceManager,
+                        packageName: result.name,
+                        version: result.version
+                    )
                     let candidate = PackageItem(
                         id: id,
                         name: result.name,
@@ -427,8 +473,101 @@ extension HelmCore {
                 )
                 self.packageDescriptionUnavailableIds.subtract(resolvedSummaryIds)
                 self.packageDescriptionLoadingIds.subtract(resolvedSummaryIds)
+                self.reconcilePackageDescriptionLookupState()
             }
         }
+    }
+
+    private func rebuildPackageDescriptionSummaryIndex(from results: [CoreSearchResult]) {
+        var next: [String: String] = [:]
+        for result in results {
+            guard let summary = normalizedDescriptionSummary(result.summary) else { continue }
+            let sourceKey = packageDescriptionLookupKey(
+                managerId: result.sourceManager,
+                packageName: result.name,
+                version: result.version
+            )
+            next[sourceKey] = summary
+
+            if result.manager != result.sourceManager {
+                let managerKey = packageDescriptionLookupKey(
+                    managerId: result.manager,
+                    packageName: result.name,
+                    version: result.version
+                )
+                next[managerKey] = summary
+            }
+        }
+        packageDescriptionSummaryByKey = next
+    }
+
+    private func mergePackageDescriptionSummaryIndex(from results: [CoreSearchResult]) {
+        var merged = packageDescriptionSummaryByKey
+        var changed = false
+        for result in results {
+            guard let summary = normalizedDescriptionSummary(result.summary) else { continue }
+            let sourceKey = packageDescriptionLookupKey(
+                managerId: result.sourceManager,
+                packageName: result.name,
+                version: result.version
+            )
+            if merged[sourceKey] != summary {
+                merged[sourceKey] = summary
+                changed = true
+            }
+
+            if result.manager != result.sourceManager {
+                let managerKey = packageDescriptionLookupKey(
+                    managerId: result.manager,
+                    packageName: result.name,
+                    version: result.version
+                )
+                if merged[managerKey] != summary {
+                    merged[managerKey] = summary
+                    changed = true
+                }
+            }
+        }
+        if changed {
+            packageDescriptionSummaryByKey = merged
+        }
+    }
+
+    private func normalizedDescriptionSummary(_ summary: String?) -> String? {
+        guard let summary else { return nil }
+        let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return trimmed
+    }
+
+    private func reconcilePackageDescriptionLookupState() {
+        let trackedPackageIds = Set(descriptionLookupPackageById.keys)
+            .union(packageDescriptionLoadingIds)
+            .union(packageDescriptionUnavailableIds)
+        for packageId in trackedPackageIds {
+            if hasPackageDescriptionSummary(packageId: packageId) {
+                packageDescriptionUnavailableIds.remove(packageId)
+                if descriptionLookupTaskIdsByPackage[packageId]?.isEmpty != false {
+                    packageDescriptionLoadingIds.remove(packageId)
+                }
+            }
+        }
+    }
+
+    private func stablePackageId(managerId: String, packageName: String) -> String {
+        "\(managerId):\(packageName)"
+    }
+
+    private func availablePackageId(
+        managerId: String,
+        packageName: String,
+        version: String?
+    ) -> String {
+        let stableId = stablePackageId(managerId: managerId, packageName: packageName)
+        guard let version else { return stableId }
+        let normalizedVersion = version.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedVersion.isEmpty else { return stableId }
+        return "\(stableId)::\(normalizedVersion)"
     }
 
     // MARK: - Manager Status

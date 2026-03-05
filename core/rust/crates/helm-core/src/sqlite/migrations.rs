@@ -359,7 +359,22 @@ DROP TABLE IF EXISTS manager_multi_instance_ack;
 "#,
 };
 
-const MIGRATIONS: [SqliteMigration; 11] = [
+const MIGRATION_0012: SqliteMigration = SqliteMigration {
+    version: 12,
+    name: "add_package_manager_preferences",
+    up_sql: r#"
+CREATE TABLE IF NOT EXISTS package_manager_preferences (
+    package_name TEXT PRIMARY KEY,
+    manager_id TEXT NOT NULL,
+    updated_at_unix INTEGER NOT NULL
+);
+"#,
+    down_sql: r#"
+DROP TABLE IF EXISTS package_manager_preferences;
+"#,
+};
+
+const MIGRATIONS: [SqliteMigration; 12] = [
     MIGRATION_0001,
     MIGRATION_0002,
     MIGRATION_0003,
@@ -371,6 +386,7 @@ const MIGRATIONS: [SqliteMigration; 11] = [
     MIGRATION_0009,
     MIGRATION_0010,
     MIGRATION_0011,
+    MIGRATION_0012,
 ];
 
 pub fn migrations() -> &'static [SqliteMigration] {

@@ -32,7 +32,7 @@ const ASDF_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
 const ASDF_COMMAND: &str = "asdf";
 const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
 const LIST_TIMEOUT: Duration = Duration::from_secs(180);
-const SEARCH_TIMEOUT: Duration = Duration::from_secs(90);
+const SEARCH_TIMEOUT: Duration = Duration::from_secs(180);
 const MUTATION_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 const INSTALL_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
@@ -323,13 +323,19 @@ pub fn asdf_list_plugins_request(task_id: Option<TaskId>) -> ProcessSpawnRequest
 
 pub fn asdf_list_all_plugins_request(
     task_id: Option<TaskId>,
-    _query: &SearchQuery,
+    query: &SearchQuery,
 ) -> ProcessSpawnRequest {
+    let normalized_query = query.text.trim();
+    let mut command = CommandSpec::new(ASDF_COMMAND).args(["plugin", "list", "all"]);
+    if !normalized_query.is_empty() {
+        command = command.arg(normalized_query);
+    }
+
     asdf_request(
         task_id,
         TaskType::Search,
         ManagerAction::Search,
-        CommandSpec::new(ASDF_COMMAND).args(["plugin", "list", "all"]),
+        command,
         SEARCH_TIMEOUT,
     )
 }
@@ -671,6 +677,18 @@ mod tests {
     fn list_all_plugins_request_has_expected_shape() {
         let query = SearchQuery {
             text: "node".to_string(),
+            issued_at: UNIX_EPOCH,
+        };
+        let request = asdf_list_all_plugins_request(None, &query);
+        assert_eq!(request.task_type, TaskType::Search);
+        assert_eq!(request.action, ManagerAction::Search);
+        assert_eq!(request.command.args, vec!["plugin", "list", "all", "node"]);
+    }
+
+    #[test]
+    fn list_all_plugins_request_omits_query_arg_when_empty() {
+        let query = SearchQuery {
+            text: "   ".to_string(),
             issued_at: UNIX_EPOCH,
         };
         let request = asdf_list_all_plugins_request(None, &query);

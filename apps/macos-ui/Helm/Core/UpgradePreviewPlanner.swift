@@ -235,6 +235,17 @@ struct PackageConsolidationPolicy {
         }
     }
 
+    static func preferredManagerId(
+        managerIds: [String],
+        preferredManagerId: String?
+    ) -> String? {
+        guard !managerIds.isEmpty else { return nil }
+        if let preferredManagerId, managerIds.contains(preferredManagerId) {
+            return preferredManagerId
+        }
+        return managerIds[0]
+    }
+
     static func shouldPrefer(
         lhsStatus: String,
         rhsStatus: String,
@@ -242,6 +253,8 @@ struct PackageConsolidationPolicy {
         rhsPinned: Bool,
         lhsRestartRequired: Bool,
         rhsRestartRequired: Bool,
+        lhsVersion: String? = nil,
+        rhsVersion: String? = nil,
         lhsManagerId: String,
         rhsManagerId: String,
         localizedManagerName: (String) -> String,
@@ -258,6 +271,27 @@ struct PackageConsolidationPolicy {
         if lhsRestartRequired != rhsRestartRequired {
             return lhsRestartRequired
         }
+
+        let lhsVersionToken = normalizedVersionToken(lhsVersion)
+        let rhsVersionToken = normalizedVersionToken(rhsVersion)
+        if lhsVersionToken != rhsVersionToken {
+            if lhsVersionToken == nil {
+                return false
+            }
+            if rhsVersionToken == nil {
+                return true
+            }
+            if let lhsVersionToken, let rhsVersionToken {
+                let order = lhsVersionToken.compare(
+                    rhsVersionToken,
+                    options: [.numeric, .caseInsensitive]
+                )
+                if order != .orderedSame {
+                    return order == .orderedDescending
+                }
+            }
+        }
+
         if let priorityRank {
             let lhsPriority = priorityRank(lhsManagerId)
             let rhsPriority = priorityRank(rhsManagerId)
@@ -267,5 +301,58 @@ struct PackageConsolidationPolicy {
         }
         return localizedManagerName(lhsManagerId)
             .localizedCaseInsensitiveCompare(localizedManagerName(rhsManagerId)) == .orderedAscending
+    }
+
+    private static func normalizedVersionToken(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let token = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return token.isEmpty ? nil : token
+    }
+}
+
+enum PackageActionTracking {
+    static func normalizedPackageName(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    static func packageNameFromPackageId(_ packageId: String) -> String? {
+        let normalizedId = packageId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedId.isEmpty,
+              let managerSeparator = normalizedId.firstIndex(of: ":"),
+              managerSeparator < normalizedId.index(before: normalizedId.endIndex) else {
+            return nil
+        }
+
+        var packageSlice = normalizedId[normalizedId.index(after: managerSeparator)...]
+        if let versionSeparator = packageSlice.range(of: "::", options: .backwards) {
+            packageSlice = packageSlice[..<versionSeparator.lowerBound]
+        }
+
+        let normalizedPackageName = normalizedPackageName(String(packageSlice))
+        return normalizedPackageName.isEmpty ? nil : normalizedPackageName
+    }
+
+    static func inFlightInstallNames(
+        installActionPackageIds: Set<String>,
+        packageNameById: [String: String],
+        trackedNamesByPackageId: [String: String]
+    ) -> Set<String> {
+        var names = Set<String>()
+
+        for packageId in installActionPackageIds {
+            if let tracked = trackedNamesByPackageId[packageId], !tracked.isEmpty {
+                names.insert(tracked)
+                continue
+            }
+            if let mapped = packageNameById[packageId], !mapped.isEmpty {
+                names.insert(mapped)
+                continue
+            }
+            if let parsed = packageNameFromPackageId(packageId) {
+                names.insert(parsed)
+            }
+        }
+
+        return names
     }
 }

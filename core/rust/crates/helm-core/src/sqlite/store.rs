@@ -12,8 +12,8 @@ use crate::models::{
     TaskStatus, TaskType,
 };
 use crate::persistence::{
-    DetectionStore, ManagerPreference, MigrationStore, PackageStore, PersistenceResult, PinStore,
-    SearchCacheStore, TaskStore,
+    DetectionStore, ManagerPreference, MigrationStore, PackageManagerPreference, PackageStore,
+    PersistenceResult, PinStore, SearchCacheStore, TaskStore,
 };
 use crate::sqlite::migrations::{SqliteMigration, current_schema_version, migration, migrations};
 
@@ -550,6 +550,7 @@ SELECT version, summary
 FROM search_cache
 WHERE manager_id = ?1
   AND package_name = ?2
+  AND COALESCE(version, '') = COALESCE(?3, '')
 ORDER BY cached_at_unix DESC
 LIMIT 1
 ",
@@ -559,6 +560,7 @@ LIMIT 1
 DELETE FROM search_cache
 WHERE manager_id = ?1
   AND package_name = ?2
+  AND COALESCE(version, '') = COALESCE(?3, '')
 ",
                 )?;
                 let mut insert_statement = transaction.prepare(
@@ -570,18 +572,21 @@ INSERT INTO search_cache (
                 )?;
 
                 for result in results {
+                    let incoming_version = normalize_optional_text(result.result.version.clone());
                     let existing_entry: Option<(Option<String>, Option<String>)> = select_statement
                         .query_row(
                             params![
                                 result.source_manager.as_str(),
                                 result.result.package.name.as_str(),
+                                incoming_version.as_deref(),
                             ],
                             |row| Ok((row.get(0)?, row.get(1)?)),
                         )
                         .optional()?;
                     let (existing_version, existing_summary) =
                         existing_entry.unwrap_or((None, None));
-                    let merged_version = normalize_optional_text(result.result.version.clone())
+                    let merged_version = incoming_version
+                        .clone()
                         .or_else(|| normalize_optional_text(existing_version));
                     let merged_summary = normalize_optional_text(result.result.summary.clone())
                         .or_else(|| normalize_optional_text(existing_summary));
@@ -589,6 +594,7 @@ INSERT INTO search_cache (
                     delete_statement.execute(params![
                         result.source_manager.as_str(),
                         result.result.package.name.as_str(),
+                        merged_version.as_deref(),
                     ])?;
 
                     insert_statement.execute(params![
@@ -1774,6 +1780,94 @@ ORDER BY manager_id, package_name
             rows.collect()
         })
     }
+
+    fn set_package_manager_preference(
+        &self,
+        package_name: &str,
+        manager: Option<ManagerId>,
+    ) -> PersistenceResult<()> {
+        self.with_connection("set_package_manager_preference", |connection| {
+            ensure_schema_ready(connection)?;
+            let Some(normalized_package_name) = normalize_package_preference_key(package_name)
+            else {
+                return Err(storage_error_sqlite("package_name cannot be empty"));
+            };
+
+            match manager {
+                Some(manager) => {
+                    connection.execute(
+                        "
+INSERT INTO package_manager_preferences (package_name, manager_id, updated_at_unix)
+VALUES (?1, ?2, strftime('%s', 'now'))
+ON CONFLICT(package_name) DO UPDATE SET
+    manager_id = excluded.manager_id,
+    updated_at_unix = excluded.updated_at_unix
+",
+                        params![normalized_package_name, manager.as_str()],
+                    )?;
+                }
+                None => {
+                    connection.execute(
+                        "DELETE FROM package_manager_preferences WHERE package_name = ?1",
+                        params![normalized_package_name],
+                    )?;
+                }
+            }
+
+            Ok(())
+        })
+    }
+
+    fn package_manager_preference(
+        &self,
+        package_name: &str,
+    ) -> PersistenceResult<Option<ManagerId>> {
+        self.with_connection("package_manager_preference", |connection| {
+            ensure_schema_ready(connection)?;
+            let Some(normalized_package_name) = normalize_package_preference_key(package_name)
+            else {
+                return Ok(None);
+            };
+
+            let mut statement = connection.prepare(
+                "
+SELECT manager_id
+FROM package_manager_preferences
+WHERE package_name = ?1
+",
+            )?;
+            let mut rows = statement.query(params![normalized_package_name])?;
+            let Some(row) = rows.next()? else {
+                return Ok(None);
+            };
+            let manager_raw: String = row.get(0)?;
+            Ok(Some(parse_manager_id(manager_raw.as_str())?))
+        })
+    }
+
+    fn list_package_manager_preferences(&self) -> PersistenceResult<Vec<PackageManagerPreference>> {
+        self.with_connection("list_package_manager_preferences", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection.prepare(
+                "
+SELECT package_name, manager_id
+FROM package_manager_preferences
+ORDER BY package_name
+",
+            )?;
+            let rows = statement.query_map([], |row| {
+                let package_name: String = row.get(0)?;
+                let manager_raw: String = row.get(1)?;
+                let manager = parse_manager_id(manager_raw.as_str())?;
+                Ok(PackageManagerPreference {
+                    package_name,
+                    manager,
+                })
+            })?;
+
+            rows.collect()
+        })
+    }
 }
 
 fn open_connection(database_path: &Path) -> rusqlite::Result<Connection> {
@@ -2048,6 +2142,14 @@ fn normalize_optional_text(value: Option<String>) -> Option<String> {
             Some(trimmed.to_string())
         }
     })
+}
+
+fn normalize_package_preference_key(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.to_ascii_lowercase())
 }
 
 fn to_unix_seconds(value: SystemTime) -> rusqlite::Result<i64> {

@@ -68,7 +68,10 @@ struct PopoverSearchOverlayContent: View {
                 ScrollView {
                     LazyVStack(spacing: 6) {
                         ForEach(searchResults) { result in
-                            let package = result.package
+                            let preferredManagerId = core.preferredManagerId(
+                                forPackageName: result.package.name
+                            )
+                            let package = result.actionTarget(preferredManagerId: preferredManagerId)
                             HStack(spacing: 8) {
                                 Button {
                                     context.selectedPackageId = package.id
@@ -84,10 +87,11 @@ struct PopoverSearchOverlayContent: View {
                                             Text(package.name)
                                                 .font(.subheadline.weight(.medium))
                                                 .lineLimit(1)
-                                            Text(result.managerDisplayText)
-                                                .font(.caption2)
-                                                .foregroundColor(.secondary)
-                                                .lineLimit(2)
+                                            HStack(spacing: 4) {
+                                                ForEach(Array(result.managerDisplayNames.enumerated()), id: \.offset) { _, managerName in
+                                                    managerBadge(managerName)
+                                                }
+                                            }
                                         }
                                         Spacer()
                                         if let latest = package.latestVersion {
@@ -204,7 +208,7 @@ struct PopoverSearchOverlayContent: View {
                 iconActionButton(
                     symbol: "arrow.down.circle",
                     tooltip: L10n.App.Packages.Action.install.localized,
-                    enabled: !core.installActionPackageIds.contains(package.id)
+                    enabled: !installActionInFlight(for: package)
                 ) {
                     core.installPackage(package)
                 }
@@ -248,6 +252,26 @@ struct PopoverSearchOverlayContent: View {
                 }
             }
         }
+    }
+
+    private func installActionInFlight(for package: PackageItem) -> Bool {
+        core.isInstallActionInFlight(for: package)
+    }
+
+    private func managerBadge(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(HelmTheme.surfaceElevated)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .strokeBorder(HelmTheme.borderSubtle.opacity(0.9), lineWidth: 0.8)
+                    )
+            )
+            .foregroundColor(HelmTheme.textSecondary)
     }
 
     private func requestPackageUninstallConfirmation(_ package: PackageItem) {

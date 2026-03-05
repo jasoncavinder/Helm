@@ -34,7 +34,7 @@ const NPM_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
 
 const NPM_COMMAND: &str = "npm";
 const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
-const LIST_TIMEOUT: Duration = Duration::from_secs(120);
+const LIST_TIMEOUT: Duration = Duration::from_secs(180);
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(30);
 const MUTATION_TIMEOUT: Duration = Duration::from_secs(300);
 

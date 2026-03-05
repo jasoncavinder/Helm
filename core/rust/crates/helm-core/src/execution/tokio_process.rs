@@ -119,6 +119,8 @@ const HARD_TIMEOUT_EXTENSION_MAX_ACTIVITY_WINDOW: Duration = Duration::from_secs
 const HARD_TIMEOUT_EXTENSION_MIN_ACTIVITY_WINDOW: Duration = Duration::from_secs(15);
 const HARD_TIMEOUT_PROMPT_GRACE_PERIOD: Duration = Duration::from_secs(30);
 const HARD_TIMEOUT_PROMPT_EXTENSION: Duration = Duration::from_secs(30 * 60);
+const READ_TASK_TIMEOUT_EXTENSION_MAX_BUDGET: Duration = Duration::from_secs(3 * 60);
+const READ_TASK_TIMEOUT_EXTENSION_MAX_ACTIVITY_WINDOW: Duration = Duration::from_secs(6 * 60);
 
 fn prepare_command_for_spawn(
     request: &ProcessSpawnRequest,
@@ -450,7 +452,7 @@ impl HardTimeoutState {
             deadline: started_at + base_timeout,
             extension_budget_remaining: hard_timeout_extension_budget(task_type, base_timeout),
             extension_step: hard_timeout_extension_step(base_timeout),
-            activity_window: hard_timeout_activity_window(base_timeout),
+            activity_window: hard_timeout_activity_window(task_type, base_timeout),
         })
     }
 
@@ -504,6 +506,9 @@ impl HardTimeoutState {
 }
 
 fn hard_timeout_extension_budget(task_type: TaskType, hard_timeout: Duration) -> Duration {
+    if supports_read_task_timeout_grace(task_type) {
+        return read_task_hard_timeout_grace_extension(task_type, hard_timeout);
+    }
     if !matches!(
         task_type,
         TaskType::Install | TaskType::Uninstall | TaskType::Upgrade
@@ -523,7 +528,12 @@ fn hard_timeout_extension_step(hard_timeout: Duration) -> Duration {
         .min(HARD_TIMEOUT_EXTENSION_MAX_STEP)
 }
 
-fn hard_timeout_activity_window(hard_timeout: Duration) -> Duration {
+fn hard_timeout_activity_window(task_type: TaskType, hard_timeout: Duration) -> Duration {
+    if supports_read_task_timeout_grace(task_type) {
+        return hard_timeout
+            .saturating_add(hard_timeout_extension_budget(task_type, hard_timeout))
+            .min(READ_TASK_TIMEOUT_EXTENSION_MAX_ACTIVITY_WINDOW);
+    }
     if hard_timeout <= Duration::from_secs(2) {
         return hard_timeout / 2;
     }
@@ -531,6 +541,17 @@ fn hard_timeout_activity_window(hard_timeout: Duration) -> Duration {
     derived
         .max(HARD_TIMEOUT_EXTENSION_MIN_ACTIVITY_WINDOW)
         .min(HARD_TIMEOUT_EXTENSION_MAX_ACTIVITY_WINDOW)
+}
+
+fn supports_read_task_timeout_grace(task_type: TaskType) -> bool {
+    matches!(task_type, TaskType::Search | TaskType::Refresh)
+}
+
+fn read_task_hard_timeout_grace_extension(task_type: TaskType, hard_timeout: Duration) -> Duration {
+    if !supports_read_task_timeout_grace(task_type) {
+        return Duration::ZERO;
+    }
+    hard_timeout.min(READ_TASK_TIMEOUT_EXTENSION_MAX_BUDGET)
 }
 
 impl ProcessCpuProgressProbe {
@@ -819,6 +840,8 @@ impl RunningProcess for TokioRunningProcess {
             let mut cpu_probe = ProcessCpuProgressProbe::new(pid, started_instant);
             let mut hard_timeout_state = HardTimeoutState::new(timeout, task_type, started_instant);
             let mut hard_timeout_prompt_started_at: Option<tokio::time::Instant> = None;
+            let mut hard_timeout_grace_applied = false;
+            let mut idle_timeout_grace_applied = false;
             let mut activity_channel_open = true;
             let allow_hard_timeout_prompt = task_id.is_some()
                 && matches!(
@@ -899,6 +922,43 @@ impl RunningProcess for TokioRunningProcess {
                             .saturating_sub(hard_timeout_state_ref.base_timeout)
                             .as_millis()
                     );
+
+                    if !hard_timeout_grace_applied && supports_read_task_timeout_grace(task_type) {
+                        let extension = hard_timeout_state_ref.extend_manual(
+                            read_task_hard_timeout_grace_extension(
+                                task_type,
+                                hard_timeout_state_ref.base_timeout,
+                            ),
+                        );
+                        if !extension.is_zero() {
+                            hard_timeout_grace_applied = true;
+                            let message = format!(
+                                "[helm] extending hard-timeout grace window for {:?} task by {}ms after reaching base timeout",
+                                task_type,
+                                extension.as_millis()
+                            );
+                            crate::execution::record_task_log_note(message.as_str());
+                            tracing::warn!(
+                                manager = ?manager,
+                                task_type = ?task_type,
+                                action = ?action,
+                                task_id = task_id.map(|value| value.0),
+                                pid,
+                                extension_ms = extension.as_millis(),
+                                effective_timeout_ms = hard_timeout_state_ref
+                                    .effective_timeout(started_instant)
+                                    .as_millis(),
+                                "extended hard timeout for read task once after base timeout"
+                            );
+                            if let Some(task_id) = task_id {
+                                crate::execution::task_output_store::append_stderr(
+                                    task_id,
+                                    format!("{message}\n").as_bytes(),
+                                );
+                            }
+                            continue;
+                        }
+                    }
 
                     if allow_hard_timeout_prompt && let Some(task_id) = task_id {
                         match crate::execution::timeout_prompt_store::take_decision(task_id) {
@@ -1008,6 +1068,32 @@ impl RunningProcess for TokioRunningProcess {
                         crate::execution::record_task_log_note(base_timeout_reason.as_str());
                         timeout_state = Some(("hard_timeout", base_timeout_reason));
                     }
+                }
+
+                let idle_timed_out = idle_timeout
+                    .is_some_and(|duration| now.duration_since(last_activity_instant) >= duration);
+
+                if timeout_state.is_none()
+                    && idle_timed_out
+                    && !idle_timeout_grace_applied
+                    && supports_read_task_timeout_grace(task_type)
+                    && let Some(duration) = idle_timeout
+                {
+                    idle_timeout_grace_applied = true;
+                    last_activity_instant = now;
+                    let message = format!(
+                        "[helm] extending idle-timeout grace window for {:?} task after {}ms of inactivity",
+                        task_type,
+                        duration.as_millis()
+                    );
+                    crate::execution::record_task_log_note(message.as_str());
+                    if let Some(task_id) = task_id {
+                        crate::execution::task_output_store::append_stderr(
+                            task_id,
+                            format!("{message}\n").as_bytes(),
+                        );
+                    }
+                    continue;
                 }
 
                 let timeout_state = timeout_state.or_else(|| {
@@ -1246,8 +1332,10 @@ fn process_failure(
 #[cfg(test)]
 mod tests {
     use super::{
-        HELM_SUDO_ASKPASS_ALLOW_OVERRIDE_ENV, HELM_SUDO_ASKPASS_ENV, prepare_command_for_spawn,
-        resolve_effective_working_dir,
+        HELM_SUDO_ASKPASS_ALLOW_OVERRIDE_ENV, HELM_SUDO_ASKPASS_ENV, hard_timeout_activity_window,
+        hard_timeout_extension_budget, prepare_command_for_spawn,
+        read_task_hard_timeout_grace_extension, resolve_effective_working_dir,
+        supports_read_task_timeout_grace,
     };
     use crate::execution::{CommandSpec, ProcessSpawnRequest};
     use crate::models::{ManagerAction, ManagerId, TaskType};
@@ -1255,6 +1343,7 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
     use std::sync::{Mutex, OnceLock};
+    use std::time::Duration;
 
     fn base_request() -> ProcessSpawnRequest {
         ProcessSpawnRequest::new(
@@ -1464,6 +1553,56 @@ mod tests {
         assert_ne!(
             resolved, requested,
             "missing requested working directory should not be selected"
+        );
+    }
+
+    #[test]
+    fn read_tasks_opt_into_timeout_grace_support() {
+        assert!(supports_read_task_timeout_grace(TaskType::Search));
+        assert!(supports_read_task_timeout_grace(TaskType::Refresh));
+        assert!(!supports_read_task_timeout_grace(TaskType::Upgrade));
+    }
+
+    #[test]
+    fn read_tasks_receive_non_zero_hard_timeout_extension_budget() {
+        let search_budget =
+            hard_timeout_extension_budget(TaskType::Search, Duration::from_secs(30));
+        let refresh_budget =
+            hard_timeout_extension_budget(TaskType::Refresh, Duration::from_secs(180));
+        let upgrade_budget =
+            hard_timeout_extension_budget(TaskType::Upgrade, Duration::from_secs(180));
+
+        assert_eq!(search_budget, Duration::from_secs(30));
+        assert_eq!(refresh_budget, Duration::from_secs(180));
+        assert_eq!(upgrade_budget, Duration::from_secs(180));
+    }
+
+    #[test]
+    fn read_tasks_use_wide_hard_timeout_activity_window() {
+        let search_window = hard_timeout_activity_window(TaskType::Search, Duration::from_secs(30));
+        let refresh_window =
+            hard_timeout_activity_window(TaskType::Refresh, Duration::from_secs(180));
+        let upgrade_window =
+            hard_timeout_activity_window(TaskType::Upgrade, Duration::from_secs(180));
+
+        assert_eq!(search_window, Duration::from_secs(60));
+        assert_eq!(refresh_window, Duration::from_secs(360));
+        assert!(upgrade_window <= Duration::from_secs(60));
+    }
+
+    #[test]
+    fn read_task_hard_timeout_grace_extension_matches_expected_bounds() {
+        assert_eq!(
+            read_task_hard_timeout_grace_extension(TaskType::Search, Duration::from_secs(30)),
+            Duration::from_secs(30)
+        );
+        assert_eq!(
+            read_task_hard_timeout_grace_extension(TaskType::Refresh, Duration::from_secs(600)),
+            Duration::from_secs(180)
+        );
+        assert_eq!(
+            read_task_hard_timeout_grace_extension(TaskType::Install, Duration::from_secs(180)),
+            Duration::ZERO
         );
     }
 }

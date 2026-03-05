@@ -5,7 +5,7 @@ use crate::models::{
     PinRecord, TaskId, TaskLogRecord, TaskRecord,
 };
 
-pub use detection_store::{DetectionStore, ManagerPreference};
+pub use detection_store::{DetectionStore, ManagerPreference, PackageManagerPreference};
 
 pub type PersistenceResult<T> = Result<T, CoreError>;
 

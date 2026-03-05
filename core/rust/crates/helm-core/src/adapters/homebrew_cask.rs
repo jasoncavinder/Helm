@@ -29,7 +29,7 @@ const HOMEBREW_CASK_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
 
 const BREW_COMMAND: &str = "brew";
 const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
-const LIST_TIMEOUT: Duration = Duration::from_secs(120);
+const LIST_TIMEOUT: Duration = Duration::from_secs(180);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HomebrewCaskDetectOutput {
