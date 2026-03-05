@@ -1077,24 +1077,23 @@ impl RunningProcess for TokioRunningProcess {
                     && idle_timed_out
                     && !idle_timeout_grace_applied
                     && supports_read_task_timeout_grace(task_type)
+                    && let Some(duration) = idle_timeout
                 {
-                    if let Some(duration) = idle_timeout {
-                        idle_timeout_grace_applied = true;
-                        last_activity_instant = now;
-                        let message = format!(
-                            "[helm] extending idle-timeout grace window for {:?} task after {}ms of inactivity",
-                            task_type,
-                            duration.as_millis()
+                    idle_timeout_grace_applied = true;
+                    last_activity_instant = now;
+                    let message = format!(
+                        "[helm] extending idle-timeout grace window for {:?} task after {}ms of inactivity",
+                        task_type,
+                        duration.as_millis()
+                    );
+                    crate::execution::record_task_log_note(message.as_str());
+                    if let Some(task_id) = task_id {
+                        crate::execution::task_output_store::append_stderr(
+                            task_id,
+                            format!("{message}\n").as_bytes(),
                         );
-                        crate::execution::record_task_log_note(message.as_str());
-                        if let Some(task_id) = task_id {
-                            crate::execution::task_output_store::append_stderr(
-                                task_id,
-                                format!("{message}\n").as_bytes(),
-                            );
-                        }
-                        continue;
                     }
+                    continue;
                 }
 
                 let timeout_state = timeout_state.or_else(|| {
