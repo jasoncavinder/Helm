@@ -11,6 +11,7 @@ use helm_core::persistence::{
     DetectionStore, MigrationStore, PackageStore, PinStore, SearchCacheStore, TaskStore,
 };
 use helm_core::sqlite::{SqliteStore, current_schema_version};
+use rusqlite::params;
 
 fn test_db_path(test_name: &str) -> PathBuf {
     let nanos = SystemTime::now()
@@ -90,6 +91,36 @@ fn package_operations_require_migrations() {
 }
 
 #[test]
+fn migration_to_installed_package_versions_preserves_existing_rows() {
+    let path = test_db_path("migrate-installed-package-versions");
+    let store = SqliteStore::new(&path);
+    store.apply_migration(12).unwrap();
+
+    let connection = rusqlite::Connection::open(&path).unwrap();
+    connection
+        .execute(
+            "
+INSERT INTO installed_packages (
+    manager_id, package_name, installed_version, pinned, updated_at_unix
+) VALUES (?1, ?2, ?3, ?4, ?5)
+",
+            params!["mise", "python", "3.12.3", 0, 123_i64],
+        )
+        .unwrap();
+    drop(connection);
+
+    store.apply_migration(current_schema_version()).unwrap();
+
+    let installed = store.list_installed().unwrap();
+    assert_eq!(installed.len(), 1);
+    assert_eq!(installed[0].package.manager, ManagerId::Mise);
+    assert_eq!(installed[0].package.name, "python");
+    assert_eq!(installed[0].installed_version.as_deref(), Some("3.12.3"));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn upsert_and_list_installed_roundtrip() {
     let path = test_db_path("installed-roundtrip");
     let store = SqliteStore::new(&path);
@@ -122,6 +153,47 @@ fn upsert_and_list_installed_roundtrip() {
     assert_eq!(persisted[0].package.name, "git");
     assert_eq!(persisted[1].package.name, "typescript");
     assert!(persisted[1].pinned);
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn upsert_and_list_installed_preserves_multiple_versions_per_package() {
+    let path = test_db_path("installed-multi-version-roundtrip");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    store
+        .upsert_installed(&[
+            InstalledPackage {
+                package: PackageRef {
+                    manager: ManagerId::Mise,
+                    name: "python".to_string(),
+                },
+                installed_version: Some("3.11.9".to_string()),
+                pinned: false,
+            },
+            InstalledPackage {
+                package: PackageRef {
+                    manager: ManagerId::Mise,
+                    name: "python".to_string(),
+                },
+                installed_version: Some("3.12.3".to_string()),
+                pinned: false,
+            },
+        ])
+        .unwrap();
+
+    let persisted = store.list_installed().unwrap();
+    let versions: Vec<String> = persisted
+        .iter()
+        .filter(|entry| {
+            entry.package.manager == ManagerId::Mise && entry.package.name.as_str() == "python"
+        })
+        .filter_map(|entry| entry.installed_version.clone())
+        .collect();
+
+    assert_eq!(versions, vec!["3.11.9".to_string(), "3.12.3".to_string()]);
 
     let _ = std::fs::remove_file(path);
 }
@@ -624,6 +696,57 @@ fn apply_upgrade_result_promotes_package_to_installed_snapshot() {
         .expect("upgraded package should remain installed");
     assert_eq!(upgraded.installed_version.as_deref(), Some("20250814.0"));
     assert!(outdated.iter().all(|entry| entry.package != package));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn apply_upgrade_result_replaces_only_matching_installed_version() {
+    let path = test_db_path("apply-upgrade-result-multi-version");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let package = PackageRef {
+        manager: ManagerId::Mise,
+        name: "python".to_string(),
+    };
+
+    store
+        .upsert_installed(&[
+            InstalledPackage {
+                package: package.clone(),
+                installed_version: Some("3.11.9".to_string()),
+                pinned: false,
+            },
+            InstalledPackage {
+                package: package.clone(),
+                installed_version: Some("3.12.3".to_string()),
+                pinned: false,
+            },
+        ])
+        .unwrap();
+    store
+        .upsert_outdated(&[OutdatedPackage {
+            package: package.clone(),
+            installed_version: Some("3.12.3".to_string()),
+            candidate_version: "3.12.8".to_string(),
+            pinned: false,
+            restart_required: false,
+        }])
+        .unwrap();
+
+    store.apply_upgrade_result(&package).unwrap();
+
+    let installed = store.list_installed().unwrap();
+    let versions: Vec<String> = installed
+        .iter()
+        .filter(|entry| {
+            entry.package.manager == ManagerId::Mise && entry.package.name.as_str() == "python"
+        })
+        .filter_map(|entry| entry.installed_version.clone())
+        .collect();
+
+    assert_eq!(versions, vec!["3.11.9".to_string(), "3.12.8".to_string()]);
 
     let _ = std::fs::remove_file(path);
 }

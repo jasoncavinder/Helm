@@ -28,7 +28,11 @@ extension HelmCore {
             DispatchQueue.main.async {
                 self.installedPackages = corePackages.map { pkg in
                     PackageItem(
-                        id: "\(pkg.package.manager):\(pkg.package.name)",
+                        id: self.availablePackageId(
+                            managerId: pkg.package.manager,
+                            packageName: pkg.package.name,
+                            version: pkg.installedVersion
+                        ),
                         name: pkg.package.name,
                         version: pkg.installedVersion ?? L10n.Common.unknown.localized,
                         managerId: pkg.package.manager,
@@ -65,7 +69,11 @@ extension HelmCore {
             DispatchQueue.main.async {
                 self.outdatedPackages = corePackages.map { pkg in
                     PackageItem(
-                        id: "\(pkg.package.manager):\(pkg.package.name)",
+                        id: self.availablePackageId(
+                            managerId: pkg.package.manager,
+                            packageName: pkg.package.name,
+                            version: pkg.installedVersion
+                        ),
                         name: pkg.package.name,
                         version: pkg.installedVersion ?? L10n.Common.unknown.localized,
                         latestVersion: pkg.candidateVersion,
@@ -351,8 +359,19 @@ extension HelmCore {
                 guard self.localSearchRequestGeneration == requestGeneration else { return }
                 let filteredResults = results.filter { $0.sourceManager != "rustup" }
                 self.mergePackageDescriptionSummaryIndex(from: filteredResults)
-                let installedOrOutdatedIds = Set(self.installedPackages.map(\.id))
-                    .union(self.outdatedPackages.map(\.id))
+                var installedOrOutdatedRepresentativeIdsByStableId: [String: String] = [:]
+                for package in (self.outdatedPackages + self.installedPackages) {
+                    let stableId = self.stablePackageId(
+                        managerId: package.managerId,
+                        packageName: package.name
+                    )
+                    if installedOrOutdatedRepresentativeIdsByStableId[stableId] == nil {
+                        installedOrOutdatedRepresentativeIdsByStableId[stableId] = package.id
+                    }
+                }
+                let installedOrOutdatedStableIds = Set(
+                    installedOrOutdatedRepresentativeIdsByStableId.keys
+                )
                 let resolvedSummaryIds = Set(
                     filteredResults.compactMap { result -> String? in
                         guard let summary = result.summary?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -363,8 +382,8 @@ extension HelmCore {
                             managerId: result.sourceManager,
                             packageName: result.name
                         )
-                        if installedOrOutdatedIds.contains(stableId) {
-                            return stableId
+                        if installedOrOutdatedStableIds.contains(stableId) {
+                            return installedOrOutdatedRepresentativeIdsByStableId[stableId] ?? stableId
                         }
                         return self.availablePackageId(
                             managerId: result.sourceManager,
@@ -379,8 +398,8 @@ extension HelmCore {
                         managerId: result.sourceManager,
                         packageName: result.name
                     )
-                    let packageId = installedOrOutdatedIds.contains(stableId)
-                        ? stableId
+                    let packageId = installedOrOutdatedStableIds.contains(stableId)
+                        ? (installedOrOutdatedRepresentativeIdsByStableId[stableId] ?? stableId)
                         : self.availablePackageId(
                             managerId: result.sourceManager,
                             packageName: result.name,
@@ -420,8 +439,22 @@ extension HelmCore {
             DispatchQueue.main.async {
                 let filteredSearchCache = results.filter { $0.sourceManager != "rustup" }
                 self.rebuildPackageDescriptionSummaryIndex(from: filteredSearchCache)
-                let excludedStableIds = Set(self.installedPackages.map(\.id))
-                    .union(self.outdatedPackages.map(\.id))
+                let excludedStableIds = Set(
+                    self.installedPackages.map { package in
+                        self.stablePackageId(
+                            managerId: package.managerId,
+                            packageName: package.name
+                        )
+                    }
+                )
+                .union(
+                    self.outdatedPackages.map { package in
+                        self.stablePackageId(
+                            managerId: package.managerId,
+                            packageName: package.name
+                        )
+                    }
+                )
                 var dedupedById: [String: PackageItem] = [:]
 
                 for result in filteredSearchCache {

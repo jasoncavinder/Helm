@@ -123,10 +123,10 @@ impl PackageStore for SqliteStore {
             {
                 let mut statement = transaction.prepare(
                     "
-INSERT INTO installed_packages (
+INSERT INTO installed_package_versions (
     manager_id, package_name, installed_version, pinned, updated_at_unix
 ) VALUES (?1, ?2, ?3, ?4, strftime('%s', 'now'))
-ON CONFLICT(manager_id, package_name) DO UPDATE SET
+ON CONFLICT(manager_id, package_name, installed_version) DO UPDATE SET
     installed_version = excluded.installed_version,
     pinned = excluded.pinned,
     updated_at_unix = excluded.updated_at_unix
@@ -134,10 +134,12 @@ ON CONFLICT(manager_id, package_name) DO UPDATE SET
                 )?;
 
                 for package in packages {
+                    let installed_version =
+                        to_installed_version_token(package.installed_version.as_deref());
                     statement.execute((
                         package.package.manager.as_str(),
                         package.package.name.as_str(),
-                        package.installed_version.as_deref(),
+                        installed_version.as_str(),
                         bool_to_sqlite(package.pinned),
                     ))?;
                 }
@@ -228,25 +230,25 @@ INSERT INTO outdated_packages (
             let mut statement = connection.prepare(
                 "
 SELECT
-    ip.manager_id,
-    ip.package_name,
-    ip.installed_version,
+    ipv.manager_id,
+    ipv.package_name,
+    ipv.installed_version,
     CASE
         WHEN pr.manager_id IS NOT NULL THEN 1
-        ELSE ip.pinned
+        ELSE ipv.pinned
     END AS pinned
-FROM installed_packages ip
+FROM installed_package_versions ipv
 LEFT JOIN pin_records pr
-    ON pr.manager_id = ip.manager_id
-   AND pr.package_name = ip.package_name
-ORDER BY ip.manager_id, ip.package_name
+    ON pr.manager_id = ipv.manager_id
+   AND pr.package_name = ipv.package_name
+ORDER BY ipv.manager_id, ipv.package_name, ipv.installed_version
 ",
             )?;
 
             let rows = statement.query_map([], |row| {
                 let manager_id: String = row.get(0)?;
                 let package_name: String = row.get(1)?;
-                let installed_version: Option<String> = row.get(2)?;
+                let installed_version_raw: String = row.get(2)?;
                 let pinned_int: i64 = row.get(3)?;
 
                 let manager = parse_manager_id(&manager_id)?;
@@ -255,7 +257,7 @@ ORDER BY ip.manager_id, ip.package_name
                         manager,
                         name: package_name,
                     },
-                    installed_version,
+                    installed_version: from_installed_version_token(installed_version_raw),
                     pinned: sqlite_to_bool(pinned_int),
                 })
             })?;
@@ -319,7 +321,7 @@ ORDER BY op.manager_id, op.package_name
 
             transaction.execute(
                 "
-UPDATE installed_packages
+UPDATE installed_package_versions
 SET pinned = ?3, updated_at_unix = strftime('%s', 'now')
 WHERE manager_id = ?1 AND package_name = ?2
 ",
@@ -357,19 +359,20 @@ WHERE manager_id = ?1 AND package_name = ?2
             ensure_schema_ready(connection)?;
             let transaction = connection.transaction()?;
 
+            let installed_version_token = to_installed_version_token(installed_version);
             transaction.execute(
                 "
-INSERT INTO installed_packages (
+INSERT INTO installed_package_versions (
     manager_id, package_name, installed_version, pinned, updated_at_unix
 ) VALUES (?1, ?2, ?3, 0, strftime('%s', 'now'))
-ON CONFLICT(manager_id, package_name) DO UPDATE SET
-    installed_version = COALESCE(excluded.installed_version, installed_packages.installed_version),
+ON CONFLICT(manager_id, package_name, installed_version) DO UPDATE SET
+    installed_version = excluded.installed_version,
     updated_at_unix = excluded.updated_at_unix
 ",
                 params![
                     package.manager.as_str(),
                     package.name.as_str(),
-                    installed_version
+                    installed_version_token.as_str()
                 ],
             )?;
 
@@ -393,7 +396,7 @@ WHERE manager_id = ?1 AND package_name = ?2
 
             transaction.execute(
                 "
-DELETE FROM installed_packages
+DELETE FROM installed_package_versions
 WHERE manager_id = ?1 AND package_name = ?2
 ",
                 params![package.manager.as_str(), package.name.as_str()],
@@ -417,41 +420,56 @@ WHERE manager_id = ?1 AND package_name = ?2
             ensure_schema_ready(connection)?;
             let transaction = connection.transaction()?;
 
-            transaction.execute(
-                "
-INSERT INTO installed_packages (
-    manager_id, package_name, installed_version, pinned, updated_at_unix
-)
-SELECT
-    op.manager_id, op.package_name, op.candidate_version, op.pinned, strftime('%s', 'now')
-FROM outdated_packages op
-WHERE op.manager_id = ?1
-  AND op.package_name = ?2
-  AND NOT EXISTS (
-      SELECT 1 FROM installed_packages ip
-      WHERE ip.manager_id = op.manager_id
-        AND ip.package_name = op.package_name
-  )
-",
-                params![package.manager.as_str(), package.name.as_str()],
-            )?;
-
-            transaction.execute(
-                "
-UPDATE installed_packages
-SET installed_version = COALESCE(
-        (
-            SELECT candidate_version
-            FROM outdated_packages
-            WHERE manager_id = ?1 AND package_name = ?2
-        ),
-        installed_version
-    ),
-    updated_at_unix = strftime('%s', 'now')
+            let outdated_entry: Option<(Option<String>, String, i64)> = transaction
+                .query_row(
+                    "
+SELECT installed_version, candidate_version, pinned
+FROM outdated_packages
 WHERE manager_id = ?1 AND package_name = ?2
 ",
-                params![package.manager.as_str(), package.name.as_str()],
-            )?;
+                    params![package.manager.as_str(), package.name.as_str()],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .optional()?;
+
+            if let Some((installed_version, candidate_version, pinned)) = outdated_entry {
+                let candidate_version_token =
+                    to_installed_version_token(Some(candidate_version.as_str()));
+                transaction.execute(
+                    "
+INSERT INTO installed_package_versions (
+    manager_id, package_name, installed_version, pinned, updated_at_unix
+) VALUES (?1, ?2, ?3, ?4, strftime('%s', 'now'))
+ON CONFLICT(manager_id, package_name, installed_version) DO UPDATE SET
+    pinned = excluded.pinned,
+    updated_at_unix = excluded.updated_at_unix
+",
+                    params![
+                        package.manager.as_str(),
+                        package.name.as_str(),
+                        candidate_version_token.as_str(),
+                        pinned,
+                    ],
+                )?;
+
+                let installed_version_token =
+                    to_installed_version_token(installed_version.as_deref());
+                if installed_version_token != candidate_version_token {
+                    transaction.execute(
+                        "
+DELETE FROM installed_package_versions
+WHERE manager_id = ?1
+  AND package_name = ?2
+  AND installed_version = ?3
+",
+                        params![
+                            package.manager.as_str(),
+                            package.name.as_str(),
+                            installed_version_token.as_str(),
+                        ],
+                    )?;
+                }
+            }
 
             transaction.execute(
                 "
@@ -2142,6 +2160,23 @@ fn normalize_optional_text(value: Option<String>) -> Option<String> {
             Some(trimmed.to_string())
         }
     })
+}
+
+fn to_installed_version_token(value: Option<&str>) -> String {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_default()
+        .to_string()
+}
+
+fn from_installed_version_token(value: String) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
 }
 
 fn normalize_package_preference_key(value: &str) -> Option<String> {

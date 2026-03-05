@@ -18,9 +18,24 @@ extension HelmCore {
 
     var allKnownPackages: [PackageItem] {
         let enabledOutdated = outdatedPackages.filter { isManagerEnabled($0.managerId) }
-        let outdatedIds = Set(enabledOutdated.map(\.id))
+        let outdatedStableIds = Set(
+            enabledOutdated.map { package in
+                packageDescriptionLookupKey(
+                    managerId: package.managerId,
+                    packageName: package.name,
+                    version: nil
+                )
+            }
+        )
         let installedOnly = installedPackages.filter {
-            isManagerEnabled($0.managerId) && !outdatedIds.contains($0.id)
+            isManagerEnabled($0.managerId)
+                && !outdatedStableIds.contains(
+                    packageDescriptionLookupKey(
+                        managerId: $0.managerId,
+                        packageName: $0.name,
+                        version: nil
+                    )
+                )
         }
         var combined = enabledOutdated + installedOnly
 
@@ -1014,7 +1029,7 @@ extension HelmCore {
             return normalized
         }
         let suffix = normalized[normalized.index(after: atIndex)...]
-        guard suffix.first?.isNumber == true else {
+        guard suffix.contains(where: { $0.isNumber }) else {
             return normalized
         }
         return String(normalized[..<atIndex])

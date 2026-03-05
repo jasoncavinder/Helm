@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -110,18 +110,26 @@ impl<S: AsdfSource> ManagerAdapter for AsdfAdapter<S> {
                 let raw = self.source.list_current()?;
                 let installed = parse_asdf_current(&raw)?;
                 let mut outdated = Vec::new();
+                let mut latest_by_plugin: HashMap<String, Option<String>> = HashMap::new();
 
                 for package in installed {
                     let Some(installed_version) = package.installed_version.clone() else {
                         continue;
                     };
-                    // Compatibility mode: skip tools that fail latest-version lookup instead of
-                    // failing the full outdated scan.
-                    let latest_raw = match self.source.latest_version(&package.package.name) {
-                        Ok(output) => output,
-                        Err(_) => continue,
-                    };
-                    let Some(latest_version) = parse_asdf_latest_version(&latest_raw) else {
+                    let latest_version =
+                        if let Some(cached) = latest_by_plugin.get(&package.package.name) {
+                            cached.clone()
+                        } else {
+                            // Compatibility mode: skip tools that fail latest-version lookup instead of
+                            // failing the full outdated scan.
+                            let latest = match self.source.latest_version(&package.package.name) {
+                                Ok(output) => parse_asdf_latest_version(&output),
+                                Err(_) => None,
+                            };
+                            latest_by_plugin.insert(package.package.name.clone(), latest.clone());
+                            latest
+                        };
+                    let Some(latest_version) = latest_version else {
                         continue;
                     };
                     if latest_version == installed_version {
@@ -490,7 +498,7 @@ fn parse_asdf_version(output: &str) -> Option<String> {
 }
 
 fn parse_asdf_current(output: &str) -> AdapterResult<Vec<InstalledPackage>> {
-    let mut installed = BTreeMap::new();
+    let mut installed = BTreeSet::new();
 
     for line in output.lines().map(str::trim) {
         if line.is_empty()
@@ -512,7 +520,7 @@ fn parse_asdf_current(output: &str) -> AdapterResult<Vec<InstalledPackage>> {
             continue;
         }
 
-        installed.insert(name.to_string(), version.to_string());
+        installed.insert((name.to_string(), version.to_string()));
     }
 
     Ok(installed
@@ -625,6 +633,20 @@ mod tests {
         assert_eq!(packages.len(), 2);
         assert_eq!(packages[0].package.name, "nodejs");
         assert_eq!(packages[0].installed_version.as_deref(), Some("20.12.2"));
+        assert_eq!(packages[1].package.name, "python");
+        assert_eq!(packages[1].installed_version.as_deref(), Some("3.12.2"));
+    }
+
+    #[test]
+    fn parses_asdf_installed_packages_with_multiple_versions_for_same_plugin() {
+        let output = "\
+python         3.12.2     /Users/dev/.tool-versions
+python         3.11.9     /Users/dev/.tool-versions
+";
+        let packages = parse_asdf_current(output).unwrap();
+        assert_eq!(packages.len(), 2);
+        assert_eq!(packages[0].package.name, "python");
+        assert_eq!(packages[0].installed_version.as_deref(), Some("3.11.9"));
         assert_eq!(packages[1].package.name, "python");
         assert_eq!(packages[1].installed_version.as_deref(), Some("3.12.2"));
     }

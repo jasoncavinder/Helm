@@ -53,6 +53,7 @@ use helm_core::uninstall_preview::{
     PackageUninstallPreviewContext, build_manager_uninstall_preview,
     build_package_uninstall_preview,
 };
+use helm_core::versioning::PackageCoordinate;
 use semver::Version;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -2081,51 +2082,47 @@ fn cmd_packages_show(
     options: GlobalOptions,
     command_args: &[String],
 ) -> Result<(), String> {
-    let (package_name, requested_manager) = parse_package_show_args(command_args)?;
+    let parsed = parse_package_show_args(command_args)?;
+    let mut package_name = parsed.package_name;
+    let requested_manager = parsed.manager;
+    let mut requested_version: Option<String> = None;
+
     let enabled_map = manager_enabled_map(store)?;
     let installed = list_installed_for_enabled(store, &enabled_map)?;
     let outdated = list_outdated_for_enabled(store, &enabled_map)?;
-    let mut rows: Vec<CliPackageManagerView> = Vec::new();
-
-    let mut installed_map: HashMap<ManagerId, InstalledPackage> = HashMap::new();
-    for package in installed {
-        if package.package.name == package_name {
-            installed_map.insert(package.package.manager, package);
+    let mut rows = collect_package_show_rows(
+        installed.as_slice(),
+        outdated.as_slice(),
+        package_name.as_str(),
+        None,
+    );
+    if rows.is_empty() {
+        let coordinate_hint_allowed = requested_manager
+            .map(manager_supports_package_coordinate_versions)
+            .unwrap_or(false);
+        if coordinate_hint_allowed
+            && let Some((coordinate_package_name, coordinate_version)) = parsed.coordinate_hint
+        {
+            let hinted_rows = collect_package_show_rows(
+                installed.as_slice(),
+                outdated.as_slice(),
+                coordinate_package_name.as_str(),
+                Some(coordinate_version.as_str()),
+            );
+            if !hinted_rows.is_empty() {
+                package_name = coordinate_package_name;
+                requested_version = Some(coordinate_version);
+                rows = hinted_rows;
+            }
         }
-    }
-
-    let mut outdated_map: HashMap<ManagerId, OutdatedPackage> = HashMap::new();
-    for package in outdated {
-        if package.package.name == package_name {
-            outdated_map.insert(package.package.manager, package);
-        }
-    }
-
-    let mut candidate_managers: Vec<ManagerId> = installed_map
-        .keys()
-        .copied()
-        .chain(outdated_map.keys().copied())
-        .collect();
-    candidate_managers.sort_by(|left, right| left.as_str().cmp(right.as_str()));
-    candidate_managers.dedup();
-
-    for manager in candidate_managers {
-        let installed_row = installed_map.get(&manager);
-        let outdated_row = outdated_map.get(&manager);
-        rows.push(CliPackageManagerView {
-            manager_id: manager.as_str().to_string(),
-            installed_version: installed_row.and_then(|row| row.installed_version.clone()),
-            candidate_version: outdated_row.map(|row| row.candidate_version.clone()),
-            pinned: installed_row
-                .map(|row| row.pinned)
-                .unwrap_or_else(|| outdated_row.map(|row| row.pinned).unwrap_or(false)),
-            restart_required: outdated_row
-                .map(|row| row.restart_required)
-                .unwrap_or(false),
-        });
     }
 
     if rows.is_empty() {
+        let requested_package_display = if let Some(version) = requested_version.as_deref() {
+            format!("{}@{}", package_name, version)
+        } else {
+            package_name.clone()
+        };
         if let Some(manager) = requested_manager {
             let managers = list_managers(store)?;
             let detected = managers
@@ -2141,11 +2138,11 @@ fn cmd_packages_show(
             }
             return Err(format!(
                 "package '{}' not found under manager '{}'",
-                package_name,
+                requested_package_display,
                 manager.as_str()
             ));
         }
-        return Err(format!("package '{}' not found", package_name));
+        return Err(format!("package '{}' not found", requested_package_display));
     }
 
     if let Some(manager) = requested_manager {
@@ -2153,7 +2150,11 @@ fn cmd_packages_show(
         if rows.is_empty() {
             return Err(format!(
                 "package '{}' not found under manager '{}'",
-                package_name,
+                if let Some(version) = requested_version.as_deref() {
+                    format!("{}@{}", package_name, version)
+                } else {
+                    package_name.clone()
+                },
                 manager.as_str()
             ));
         }
@@ -2212,6 +2213,68 @@ fn cmd_packages_show(
     println!("  pinned: {}", manager.pinned);
     println!("  restart_required: {}", manager.restart_required);
     Ok(())
+}
+
+fn collect_package_show_rows(
+    installed: &[InstalledPackage],
+    outdated: &[OutdatedPackage],
+    package_name: &str,
+    version_filter: Option<&str>,
+) -> Vec<CliPackageManagerView> {
+    let mut rows: Vec<CliPackageManagerView> = Vec::new();
+
+    let mut installed_map: HashMap<ManagerId, &InstalledPackage> = HashMap::new();
+    for package in installed {
+        if package.package.name != package_name {
+            continue;
+        }
+        if let Some(version) = version_filter
+            && package.installed_version.as_deref() != Some(version)
+        {
+            continue;
+        }
+        installed_map.insert(package.package.manager, package);
+    }
+
+    let mut outdated_map: HashMap<ManagerId, &OutdatedPackage> = HashMap::new();
+    for package in outdated {
+        if package.package.name != package_name {
+            continue;
+        }
+        if let Some(version) = version_filter
+            && package.installed_version.as_deref() != Some(version)
+            && package.candidate_version != version
+        {
+            continue;
+        }
+        outdated_map.insert(package.package.manager, package);
+    }
+
+    let mut candidate_managers: Vec<ManagerId> = installed_map
+        .keys()
+        .copied()
+        .chain(outdated_map.keys().copied())
+        .collect();
+    candidate_managers.sort_by(|left, right| left.as_str().cmp(right.as_str()));
+    candidate_managers.dedup();
+
+    for manager in candidate_managers {
+        let installed_row = installed_map.get(&manager);
+        let outdated_row = outdated_map.get(&manager);
+        rows.push(CliPackageManagerView {
+            manager_id: manager.as_str().to_string(),
+            installed_version: installed_row.and_then(|row| row.installed_version.clone()),
+            candidate_version: outdated_row.map(|row| row.candidate_version.clone()),
+            pinned: installed_row
+                .map(|row| row.pinned)
+                .unwrap_or_else(|| outdated_row.map(|row| row.pinned).unwrap_or(false)),
+            restart_required: outdated_row
+                .map(|row| row.restart_required)
+                .unwrap_or(false),
+        });
+    }
+
+    rows
 }
 
 fn cmd_packages_mutation(
@@ -9341,6 +9404,13 @@ fn task_log_to_cli_record(record: helm_core::models::TaskLogRecord) -> CliTaskLo
 }
 
 #[derive(Debug, Clone)]
+struct ParsedPackageShowArgs {
+    package_name: String,
+    manager: Option<ManagerId>,
+    coordinate_hint: Option<(String, String)>,
+}
+
+#[derive(Debug, Clone)]
 struct ParsedPackageMutationArgs {
     package_name: String,
     manager: ManagerId,
@@ -9349,7 +9419,7 @@ struct ParsedPackageMutationArgs {
     yes: bool,
 }
 
-fn parse_package_show_args(command_args: &[String]) -> Result<(String, Option<ManagerId>), String> {
+fn parse_package_show_args(command_args: &[String]) -> Result<ParsedPackageShowArgs, String> {
     if command_args.is_empty() {
         return Err("packages show requires a package name".to_string());
     }
@@ -9381,7 +9451,13 @@ fn parse_package_show_args(command_args: &[String]) -> Result<(String, Option<Ma
         }
     }
 
-    Ok((package_name, selector_manager))
+    let coordinate_hint = package_coordinate_hint(package_name.as_str());
+
+    Ok(ParsedPackageShowArgs {
+        package_name,
+        manager: selector_manager,
+        coordinate_hint,
+    })
 }
 
 fn parse_package_mutation_args(
@@ -9393,7 +9469,7 @@ fn parse_package_mutation_args(
         return Err("package mutation requires a package name".to_string());
     }
 
-    let (package_name, mut selector_manager) = parse_package_selector(&command_args[0])?;
+    let (mut package_name, mut selector_manager) = parse_package_selector(&command_args[0])?;
     let mut manager: Option<ManagerId> = selector_manager.take();
     let mut version: Option<String> = None;
     let uninstall_command = subcommand == "uninstall";
@@ -9451,6 +9527,22 @@ fn parse_package_mutation_args(
     let manager = manager
         .ok_or_else(|| "package mutation requires --manager <id> or name@manager".to_string())?;
 
+    if allow_version
+        && let Some((coordinate_package_name, coordinate_version)) =
+            package_coordinate_hint_for_manager(package_name.as_str(), manager)
+    {
+        if let Some(explicit_version) = version.as_ref()
+            && explicit_version != &coordinate_version
+        {
+            return Err(format!(
+                "conflicting version selectors '{}' and '{}'; remove one or make them match",
+                coordinate_version, explicit_version
+            ));
+        }
+        package_name = coordinate_package_name;
+        version = Some(coordinate_version);
+    }
+
     Ok(ParsedPackageMutationArgs {
         package_name,
         manager,
@@ -9458,6 +9550,26 @@ fn parse_package_mutation_args(
         preview,
         yes,
     })
+}
+
+fn manager_supports_package_coordinate_versions(manager: ManagerId) -> bool {
+    matches!(manager, ManagerId::Asdf | ManagerId::Mise)
+}
+
+fn package_coordinate_hint(raw: &str) -> Option<(String, String)> {
+    let coordinate = PackageCoordinate::parse(raw)?;
+    let selector = coordinate.version_selector?;
+    if coordinate.package_name == raw {
+        return None;
+    }
+    Some((coordinate.package_name, selector.raw))
+}
+
+fn package_coordinate_hint_for_manager(raw: &str, manager: ManagerId) -> Option<(String, String)> {
+    if !manager_supports_package_coordinate_versions(manager) {
+        return None;
+    }
+    package_coordinate_hint(raw)
 }
 
 fn parse_package_selector(raw: &str) -> Result<(String, Option<ManagerId>), String> {
@@ -9470,8 +9582,10 @@ fn parse_package_selector(raw: &str) -> Result<(String, Option<ManagerId>), Stri
         && !name.trim().is_empty()
         && !manager_raw.trim().is_empty()
     {
-        let manager = parse_manager_id(manager_raw.trim())?;
-        return Ok((name.trim().to_string(), Some(manager)));
+        let manager_raw = manager_raw.trim();
+        if let Ok(manager) = parse_manager_id(manager_raw) {
+            return Ok((name.trim().to_string(), Some(manager)));
+        }
     }
 
     Ok((trimmed.to_string(), None))
@@ -13656,6 +13770,9 @@ fn print_packages_show_help() {
     println!();
     println!("DESCRIPTION:");
     println!("  Show manager-scoped package details with ambiguity protection.");
+    println!(
+        "  For asdf/mise package coordinates, <name@selector> is accepted when manager is explicit."
+    );
 }
 
 fn print_packages_install_help() {
@@ -13664,6 +13781,7 @@ fn print_packages_install_help() {
     println!();
     println!("DESCRIPTION:");
     println!("  Install a package via the selected manager.");
+    println!("  For asdf/mise, <name@selector> can be used instead of --version <selector>.");
 }
 
 fn print_packages_uninstall_help() {
@@ -13692,6 +13810,7 @@ fn print_packages_pin_help() {
     println!(
         "  Pin a package version (native manager pinning when available, otherwise virtual pin)."
     );
+    println!("  For asdf/mise, <name@selector> can be used instead of --version <selector>.");
 }
 
 fn print_packages_unpin_help() {
@@ -14409,13 +14528,13 @@ mod tests {
         count_upgrade_step_failures, ensure_cli_onboarding_completed, exit_code_for_error,
         failure_class_hint, list_managers, manager_operation_failure_error, mark_exit_code,
         parse_args, parse_args_with_tty, parse_homebrew_keg_policy_arg, parse_manager_id,
-        parse_manager_mutation_args, parse_package_mutation_args, parse_search_args,
-        parse_structured_terminal_error_message, parse_updates_run_preview_args,
-        provenance_can_self_update, raw_args_request_json, raw_args_request_ndjson,
-        read_update_bytes_with_limit, remove_install_marker_if_channel, resolve_redirect_url,
-        resolve_update_redirect_target, selected_executable_differs_from_default,
-        self_uninstall_recommended_action, should_launch_coordinator_on_demand,
-        strip_exit_code_marker, upgrade_request_name,
+        parse_manager_mutation_args, parse_package_mutation_args, parse_package_selector,
+        parse_package_show_args, parse_search_args, parse_structured_terminal_error_message,
+        parse_updates_run_preview_args, provenance_can_self_update, raw_args_request_json,
+        raw_args_request_ndjson, read_update_bytes_with_limit, remove_install_marker_if_channel,
+        resolve_redirect_url, resolve_update_redirect_target,
+        selected_executable_differs_from_default, self_uninstall_recommended_action,
+        should_launch_coordinator_on_demand, strip_exit_code_marker, upgrade_request_name,
     };
     use helm_core::execution::TaskOutputRecord;
     use helm_core::models::{
@@ -16047,6 +16166,115 @@ mod tests {
         )
         .expect_err("upgrade should reject uninstall-only preview flag");
         assert!(error.contains("unsupported package mutation argument '--preview'"));
+    }
+
+    #[test]
+    fn parse_package_mutation_args_install_infers_coordinate_version_for_asdf() {
+        let parsed = parse_package_mutation_args(
+            "install",
+            &[
+                "python@mambaforge-24.11.0-1".to_string(),
+                "--manager".to_string(),
+                "asdf".to_string(),
+            ],
+            true,
+        )
+        .expect("asdf package coordinate should infer version");
+
+        assert_eq!(parsed.package_name, "python");
+        assert_eq!(parsed.manager, ManagerId::Asdf);
+        assert_eq!(parsed.version.as_deref(), Some("mambaforge-24.11.0-1"));
+    }
+
+    #[test]
+    fn parse_package_mutation_args_install_infers_coordinate_version_for_mise_with_manager_suffix()
+    {
+        let parsed = parse_package_mutation_args(
+            "install",
+            &["java@zulu-jre-javafx-8.92.0.21@mise".to_string()],
+            true,
+        )
+        .expect("mise package coordinate should infer version");
+
+        assert_eq!(parsed.package_name, "java");
+        assert_eq!(parsed.manager, ManagerId::Mise);
+        assert_eq!(parsed.version.as_deref(), Some("zulu-jre-javafx-8.92.0.21"));
+    }
+
+    #[test]
+    fn parse_package_mutation_args_install_keeps_homebrew_formula_name_with_version_suffix() {
+        let parsed = parse_package_mutation_args(
+            "install",
+            &[
+                "python@3.12".to_string(),
+                "--manager".to_string(),
+                "homebrew_formula".to_string(),
+            ],
+            true,
+        )
+        .expect("homebrew formula names with @version should remain package names");
+
+        assert_eq!(parsed.package_name, "python@3.12");
+        assert_eq!(parsed.manager, ManagerId::HomebrewFormula);
+        assert_eq!(parsed.version, None);
+    }
+
+    #[test]
+    fn parse_package_mutation_args_install_rejects_conflicting_coordinate_and_version_flag() {
+        let error = parse_package_mutation_args(
+            "install",
+            &[
+                "python@mambaforge-24.11.0-1".to_string(),
+                "--manager".to_string(),
+                "asdf".to_string(),
+                "--version".to_string(),
+                "3.12.4".to_string(),
+            ],
+            true,
+        )
+        .expect_err("conflicting version selectors should fail");
+        assert!(error.contains("conflicting version selectors"));
+    }
+
+    #[test]
+    fn parse_package_show_args_preserves_raw_package_name_and_records_coordinate_hint() {
+        let parsed = parse_package_show_args(&[
+            "python@mambaforge-24.11.0-1".to_string(),
+            "--manager".to_string(),
+            "asdf".to_string(),
+        ])
+        .expect("show args should parse");
+
+        assert_eq!(parsed.package_name, "python@mambaforge-24.11.0-1");
+        assert_eq!(parsed.manager, Some(ManagerId::Asdf));
+        assert_eq!(
+            parsed.coordinate_hint,
+            Some(("python".to_string(), "mambaforge-24.11.0-1".to_string()))
+        );
+    }
+
+    #[test]
+    fn parse_package_selector_treats_version_suffix_as_package_name() {
+        let (name, manager) = parse_package_selector("python@mambaforge-24.11.0-1")
+            .expect("version-like suffix should parse as package name");
+        assert_eq!(name, "python@mambaforge-24.11.0-1");
+        assert_eq!(manager, None);
+    }
+
+    #[test]
+    fn parse_package_selector_treats_composite_suffix_as_package_name() {
+        let (name, manager) = parse_package_selector("java@zulu-jre-javafx-8.92.0.21")
+            .expect("composite suffix should parse as package name");
+        assert_eq!(name, "java@zulu-jre-javafx-8.92.0.21");
+        assert_eq!(manager, None);
+    }
+
+    #[test]
+    fn parse_package_selector_still_supports_manager_suffix() {
+        let (name, manager) = parse_package_selector("git@homebrew_formula")
+            .expect("manager suffix should still parse");
+        assert_eq!(name, "git");
+        assert_eq!(manager, Some(ManagerId::HomebrewFormula));
     }
 
     #[test]
