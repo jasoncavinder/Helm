@@ -109,7 +109,7 @@ struct PackagesSectionView: View {
                     LazyVStack(alignment: .leading, spacing: 6) {
                         ForEach(rows) { packageRow in
                             let preferredManagerId = activeManagerFilterId
-                                ?? core.preferredManagerId(forPackageName: packageRow.package.name)
+                                ?? core.preferredManagerId(for: packageRow.package)
                             let package = packageRow.actionTarget(preferredManagerId: preferredManagerId)
                             let primaryAction = primaryPackageAction(
                                 for: package,
@@ -121,6 +121,7 @@ struct PackagesSectionView: View {
                                     managerDisplayNames: packageRow.managerDisplayNames,
                                     isSelected: packageRow.containsPackageId(context.selectedPackageId)
                                 )
+                                .id("\(package.id)|\(package.pinned ? 1 : 0)")
                                 .contentShape(Rectangle())
                                 .onTapGesture {
                                     context.selectedPackageId = package.id
@@ -165,16 +166,17 @@ struct PackagesSectionView: View {
                 refreshPackageSnapshots()
             }
         }
-        .onChange(of: core.installedPackages) { _ in refreshPackageSnapshots() }
-        .onChange(of: core.outdatedPackages) { _ in refreshPackageSnapshots() }
-        .onChange(of: core.cachedAvailablePackages) { _ in refreshPackageSnapshots() }
-        .onChange(of: core.searchResults) { _ in
+        .onReceive(core.$installedPackages) { _ in refreshPackageSnapshots() }
+        .onReceive(core.$outdatedPackages) { _ in refreshPackageSnapshots() }
+        .onReceive(core.$cachedAvailablePackages) { _ in refreshPackageSnapshots() }
+        .onReceive(core.$searchResults) { _ in
             let hasQuery = !context.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             if hasQuery {
                 refreshPackageSnapshots()
             }
         }
         .onChange(of: core.installActionPackageIds) { _ in refreshPackageSnapshots() }
+        .onChange(of: core.pinActionPackageIds) { _ in refreshPackageSnapshots() }
         .onChange(of: context.searchQuery) { _ in refreshPackageSnapshots() }
         .onChange(of: selectedStatusFilter) { _ in refreshPackageSnapshots() }
         .onChange(of: showPinnedOnly) { _ in refreshPackageSnapshots() }
@@ -215,7 +217,7 @@ struct PackagesSectionView: View {
         }
         var installableNames = Set<String>()
         for package in allPackages {
-            let normalizedName = normalizedPackageName(package.name)
+            let normalizedName = normalizedPackageIdentity(package)
             if package.status == .available, core.canInstallPackage(package, includeAlternates: false) {
                 installableNames.insert(normalizedName)
             }
@@ -231,10 +233,11 @@ struct PackagesSectionView: View {
         )
     }
 
-    private func normalizedPackageName(_ packageName: String) -> String {
-        packageName
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
+    private func normalizedPackageIdentity(_ package: PackageItem) -> String {
+        PackageActionTracking.normalizedPackageIdentityKey(
+            name: package.name,
+            version: package.version
+        )
     }
 
     private func primaryPackageAction(
@@ -253,7 +256,7 @@ struct PackagesSectionView: View {
         }
 
         if package.status == .available {
-            let packageName = normalizedPackageName(package.name)
+            let packageName = normalizedPackageIdentity(package)
             let inFlight = installActionPackageNames.contains(packageName)
             let canInstall = managerConstraint == nil
                 ? installableAvailablePackageNames.contains(packageName)
@@ -308,7 +311,7 @@ struct PackagesSectionView: View {
     private var installManagerSheet: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(
-                "\(L10n.App.Packages.Action.install.localized) \(installSelectionPackage?.name ?? "")"
+                "\(L10n.App.Packages.Action.install.localized) \(installSelectionPackage?.displayName ?? "")"
             )
             .font(.headline)
 

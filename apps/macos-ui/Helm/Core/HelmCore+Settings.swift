@@ -489,12 +489,59 @@ extension HelmCore {
         return packageManagerPreferencesByName[key]
     }
 
+    func preferredManagerId(for package: PackageItem) -> String? {
+        let identityKey = normalizedPackagePreferenceKey(
+            PackageIdentity.normalizedIdentityKey(
+                name: package.name,
+                version: package.version
+            )
+        )
+        if !identityKey.isEmpty, let preferred = packageManagerPreferencesByName[identityKey] {
+            return preferred
+        }
+        let fallbackNameKey = normalizedPackagePreferenceKey(package.name)
+        if fallbackNameKey != identityKey {
+            return packageManagerPreferencesByName[fallbackNameKey]
+        }
+        return nil
+    }
+
     func setPreferredManagerId(
         _ managerId: String?,
         forPackageName packageName: String,
         completion: ((Bool) -> Void)? = nil
     ) {
         let normalizedPackageName = normalizedPackagePreferenceKey(packageName)
+        setPreferredManagerId(
+            managerId,
+            forPreferenceKey: normalizedPackageName,
+            completion: completion
+        )
+    }
+
+    func setPreferredManagerId(
+        _ managerId: String?,
+        for package: PackageItem,
+        completion: ((Bool) -> Void)? = nil
+    ) {
+        let normalizedIdentityKey = normalizedPackagePreferenceKey(
+            PackageIdentity.normalizedIdentityKey(
+                name: package.name,
+                version: package.version
+            )
+        )
+        setPreferredManagerId(
+            managerId,
+            forPreferenceKey: normalizedIdentityKey,
+            completion: completion
+        )
+    }
+
+    private func setPreferredManagerId(
+        _ managerId: String?,
+        forPreferenceKey normalizedPackageName: String,
+        completion: ((Bool) -> Void)?
+    ) {
         guard !normalizedPackageName.isEmpty else {
             completion?(false)
             return
@@ -812,9 +859,11 @@ extension HelmCore {
         case "refresh":
             return L10n.Common.refresh.localized
         case "detection":
-            return L10n.Common.initializing.localized
+            return L10n.Common.detecting.localized
         case "search":
             return L10n.App.Dashboard.Status.searchRemote.localized
+        case "catalog_sync":
+            return L10n.Service.Task.Label.searchManager.localized
         case "install":
             return L10n.Common.install.localized
         case "uninstall":

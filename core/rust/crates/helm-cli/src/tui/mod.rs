@@ -10,6 +10,7 @@ use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
 use helm_core::persistence::{DetectionStore, PackageStore, PinStore, TaskStore};
+use helm_core::versioning::PackageCoordinate;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
@@ -48,6 +49,53 @@ const REMOTE_SEARCH_DEBOUNCE_MS: u64 = 350;
 
 const SPLASH_LARGE: &str = include_str!("assets/splash_large.txt");
 const SPLASH_COMPACT: &str = include_str!("assets/splash_compact.txt");
+
+fn package_manager_preference_key(package_name: &str, version: Option<&str>) -> String {
+    let normalized_name = package_name.trim().to_ascii_lowercase();
+    if normalized_name.is_empty() {
+        return String::new();
+    }
+
+    let normalized_version = version.map(str::trim).filter(|value| !value.is_empty());
+    let Some(normalized_version) = normalized_version else {
+        return normalized_name;
+    };
+
+    let coordinate_raw = format!("{}@{}", package_name.trim(), normalized_version);
+    let qualifier_key = PackageCoordinate::parse(coordinate_raw.as_str())
+        .and_then(|coordinate| coordinate.version_selector)
+        .map(|selector| selector.qualifier_atoms())
+        .filter(|atoms| !atoms.is_empty())
+        .map(|atoms| atoms.join("-").trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty());
+
+    if let Some(qualifier_key) = qualifier_key {
+        format!("{}@{}", normalized_name, qualifier_key)
+    } else {
+        normalized_name
+    }
+}
+
+fn preferred_manager_for_package(
+    package_manager_preferences: &HashMap<String, ManagerId>,
+    package_name: &str,
+    version: Option<&str>,
+) -> Option<ManagerId> {
+    let preference_key = package_manager_preference_key(package_name, version);
+    if !preference_key.is_empty()
+        && let Some(preferred) = package_manager_preferences.get(preference_key.as_str())
+    {
+        return Some(*preferred);
+    }
+
+    let fallback_key = package_name.trim().to_ascii_lowercase();
+    if fallback_key.is_empty() || fallback_key == preference_key {
+        return None;
+    }
+    package_manager_preferences
+        .get(fallback_key.as_str())
+        .copied()
+}
 
 fn mise_uninstall_options_label(
     options: &helm_core::manager_lifecycle::ManagerUninstallOptions,
@@ -1382,10 +1430,16 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
             if app.section == Section::Packages
                 && let Some(package) = app.selected_package()
             {
-                match store.set_package_manager_preference(
+                let preference_key = package_manager_preference_key(
                     package.package_name.as_str(),
-                    Some(package.manager),
-                ) {
+                    package
+                        .installed_version
+                        .as_deref()
+                        .or(package.candidate_version.as_deref()),
+                );
+                match store
+                    .set_package_manager_preference(preference_key.as_str(), Some(package.manager))
+                {
                     Ok(()) => {
                         app.note_success(format!(
                             "Preferred manager for '{}' set to {}.",
@@ -1413,7 +1467,14 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
             if app.section == Section::Packages
                 && let Some(package) = app.selected_package()
             {
-                match store.set_package_manager_preference(package.package_name.as_str(), None) {
+                let preference_key = package_manager_preference_key(
+                    package.package_name.as_str(),
+                    package
+                        .installed_version
+                        .as_deref()
+                        .or(package.candidate_version.as_deref()),
+                );
+                match store.set_package_manager_preference(preference_key.as_str(), None) {
                     Ok(()) => {
                         app.note_success(format!(
                             "Preferred manager for '{}' cleared.",
@@ -3871,8 +3932,11 @@ fn build_package_rows(
 
     let mut rows_by_key: HashMap<(ManagerId, String), PackageRow> = HashMap::new();
     for package in installed {
-        let preference_key = package.package.name.trim().to_ascii_lowercase();
-        let preferred_manager = package_manager_preferences.get(&preference_key).copied();
+        let preferred_manager = preferred_manager_for_package(
+            &package_manager_preferences,
+            package.package.name.as_str(),
+            package.installed_version.as_deref(),
+        );
         let homebrew_keg_policy = if package.package.manager == ManagerId::HomebrewFormula {
             let policy = homebrew_overrides
                 .get(package.package.name.as_str())
@@ -3917,8 +3981,11 @@ fn build_package_rows(
             continue;
         }
 
-        let preference_key = package_name.trim().to_ascii_lowercase();
-        let preferred_manager = package_manager_preferences.get(&preference_key).copied();
+        let preferred_manager = preferred_manager_for_package(
+            &package_manager_preferences,
+            package_name.as_str(),
+            result.result.version.as_deref(),
+        );
         let homebrew_keg_policy = if manager == ManagerId::HomebrewFormula {
             let policy = homebrew_overrides
                 .get(package_name.as_str())

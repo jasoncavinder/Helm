@@ -1,20 +1,24 @@
-use std::collections::HashMap;
+use std::cmp::Ordering;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::time::Duration;
 
 use serde::Deserialize;
+use serde_json::Value;
 
 use crate::adapters::manager::{AdapterRequest, AdapterResponse, AdapterResult, ManagerAdapter};
 use crate::execution::{CommandSpec, ProcessSpawnRequest};
 use crate::models::{
-    ActionSafety, Capability, CoreError, CoreErrorKind, DetectionInfo, InstalledPackage,
-    ManagerAction, ManagerAuthority, ManagerCategory, ManagerDescriptor, ManagerId,
-    OutdatedPackage, PackageRef, TaskId, TaskType,
+    ActionSafety, CachedSearchResult, Capability, CoreError, CoreErrorKind, DetectionInfo,
+    InstalledPackage, ManagerAction, ManagerAuthority, ManagerCategory, ManagerDescriptor,
+    ManagerId, OutdatedPackage, PackageCandidate, PackageRef, SearchQuery, TaskId, TaskType,
 };
+use crate::versioning::{PackageCoordinate, VersionSelector};
 
 const MISE_CAPABILITIES: &[Capability] = &[
     Capability::Detect,
     Capability::Refresh,
+    Capability::Search,
     Capability::ListInstalled,
     Capability::ListOutdated,
     Capability::Install,
@@ -33,6 +37,8 @@ const MISE_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
 const MISE_COMMAND: &str = "mise";
 const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
 const LIST_TIMEOUT: Duration = Duration::from_secs(120);
+const SEARCH_TIMEOUT: Duration = Duration::from_secs(180);
+const REGISTRY_TIMEOUT: Duration = Duration::from_secs(120);
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 const INSTALL_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 const UNINSTALL_TIMEOUT: Duration = Duration::from_secs(25 * 60);
@@ -62,7 +68,9 @@ pub trait MiseSource: Send + Sync {
     fn detect(&self) -> AdapterResult<MiseDetectOutput>;
     fn list_installed(&self) -> AdapterResult<String>;
     fn list_outdated(&self) -> AdapterResult<String>;
+    fn list_remote_packages(&self) -> AdapterResult<Vec<MiseRemotePackage>>;
     fn install_self(&self, source: MiseInstallSource) -> AdapterResult<String>;
+    fn install_tool(&self, name: &str, version: Option<&str>) -> AdapterResult<String>;
     fn self_uninstall(&self, mode: MiseUninstallMode) -> AdapterResult<String>;
     fn upgrade_tool(&self, name: &str) -> AdapterResult<String>;
 }
@@ -115,14 +123,44 @@ impl<S: MiseSource> ManagerAdapter for MiseAdapter<S> {
                 let packages = parse_mise_outdated(&raw)?;
                 Ok(AdapterResponse::OutdatedPackages(packages))
             }
+            AdapterRequest::Search(search_request) => {
+                let packages = self.source.list_remote_packages()?;
+                let results = filter_mise_remote_packages(&packages, &search_request.query);
+                Ok(AdapterResponse::SearchResults(results))
+            }
             AdapterRequest::Install(install_request) => {
-                let source = parse_install_source(install_request.version.as_deref())?;
-                let _ = self.source.install_self(source)?;
+                if install_request.package.name == "__self__" {
+                    let source = parse_install_source(install_request.version.as_deref())?;
+                    let _ = self.source.install_self(source)?;
+                    return Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
+                        package: install_request.package,
+                        action: ManagerAction::Install,
+                        before_version: None,
+                        after_version: None,
+                    }));
+                }
+
+                let (tool_name, requested_version) = parse_package_install_target(
+                    install_request.package.name.as_str(),
+                    install_request.version.as_deref(),
+                )?;
+                crate::adapters::validate_package_identifier(
+                    ManagerId::Mise,
+                    ManagerAction::Install,
+                    tool_name.as_str(),
+                )?;
+                let _ = self
+                    .source
+                    .install_tool(tool_name.as_str(), requested_version.as_deref())?;
+
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
-                    package: install_request.package,
+                    package: PackageRef {
+                        manager: ManagerId::Mise,
+                        name: tool_name,
+                    },
                     action: ManagerAction::Install,
                     before_version: None,
-                    after_version: None,
+                    after_version: requested_version,
                 }))
             }
             AdapterRequest::Uninstall(uninstall_request) => {
@@ -215,6 +253,26 @@ pub fn mise_list_outdated_request(task_id: Option<TaskId>) -> ProcessSpawnReques
     )
 }
 
+pub fn mise_list_remote_request(task_id: Option<TaskId>) -> ProcessSpawnRequest {
+    mise_request(
+        task_id,
+        TaskType::Search,
+        ManagerAction::Search,
+        CommandSpec::new(MISE_COMMAND).args(["ls-remote", "--all", "--json"]),
+        SEARCH_TIMEOUT,
+    )
+}
+
+pub fn mise_registry_request(task_id: Option<TaskId>) -> ProcessSpawnRequest {
+    mise_request(
+        task_id,
+        TaskType::Search,
+        ManagerAction::Search,
+        CommandSpec::new(MISE_COMMAND).args(["registry", "--json"]),
+        REGISTRY_TIMEOUT,
+    )
+}
+
 pub fn mise_upgrade_request(task_id: Option<TaskId>, name: &str) -> ProcessSpawnRequest {
     let command = if name == "__all__" {
         CommandSpec::new(MISE_COMMAND).arg("upgrade")
@@ -252,6 +310,25 @@ pub fn mise_run_downloaded_install_script_request(
         TaskType::Install,
         ManagerAction::Install,
         CommandSpec::new("sh").arg(script_path),
+        INSTALL_TIMEOUT,
+    )
+    .idle_timeout(INSTALL_IDLE_TIMEOUT)
+}
+
+pub fn mise_install_tool_request(
+    task_id: Option<TaskId>,
+    name: &str,
+    version: Option<&str>,
+) -> ProcessSpawnRequest {
+    let target = match version.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(version) => format!("{name}@{version}"),
+        None => name.to_string(),
+    };
+    mise_request(
+        task_id,
+        TaskType::Install,
+        ManagerAction::Install,
+        CommandSpec::new(MISE_COMMAND).args(["use", "--global", target.as_str()]),
         INSTALL_TIMEOUT,
     )
     .idle_timeout(INSTALL_IDLE_TIMEOUT)
@@ -331,6 +408,58 @@ fn parse_install_source(version: Option<&str>) -> AdapterResult<MiseInstallSourc
         kind: CoreErrorKind::InvalidInput,
         message: format!("unsupported mise install source: {version}"),
     })
+}
+
+fn parse_package_install_target(
+    package_name: &str,
+    version: Option<&str>,
+) -> AdapterResult<(String, Option<String>)> {
+    let normalized_package_name = package_name.trim();
+    if normalized_package_name.is_empty() {
+        return Err(CoreError {
+            manager: Some(ManagerId::Mise),
+            task: Some(TaskType::Install),
+            action: Some(ManagerAction::Install),
+            kind: CoreErrorKind::InvalidInput,
+            message: "mise package install requires a non-empty package name".to_string(),
+        });
+    }
+
+    let explicit_version = version
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+
+    let coordinate = PackageCoordinate::parse(normalized_package_name).ok_or(CoreError {
+        manager: Some(ManagerId::Mise),
+        task: Some(TaskType::Install),
+        action: Some(ManagerAction::Install),
+        kind: CoreErrorKind::InvalidInput,
+        message: format!("invalid mise package identifier: {normalized_package_name}"),
+    })?;
+    let coordinate_version = coordinate
+        .version_selector
+        .map(|selector| selector.raw.trim().to_string())
+        .filter(|value| !value.is_empty());
+
+    if let (Some(coordinate_version), Some(explicit_version)) =
+        (coordinate_version.as_ref(), explicit_version.as_ref())
+        && coordinate_version != explicit_version
+    {
+        return Err(CoreError {
+            manager: Some(ManagerId::Mise),
+            task: Some(TaskType::Install),
+            action: Some(ManagerAction::Install),
+            kind: CoreErrorKind::InvalidInput,
+            message: format!(
+                "conflicting mise version selectors '{coordinate_version}' and '{explicit_version}'"
+            ),
+        });
+    }
+
+    let tool_name = coordinate.package_name.trim().to_string();
+    let requested_version = explicit_version.or(coordinate_version);
+    Ok((tool_name, requested_version))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -427,6 +556,335 @@ fn parse_mise_outdated(json: &str) -> AdapterResult<Vec<OutdatedPackage>> {
     Ok(packages)
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MiseRemotePackage {
+    pub name: String,
+    pub latest_version: Option<String>,
+    pub summary: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MiseRemoteEntry {
+    tool: String,
+    #[serde(default)]
+    version: Option<String>,
+    #[serde(default)]
+    created_at: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct MiseRemoteVersionCandidate {
+    version: String,
+    created_at: Option<String>,
+    stable: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MiseRegistryPackage {
+    pub name: String,
+    pub summary: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MiseRegistryEntry {
+    #[serde(default)]
+    short: Option<Value>,
+    #[serde(default)]
+    aliases: Vec<Value>,
+    #[serde(default)]
+    description: Option<String>,
+}
+
+pub(crate) fn parse_mise_remote_catalog(json: &str) -> AdapterResult<Vec<MiseRemotePackage>> {
+    let parsed = parse_mise_remote_entries(json)?;
+    let mut by_name_and_variant: BTreeMap<(String, String), Option<MiseRemoteVersionCandidate>> =
+        BTreeMap::new();
+
+    for entry in parsed {
+        let name = entry.tool.trim();
+        if name.is_empty() {
+            continue;
+        }
+
+        let candidate = entry
+            .version
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|version| MiseRemoteVersionCandidate {
+                version: version.to_string(),
+                created_at: normalize_optional_text(entry.created_at.clone()),
+                stable: looks_like_stable_mise_version(version),
+            });
+
+        let variant_key = candidate
+            .as_ref()
+            .and_then(|value| mise_variant_qualifier_key(value.version.as_str()))
+            .unwrap_or_default();
+        let current = by_name_and_variant
+            .entry((name.to_string(), variant_key))
+            .or_insert(None);
+        if let Some(next) = candidate {
+            let replace = match current.as_ref() {
+                Some(existing) => should_replace_mise_remote_version(existing, &next),
+                None => true,
+            };
+            if replace {
+                *current = Some(next);
+            }
+        }
+    }
+
+    Ok(by_name_and_variant
+        .into_iter()
+        .map(|((name, _), selected)| MiseRemotePackage {
+            name,
+            latest_version: selected.map(|version| version.version),
+            summary: None,
+        })
+        .collect())
+}
+
+fn parse_mise_remote_entries(json: &str) -> AdapterResult<Vec<MiseRemoteEntry>> {
+    if json.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    match serde_json::from_str::<Vec<MiseRemoteEntry>>(json) {
+        Ok(entries) => Ok(entries),
+        Err(primary_error) => {
+            let first_array = json.find('[');
+            let last_array = json.rfind(']');
+            if let (Some(start), Some(end)) = (first_array, last_array)
+                && start <= end
+            {
+                let payload = &json[start..=end];
+                return serde_json::from_str::<Vec<MiseRemoteEntry>>(payload).map_err(|error| {
+                    parse_error(&format!(
+                        "invalid mise ls-remote JSON: {primary_error}; fallback parse failed: {error}"
+                    ))
+                });
+            }
+            Err(parse_error(&format!(
+                "invalid mise ls-remote JSON: {primary_error}"
+            )))
+        }
+    }
+}
+
+pub(crate) fn parse_mise_registry_catalog(json: &str) -> AdapterResult<Vec<MiseRegistryPackage>> {
+    let parsed = parse_mise_registry_entries(json)?;
+    let mut by_name: BTreeMap<String, Option<String>> = BTreeMap::new();
+
+    for entry in parsed {
+        let summary = normalize_optional_text(entry.description);
+        let mut names = Vec::new();
+        if let Some(short) = entry.short.as_ref().and_then(parse_registry_name_value) {
+            names.push(short);
+        }
+        for alias in entry.aliases {
+            if let Some(alias_name) = parse_registry_name_value(&alias) {
+                names.push(alias_name);
+            }
+        }
+
+        for name in names {
+            let current = by_name.entry(name).or_insert(None);
+            if current.is_none() && summary.is_some() {
+                *current = summary.clone();
+            }
+        }
+    }
+
+    Ok(by_name
+        .into_iter()
+        .map(|(name, summary)| MiseRegistryPackage { name, summary })
+        .collect())
+}
+
+fn parse_mise_registry_entries(json: &str) -> AdapterResult<Vec<MiseRegistryEntry>> {
+    if json.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    match serde_json::from_str::<Vec<MiseRegistryEntry>>(json) {
+        Ok(entries) => Ok(entries),
+        Err(primary_error) => {
+            let first_array = json.find('[');
+            let last_array = json.rfind(']');
+            if let (Some(start), Some(end)) = (first_array, last_array)
+                && start <= end
+            {
+                let payload = &json[start..=end];
+                return serde_json::from_str::<Vec<MiseRegistryEntry>>(payload).map_err(|error| {
+                    parse_error(&format!(
+                        "invalid mise registry JSON: {primary_error}; fallback parse failed: {error}"
+                    ))
+                });
+            }
+            Err(parse_error(&format!(
+                "invalid mise registry JSON: {primary_error}"
+            )))
+        }
+    }
+}
+
+fn parse_registry_name_value(value: &Value) -> Option<String> {
+    let Value::String(raw) = value else {
+        return None;
+    };
+    let normalized = raw.trim();
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized.to_string())
+    }
+}
+
+fn should_replace_mise_remote_version(
+    current: &MiseRemoteVersionCandidate,
+    candidate: &MiseRemoteVersionCandidate,
+) -> bool {
+    if current.stable != candidate.stable {
+        return candidate.stable;
+    }
+
+    match candidate.created_at.cmp(&current.created_at) {
+        Ordering::Greater => true,
+        Ordering::Less => false,
+        Ordering::Equal => candidate.version > current.version,
+    }
+}
+
+fn looks_like_stable_mise_version(version: &str) -> bool {
+    version
+        .strip_prefix('v')
+        .unwrap_or(version)
+        .chars()
+        .next()
+        .is_some_and(|character| character.is_ascii_digit())
+}
+
+fn mise_variant_qualifier_key(version: &str) -> Option<String> {
+    let normalized_version = version.trim();
+    if normalized_version.is_empty() {
+        return None;
+    }
+
+    let selector = VersionSelector::parse(normalized_version);
+    if selector.first_release_atom == Some(0) {
+        return None;
+    }
+    let qualifier = selector
+        .qualifier_atoms()
+        .join("-")
+        .trim()
+        .to_ascii_lowercase();
+    if qualifier.is_empty() {
+        None
+    } else {
+        Some(qualifier)
+    }
+}
+
+fn mise_package_identity_key(name: &str, version: Option<&str>) -> String {
+    let normalized_name = name.trim().to_ascii_lowercase();
+    if normalized_name.is_empty() {
+        return String::new();
+    }
+    let qualifier = version.and_then(mise_variant_qualifier_key);
+    if let Some(qualifier) = qualifier {
+        format!("{normalized_name}@{qualifier}")
+    } else {
+        normalized_name
+    }
+}
+
+fn mise_query_identity_key(query: &str) -> String {
+    let trimmed_query = query.trim();
+    if trimmed_query.is_empty() {
+        return String::new();
+    }
+
+    let parsed = PackageCoordinate::parse(trimmed_query);
+    let Some(parsed) = parsed else {
+        return trimmed_query.to_ascii_lowercase();
+    };
+
+    let normalized_name = parsed.package_name.trim().to_ascii_lowercase();
+    if normalized_name.is_empty() {
+        return String::new();
+    }
+
+    let qualifier = parsed.version_selector.and_then(|selector| {
+        if selector.first_release_atom == Some(0) {
+            return None;
+        }
+        let qualifier = selector
+            .qualifier_atoms()
+            .join("-")
+            .trim()
+            .to_ascii_lowercase();
+        if qualifier.is_empty() {
+            None
+        } else {
+            Some(qualifier)
+        }
+    });
+
+    if let Some(qualifier) = qualifier {
+        format!("{normalized_name}@{qualifier}")
+    } else {
+        normalized_name
+    }
+}
+
+fn filter_mise_remote_packages(
+    packages: &[MiseRemotePackage],
+    query: &SearchQuery,
+) -> Vec<CachedSearchResult> {
+    let needle = query.text.trim().to_ascii_lowercase();
+    let normalized_query_identity = mise_query_identity_key(query.text.as_str());
+    let mut results = Vec::new();
+
+    for package in packages {
+        if package.name.is_empty() {
+            continue;
+        }
+        if !needle.is_empty() {
+            let name_matches = package.name.to_ascii_lowercase().contains(needle.as_str());
+            let identity_key =
+                mise_package_identity_key(package.name.as_str(), package.latest_version.as_deref());
+            let identity_matches = !normalized_query_identity.is_empty()
+                && identity_key.contains(normalized_query_identity.as_str());
+            if !name_matches && !identity_matches {
+                continue;
+            }
+        }
+        results.push(CachedSearchResult {
+            result: PackageCandidate {
+                package: PackageRef {
+                    manager: ManagerId::Mise,
+                    name: package.name.clone(),
+                },
+                version: package.latest_version.clone(),
+                summary: package.summary.clone(),
+            },
+            source_manager: ManagerId::Mise,
+            originating_query: query.text.clone(),
+            cached_at: query.issued_at,
+        });
+    }
+
+    results.sort_by(|left, right| {
+        left.result
+            .package
+            .name
+            .to_ascii_lowercase()
+            .cmp(&right.result.package.name.to_ascii_lowercase())
+            .then_with(|| left.result.version.cmp(&right.result.version))
+    });
+    results
+}
+
 fn parse_error(message: &str) -> CoreError {
     CoreError {
         manager: Some(ManagerId::Mise),
@@ -437,29 +895,52 @@ fn parse_error(message: &str) -> CoreError {
     }
 }
 
+fn normalize_optional_text(value: Option<String>) -> Option<String> {
+    value.and_then(|text| {
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::path::PathBuf;
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::time::UNIX_EPOCH;
 
     use crate::adapters::manager::{
         AdapterRequest, AdapterResponse, AdapterResult, DetectRequest, ListInstalledRequest,
-        ListOutdatedRequest, ManagerAdapter,
+        ListOutdatedRequest, ManagerAdapter, SearchRequest,
     };
-    use crate::models::{CoreErrorKind, ManagerAction, ManagerId, TaskId, TaskType};
+    use crate::models::{CoreErrorKind, ManagerAction, ManagerId, SearchQuery, TaskId, TaskType};
 
     use super::{
         MiseAdapter, MiseDetectOutput, MiseSource, MiseUninstallMode, mise_detect_request,
-        mise_download_install_script_request, mise_implode_request, mise_list_installed_request,
-        mise_list_outdated_request, mise_run_downloaded_install_script_request,
-        mise_upgrade_request, parse_install_source, parse_mise_installed, parse_mise_outdated,
-        parse_mise_version, parse_uninstall_mode,
+        mise_download_install_script_request, mise_implode_request, mise_install_tool_request,
+        mise_list_installed_request, mise_list_outdated_request, mise_list_remote_request,
+        mise_registry_request, mise_run_downloaded_install_script_request, mise_upgrade_request,
+        parse_install_source, parse_mise_installed, parse_mise_outdated,
+        parse_mise_registry_catalog, parse_mise_remote_catalog, parse_mise_version,
+        parse_package_install_target, parse_uninstall_mode,
     };
 
     const VERSION_FIXTURE: &str = include_str!("../../tests/fixtures/mise/version.txt");
     const INSTALLED_FIXTURE: &str = include_str!("../../tests/fixtures/mise/ls_json.txt");
     const OUTDATED_FIXTURE: &str = include_str!("../../tests/fixtures/mise/outdated_json.txt");
+    const REMOTE_FIXTURE: &str = include_str!("../../tests/fixtures/mise/ls_remote_all_json.txt");
+    const REGISTRY_FIXTURE: &str = r#"
+[
+  {"short":"python","description":"python language","aliases":["python3"]},
+  {"short":"java","description":"jdk java"},
+  {"short":"jq","description":"JSON processor"}
+]
+"#;
 
     #[test]
     fn parses_mise_version_from_standard_banner() {
@@ -544,6 +1025,130 @@ mod tests {
     }
 
     #[test]
+    fn parses_remote_catalog_from_fixture() {
+        let packages = parse_mise_remote_catalog(REMOTE_FIXTURE).unwrap();
+        assert_eq!(packages.len(), 6);
+
+        let node_versions = packages
+            .iter()
+            .filter(|package| package.name == "node")
+            .map(|package| package.latest_version.clone().unwrap_or_default())
+            .collect::<Vec<_>>();
+        assert_eq!(node_versions, vec!["22.10.0".to_string()]);
+        assert!(
+            packages
+                .iter()
+                .all(|package| package.summary.is_none()),
+            "remote catalog should not inject summaries on its own"
+        );
+
+        let python_versions = packages
+            .iter()
+            .filter(|package| package.name == "python")
+            .map(|package| package.latest_version.clone().unwrap_or_default())
+            .collect::<Vec<_>>();
+        assert_eq!(python_versions, vec!["3.13.0".to_string()]);
+
+        let rust_versions = packages
+            .iter()
+            .filter(|package| package.name == "rust")
+            .map(|package| package.latest_version.clone().unwrap_or_default())
+            .collect::<Vec<_>>();
+        assert_eq!(rust_versions.len(), 2);
+        assert!(rust_versions.contains(&"1.83.0".to_string()));
+        assert!(rust_versions.contains(&"beta".to_string()));
+
+        let zig_versions = packages
+            .iter()
+            .filter(|package| package.name == "zig")
+            .map(|package| package.latest_version.clone().unwrap_or_default())
+            .collect::<Vec<_>>();
+        assert_eq!(zig_versions.len(), 2);
+        assert!(zig_versions.contains(&"0.14.1".to_string()));
+        assert!(zig_versions.contains(&"master".to_string()));
+    }
+
+    #[test]
+    fn parses_remote_catalog_with_prefixed_warning_lines() {
+        let raw = format!("mise WARN cache issue\n{REMOTE_FIXTURE}");
+        let packages = parse_mise_remote_catalog(raw.as_str()).unwrap();
+        assert!(!packages.is_empty());
+        let zig_versions = packages
+            .iter()
+            .filter(|package| package.name == "zig")
+            .map(|package| package.latest_version.clone().unwrap_or_default())
+            .collect::<Vec<_>>();
+        assert!(zig_versions.contains(&"0.14.1".to_string()));
+        assert!(zig_versions.contains(&"master".to_string()));
+    }
+
+    #[test]
+    fn parses_empty_remote_catalog_as_empty_list() {
+        let packages = parse_mise_remote_catalog("   ").unwrap();
+        assert!(packages.is_empty());
+    }
+
+    #[test]
+    fn parses_registry_catalog_from_fixture() {
+        let packages = parse_mise_registry_catalog(REGISTRY_FIXTURE).unwrap();
+        let by_name = packages
+            .iter()
+            .map(|package| (package.name.as_str(), package.summary.as_deref()))
+            .collect::<HashMap<_, _>>();
+
+        assert_eq!(by_name.get("python"), Some(&Some("python language")));
+        assert_eq!(by_name.get("python3"), Some(&Some("python language")));
+        assert_eq!(by_name.get("java"), Some(&Some("jdk java")));
+        assert_eq!(by_name.get("jq"), Some(&Some("JSON processor")));
+    }
+
+    #[test]
+    fn parses_registry_catalog_with_prefixed_warning_lines() {
+        let raw = format!("mise WARN stale lockfile\n{REGISTRY_FIXTURE}");
+        let packages = parse_mise_registry_catalog(raw.as_str()).unwrap();
+        assert!(!packages.is_empty());
+        assert!(packages.iter().any(|package| package.name == "python"));
+    }
+
+    #[test]
+    fn parses_empty_registry_catalog_as_empty_list() {
+        let packages = parse_mise_registry_catalog(" ").unwrap();
+        assert!(packages.is_empty());
+    }
+
+    #[test]
+    fn parses_remote_catalog_with_distinct_qualifier_variants() {
+        let raw = r#"
+[
+  {"tool":"python","version":"3.13.2","created_at":"2026-01-10T00:00:00Z"},
+  {"tool":"python","version":"mambaforge-24.11.0-1","created_at":"2026-01-11T00:00:00Z"},
+  {"tool":"python","version":"mambaforge-24.12.0-1","created_at":"2026-02-11T00:00:00Z"},
+  {"tool":"java","version":"8.92.0.21","created_at":"2026-01-09T00:00:00Z"},
+  {"tool":"java","version":"zulu-jre-javafx-8.92.0.21","created_at":"2026-01-12T00:00:00Z"}
+]
+"#;
+        let packages = parse_mise_remote_catalog(raw).unwrap();
+
+        let python_versions = packages
+            .iter()
+            .filter(|package| package.name == "python")
+            .map(|package| package.latest_version.clone().unwrap_or_default())
+            .collect::<Vec<_>>();
+        assert_eq!(python_versions.len(), 2);
+        assert!(python_versions.contains(&"3.13.2".to_string()));
+        assert!(python_versions.contains(&"mambaforge-24.12.0-1".to_string()));
+
+        let java_versions = packages
+            .iter()
+            .filter(|package| package.name == "java")
+            .map(|package| package.latest_version.clone().unwrap_or_default())
+            .collect::<Vec<_>>();
+        assert_eq!(java_versions.len(), 2);
+        assert!(java_versions.contains(&"8.92.0.21".to_string()));
+        assert!(java_versions.contains(&"zulu-jre-javafx-8.92.0.21".to_string()));
+    }
+
+    #[test]
     fn adapter_executes_supported_read_only_requests() {
         let source = FixtureSource::default();
         let adapter = MiseAdapter::new(source);
@@ -564,6 +1169,137 @@ mod tests {
     }
 
     #[test]
+    fn adapter_executes_search_request() {
+        let source = FixtureSource::default();
+        let adapter = MiseAdapter::new(source);
+
+        let response = adapter
+            .execute(AdapterRequest::Search(SearchRequest {
+                query: SearchQuery {
+                    text: "zi".to_string(),
+                    issued_at: UNIX_EPOCH,
+                },
+            }))
+            .expect("search should succeed");
+
+        let AdapterResponse::SearchResults(results) = response else {
+            panic!("expected search results response");
+        };
+        assert_eq!(results.len(), 2);
+        assert!(
+            results
+                .iter()
+                .all(|result| result.result.package.name == "zig")
+        );
+        let versions = results
+            .iter()
+            .map(|result| result.result.version.clone().unwrap_or_default())
+            .collect::<Vec<_>>();
+        assert!(versions.contains(&"0.14.1".to_string()));
+        assert!(versions.contains(&"master".to_string()));
+    }
+
+    #[test]
+    fn filter_remote_packages_matches_qualifier_queries() {
+        let packages = vec![
+            super::MiseRemotePackage {
+                name: "python".to_string(),
+                latest_version: Some("3.13.2".to_string()),
+                summary: None,
+            },
+            super::MiseRemotePackage {
+                name: "python".to_string(),
+                latest_version: Some("mambaforge-24.12.0-1".to_string()),
+                summary: None,
+            },
+        ];
+
+        let results = super::filter_mise_remote_packages(
+            packages.as_slice(),
+            &SearchQuery {
+                text: "python@mambaforge-24.11.0-1".to_string(),
+                issued_at: UNIX_EPOCH,
+            },
+        );
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].result.package.name, "python");
+        assert_eq!(
+            results[0].result.version.as_deref(),
+            Some("mambaforge-24.12.0-1")
+        );
+    }
+
+    #[test]
+    fn parses_remote_catalog_with_digit_suffix_and_release_less_qualifiers() {
+        let raw = r#"
+[
+  {"tool":"python","version":"3.13.2","created_at":"2026-01-10T00:00:00Z"},
+  {"tool":"python","version":"anaconda3-2024.10-1","created_at":"2026-01-11T00:00:00Z"},
+  {"tool":"python","version":"mambaforge","created_at":"2026-01-12T00:00:00Z"}
+]
+"#;
+        let packages = parse_mise_remote_catalog(raw).unwrap();
+        let python_versions = packages
+            .iter()
+            .filter(|package| package.name == "python")
+            .map(|package| package.latest_version.clone().unwrap_or_default())
+            .collect::<Vec<_>>();
+
+        assert_eq!(python_versions.len(), 3);
+        assert!(python_versions.contains(&"3.13.2".to_string()));
+        assert!(python_versions.contains(&"anaconda3-2024.10-1".to_string()));
+        assert!(python_versions.contains(&"mambaforge".to_string()));
+    }
+
+    #[test]
+    fn filter_remote_packages_matches_qualifier_with_digit_suffix() {
+        let packages = vec![
+            super::MiseRemotePackage {
+                name: "python".to_string(),
+                latest_version: Some("3.13.2".to_string()),
+                summary: None,
+            },
+            super::MiseRemotePackage {
+                name: "python".to_string(),
+                latest_version: Some("anaconda3-2024.10-1".to_string()),
+                summary: None,
+            },
+            super::MiseRemotePackage {
+                name: "python".to_string(),
+                latest_version: Some("mambaforge".to_string()),
+                summary: None,
+            },
+        ];
+
+        let anaconda_results = super::filter_mise_remote_packages(
+            packages.as_slice(),
+            &SearchQuery {
+                text: "python@anaconda3-2024.2.0".to_string(),
+                issued_at: UNIX_EPOCH,
+            },
+        );
+        assert_eq!(anaconda_results.len(), 1);
+        assert_eq!(
+            anaconda_results[0].result.version.as_deref(),
+            Some("anaconda3-2024.10-1")
+        );
+
+        let mambaforge_results = super::filter_mise_remote_packages(
+            packages.as_slice(),
+            &SearchQuery {
+                text: "python@mambaforge".to_string(),
+                issued_at: UNIX_EPOCH,
+            },
+        );
+        assert_eq!(mambaforge_results.len(), 1);
+        assert_eq!(
+            mambaforge_results[0].result.version.as_deref(),
+            Some("mambaforge")
+        );
+    }
+
+    #[test]
     fn adapter_executes_install_request() {
         let source = FixtureSource::default();
         let adapter = MiseAdapter::new(source);
@@ -578,6 +1314,59 @@ mod tests {
             }))
             .unwrap();
         assert!(matches!(result, AdapterResponse::Mutation(_)));
+        assert_eq!(
+            adapter.source.install_self_calls.load(Ordering::SeqCst),
+            1,
+            "manager self install should use install_self"
+        );
+        assert_eq!(
+            adapter.source.install_tool_calls.load(Ordering::SeqCst),
+            0,
+            "manager self install must not use install_tool"
+        );
+    }
+
+    #[test]
+    fn adapter_executes_tool_install_request_from_coordinate_name() {
+        let source = FixtureSource::default();
+        let adapter = MiseAdapter::new(source);
+
+        let result = adapter
+            .execute(AdapterRequest::Install(crate::adapters::InstallRequest {
+                package: crate::models::PackageRef {
+                    manager: ManagerId::Mise,
+                    name: "java@zulu-jre-javafx".to_string(),
+                },
+                version: None,
+            }))
+            .unwrap();
+        let AdapterResponse::Mutation(mutation) = result else {
+            panic!("expected mutation response");
+        };
+        assert_eq!(mutation.package.name, "java");
+        assert_eq!(
+            mutation.after_version.as_deref(),
+            Some("zulu-jre-javafx"),
+            "coordinate qualifier should be used as install selector"
+        );
+        assert_eq!(
+            adapter.source.install_self_calls.load(Ordering::SeqCst),
+            0,
+            "tool install must not use install_self"
+        );
+        assert_eq!(
+            adapter.source.install_tool_calls.load(Ordering::SeqCst),
+            1,
+            "tool install should use install_tool"
+        );
+        assert_eq!(
+            *adapter.source.last_install_tool_name.lock().unwrap(),
+            Some("java".to_string())
+        );
+        assert_eq!(
+            *adapter.source.last_install_tool_version.lock().unwrap(),
+            Some("zulu-jre-javafx".to_string())
+        );
     }
 
     #[test]
@@ -643,6 +1432,26 @@ mod tests {
         );
         assert_eq!(outdated.action, ManagerAction::ListOutdated);
         assert_eq!(outdated.task_type, TaskType::Refresh);
+
+        let remote = mise_list_remote_request(None);
+        assert_eq!(
+            remote.command.args,
+            vec![
+                "ls-remote".to_string(),
+                "--all".to_string(),
+                "--json".to_string()
+            ]
+        );
+        assert_eq!(remote.action, ManagerAction::Search);
+        assert_eq!(remote.task_type, TaskType::Search);
+
+        let registry = mise_registry_request(None);
+        assert_eq!(
+            registry.command.args,
+            vec!["registry".to_string(), "--json".to_string()]
+        );
+        assert_eq!(registry.action, ManagerAction::Search);
+        assert_eq!(registry.task_type, TaskType::Search);
     }
 
     #[test]
@@ -681,6 +1490,30 @@ mod tests {
         assert_eq!(run.task_type, TaskType::Install);
         assert_eq!(run.action, ManagerAction::Install);
         assert_eq!(run.command.args, vec!["/tmp/mise.sh".to_string()]);
+
+        let install_without_version = mise_install_tool_request(None, "java", None);
+        assert_eq!(
+            install_without_version.command.args,
+            vec![
+                "use".to_string(),
+                "--global".to_string(),
+                "java".to_string()
+            ]
+        );
+        assert_eq!(install_without_version.task_type, TaskType::Install);
+        assert_eq!(install_without_version.action, ManagerAction::Install);
+
+        let install_with_version = mise_install_tool_request(None, "java", Some("zulu-jre-javafx"));
+        assert_eq!(
+            install_with_version.command.args,
+            vec![
+                "use".to_string(),
+                "--global".to_string(),
+                "java@zulu-jre-javafx".to_string()
+            ]
+        );
+        assert_eq!(install_with_version.task_type, TaskType::Install);
+        assert_eq!(install_with_version.action, ManagerAction::Install);
     }
 
     #[test]
@@ -718,6 +1551,25 @@ mod tests {
     }
 
     #[test]
+    fn parse_package_install_target_supports_coordinate_input() {
+        let (name, version) = parse_package_install_target("java@zulu-jre-javafx", None)
+            .expect("target should parse");
+        assert_eq!(name, "java");
+        assert_eq!(version.as_deref(), Some("zulu-jre-javafx"));
+    }
+
+    #[test]
+    fn parse_package_install_target_rejects_conflicting_version_selectors() {
+        let error = parse_package_install_target("java@zulu-jre-javafx", Some("corretto"))
+            .expect_err("conflicting selectors should fail");
+        assert_eq!(error.kind, CoreErrorKind::InvalidInput);
+        assert!(
+            error.message.contains("conflicting mise version selectors"),
+            "error should mention conflicting selectors"
+        );
+    }
+
+    #[test]
     fn parse_uninstall_mode_supports_known_modes() {
         assert_eq!(
             parse_uninstall_mode("__self__")
@@ -747,6 +1599,10 @@ mod tests {
     #[derive(Default, Clone)]
     struct FixtureSource {
         detect_calls: Arc<AtomicUsize>,
+        install_self_calls: Arc<AtomicUsize>,
+        install_tool_calls: Arc<AtomicUsize>,
+        last_install_tool_name: Arc<Mutex<Option<String>>>,
+        last_install_tool_version: Arc<Mutex<Option<String>>>,
     }
 
     impl MiseSource for FixtureSource {
@@ -766,7 +1622,23 @@ mod tests {
             Ok(OUTDATED_FIXTURE.to_string())
         }
 
+        fn list_remote_packages(&self) -> AdapterResult<Vec<super::MiseRemotePackage>> {
+            parse_mise_remote_catalog(REMOTE_FIXTURE)
+        }
+
         fn install_self(&self, _source: super::MiseInstallSource) -> AdapterResult<String> {
+            self.install_self_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(String::new())
+        }
+
+        fn install_tool(&self, name: &str, version: Option<&str>) -> AdapterResult<String> {
+            self.install_tool_calls.fetch_add(1, Ordering::SeqCst);
+            if let Ok(mut last_name) = self.last_install_tool_name.lock() {
+                *last_name = Some(name.to_string());
+            }
+            if let Ok(mut last_version) = self.last_install_tool_version.lock() {
+                *last_version = version.map(ToOwned::to_owned);
+            }
             Ok(String::new())
         }
 

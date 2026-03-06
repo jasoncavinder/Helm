@@ -66,7 +66,6 @@ impl ManagerEnablementSnapshot {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct RefreshCapabilityPlan {
-    detect: bool,
     list_installed: bool,
     list_outdated: bool,
 }
@@ -371,6 +370,14 @@ impl AdapterRuntime {
         let adapter_refs: Vec<&dyn ManagerAdapter> =
             self.adapters.values().map(|a| a.as_ref()).collect();
         let phases = crate::orchestration::authority_order::authority_phases(&adapter_refs);
+        let detected_by_manager: HashMap<ManagerId, bool> = self
+            .detection_store
+            .as_ref()
+            .and_then(|store| store.list_detections().ok())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(manager, info)| (manager, info.installed))
+            .collect();
 
         let mut all_results = Vec::new();
 
@@ -391,31 +398,18 @@ impl AdapterRuntime {
                     all_results.push((manager, Err(missing_phase_adapter_error(manager))));
                     continue;
                 };
+                if adapter.descriptor().supports(Capability::Detect)
+                    && !detected_by_manager.get(&manager).copied().unwrap_or(false)
+                {
+                    all_results.push((manager, Ok(())));
+                    continue;
+                }
                 let capability_plan = refresh_capability_plan(adapter.as_ref());
 
                 let runtime = self.clone();
                 let enablement_snapshot = enablement_snapshot.clone();
 
                 handles.push(tokio::spawn(async move {
-                    if capability_plan.detect {
-                        // Detect first; skip refresh list actions when manager is not installed.
-                        match runtime
-                            .submit_refresh_request_response_with_enablement(
-                                manager,
-                                AdapterRequest::Detect(DetectRequest),
-                                enablement_snapshot.as_deref(),
-                            )
-                            .await
-                        {
-                            Ok(response) => {
-                                if should_skip_refresh_lists_after_detect(&response) {
-                                    return vec![(manager, Ok(()))];
-                                }
-                            }
-                            Err(e) => return vec![(manager, Err(e))],
-                        }
-                    }
-
                     if capability_plan.list_installed
                         && let Err(e) = runtime
                             .submit_refresh_request_with_enablement(
@@ -497,7 +491,7 @@ impl AdapterRuntime {
         enablement_snapshot: Option<&ManagerEnablementSnapshot>,
     ) -> OrchestrationResult<AdapterResponse> {
         let action = request.action();
-        let task_type = task_type_for_action(action);
+        let task_type = task_type_for_request(&request);
         let wait_budget = refresh_wait_budget(manager, task_type);
         let mut attempt = 0u8;
         loop {
@@ -672,7 +666,7 @@ impl AdapterRuntime {
         enablement_snapshot: Option<&ManagerEnablementSnapshot>,
     ) -> OrchestrationResult<TaskId> {
         let action = request.action();
-        let task_type = task_type_for_action(action);
+        let task_type = task_type_for_request(&request);
 
         let allow_when_disabled = action == ManagerAction::Uninstall;
         if !allow_when_disabled
@@ -1538,6 +1532,7 @@ fn task_type_code(task_type: TaskType) -> &'static str {
         TaskType::Detection => "detection",
         TaskType::Refresh => "refresh",
         TaskType::Search => "search",
+        TaskType::CatalogSync => "catalog_sync",
         TaskType::Install => "install",
         TaskType::Uninstall => "uninstall",
         TaskType::Upgrade => "upgrade",
@@ -1668,12 +1663,10 @@ fn reduce_detect_request_result(
 }
 
 fn build_refresh_capability_plan(
-    supports_detect: bool,
     supports_list_installed: bool,
     supports_list_outdated: bool,
 ) -> RefreshCapabilityPlan {
     RefreshCapabilityPlan {
-        detect: supports_detect,
         list_installed: supports_list_installed,
         list_outdated: supports_list_outdated,
     }
@@ -1681,14 +1674,9 @@ fn build_refresh_capability_plan(
 
 fn refresh_capability_plan(adapter: &dyn ManagerAdapter) -> RefreshCapabilityPlan {
     build_refresh_capability_plan(
-        adapter.descriptor().supports(Capability::Detect),
         adapter.descriptor().supports(Capability::ListInstalled),
         adapter.descriptor().supports(Capability::ListOutdated),
     )
-}
-
-fn should_skip_refresh_lists_after_detect(response: &AdapterResponse) -> bool {
-    matches!(response, AdapterResponse::Detection(info) if !info.installed)
 }
 
 fn build_manager_enablement_map(
@@ -1963,7 +1951,10 @@ fn should_retry_transient_refresh_error(
     action: ManagerAction,
     error: &CoreError,
 ) -> bool {
-    if !matches!(task_type, TaskType::Refresh | TaskType::Search) {
+    if !matches!(
+        task_type,
+        TaskType::Refresh | TaskType::Search | TaskType::CatalogSync
+    ) {
         return false;
     }
     if !matches!(
@@ -2005,6 +1996,7 @@ fn default_refresh_wait_policy_timeout(task_type: TaskType) -> Duration {
     match task_type {
         TaskType::Detection => Duration::from_secs(REFRESH_WAIT_POLICY_TIMEOUT_DETECTION_SECS),
         TaskType::Search => Duration::from_secs(REFRESH_WAIT_POLICY_TIMEOUT_SEARCH_SECS),
+        TaskType::CatalogSync => Duration::from_secs(REFRESH_WAIT_POLICY_TIMEOUT_REFRESH_SECS),
         TaskType::Refresh => Duration::from_secs(REFRESH_WAIT_POLICY_TIMEOUT_REFRESH_SECS),
         _ => Duration::from_secs(REFRESH_WAIT_POLICY_TIMEOUT_REFRESH_SECS),
     }
@@ -2014,6 +2006,7 @@ fn refresh_wait_orchestration_cap(task_type: TaskType) -> Duration {
     match task_type {
         TaskType::Detection => Duration::from_secs(REFRESH_WAIT_ORCHESTRATION_CAP_DETECTION_SECS),
         TaskType::Search => Duration::from_secs(REFRESH_WAIT_ORCHESTRATION_CAP_SEARCH_SECS),
+        TaskType::CatalogSync => Duration::from_secs(REFRESH_WAIT_ORCHESTRATION_CAP_REFRESH_SECS),
         TaskType::Refresh => Duration::from_secs(REFRESH_WAIT_ORCHESTRATION_CAP_REFRESH_SECS),
         _ => Duration::from_secs(REFRESH_WAIT_ORCHESTRATION_CAP_REFRESH_SECS),
     }
@@ -2146,6 +2139,15 @@ fn task_type_for_action(action: ManagerAction) -> TaskType {
     }
 }
 
+fn task_type_for_request(request: &AdapterRequest) -> TaskType {
+    match request {
+        AdapterRequest::Search(search_request) if search_request.query.text.trim().is_empty() => {
+            TaskType::CatalogSync
+        }
+        _ => task_type_for_action(request.action()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -2153,17 +2155,17 @@ mod tests {
         build_failure_diagnostic_envelope, build_manager_enablement_map,
         build_refresh_capability_plan, classify_failure_issue, failure_fingerprint,
         reconcile_detected_install_instances, reduce_detect_request_result, refresh_wait_budget,
-        should_skip_refresh_lists_after_detect, task_type_code, truncate_for_diagnostic,
+        task_type_code, task_type_for_request, truncate_for_diagnostic,
     };
-    use crate::adapters::AdapterResponse;
+    use crate::adapters::{AdapterRequest, AdapterResponse, SearchRequest};
     use crate::execution::{
         ManagerTimeoutProfile, TaskOutputRecord, clear_manager_timeout_profiles,
         set_manager_timeout_profile,
     };
     use crate::models::{
         AutomationLevel, CoreError, CoreErrorKind, DetectionInfo, InstallInstanceIdentityKind,
-        InstallProvenance, ManagerAction, ManagerId, ManagerInstallInstance, StrategyKind, TaskId,
-        TaskStatus,
+        InstallProvenance, ManagerAction, ManagerId, ManagerInstallInstance, SearchQuery,
+        StrategyKind, TaskId, TaskStatus,
     };
     use crate::orchestration::{
         AdapterTaskSnapshot, AdapterTaskTerminalState, TaskRuntimeSnapshot,
@@ -2225,6 +2227,10 @@ mod tests {
             Duration::from_secs(120)
         );
         assert_eq!(
+            refresh_wait_budget(ManagerId::Npm, TaskType::CatalogSync).effective_timeout,
+            Duration::from_secs(180)
+        );
+        assert_eq!(
             refresh_wait_budget(ManagerId::Npm, TaskType::Refresh).effective_timeout,
             Duration::from_secs(180)
         );
@@ -2249,6 +2255,10 @@ mod tests {
         assert_eq!(
             refresh_wait_budget(ManagerId::Npm, TaskType::Search).effective_timeout,
             Duration::from_secs(180)
+        );
+        assert_eq!(
+            refresh_wait_budget(ManagerId::Npm, TaskType::CatalogSync).effective_timeout,
+            Duration::from_secs(300)
         );
         assert_eq!(
             refresh_wait_budget(ManagerId::Npm, TaskType::Refresh).effective_timeout,
@@ -2281,42 +2291,19 @@ mod tests {
     #[test]
     fn build_refresh_capability_plan_reflects_support_flags() {
         assert_eq!(
-            build_refresh_capability_plan(true, false, true),
+            build_refresh_capability_plan(false, true),
             super::RefreshCapabilityPlan {
-                detect: true,
                 list_installed: false,
                 list_outdated: true,
             }
         );
         assert_eq!(
-            build_refresh_capability_plan(false, true, false),
+            build_refresh_capability_plan(true, false),
             super::RefreshCapabilityPlan {
-                detect: false,
                 list_installed: true,
                 list_outdated: false,
             }
         );
-    }
-
-    #[test]
-    fn should_skip_refresh_lists_after_detect_only_for_not_installed_detection() {
-        assert!(should_skip_refresh_lists_after_detect(
-            &AdapterResponse::Detection(DetectionInfo {
-                installed: false,
-                executable_path: None,
-                version: None,
-            })
-        ));
-        assert!(!should_skip_refresh_lists_after_detect(
-            &AdapterResponse::Detection(DetectionInfo {
-                installed: true,
-                executable_path: None,
-                version: Some("1.0.0".to_string()),
-            })
-        ));
-        assert!(!should_skip_refresh_lists_after_detect(
-            &AdapterResponse::Refreshed
-        ));
     }
 
     #[test]
@@ -2333,6 +2320,17 @@ mod tests {
             .expect_err("error should be forwarded unchanged");
         assert_eq!(reduced.kind, error.kind);
         assert_eq!(reduced.message, error.message);
+    }
+
+    #[test]
+    fn empty_search_query_maps_to_catalog_sync_task_type() {
+        let request = AdapterRequest::Search(SearchRequest {
+            query: SearchQuery {
+                text: "  ".to_string(),
+                issued_at: SystemTime::UNIX_EPOCH,
+            },
+        });
+        assert_eq!(task_type_for_request(&request), TaskType::CatalogSync);
     }
 
     #[test]

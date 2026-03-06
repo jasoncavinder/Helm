@@ -652,22 +652,24 @@ async fn refresh_all_ordered_recomputes_enablement_after_preference_update() {
     let store = Arc::new(SqliteStore::new(&path));
     store.migrate_to_latest().unwrap();
     store.set_manager_enabled(ManagerId::Npm, true).unwrap();
+    store
+        .upsert_detection(
+            ManagerId::Npm,
+            &DetectionInfo {
+                installed: true,
+                executable_path: Some(PathBuf::from("/opt/homebrew/bin/npm")),
+                version: Some("10.9.0".to_string()),
+            },
+        )
+        .unwrap();
 
     let call_count = Arc::new(AtomicUsize::new(0));
     let adapter: Arc<dyn ManagerAdapter> = Arc::new(SequencedAdapter::with_capabilities(
         ManagerId::Npm,
-        &[Capability::Detect],
+        &[Capability::ListInstalled],
         vec![
-            Ok(AdapterResponse::Detection(DetectionInfo {
-                installed: true,
-                executable_path: Some(PathBuf::from("/opt/homebrew/bin/npm")),
-                version: Some("10.9.0".to_string()),
-            })),
-            Ok(AdapterResponse::Detection(DetectionInfo {
-                installed: true,
-                executable_path: Some(PathBuf::from("/opt/homebrew/bin/npm")),
-                version: Some("10.9.0".to_string()),
-            })),
+            Ok(AdapterResponse::InstalledPackages(vec![])),
+            Ok(AdapterResponse::InstalledPackages(vec![])),
         ],
         call_count.clone(),
     ));

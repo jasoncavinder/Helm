@@ -53,7 +53,7 @@ bool helm_trigger_refresh(void);
 bool helm_trigger_detection(void);
 
 /**
- * Trigger detection/refresh for a single manager.
+ * Trigger detection for a single manager.
  *
  * # Safety
  *

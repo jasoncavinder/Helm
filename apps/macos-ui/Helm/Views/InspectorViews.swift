@@ -50,7 +50,9 @@ struct ControlCenterInspectorView: View {
                 if let task = selectedTask ?? selectedUpgradePlanTask {
                     InspectorTaskDetailView(task: task)
                 } else if let package = selectedPackage {
+                    let packageInspectorToken = "\(package.id)|\(package.pinned ? 1 : 0)|\(package.version)|\(package.latestVersion ?? "")"
                     InspectorPackageDetailView(package: package)
+                        .id(packageInspectorToken)
                 } else if let manager = selectedManager {
                     InspectorManagerDetailView(
                         manager: manager,
@@ -670,6 +672,17 @@ private struct InspectorPackageDetailView: View {
     @State private var inspectorAlert: InspectorPackageAlert?
     let package: PackageItem
 
+    private static let unknownVersionTokens: Set<String> = {
+        var tokens: Set<String> = ["unknown"]
+        let localizedUnknown = L10n.Common.unknown.localized
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if !localizedUnknown.isEmpty {
+            tokens.insert(localizedUnknown)
+        }
+        return tokens
+    }()
+
     private struct ManagerSwitchAlertContext: Identifiable {
         let packageName: String
         let selectedManagerId: String
@@ -698,8 +711,12 @@ private struct InspectorPackageDetailView: View {
         }
     }
 
+    private var livePackage: PackageItem {
+        core.allKnownPackages.first(where: { $0.id == package.id }) ?? package
+    }
+
     private var managerCandidates: [PackageItem] {
-        packageCandidates(for: package)
+        packageCandidates(for: livePackage)
     }
 
     private var installedManagerCandidates: [PackageItem] {
@@ -717,11 +734,11 @@ private struct InspectorPackageDetailView: View {
         if let preferredAvailable = managerCandidates.first(where: { $0.status == .available }) {
             return preferredAvailable
         }
-        return managerCandidates.first ?? package
+        return managerCandidates.first ?? livePackage
     }
 
     private var selectedManagerId: String {
-        if let preferredManagerId = core.preferredManagerId(forPackageName: package.name),
+        if let preferredManagerId = core.preferredManagerId(for: livePackage),
            managerCandidates.contains(where: { $0.managerId == preferredManagerId }) {
             return preferredManagerId
         }
@@ -771,7 +788,7 @@ private struct InspectorPackageDetailView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(activePackage.name)
+                Text(activePackage.displayName)
                     .font(.title3.weight(.semibold))
                 Text(currentVersionText)
                     .font(.caption.monospacedDigit())
@@ -826,6 +843,9 @@ private struct InspectorPackageDetailView: View {
             ensurePersistedManagerSelection()
             core.ensurePackageDescription(for: activePackage)
         }
+        .onChange(of: core.managerStatuses.mapValues(\.enabled)) { _ in
+            ensurePersistedManagerSelection()
+        }
         .onChange(of: package.summary) { _ in
             core.ensurePackageDescription(for: activePackage)
         }
@@ -840,7 +860,7 @@ private struct InspectorPackageDetailView: View {
                     return Alert(
                         title: Text(
                             L10n.App.Packages.Alert.uninstallTitle.localized(
-                                with: ["package": targetPackage.name]
+                                with: ["package": targetPackage.displayName]
                             )
                         ),
                         message: Text(message),
@@ -850,7 +870,7 @@ private struct InspectorPackageDetailView: View {
                 return Alert(
                         title: Text(
                             L10n.App.Packages.Alert.uninstallTitle.localized(
-                                with: ["package": targetPackage.name]
+                                with: ["package": targetPackage.displayName]
                             )
                         ),
                         message: Text(message),
@@ -863,13 +883,13 @@ private struct InspectorPackageDetailView: View {
                 return Alert(
                     title: Text(
                         L10n.App.Packages.Alert.uninstallTitle.localized(
-                            with: ["package": targetPackage.name]
+                            with: ["package": targetPackage.displayName]
                         )
                     ),
                     message: Text(
                         L10n.App.Packages.Alert.uninstallMessage.localized(
                             with: [
-                                "package": targetPackage.name,
+                                "package": targetPackage.displayName,
                                 "manager": localizedManagerDisplayName(targetPackage.managerId),
                             ]
                         )
@@ -1106,7 +1126,7 @@ private struct InspectorPackageDetailView: View {
         var sections = [
             L10n.App.Packages.Alert.uninstallMessage.localized(
                 with: [
-                    "package": targetPackage.name,
+                    "package": targetPackage.displayName,
                     "manager": localizedManagerDisplayName(targetPackage.managerId),
                 ]
             )
@@ -1128,7 +1148,7 @@ private struct InspectorPackageDetailView: View {
         let currentPackage = activePackage
         guard candidate.managerId != currentPackage.managerId else { return }
 
-        let packageName = currentPackage.name
+        let packageName = currentPackage.displayName
         let currentManagerName = localizedManagerDisplayName(currentPackage.managerId)
         let selectedManagerName = localizedManagerDisplayName(candidate.managerId)
         let recommendedManagerName = localizedManagerDisplayName(recommendedManagerPackage.managerId)
@@ -1194,11 +1214,11 @@ private struct InspectorPackageDetailView: View {
     }
 
     private func persistManagerSelection(_ managerId: String) {
-        core.setPreferredManagerId(managerId, forPackageName: package.name)
+        core.setPreferredManagerId(managerId, for: livePackage)
     }
 
     private func ensurePersistedManagerSelection() {
-        if let preferredManagerId = core.preferredManagerId(forPackageName: package.name),
+        if let preferredManagerId = core.preferredManagerId(for: livePackage),
            managerCandidates.contains(where: { $0.managerId == preferredManagerId }) {
             return
         }
@@ -1206,12 +1226,14 @@ private struct InspectorPackageDetailView: View {
     }
 
     private func packageCandidates(for package: PackageItem) -> [PackageItem] {
-        let normalizedName = normalizedPackageName(package.name)
-        guard !normalizedName.isEmpty else { return [package] }
+        let normalizedIdentity = package.normalizedIdentityKey
+        guard !normalizedIdentity.isEmpty else { return [package] }
 
         var candidatesByManager: [String: PackageItem] = [:]
-        for candidate in core.allKnownPackages {
-            guard normalizedPackageName(candidate.name) == normalizedName else { continue }
+        let sourcePackages = core.outdatedPackages + core.installedPackages + core.cachedAvailablePackages
+        for candidate in sourcePackages {
+            guard core.isManagerEnabled(candidate.managerId) else { continue }
+            guard candidate.normalizedIdentityKey == normalizedIdentity else { continue }
             if let existing = candidatesByManager[candidate.managerId] {
                 candidatesByManager[candidate.managerId] = preferredCandidate(existing, candidate)
             } else {
@@ -1278,15 +1300,11 @@ private struct InspectorPackageDetailView: View {
         }
     }
 
-    private func normalizedPackageName(_ value: String) -> String {
-        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-    }
-
     private func normalizedVersionText(_ value: String?) -> String? {
         guard let value else { return nil }
         let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return nil }
-        if normalized.lowercased() == L10n.Common.unknown.localized.lowercased() {
+        if Self.unknownVersionTokens.contains(normalized.lowercased()) {
             return nil
         }
         return normalized

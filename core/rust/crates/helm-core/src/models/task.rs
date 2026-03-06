@@ -12,6 +12,7 @@ pub enum TaskType {
     Detection,
     Refresh,
     Search,
+    CatalogSync,
     Install,
     Uninstall,
     Upgrade,

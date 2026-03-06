@@ -446,15 +446,16 @@ extension HelmCore {
               canInstallPackage(targetPackage, includeAlternates: false),
               !installActionPackageIds.contains(targetPackage.id) else { return }
 
-        let normalizedTargetPackageName = PackageActionTracking.normalizedPackageName(
-            targetPackage.name
+        let normalizedTargetPackageIdentity = PackageActionTracking.normalizedPackageIdentityKey(
+            name: targetPackage.name,
+            version: targetPackage.version
         )
-        guard !normalizedTargetPackageName.isEmpty,
-              !installActionInFlightPackageNames().contains(normalizedTargetPackageName) else { return }
+        guard !normalizedTargetPackageIdentity.isEmpty,
+              !installActionInFlightPackageNames().contains(normalizedTargetPackageIdentity) else { return }
 
         DispatchQueue.main.async {
             self.installActionPackageIds.insert(targetPackage.id)
-            self.installActionNormalizedNameByPackageId[targetPackage.id] = normalizedTargetPackageName
+            self.installActionNormalizedNameByPackageId[targetPackage.id] = normalizedTargetPackageIdentity
         }
 
         guard let service = service() else {
@@ -474,6 +475,8 @@ extension HelmCore {
             return
         }
 
+        let installRequestPackageName = self.installRequestPackageName(for: targetPackage)
+
         withTimeout(
             300,
             source: "core.actions",
@@ -481,7 +484,10 @@ extension HelmCore {
             managerId: targetPackage.managerId,
             taskType: "install",
             operation: { completion in
-            service.installPackage(managerId: targetPackage.managerId, packageName: targetPackage.name) { completion($0) }
+            service.installPackage(
+                managerId: targetPackage.managerId,
+                packageName: installRequestPackageName
+            ) { completion($0) }
         }, fallback: Int64(-1)) { [weak self] taskId in
             DispatchQueue.main.async {
                 guard let self = self, let taskId = taskId else { return }
@@ -502,6 +508,21 @@ extension HelmCore {
                 self.installActionTaskByPackage[targetPackage.id] = UInt64(taskId)
             }
         }
+    }
+
+    private func installRequestPackageName(for package: PackageItem) -> String {
+        let normalizedName = package.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedName.isEmpty else { return package.name }
+        guard package.managerId.lowercased() == "mise", package.status == .available else {
+            return normalizedName
+        }
+
+        let qualifiedDisplayName = package.displayName
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !qualifiedDisplayName.isEmpty, qualifiedDisplayName.contains("@") else {
+            return normalizedName
+        }
+        return qualifiedDisplayName
     }
 
     func uninstallPackage(_ package: PackageItem) {
@@ -577,9 +598,8 @@ extension HelmCore {
             DispatchQueue.main.async {
                 self?.pinActionPackageIds.remove(package.id)
                 if success {
-                    self?.setPinnedState(packageId: package.id, pinned: true)
-                    self?.fetchPackages()
-                    self?.fetchOutdatedPackages()
+                    self?.setPinnedState(for: package, pinned: true)
+                    self?.schedulePinnedStateReconciliation()
                 } else {
                     logger.error("pinPackage(\(package.managerId):\(package.name)) failed")
                     self?.recordLastError(
@@ -615,9 +635,8 @@ extension HelmCore {
             DispatchQueue.main.async {
                 self?.pinActionPackageIds.remove(package.id)
                 if success {
-                    self?.setPinnedState(packageId: package.id, pinned: false)
-                    self?.fetchPackages()
-                    self?.fetchOutdatedPackages()
+                    self?.setPinnedState(for: package, pinned: false)
+                    self?.schedulePinnedStateReconciliation()
                 } else {
                     logger.error("unpinPackage(\(package.managerId):\(package.name)) failed")
                     self?.recordLastError(
@@ -784,6 +803,9 @@ extension HelmCore {
             packageDescriptionUnavailableIds.filter { !$0.hasPrefix(packageIdPrefix) }
         )
         descriptionLookupTaskIdsByPackage = descriptionLookupTaskIdsByPackage.filter {
+            !$0.key.hasPrefix(packageIdPrefix)
+        }
+        descriptionLookupStartedAtByPackage = descriptionLookupStartedAtByPackage.filter {
             !$0.key.hasPrefix(packageIdPrefix)
         }
         descriptionLookupPackageById = descriptionLookupPackageById.filter {
@@ -1655,6 +1677,8 @@ extension HelmCore {
         descriptionLookupPackageById[package.id] = package
         let candidates = packageDescriptionLookupCandidates(for: package)
         guard !candidates.isEmpty else {
+            descriptionLookupTaskIdsByPackage.removeValue(forKey: package.id)
+            descriptionLookupStartedAtByPackage.removeValue(forKey: package.id)
             packageDescriptionLoadingIds.remove(package.id)
             packageDescriptionUnavailableIds.insert(package.id)
             return
@@ -1688,6 +1712,8 @@ extension HelmCore {
         }
 
         guard !lookupCandidates.isEmpty else {
+            descriptionLookupTaskIdsByPackage.removeValue(forKey: package.id)
+            descriptionLookupStartedAtByPackage.removeValue(forKey: package.id)
             packageDescriptionLoadingIds.remove(package.id)
             if hasCachedSummary {
                 packageDescriptionUnavailableIds.remove(package.id)
@@ -1698,11 +1724,16 @@ extension HelmCore {
         }
 
         if let inFlightTaskIds = descriptionLookupTaskIdsByPackage[package.id], !inFlightTaskIds.isEmpty {
+            if descriptionLookupStartedAtByPackage[package.id] == nil {
+                descriptionLookupStartedAtByPackage[package.id] = Date()
+            }
             packageDescriptionLoadingIds.insert(package.id)
             return
         }
 
         guard let service = service() else {
+            descriptionLookupTaskIdsByPackage.removeValue(forKey: package.id)
+            descriptionLookupStartedAtByPackage.removeValue(forKey: package.id)
             packageDescriptionLoadingIds.remove(package.id)
             if hasCachedSummary {
                 packageDescriptionUnavailableIds.remove(package.id)
@@ -1714,6 +1745,7 @@ extension HelmCore {
 
         packageDescriptionUnavailableIds.remove(package.id)
         packageDescriptionLoadingIds.insert(package.id)
+        descriptionLookupStartedAtByPackage[package.id] = Date()
 
         let tracker = DescriptionLookupSubmissionTracker(remaining: lookupCandidates.count)
         for candidate in lookupCandidates {
@@ -1740,6 +1772,8 @@ extension HelmCore {
                     guard tracker.remaining == 0 else { return }
 
                     if tracker.queuedTaskCount == 0 {
+                        self.descriptionLookupTaskIdsByPackage.removeValue(forKey: package.id)
+                        self.descriptionLookupStartedAtByPackage.removeValue(forKey: package.id)
                         self.packageDescriptionLoadingIds.remove(package.id)
                         if self.hasPackageDescriptionSummary(packageId: package.id) {
                             self.packageDescriptionUnavailableIds.remove(package.id)
@@ -1752,18 +1786,82 @@ extension HelmCore {
         }
     }
 
-    func setPinnedState(packageId: String, pinned: Bool) {
-        if let index = installedPackages.firstIndex(where: { $0.id == packageId }) {
-            installedPackages[index].pinned = pinned
+    func setPinnedState(for targetPackage: PackageItem, pinned: Bool) {
+        installedPackages = applyingPinnedState(
+            to: installedPackages,
+            targetPackage: targetPackage,
+            pinned: pinned
+        )
+        outdatedPackages = applyingPinnedState(
+            to: outdatedPackages,
+            targetPackage: targetPackage,
+            pinned: pinned
+        )
+        searchResults = applyingPinnedState(
+            to: searchResults,
+            targetPackage: targetPackage,
+            pinned: pinned
+        )
+        cachedAvailablePackages = applyingPinnedState(
+            to: cachedAvailablePackages,
+            targetPackage: targetPackage,
+            pinned: pinned
+        )
+        objectWillChange.send()
+    }
+
+    private func schedulePinnedStateReconciliation() {
+        // Pin state writes land in core storage asynchronously. Reconcile shortly after
+        // optimistic updates so row badges + inspector actions stay in sync without
+        // requiring an unrelated screen refresh.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self else { return }
+            self.fetchPackages()
+            self.fetchOutdatedPackages()
         }
-        if let index = outdatedPackages.firstIndex(where: { $0.id == packageId }) {
-            outdatedPackages[index].pinned = pinned
+    }
+
+    private func applyingPinnedState(
+        to packages: [PackageItem],
+        targetPackage: PackageItem,
+        pinned: Bool
+    ) -> [PackageItem] {
+        var changed = false
+        let updated = packages.map { package -> PackageItem in
+            guard shouldUpdatePinnedState(package: package, targetPackage: targetPackage),
+                  package.pinned != pinned else { return package }
+            changed = true
+            var mutated = package
+            mutated.pinned = pinned
+            return mutated
         }
-        if let index = searchResults.firstIndex(where: { $0.id == packageId }) {
-            searchResults[index].pinned = pinned
+        return changed ? updated : packages
+    }
+
+    private func shouldUpdatePinnedState(package: PackageItem, targetPackage: PackageItem) -> Bool {
+        if package.id == targetPackage.id {
+            return true
         }
-        if let index = cachedAvailablePackages.firstIndex(where: { $0.id == packageId }) {
-            cachedAvailablePackages[index].pinned = pinned
+
+        guard package.managerId == targetPackage.managerId else {
+            return false
         }
+
+        let targetIdentityKey = targetPackage.normalizedIdentityKey
+        let packageIdentityKey = package.normalizedIdentityKey
+        if !targetIdentityKey.isEmpty || !packageIdentityKey.isEmpty {
+            guard !targetIdentityKey.isEmpty, !packageIdentityKey.isEmpty else {
+                return false
+            }
+            return packageIdentityKey == targetIdentityKey
+        }
+
+        // Fallback for managers that may emit unstable ids between views/refreshes.
+        // Keep this scoped to non-available rows to avoid mutating catalog-only entries.
+        guard package.status != .available, targetPackage.status != .available else {
+            return false
+        }
+        return PackageIdentity.normalizedBaseName(package.name)
+            == PackageIdentity.normalizedBaseName(targetPackage.name)
     }
 }

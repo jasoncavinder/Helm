@@ -12,11 +12,16 @@ struct PackageDescriptionLookupCandidate {
 
 extension HelmCore {
     static let managerActionTaskMissingGraceSeconds: TimeInterval = 12
+    static let packageDescriptionLookupTaskStaleSeconds: TimeInterval = 20
     static let localManagerActionTaskIdPrefix = "local-manager-action-"
     static let localManagerActionTaskRetentionSeconds: TimeInterval = 180
     static let managerVerificationTimeoutSeconds: TimeInterval = 120
 
     var allKnownPackages: [PackageItem] {
+        sortedPackagesByDisplayName(allKnownPackagesUnsorted)
+    }
+
+    private var allKnownPackagesUnsorted: [PackageItem] {
         let enabledOutdated = outdatedPackages.filter { isManagerEnabled($0.managerId) }
         let outdatedStableIds = Set(
             enabledOutdated.map { package in
@@ -60,9 +65,27 @@ extension HelmCore {
         combined.append(contentsOf: cachedById.values.filter { !existing.contains($0.id) })
 
         return combined
+    }
+
+    private func sortedPackagesByDisplayName(_ packages: [PackageItem]) -> [PackageItem] {
+        let keyed = packages.enumerated().map { index, package in
+            (
+                index: index,
+                package: package,
+                sortKey: package.displayName.folding(
+                    options: [.caseInsensitive, .diacriticInsensitive],
+                    locale: .current
+                )
+            )
+        }
+        return keyed
             .sorted { lhs, rhs in
-                lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                if lhs.sortKey == rhs.sortKey {
+                    return lhs.index < rhs.index
+                }
+                return lhs.sortKey < rhs.sortKey
             }
+            .map(\.package)
     }
 
     var visibleManagers: [ManagerInfo] {
@@ -81,7 +104,8 @@ extension HelmCore {
         overviewState.aggregateHealth
     }
 
-    /// Returns a filtered package list grouped by package name.
+    /// Returns a filtered package list grouped by package identity.
+    /// Identity is package name plus optional variant qualifier derived from version selector.
     /// Merges local matches with remote search results, then applies manager/status filters.
     func filteredPackages(
         query: String,
@@ -117,14 +141,13 @@ extension HelmCore {
         if !trimmed.isEmpty {
             let localMatches = base.filter {
                 packageManagerParticipatesInSearch($0.managerId)
-                    && ($0.name.lowercased().contains(trimmed)
-                    || $0.manager.lowercased().contains(trimmed)
-                    || ($0.summary?.lowercased().contains(trimmed) ?? false))
+                    && packageMatchesQuery($0, queryToken: trimmed)
             }
             var mergedById = Dictionary(uniqueKeysWithValues: localMatches.map { ($0.id, $0) })
             for remote in searchResults
             where isManagerEnabled(remote.managerId)
-                && packageManagerParticipatesInSearch(remote.managerId) {
+                && packageManagerParticipatesInSearch(remote.managerId)
+                && packageMatchesQuery(remote, queryToken: trimmed) {
                 if var existing = mergedById[remote.id] {
                     mergeSummary(into: &existing, from: remote.summary)
                     if existing.latestVersion == nil {
@@ -136,9 +159,7 @@ extension HelmCore {
                 }
             }
 
-            base = mergedById.values.sorted { lhs, rhs in
-                lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
-            }
+            base = sortedPackagesByDisplayName(Array(mergedById.values))
         }
 
         if let managerId {
@@ -169,6 +190,23 @@ extension HelmCore {
 
     private func packageManagerParticipatesInSearch(_ managerId: String) -> Bool {
         managerId != "rustup"
+    }
+
+    private func packageMatchesQuery(_ package: PackageItem, queryToken: String) -> Bool {
+        guard !queryToken.isEmpty else { return true }
+        let normalizedQueryToken = PackageIdentity.normalizedExactQueryToken(queryToken)
+        if package.normalizedIdentityKey.contains(queryToken)
+            || (
+                !normalizedQueryToken.isEmpty
+                    && normalizedQueryToken != queryToken
+                    && package.normalizedIdentityKey.contains(normalizedQueryToken)
+            ) {
+            return true
+        }
+        if package.manager.lowercased().contains(queryToken) {
+            return true
+        }
+        return package.summary?.lowercased().contains(queryToken) ?? false
     }
 
     func outdatedCount(forManagerId managerId: String) -> Int {
@@ -247,7 +285,13 @@ extension HelmCore {
     func installActionInFlightPackageNames(knownPackages: [PackageItem]? = nil) -> Set<String> {
         let packageNameById = Dictionary(
             uniqueKeysWithValues: (knownPackages ?? allKnownPackages).map {
-                ($0.id, PackageActionTracking.normalizedPackageName($0.name))
+                (
+                    $0.id,
+                    PackageActionTracking.normalizedPackageIdentityKey(
+                        name: $0.name,
+                        version: $0.version
+                    )
+                )
             }
         )
         return PackageActionTracking.inFlightInstallNames(
@@ -258,27 +302,25 @@ extension HelmCore {
     }
 
     func isInstallActionInFlight(for package: PackageItem, knownPackages: [PackageItem]? = nil) -> Bool {
-        let normalizedPackageName = PackageActionTracking.normalizedPackageName(package.name)
-        guard !normalizedPackageName.isEmpty else {
+        let normalizedPackageIdentity = PackageActionTracking.normalizedPackageIdentityKey(
+            name: package.name,
+            version: package.version
+        )
+        guard !normalizedPackageIdentity.isEmpty else {
             return installActionPackageIds.contains(package.id)
         }
         return installActionInFlightPackageNames(knownPackages: knownPackages)
-            .contains(normalizedPackageName)
+            .contains(normalizedPackageIdentity)
     }
 
     func installCandidates(for package: PackageItem) -> [PackageItem] {
         guard package.status == .available else { return [] }
-        let normalizedName = package.name
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        guard !normalizedName.isEmpty else { return [] }
+        let normalizedIdentityKey = package.normalizedIdentityKey
+        guard !normalizedIdentityKey.isEmpty else { return [] }
 
         var candidatesByManager: [String: PackageItem] = [:]
-        for candidate in allKnownPackages where candidate.status == .available {
-            let candidateName = candidate.name
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .lowercased()
-            guard candidateName == normalizedName else { continue }
+        for candidate in allKnownPackagesUnsorted where candidate.status == .available {
+            guard candidate.normalizedIdentityKey == normalizedIdentityKey else { continue }
 
             if let existing = candidatesByManager[candidate.managerId] {
                 candidatesByManager[candidate.managerId] = preferredInstallCandidate(existing, candidate)
@@ -366,6 +408,19 @@ extension HelmCore {
                     return trimmed
                 }
             }
+            if candidate.version != nil {
+                let unversionedKey = packageDescriptionLookupKey(
+                    managerId: candidate.managerId,
+                    packageName: candidate.packageName,
+                    version: nil
+                )
+                if let summary = packageDescriptionSummaryByKey[unversionedKey] {
+                    let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        return trimmed
+                    }
+                }
+            }
         }
         let fallback = package.summary?.trimmingCharacters(in: .whitespacesAndNewlines)
         if fallback?.isEmpty == false {
@@ -376,23 +431,18 @@ extension HelmCore {
 
     func hasPackageDescriptionSummary(packageId: String) -> Bool {
         let package = descriptionLookupPackageById[packageId]
-            ?? allKnownPackages.first(where: { $0.id == packageId })
+            ?? allKnownPackagesUnsorted.first(where: { $0.id == packageId })
         guard let package else { return false }
         return packageDescriptionSummary(for: package) != nil
     }
 
     func packageDescriptionLookupCandidates(for package: PackageItem) -> [PackageDescriptionLookupCandidate] {
-        let normalizedName = package.name
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        guard !normalizedName.isEmpty else { return [] }
+        let normalizedIdentityKey = package.normalizedIdentityKey
+        guard !normalizedIdentityKey.isEmpty else { return [] }
 
         var preferredByManager: [String: PackageItem] = [:]
-        for candidate in allKnownPackages {
-            let candidateName = candidate.name
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .lowercased()
-            guard candidateName == normalizedName else { continue }
+        for candidate in allKnownPackagesUnsorted {
+            guard candidate.normalizedIdentityKey == normalizedIdentityKey else { continue }
             if let existing = preferredByManager[candidate.managerId] {
                 preferredByManager[candidate.managerId] = preferredDescriptionLookupPackage(existing, candidate)
             } else {
@@ -783,10 +833,21 @@ extension HelmCore {
     func syncPackageDescriptionLookups(from coreTasks: [CoreTaskRecord]) {
         let statusById = Dictionary(uniqueKeysWithValues: coreTasks.map { ($0.id, $0.status.lowercased()) })
         let inFlightStates = Set(["queued", "running"])
+        let now = Date()
 
         for packageId in Array(descriptionLookupTaskIdsByPackage.keys) {
+            if hasPackageDescriptionSummary(packageId: packageId) {
+                packageDescriptionUnavailableIds.remove(packageId)
+                packageDescriptionLoadingIds.remove(packageId)
+                descriptionLookupTaskIdsByPackage.removeValue(forKey: packageId)
+                descriptionLookupStartedAtByPackage.removeValue(forKey: packageId)
+                descriptionLookupPackageById.removeValue(forKey: packageId)
+                continue
+            }
+
             guard let taskIds = descriptionLookupTaskIdsByPackage[packageId], !taskIds.isEmpty else {
                 descriptionLookupTaskIdsByPackage.removeValue(forKey: packageId)
+                descriptionLookupStartedAtByPackage.removeValue(forKey: packageId)
                 packageDescriptionLoadingIds.remove(packageId)
                 continue
             }
@@ -797,19 +858,40 @@ extension HelmCore {
             }
 
             if !inFlightTaskIds.isEmpty {
+                let startedAt = descriptionLookupStartedAtByPackage[packageId] ?? now
+                if now.timeIntervalSince(startedAt) < Self.packageDescriptionLookupTaskStaleSeconds {
+                    descriptionLookupTaskIdsByPackage[packageId] = inFlightTaskIds
+                    packageDescriptionLoadingIds.insert(packageId)
+                    continue
+                }
+
+                let sortedTaskIds = inFlightTaskIds.sorted()
+                    .map(String.init)
+                    .joined(separator: ",")
+                taskSyncLogger.warning(
+                    "Description lookup tasks exceeded stale threshold; forcing local cache reconciliation (package_id=\(packageId), task_ids=\(sortedTaskIds), age_seconds=\(Int(now.timeIntervalSince(startedAt))))"
+                )
                 descriptionLookupTaskIdsByPackage[packageId] = inFlightTaskIds
+                descriptionLookupStartedAtByPackage[packageId] = now
+                packageDescriptionLoadingIds.insert(packageId)
+                guard let package = descriptionLookupPackageById[packageId] else {
+                    continue
+                }
+                refreshPackageDescriptionSummaryFromLocalCache(for: package, clearTracking: false)
                 continue
             }
 
             descriptionLookupTaskIdsByPackage.removeValue(forKey: packageId)
+            descriptionLookupStartedAtByPackage.removeValue(forKey: packageId)
             packageDescriptionLoadingIds.remove(packageId)
 
-            if hasPackageDescriptionSummary(packageId: packageId) {
-                packageDescriptionUnavailableIds.remove(packageId)
-            } else {
+            guard let package = descriptionLookupPackageById[packageId] else {
                 packageDescriptionUnavailableIds.insert(packageId)
+                continue
             }
-            descriptionLookupPackageById.removeValue(forKey: packageId)
+
+            packageDescriptionLoadingIds.insert(packageId)
+            refreshPackageDescriptionSummaryFromLocalCache(for: package)
         }
     }
 
@@ -1003,36 +1085,47 @@ extension HelmCore {
         _ packages: [ConsolidatedPackageItem],
         query: String
     ) -> [ConsolidatedPackageItem] {
-        let queryToken = exactMatchComparableToken(query)
-        guard !queryToken.isEmpty else { return packages }
+        let queryQualifiedToken = PackageIdentity.normalizedExactQueryToken(query)
+        let queryBaseToken = PackageIdentity.normalizedQueryBaseToken(query)
+        guard !queryBaseToken.isEmpty else { return packages }
+        let queryHasQualifier = queryQualifiedToken.contains("@")
 
         let indexedPackages = Array(packages.enumerated())
         return indexedPackages
             .sorted { lhs, rhs in
-                let lhsExact = exactMatchComparableToken(lhs.element.package.name) == queryToken
-                let rhsExact = exactMatchComparableToken(rhs.element.package.name) == queryToken
-                if lhsExact != rhsExact {
-                    return lhsExact && !rhsExact
+                let lhsRank = exactMatchRank(
+                    for: lhs.element.package,
+                    queryBaseToken: queryBaseToken,
+                    queryQualifiedToken: queryQualifiedToken,
+                    queryHasQualifier: queryHasQualifier
+                )
+                let rhsRank = exactMatchRank(
+                    for: rhs.element.package,
+                    queryBaseToken: queryBaseToken,
+                    queryQualifiedToken: queryQualifiedToken,
+                    queryHasQualifier: queryHasQualifier
+                )
+                if lhsRank != rhsRank {
+                    return lhsRank < rhsRank
                 }
                 return lhs.offset < rhs.offset
             }
             .map(\.element)
     }
 
-    private func exactMatchComparableToken(_ value: String) -> String {
-        let normalized = value
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        guard !normalized.isEmpty else { return "" }
-        guard let atIndex = normalized.lastIndex(of: "@"),
-              atIndex != normalized.startIndex else {
-            return normalized
+    private func exactMatchRank(
+        for package: PackageItem,
+        queryBaseToken: String,
+        queryQualifiedToken: String,
+        queryHasQualifier: Bool
+    ) -> Int {
+        if queryHasQualifier, package.normalizedIdentityKey == queryQualifiedToken {
+            return 0
         }
-        let suffix = normalized[normalized.index(after: atIndex)...]
-        guard suffix.contains(where: { $0.isNumber }) else {
-            return normalized
+        if package.normalizedBaseName == queryBaseToken {
+            return 1
         }
-        return String(normalized[..<atIndex])
+        return 2
     }
 
     private func consolidatePackages(_ packages: [PackageItem]) -> [ConsolidatedPackageItem] {

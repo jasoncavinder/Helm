@@ -773,6 +773,9 @@ enum CoordinatorWorkflowRequest {
     RefreshManager {
         manager_id: String,
     },
+    DetectManager {
+        manager_id: String,
+    },
     DetectAll,
     UpdatesRun {
         include_pinned: bool,
@@ -1763,6 +1766,7 @@ const TASK_PRUNE_MAX_AGE_SECS: i64 = 300;
 const TASK_RECENT_FETCH_LIMIT: usize = 1000;
 const TASK_TERMINAL_HISTORY_LIMIT: usize = 50;
 const TASK_INFLIGHT_DEDUP_MAX_AGE_SECS: u64 = 1800;
+const CATALOG_SYNC_STALE_AFTER_SECS: i64 = 6 * 60 * 60;
 const STALE_INFLIGHT_TASK_LOG_CONTEXT_STARTUP: &str = "startup_reconciliation";
 const STALE_INFLIGHT_TASK_LOG_CONTEXT_DEDUPE: &str = "inflight_dedupe_check";
 const STALE_INFLIGHT_TASK_LOG_CONTEXT_TRIGGER_GUARD: &str = "trigger_guard";
@@ -2336,6 +2340,14 @@ fn search_label_args(manager: ManagerId, query: &str) -> Vec<(&'static str, Stri
     }
 }
 
+fn search_task_type_for_query(query: &str) -> TaskType {
+    if query.trim().is_empty() {
+        TaskType::CatalogSync
+    } else {
+        TaskType::Search
+    }
+}
+
 fn can_submit_remote_search(runtime: &AdapterRuntime, manager: ManagerId) -> bool {
     manager_participates_in_package_search(manager)
         && runtime.is_manager_enabled(manager)
@@ -2346,6 +2358,96 @@ fn manager_participates_in_package_search(manager: ManagerId) -> bool {
     helm_core::registry::manager_participates_in_package_search(manager)
 }
 
+fn now_unix_seconds_i64() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+fn search_cache_is_stale_for_manager(
+    store: &SqliteStore,
+    manager: ManagerId,
+    now_unix: i64,
+) -> bool {
+    match store.latest_search_cached_at_unix(manager) {
+        Ok(Some(last_cached_unix)) => {
+            now_unix.saturating_sub(last_cached_unix) >= CATALOG_SYNC_STALE_AFTER_SECS
+        }
+        Ok(None) | Err(_) => true,
+    }
+}
+
+fn manager_can_catalog_sync(
+    store: &SqliteStore,
+    runtime: &AdapterRuntime,
+    manager: ManagerId,
+) -> bool {
+    if !can_submit_remote_search(runtime, manager) {
+        return false;
+    }
+
+    // Managers with explicit detection support only participate once detected.
+    if runtime.supports_capability(manager, Capability::Detect)
+        && !manager_is_detected(store, manager)
+    {
+        return false;
+    }
+
+    true
+}
+
+fn queue_catalog_sync_task_if_needed(
+    store: &SqliteStore,
+    runtime: &AdapterRuntime,
+    rt_handle: &tokio::runtime::Handle,
+    manager: ManagerId,
+    now_unix: i64,
+    force: bool,
+) -> Option<helm_core::models::TaskId> {
+    if !manager_can_catalog_sync(store, runtime, manager) {
+        return None;
+    }
+    if !force && !search_cache_is_stale_for_manager(store, manager, now_unix) {
+        return None;
+    }
+
+    queue_remote_search_task(store, runtime, rt_handle, manager, "").ok()
+}
+
+fn schedule_catalog_sync_for_managers(
+    store: &SqliteStore,
+    runtime: &AdapterRuntime,
+    rt_handle: &tokio::runtime::Handle,
+    managers: impl IntoIterator<Item = ManagerId>,
+    force_managers: &std::collections::HashSet<ManagerId>,
+) -> usize {
+    let now_unix = now_unix_seconds_i64();
+    managers
+        .into_iter()
+        .filter(|manager| {
+            queue_catalog_sync_task_if_needed(
+                store,
+                runtime,
+                rt_handle,
+                *manager,
+                now_unix,
+                force_managers.contains(manager),
+            )
+            .is_some()
+        })
+        .count()
+}
+
+fn detected_installed_map(store: &SqliteStore) -> std::collections::HashMap<ManagerId, bool> {
+    store
+        .list_detections()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(manager, info)| (manager, info.installed))
+        .collect()
+}
+
 fn queue_remote_search_task(
     store: &SqliteStore,
     runtime: &AdapterRuntime,
@@ -2354,9 +2456,6 @@ fn queue_remote_search_task(
     query: &str,
 ) -> Result<helm_core::models::TaskId, &'static str> {
     let normalized_query = query.trim();
-    if normalized_query.is_empty() {
-        return Err(SERVICE_ERROR_INVALID_INPUT);
-    }
 
     if !can_submit_remote_search(runtime, manager) {
         return Err(SERVICE_ERROR_UNSUPPORTED_CAPABILITY);
@@ -2364,13 +2463,14 @@ fn queue_remote_search_task(
 
     let label_key = search_label_key_for_query(normalized_query);
     let label_args = search_label_args(manager, normalized_query);
+    let task_type = search_task_type_for_query(normalized_query);
 
     if let Some(existing) = find_matching_inflight_task(
         store,
         runtime,
         rt_handle,
         manager,
-        TaskType::Search,
+        task_type,
         Some(label_key),
         &label_args,
     ) {
@@ -2416,6 +2516,16 @@ fn remote_search_target_managers(runtime: &AdapterRuntime, store: &SqliteStore) 
                 && (!detected_managers.is_empty() || runtime.has_manager(*manager))
                 && (detected_managers.is_empty() || detected_managers.contains(manager))
         })
+        .collect()
+}
+
+fn remote_catalog_sync_target_managers(
+    runtime: &AdapterRuntime,
+    store: &SqliteStore,
+) -> Vec<ManagerId> {
+    ManagerId::ALL
+        .into_iter()
+        .filter(|manager| manager_can_catalog_sync(store, runtime, *manager))
         .collect()
 }
 
@@ -3830,15 +3940,29 @@ fn run_coordinator_workflow(
             if failures > 0 {
                 return Err(format!("{failures} manager refresh operations failed"));
             }
+            let _ = schedule_catalog_sync_for_managers(
+                store,
+                runtime,
+                rt_handle,
+                remote_catalog_sync_target_managers(runtime, store),
+                &std::collections::HashSet::new(),
+            );
             Ok(())
         }
         CoordinatorWorkflowRequest::RefreshManager { manager_id } => {
             let manager = manager_id
                 .parse::<ManagerId>()
                 .map_err(|_| format!("unknown manager id '{}'", manager_id))?;
-            refresh_single_manager(runtime, rt_handle, manager)
+            refresh_single_manager(runtime, store, rt_handle, manager)
+        }
+        CoordinatorWorkflowRequest::DetectManager { manager_id } => {
+            let manager = manager_id
+                .parse::<ManagerId>()
+                .map_err(|_| format!("unknown manager id '{}'", manager_id))?;
+            detect_single_manager(runtime, store, rt_handle, manager)
         }
         CoordinatorWorkflowRequest::DetectAll => {
+            let detected_before = detected_installed_map(store);
             let results = rt_handle.block_on(runtime.detect_all_ordered());
             let failures = results
                 .into_iter()
@@ -3847,6 +3971,21 @@ fn run_coordinator_workflow(
             if failures > 0 {
                 return Err(format!("{failures} manager detection operations failed"));
             }
+            let force_managers: std::collections::HashSet<ManagerId> =
+                remote_catalog_sync_target_managers(runtime, store)
+                    .into_iter()
+                    .filter(|manager| {
+                        manager_is_detected(store, *manager)
+                            && !detected_before.get(manager).copied().unwrap_or(false)
+                    })
+                    .collect();
+            let _ = schedule_catalog_sync_for_managers(
+                store,
+                runtime,
+                rt_handle,
+                remote_catalog_sync_target_managers(runtime, store),
+                &force_managers,
+            );
             Ok(())
         }
         CoordinatorWorkflowRequest::UpdatesRun {
@@ -3858,6 +3997,7 @@ fn run_coordinator_workflow(
 
 fn refresh_single_manager(
     runtime: &AdapterRuntime,
+    store: &SqliteStore,
     rt_handle: &tokio::runtime::Handle,
     manager: ManagerId,
 ) -> Result<(), String> {
@@ -3871,36 +4011,15 @@ fn refresh_single_manager(
         return Ok(());
     }
 
-    let mut detected_installed = None;
-    let mut ran_any_action = false;
-
-    if runtime.supports_capability(manager, Capability::Detect) {
-        let response = submit_request_wait(
-            runtime,
-            rt_handle,
-            manager,
-            AdapterRequest::Detect(helm_core::adapters::DetectRequest),
-        )?;
-        match response {
-            helm_core::adapters::AdapterResponse::Detection(info) => {
-                detected_installed = Some(info.installed);
-                if !info.installed {
-                    return Ok(());
-                }
-            }
-            _ => {
-                return Err(format!(
-                    "manager '{}' detect action returned unexpected payload",
-                    manager.as_str()
-                ));
-            }
-        }
-        ran_any_action = true;
+    if runtime.supports_capability(manager, Capability::Detect)
+        && !manager_is_detected(store, manager)
+    {
+        return Ok(());
     }
 
-    if detected_installed != Some(false)
-        && runtime.supports_capability(manager, Capability::ListInstalled)
-    {
+    let mut ran_any_action = false;
+
+    if runtime.supports_capability(manager, Capability::ListInstalled) {
         let _ = submit_request_wait(
             runtime,
             rt_handle,
@@ -3910,9 +4029,7 @@ fn refresh_single_manager(
         ran_any_action = true;
     }
 
-    if detected_installed != Some(false)
-        && runtime.supports_capability(manager, Capability::ListOutdated)
-    {
+    if runtime.supports_capability(manager, Capability::ListOutdated) {
         let _ = submit_request_wait(
             runtime,
             rt_handle,
@@ -3924,11 +4041,84 @@ fn refresh_single_manager(
 
     if !ran_any_action {
         return Err(format!(
-            "manager '{}' has no detection or refresh capabilities",
+            "manager '{}' has no refresh capabilities",
             manager.as_str()
         ));
     }
+
+    let _ = schedule_catalog_sync_for_managers(
+        store,
+        runtime,
+        rt_handle,
+        [manager],
+        &std::collections::HashSet::new(),
+    );
     Ok(())
+}
+
+fn detect_single_manager(
+    runtime: &AdapterRuntime,
+    store: &SqliteStore,
+    rt_handle: &tokio::runtime::Handle,
+    manager: ManagerId,
+) -> Result<(), String> {
+    if !runtime.has_manager(manager) {
+        return Err(format!(
+            "manager '{}' is not registered in runtime",
+            manager.as_str()
+        ));
+    }
+    if !runtime.is_manager_enabled(manager) {
+        return Ok(());
+    }
+    if !runtime.supports_capability(manager, Capability::Detect) {
+        return Err(format!(
+            "manager '{}' has no detection capability",
+            manager.as_str()
+        ));
+    }
+
+    let was_detected = manager_is_detected(store, manager);
+    let response = submit_request_wait(
+        runtime,
+        rt_handle,
+        manager,
+        AdapterRequest::Detect(helm_core::adapters::DetectRequest),
+    )?;
+
+    match response {
+        helm_core::adapters::AdapterResponse::Detection(_) => {
+            let mut force_managers = std::collections::HashSet::new();
+            if manager_is_detected(store, manager) && !was_detected {
+                force_managers.insert(manager);
+            }
+            let _ = schedule_catalog_sync_for_managers(
+                store,
+                runtime,
+                rt_handle,
+                [manager],
+                &force_managers,
+            );
+            Ok(())
+        }
+        _ => Err(format!(
+            "manager '{}' detect action returned unexpected payload",
+            manager.as_str()
+        )),
+    }
+}
+
+fn manager_is_detected(store: &SqliteStore, manager: ManagerId) -> bool {
+    store
+        .list_detections()
+        .ok()
+        .and_then(|detections| {
+            detections
+                .into_iter()
+                .find(|(candidate, _)| *candidate == manager)
+                .map(|(_, info)| info.installed)
+        })
+        .unwrap_or(false)
 }
 
 fn run_updates_workflow(
@@ -4889,16 +5079,35 @@ pub extern "C" fn helm_trigger_refresh() -> bool {
 
     let runtime = state.runtime.clone();
     let store = state.store.clone();
+    let rt_handle = state.rt_handle.clone();
     let enabled_by_manager = manager_enabled_map(store.as_ref());
 
     let has_refresh_or_detection = has_recent_refresh_or_detection(
         store.as_ref(),
         runtime.as_ref(),
-        &state.rt_handle,
+        &rt_handle,
         &enabled_by_manager,
     );
     if has_refresh_or_detection {
         return true;
+    }
+
+    {
+        let catalog_store = store.clone();
+        let catalog_runtime = runtime.clone();
+        let catalog_rt_handle = rt_handle.clone();
+        thread::spawn(move || {
+            let _ = schedule_catalog_sync_for_managers(
+                catalog_store.as_ref(),
+                catalog_runtime.as_ref(),
+                &catalog_rt_handle,
+                remote_catalog_sync_target_managers(
+                    catalog_runtime.as_ref(),
+                    catalog_store.as_ref(),
+                ),
+                &std::collections::HashSet::new(),
+            );
+        });
     }
 
     state._tokio_rt.spawn(async move {
@@ -4927,12 +5136,14 @@ pub extern "C" fn helm_trigger_detection() -> bool {
 
     let runtime = state.runtime.clone();
     let store = state.store.clone();
+    let rt_handle = state.rt_handle.clone();
     let enabled_by_manager = manager_enabled_map(store.as_ref());
+    let detected_before = detected_installed_map(store.as_ref());
 
     let has_refresh_or_detection = has_recent_refresh_or_detection(
         store.as_ref(),
         runtime.as_ref(),
-        &state.rt_handle,
+        &rt_handle,
         &enabled_by_manager,
     );
     if has_refresh_or_detection {
@@ -4948,12 +5159,39 @@ pub extern "C" fn helm_trigger_detection() -> bool {
                 log_manager_operation_failure("detection", manager, &e);
             }
         }
+
+        let catalog_store = store.clone();
+        let catalog_runtime = runtime.clone();
+        let catalog_rt_handle = rt_handle.clone();
+        thread::spawn(move || {
+            let force_managers: std::collections::HashSet<ManagerId> =
+                remote_catalog_sync_target_managers(
+                    catalog_runtime.as_ref(),
+                    catalog_store.as_ref(),
+                )
+                .into_iter()
+                .filter(|manager| {
+                    manager_is_detected(catalog_store.as_ref(), *manager)
+                        && !detected_before.get(manager).copied().unwrap_or(false)
+                })
+                .collect();
+            let _ = schedule_catalog_sync_for_managers(
+                catalog_store.as_ref(),
+                catalog_runtime.as_ref(),
+                &catalog_rt_handle,
+                remote_catalog_sync_target_managers(
+                    catalog_runtime.as_ref(),
+                    catalog_store.as_ref(),
+                ),
+                &force_managers,
+            );
+        });
     });
 
     true
 }
 
-/// Trigger detection/refresh for a single manager.
+/// Trigger detection for a single manager.
 ///
 /// # Safety
 ///
@@ -4976,34 +5214,37 @@ pub unsafe extern "C" fn helm_trigger_detection_for_manager(manager_id: *const c
     };
 
     if external_coordinator_state_dir().is_some() {
-        return coordinator_start_workflow_external(CoordinatorWorkflowRequest::RefreshManager {
+        return coordinator_start_workflow_external(CoordinatorWorkflowRequest::DetectManager {
             manager_id: manager.as_str().to_string(),
         })
         .is_ok();
     }
 
-    let (runtime, rt_handle) = {
+    let (store, runtime, rt_handle) = {
         let guard = lock_or_recover(&STATE, "state");
         let state = match guard.as_ref() {
             Some(s) => s,
             None => return return_error_bool(SERVICE_ERROR_INTERNAL),
         };
-        (state.runtime.clone(), state.rt_handle.clone())
+        (
+            state.store.clone(),
+            state.runtime.clone(),
+            state.rt_handle.clone(),
+        )
     };
 
     if !runtime.has_manager(manager) || !runtime.is_manager_enabled(manager) {
         return return_error_bool(SERVICE_ERROR_UNSUPPORTED_CAPABILITY);
     }
 
-    let supports_detection_like_refresh = runtime.supports_capability(manager, Capability::Detect)
-        || runtime.supports_capability(manager, Capability::ListInstalled)
-        || runtime.supports_capability(manager, Capability::ListOutdated);
-    if !supports_detection_like_refresh {
+    if !runtime.supports_capability(manager, Capability::Detect) {
         return return_error_bool(SERVICE_ERROR_UNSUPPORTED_CAPABILITY);
     }
 
     thread::spawn(move || {
-        if let Err(error) = refresh_single_manager(runtime.as_ref(), &rt_handle, manager) {
+        if let Err(error) =
+            detect_single_manager(runtime.as_ref(), store.as_ref(), &rt_handle, manager)
+        {
             log_manager_operation_failure("detection", manager, &error);
         }
     });
@@ -5100,6 +5341,9 @@ pub unsafe extern "C" fn helm_trigger_remote_search(query: *const c_char) -> i64
         Ok(s) => s.trim(),
         Err(_) => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
     };
+    if query_str.is_empty() {
+        return return_error_i64(SERVICE_ERROR_INVALID_INPUT);
+    }
 
     let (store, runtime, rt_handle) = {
         let guard = lock_or_recover(&STATE, "state");
@@ -5116,6 +5360,14 @@ pub unsafe extern "C" fn helm_trigger_remote_search(query: *const c_char) -> i64
 
     let mut first_task_id: Option<i64> = None;
     let mut last_error_key: Option<&'static str> = None;
+
+    let _ = schedule_catalog_sync_for_managers(
+        store.as_ref(),
+        runtime.as_ref(),
+        &rt_handle,
+        remote_catalog_sync_target_managers(runtime.as_ref(), store.as_ref()),
+        &std::collections::HashSet::new(),
+    );
 
     for manager in remote_search_target_managers(runtime.as_ref(), store.as_ref()) {
         match queue_remote_search_task(
@@ -5172,6 +5424,9 @@ pub unsafe extern "C" fn helm_trigger_remote_search_for_manager(
         Ok(query_text) => query_text.trim(),
         Err(_) => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
     };
+    if query_str.is_empty() {
+        return return_error_i64(SERVICE_ERROR_INVALID_INPUT);
+    }
 
     let (store, runtime, rt_handle) = {
         let guard = lock_or_recover(&STATE, "state");
@@ -5185,6 +5440,14 @@ pub unsafe extern "C" fn helm_trigger_remote_search_for_manager(
             state.rt_handle.clone(),
         )
     };
+
+    let _ = schedule_catalog_sync_for_managers(
+        store.as_ref(),
+        runtime.as_ref(),
+        &rt_handle,
+        [manager],
+        &std::collections::HashSet::new(),
+    );
 
     match queue_remote_search_task(
         store.as_ref(),
@@ -8705,15 +8968,15 @@ pub unsafe extern "C" fn helm_free_string(s: *mut c_char) {
 #[cfg(test)]
 mod tests {
     use super::{
-        FfiUpgradePlanStep, SERVICE_ERROR_INVALID_INPUT, SERVICE_ERROR_UNSUPPORTED_CAPABILITY,
-        build_manager_statuses, build_manager_uninstall_plan, build_manager_uninstall_preview,
-        build_visible_tasks, collect_upgrade_all_targets, homebrew_probe_candidates,
+        FfiUpgradePlanStep, SERVICE_ERROR_UNSUPPORTED_CAPABILITY, build_manager_statuses,
+        build_manager_uninstall_plan, build_manager_uninstall_preview, build_visible_tasks,
+        collect_upgrade_all_targets, homebrew_probe_candidates,
         manager_allows_individual_package_install, manager_authority_key,
         manager_participates_in_package_search, manager_uninstall_label_for_route,
         parse_homebrew_config_version, push_upgrade_plan_step,
         resolve_homebrew_manager_update_strategy, resolve_rustup_uninstall_strategy,
-        search_label_args, search_label_key_for_query, upgrade_plan_step_id,
-        upgrade_reason_label_for, upgrade_task_label_for,
+        search_label_args, search_label_key_for_query, search_task_type_for_query,
+        upgrade_plan_step_id, upgrade_reason_label_for, upgrade_task_label_for,
     };
     use helm_core::adapters::{AdapterRequest, ManagerAdapter, UninstallRequest};
     use helm_core::manager_policy::{
@@ -9047,7 +9310,7 @@ mod tests {
     }
 
     #[test]
-    fn queue_remote_search_task_rejects_empty_query_before_capability_checks() {
+    fn queue_remote_search_task_empty_query_is_routed_as_catalog_sync() {
         let store = temp_sqlite_store("queue-remote-search-empty-query");
         store
             .migrate_to_latest()
@@ -9065,7 +9328,7 @@ mod tests {
             ManagerId::Npm,
             "   ",
         );
-        assert_eq!(result, Err(SERVICE_ERROR_INVALID_INPUT));
+        assert_eq!(result, Err(SERVICE_ERROR_UNSUPPORTED_CAPABILITY));
 
         let _ = fs::remove_file(store.database_path());
     }
@@ -10644,6 +10907,12 @@ mod tests {
             search_label_key_for_query("   "),
             "service.task.label.search.manager"
         );
+    }
+
+    #[test]
+    fn search_task_type_maps_empty_query_to_catalog_sync() {
+        assert_eq!(search_task_type_for_query("openssl"), TaskType::Search);
+        assert_eq!(search_task_type_for_query("   "), TaskType::CatalogSync);
     }
 
     #[test]
