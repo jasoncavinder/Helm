@@ -312,7 +312,11 @@ struct PackageConsolidationPolicy {
 
 enum PackageActionTracking {
     static func normalizedPackageName(_ value: String) -> String {
-        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        PackageIdentity.normalizedBaseName(value)
+    }
+
+    static func normalizedPackageIdentityKey(name: String, version: String?) -> String {
+        PackageIdentity.normalizedIdentityKey(name: name, version: version)
     }
 
     static func packageNameFromPackageId(_ packageId: String) -> String? {
@@ -323,13 +327,21 @@ enum PackageActionTracking {
             return nil
         }
 
+        var versionSlice: Substring?
         var packageSlice = normalizedId[normalizedId.index(after: managerSeparator)...]
         if let versionSeparator = packageSlice.range(of: "::", options: .backwards) {
+            versionSlice = packageSlice[versionSeparator.upperBound...]
             packageSlice = packageSlice[..<versionSeparator.lowerBound]
         }
 
-        let normalizedPackageName = normalizedPackageName(String(packageSlice))
-        return normalizedPackageName.isEmpty ? nil : normalizedPackageName
+        let packageName = String(packageSlice).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !packageName.isEmpty else { return nil }
+        let version = versionSlice.map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+        let normalizedPackageIdentity = normalizedPackageIdentityKey(
+            name: packageName,
+            version: version
+        )
+        return normalizedPackageIdentity.isEmpty ? nil : normalizedPackageIdentity
     }
 
     static func inFlightInstallNames(

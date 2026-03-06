@@ -48,7 +48,7 @@ impl VersionSelector {
             .collect::<Vec<_>>();
         let first_release_atom = atoms
             .iter()
-            .position(|atom| atom.chars().any(|ch| ch.is_ascii_digit()));
+            .position(|atom| atom_starts_release_token(atom.as_str()));
 
         Self {
             raw: normalized.to_string(),
@@ -78,6 +78,15 @@ impl VersionSelector {
         } else {
             Some(atoms.join("-"))
         }
+    }
+}
+
+fn atom_starts_release_token(atom: &str) -> bool {
+    let mut chars = atom.chars();
+    match chars.next() {
+        Some(first) if first.is_ascii_digit() => true,
+        Some('v' | 'V') => chars.next().is_some_and(|next| next.is_ascii_digit()),
+        _ => false,
     }
 }
 
@@ -112,6 +121,26 @@ mod tests {
         assert_eq!(selector.atoms, vec!["zulu", "jre", "javafx", "8.92.0.21"]);
         assert_eq!(selector.qualifier_atoms(), vec!["zulu", "jre", "javafx"]);
         assert_eq!(selector.release_token().as_deref(), Some("8.92.0.21"));
+    }
+
+    #[test]
+    fn preserves_qualifier_atoms_that_include_digits() {
+        let parsed = PackageCoordinate::parse("python@anaconda3-2024.10-1")
+            .expect("coordinate should parse");
+        let selector = parsed.version_selector.expect("selector should be present");
+        assert_eq!(parsed.package_name, "python");
+        assert_eq!(selector.qualifier_atoms(), vec!["anaconda3"]);
+        assert_eq!(selector.release_token().as_deref(), Some("2024.10-1"));
+    }
+
+    #[test]
+    fn treats_all_atoms_as_qualifier_when_release_token_is_missing() {
+        let parsed =
+            PackageCoordinate::parse("python@mambaforge").expect("coordinate should parse");
+        let selector = parsed.version_selector.expect("selector should be present");
+        assert_eq!(parsed.package_name, "python");
+        assert_eq!(selector.qualifier_atoms(), vec!["mambaforge"]);
+        assert_eq!(selector.release_token(), None);
     }
 
     #[test]

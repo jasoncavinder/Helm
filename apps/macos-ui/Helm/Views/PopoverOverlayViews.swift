@@ -68,9 +68,7 @@ struct PopoverSearchOverlayContent: View {
                 ScrollView {
                     LazyVStack(spacing: 6) {
                         ForEach(searchResults) { result in
-                            let preferredManagerId = core.preferredManagerId(
-                                forPackageName: result.package.name
-                            )
+                            let preferredManagerId = core.preferredManagerId(for: result.package)
                             let package = result.actionTarget(preferredManagerId: preferredManagerId)
                             HStack(spacing: 8) {
                                 Button {
@@ -84,7 +82,7 @@ struct PopoverSearchOverlayContent: View {
                                 } label: {
                                     HStack(spacing: 8) {
                                         VStack(alignment: .leading, spacing: 2) {
-                                            Text(package.name)
+                                            Text(package.displayName)
                                                 .font(.subheadline.weight(.medium))
                                                 .lineLimit(1)
                                             HStack(spacing: 4) {
@@ -158,7 +156,7 @@ struct PopoverSearchOverlayContent: View {
                     return Alert(
                         title: Text(
                             L10n.App.Packages.Alert.uninstallTitle.localized(
-                                with: ["package": package.name]
+                                with: ["package": package.displayName]
                             )
                         ),
                         message: Text(message),
@@ -168,7 +166,7 @@ struct PopoverSearchOverlayContent: View {
                 return Alert(
                     title: Text(
                         L10n.App.Packages.Alert.uninstallTitle.localized(
-                            with: ["package": package.name]
+                            with: ["package": package.displayName]
                         )
                     ),
                     message: Text(message),
@@ -182,13 +180,13 @@ struct PopoverSearchOverlayContent: View {
             return Alert(
                 title: Text(
                     L10n.App.Packages.Alert.uninstallTitle.localized(
-                        with: ["package": package.name]
+                        with: ["package": package.displayName]
                     )
                 ),
                 message: Text(
                     L10n.App.Packages.Alert.uninstallMessage.localized(
                         with: [
-                            "package": package.name,
+                            "package": package.displayName,
                             "manager": localizedManagerDisplayName(package.managerId),
                         ]
                     )
@@ -289,7 +287,7 @@ struct PopoverSearchOverlayContent: View {
         var sections = [
             L10n.App.Packages.Alert.uninstallMessage.localized(
                 with: [
-                    "package": package.name,
+                    "package": package.displayName,
                     "manager": localizedManagerDisplayName(package.managerId),
                 ]
             )

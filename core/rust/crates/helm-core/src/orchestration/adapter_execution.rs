@@ -59,7 +59,7 @@ impl AdapterExecutionRuntime {
     ) -> OrchestrationResult<TaskId> {
         let manager = adapter.descriptor().id;
         let action = request.action();
-        let task_type = task_type_for_action(action);
+        let task_type = task_type_for_request(&request);
         let outcome_slot = Arc::new(Mutex::new(None));
         let operation_slot = outcome_slot.clone();
 
@@ -215,6 +215,15 @@ fn task_type_for_action(action: ManagerAction) -> TaskType {
     }
 }
 
+fn task_type_for_request(request: &AdapterRequest) -> TaskType {
+    match request {
+        AdapterRequest::Search(search_request) if search_request.query.text.trim().is_empty() => {
+            TaskType::CatalogSync
+        }
+        _ => task_type_for_action(request.action()),
+    }
+}
+
 fn cancelled_error(manager: ManagerId, task_type: TaskType, action: ManagerAction) -> CoreError {
     CoreError {
         manager: Some(manager),
@@ -259,6 +268,7 @@ fn default_action_for_task_type(task_type: TaskType) -> ManagerAction {
         TaskType::Detection => ManagerAction::Detect,
         TaskType::Refresh => ManagerAction::Refresh,
         TaskType::Search => ManagerAction::Search,
+        TaskType::CatalogSync => ManagerAction::Search,
         TaskType::Install => ManagerAction::Install,
         TaskType::Uninstall => ManagerAction::Uninstall,
         TaskType::Upgrade => ManagerAction::Upgrade,
@@ -269,8 +279,11 @@ fn default_action_for_task_type(task_type: TaskType) -> ManagerAction {
 
 #[cfg(test)]
 mod tests {
-    use super::task_type_for_action;
+    use super::{task_type_for_action, task_type_for_request};
+    use crate::adapters::{AdapterRequest, SearchRequest};
+    use crate::models::SearchQuery;
     use crate::models::{ManagerAction, TaskType};
+    use std::time::SystemTime;
 
     #[test]
     fn list_actions_map_to_refresh_task_type() {
@@ -282,5 +295,16 @@ mod tests {
             task_type_for_action(ManagerAction::ListOutdated),
             TaskType::Refresh
         );
+    }
+
+    #[test]
+    fn empty_search_query_maps_to_catalog_sync_task_type() {
+        let request = AdapterRequest::Search(SearchRequest {
+            query: SearchQuery {
+                text: "   ".to_string(),
+                issued_at: SystemTime::UNIX_EPOCH,
+            },
+        });
+        assert_eq!(task_type_for_request(&request), TaskType::CatalogSync);
     }
 }

@@ -544,7 +544,10 @@ fn hard_timeout_activity_window(task_type: TaskType, hard_timeout: Duration) -> 
 }
 
 fn supports_read_task_timeout_grace(task_type: TaskType) -> bool {
-    matches!(task_type, TaskType::Search | TaskType::Refresh)
+    matches!(
+        task_type,
+        TaskType::Search | TaskType::CatalogSync | TaskType::Refresh
+    )
 }
 
 fn read_task_hard_timeout_grace_extension(task_type: TaskType, hard_timeout: Duration) -> Duration {
@@ -1165,14 +1168,53 @@ impl RunningProcess for TokioRunningProcess {
                 crate::execution::timeout_prompt_store::clear_prompt(task_id);
             }
 
-            let read_deadline = Duration::from_millis(250);
-            let stdout = match tokio::time::timeout(read_deadline, stdout_reader).await {
-                Ok(Ok(buffer)) => buffer,
-                _ => Vec::new(),
+            let stdout = match stdout_reader.await {
+                Ok(buffer) => buffer,
+                Err(join_error) => {
+                    let message = append_error_context(
+                        format!("failed to join stdout reader: {join_error}").as_str(),
+                        program_path.as_str(),
+                        path_snippet.as_deref(),
+                    );
+                    if let Some(task_id) = task_id {
+                        crate::execution::task_output_store::append_stderr(
+                            task_id,
+                            message.as_bytes(),
+                        );
+                        crate::execution::task_output_store::record_error(
+                            task_id,
+                            "stdout_reader_join_failed",
+                            message.as_str(),
+                            Some("error"),
+                            Some(SystemTime::now()),
+                        );
+                    }
+                    Vec::new()
+                }
             };
-            let stderr = match tokio::time::timeout(read_deadline, stderr_reader).await {
-                Ok(Ok(buffer)) => buffer,
-                _ => Vec::new(),
+            let stderr = match stderr_reader.await {
+                Ok(buffer) => buffer,
+                Err(join_error) => {
+                    let message = append_error_context(
+                        format!("failed to join stderr reader: {join_error}").as_str(),
+                        program_path.as_str(),
+                        path_snippet.as_deref(),
+                    );
+                    if let Some(task_id) = task_id {
+                        crate::execution::task_output_store::append_stderr(
+                            task_id,
+                            message.as_bytes(),
+                        );
+                        crate::execution::task_output_store::record_error(
+                            task_id,
+                            "stderr_reader_join_failed",
+                            message.as_str(),
+                            Some("error"),
+                            Some(SystemTime::now()),
+                        );
+                    }
+                    Vec::new()
+                }
             };
 
             let finished_at = SystemTime::now();
@@ -1559,6 +1601,7 @@ mod tests {
     #[test]
     fn read_tasks_opt_into_timeout_grace_support() {
         assert!(supports_read_task_timeout_grace(TaskType::Search));
+        assert!(supports_read_task_timeout_grace(TaskType::CatalogSync));
         assert!(supports_read_task_timeout_grace(TaskType::Refresh));
         assert!(!supports_read_task_timeout_grace(TaskType::Upgrade));
     }
@@ -1567,12 +1610,15 @@ mod tests {
     fn read_tasks_receive_non_zero_hard_timeout_extension_budget() {
         let search_budget =
             hard_timeout_extension_budget(TaskType::Search, Duration::from_secs(30));
+        let catalog_sync_budget =
+            hard_timeout_extension_budget(TaskType::CatalogSync, Duration::from_secs(180));
         let refresh_budget =
             hard_timeout_extension_budget(TaskType::Refresh, Duration::from_secs(180));
         let upgrade_budget =
             hard_timeout_extension_budget(TaskType::Upgrade, Duration::from_secs(180));
 
         assert_eq!(search_budget, Duration::from_secs(30));
+        assert_eq!(catalog_sync_budget, Duration::from_secs(180));
         assert_eq!(refresh_budget, Duration::from_secs(180));
         assert_eq!(upgrade_budget, Duration::from_secs(180));
     }
@@ -1580,12 +1626,15 @@ mod tests {
     #[test]
     fn read_tasks_use_wide_hard_timeout_activity_window() {
         let search_window = hard_timeout_activity_window(TaskType::Search, Duration::from_secs(30));
+        let catalog_sync_window =
+            hard_timeout_activity_window(TaskType::CatalogSync, Duration::from_secs(180));
         let refresh_window =
             hard_timeout_activity_window(TaskType::Refresh, Duration::from_secs(180));
         let upgrade_window =
             hard_timeout_activity_window(TaskType::Upgrade, Duration::from_secs(180));
 
         assert_eq!(search_window, Duration::from_secs(60));
+        assert_eq!(catalog_sync_window, Duration::from_secs(360));
         assert_eq!(refresh_window, Duration::from_secs(360));
         assert!(upgrade_window <= Duration::from_secs(60));
     }
@@ -1598,6 +1647,10 @@ mod tests {
         );
         assert_eq!(
             read_task_hard_timeout_grace_extension(TaskType::Refresh, Duration::from_secs(600)),
+            Duration::from_secs(180)
+        );
+        assert_eq!(
+            read_task_hard_timeout_grace_extension(TaskType::CatalogSync, Duration::from_secs(600)),
             Duration::from_secs(180)
         );
         assert_eq!(

@@ -127,7 +127,7 @@ pub use mas::{
 pub use mas_process::ProcessMasSource;
 pub use mise::{
     MiseAdapter, MiseSource, mise_detect_request, mise_list_installed_request,
-    mise_list_outdated_request,
+    mise_list_outdated_request, mise_list_remote_request,
 };
 pub use mise_process::ProcessMiseSource;
 pub use nix_darwin::{

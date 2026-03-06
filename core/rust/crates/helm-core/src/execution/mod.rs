@@ -420,6 +420,7 @@ fn default_idle_timeout_for_request(request: &ProcessSpawnRequest) -> Option<Dur
     let default_idle = match request.task_type {
         TaskType::Detection => Some(Duration::from_secs(20)),
         TaskType::Search => Some(Duration::from_secs(45)),
+        TaskType::CatalogSync => Some(Duration::from_secs(120)),
         TaskType::Refresh => Some(Duration::from_secs(120)),
         TaskType::Install
         | TaskType::Uninstall

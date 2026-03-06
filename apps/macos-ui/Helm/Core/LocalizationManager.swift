@@ -6,6 +6,10 @@ private let localizationLogger = Logger(subsystem: "com.jasoncavinder.Helm", cat
 
 class LocalizationManager: ObservableObject {
     static let shared = LocalizationManager()
+    private static let pluralRegex: NSRegularExpression? = try? NSRegularExpression(
+        pattern: #"\{([a-zA-Z0-9_]+),\s*plural,\s*one\s*\{([^{}]*)\}\s*other\s*\{([^{}]*)\}\s*\}"#,
+        options: []
+    )
     
     @Published var currentLocale: String = "en" {
         didSet {
@@ -156,8 +160,10 @@ class LocalizationManager: ObservableObject {
     }
 
     private func applyPluralArguments(_ format: String, args: [String: Any]) -> String {
-        let pattern = #"\{([a-zA-Z0-9_]+),\s*plural,\s*one\s*\{([^{}]*)\}\s*other\s*\{([^{}]*)\}\s*\}"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+        guard !args.isEmpty, format.contains("plural") else {
+            return format
+        }
+        guard let regex = Self.pluralRegex else {
             return format
         }
 

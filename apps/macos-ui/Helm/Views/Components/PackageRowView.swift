@@ -7,7 +7,7 @@ struct PackageRowView: View {
 
     private var accessibilityDescription: String {
         let managerList = displayedManagerNames.joined(separator: ", ")
-        var parts = [package.name, package.status.displayName]
+        var parts = [package.displayName, package.status.displayName]
         parts.append(package.version)
         if let latest = package.latestVersion {
             parts.append(L10n.App.Packages.Action.upgradePackage.localized + " " + latest)
@@ -40,7 +40,7 @@ struct PackageRowView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
-                    Text(package.name)
+                    Text(package.displayName)
                         .font(.body)
                         .lineLimit(1)
                     if package.pinned {
@@ -51,7 +51,6 @@ struct PackageRowView: View {
                             .accessibilityHidden(true)
                     }
                 }
-
                 HStack(spacing: 4) {
                     ForEach(Array(displayedManagerNames.enumerated()), id: \.offset) { _, managerName in
                         self.managerBadge(managerName)

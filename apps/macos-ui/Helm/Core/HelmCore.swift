@@ -728,6 +728,7 @@ final class HelmCore: ObservableObject {
     var installActionNormalizedNameByPackageId: [String: String] = [:]
     var uninstallActionTaskByPackage: [String: UInt64] = [:]
     var descriptionLookupTaskIdsByPackage: [String: Set<UInt64>] = [:]
+    var descriptionLookupStartedAtByPackage: [String: Date] = [:]
     var descriptionLookupPackageById: [String: PackageItem] = [:]
     var lastObservedTaskId: UInt64 = 0
     var onboardingDetectionAnchorTaskId: UInt64 = 0
@@ -1242,6 +1243,7 @@ final class HelmCore: ObservableObject {
                     self?.installActionNormalizedNameByPackageId = [:]
                     self?.uninstallActionTaskByPackage = [:]
                     self?.descriptionLookupTaskIdsByPackage = [:]
+                    self?.descriptionLookupStartedAtByPackage = [:]
                     self?.descriptionLookupPackageById = [:]
                     self?.activeRemoteSearchTaskIds = []
                     self?.managerActionTaskDescriptions = [:]

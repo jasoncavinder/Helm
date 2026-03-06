@@ -59,6 +59,142 @@ struct PackageItem: Identifiable {
         self.restartRequired = restartRequired
         self.statusOverride = status
     }
+
+    var displayName: String {
+        PackageIdentity.displayName(name: name, version: version)
+    }
+
+    var normalizedIdentityKey: String {
+        PackageIdentity.normalizedIdentityKey(name: name, version: version)
+    }
+
+    var normalizedBaseName: String {
+        PackageIdentity.normalizedBaseName(name)
+    }
+}
+
+enum PackageIdentity {
+    private static let unknownVersionTokens: Set<String> = {
+        var tokens: Set<String> = ["unknown"]
+        let localizedUnknown = L10n.Common.unknown.localized
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if !localizedUnknown.isEmpty {
+            tokens.insert(localizedUnknown)
+        }
+        return tokens
+    }()
+
+    static func normalizedBaseName(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    static func variantQualifier(fromVersion version: String?) -> String? {
+        normalizedVariantQualifier(fromVersion: version, lowercase: false)
+    }
+
+    static func normalizedVariantQualifier(fromVersion version: String?) -> String? {
+        normalizedVariantQualifier(fromVersion: version, lowercase: true)
+    }
+
+    static func displayName(name: String, version: String?) -> String {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return name }
+        guard let qualifier = variantQualifier(fromVersion: version) else { return trimmedName }
+        return "\(trimmedName)@\(qualifier)"
+    }
+
+    static func normalizedIdentityKey(name: String, version: String?) -> String {
+        let normalizedName = normalizedBaseName(name)
+        guard !normalizedName.isEmpty else { return "" }
+        guard let qualifier = normalizedVariantQualifier(fromVersion: version) else {
+            return normalizedName
+        }
+        return "\(normalizedName)@\(qualifier)"
+    }
+
+    static func normalizedExactQueryToken(_ value: String) -> String {
+        let normalized = value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !normalized.isEmpty else { return "" }
+        guard let atIndex = normalized.lastIndex(of: "@"),
+              atIndex != normalized.startIndex else {
+            return normalized
+        }
+        let base = String(normalized[..<atIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !base.isEmpty else { return normalized }
+        let selector = String(normalized[normalized.index(after: atIndex)...])
+        guard !selector.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return String(base)
+        }
+        if let qualifier = qualifierFromSelector(selector, lowercase: true) {
+            return "\(base)@\(qualifier)"
+        }
+        return String(base)
+    }
+
+    static func normalizedQueryBaseToken(_ value: String) -> String {
+        let normalized = value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !normalized.isEmpty else { return "" }
+        guard let atIndex = normalized.lastIndex(of: "@"),
+              atIndex != normalized.startIndex else {
+            return normalized
+        }
+        let base = String(normalized[..<atIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return base.isEmpty ? normalized : String(base)
+    }
+
+    private static func normalizedVariantQualifier(fromVersion version: String?, lowercase: Bool) -> String? {
+        guard let normalizedVersion = normalizedVersionSelectorInput(version) else { return nil }
+        return qualifierFromSelector(normalizedVersion, lowercase: lowercase)
+    }
+
+    private static func normalizedVersionSelectorInput(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return nil }
+        if unknownVersionTokens.contains(normalized.lowercased()) {
+            return nil
+        }
+        return normalized
+    }
+
+    private static func qualifierFromSelector(_ selector: String, lowercase: Bool) -> String? {
+        let atoms = selector
+            .split(separator: "-")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !atoms.isEmpty else { return nil }
+
+        let firstReleaseAtom = atoms.firstIndex(where: { atom in
+            isReleaseTokenAtom(atom)
+        })
+        let qualifierAtoms: ArraySlice<String> = {
+            guard let firstReleaseAtom else {
+                return atoms[atoms.startIndex..<atoms.endIndex]
+            }
+            guard firstReleaseAtom > 0 else { return [] }
+            return atoms[atoms.startIndex..<firstReleaseAtom]
+        }()
+        guard !qualifierAtoms.isEmpty else { return nil }
+        let qualifier = qualifierAtoms.joined(separator: "-")
+        return lowercase ? qualifier.lowercased() : qualifier
+    }
+
+    private static func isReleaseTokenAtom(_ atom: String) -> Bool {
+        guard let first = atom.first else { return false }
+        if first.isNumber {
+            return true
+        }
+        if first == "v" || first == "V" {
+            let next = atom.dropFirst().first
+            return next?.isNumber == true
+        }
+        return false
+    }
 }
 
 struct ConsolidatedPackageItem: Identifiable {
@@ -92,7 +228,7 @@ struct ConsolidatedPackageItem: Identifiable {
         _ packages: [PackageItem],
         localizedManagerName: (String) -> String
     ) -> [ConsolidatedPackageItem] {
-        let grouped = Dictionary(grouping: packages) { $0.name.lowercased() }
+        let grouped = Dictionary(grouping: packages) { $0.normalizedIdentityKey }
 
         return grouped.values.compactMap { members in
             let sortedMembers = members.sorted(by: preferredPackageOrdering)
@@ -121,7 +257,7 @@ struct ConsolidatedPackageItem: Identifiable {
             )
         }
         .sorted { lhs, rhs in
-            let nameOrder = lhs.package.name.localizedCaseInsensitiveCompare(rhs.package.name)
+            let nameOrder = lhs.package.displayName.localizedCaseInsensitiveCompare(rhs.package.displayName)
             if nameOrder != .orderedSame {
                 return nameOrder == .orderedAscending
             }

@@ -54,6 +54,20 @@ impl SqliteStore {
             .map_err(|error| storage_error(operation_name, error))?;
         operation(&mut connection).map_err(|error| storage_error(operation_name, error))
     }
+
+    pub fn latest_search_cached_at_unix(
+        &self,
+        manager: ManagerId,
+    ) -> PersistenceResult<Option<i64>> {
+        self.with_connection("latest_search_cached_at_unix", |connection| {
+            ensure_schema_ready(connection)?;
+            connection.query_row(
+                "SELECT MAX(cached_at_unix) FROM search_cache WHERE manager_id = ?1 AND COALESCE(originating_query, '') = ''",
+                [manager.as_str()],
+                |row| row.get::<_, Option<i64>>(0),
+            )
+        })
+    }
 }
 
 impl MigrationStore for SqliteStore {
@@ -2077,6 +2091,7 @@ fn task_type_to_str(value: TaskType) -> &'static str {
         TaskType::Detection => "detection",
         TaskType::Refresh => "refresh",
         TaskType::Search => "search",
+        TaskType::CatalogSync => "catalog_sync",
         TaskType::Install => "install",
         TaskType::Uninstall => "uninstall",
         TaskType::Upgrade => "upgrade",
@@ -2090,6 +2105,7 @@ fn parse_task_type(raw: &str) -> rusqlite::Result<TaskType> {
         "detection" => Ok(TaskType::Detection),
         "refresh" => Ok(TaskType::Refresh),
         "search" => Ok(TaskType::Search),
+        "catalog_sync" => Ok(TaskType::CatalogSync),
         "install" => Ok(TaskType::Install),
         "uninstall" => Ok(TaskType::Uninstall),
         "upgrade" => Ok(TaskType::Upgrade),

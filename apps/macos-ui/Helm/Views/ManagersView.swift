@@ -73,13 +73,13 @@ struct ManagersSectionView: View {
                                         context.managerFilterId = manager.id
                                         context.selectedSection = .packages
                                     },
-                                    onInstallManager: {
+                                    onDetectManager: {
                                         context.selectedManagerId = manager.id
                                         context.selectedPackageId = nil
                                         context.selectedTaskId = nil
                                         context.selectedUpgradePlanStepId = nil
                                         context.selectedSection = .managers
-                                        context.requestManagerInstallSheet(for: manager.id)
+                                        core.triggerDetection(for: manager.id)
                                     },
                                     onToggleEnabled: { enabled in
                                         handleManagerToggle(managerId: manager.id, enable: enabled)
@@ -225,7 +225,7 @@ private struct ManagerSectionRow: View {
     let isSelected: Bool
     let onSelect: () -> Void
     let onViewPackages: () -> Void
-    let onInstallManager: () -> Void
+    let onDetectManager: () -> Void
     let onToggleEnabled: (Bool) -> Void
 
     private var detected: Bool {
@@ -261,10 +261,6 @@ private struct ManagerSectionRow: View {
 
     private var packageActionEnabled: Bool {
         packageCount > 0 && enabled && !isManagerUninstalling
-    }
-
-    private var installActionEnabled: Bool {
-        manager.canInstall && !isManagerUninstalling
     }
 
     private var metadataMismatchIssueSummary: String? {
@@ -359,13 +355,13 @@ private struct ManagerSectionRow: View {
                     ) {
                         onViewPackages()
                     }
-                } else if manager.canInstall {
+                } else {
                     managerCardActionButton(
-                        symbol: "arrow.down.circle",
-                        tooltip: L10n.Common.install.localized,
-                        enabled: installActionEnabled
+                        symbol: "scope",
+                        tooltip: L10n.Common.detect.localized,
+                        enabled: !isManagerUninstalling
                     ) {
-                        onInstallManager()
+                        onDetectManager()
                     }
                 }
             }

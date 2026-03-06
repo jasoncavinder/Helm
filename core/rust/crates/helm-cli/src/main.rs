@@ -2159,9 +2159,21 @@ fn cmd_packages_show(
             ));
         }
     } else if rows.len() > 1 {
+        let preference_key =
+            package_manager_preference_key(package_name.as_str(), requested_version.as_deref());
+        let fallback_preference_key = package_manager_preference_key(package_name.as_str(), None);
         let preferred_manager = store
-            .package_manager_preference(package_name.as_str())
+            .package_manager_preference(preference_key.as_str())
             .map_err(|error| format!("failed to read package manager preference: {error}"))?;
+        let preferred_manager = preferred_manager.or_else(|| {
+            if preference_key == fallback_preference_key {
+                return None;
+            }
+            store
+                .package_manager_preference(fallback_preference_key.as_str())
+                .ok()
+                .flatten()
+        });
 
         if let Some(preferred_manager) = preferred_manager {
             rows.retain(|row| row.manager_id == preferred_manager.as_str());
@@ -10252,6 +10264,32 @@ fn list_outdated_for_enabled(
                 .unwrap_or(true)
         })
         .collect())
+}
+
+fn package_manager_preference_key(package_name: &str, version: Option<&str>) -> String {
+    let normalized_name = package_name.trim().to_ascii_lowercase();
+    if normalized_name.is_empty() {
+        return String::new();
+    }
+
+    let normalized_version = version.map(str::trim).filter(|value| !value.is_empty());
+    let Some(normalized_version) = normalized_version else {
+        return normalized_name;
+    };
+
+    let coordinate_raw = format!("{}@{}", package_name.trim(), normalized_version);
+    let qualifier_key = PackageCoordinate::parse(coordinate_raw.as_str())
+        .and_then(|coordinate| coordinate.version_selector)
+        .map(|selector| selector.qualifier_atoms())
+        .filter(|atoms| !atoms.is_empty())
+        .map(|atoms| atoms.join("-").trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty());
+
+    if let Some(qualifier_key) = qualifier_key {
+        format!("{}@{}", normalized_name, qualifier_key)
+    } else {
+        normalized_name
+    }
 }
 
 fn search_local_for_enabled(
