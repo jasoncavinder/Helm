@@ -1,4 +1,4 @@
-model = "gpt-5.3-codex"
+model = "gpt-5.4"
 project_doc_max_bytes = 131072
 model_reasoning_effort = "xhigh"
 
