@@ -305,6 +305,7 @@ fn parse_bundler_list_installed(output: &str) -> AdapterResult<Vec<InstalledPack
                 },
                 installed_version: Some(version),
                 pinned: false,
+                runtime_state: Default::default(),
             });
         }
     }
@@ -387,6 +388,7 @@ fn parse_bundler_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
                 candidate_version,
                 pinned: false,
                 restart_required: false,
+                runtime_state: Default::default(),
             });
         }
     }

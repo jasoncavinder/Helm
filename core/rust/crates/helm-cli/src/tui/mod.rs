@@ -42,6 +42,7 @@ use super::{
     task_to_cli_task, write_setting,
 };
 use helm_core::models::HomebrewKegPolicy;
+use helm_core::models::PackageRuntimeState;
 
 const SPLASH_AUTO_DISMISS_MS: Option<u64> = Some(900);
 const DATA_REFRESH_INTERVAL_MS: u64 = 1200;
@@ -285,6 +286,11 @@ enum ConfirmAction {
     SelfUpdate {
         force: bool,
     },
+    RustupToolchainMutation {
+        request: CoordinatorSubmitRequest,
+        prompt: String,
+        success_message: String,
+    },
 }
 
 impl ConfirmAction {
@@ -409,6 +415,7 @@ impl ConfirmAction {
                     "Apply Helm CLI self-update now? [Enter confirm / Esc cancel]".to_string()
                 }
             }
+            Self::RustupToolchainMutation { prompt, .. } => prompt.clone(),
         }
     }
 }
@@ -430,6 +437,25 @@ struct PackageRow {
     summary: Option<String>,
     homebrew_keg_policy: Option<String>,
     preferred_manager: Option<ManagerId>,
+    runtime_state: PackageRuntimeState,
+}
+
+fn render_package_runtime_state(state: &PackageRuntimeState) -> String {
+    let mut parts = Vec::new();
+    if state.is_active {
+        parts.push("active");
+    }
+    if state.is_default {
+        parts.push("default");
+    }
+    if state.has_override {
+        parts.push("override");
+    }
+    if parts.is_empty() {
+        "-".to_string()
+    } else {
+        parts.join(", ")
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -571,6 +597,10 @@ struct AppState {
     selected_manager_install_methods: Vec<String>,
     selected_manager_install_instances: Vec<CliManagerInstallInstance>,
     selected_manager_priority_label: Option<String>,
+    selected_rustup_toolchain_key: Option<String>,
+    selected_rustup_toolchain_detail: Option<helm_core::adapters::rustup::RustupToolchainDetail>,
+    rustup_component_cursor: usize,
+    rustup_target_cursor: usize,
     task_logs: Vec<CliTaskLogRecord>,
     pending_remote_search_query: Option<String>,
     pending_remote_search_at: Option<Instant>,
@@ -642,6 +672,10 @@ impl AppState {
             selected_manager_install_methods: Vec::new(),
             selected_manager_install_instances: Vec::new(),
             selected_manager_priority_label: None,
+            selected_rustup_toolchain_key: None,
+            selected_rustup_toolchain_detail: None,
+            rustup_component_cursor: 0,
+            rustup_target_cursor: 0,
             task_logs: Vec::new(),
             pending_remote_search_query: None,
             pending_remote_search_at: None,
@@ -702,6 +736,7 @@ impl AppState {
             build_package_rows(store, &self.packages, &self.package_search_results)?;
         self.tasks = list_tasks_for_enabled(store, &enabled_map)?;
         self.managers = list_managers(store)?;
+        self.refresh_selected_rustup_toolchain_detail(false);
         if let Some(scope) = self.updates_manager_scope {
             let has_scope = self
                 .managers
@@ -1021,6 +1056,26 @@ impl AppState {
         self.package_rows.get(*selected)
     }
 
+    fn selected_rustup_component(
+        &self,
+    ) -> Option<&helm_core::adapters::rustup::RustupToolchainDetailEntry> {
+        let detail = self.selected_rustup_toolchain_detail.as_ref()?;
+        let index = self
+            .rustup_component_cursor
+            .min(detail.components.len().saturating_sub(1));
+        detail.components.get(index)
+    }
+
+    fn selected_rustup_target(
+        &self,
+    ) -> Option<&helm_core::adapters::rustup::RustupToolchainDetailEntry> {
+        let detail = self.selected_rustup_toolchain_detail.as_ref()?;
+        let index = self
+            .rustup_target_cursor
+            .min(detail.targets.len().saturating_sub(1));
+        detail.targets.get(index)
+    }
+
     fn selected_task(&self) -> Option<&CliTaskRecord> {
         let indices = self.visible_task_indices();
         let selected = indices.get(self.tasks_cursor.min(indices.len().saturating_sub(1)))?;
@@ -1049,6 +1104,68 @@ impl AppState {
         self.managers_cursor =
             clamp_cursor(self.managers_cursor, self.visible_manager_indices().len());
         self.settings_cursor = clamp_cursor(self.settings_cursor, self.settings_entries().len());
+    }
+
+    fn refresh_selected_rustup_toolchain_detail(&mut self, force: bool) {
+        let (toolchain, detail_key) = match self.selected_package() {
+            Some(package)
+                if package.manager == ManagerId::Rustup
+                    && package.kind != PackageRowKind::Available =>
+            {
+                let toolchain = package.package_name.clone();
+                let key = format!("rustup|{}", toolchain.to_lowercase());
+                (toolchain, key)
+            }
+            _ => {
+                self.selected_rustup_toolchain_key = None;
+                self.selected_rustup_toolchain_detail = None;
+                self.rustup_component_cursor = 0;
+                self.rustup_target_cursor = 0;
+                return;
+            }
+        };
+
+        if !force
+            && self.selected_rustup_toolchain_key.as_deref() == Some(detail_key.as_str())
+            && self.selected_rustup_toolchain_detail.is_some()
+        {
+            return;
+        }
+
+        self.selected_rustup_toolchain_detail =
+            super::load_rustup_toolchain_detail_for_cli(toolchain.as_str(), "tui rustup detail");
+        self.selected_rustup_toolchain_key = Some(detail_key);
+
+        let component_len = self
+            .selected_rustup_toolchain_detail
+            .as_ref()
+            .map(|detail| detail.components.len())
+            .unwrap_or(0);
+        let target_len = self
+            .selected_rustup_toolchain_detail
+            .as_ref()
+            .map(|detail| detail.targets.len())
+            .unwrap_or(0);
+        self.rustup_component_cursor = clamp_cursor(self.rustup_component_cursor, component_len);
+        self.rustup_target_cursor = clamp_cursor(self.rustup_target_cursor, target_len);
+    }
+
+    fn move_rustup_component_cursor(&mut self, delta: i32) {
+        let len = self
+            .selected_rustup_toolchain_detail
+            .as_ref()
+            .map(|detail| detail.components.len())
+            .unwrap_or(0);
+        self.rustup_component_cursor = wrap_cursor(self.rustup_component_cursor, len, delta);
+    }
+
+    fn move_rustup_target_cursor(&mut self, delta: i32) {
+        let len = self
+            .selected_rustup_toolchain_detail
+            .as_ref()
+            .map(|detail| detail.targets.len())
+            .unwrap_or(0);
+        self.rustup_target_cursor = wrap_cursor(self.rustup_target_cursor, len, delta);
     }
 
     fn list_len_for_section(&self, section: Section) -> usize {
@@ -1267,6 +1384,18 @@ pub(crate) fn run(store: Arc<SqliteStore>, no_color: bool, _quiet: bool) -> Resu
     Ok(())
 }
 
+fn refresh_selected_section_context(app: &mut AppState, store: &SqliteStore) {
+    if app.section == Section::Tasks {
+        let _ = app.refresh_task_logs(store);
+    }
+    if app.section == Section::Managers {
+        let _ = app.refresh_selected_manager_controls(store);
+    }
+    if app.section == Section::Packages {
+        app.refresh_selected_rustup_toolchain_detail(false);
+    }
+}
+
 fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> Result<(), String> {
     if app.show_help {
         if matches!(
@@ -1301,6 +1430,8 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
         match key.code {
             KeyCode::Esc => app.confirm_action = None,
             KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
+                let should_force_rustup_detail_refresh =
+                    matches!(action, ConfirmAction::RustupToolchainMutation { .. });
                 app.confirm_action = None;
                 match execute_confirmed_action(store, action) {
                     Ok(message) => {
@@ -1312,6 +1443,9 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                     Err(error) => app.note_error(error),
                 }
                 app.reload(store)?;
+                if should_force_rustup_detail_refresh {
+                    app.refresh_selected_rustup_toolchain_detail(true);
+                }
             }
             KeyCode::Char('n') | KeyCode::Char('N') => app.confirm_action = None,
             _ => {}
@@ -1353,12 +1487,7 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
         KeyCode::Tab => {
             let next = (app.section.index() + 1) % Section::ALL.len();
             app.switch_section(Section::ALL[next]);
-            if app.section == Section::Tasks {
-                let _ = app.refresh_task_logs(store);
-            }
-            if app.section == Section::Managers {
-                let _ = app.refresh_selected_manager_controls(store);
-            }
+            refresh_selected_section_context(app, store);
         }
         KeyCode::BackTab => {
             let current = app.section.index();
@@ -1368,18 +1497,16 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                 current - 1
             };
             app.switch_section(Section::ALL[previous]);
-            if app.section == Section::Tasks {
-                let _ = app.refresh_task_logs(store);
-            }
-            if app.section == Section::Managers {
-                let _ = app.refresh_selected_manager_controls(store);
-            }
+            refresh_selected_section_context(app, store);
         }
         KeyCode::Char('/') => {
             app.input_mode = InputMode::Search;
         }
         KeyCode::Char('1') => app.switch_section(Section::Updates),
-        KeyCode::Char('2') => app.switch_section(Section::Packages),
+        KeyCode::Char('2') => {
+            app.switch_section(Section::Packages);
+            refresh_selected_section_context(app, store);
+        }
         KeyCode::Char('3') => {
             app.switch_section(Section::Tasks);
             let _ = app.refresh_task_logs(store);
@@ -1392,39 +1519,19 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
         KeyCode::Char('6') => app.switch_section(Section::Diagnostics),
         KeyCode::Down | KeyCode::Char('j') => {
             app.move_cursor(1);
-            if app.section == Section::Tasks {
-                let _ = app.refresh_task_logs(store);
-            }
-            if app.section == Section::Managers {
-                let _ = app.refresh_selected_manager_controls(store);
-            }
+            refresh_selected_section_context(app, store);
         }
         KeyCode::Up | KeyCode::Char('k') => {
             app.move_cursor(-1);
-            if app.section == Section::Tasks {
-                let _ = app.refresh_task_logs(store);
-            }
-            if app.section == Section::Managers {
-                let _ = app.refresh_selected_manager_controls(store);
-            }
+            refresh_selected_section_context(app, store);
         }
         KeyCode::PageDown => {
             app.move_cursor(10);
-            if app.section == Section::Tasks {
-                let _ = app.refresh_task_logs(store);
-            }
-            if app.section == Section::Managers {
-                let _ = app.refresh_selected_manager_controls(store);
-            }
+            refresh_selected_section_context(app, store);
         }
         KeyCode::PageUp => {
             app.move_cursor(-10);
-            if app.section == Section::Tasks {
-                let _ = app.refresh_task_logs(store);
-            }
-            if app.section == Section::Managers {
-                let _ = app.refresh_selected_manager_controls(store);
-            }
+            refresh_selected_section_context(app, store);
         }
         KeyCode::Char('g') => {
             if app.section == Section::Packages
@@ -1455,12 +1562,7 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                 }
             } else {
                 app.move_cursor(-(usize::MAX as i32 / 2));
-                if app.section == Section::Tasks {
-                    let _ = app.refresh_task_logs(store);
-                }
-                if app.section == Section::Managers {
-                    let _ = app.refresh_selected_manager_controls(store);
-                }
+                refresh_selected_section_context(app, store);
             }
         }
         KeyCode::Char('G') => {
@@ -1489,31 +1591,16 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                 }
             } else {
                 app.move_cursor(i32::MAX / 2);
-                if app.section == Section::Tasks {
-                    let _ = app.refresh_task_logs(store);
-                }
-                if app.section == Section::Managers {
-                    let _ = app.refresh_selected_manager_controls(store);
-                }
+                refresh_selected_section_context(app, store);
             }
         }
         KeyCode::Home => {
             app.move_cursor(-(usize::MAX as i32 / 2));
-            if app.section == Section::Tasks {
-                let _ = app.refresh_task_logs(store);
-            }
-            if app.section == Section::Managers {
-                let _ = app.refresh_selected_manager_controls(store);
-            }
+            refresh_selected_section_context(app, store);
         }
         KeyCode::End => {
             app.move_cursor(i32::MAX / 2);
-            if app.section == Section::Tasks {
-                let _ = app.refresh_task_logs(store);
-            }
-            if app.section == Section::Managers {
-                let _ = app.refresh_selected_manager_controls(store);
-            }
+            refresh_selected_section_context(app, store);
         }
         KeyCode::Char('r') => {
             match coordinator_start_workflow(
@@ -1704,6 +1791,133 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                 && let Some(task) = app.selected_task()
             {
                 app.confirm_action = Some(ConfirmAction::CancelTask { task_id: task.id });
+            } else if app.section == Section::Packages
+                && let Some(package) = app.selected_package()
+                && package.manager == ManagerId::Rustup
+                && package.kind != PackageRowKind::Available
+            {
+                app.move_rustup_component_cursor(1);
+            }
+        }
+        KeyCode::Char('C') => {
+            if app.section == Section::Packages
+                && let Some(package) = app.selected_package()
+                && package.manager == ManagerId::Rustup
+                && package.kind != PackageRowKind::Available
+            {
+                app.move_rustup_component_cursor(-1);
+            }
+        }
+        KeyCode::Char('t') => {
+            if app.section == Section::Packages
+                && let Some(package) = app.selected_package()
+                && package.manager == ManagerId::Rustup
+                && package.kind != PackageRowKind::Available
+            {
+                app.move_rustup_target_cursor(1);
+            }
+        }
+        KeyCode::Char('T') => {
+            if app.section == Section::Packages
+                && let Some(package) = app.selected_package()
+                && package.manager == ManagerId::Rustup
+                && package.kind != PackageRowKind::Available
+            {
+                app.move_rustup_target_cursor(-1);
+            }
+        }
+        KeyCode::Char('b') => {
+            if app.section == Section::Packages
+                && let Some(package) = app.selected_package()
+                && package.manager == ManagerId::Rustup
+                && package.kind != PackageRowKind::Available
+                && let Some(component) = app.selected_rustup_component()
+            {
+                let toolchain = package.package_name.clone();
+                let component_name = component.name.clone();
+                let (request, prompt, success_message) = if component.installed {
+                    (
+                        CoordinatorSubmitRequest::RustupRemoveComponent {
+                            toolchain: toolchain.clone(),
+                            component: component_name.clone(),
+                        },
+                        format!(
+                            "Remove rustup component '{}' from '{}' ? [Enter confirm / Esc cancel]",
+                            component_name, toolchain
+                        ),
+                        format!(
+                            "Rustup component '{}' removal requested for '{}'",
+                            component_name, toolchain
+                        ),
+                    )
+                } else {
+                    (
+                        CoordinatorSubmitRequest::RustupAddComponent {
+                            toolchain: toolchain.clone(),
+                            component: component_name.clone(),
+                        },
+                        format!(
+                            "Add rustup component '{}' to '{}' ? [Enter confirm / Esc cancel]",
+                            component_name, toolchain
+                        ),
+                        format!(
+                            "Rustup component '{}' add requested for '{}'",
+                            component_name, toolchain
+                        ),
+                    )
+                };
+                app.confirm_action = Some(ConfirmAction::RustupToolchainMutation {
+                    request,
+                    prompt,
+                    success_message,
+                });
+            }
+        }
+        KeyCode::Char('B') => {
+            if app.section == Section::Packages
+                && let Some(package) = app.selected_package()
+                && package.manager == ManagerId::Rustup
+                && package.kind != PackageRowKind::Available
+                && let Some(target) = app.selected_rustup_target()
+            {
+                let toolchain = package.package_name.clone();
+                let target_name = target.name.clone();
+                let (request, prompt, success_message) = if target.installed {
+                    (
+                        CoordinatorSubmitRequest::RustupRemoveTarget {
+                            toolchain: toolchain.clone(),
+                            target: target_name.clone(),
+                        },
+                        format!(
+                            "Remove rustup target '{}' from '{}' ? [Enter confirm / Esc cancel]",
+                            target_name, toolchain
+                        ),
+                        format!(
+                            "Rustup target '{}' removal requested for '{}'",
+                            target_name, toolchain
+                        ),
+                    )
+                } else {
+                    (
+                        CoordinatorSubmitRequest::RustupAddTarget {
+                            toolchain: toolchain.clone(),
+                            target: target_name.clone(),
+                        },
+                        format!(
+                            "Add rustup target '{}' to '{}' ? [Enter confirm / Esc cancel]",
+                            target_name, toolchain
+                        ),
+                        format!(
+                            "Rustup target '{}' add requested for '{}'",
+                            target_name, toolchain
+                        ),
+                    )
+                };
+                app.confirm_action = Some(ConfirmAction::RustupToolchainMutation {
+                    request,
+                    prompt,
+                    success_message,
+                });
             }
         }
         KeyCode::Char('e') => match app.section {
@@ -1959,6 +2173,141 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                     "Upgrade-all allow_os_updates set to {}.",
                     app.updates_allow_os_updates
                 ));
+            }
+        }
+        KeyCode::Char('s') => {
+            if app.section == Section::Packages
+                && let Some(package) = app.selected_package()
+                && package.manager == ManagerId::Rustup
+                && package.kind != PackageRowKind::Available
+                && !package.runtime_state.is_default
+            {
+                let toolchain = package.package_name.clone();
+                app.confirm_action = Some(ConfirmAction::RustupToolchainMutation {
+                    request: CoordinatorSubmitRequest::RustupSetDefaultToolchain {
+                        toolchain: toolchain.clone(),
+                    },
+                    prompt: format!(
+                        "Set '{}' as the rustup default toolchain? [Enter confirm / Esc cancel]",
+                        toolchain
+                    ),
+                    success_message: format!(
+                        "Rustup default toolchain change requested for '{}'",
+                        toolchain
+                    ),
+                });
+            }
+        }
+        KeyCode::Char('w') => {
+            if app.section == Section::Packages
+                && let Some(package) = app.selected_package()
+                && package.manager == ManagerId::Rustup
+                && package.kind != PackageRowKind::Available
+            {
+                match std::env::current_dir() {
+                    Ok(path) => {
+                        let rendered_path = path.to_string_lossy().to_string();
+                        let toolchain = package.package_name.clone();
+                        app.confirm_action = Some(ConfirmAction::RustupToolchainMutation {
+                            request: CoordinatorSubmitRequest::RustupSetOverride {
+                                toolchain: toolchain.clone(),
+                                path: rendered_path.clone(),
+                            },
+                            prompt: format!(
+                                "Set rustup override at '{}' to '{}' ? [Enter confirm / Esc cancel]",
+                                rendered_path, toolchain
+                            ),
+                            success_message: format!(
+                                "Rustup override set requested for '{}' at '{}'",
+                                toolchain, rendered_path
+                            ),
+                        });
+                    }
+                    Err(error) => app.note_error(format!(
+                        "failed to resolve current working directory: {}",
+                        error
+                    )),
+                }
+            }
+        }
+        KeyCode::Char('W') => {
+            if app.section == Section::Packages
+                && let Some(package) = app.selected_package()
+                && package.manager == ManagerId::Rustup
+                && package.kind != PackageRowKind::Available
+            {
+                match std::env::current_dir() {
+                    Ok(path) => {
+                        let rendered_path = path.to_string_lossy().to_string();
+                        let has_override = app
+                            .selected_rustup_toolchain_detail
+                            .as_ref()
+                            .is_some_and(|detail| {
+                                detail
+                                    .override_paths
+                                    .iter()
+                                    .any(|entry| entry == &rendered_path)
+                            });
+                        if has_override {
+                            let toolchain = package.package_name.clone();
+                            app.confirm_action = Some(ConfirmAction::RustupToolchainMutation {
+                                request: CoordinatorSubmitRequest::RustupUnsetOverride {
+                                    toolchain: toolchain.clone(),
+                                    path: rendered_path.clone(),
+                                },
+                                prompt: format!(
+                                    "Clear rustup override at '{}' for '{}' ? [Enter confirm / Esc cancel]",
+                                    rendered_path, toolchain
+                                ),
+                                success_message: format!(
+                                    "Rustup override clear requested for '{}' at '{}'",
+                                    toolchain, rendered_path
+                                ),
+                            });
+                        } else {
+                            app.note_error(format!(
+                                "no rustup override for the current directory ('{}')",
+                                rendered_path
+                            ));
+                        }
+                    }
+                    Err(error) => app.note_error(format!(
+                        "failed to resolve current working directory: {}",
+                        error
+                    )),
+                }
+            }
+        }
+        KeyCode::Char('P') => {
+            if app.section == Section::Packages
+                && let Some(package) = app.selected_package()
+                && package.manager == ManagerId::Rustup
+                && package.kind != PackageRowKind::Available
+            {
+                let current_profile = app
+                    .selected_rustup_toolchain_detail
+                    .as_ref()
+                    .and_then(|detail| detail.current_profile.clone())
+                    .unwrap_or_else(|| "default".to_string());
+                let profiles = ["minimal", "default", "complete"];
+                let current_index = profiles
+                    .iter()
+                    .position(|candidate| candidate.eq_ignore_ascii_case(current_profile.as_str()))
+                    .unwrap_or(1);
+                let next_profile = profiles[(current_index + 1) % profiles.len()].to_string();
+                app.confirm_action = Some(ConfirmAction::RustupToolchainMutation {
+                    request: CoordinatorSubmitRequest::RustupSetProfile {
+                        profile: next_profile.clone(),
+                    },
+                    prompt: format!(
+                        "Set rustup profile to '{}' ? [Enter confirm / Esc cancel]",
+                        next_profile
+                    ),
+                    success_message: format!(
+                        "Rustup profile change requested to '{}'",
+                        next_profile
+                    ),
+                });
             }
         }
         KeyCode::Char('E') => {
@@ -2337,6 +2686,19 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
                 .job_id
                 .map(|job| format!("Upgrade workflow submitted (job {}).", job))
                 .unwrap_or_else(|| "Upgrade workflow submitted.".to_string()))
+        }
+        ConfirmAction::RustupToolchainMutation {
+            request,
+            success_message,
+            ..
+        } => {
+            let response =
+                coordinator_submit_request(store, ManagerId::Rustup, request, ExecutionMode::Wait)?;
+            Ok(format!(
+                "{} (task #{}).",
+                success_message,
+                response.task_id.unwrap_or(0)
+            ))
         }
         ConfirmAction::SelfUpdate { force } => apply_self_update(force),
     }
@@ -3179,8 +3541,72 @@ fn render_detail_pane(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState
                     package.candidate_version.as_deref().unwrap_or("-")
                 )));
                 lines.push(Line::from(format!("Pinned: {}", package.pinned)));
+                if !package.runtime_state.is_empty() {
+                    lines.push(Line::from(format!(
+                        "Runtime state: {}",
+                        render_package_runtime_state(&package.runtime_state)
+                    )));
+                }
                 if let Some(summary) = package.summary.as_deref() {
                     lines.push(Line::from(format!("Summary: {}", summary)));
+                }
+                if package.manager == ManagerId::Rustup
+                    && let Some(detail) = app.selected_rustup_toolchain_detail.as_ref()
+                {
+                    lines.push(Line::from(format!(
+                        "Rustup profile: {}",
+                        detail.current_profile.as_deref().unwrap_or("-")
+                    )));
+                    lines.push(Line::from(format!(
+                        "Rustup overrides: {}",
+                        if detail.override_paths.is_empty() {
+                            "none".to_string()
+                        } else {
+                            detail.override_paths.join(", ")
+                        }
+                    )));
+                    let installed_components = detail
+                        .components
+                        .iter()
+                        .filter(|entry| entry.installed)
+                        .count();
+                    let installed_targets = detail
+                        .targets
+                        .iter()
+                        .filter(|entry| entry.installed)
+                        .count();
+                    lines.push(Line::from(format!(
+                        "Components: {} installed of {} available",
+                        installed_components,
+                        detail.components.len()
+                    )));
+                    if let Some(component) = app.selected_rustup_component() {
+                        lines.push(Line::from(format!(
+                            "Selected component: {} [{}]",
+                            component.name,
+                            if component.installed {
+                                "installed"
+                            } else {
+                                "available"
+                            }
+                        )));
+                    }
+                    lines.push(Line::from(format!(
+                        "Targets: {} installed of {} available",
+                        installed_targets,
+                        detail.targets.len()
+                    )));
+                    if let Some(target) = app.selected_rustup_target() {
+                        lines.push(Line::from(format!(
+                            "Selected target: {} [{}]",
+                            target.name,
+                            if target.installed {
+                                "installed"
+                            } else {
+                                "available"
+                            }
+                        )));
+                    }
                 }
                 lines.push(Line::from(format!(
                     "State: {}",
@@ -3219,6 +3645,16 @@ fn render_detail_pane(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState
                 if package.manager == ManagerId::HomebrewFormula {
                     lines.push(Line::from(
                         "         [K] cycle Homebrew keg policy (default/cleanup/keep)",
+                    ));
+                }
+                if package.manager == ManagerId::Rustup && package.kind != PackageRowKind::Available
+                {
+                    lines.push(Line::from(
+                        "         [c/C] cycle component  [b] toggle component",
+                    ));
+                    lines.push(Line::from("         [t/T] cycle target  [B] toggle target"));
+                    lines.push(Line::from(
+                        "         [s] make default  [w] set cwd override  [W] clear cwd override  [P] cycle profile",
                     ));
                 }
             } else {
@@ -3589,7 +4025,9 @@ fn render_footer(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState) {
         Section::Updates => {
             "u upgrade selected | a upgrade all | I include pinned | S allow OS updates | m/M manager scope"
         }
-        Section::Packages => "i install | u upgrade | x uninstall | p pin/unpin | K keg policy",
+        Section::Packages => {
+            "i install | u upgrade | x uninstall | p pin/unpin | K keg policy | c/C+b rustup components | t/T+B rustup targets | s/w/W/P rustup toolchain"
+        }
         Section::Tasks => "c cancel task",
         Section::Managers => {
             "e toggle | i/u/x/X lifecycle | z/Z full-cleanup | D detect | o/O exec | m/M method | v/V active | a/A ack"
@@ -3703,6 +4141,10 @@ fn render_help_overlay(frame: &mut ratatui::Frame<'_>, app: &AppState) {
         Line::from("             x uninstall selected installed package, p pin/unpin"),
         Line::from("             g set preferred manager, G clear preferred manager"),
         Line::from("             K cycle Homebrew keg policy override"),
+        Line::from("             c/C cycle rustup component, b toggle selected component"),
+        Line::from("             t/T cycle rustup target, B toggle selected target"),
+        Line::from("             s set rustup default, w/W set or clear cwd rustup override"),
+        Line::from("             P cycle rustup profile"),
         Line::from("  Tasks:     c cancel task"),
         Line::from("  Managers:  e enable/disable, i install, u update, x uninstall"),
         Line::from("             X uninstall with unknown-provenance override"),
@@ -3963,6 +4405,7 @@ fn build_package_rows(
                 summary: None,
                 homebrew_keg_policy,
                 preferred_manager,
+                runtime_state: package.runtime_state.clone(),
             },
         );
     }
@@ -4013,6 +4456,7 @@ fn build_package_rows(
                 summary: result.result.summary.clone(),
                 homebrew_keg_policy,
                 preferred_manager,
+                runtime_state: PackageRuntimeState::default(),
             },
         );
     }
@@ -4074,6 +4518,19 @@ fn clamp_cursor(cursor: usize, len: usize) -> usize {
     }
 }
 
+fn wrap_cursor(cursor: usize, len: usize, delta: i32) -> usize {
+    if len == 0 {
+        return 0;
+    }
+    if delta == 0 {
+        return clamp_cursor(cursor, len);
+    }
+    let len = len as i32;
+    let current = clamp_cursor(cursor, len as usize) as i32;
+    let next = (current + delta).rem_euclid(len);
+    next as usize
+}
+
 fn matches_query(query: &str, fields: &[&str]) -> bool {
     let trimmed = query.trim();
     if trimmed.is_empty() {
@@ -4086,7 +4543,7 @@ fn matches_query(query: &str, fields: &[&str]) -> bool {
 }
 
 fn manager_participates_in_package_search(manager: ManagerId) -> bool {
-    manager != ManagerId::Rustup
+    helm_core::registry::manager_participates_in_package_search(manager)
 }
 
 fn apply_filter_backspace(app: &mut AppState) {
@@ -4256,8 +4713,8 @@ mod tests {
     }
 
     #[test]
-    fn package_search_excludes_rustup_manager() {
-        assert!(!manager_participates_in_package_search(ManagerId::Rustup));
+    fn package_search_includes_rustup_manager() {
+        assert!(manager_participates_in_package_search(ManagerId::Rustup));
         assert!(manager_participates_in_package_search(
             ManagerId::HomebrewFormula
         ));
@@ -4280,6 +4737,7 @@ mod tests {
                 package: package.clone(),
                 installed_version: Some("2026.1.4".to_string()),
                 pinned: false,
+                runtime_state: Default::default(),
             }])
             .expect("failed to seed installed package");
 

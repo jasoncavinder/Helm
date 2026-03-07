@@ -183,6 +183,7 @@ pub enum ManagerAction {
     Install,
     Uninstall,
     Upgrade,
+    Configure,
     Pin,
     Unpin,
 }
@@ -198,6 +199,7 @@ impl ManagerAction {
             Self::Install => Capability::Install,
             Self::Uninstall => Capability::Uninstall,
             Self::Upgrade => Capability::Upgrade,
+            Self::Configure => Capability::Upgrade,
             Self::Pin => Capability::Pin,
             Self::Unpin => Capability::Unpin,
         }
@@ -210,9 +212,12 @@ impl ManagerAction {
             | Self::Search
             | Self::ListInstalled
             | Self::ListOutdated => ActionSafety::ReadOnly,
-            Self::Install | Self::Uninstall | Self::Upgrade | Self::Pin | Self::Unpin => {
-                ActionSafety::Mutating
-            }
+            Self::Install
+            | Self::Uninstall
+            | Self::Upgrade
+            | Self::Configure
+            | Self::Pin
+            | Self::Unpin => ActionSafety::Mutating,
         }
     }
 }

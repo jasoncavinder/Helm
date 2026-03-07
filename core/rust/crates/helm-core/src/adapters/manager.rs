@@ -2,6 +2,7 @@ use crate::models::{
     ActionSafety, CachedSearchResult, CoreError, CoreErrorKind, DetectionInfo, InstalledPackage,
     ManagerAction, ManagerDescriptor, OutdatedPackage, PackageRef, SearchQuery,
 };
+use std::path::PathBuf;
 
 pub type AdapterResult<T> = Result<T, CoreError>;
 
@@ -50,6 +51,52 @@ pub struct UnpinRequest {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RustupAddComponentRequest {
+    pub toolchain: String,
+    pub component: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RustupRemoveComponentRequest {
+    pub toolchain: String,
+    pub component: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RustupAddTargetRequest {
+    pub toolchain: String,
+    pub target: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RustupRemoveTargetRequest {
+    pub toolchain: String,
+    pub target: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RustupSetDefaultToolchainRequest {
+    pub toolchain: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RustupSetOverrideRequest {
+    pub toolchain: String,
+    pub path: PathBuf,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RustupUnsetOverrideRequest {
+    pub toolchain: String,
+    pub path: PathBuf,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RustupSetProfileRequest {
+    pub profile: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum AdapterRequest {
     Detect(DetectRequest),
     Refresh(RefreshRequest),
@@ -59,6 +106,14 @@ pub enum AdapterRequest {
     Install(InstallRequest),
     Uninstall(UninstallRequest),
     Upgrade(UpgradeRequest),
+    RustupAddComponent(RustupAddComponentRequest),
+    RustupRemoveComponent(RustupRemoveComponentRequest),
+    RustupAddTarget(RustupAddTargetRequest),
+    RustupRemoveTarget(RustupRemoveTargetRequest),
+    RustupSetDefaultToolchain(RustupSetDefaultToolchainRequest),
+    RustupSetOverride(RustupSetOverrideRequest),
+    RustupUnsetOverride(RustupUnsetOverrideRequest),
+    RustupSetProfile(RustupSetProfileRequest),
     Pin(PinRequest),
     Unpin(UnpinRequest),
 }
@@ -74,6 +129,14 @@ impl AdapterRequest {
             Self::Install(_) => ManagerAction::Install,
             Self::Uninstall(_) => ManagerAction::Uninstall,
             Self::Upgrade(_) => ManagerAction::Upgrade,
+            Self::RustupAddComponent(_)
+            | Self::RustupRemoveComponent(_)
+            | Self::RustupAddTarget(_)
+            | Self::RustupRemoveTarget(_)
+            | Self::RustupSetDefaultToolchain(_)
+            | Self::RustupSetOverride(_)
+            | Self::RustupUnsetOverride(_)
+            | Self::RustupSetProfile(_) => ManagerAction::Configure,
             Self::Pin(_) => ManagerAction::Pin,
             Self::Unpin(_) => ManagerAction::Unpin,
         }
@@ -122,6 +185,10 @@ pub enum AdapterResponse {
     Refreshed,
     InstalledPackages(Vec<InstalledPackage>),
     OutdatedPackages(Vec<OutdatedPackage>),
+    SnapshotSync {
+        installed: Option<Vec<InstalledPackage>>,
+        outdated: Option<Vec<OutdatedPackage>>,
+    },
     SearchResults(Vec<CachedSearchResult>),
     Mutation(MutationResult),
 }

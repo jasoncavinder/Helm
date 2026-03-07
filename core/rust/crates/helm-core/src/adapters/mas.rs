@@ -183,6 +183,7 @@ fn parse_mas_list(output: &str) -> AdapterResult<Vec<InstalledPackage>> {
             },
             installed_version: version,
             pinned: false,
+            runtime_state: Default::default(),
         });
     }
 
@@ -217,6 +218,7 @@ fn parse_mas_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
             candidate_version: candidate,
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         });
     }
 
@@ -229,7 +231,7 @@ fn split_app_id(line: &str) -> Option<(&str, &str)> {
     // Find end of numeric prefix
     let end = loop {
         match chars.next() {
-            Some((i, ch)) if ch.is_ascii_digit() => continue,
+            Some((_, ch)) if ch.is_ascii_digit() => continue,
             Some((i, _)) => break i,
             None => return None, // entire line is digits, no rest
         }

@@ -1121,6 +1121,18 @@ async fn persist_adapter_response(
             AdapterResponse::OutdatedPackages(packages) => {
                 package_store.replace_outdated_snapshot(manager, &packages)
             }
+            AdapterResponse::SnapshotSync {
+                installed,
+                outdated,
+            } => {
+                if let Some(packages) = installed.as_ref() {
+                    package_store.upsert_installed(packages)?;
+                }
+                if let Some(packages) = outdated.as_ref() {
+                    package_store.replace_outdated_snapshot(manager, packages)?;
+                }
+                Ok(())
+            }
             AdapterResponse::Mutation(mutation) => match mutation.action {
                 ManagerAction::Pin => package_store.set_snapshot_pinned(&mutation.package, true),
                 ManagerAction::Unpin => package_store.set_snapshot_pinned(&mutation.package, false),
@@ -1536,6 +1548,7 @@ fn task_type_code(task_type: TaskType) -> &'static str {
         TaskType::Install => "install",
         TaskType::Uninstall => "uninstall",
         TaskType::Upgrade => "upgrade",
+        TaskType::Configure => "configure",
         TaskType::Pin => "pin",
         TaskType::Unpin => "unpin",
     }
@@ -2134,6 +2147,7 @@ fn task_type_for_action(action: ManagerAction) -> TaskType {
         ManagerAction::Install => TaskType::Install,
         ManagerAction::Uninstall => TaskType::Uninstall,
         ManagerAction::Upgrade => TaskType::Upgrade,
+        ManagerAction::Configure => TaskType::Configure,
         ManagerAction::Pin => TaskType::Pin,
         ManagerAction::Unpin => TaskType::Unpin,
     }

@@ -512,6 +512,7 @@ fn parse_mise_installed(json: &str) -> AdapterResult<Vec<InstalledPackage>> {
                 },
                 installed_version: Some(entry.version.clone()),
                 pinned: false,
+                runtime_state: Default::default(),
             });
         }
     }
@@ -548,6 +549,7 @@ fn parse_mise_outdated(json: &str) -> AdapterResult<Vec<OutdatedPackage>> {
             candidate_version: entry.latest,
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         })
         .collect();
 
@@ -1036,9 +1038,7 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(node_versions, vec!["22.10.0".to_string()]);
         assert!(
-            packages
-                .iter()
-                .all(|package| package.summary.is_none()),
+            packages.iter().all(|package| package.summary.is_none()),
             "remote catalog should not inject summaries on its own"
         );
 

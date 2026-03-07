@@ -817,7 +817,7 @@ const ASDF_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetada
 const RUSTUP_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: RUSTUP_INSTALL_METHOD_IDS,
     install_methods: RUSTUP_INSTALL_METHODS,
-    participates_in_package_search: false,
+    participates_in_package_search: true,
 };
 const HOMEBREW_FORMULA_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: HOMEBREW_FORMULA_INSTALL_METHOD_IDS,
@@ -1036,8 +1036,8 @@ mod tests {
     }
 
     #[test]
-    fn rustup_is_excluded_from_package_search_policy() {
-        assert!(!manager_participates_in_package_search(ManagerId::Rustup));
+    fn rustup_participates_in_package_search_policy() {
+        assert!(manager_participates_in_package_search(ManagerId::Rustup));
         assert!(manager_participates_in_package_search(
             ManagerId::HomebrewFormula
         ));

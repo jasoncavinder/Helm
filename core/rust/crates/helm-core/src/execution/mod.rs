@@ -425,6 +425,7 @@ fn default_idle_timeout_for_request(request: &ProcessSpawnRequest) -> Option<Dur
         TaskType::Install
         | TaskType::Uninstall
         | TaskType::Upgrade
+        | TaskType::Configure
         | TaskType::Pin
         | TaskType::Unpin => None,
     }?;

@@ -19,6 +19,15 @@ char *helm_list_installed_packages(void);
 
 char *helm_list_outdated_packages(void);
 
+/**
+ * Return rustup toolchain-scoped component and target detail as JSON.
+ *
+ * # Safety
+ *
+ * `toolchain` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ */
+char *helm_get_rustup_toolchain_detail(const char *toolchain);
+
 char *helm_list_tasks(void);
 
 /**
@@ -261,6 +270,80 @@ int64_t helm_install_package(const char *manager_id, const char *package_name);
  * strings.
  */
 int64_t helm_uninstall_package(const char *manager_id, const char *package_name);
+
+/**
+ * Queue a rustup component-add task. Returns the task ID, or -1 on error.
+ *
+ * # Safety
+ *
+ * `toolchain` and `component` must be valid, non-null pointers to NUL-terminated UTF-8 C
+ * strings.
+ */
+int64_t helm_rustup_add_component(const char *toolchain, const char *component);
+
+/**
+ * Queue a rustup component-remove task. Returns the task ID, or -1 on error.
+ *
+ * # Safety
+ *
+ * `toolchain` and `component` must be valid, non-null pointers to NUL-terminated UTF-8 C
+ * strings.
+ */
+int64_t helm_rustup_remove_component(const char *toolchain, const char *component);
+
+/**
+ * Queue a rustup target-add task. Returns the task ID, or -1 on error.
+ *
+ * # Safety
+ *
+ * `toolchain` and `target` must be valid, non-null pointers to NUL-terminated UTF-8 C strings.
+ */
+int64_t helm_rustup_add_target(const char *toolchain, const char *target);
+
+/**
+ * Queue a rustup target-remove task. Returns the task ID, or -1 on error.
+ *
+ * # Safety
+ *
+ * `toolchain` and `target` must be valid, non-null pointers to NUL-terminated UTF-8 C strings.
+ */
+int64_t helm_rustup_remove_target(const char *toolchain, const char *target);
+
+/**
+ * Queue a rustup set-default-toolchain task. Returns the task ID, or -1 on error.
+ *
+ * # Safety
+ *
+ * `toolchain` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ */
+int64_t helm_rustup_set_default_toolchain(const char *toolchain);
+
+/**
+ * Queue a rustup directory-override task. Returns the task ID, or -1 on error.
+ *
+ * # Safety
+ *
+ * `toolchain` and `path` must be valid, non-null pointers to NUL-terminated UTF-8 C strings.
+ */
+int64_t helm_rustup_set_override(const char *toolchain, const char *path);
+
+/**
+ * Queue a rustup directory-override clear task. Returns the task ID, or -1 on error.
+ *
+ * # Safety
+ *
+ * `toolchain` and `path` must be valid, non-null pointers to NUL-terminated UTF-8 C strings.
+ */
+int64_t helm_rustup_unset_override(const char *toolchain, const char *path);
+
+/**
+ * Queue a rustup profile-change task. Returns the task ID, or -1 on error.
+ *
+ * # Safety
+ *
+ * `profile` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ */
+int64_t helm_rustup_set_profile(const char *profile);
 
 /**
  * Preview package uninstall blast radius as JSON.

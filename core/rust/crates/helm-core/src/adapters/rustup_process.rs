@@ -1,15 +1,23 @@
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
 use crate::adapters::detect_utils::which_executable;
 use crate::adapters::manager::AdapterResult;
-use crate::adapters::process_utils::run_and_collect_stdout;
+use crate::adapters::process_utils::{run_and_collect_stdout, run_and_collect_version_output};
 use crate::adapters::rustup::{
-    RustupDetectOutput, RustupInstallSource, RustupSource, rustup_check_request,
-    rustup_download_install_script_request, rustup_init_install_request,
-    rustup_run_downloaded_install_script_request, rustup_self_uninstall_request,
-    rustup_self_update_request, rustup_toolchain_list_request, rustup_toolchain_update_request,
+    RustupDetectOutput, RustupInstallSource, RustupSource, RustupToolchainDetail,
+    rustup_add_component_request, rustup_add_target_request, rustup_check_request,
+    rustup_component_list_request, rustup_detect_request, rustup_download_install_script_request,
+    rustup_init_install_request, rustup_override_list_request, rustup_remove_component_request,
+    rustup_remove_target_request, rustup_run_downloaded_install_script_request,
+    rustup_self_uninstall_request, rustup_self_update_request, rustup_set_default_request,
+    rustup_set_override_request, rustup_set_profile_request, rustup_show_profile_request,
+    rustup_show_request, rustup_target_list_request, rustup_toolchain_detail,
+    rustup_toolchain_install_request, rustup_toolchain_list_request,
+    rustup_toolchain_uninstall_request, rustup_toolchain_update_request,
+    rustup_toolchain_version_request, rustup_unset_override_request,
 };
 use crate::execution::{ProcessExecutor, ProcessSpawnRequest};
 use crate::models::{CoreError, CoreErrorKind, ManagerId};
@@ -58,6 +66,29 @@ impl ProcessRustupSource {
     }
 }
 
+pub fn load_rustup_toolchain_detail_with_runtime(
+    rt_handle: &tokio::runtime::Handle,
+    toolchain: &str,
+) -> AdapterResult<RustupToolchainDetail> {
+    let source = ProcessRustupSource::new(Arc::new(crate::execution::TokioProcessExecutor));
+    match catch_unwind(AssertUnwindSafe(|| {
+        let _runtime_guard = rt_handle.enter();
+        rustup_toolchain_detail(&source, toolchain)
+    })) {
+        Ok(result) => result,
+        Err(_) => Err(CoreError {
+            manager: Some(ManagerId::Rustup),
+            task: None,
+            action: None,
+            kind: CoreErrorKind::Internal,
+            message: format!(
+                "panic while fetching rustup toolchain detail for '{}'",
+                toolchain.trim()
+            ),
+        }),
+    }
+}
+
 impl RustupSource for ProcessRustupSource {
     fn detect(&self) -> AdapterResult<RustupDetectOutput> {
         // Phase 1: instant filesystem check
@@ -75,17 +106,10 @@ impl RustupSource for ProcessRustupSource {
             )
         };
 
-        // Phase 2: best-effort version detection.
-        // Uses std::process::Command with read() instead of the executor's
-        // wait_with_output(). Rustup spawns background subprocesses (e.g.,
-        // self-update checks) that inherit stdout pipe handles, causing
-        // tokio's wait_with_output() to block on pipe EOF for 10+ seconds.
-        // read() returns as soon as data is available without waiting for EOF.
         let version_output = match &executable_path {
-            Some(exe) => {
-                let path_env = std::env::var("PATH").unwrap_or_default();
-                let env_path = format!("{cargo_bin}:{path_env}");
-                collect_version_output(exe, &env_path)
+            Some(_) => {
+                let request = self.configure_request(rustup_detect_request(None));
+                run_and_collect_version_output(self.executor.as_ref(), request)
             }
             None => String::new(),
         };
@@ -96,8 +120,38 @@ impl RustupSource for ProcessRustupSource {
         })
     }
 
+    fn show(&self) -> AdapterResult<String> {
+        let request = self.configure_request(rustup_show_request(None));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
     fn toolchain_list(&self) -> AdapterResult<String> {
         let request = self.configure_request(rustup_toolchain_list_request(None));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn component_list(&self, toolchain: &str) -> AdapterResult<String> {
+        let request = self.configure_request(rustup_component_list_request(None, toolchain));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn target_list(&self, toolchain: &str) -> AdapterResult<String> {
+        let request = self.configure_request(rustup_target_list_request(None, toolchain));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn override_list(&self) -> AdapterResult<String> {
+        let request = self.configure_request(rustup_override_list_request(None));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn show_profile(&self) -> AdapterResult<String> {
+        let request = self.configure_request(rustup_show_profile_request(None));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn toolchain_version(&self, toolchain: &str) -> AdapterResult<String> {
+        let request = self.configure_request(rustup_toolchain_version_request(None, toolchain));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 
@@ -116,6 +170,16 @@ impl RustupSource for ProcessRustupSource {
         }
     }
 
+    fn install_toolchain(&self, toolchain: &str) -> AdapterResult<String> {
+        let request = self.configure_request(rustup_toolchain_install_request(None, toolchain));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn uninstall_toolchain(&self, toolchain: &str) -> AdapterResult<String> {
+        let request = self.configure_request(rustup_toolchain_uninstall_request(None, toolchain));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
     fn self_uninstall(&self) -> AdapterResult<String> {
         let request = self.configure_request(rustup_self_uninstall_request(None));
         match run_and_collect_stdout(self.executor.as_ref(), request) {
@@ -129,6 +193,48 @@ impl RustupSource for ProcessRustupSource {
 
     fn update_toolchain(&self, toolchain: &str) -> AdapterResult<String> {
         let request = self.configure_request(rustup_toolchain_update_request(None, toolchain));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn add_component(&self, toolchain: &str, component: &str) -> AdapterResult<String> {
+        let request =
+            self.configure_request(rustup_add_component_request(None, toolchain, component));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn remove_component(&self, toolchain: &str, component: &str) -> AdapterResult<String> {
+        let request =
+            self.configure_request(rustup_remove_component_request(None, toolchain, component));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn add_target(&self, toolchain: &str, target: &str) -> AdapterResult<String> {
+        let request = self.configure_request(rustup_add_target_request(None, toolchain, target));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn remove_target(&self, toolchain: &str, target: &str) -> AdapterResult<String> {
+        let request = self.configure_request(rustup_remove_target_request(None, toolchain, target));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn set_default_toolchain(&self, toolchain: &str) -> AdapterResult<String> {
+        let request = self.configure_request(rustup_set_default_request(None, toolchain));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn set_override(&self, toolchain: &str, path: &Path) -> AdapterResult<String> {
+        let request = self.configure_request(rustup_set_override_request(None, toolchain, path));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn unset_override(&self, path: &Path) -> AdapterResult<String> {
+        let request = self.configure_request(rustup_unset_override_request(None, path));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn set_profile(&self, profile: &str) -> AdapterResult<String> {
+        let request = self.configure_request(rustup_set_profile_request(None, profile));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 
@@ -309,48 +415,6 @@ fn append_error_context(mut error: CoreError, context: impl AsRef<str>) -> CoreE
         error.message = format!("{} [{context}]", error.message);
     }
     error
-}
-
-/// Collect version output from rustup using std::process::Command.
-///
-/// `read()` returns as soon as data is available — it does NOT wait for pipe
-/// EOF. After reading, the pipe handle is dropped (closing the read end),
-/// so `child.wait()` only waits for process exit without blocking on pipes.
-fn collect_version_output(program: &Path, env_path: &str) -> String {
-    use std::io::Read;
-
-    let mut child = match std::process::Command::new(program)
-        .arg("--version")
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .env("PATH", env_path)
-        .spawn()
-    {
-        Ok(c) => c,
-        Err(_) => return String::new(),
-    };
-
-    // read() returns as soon as data is available, not on EOF.
-    // Version strings are short (< 100 bytes), so one read() suffices.
-    let mut buf = [0u8; 4096];
-    let n = child
-        .stdout
-        .as_mut()
-        .and_then(|pipe| pipe.read(&mut buf).ok())
-        .unwrap_or(0);
-
-    // Drop pipes before wait() to avoid blocking on pipe EOF.
-    child.stdout.take();
-
-    // Wait for the main process to exit.
-    let success = child.wait().is_ok_and(|s| s.success());
-
-    if success && n > 0 {
-        String::from_utf8_lossy(&buf[..n]).to_string()
-    } else {
-        String::new()
-    }
 }
 
 #[cfg(test)]

@@ -94,6 +94,7 @@ impl<S: ColimaSource> ManagerAdapter for ColimaAdapter<S> {
                         },
                         installed_version: version,
                         pinned: false,
+                        runtime_state: Default::default(),
                     }]
                 } else {
                     Vec::new()
@@ -240,6 +241,7 @@ fn parse_colima_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
                     .and_then(Value::as_bool)
                     .unwrap_or(false),
                 restart_required: false,
+                runtime_state: Default::default(),
             });
         }
     }

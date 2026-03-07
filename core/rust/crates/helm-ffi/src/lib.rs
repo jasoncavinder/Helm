@@ -25,6 +25,7 @@
 //! | `helm_init` | Lifecycle |
 //! | `helm_list_installed_packages` | Package queries |
 //! | `helm_list_outdated_packages` | Package queries |
+//! | `helm_get_rustup_toolchain_detail` | Package queries |
 //! | `helm_list_tasks` | Task management |
 //! | `helm_get_task_output` | Task management |
 //! | `helm_list_task_logs` | Task management |
@@ -97,8 +98,14 @@ use helm_core::adapters::homebrew::HomebrewAdapter;
 use helm_core::adapters::homebrew_cask::HomebrewCaskAdapter;
 use helm_core::adapters::homebrew_cask_process::ProcessHomebrewCaskSource;
 use helm_core::adapters::homebrew_process::ProcessHomebrewSource;
+use helm_core::adapters::load_rustup_toolchain_detail_with_runtime;
 use helm_core::adapters::macports::MacPortsAdapter;
 use helm_core::adapters::macports_process::ProcessMacPortsSource;
+use helm_core::adapters::manager::{
+    RustupAddComponentRequest, RustupAddTargetRequest, RustupRemoveComponentRequest,
+    RustupRemoveTargetRequest, RustupSetDefaultToolchainRequest, RustupSetOverrideRequest,
+    RustupSetProfileRequest, RustupUnsetOverrideRequest,
+};
 use helm_core::adapters::mas::MasAdapter;
 use helm_core::adapters::mas_process::ProcessMasSource;
 use helm_core::adapters::mise::MiseAdapter;
@@ -123,7 +130,7 @@ use helm_core::adapters::rosetta2::Rosetta2Adapter;
 use helm_core::adapters::rosetta2_process::ProcessRosetta2Source;
 use helm_core::adapters::rubygems::RubyGemsAdapter;
 use helm_core::adapters::rubygems_process::ProcessRubyGemsSource;
-use helm_core::adapters::rustup::RustupAdapter;
+use helm_core::adapters::rustup::{RustupAdapter, RustupToolchainDetail};
 use helm_core::adapters::rustup_process::ProcessRustupSource;
 use helm_core::adapters::setapp::SetappAdapter;
 use helm_core::adapters::setapp_process::ProcessSetappSource;
@@ -152,9 +159,9 @@ use helm_core::manager_instances::{install_instance_fingerprint, resolve_multi_i
 use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
     Capability, DetectionInfo, HomebrewKegPolicy, ManagerAction, ManagerAuthority, ManagerId,
-    ManagerInstallInstance, ManagerUninstallPreview, OutdatedPackage, PackageRef, PinKind,
-    PinRecord, SearchQuery, StrategyKind, TaskId, TaskLogLevel, TaskLogRecord, TaskStatus,
-    TaskType,
+    ManagerInstallInstance, ManagerUninstallPreview, OutdatedPackage, PackageRef,
+    PackageRuntimeState, PinKind, PinRecord, SearchQuery, StrategyKind, TaskId, TaskLogLevel,
+    TaskLogRecord, TaskStatus, TaskType,
 };
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
 use helm_core::orchestration::{AdapterTaskTerminalState, CancellationMode};
@@ -232,6 +239,49 @@ fn return_error_bool(error_key: &str) -> bool {
 fn return_error_i64(error_key: &str) -> i64 {
     set_last_error_key(error_key);
     -1
+}
+
+fn return_error_ptr(error_key: &str) -> *mut c_char {
+    set_last_error_key(error_key);
+    std::ptr::null_mut()
+}
+
+fn core_error_service_key(error: &helm_core::models::CoreError) -> &'static str {
+    match error.kind {
+        helm_core::models::CoreErrorKind::InvalidInput => SERVICE_ERROR_INVALID_INPUT,
+        helm_core::models::CoreErrorKind::UnsupportedCapability => {
+            SERVICE_ERROR_UNSUPPORTED_CAPABILITY
+        }
+        helm_core::models::CoreErrorKind::StorageFailure => SERVICE_ERROR_STORAGE_FAILURE,
+        helm_core::models::CoreErrorKind::Internal => SERVICE_ERROR_INTERNAL,
+        helm_core::models::CoreErrorKind::NotInstalled
+        | helm_core::models::CoreErrorKind::ParseFailure
+        | helm_core::models::CoreErrorKind::Timeout
+        | helm_core::models::CoreErrorKind::Cancelled
+        | helm_core::models::CoreErrorKind::ProcessFailure => SERVICE_ERROR_PROCESS_FAILURE,
+    }
+}
+
+fn current_runtime_handle() -> Result<tokio::runtime::Handle, &'static str> {
+    let guard = lock_or_recover(&STATE, "state");
+    match guard.as_ref() {
+        Some(state) => Ok(state.rt_handle.clone()),
+        None => Err(SERVICE_ERROR_INTERNAL),
+    }
+}
+
+fn load_rustup_toolchain_detail_from_state(
+    toolchain: &str,
+    context: &str,
+) -> Result<RustupToolchainDetail, &'static str> {
+    let rt_handle = current_runtime_handle()?;
+    load_rustup_toolchain_detail_with_runtime(&rt_handle, toolchain).map_err(|error| {
+        eprintln!(
+            "{context}: failed to fetch rustup detail for '{}': {}",
+            toolchain, error
+        );
+        core_error_service_key(&error)
+    })
 }
 
 #[derive(Clone, Copy, Debug, Default, serde::Deserialize, Eq, PartialEq)]
@@ -763,6 +813,36 @@ enum CoordinatorSubmitRequest {
     },
     Unpin {
         package_name: String,
+    },
+    RustupAddComponent {
+        toolchain: String,
+        component: String,
+    },
+    RustupRemoveComponent {
+        toolchain: String,
+        component: String,
+    },
+    RustupAddTarget {
+        toolchain: String,
+        target: String,
+    },
+    RustupRemoveTarget {
+        toolchain: String,
+        target: String,
+    },
+    RustupSetDefaultToolchain {
+        toolchain: String,
+    },
+    RustupSetOverride {
+        toolchain: String,
+        path: String,
+    },
+    RustupUnsetOverride {
+        toolchain: String,
+        path: String,
+    },
+    RustupSetProfile {
+        profile: String,
     },
 }
 
@@ -2555,6 +2635,7 @@ fn manager_allows_individual_package_install(manager: ManagerId) -> bool {
             | ManagerId::Pipx
             | ManagerId::Poetry
             | ManagerId::RubyGems
+            | ManagerId::Rustup
             | ManagerId::Bundler
     )
 }
@@ -2582,6 +2663,7 @@ fn manager_allows_individual_package_uninstall(manager: ManagerId) -> bool {
             | ManagerId::Pipx
             | ManagerId::Poetry
             | ManagerId::RubyGems
+            | ManagerId::Rustup
             | ManagerId::Bundler
     )
 }
@@ -3049,6 +3131,53 @@ fn active_manager_install_instance(
         .into_iter()
         .next()
         .map(|instance| apply_manager_automation_policy(&instance)))
+}
+
+fn package_runtime_state_from_snapshot(
+    store: &SqliteStore,
+    package: &PackageRef,
+) -> Result<Option<PackageRuntimeState>, &'static str> {
+    match store.list_installed() {
+        Ok(installed) => {
+            if let Some(state) = installed
+                .into_iter()
+                .find(|row| row.package == *package)
+                .map(|row| row.runtime_state)
+            {
+                return Ok(Some(state));
+            }
+        }
+        Err(error) => {
+            eprintln!("preview_package_uninstall: failed to list installed packages: {error}");
+            return Err(SERVICE_ERROR_STORAGE_FAILURE);
+        }
+    }
+
+    match store.list_outdated() {
+        Ok(outdated) => Ok(outdated
+            .into_iter()
+            .find(|row| row.package == *package)
+            .map(|row| row.runtime_state)),
+        Err(error) => {
+            eprintln!("preview_package_uninstall: failed to list outdated packages: {error}");
+            Err(SERVICE_ERROR_STORAGE_FAILURE)
+        }
+    }
+}
+
+fn rustup_override_paths_for_preview(
+    package: &PackageRef,
+    runtime_state: Option<&PackageRuntimeState>,
+) -> Vec<String> {
+    if package.manager != ManagerId::Rustup
+        || !runtime_state.is_some_and(|state| state.has_override)
+    {
+        return Vec::new();
+    }
+
+    load_rustup_toolchain_detail_from_state(package.name.as_str(), "preview_package_uninstall")
+        .map(|detail| detail.override_paths)
+        .unwrap_or_default()
 }
 
 fn build_manager_uninstall_request_legacy(
@@ -4285,6 +4414,46 @@ fn coordinator_submit_to_adapter(
                 name: package_name,
             },
         }),
+        CoordinatorSubmitRequest::RustupAddComponent {
+            toolchain,
+            component,
+        } => AdapterRequest::RustupAddComponent(RustupAddComponentRequest {
+            toolchain,
+            component,
+        }),
+        CoordinatorSubmitRequest::RustupRemoveComponent {
+            toolchain,
+            component,
+        } => AdapterRequest::RustupRemoveComponent(RustupRemoveComponentRequest {
+            toolchain,
+            component,
+        }),
+        CoordinatorSubmitRequest::RustupAddTarget { toolchain, target } => {
+            AdapterRequest::RustupAddTarget(RustupAddTargetRequest { toolchain, target })
+        }
+        CoordinatorSubmitRequest::RustupRemoveTarget { toolchain, target } => {
+            AdapterRequest::RustupRemoveTarget(RustupRemoveTargetRequest { toolchain, target })
+        }
+        CoordinatorSubmitRequest::RustupSetDefaultToolchain { toolchain } => {
+            AdapterRequest::RustupSetDefaultToolchain(RustupSetDefaultToolchainRequest {
+                toolchain,
+            })
+        }
+        CoordinatorSubmitRequest::RustupSetOverride { toolchain, path } => {
+            AdapterRequest::RustupSetOverride(RustupSetOverrideRequest {
+                toolchain,
+                path: PathBuf::from(path),
+            })
+        }
+        CoordinatorSubmitRequest::RustupUnsetOverride { toolchain, path } => {
+            AdapterRequest::RustupUnsetOverride(RustupUnsetOverrideRequest {
+                toolchain,
+                path: PathBuf::from(path),
+            })
+        }
+        CoordinatorSubmitRequest::RustupSetProfile { profile } => {
+            AdapterRequest::RustupSetProfile(RustupSetProfileRequest { profile })
+        }
     }
 }
 
@@ -4310,6 +4479,50 @@ fn adapter_request_to_coordinator_submit(
         AdapterRequest::Unpin(unpin) => Ok(CoordinatorSubmitRequest::Unpin {
             package_name: unpin.package.name,
         }),
+        AdapterRequest::RustupAddComponent(request) => {
+            Ok(CoordinatorSubmitRequest::RustupAddComponent {
+                toolchain: request.toolchain,
+                component: request.component,
+            })
+        }
+        AdapterRequest::RustupRemoveComponent(request) => {
+            Ok(CoordinatorSubmitRequest::RustupRemoveComponent {
+                toolchain: request.toolchain,
+                component: request.component,
+            })
+        }
+        AdapterRequest::RustupAddTarget(request) => Ok(CoordinatorSubmitRequest::RustupAddTarget {
+            toolchain: request.toolchain,
+            target: request.target,
+        }),
+        AdapterRequest::RustupRemoveTarget(request) => {
+            Ok(CoordinatorSubmitRequest::RustupRemoveTarget {
+                toolchain: request.toolchain,
+                target: request.target,
+            })
+        }
+        AdapterRequest::RustupSetDefaultToolchain(request) => {
+            Ok(CoordinatorSubmitRequest::RustupSetDefaultToolchain {
+                toolchain: request.toolchain,
+            })
+        }
+        AdapterRequest::RustupSetOverride(request) => {
+            Ok(CoordinatorSubmitRequest::RustupSetOverride {
+                toolchain: request.toolchain,
+                path: request.path.to_string_lossy().to_string(),
+            })
+        }
+        AdapterRequest::RustupUnsetOverride(request) => {
+            Ok(CoordinatorSubmitRequest::RustupUnsetOverride {
+                toolchain: request.toolchain,
+                path: request.path.to_string_lossy().to_string(),
+            })
+        }
+        AdapterRequest::RustupSetProfile(request) => {
+            Ok(CoordinatorSubmitRequest::RustupSetProfile {
+                profile: request.profile,
+            })
+        }
         unsupported => Err(format!(
             "coordinator submit request does not support adapter action '{:?}'",
             unsupported.action()
@@ -4340,6 +4553,10 @@ fn adapter_response_to_coordinator_payload(
                 count: packages.len(),
             }
         }
+        helm_core::adapters::AdapterResponse::SnapshotSync {
+            installed: _,
+            outdated: _,
+        } => CoordinatorPayload::Refreshed,
         helm_core::adapters::AdapterResponse::SearchResults(results) => {
             CoordinatorPayload::SearchResults {
                 count: results.len(),
@@ -4618,6 +4835,46 @@ pub extern "C" fn helm_list_outdated_packages() -> *mut c_char {
     match CString::new(json) {
         Ok(c) => c.into_raw(),
         Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Return rustup toolchain-scoped component and target detail as JSON.
+///
+/// # Safety
+///
+/// `toolchain` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_get_rustup_toolchain_detail(toolchain: *const c_char) -> *mut c_char {
+    clear_last_error_key();
+    if toolchain.is_null() {
+        return return_error_ptr(SERVICE_ERROR_INVALID_INPUT);
+    }
+
+    let toolchain_cstr = unsafe { CStr::from_ptr(toolchain) };
+    let toolchain_name = match toolchain_cstr.to_str() {
+        Ok(name) if !name.trim().is_empty() => name.trim().to_string(),
+        _ => return return_error_ptr(SERVICE_ERROR_INVALID_INPUT),
+    };
+
+    let detail = match load_rustup_toolchain_detail_from_state(
+        toolchain_name.as_str(),
+        "helm_get_rustup_toolchain_detail",
+    ) {
+        Ok(detail) => detail,
+        Err(error_key) => return return_error_ptr(error_key),
+    };
+
+    let json = match serde_json::to_string(&detail) {
+        Ok(json) => json,
+        Err(error) => {
+            eprintln!("helm_get_rustup_toolchain_detail: failed to encode JSON: {error}");
+            return return_error_ptr(SERVICE_ERROR_INTERNAL);
+        }
+    };
+
+    match CString::new(json) {
+        Ok(c) => c.into_raw(),
+        Err(_) => return_error_ptr(SERVICE_ERROR_INTERNAL),
     }
 }
 
@@ -5052,6 +5309,7 @@ fn manager_action_str(action: ManagerAction) -> &'static str {
         ManagerAction::Install => "install",
         ManagerAction::Uninstall => "uninstall",
         ManagerAction::Upgrade => "upgrade",
+        ManagerAction::Configure => "configure",
         ManagerAction::Pin => "pin",
         ManagerAction::Unpin => "unpin",
     }
@@ -6942,6 +7200,90 @@ pub unsafe extern "C" fn helm_upgrade_package(
     }
 }
 
+fn parse_nonempty_string_arg(ptr: *const c_char) -> Result<String, &'static str> {
+    if ptr.is_null() {
+        return Err(SERVICE_ERROR_INVALID_INPUT);
+    }
+    let value = unsafe { CStr::from_ptr(ptr) };
+    match value.to_str() {
+        Ok(raw) => {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                Err(SERVICE_ERROR_INVALID_INPUT)
+            } else {
+                Ok(trimmed.to_string())
+            }
+        }
+        Err(_) => Err(SERVICE_ERROR_INVALID_INPUT),
+    }
+}
+
+fn parse_absolute_path_arg(ptr: *const c_char) -> Result<PathBuf, &'static str> {
+    let path = PathBuf::from(parse_nonempty_string_arg(ptr)?);
+    if !path.is_absolute() {
+        return Err(SERVICE_ERROR_INVALID_INPUT);
+    }
+    Ok(path)
+}
+
+fn queue_rustup_config_task(
+    request: AdapterRequest,
+    label_key: &'static str,
+    label_args: Vec<(&'static str, String)>,
+) -> i64 {
+    let manager = ManagerId::Rustup;
+
+    if external_coordinator_state_dir().is_some() {
+        let submit_request = match adapter_request_to_coordinator_submit(request.clone()) {
+            Ok(request) => request,
+            Err(_) => return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
+        };
+        return match coordinator_submit_external(manager, submit_request, false) {
+            Ok(response) => response
+                .task_id
+                .map(|task_id| task_id as i64)
+                .unwrap_or_else(|| return_error_i64(SERVICE_ERROR_PROCESS_FAILURE)),
+            Err(_) => return return_error_i64(SERVICE_ERROR_PROCESS_FAILURE),
+        };
+    }
+
+    let (store, runtime, rt_handle) = {
+        let guard = lock_or_recover(&STATE, "state");
+        let state = match guard.as_ref() {
+            Some(s) => s,
+            None => return return_error_i64(SERVICE_ERROR_INTERNAL),
+        };
+        (
+            state.store.clone(),
+            state.runtime.clone(),
+            state.rt_handle.clone(),
+        )
+    };
+
+    if let Some(existing) = find_matching_inflight_task(
+        store.as_ref(),
+        runtime.as_ref(),
+        &rt_handle,
+        manager,
+        TaskType::Configure,
+        Some(label_key),
+        &label_args,
+    ) {
+        return existing.0 as i64;
+    }
+
+    match rt_handle.block_on(runtime.submit(manager, request)) {
+        Ok(task_id) => {
+            set_task_label(task_id, label_key, &label_args);
+            task_id.0 as i64
+        }
+        Err(error) => {
+            eprintln!("queue_rustup_config_task: failed to queue task: {error}");
+            return_error_i64(SERVICE_ERROR_PROCESS_FAILURE)
+        }
+    }
+}
+
 /// Queue an install task for a single package. Returns the task ID, or -1 on error.
 ///
 /// # Safety
@@ -7159,6 +7501,230 @@ pub unsafe extern "C" fn helm_uninstall_package(
     }
 }
 
+/// Queue a rustup component-add task. Returns the task ID, or -1 on error.
+///
+/// # Safety
+///
+/// `toolchain` and `component` must be valid, non-null pointers to NUL-terminated UTF-8 C
+/// strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_rustup_add_component(
+    toolchain: *const c_char,
+    component: *const c_char,
+) -> i64 {
+    clear_last_error_key();
+    let toolchain = match parse_nonempty_string_arg(toolchain) {
+        Ok(value) => value,
+        Err(error_key) => return return_error_i64(error_key),
+    };
+    let component = match parse_nonempty_string_arg(component) {
+        Ok(value) => value,
+        Err(error_key) => return return_error_i64(error_key),
+    };
+    queue_rustup_config_task(
+        AdapterRequest::RustupAddComponent(RustupAddComponentRequest {
+            toolchain: toolchain.clone(),
+            component: component.clone(),
+        }),
+        "service.task.label.configure.rustup_component_add",
+        vec![("toolchain", toolchain), ("component", component)],
+    )
+}
+
+/// Queue a rustup component-remove task. Returns the task ID, or -1 on error.
+///
+/// # Safety
+///
+/// `toolchain` and `component` must be valid, non-null pointers to NUL-terminated UTF-8 C
+/// strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_rustup_remove_component(
+    toolchain: *const c_char,
+    component: *const c_char,
+) -> i64 {
+    clear_last_error_key();
+    let toolchain = match parse_nonempty_string_arg(toolchain) {
+        Ok(value) => value,
+        Err(error_key) => return return_error_i64(error_key),
+    };
+    let component = match parse_nonempty_string_arg(component) {
+        Ok(value) => value,
+        Err(error_key) => return return_error_i64(error_key),
+    };
+    queue_rustup_config_task(
+        AdapterRequest::RustupRemoveComponent(RustupRemoveComponentRequest {
+            toolchain: toolchain.clone(),
+            component: component.clone(),
+        }),
+        "service.task.label.configure.rustup_component_remove",
+        vec![("toolchain", toolchain), ("component", component)],
+    )
+}
+
+/// Queue a rustup target-add task. Returns the task ID, or -1 on error.
+///
+/// # Safety
+///
+/// `toolchain` and `target` must be valid, non-null pointers to NUL-terminated UTF-8 C strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_rustup_add_target(
+    toolchain: *const c_char,
+    target: *const c_char,
+) -> i64 {
+    clear_last_error_key();
+    let toolchain = match parse_nonempty_string_arg(toolchain) {
+        Ok(value) => value,
+        Err(error_key) => return return_error_i64(error_key),
+    };
+    let target = match parse_nonempty_string_arg(target) {
+        Ok(value) => value,
+        Err(error_key) => return return_error_i64(error_key),
+    };
+    queue_rustup_config_task(
+        AdapterRequest::RustupAddTarget(RustupAddTargetRequest {
+            toolchain: toolchain.clone(),
+            target: target.clone(),
+        }),
+        "service.task.label.configure.rustup_target_add",
+        vec![("toolchain", toolchain), ("target", target)],
+    )
+}
+
+/// Queue a rustup target-remove task. Returns the task ID, or -1 on error.
+///
+/// # Safety
+///
+/// `toolchain` and `target` must be valid, non-null pointers to NUL-terminated UTF-8 C strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_rustup_remove_target(
+    toolchain: *const c_char,
+    target: *const c_char,
+) -> i64 {
+    clear_last_error_key();
+    let toolchain = match parse_nonempty_string_arg(toolchain) {
+        Ok(value) => value,
+        Err(error_key) => return return_error_i64(error_key),
+    };
+    let target = match parse_nonempty_string_arg(target) {
+        Ok(value) => value,
+        Err(error_key) => return return_error_i64(error_key),
+    };
+    queue_rustup_config_task(
+        AdapterRequest::RustupRemoveTarget(RustupRemoveTargetRequest {
+            toolchain: toolchain.clone(),
+            target: target.clone(),
+        }),
+        "service.task.label.configure.rustup_target_remove",
+        vec![("toolchain", toolchain), ("target", target)],
+    )
+}
+
+/// Queue a rustup set-default-toolchain task. Returns the task ID, or -1 on error.
+///
+/// # Safety
+///
+/// `toolchain` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_rustup_set_default_toolchain(toolchain: *const c_char) -> i64 {
+    clear_last_error_key();
+    let toolchain = match parse_nonempty_string_arg(toolchain) {
+        Ok(value) => value,
+        Err(error_key) => return return_error_i64(error_key),
+    };
+    queue_rustup_config_task(
+        AdapterRequest::RustupSetDefaultToolchain(RustupSetDefaultToolchainRequest {
+            toolchain: toolchain.clone(),
+        }),
+        "service.task.label.configure.rustup_default_toolchain",
+        vec![("toolchain", toolchain)],
+    )
+}
+
+/// Queue a rustup directory-override task. Returns the task ID, or -1 on error.
+///
+/// # Safety
+///
+/// `toolchain` and `path` must be valid, non-null pointers to NUL-terminated UTF-8 C strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_rustup_set_override(
+    toolchain: *const c_char,
+    path: *const c_char,
+) -> i64 {
+    clear_last_error_key();
+    let toolchain = match parse_nonempty_string_arg(toolchain) {
+        Ok(value) => value,
+        Err(error_key) => return return_error_i64(error_key),
+    };
+    let path = match parse_absolute_path_arg(path) {
+        Ok(value) => value,
+        Err(error_key) => return return_error_i64(error_key),
+    };
+    queue_rustup_config_task(
+        AdapterRequest::RustupSetOverride(RustupSetOverrideRequest {
+            toolchain: toolchain.clone(),
+            path: path.clone(),
+        }),
+        "service.task.label.configure.rustup_override_set",
+        vec![
+            ("toolchain", toolchain),
+            ("path", path.to_string_lossy().to_string()),
+        ],
+    )
+}
+
+/// Queue a rustup directory-override clear task. Returns the task ID, or -1 on error.
+///
+/// # Safety
+///
+/// `toolchain` and `path` must be valid, non-null pointers to NUL-terminated UTF-8 C strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_rustup_unset_override(
+    toolchain: *const c_char,
+    path: *const c_char,
+) -> i64 {
+    clear_last_error_key();
+    let toolchain = match parse_nonempty_string_arg(toolchain) {
+        Ok(value) => value,
+        Err(error_key) => return return_error_i64(error_key),
+    };
+    let path = match parse_absolute_path_arg(path) {
+        Ok(value) => value,
+        Err(error_key) => return return_error_i64(error_key),
+    };
+    queue_rustup_config_task(
+        AdapterRequest::RustupUnsetOverride(RustupUnsetOverrideRequest {
+            toolchain: toolchain.clone(),
+            path: path.clone(),
+        }),
+        "service.task.label.configure.rustup_override_unset",
+        vec![
+            ("toolchain", toolchain),
+            ("path", path.to_string_lossy().to_string()),
+        ],
+    )
+}
+
+/// Queue a rustup profile-change task. Returns the task ID, or -1 on error.
+///
+/// # Safety
+///
+/// `profile` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_rustup_set_profile(profile: *const c_char) -> i64 {
+    clear_last_error_key();
+    let profile = match parse_nonempty_string_arg(profile) {
+        Ok(value) => value,
+        Err(error_key) => return return_error_i64(error_key),
+    };
+    queue_rustup_config_task(
+        AdapterRequest::RustupSetProfile(RustupSetProfileRequest {
+            profile: profile.clone(),
+        }),
+        "service.task.label.configure.rustup_profile_set",
+        vec![("profile", profile)],
+    )
+}
+
 /// Preview package uninstall blast radius as JSON.
 ///
 /// # Safety
@@ -7226,10 +7792,20 @@ pub unsafe extern "C" fn helm_preview_package_uninstall(
         manager,
         name: package_name,
     };
+    let runtime_state = match package_runtime_state_from_snapshot(store.as_ref(), &package) {
+        Ok(state) => state,
+        Err(error_key) => {
+            set_last_error_key(error_key);
+            return std::ptr::null_mut();
+        }
+    };
+    let rustup_override_paths = rustup_override_paths_for_preview(&package, runtime_state.as_ref());
     let preview = build_package_uninstall_preview(
         PackageUninstallPreviewContext {
             package: &package,
             active_instance: active_instance.as_ref(),
+            package_runtime_state: runtime_state.as_ref(),
+            rustup_override_paths: rustup_override_paths.as_slice(),
         },
         DEFAULT_MANAGER_UNINSTALL_SAFE_BLAST_RADIUS_THRESHOLD,
     );
@@ -8971,9 +9547,9 @@ mod tests {
         FfiUpgradePlanStep, SERVICE_ERROR_UNSUPPORTED_CAPABILITY, build_manager_statuses,
         build_manager_uninstall_plan, build_manager_uninstall_preview, build_visible_tasks,
         collect_upgrade_all_targets, homebrew_probe_candidates,
-        manager_allows_individual_package_install, manager_authority_key,
-        manager_participates_in_package_search, manager_uninstall_label_for_route,
-        parse_homebrew_config_version, push_upgrade_plan_step,
+        manager_allows_individual_package_install, manager_allows_individual_package_uninstall,
+        manager_authority_key, manager_participates_in_package_search,
+        manager_uninstall_label_for_route, parse_homebrew_config_version, push_upgrade_plan_step,
         resolve_homebrew_manager_update_strategy, resolve_rustup_uninstall_strategy,
         search_label_args, search_label_key_for_query, search_task_type_for_query,
         upgrade_plan_step_id, upgrade_reason_label_for, upgrade_task_label_for,
@@ -9076,6 +9652,7 @@ mod tests {
             },
             installed_version: installed_version.map(str::to_string),
             pinned: false,
+            runtime_state: Default::default(),
         }
     }
 
@@ -9089,8 +9666,8 @@ mod tests {
     }
 
     #[test]
-    fn package_search_excludes_rustup_manager() {
-        assert!(!manager_participates_in_package_search(ManagerId::Rustup));
+    fn package_search_includes_rustup_manager() {
+        assert!(manager_participates_in_package_search(ManagerId::Rustup));
         assert!(manager_participates_in_package_search(
             ManagerId::HomebrewFormula
         ));
@@ -10934,11 +11511,24 @@ mod tests {
             ManagerId::MacPorts
         ));
         assert!(manager_allows_individual_package_install(ManagerId::Mise));
+        assert!(manager_allows_individual_package_install(ManagerId::Rustup));
         assert!(manager_allows_individual_package_install(
             ManagerId::HomebrewFormula
         ));
         assert!(!manager_allows_individual_package_install(ManagerId::Mas));
         assert!(!manager_allows_individual_package_install(
+            ManagerId::SoftwareUpdate
+        ));
+    }
+
+    #[test]
+    fn individual_package_uninstall_support_is_scoped_to_supported_managers() {
+        assert!(manager_allows_individual_package_uninstall(
+            ManagerId::Rustup
+        ));
+        assert!(manager_allows_individual_package_uninstall(ManagerId::Pip));
+        assert!(!manager_allows_individual_package_uninstall(ManagerId::Mas));
+        assert!(!manager_allows_individual_package_uninstall(
             ManagerId::SoftwareUpdate
         ));
     }
@@ -10963,6 +11553,7 @@ mod tests {
             candidate_version: "1.1.0".to_string(),
             pinned,
             restart_required: false,
+            runtime_state: Default::default(),
         }
     }
 }

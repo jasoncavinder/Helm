@@ -779,6 +779,7 @@ async fn install_mutation_updates_cached_snapshots_without_manual_refresh() {
             candidate_version: "9.25.0".to_string(),
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         }])
         .unwrap();
 
@@ -847,6 +848,7 @@ async fn uninstall_mutation_removes_cached_snapshots_without_manual_refresh() {
             package: package.clone(),
             installed_version: Some("5.8.3".to_string()),
             pinned: false,
+            runtime_state: Default::default(),
         }])
         .unwrap();
     store
@@ -856,6 +858,7 @@ async fn uninstall_mutation_removes_cached_snapshots_without_manual_refresh() {
             candidate_version: "5.9.0".to_string(),
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         }])
         .unwrap();
 

@@ -206,6 +206,7 @@ struct CoreInstalledPackage: Codable {
     let package: CorePackageRef
     let installedVersion: String?
     let pinned: Bool
+    let runtimeState: PackageRuntimeState?
 }
 
 struct CoreOutdatedPackage: Codable {
@@ -214,6 +215,7 @@ struct CoreOutdatedPackage: Codable {
     let candidateVersion: String
     let pinned: Bool
     let restartRequired: Bool
+    let runtimeState: PackageRuntimeState?
 }
 
 struct CoreTaskRecord: Codable {
@@ -303,6 +305,21 @@ struct CoreSearchResult: Codable {
     let version: String?
     let summary: String?
     let sourceManager: String
+}
+
+struct CoreRustupToolchainDetailEntry: Codable, Hashable, Identifiable {
+    let name: String
+    let installed: Bool
+
+    var id: String { name }
+}
+
+struct CoreRustupToolchainDetail: Codable, Hashable {
+    let toolchain: String
+    let currentProfile: String?
+    let overridePaths: [String]
+    let components: [CoreRustupToolchainDetailEntry]
+    let targets: [CoreRustupToolchainDetailEntry]
 }
 
 struct CoreUpgradePlanStep: Codable, Identifiable, Equatable {
@@ -637,17 +654,28 @@ final class HelmCore: ObservableObject {
         didSet { onSearchTextChanged(searchText) }
     }
     @Published var installedPackages: [PackageItem] = [] {
-        didSet { scheduleDerivedViewStateRefresh() }
+        didSet {
+            invalidateKnownPackageCaches()
+            scheduleDerivedViewStateRefresh()
+        }
     }
     @Published var outdatedPackages: [PackageItem] = [] {
-        didSet { scheduleDerivedViewStateRefresh() }
+        didSet {
+            invalidateKnownPackageCaches()
+            scheduleDerivedViewStateRefresh()
+        }
     }
     @Published var activeTasks: [TaskItem] = [] {
         didSet { scheduleDerivedViewStateRefresh() }
     }
     @Published var taskTimeoutPrompts: [CoreTaskTimeoutPrompt] = []
     @Published var searchResults: [PackageItem] = []
-    @Published var cachedAvailablePackages: [PackageItem] = []
+    @Published var cachedAvailablePackages: [PackageItem] = [] {
+        didSet {
+            invalidateKnownPackageCaches()
+            scheduleDerivedViewStateRefresh()
+        }
+    }
     @Published var upgradePlanSteps: [CoreUpgradePlanStep] = []
     @Published var upgradePlanTaskProjectionByStepId: [String: UpgradePlanTaskProjection] = [:]
     @Published var upgradePlanFailureGroups: [UpgradePlanFailureGroup] = []
@@ -658,7 +686,10 @@ final class HelmCore: ObservableObject {
         didSet { scheduleDerivedViewStateRefresh() }
     }
     @Published var managerStatuses: [String: ManagerStatus] = [:] {
-        didSet { scheduleDerivedViewStateRefresh() }
+        didSet {
+            invalidateKnownPackageCaches()
+            scheduleDerivedViewStateRefresh()
+        }
     }
     @Published var managerPriorityOverrides: [String: Int] = HelmCore.loadManagerPriorityOverrides() {
         didSet { scheduleDerivedViewStateRefresh() }
@@ -676,6 +707,10 @@ final class HelmCore: ObservableObject {
     @Published var packageDescriptionLoadingIds: Set<String> = []
     @Published var packageDescriptionUnavailableIds: Set<String> = []
     @Published var packageDescriptionSummaryByKey: [String: String] = [:]
+    @Published var rustupToolchainDetailsByKey: [String: CoreRustupToolchainDetail] = [:]
+    @Published var rustupToolchainDetailLoadingKeys: Set<String> = []
+    @Published var rustupToolchainDetailUnavailableKeys: Set<String> = []
+    @Published var rustupToolchainActionInFlightKeys: Set<String> = []
     @Published var onboardingDetectionInProgress: Bool = false
     @Published var homebrewKegAutoCleanupEnabled: Bool = false
     @Published var packageKegPolicyOverrides: [String: HomebrewKegPolicyOverride] = [:]
@@ -727,6 +762,9 @@ final class HelmCore: ObservableObject {
     var installActionTaskByPackage: [String: UInt64] = [:]
     var installActionNormalizedNameByPackageId: [String: String] = [:]
     var uninstallActionTaskByPackage: [String: UInt64] = [:]
+    var rustupToolchainActionTaskByKey: [String: UInt64] = [:]
+    var rustupToolchainActionPackageByKey: [String: PackageItem] = [:]
+    var rustupToolchainActionSubmittedAtByKey: [String: Date] = [:]
     var descriptionLookupTaskIdsByPackage: [String: Set<UInt64>] = [:]
     var descriptionLookupStartedAtByPackage: [String: Date] = [:]
     var descriptionLookupPackageById: [String: PackageItem] = [:]
@@ -744,6 +782,9 @@ final class HelmCore: ObservableObject {
     private var isPopoverVisibleForPolling = false
     private var isControlCenterVisibleForPolling = false
     private var derivedViewStateRefreshWorkItem: DispatchWorkItem?
+    var cachedAllKnownPackagesUnsorted: [PackageItem]?
+    var cachedAllKnownPackagesSorted: [PackageItem]?
+    var cachedKnownPackageById: [String: PackageItem] = [:]
     private var packageDescriptionRenderCache: [String: PackageDescriptionRenderCacheEntry] = [:]
     private var packageDescriptionRenderCacheOrder: [String] = []
     private static let maxPackageDescriptionRenderCacheEntries = 256
@@ -766,6 +807,12 @@ final class HelmCore: ObservableObject {
             return [:]
         }
         return decoded
+    }
+
+    func invalidateKnownPackageCaches() {
+        cachedAllKnownPackagesUnsorted = nil
+        cachedAllKnownPackagesSorted = nil
+        cachedKnownPackageById = [:]
     }
 
     static func requiresLicenseTermsAcceptance(
@@ -1238,10 +1285,17 @@ final class HelmCore: ObservableObject {
                     self?.packageDescriptionLoadingIds = []
                     self?.packageDescriptionUnavailableIds = []
                     self?.packageDescriptionSummaryByKey = [:]
+                    self?.rustupToolchainDetailsByKey = [:]
+                    self?.rustupToolchainDetailLoadingKeys = []
+                    self?.rustupToolchainDetailUnavailableKeys = []
+                    self?.rustupToolchainActionInFlightKeys = []
                     self?.upgradeActionTaskByPackage = [:]
                     self?.installActionTaskByPackage = [:]
                     self?.installActionNormalizedNameByPackageId = [:]
                     self?.uninstallActionTaskByPackage = [:]
+                    self?.rustupToolchainActionTaskByKey = [:]
+                    self?.rustupToolchainActionPackageByKey = [:]
+                    self?.rustupToolchainActionSubmittedAtByKey = [:]
                     self?.descriptionLookupTaskIdsByPackage = [:]
                     self?.descriptionLookupStartedAtByPackage = [:]
                     self?.descriptionLookupPackageById = [:]

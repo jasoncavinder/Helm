@@ -210,6 +210,7 @@ fn task_type_for_action(action: ManagerAction) -> TaskType {
         ManagerAction::Install => TaskType::Install,
         ManagerAction::Uninstall => TaskType::Uninstall,
         ManagerAction::Upgrade => TaskType::Upgrade,
+        ManagerAction::Configure => TaskType::Configure,
         ManagerAction::Pin => TaskType::Pin,
         ManagerAction::Unpin => TaskType::Unpin,
     }
@@ -272,6 +273,7 @@ fn default_action_for_task_type(task_type: TaskType) -> ManagerAction {
         TaskType::Install => ManagerAction::Install,
         TaskType::Uninstall => ManagerAction::Uninstall,
         TaskType::Upgrade => ManagerAction::Upgrade,
+        TaskType::Configure => ManagerAction::Configure,
         TaskType::Pin => ManagerAction::Pin,
         TaskType::Unpin => ManagerAction::Unpin,
     }

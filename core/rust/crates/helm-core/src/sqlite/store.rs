@@ -138,11 +138,14 @@ impl PackageStore for SqliteStore {
                 let mut statement = transaction.prepare(
                     "
 INSERT INTO installed_package_versions (
-    manager_id, package_name, installed_version, pinned, updated_at_unix
-) VALUES (?1, ?2, ?3, ?4, strftime('%s', 'now'))
+    manager_id, package_name, installed_version, pinned, is_active, is_default, has_override, updated_at_unix
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, strftime('%s', 'now'))
 ON CONFLICT(manager_id, package_name, installed_version) DO UPDATE SET
     installed_version = excluded.installed_version,
     pinned = excluded.pinned,
+    is_active = excluded.is_active,
+    is_default = excluded.is_default,
+    has_override = excluded.has_override,
     updated_at_unix = excluded.updated_at_unix
 ",
                 )?;
@@ -155,6 +158,9 @@ ON CONFLICT(manager_id, package_name, installed_version) DO UPDATE SET
                         package.package.name.as_str(),
                         installed_version.as_str(),
                         bool_to_sqlite(package.pinned),
+                        bool_to_sqlite(package.runtime_state.is_active),
+                        bool_to_sqlite(package.runtime_state.is_default),
+                        bool_to_sqlite(package.runtime_state.has_override),
                     ))?;
                 }
             }
@@ -171,13 +177,16 @@ ON CONFLICT(manager_id, package_name, installed_version) DO UPDATE SET
                 let mut statement = transaction.prepare(
                     "
 INSERT INTO outdated_packages (
-    manager_id, package_name, installed_version, candidate_version, pinned, restart_required, updated_at_unix
-) VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%s', 'now'))
+    manager_id, package_name, installed_version, candidate_version, pinned, restart_required, is_active, is_default, has_override, updated_at_unix
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, strftime('%s', 'now'))
 ON CONFLICT(manager_id, package_name) DO UPDATE SET
     installed_version = excluded.installed_version,
     candidate_version = excluded.candidate_version,
     pinned = excluded.pinned,
     restart_required = excluded.restart_required,
+    is_active = excluded.is_active,
+    is_default = excluded.is_default,
+    has_override = excluded.has_override,
     updated_at_unix = excluded.updated_at_unix
 ",
                 )?;
@@ -190,6 +199,9 @@ ON CONFLICT(manager_id, package_name) DO UPDATE SET
                         package.candidate_version.as_str(),
                         bool_to_sqlite(package.pinned),
                         bool_to_sqlite(package.restart_required),
+                        bool_to_sqlite(package.runtime_state.is_active),
+                        bool_to_sqlite(package.runtime_state.is_default),
+                        bool_to_sqlite(package.runtime_state.has_override),
                     ))?;
                 }
             }
@@ -216,8 +228,8 @@ ON CONFLICT(manager_id, package_name) DO UPDATE SET
                 let mut statement = transaction.prepare(
                     "
 INSERT INTO outdated_packages (
-    manager_id, package_name, installed_version, candidate_version, pinned, restart_required, updated_at_unix
-) VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%s', 'now'))
+    manager_id, package_name, installed_version, candidate_version, pinned, restart_required, is_active, is_default, has_override, updated_at_unix
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, strftime('%s', 'now'))
 ",
                 )?;
 
@@ -229,6 +241,9 @@ INSERT INTO outdated_packages (
                         package.candidate_version.as_str(),
                         bool_to_sqlite(package.pinned),
                         bool_to_sqlite(package.restart_required),
+                        bool_to_sqlite(package.runtime_state.is_active),
+                        bool_to_sqlite(package.runtime_state.is_default),
+                        bool_to_sqlite(package.runtime_state.has_override),
                     ))?;
                 }
             }
@@ -250,7 +265,10 @@ SELECT
     CASE
         WHEN pr.manager_id IS NOT NULL THEN 1
         ELSE ipv.pinned
-    END AS pinned
+    END AS pinned,
+    ipv.is_active,
+    ipv.is_default,
+    ipv.has_override
 FROM installed_package_versions ipv
 LEFT JOIN pin_records pr
     ON pr.manager_id = ipv.manager_id
@@ -264,6 +282,9 @@ ORDER BY ipv.manager_id, ipv.package_name, ipv.installed_version
                 let package_name: String = row.get(1)?;
                 let installed_version_raw: String = row.get(2)?;
                 let pinned_int: i64 = row.get(3)?;
+                let is_active_int: i64 = row.get(4)?;
+                let is_default_int: i64 = row.get(5)?;
+                let has_override_int: i64 = row.get(6)?;
 
                 let manager = parse_manager_id(&manager_id)?;
                 Ok(InstalledPackage {
@@ -273,6 +294,11 @@ ORDER BY ipv.manager_id, ipv.package_name, ipv.installed_version
                     },
                     installed_version: from_installed_version_token(installed_version_raw),
                     pinned: sqlite_to_bool(pinned_int),
+                    runtime_state: crate::models::PackageRuntimeState {
+                        is_active: sqlite_to_bool(is_active_int),
+                        is_default: sqlite_to_bool(is_default_int),
+                        has_override: sqlite_to_bool(has_override_int),
+                    },
                 })
             })?;
 
@@ -294,7 +320,10 @@ SELECT
         WHEN pr.manager_id IS NOT NULL THEN 1
         ELSE op.pinned
     END AS pinned,
-    op.restart_required
+    op.restart_required,
+    op.is_active,
+    op.is_default,
+    op.has_override
 FROM outdated_packages op
 LEFT JOIN pin_records pr
     ON pr.manager_id = op.manager_id
@@ -310,6 +339,9 @@ ORDER BY op.manager_id, op.package_name
                 let candidate_version: String = row.get(3)?;
                 let pinned_int: i64 = row.get(4)?;
                 let restart_required_int: i64 = row.get(5)?;
+                let is_active_int: i64 = row.get(6)?;
+                let is_default_int: i64 = row.get(7)?;
+                let has_override_int: i64 = row.get(8)?;
 
                 let manager = parse_manager_id(&manager_id)?;
                 Ok(OutdatedPackage {
@@ -321,6 +353,11 @@ ORDER BY op.manager_id, op.package_name
                     candidate_version,
                     pinned: sqlite_to_bool(pinned_int),
                     restart_required: sqlite_to_bool(restart_required_int),
+                    runtime_state: crate::models::PackageRuntimeState {
+                        is_active: sqlite_to_bool(is_active_int),
+                        is_default: sqlite_to_bool(is_default_int),
+                        has_override: sqlite_to_bool(has_override_int),
+                    },
                 })
             })?;
 
@@ -377,10 +414,13 @@ WHERE manager_id = ?1 AND package_name = ?2
             transaction.execute(
                 "
 INSERT INTO installed_package_versions (
-    manager_id, package_name, installed_version, pinned, updated_at_unix
-) VALUES (?1, ?2, ?3, 0, strftime('%s', 'now'))
+    manager_id, package_name, installed_version, pinned, is_active, is_default, has_override, updated_at_unix
+) VALUES (?1, ?2, ?3, 0, 0, 0, 0, strftime('%s', 'now'))
 ON CONFLICT(manager_id, package_name, installed_version) DO UPDATE SET
     installed_version = excluded.installed_version,
+    is_active = excluded.is_active,
+    is_default = excluded.is_default,
+    has_override = excluded.has_override,
     updated_at_unix = excluded.updated_at_unix
 ",
                 params![
@@ -434,28 +474,48 @@ WHERE manager_id = ?1 AND package_name = ?2
             ensure_schema_ready(connection)?;
             let transaction = connection.transaction()?;
 
-            let outdated_entry: Option<(Option<String>, String, i64)> = transaction
+            let outdated_entry: Option<(Option<String>, String, i64, i64, i64, i64)> = transaction
                 .query_row(
                     "
-SELECT installed_version, candidate_version, pinned
+SELECT installed_version, candidate_version, pinned, is_active, is_default, has_override
 FROM outdated_packages
 WHERE manager_id = ?1 AND package_name = ?2
 ",
                     params![package.manager.as_str(), package.name.as_str()],
-                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                    |row| {
+                        Ok((
+                            row.get(0)?,
+                            row.get(1)?,
+                            row.get(2)?,
+                            row.get(3)?,
+                            row.get(4)?,
+                            row.get(5)?,
+                        ))
+                    },
                 )
                 .optional()?;
 
-            if let Some((installed_version, candidate_version, pinned)) = outdated_entry {
+            if let Some((
+                installed_version,
+                candidate_version,
+                pinned,
+                is_active,
+                is_default,
+                has_override,
+            )) = outdated_entry
+            {
                 let candidate_version_token =
                     to_installed_version_token(Some(candidate_version.as_str()));
                 transaction.execute(
                     "
 INSERT INTO installed_package_versions (
-    manager_id, package_name, installed_version, pinned, updated_at_unix
-) VALUES (?1, ?2, ?3, ?4, strftime('%s', 'now'))
+    manager_id, package_name, installed_version, pinned, is_active, is_default, has_override, updated_at_unix
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, strftime('%s', 'now'))
 ON CONFLICT(manager_id, package_name, installed_version) DO UPDATE SET
     pinned = excluded.pinned,
+    is_active = excluded.is_active,
+    is_default = excluded.is_default,
+    has_override = excluded.has_override,
     updated_at_unix = excluded.updated_at_unix
 ",
                     params![
@@ -463,6 +523,9 @@ ON CONFLICT(manager_id, package_name, installed_version) DO UPDATE SET
                         package.name.as_str(),
                         candidate_version_token.as_str(),
                         pinned,
+                        is_active,
+                        is_default,
+                        has_override,
                     ],
                 )?;
 
@@ -2095,6 +2158,7 @@ fn task_type_to_str(value: TaskType) -> &'static str {
         TaskType::Install => "install",
         TaskType::Uninstall => "uninstall",
         TaskType::Upgrade => "upgrade",
+        TaskType::Configure => "configure",
         TaskType::Pin => "pin",
         TaskType::Unpin => "unpin",
     }
@@ -2109,6 +2173,7 @@ fn parse_task_type(raw: &str) -> rusqlite::Result<TaskType> {
         "install" => Ok(TaskType::Install),
         "uninstall" => Ok(TaskType::Uninstall),
         "upgrade" => Ok(TaskType::Upgrade),
+        "configure" => Ok(TaskType::Configure),
         "pin" => Ok(TaskType::Pin),
         "unpin" => Ok(TaskType::Unpin),
         _ => Err(storage_error_sqlite(&format!(

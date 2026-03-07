@@ -94,6 +94,7 @@ impl<S: DockerDesktopSource> ManagerAdapter for DockerDesktopAdapter<S> {
                         },
                         installed_version: version,
                         pinned: false,
+                        runtime_state: Default::default(),
                     }]
                 } else {
                     Vec::new()
@@ -239,6 +240,7 @@ fn parse_docker_desktop_outdated(output: &str) -> AdapterResult<Vec<OutdatedPack
                 candidate_version,
                 pinned: false,
                 restart_required: false,
+                runtime_state: Default::default(),
             });
         }
     }

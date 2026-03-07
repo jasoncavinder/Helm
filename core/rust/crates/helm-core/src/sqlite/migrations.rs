@@ -411,7 +411,85 @@ DROP TABLE IF EXISTS installed_package_versions;
 "#,
 };
 
-const MIGRATIONS: [SqliteMigration; 13] = [
+const MIGRATION_0014: SqliteMigration = SqliteMigration {
+    version: 14,
+    name: "add_package_runtime_state_flags",
+    up_sql: r#"
+ALTER TABLE installed_package_versions ADD COLUMN is_active INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE installed_package_versions ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE installed_package_versions ADD COLUMN has_override INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE outdated_packages ADD COLUMN is_active INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE outdated_packages ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE outdated_packages ADD COLUMN has_override INTEGER NOT NULL DEFAULT 0;
+"#,
+    down_sql: r#"
+CREATE TABLE installed_package_versions_backup (
+    manager_id TEXT NOT NULL,
+    package_name TEXT NOT NULL,
+    installed_version TEXT NOT NULL DEFAULT '',
+    pinned INTEGER NOT NULL DEFAULT 0,
+    updated_at_unix INTEGER NOT NULL,
+    PRIMARY KEY (manager_id, package_name, installed_version)
+);
+
+INSERT INTO installed_package_versions_backup (
+    manager_id,
+    package_name,
+    installed_version,
+    pinned,
+    updated_at_unix
+)
+SELECT
+    manager_id,
+    package_name,
+    installed_version,
+    pinned,
+    updated_at_unix
+FROM installed_package_versions;
+
+DROP TABLE installed_package_versions;
+ALTER TABLE installed_package_versions_backup RENAME TO installed_package_versions;
+
+CREATE INDEX IF NOT EXISTS idx_installed_package_versions_manager_package
+    ON installed_package_versions (manager_id, package_name);
+
+CREATE TABLE outdated_packages_backup (
+    manager_id TEXT NOT NULL,
+    package_name TEXT NOT NULL,
+    installed_version TEXT,
+    candidate_version TEXT NOT NULL,
+    pinned INTEGER NOT NULL DEFAULT 0,
+    restart_required INTEGER NOT NULL DEFAULT 0,
+    updated_at_unix INTEGER NOT NULL,
+    PRIMARY KEY (manager_id, package_name)
+);
+
+INSERT INTO outdated_packages_backup (
+    manager_id,
+    package_name,
+    installed_version,
+    candidate_version,
+    pinned,
+    restart_required,
+    updated_at_unix
+)
+SELECT
+    manager_id,
+    package_name,
+    installed_version,
+    candidate_version,
+    pinned,
+    restart_required,
+    updated_at_unix
+FROM outdated_packages;
+
+DROP TABLE outdated_packages;
+ALTER TABLE outdated_packages_backup RENAME TO outdated_packages;
+"#,
+};
+
+const MIGRATIONS: [SqliteMigration; 14] = [
     MIGRATION_0001,
     MIGRATION_0002,
     MIGRATION_0003,
@@ -425,6 +503,7 @@ const MIGRATIONS: [SqliteMigration; 13] = [
     MIGRATION_0011,
     MIGRATION_0012,
     MIGRATION_0013,
+    MIGRATION_0014,
 ];
 
 pub fn migrations() -> &'static [SqliteMigration] {
