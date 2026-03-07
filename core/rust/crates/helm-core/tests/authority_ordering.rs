@@ -31,7 +31,6 @@ impl TimestampedAdapter {
                 category: ManagerCategory::ToolRuntime,
                 authority,
                 capabilities: &[
-                    Capability::Detect,
                     Capability::Refresh,
                     Capability::ListInstalled,
                     Capability::ListOutdated,
@@ -92,7 +91,6 @@ impl FailingAdapter {
                 category: ManagerCategory::Language,
                 authority,
                 capabilities: &[
-                    Capability::Detect,
                     Capability::Refresh,
                     Capability::ListInstalled,
                     Capability::ListOutdated,
@@ -293,11 +291,7 @@ async fn parallel_within_authoritative_phase() {
 
 #[tokio::test]
 async fn refresh_all_ordered_skips_missing_list_installed_capability() {
-    const SWUPD_CAPS: &[Capability] = &[
-        Capability::Detect,
-        Capability::Refresh,
-        Capability::ListOutdated,
-    ];
+    const SWUPD_CAPS: &[Capability] = &[Capability::Refresh, Capability::ListOutdated];
     let detect_calls = Arc::new(AtomicU64::new(0));
     let list_outdated_calls = Arc::new(AtomicU64::new(0));
     let swupd: Arc<dyn ManagerAdapter> = Arc::new(CapabilitySparseAdapter::new(
