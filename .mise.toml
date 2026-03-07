@@ -4,5 +4,4 @@ sccache = "latest"
 
 [env]
 RUSTC_WRAPPER = "sccache"
-SCCACHE_DIR = "~/.cache/sccache"
-
+SCCACHE_DIR = "/Users/jasoncavinder/.cache/sccache"
