@@ -1,5 +1,15 @@
 import SwiftUI
 
+struct PackageRuntimeState: Codable, Hashable {
+    var isActive: Bool = false
+    var isDefault: Bool = false
+    var hasOverride: Bool = false
+
+    var isEmpty: Bool {
+        !isActive && !isDefault && !hasOverride
+    }
+}
+
 enum PackageStatus: String, CaseIterable {
     case installed
     case upgradable
@@ -40,6 +50,7 @@ struct PackageItem: Identifiable {
     var summary: String?
     var pinned: Bool = false
     var restartRequired: Bool = false
+    var runtimeState: PackageRuntimeState = PackageRuntimeState()
     private var statusOverride: PackageStatus?
 
     var status: PackageStatus {
@@ -47,7 +58,7 @@ struct PackageItem: Identifiable {
         return latestVersion != nil ? .upgradable : .installed
     }
 
-    init(id: String, name: String, version: String, latestVersion: String? = nil, managerId: String? = nil, manager: String, summary: String? = nil, pinned: Bool = false, restartRequired: Bool = false, status: PackageStatus? = nil) {
+    init(id: String, name: String, version: String, latestVersion: String? = nil, managerId: String? = nil, manager: String, summary: String? = nil, pinned: Bool = false, restartRequired: Bool = false, runtimeState: PackageRuntimeState = PackageRuntimeState(), status: PackageStatus? = nil) {
         self.id = id
         self.name = name
         self.version = version
@@ -57,6 +68,7 @@ struct PackageItem: Identifiable {
         self.summary = summary
         self.pinned = pinned
         self.restartRequired = restartRequired
+        self.runtimeState = runtimeState
         self.statusOverride = status
     }
 

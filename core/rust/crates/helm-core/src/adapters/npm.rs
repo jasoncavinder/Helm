@@ -324,6 +324,7 @@ fn parse_npm_list_installed(output: &str) -> AdapterResult<Vec<InstalledPackage>
             },
             installed_version: Some(version),
             pinned: false,
+            runtime_state: Default::default(),
         })
         .collect())
 }
@@ -392,6 +393,7 @@ fn parse_npm_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
             candidate_version,
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         });
     }
 

@@ -141,6 +141,7 @@ impl<S: AsdfSource> ManagerAdapter for AsdfAdapter<S> {
                         candidate_version: latest_version,
                         pinned: false,
                         restart_required: false,
+                        runtime_state: Default::default(),
                     });
                 }
 
@@ -532,6 +533,7 @@ fn parse_asdf_current(output: &str) -> AdapterResult<Vec<InstalledPackage>> {
             },
             installed_version: Some(version),
             pinned: false,
+            runtime_state: Default::default(),
         })
         .collect())
 }

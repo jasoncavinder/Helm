@@ -95,6 +95,7 @@ impl<S: XcodeCommandLineToolsSource> ManagerAdapter for XcodeCommandLineToolsAda
                         },
                         installed_version: version,
                         pinned: false,
+                        runtime_state: Default::default(),
                     }]
                 } else {
                     Vec::new()
@@ -295,6 +296,7 @@ fn flush_xcode_clt_update(
         candidate_version,
         pinned: false,
         restart_required: false,
+        runtime_state: Default::default(),
     });
 }
 

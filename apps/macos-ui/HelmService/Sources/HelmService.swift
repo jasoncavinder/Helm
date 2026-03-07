@@ -40,6 +40,88 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(String(cString: cString))
     }
 
+    func getRustupToolchainDetail(toolchain: String, withReply reply: @escaping (String?) -> Void) {
+        guard let cString = toolchain.withCString({ helm_get_rustup_toolchain_detail($0) }) else {
+            logger.warning("helm_get_rustup_toolchain_detail(\(toolchain, privacy: .public)) returned nil")
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(cString) }
+        reply(String(cString: cString))
+    }
+
+    func addRustupComponent(toolchain: String, component: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = toolchain.withCString { toolchainPtr in
+            component.withCString { componentPtr in
+                helm_rustup_add_component(toolchainPtr, componentPtr)
+            }
+        }
+        logger.info("helm_rustup_add_component(\(toolchain, privacy: .public), \(component, privacy: .public)) result: \(taskId)")
+        reply(taskId)
+    }
+
+    func removeRustupComponent(toolchain: String, component: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = toolchain.withCString { toolchainPtr in
+            component.withCString { componentPtr in
+                helm_rustup_remove_component(toolchainPtr, componentPtr)
+            }
+        }
+        logger.info("helm_rustup_remove_component(\(toolchain, privacy: .public), \(component, privacy: .public)) result: \(taskId)")
+        reply(taskId)
+    }
+
+    func addRustupTarget(toolchain: String, target: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = toolchain.withCString { toolchainPtr in
+            target.withCString { targetPtr in
+                helm_rustup_add_target(toolchainPtr, targetPtr)
+            }
+        }
+        logger.info("helm_rustup_add_target(\(toolchain, privacy: .public), \(target, privacy: .public)) result: \(taskId)")
+        reply(taskId)
+    }
+
+    func removeRustupTarget(toolchain: String, target: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = toolchain.withCString { toolchainPtr in
+            target.withCString { targetPtr in
+                helm_rustup_remove_target(toolchainPtr, targetPtr)
+            }
+        }
+        logger.info("helm_rustup_remove_target(\(toolchain, privacy: .public), \(target, privacy: .public)) result: \(taskId)")
+        reply(taskId)
+    }
+
+    func setRustupDefaultToolchain(toolchain: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = toolchain.withCString { helm_rustup_set_default_toolchain($0) }
+        logger.info("helm_rustup_set_default_toolchain(\(toolchain, privacy: .public)) result: \(taskId)")
+        reply(taskId)
+    }
+
+    func setRustupOverride(toolchain: String, path: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = toolchain.withCString { toolchainPtr in
+            path.withCString { pathPtr in
+                helm_rustup_set_override(toolchainPtr, pathPtr)
+            }
+        }
+        logger.info("helm_rustup_set_override(\(toolchain, privacy: .public), \(path, privacy: .public)) result: \(taskId)")
+        reply(taskId)
+    }
+
+    func unsetRustupOverride(toolchain: String, path: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = toolchain.withCString { toolchainPtr in
+            path.withCString { pathPtr in
+                helm_rustup_unset_override(toolchainPtr, pathPtr)
+            }
+        }
+        logger.info("helm_rustup_unset_override(\(toolchain, privacy: .public), \(path, privacy: .public)) result: \(taskId)")
+        reply(taskId)
+    }
+
+    func setRustupProfile(profile: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = profile.withCString { helm_rustup_set_profile($0) }
+        logger.info("helm_rustup_set_profile(\(profile, privacy: .public)) result: \(taskId)")
+        reply(taskId)
+    }
+
     func listTasks(withReply reply: @escaping (String?) -> Void) {
         guard let cString = helm_list_tasks() else {
             logger.warning("helm_list_tasks returned nil")

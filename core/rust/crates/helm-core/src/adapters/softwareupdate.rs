@@ -261,6 +261,7 @@ fn build_outdated_package(
         candidate_version: candidate_version.to_owned(),
         pinned: false,
         restart_required,
+        runtime_state: Default::default(),
     }
 }
 

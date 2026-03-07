@@ -10,6 +10,11 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use helm_core::adapters::manager::{
+    RustupAddComponentRequest, RustupAddTargetRequest, RustupRemoveComponentRequest,
+    RustupRemoveTargetRequest, RustupSetDefaultToolchainRequest, RustupSetOverrideRequest,
+    RustupSetProfileRequest, RustupUnsetOverrideRequest,
+};
 use helm_core::adapters::{
     AdapterRequest, AdapterResponse, AsdfAdapter, BundlerAdapter, CargoAdapter,
     CargoBinstallAdapter, ColimaAdapter, DetectRequest, DockerDesktopAdapter,
@@ -27,6 +32,7 @@ use helm_core::adapters::{
     ProcessYarnSource, Rosetta2Adapter, RubyGemsAdapter, RustupAdapter, SearchRequest,
     SetappAdapter, SoftwareUpdateAdapter, SparkleAdapter, UninstallRequest, UnpinRequest,
     UpgradeRequest, XcodeCommandLineToolsAdapter, YarnAdapter,
+    load_rustup_toolchain_detail_with_runtime,
 };
 use helm_core::execution::{
     ManagerTimeoutProfile, TaskOutputRecord, TokioProcessExecutor,
@@ -41,8 +47,8 @@ use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
     CachedSearchResult, Capability, DetectionInfo, HomebrewKegPolicy, InstalledPackage,
     ManagerAuthority, ManagerId, ManagerInstallInstance, ManagerUninstallPreview, OutdatedPackage,
-    PackageRef, PackageUninstallPreview, PinKind, PinRecord, SearchQuery, StrategyKind, TaskId,
-    TaskLogLevel, TaskRecord, TaskStatus,
+    PackageRef, PackageRuntimeState, PackageUninstallPreview, PinKind, PinRecord, SearchQuery,
+    StrategyKind, TaskId, TaskLogLevel, TaskRecord, TaskStatus,
 };
 use helm_core::orchestration::{AdapterRuntime, AdapterTaskTerminalState, CancellationMode};
 use helm_core::persistence::{DetectionStore, PackageStore, PinStore, SearchCacheStore, TaskStore};
@@ -111,7 +117,7 @@ const BASH_COMPLETION_SCRIPT: &str = r#"_helm_complete() {
 
     case "${COMP_WORDS[1]}" in
         packages)
-            COMPREPLY=( $(compgen -W "list search show install uninstall upgrade pin unpin keg-policy help" -- "${cur}") )
+            COMPREPLY=( $(compgen -W "list search show install uninstall upgrade pin unpin rustup keg-policy help" -- "${cur}") )
             ;;
         updates)
             COMPREPLY=( $(compgen -W "list summary preview run help" -- "${cur}") )
@@ -176,7 +182,7 @@ fi
 
 case $words[2] in
   packages)
-    _values 'subcommand' list search show install uninstall upgrade pin unpin keg-policy help
+    _values 'subcommand' list search show install uninstall upgrade pin unpin rustup keg-policy help
     ;;
   updates)
     _values 'subcommand' list summary preview run help
@@ -213,7 +219,7 @@ esac
 "#;
 const FISH_COMPLETION_SCRIPT: &str = r#"complete -c helm -f
 complete -c helm -n "__fish_use_subcommand" -a "status refresh search ls packages updates tasks managers settings diagnostics doctor onboarding self completion help"
-complete -c helm -n "__fish_seen_subcommand_from packages" -a "list search show install uninstall upgrade pin unpin keg-policy help"
+complete -c helm -n "__fish_seen_subcommand_from packages" -a "list search show install uninstall upgrade pin unpin rustup keg-policy help"
 complete -c helm -n "__fish_seen_subcommand_from updates" -a "list summary preview run help"
 complete -c helm -n "__fish_seen_subcommand_from tasks" -a "list show logs output follow cancel help"
 complete -c helm -n "__fish_seen_subcommand_from managers" -a "list show detect enable disable install update uninstall executables install-methods instances priority help"
@@ -409,6 +415,7 @@ struct CliPackageManagerView {
     candidate_version: Option<String>,
     pinned: bool,
     restart_required: bool,
+    runtime_state: PackageRuntimeState,
 }
 
 #[derive(Serialize)]
@@ -416,6 +423,7 @@ struct CliPackageManagerView {
 struct CliPackageShowResult {
     name: String,
     manager: CliPackageManagerView,
+    rustup_toolchain_detail: Option<helm_core::adapters::rustup::RustupToolchainDetail>,
 }
 
 #[derive(Serialize)]
@@ -557,6 +565,36 @@ enum CoordinatorSubmitRequest {
     Detect,
     Search {
         query: String,
+    },
+    RustupAddComponent {
+        toolchain: String,
+        component: String,
+    },
+    RustupRemoveComponent {
+        toolchain: String,
+        component: String,
+    },
+    RustupAddTarget {
+        toolchain: String,
+        target: String,
+    },
+    RustupRemoveTarget {
+        toolchain: String,
+        target: String,
+    },
+    RustupSetDefaultToolchain {
+        toolchain: String,
+    },
+    RustupSetOverride {
+        toolchain: String,
+        path: String,
+    },
+    RustupUnsetOverride {
+        toolchain: String,
+        path: String,
+    },
+    RustupSetProfile {
+        profile: String,
     },
     Install {
         package_name: String,
@@ -1304,6 +1342,7 @@ fn command_help_topic_exists(command: Command, path: &[String]) -> bool {
                             | "upgrade"
                             | "pin"
                             | "unpin"
+                            | "rustup"
                             | "keg-policy"
                     )
                 );
@@ -1311,10 +1350,28 @@ fn command_help_topic_exists(command: Command, path: &[String]) -> bool {
             if path.len() == 2 {
                 return matches!(
                     (path[0].as_str(), path[1].as_str()),
-                    ("keg-policy", "list")
+                    ("rustup", "show")
+                        | ("rustup", "component")
+                        | ("rustup", "target")
+                        | ("rustup", "default")
+                        | ("rustup", "override")
+                        | ("rustup", "profile")
+                        | ("keg-policy", "list")
                         | ("keg-policy", "get")
                         | ("keg-policy", "set")
                         | ("keg-policy", "reset")
+                );
+            }
+            if path.len() == 3 {
+                return matches!(
+                    (path[0].as_str(), path[1].as_str(), path[2].as_str()),
+                    ("rustup", "component", "add")
+                        | ("rustup", "component", "remove")
+                        | ("rustup", "target", "add")
+                        | ("rustup", "target", "remove")
+                        | ("rustup", "override", "set")
+                        | ("rustup", "override", "unset")
+                        | ("rustup", "profile", "set")
                 );
             }
             false
@@ -1920,6 +1977,10 @@ fn cmd_packages(
         return cmd_packages_show(store.as_ref(), options, &command_args[1..]);
     }
 
+    if command_args[0] == "rustup" {
+        return cmd_packages_rustup(store, options, &command_args[1..]);
+    }
+
     if command_args[0] == "keg-policy" {
         return cmd_packages_keg_policy(store.as_ref(), options, &command_args[1..]);
     }
@@ -1932,7 +1993,7 @@ fn cmd_packages(
     }
 
     Err(format!(
-        "unsupported packages subcommand '{}'; currently supported: list, search, show, install, uninstall, upgrade, pin, unpin, keg-policy",
+        "unsupported packages subcommand '{}'; currently supported: list, search, show, install, uninstall, upgrade, pin, unpin, rustup, keg-policy",
         command_args[0]
     ))
 }
@@ -2198,6 +2259,8 @@ fn cmd_packages_show(
             package_name
         )
     })?;
+    let rustup_toolchain_detail =
+        resolve_rustup_package_show_detail(package_name.as_str(), &manager);
 
     if options.json {
         emit_json_payload(
@@ -2206,6 +2269,7 @@ fn cmd_packages_show(
                 "package": CliPackageShowResult {
                     name: package_name,
                     manager,
+                    rustup_toolchain_detail,
                 }
             }),
         );
@@ -2224,7 +2288,325 @@ fn cmd_packages_show(
     );
     println!("  pinned: {}", manager.pinned);
     println!("  restart_required: {}", manager.restart_required);
+    if !manager.runtime_state.is_empty() {
+        println!(
+            "  runtime_state: {}",
+            render_package_runtime_state(&manager.runtime_state)
+        );
+    }
+    if let Some(detail) = rustup_toolchain_detail.as_ref() {
+        print_rustup_toolchain_detail(detail);
+    }
     Ok(())
+}
+
+fn resolve_rustup_package_show_detail(
+    package_name: &str,
+    manager: &CliPackageManagerView,
+) -> Option<helm_core::adapters::rustup::RustupToolchainDetail> {
+    if manager.manager_id != ManagerId::Rustup.as_str() {
+        return None;
+    }
+    load_rustup_toolchain_detail_for_cli(package_name, "packages show")
+}
+
+pub(crate) fn load_rustup_toolchain_detail_for_cli(
+    toolchain: &str,
+    context: &str,
+) -> Option<helm_core::adapters::rustup::RustupToolchainDetail> {
+    let runtime = match cli_tokio_runtime() {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            eprintln!("{context}: failed to initialize tokio runtime: {error}");
+            return None;
+        }
+    };
+
+    match load_rustup_toolchain_detail_with_runtime(runtime.handle(), toolchain) {
+        Ok(detail) => Some(detail),
+        Err(error) => {
+            eprintln!(
+                "{context}: failed to fetch rustup detail for '{}': {}",
+                toolchain, error
+            );
+            None
+        }
+    }
+}
+
+fn print_rustup_toolchain_detail(detail: &helm_core::adapters::rustup::RustupToolchainDetail) {
+    println!(
+        "  profile: {}",
+        detail.current_profile.as_deref().unwrap_or("-")
+    );
+    if detail.override_paths.is_empty() {
+        println!("  overrides: none");
+    } else {
+        println!("  overrides: {}", detail.override_paths.join(", "));
+    }
+    print_rustup_toolchain_detail_group("components", detail.components.as_slice());
+    print_rustup_toolchain_detail_group("targets", detail.targets.as_slice());
+}
+
+fn print_rustup_toolchain_detail_group(
+    label: &str,
+    entries: &[helm_core::adapters::rustup::RustupToolchainDetailEntry],
+) {
+    let installed = entries
+        .iter()
+        .filter(|entry| entry.installed)
+        .map(|entry| entry.name.as_str())
+        .collect::<Vec<_>>();
+    println!(
+        "  {label}: {} installed of {} available",
+        installed.len(),
+        entries.len()
+    );
+    if installed.is_empty() {
+        println!("    none installed");
+    } else {
+        println!("    installed: {}", installed.join(", "));
+    }
+}
+
+fn render_package_runtime_state(state: &PackageRuntimeState) -> String {
+    let mut parts = Vec::new();
+    if state.is_active {
+        parts.push("active");
+    }
+    if state.is_default {
+        parts.push("default");
+    }
+    if state.has_override {
+        parts.push("override");
+    }
+    if parts.is_empty() {
+        "-".to_string()
+    } else {
+        parts.join(", ")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RustupPackagesCommand {
+    Show {
+        toolchain: String,
+    },
+    ComponentAdd {
+        toolchain: String,
+        component: String,
+    },
+    ComponentRemove {
+        toolchain: String,
+        component: String,
+    },
+    TargetAdd {
+        toolchain: String,
+        target: String,
+    },
+    TargetRemove {
+        toolchain: String,
+        target: String,
+    },
+    Default {
+        toolchain: String,
+    },
+    OverrideSet {
+        toolchain: String,
+        path: String,
+    },
+    OverrideUnset {
+        toolchain: String,
+        path: String,
+    },
+    ProfileSet {
+        profile: String,
+    },
+}
+
+impl RustupPackagesCommand {
+    fn submit_request(&self) -> Option<CoordinatorSubmitRequest> {
+        match self {
+            Self::Show { .. } => None,
+            Self::ComponentAdd {
+                toolchain,
+                component,
+            } => Some(CoordinatorSubmitRequest::RustupAddComponent {
+                toolchain: toolchain.clone(),
+                component: component.clone(),
+            }),
+            Self::ComponentRemove {
+                toolchain,
+                component,
+            } => Some(CoordinatorSubmitRequest::RustupRemoveComponent {
+                toolchain: toolchain.clone(),
+                component: component.clone(),
+            }),
+            Self::TargetAdd { toolchain, target } => {
+                Some(CoordinatorSubmitRequest::RustupAddTarget {
+                    toolchain: toolchain.clone(),
+                    target: target.clone(),
+                })
+            }
+            Self::TargetRemove { toolchain, target } => {
+                Some(CoordinatorSubmitRequest::RustupRemoveTarget {
+                    toolchain: toolchain.clone(),
+                    target: target.clone(),
+                })
+            }
+            Self::Default { toolchain } => {
+                Some(CoordinatorSubmitRequest::RustupSetDefaultToolchain {
+                    toolchain: toolchain.clone(),
+                })
+            }
+            Self::OverrideSet { toolchain, path } => {
+                Some(CoordinatorSubmitRequest::RustupSetOverride {
+                    toolchain: toolchain.clone(),
+                    path: path.clone(),
+                })
+            }
+            Self::OverrideUnset { toolchain, path } => {
+                Some(CoordinatorSubmitRequest::RustupUnsetOverride {
+                    toolchain: toolchain.clone(),
+                    path: path.clone(),
+                })
+            }
+            Self::ProfileSet { profile } => Some(CoordinatorSubmitRequest::RustupSetProfile {
+                profile: profile.clone(),
+            }),
+        }
+    }
+
+    fn schema(&self) -> &'static str {
+        match self {
+            Self::Show { .. } => "helm.cli.v1.packages.rustup.show",
+            Self::ComponentAdd { .. } => "helm.cli.v1.packages.rustup.component.add",
+            Self::ComponentRemove { .. } => "helm.cli.v1.packages.rustup.component.remove",
+            Self::TargetAdd { .. } => "helm.cli.v1.packages.rustup.target.add",
+            Self::TargetRemove { .. } => "helm.cli.v1.packages.rustup.target.remove",
+            Self::Default { .. } => "helm.cli.v1.packages.rustup.default",
+            Self::OverrideSet { .. } => "helm.cli.v1.packages.rustup.override.set",
+            Self::OverrideUnset { .. } => "helm.cli.v1.packages.rustup.override.unset",
+            Self::ProfileSet { .. } => "helm.cli.v1.packages.rustup.profile.set",
+        }
+    }
+
+    fn json_fields(&self) -> serde_json::Value {
+        match self {
+            Self::Show { toolchain } => json!({
+                "manager_id": ManagerId::Rustup.as_str(),
+                "toolchain": toolchain,
+            }),
+            Self::ComponentAdd {
+                toolchain,
+                component,
+            }
+            | Self::ComponentRemove {
+                toolchain,
+                component,
+            } => json!({
+                "manager_id": ManagerId::Rustup.as_str(),
+                "toolchain": toolchain,
+                "component": component,
+            }),
+            Self::TargetAdd { toolchain, target } | Self::TargetRemove { toolchain, target } => {
+                json!({
+                    "manager_id": ManagerId::Rustup.as_str(),
+                    "toolchain": toolchain,
+                    "target": target,
+                })
+            }
+            Self::Default { toolchain } => json!({
+                "manager_id": ManagerId::Rustup.as_str(),
+                "toolchain": toolchain,
+            }),
+            Self::OverrideSet { toolchain, path } | Self::OverrideUnset { toolchain, path } => {
+                json!({
+                    "manager_id": ManagerId::Rustup.as_str(),
+                    "toolchain": toolchain,
+                    "path": path,
+                })
+            }
+            Self::ProfileSet { profile } => json!({
+                "manager_id": ManagerId::Rustup.as_str(),
+                "profile": profile,
+            }),
+        }
+    }
+
+    fn wait_message(&self, task_id: u64) -> String {
+        match self {
+            Self::Show { toolchain } => {
+                format!("rustup toolchain detail loaded for '{toolchain}' (task #{task_id})")
+            }
+            Self::ComponentAdd {
+                toolchain,
+                component,
+            } => format!("rustup component '{component}' added to '{toolchain}' (task #{task_id})"),
+            Self::ComponentRemove {
+                toolchain,
+                component,
+            } => format!(
+                "rustup component '{component}' removed from '{toolchain}' (task #{task_id})"
+            ),
+            Self::TargetAdd { toolchain, target } => {
+                format!("rustup target '{target}' added to '{toolchain}' (task #{task_id})")
+            }
+            Self::TargetRemove { toolchain, target } => {
+                format!("rustup target '{target}' removed from '{toolchain}' (task #{task_id})")
+            }
+            Self::Default { toolchain } => {
+                format!("rustup default toolchain set to '{toolchain}' (task #{task_id})")
+            }
+            Self::OverrideSet { toolchain, path } => {
+                format!("rustup override for '{toolchain}' set at '{path}' (task #{task_id})")
+            }
+            Self::OverrideUnset { toolchain, path } => {
+                format!("rustup override for '{toolchain}' cleared at '{path}' (task #{task_id})")
+            }
+            Self::ProfileSet { profile } => {
+                format!("rustup profile set to '{profile}' (task #{task_id})")
+            }
+        }
+    }
+
+    fn detach_message(&self, task_id: u64) -> String {
+        match self {
+            Self::Show { toolchain } => {
+                format!("rustup toolchain detail requested for '{toolchain}' (task #{task_id})")
+            }
+            Self::ComponentAdd {
+                toolchain,
+                component,
+            } => format!(
+                "rustup component '{component}' add submitted for '{toolchain}' (task #{task_id})"
+            ),
+            Self::ComponentRemove {
+                toolchain,
+                component,
+            } => format!(
+                "rustup component '{component}' removal submitted for '{toolchain}' (task #{task_id})"
+            ),
+            Self::TargetAdd { toolchain, target } => format!(
+                "rustup target '{target}' add submitted for '{toolchain}' (task #{task_id})"
+            ),
+            Self::TargetRemove { toolchain, target } => format!(
+                "rustup target '{target}' removal submitted for '{toolchain}' (task #{task_id})"
+            ),
+            Self::Default { toolchain } => format!(
+                "rustup default toolchain change submitted for '{toolchain}' (task #{task_id})"
+            ),
+            Self::OverrideSet { toolchain, path } => format!(
+                "rustup override set submitted for '{toolchain}' at '{path}' (task #{task_id})"
+            ),
+            Self::OverrideUnset { toolchain, path } => format!(
+                "rustup override clear submitted for '{toolchain}' at '{path}' (task #{task_id})"
+            ),
+            Self::ProfileSet { profile } => {
+                format!("rustup profile change submitted for '{profile}' (task #{task_id})")
+            }
+        }
+    }
 }
 
 fn collect_package_show_rows(
@@ -2283,6 +2665,13 @@ fn collect_package_show_rows(
             restart_required: outdated_row
                 .map(|row| row.restart_required)
                 .unwrap_or(false),
+            runtime_state: installed_row
+                .map(|row| row.runtime_state.clone())
+                .unwrap_or_else(|| {
+                    outdated_row
+                        .map(|row| row.runtime_state.clone())
+                        .unwrap_or_default()
+                }),
         });
     }
 
@@ -2540,6 +2929,79 @@ fn cmd_packages_mutation(
     }
 
     Ok(())
+}
+
+fn cmd_packages_rustup(
+    store: Arc<SqliteStore>,
+    options: GlobalOptions,
+    command_args: &[String],
+) -> Result<(), String> {
+    let parsed = parse_packages_rustup_args(command_args)?;
+    if let RustupPackagesCommand::Show { toolchain } = &parsed {
+        return cmd_packages_show(
+            store.as_ref(),
+            options,
+            &[
+                toolchain.clone(),
+                "--manager".to_string(),
+                ManagerId::Rustup.as_str().to_string(),
+            ],
+        );
+    }
+
+    cmd_packages_rustup_submit(store, options, parsed)
+}
+
+fn cmd_packages_rustup_submit(
+    store: Arc<SqliteStore>,
+    options: GlobalOptions,
+    command: RustupPackagesCommand,
+) -> Result<(), String> {
+    let request = command
+        .submit_request()
+        .ok_or_else(|| "rustup command does not produce a submit request".to_string())?;
+    let response = coordinator_submit_request(
+        store.as_ref(),
+        ManagerId::Rustup,
+        request,
+        options.execution_mode,
+    )?;
+
+    if options.execution_mode == ExecutionMode::Detach {
+        let task_id = response
+            .task_id
+            .ok_or_else(|| "coordinator detach response missing task id".to_string())?;
+        if options.json {
+            let mut payload = command.json_fields();
+            payload["accepted"] = json!(true);
+            payload["mode"] = json!("detach");
+            payload["task_id"] = json!(task_id);
+            emit_json_payload(command.schema(), payload);
+        } else {
+            println!("{}", command.detach_message(task_id));
+        }
+        return Ok(());
+    }
+
+    let task_id = response
+        .task_id
+        .ok_or_else(|| "coordinator wait response missing task id".to_string())?;
+    match response.payload {
+        Some(CoordinatorPayload::Refreshed) | Some(CoordinatorPayload::Mutation { .. }) => {
+            if options.json {
+                let mut payload = command.json_fields();
+                payload["accepted"] = json!(true);
+                payload["mode"] = json!("wait");
+                payload["task_id"] = json!(task_id);
+                payload["refreshed"] = json!(true);
+                emit_json_payload(command.schema(), payload);
+            } else {
+                println!("{}", command.wait_message(task_id));
+            }
+            Ok(())
+        }
+        _ => Err("packages rustup returned unexpected coordinator payload".to_string()),
+    }
 }
 
 fn cmd_packages_keg_policy(
@@ -8286,6 +8748,46 @@ fn coordinator_submit_request_to_adapter(
                 issued_at: SystemTime::now(),
             },
         }),
+        CoordinatorSubmitRequest::RustupAddComponent {
+            toolchain,
+            component,
+        } => AdapterRequest::RustupAddComponent(RustupAddComponentRequest {
+            toolchain,
+            component,
+        }),
+        CoordinatorSubmitRequest::RustupRemoveComponent {
+            toolchain,
+            component,
+        } => AdapterRequest::RustupRemoveComponent(RustupRemoveComponentRequest {
+            toolchain,
+            component,
+        }),
+        CoordinatorSubmitRequest::RustupAddTarget { toolchain, target } => {
+            AdapterRequest::RustupAddTarget(RustupAddTargetRequest { toolchain, target })
+        }
+        CoordinatorSubmitRequest::RustupRemoveTarget { toolchain, target } => {
+            AdapterRequest::RustupRemoveTarget(RustupRemoveTargetRequest { toolchain, target })
+        }
+        CoordinatorSubmitRequest::RustupSetDefaultToolchain { toolchain } => {
+            AdapterRequest::RustupSetDefaultToolchain(RustupSetDefaultToolchainRequest {
+                toolchain,
+            })
+        }
+        CoordinatorSubmitRequest::RustupSetOverride { toolchain, path } => {
+            AdapterRequest::RustupSetOverride(RustupSetOverrideRequest {
+                toolchain,
+                path: PathBuf::from(path),
+            })
+        }
+        CoordinatorSubmitRequest::RustupUnsetOverride { toolchain, path } => {
+            AdapterRequest::RustupUnsetOverride(RustupUnsetOverrideRequest {
+                toolchain,
+                path: PathBuf::from(path),
+            })
+        }
+        CoordinatorSubmitRequest::RustupSetProfile { profile } => {
+            AdapterRequest::RustupSetProfile(RustupSetProfileRequest { profile })
+        }
         CoordinatorSubmitRequest::Install {
             package_name,
             version,
@@ -8336,6 +8838,50 @@ fn adapter_request_to_coordinator_submit(
         AdapterRequest::Search(search) => Ok(CoordinatorSubmitRequest::Search {
             query: search.query.text,
         }),
+        AdapterRequest::RustupAddComponent(request) => {
+            Ok(CoordinatorSubmitRequest::RustupAddComponent {
+                toolchain: request.toolchain,
+                component: request.component,
+            })
+        }
+        AdapterRequest::RustupRemoveComponent(request) => {
+            Ok(CoordinatorSubmitRequest::RustupRemoveComponent {
+                toolchain: request.toolchain,
+                component: request.component,
+            })
+        }
+        AdapterRequest::RustupAddTarget(request) => Ok(CoordinatorSubmitRequest::RustupAddTarget {
+            toolchain: request.toolchain,
+            target: request.target,
+        }),
+        AdapterRequest::RustupRemoveTarget(request) => {
+            Ok(CoordinatorSubmitRequest::RustupRemoveTarget {
+                toolchain: request.toolchain,
+                target: request.target,
+            })
+        }
+        AdapterRequest::RustupSetDefaultToolchain(request) => {
+            Ok(CoordinatorSubmitRequest::RustupSetDefaultToolchain {
+                toolchain: request.toolchain,
+            })
+        }
+        AdapterRequest::RustupSetOverride(request) => {
+            Ok(CoordinatorSubmitRequest::RustupSetOverride {
+                toolchain: request.toolchain,
+                path: request.path.to_string_lossy().to_string(),
+            })
+        }
+        AdapterRequest::RustupUnsetOverride(request) => {
+            Ok(CoordinatorSubmitRequest::RustupUnsetOverride {
+                toolchain: request.toolchain,
+                path: request.path.to_string_lossy().to_string(),
+            })
+        }
+        AdapterRequest::RustupSetProfile(request) => {
+            Ok(CoordinatorSubmitRequest::RustupSetProfile {
+                profile: request.profile,
+            })
+        }
         AdapterRequest::Install(install) => Ok(CoordinatorSubmitRequest::Install {
             package_name: install.package.name,
             version: install.version,
@@ -8371,6 +8917,10 @@ fn adapter_response_to_coordinator_payload(response: AdapterResponse) -> Coordin
                 .map(|path| path.to_string_lossy().to_string()),
         },
         AdapterResponse::Refreshed => CoordinatorPayload::Refreshed,
+        AdapterResponse::SnapshotSync {
+            installed: _,
+            outdated: _,
+        } => CoordinatorPayload::Refreshed,
         AdapterResponse::InstalledPackages(packages) => CoordinatorPayload::InstalledPackages {
             count: packages.len(),
         },
@@ -9412,6 +9962,130 @@ fn task_log_to_cli_record(record: helm_core::models::TaskLogRecord) -> CliTaskLo
         level: task_log_level_str(record.level).to_string(),
         message: record.message,
         created_at_unix,
+    }
+}
+
+fn require_nonempty_packages_rustup_arg(raw: &str, label: &str) -> Result<String, String> {
+    let normalized = raw.trim();
+    if normalized.is_empty() {
+        return Err(format!("packages rustup {label} cannot be empty"));
+    }
+    Ok(normalized.to_string())
+}
+
+fn require_absolute_packages_rustup_path(raw: &str, label: &str) -> Result<String, String> {
+    let normalized = require_nonempty_packages_rustup_arg(raw, label)?;
+    if !Path::new(normalized.as_str()).is_absolute() {
+        return Err(format!(
+            "packages rustup {label} requires an absolute path (received '{}')",
+            normalized
+        ));
+    }
+    Ok(normalized)
+}
+
+fn parse_packages_rustup_args(command_args: &[String]) -> Result<RustupPackagesCommand, String> {
+    if command_args.is_empty() {
+        return Err(
+            "packages rustup requires a subcommand: show, component, target, default, override, profile"
+                .to_string(),
+        );
+    }
+
+    match command_args[0].as_str() {
+        "show" => {
+            if command_args.len() != 2 {
+                return Err("packages rustup show requires <toolchain>".to_string());
+            }
+            Ok(RustupPackagesCommand::Show {
+                toolchain: require_nonempty_packages_rustup_arg(&command_args[1], "toolchain")?,
+            })
+        }
+        "component" => {
+            if command_args.len() != 4 {
+                return Err(
+                    "packages rustup component requires <add|remove> <toolchain> <component>"
+                        .to_string(),
+                );
+            }
+            let toolchain = require_nonempty_packages_rustup_arg(&command_args[2], "toolchain")?;
+            let component = require_nonempty_packages_rustup_arg(&command_args[3], "component")?;
+            match command_args[1].as_str() {
+                "add" => Ok(RustupPackagesCommand::ComponentAdd {
+                    toolchain,
+                    component,
+                }),
+                "remove" => Ok(RustupPackagesCommand::ComponentRemove {
+                    toolchain,
+                    component,
+                }),
+                other => Err(format!(
+                    "unsupported packages rustup component action '{}'; supported: add, remove",
+                    other
+                )),
+            }
+        }
+        "target" => {
+            if command_args.len() != 4 {
+                return Err(
+                    "packages rustup target requires <add|remove> <toolchain> <target>".to_string(),
+                );
+            }
+            let toolchain = require_nonempty_packages_rustup_arg(&command_args[2], "toolchain")?;
+            let target = require_nonempty_packages_rustup_arg(&command_args[3], "target")?;
+            match command_args[1].as_str() {
+                "add" => Ok(RustupPackagesCommand::TargetAdd { toolchain, target }),
+                "remove" => Ok(RustupPackagesCommand::TargetRemove { toolchain, target }),
+                other => Err(format!(
+                    "unsupported packages rustup target action '{}'; supported: add, remove",
+                    other
+                )),
+            }
+        }
+        "default" => {
+            if command_args.len() != 2 {
+                return Err("packages rustup default requires <toolchain>".to_string());
+            }
+            Ok(RustupPackagesCommand::Default {
+                toolchain: require_nonempty_packages_rustup_arg(&command_args[1], "toolchain")?,
+            })
+        }
+        "override" => {
+            if command_args.len() != 4 {
+                return Err(
+                    "packages rustup override requires <set|unset> <toolchain> <absolute-path>"
+                        .to_string(),
+                );
+            }
+            let toolchain = require_nonempty_packages_rustup_arg(&command_args[2], "toolchain")?;
+            let path = require_absolute_packages_rustup_path(&command_args[3], "path")?;
+            match command_args[1].as_str() {
+                "set" => Ok(RustupPackagesCommand::OverrideSet { toolchain, path }),
+                "unset" => Ok(RustupPackagesCommand::OverrideUnset { toolchain, path }),
+                other => Err(format!(
+                    "unsupported packages rustup override action '{}'; supported: set, unset",
+                    other
+                )),
+            }
+        }
+        "profile" => {
+            if command_args.len() != 3 {
+                return Err("packages rustup profile requires set <profile>".to_string());
+            }
+            match command_args[1].as_str() {
+                "set" => Ok(RustupPackagesCommand::ProfileSet {
+                    profile: require_nonempty_packages_rustup_arg(&command_args[2], "profile")?,
+                }),
+                other => Err(format!(
+                    "unsupported packages rustup profile action '{}'; supported: set",
+                    other
+                )),
+            }
+        }
+        other => Err(format!(
+            "unsupported packages rustup subcommand '{}'; supported: show, component, target, default, override, profile",
+            other
+        )),
     }
 }
 
@@ -12561,13 +13235,54 @@ fn build_package_uninstall_preview_for_package(
     package: &PackageRef,
 ) -> Result<PackageUninstallPreview, String> {
     let active_instance = active_manager_install_instance(store, package.manager)?;
+    let runtime_state = package_runtime_state_from_snapshot(store, package)?;
+    let rustup_override_paths = rustup_override_paths_for_preview(package, runtime_state.as_ref());
     Ok(build_package_uninstall_preview(
         PackageUninstallPreviewContext {
             package,
             active_instance: active_instance.as_ref(),
+            package_runtime_state: runtime_state.as_ref(),
+            rustup_override_paths: rustup_override_paths.as_slice(),
         },
         DEFAULT_MANAGER_UNINSTALL_SAFE_BLAST_RADIUS_THRESHOLD,
     ))
+}
+
+fn package_runtime_state_from_snapshot(
+    store: &SqliteStore,
+    package: &PackageRef,
+) -> Result<Option<PackageRuntimeState>, String> {
+    if let Some(state) = store
+        .list_installed()
+        .map_err(|error| format!("failed to list installed packages: {error}"))?
+        .into_iter()
+        .find(|row| row.package == *package)
+        .map(|row| row.runtime_state)
+    {
+        return Ok(Some(state));
+    }
+
+    Ok(store
+        .list_outdated()
+        .map_err(|error| format!("failed to list outdated packages: {error}"))?
+        .into_iter()
+        .find(|row| row.package == *package)
+        .map(|row| row.runtime_state))
+}
+
+fn rustup_override_paths_for_preview(
+    package: &PackageRef,
+    runtime_state: Option<&PackageRuntimeState>,
+) -> Vec<String> {
+    if package.manager != ManagerId::Rustup
+        || !runtime_state.is_some_and(|state| state.has_override)
+    {
+        return Vec::new();
+    }
+
+    load_rustup_toolchain_detail_for_cli(package.name.as_str(), "preview package uninstall")
+        .map(|detail| detail.override_paths)
+        .unwrap_or_default()
 }
 
 fn parse_manager_id(raw: &str) -> Result<ManagerId, String> {
@@ -13280,8 +13995,64 @@ fn print_packages_help_topic(path: &[String]) -> bool {
                 print_packages_unpin_help();
                 true
             }
+            "rustup" => {
+                print_packages_rustup_help();
+                true
+            }
             "keg-policy" => {
                 print_packages_keg_policy_help();
+                true
+            }
+            _ => false,
+        };
+    }
+
+    if path.len() == 2 && path[0] == "rustup" {
+        return match path[1].as_str() {
+            "show" => {
+                print_packages_rustup_show_help();
+                true
+            }
+            "component" => {
+                print_packages_rustup_component_help();
+                true
+            }
+            "target" => {
+                print_packages_rustup_target_help();
+                true
+            }
+            "default" => {
+                print_packages_rustup_default_help();
+                true
+            }
+            "override" => {
+                print_packages_rustup_override_help();
+                true
+            }
+            "profile" => {
+                print_packages_rustup_profile_help();
+                true
+            }
+            _ => false,
+        };
+    }
+
+    if path.len() == 3 && path[0] == "rustup" {
+        return match (path[1].as_str(), path[2].as_str()) {
+            ("component", "add") | ("component", "remove") => {
+                print_packages_rustup_component_help();
+                true
+            }
+            ("target", "add") | ("target", "remove") => {
+                print_packages_rustup_target_help();
+                true
+            }
+            ("override", "set") | ("override", "unset") => {
+                print_packages_rustup_override_help();
+                true
+            }
+            ("profile", "set") => {
+                print_packages_rustup_profile_help();
                 true
             }
             _ => false,
@@ -13697,7 +14468,7 @@ fn print_help() {
     println!("  refresh                Run detection + refresh pipeline");
     println!("  search <query>         Progressive package search (local + remote)");
     println!("  ls                     List installed packages (alias)");
-    println!("  packages [list|search|show|install|uninstall|upgrade|pin|unpin|keg-policy]");
+    println!("  packages [list|search|show|install|uninstall|upgrade|pin|unpin|rustup|keg-policy]");
     println!("                         Package listing/search/details and mutations");
     println!("  updates [list|summary|preview|run]");
     println!("                         List/summarize/preview/run package upgrades");
@@ -13777,6 +14548,7 @@ fn print_packages_help() {
     println!("  upgrade <name|name@manager> --manager <id>");
     println!("  pin <name|name@manager> --manager <id> [--version <v>]");
     println!("  unpin <name|name@manager> --manager <id>");
+    println!("  rustup <show|component|target|default|override|profile> ...");
     println!("  keg-policy <list|get|set|reset> ...");
     println!();
     println!("DESCRIPTION:");
@@ -13857,6 +14629,74 @@ fn print_packages_unpin_help() {
     println!();
     println!("DESCRIPTION:");
     println!("  Remove pin state for a package.");
+}
+
+fn print_packages_rustup_help() {
+    println!("USAGE:");
+    println!("  helm packages rustup show <toolchain>");
+    println!("  helm packages rustup component <add|remove> <toolchain> <component>");
+    println!("  helm packages rustup target <add|remove> <toolchain> <target>");
+    println!("  helm packages rustup default <toolchain>");
+    println!("  helm packages rustup override <set|unset> <toolchain> <absolute-path>");
+    println!("  helm packages rustup profile set <minimal|default|complete>");
+    println!();
+    println!("DESCRIPTION:");
+    println!(
+        "  Inspect and configure rustup-managed toolchains, components, targets, overrides, and profile state."
+    );
+}
+
+fn print_packages_rustup_show_help() {
+    println!("USAGE:");
+    println!("  helm packages rustup show <toolchain>");
+    println!();
+    println!("DESCRIPTION:");
+    println!(
+        "  Show rustup-specific detail for one installed toolchain, including runtime state, profile, overrides, components, and targets."
+    );
+}
+
+fn print_packages_rustup_component_help() {
+    println!("USAGE:");
+    println!("  helm packages rustup component add <toolchain> <component>");
+    println!("  helm packages rustup component remove <toolchain> <component>");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Add or remove one rustup component for a specific toolchain.");
+}
+
+fn print_packages_rustup_target_help() {
+    println!("USAGE:");
+    println!("  helm packages rustup target add <toolchain> <target>");
+    println!("  helm packages rustup target remove <toolchain> <target>");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Add or remove one compilation target for a specific rustup toolchain.");
+}
+
+fn print_packages_rustup_default_help() {
+    println!("USAGE:");
+    println!("  helm packages rustup default <toolchain>");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Set the rustup default toolchain.");
+}
+
+fn print_packages_rustup_override_help() {
+    println!("USAGE:");
+    println!("  helm packages rustup override set <toolchain> <absolute-path>");
+    println!("  helm packages rustup override unset <toolchain> <absolute-path>");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Set or clear a rustup directory override for one absolute filesystem path.");
+}
+
+fn print_packages_rustup_profile_help() {
+    println!("USAGE:");
+    println!("  helm packages rustup profile set <minimal|default|complete>");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Change the rustup installation profile used for future component defaults.");
 }
 
 fn print_packages_keg_policy_help() {
@@ -14558,21 +15398,23 @@ fn print_completion_help() {
 mod tests {
     use super::{
         CLI_LICENSE_TERMS_VERSION, Command, CoordinatorClientTransport, ExecutionMode,
-        GlobalOptions, HomebrewKegPolicy, InstallChannel, ManagerId, SelfUpdateErrorKind,
-        UpdatePolicy, UpgradeExecutionStep, acquire_coordinator_bootstrap_lock,
-        apply_manager_enablement_self_heal, build_json_payload_lines, classify_failure_class,
-        cmd_updates_run, command_help_topic_exists, coordinator_transport_for_cancel,
+        GlobalOptions, HomebrewKegPolicy, InstallChannel, ManagerId, RustupPackagesCommand,
+        SelfUpdateErrorKind, UpdatePolicy, UpgradeExecutionStep,
+        acquire_coordinator_bootstrap_lock, apply_manager_enablement_self_heal,
+        build_json_payload_lines, classify_failure_class, cmd_updates_run,
+        command_help_topic_exists, coordinator_transport_for_cancel,
         coordinator_transport_for_submit, coordinator_transport_for_workflow,
         count_upgrade_step_failures, ensure_cli_onboarding_completed, exit_code_for_error,
         failure_class_hint, list_managers, manager_operation_failure_error, mark_exit_code,
         parse_args, parse_args_with_tty, parse_homebrew_keg_policy_arg, parse_manager_id,
         parse_manager_mutation_args, parse_package_mutation_args, parse_package_selector,
-        parse_package_show_args, parse_search_args, parse_structured_terminal_error_message,
-        parse_updates_run_preview_args, provenance_can_self_update, raw_args_request_json,
-        raw_args_request_ndjson, read_update_bytes_with_limit, remove_install_marker_if_channel,
-        resolve_redirect_url, resolve_update_redirect_target,
-        selected_executable_differs_from_default, self_uninstall_recommended_action,
-        should_launch_coordinator_on_demand, strip_exit_code_marker, upgrade_request_name,
+        parse_package_show_args, parse_packages_rustup_args, parse_search_args,
+        parse_structured_terminal_error_message, parse_updates_run_preview_args,
+        provenance_can_self_update, raw_args_request_json, raw_args_request_ndjson,
+        read_update_bytes_with_limit, remove_install_marker_if_channel, resolve_redirect_url,
+        resolve_update_redirect_target, selected_executable_differs_from_default,
+        self_uninstall_recommended_action, should_launch_coordinator_on_demand,
+        strip_exit_code_marker, upgrade_request_name,
     };
     use helm_core::execution::TaskOutputRecord;
     use helm_core::models::{
@@ -14970,8 +15812,8 @@ mod tests {
     }
 
     #[test]
-    fn package_search_excludes_rustup_manager() {
-        assert!(!super::manager_participates_in_package_search(
+    fn package_search_includes_rustup_manager() {
+        assert!(super::manager_participates_in_package_search(
             ManagerId::Rustup
         ));
         assert!(super::manager_participates_in_package_search(
@@ -16289,6 +17131,58 @@ mod tests {
             parsed.coordinate_hint,
             Some(("python".to_string(), "mambaforge-24.11.0-1".to_string()))
         );
+    }
+
+    #[test]
+    fn parse_packages_rustup_args_supports_component_add() {
+        let parsed = parse_packages_rustup_args(&[
+            "component".to_string(),
+            "add".to_string(),
+            "stable-aarch64-apple-darwin".to_string(),
+            "clippy".to_string(),
+        ])
+        .expect("rustup component add should parse");
+
+        assert_eq!(
+            parsed,
+            RustupPackagesCommand::ComponentAdd {
+                toolchain: "stable-aarch64-apple-darwin".to_string(),
+                component: "clippy".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_packages_rustup_args_rejects_relative_override_path() {
+        let error = parse_packages_rustup_args(&[
+            "override".to_string(),
+            "set".to_string(),
+            "stable-aarch64-apple-darwin".to_string(),
+            "relative/path".to_string(),
+        ])
+        .expect_err("relative override path should fail");
+
+        assert!(error.contains("requires an absolute path"));
+    }
+
+    #[test]
+    fn command_help_topic_exists_for_packages_rustup_nested_topics() {
+        assert!(command_help_topic_exists(
+            Command::Packages,
+            &[
+                "rustup".to_string(),
+                "component".to_string(),
+                "add".to_string(),
+            ],
+        ));
+        assert!(command_help_topic_exists(
+            Command::Packages,
+            &[
+                "rustup".to_string(),
+                "override".to_string(),
+                "unset".to_string(),
+            ],
+        ));
     }
 
     #[test]

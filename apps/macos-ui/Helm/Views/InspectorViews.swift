@@ -14,7 +14,7 @@ struct ControlCenterInspectorView: View {
 
     private var selectedPackage: PackageItem? {
         guard let packageId = context.selectedPackageId else { return nil }
-        return core.allKnownPackages.first { $0.id == packageId }
+        return core.knownPackage(withId: packageId)
     }
 
     private var selectedUpgradePlanTask: TaskItem? {
@@ -50,7 +50,12 @@ struct ControlCenterInspectorView: View {
                 if let task = selectedTask ?? selectedUpgradePlanTask {
                     InspectorTaskDetailView(task: task)
                 } else if let package = selectedPackage {
-                    let packageInspectorToken = "\(package.id)|\(package.pinned ? 1 : 0)|\(package.version)|\(package.latestVersion ?? "")"
+                    let runtimeStateToken = [
+                        package.runtimeState.isActive ? "1" : "0",
+                        package.runtimeState.isDefault ? "1" : "0",
+                        package.runtimeState.hasOverride ? "1" : "0",
+                    ].joined()
+                    let packageInspectorToken = "\(package.id)|\(package.pinned ? 1 : 0)|\(package.version)|\(package.latestVersion ?? "")|\(runtimeStateToken)"
                     InspectorPackageDetailView(package: package)
                         .id(packageInspectorToken)
                 } else if let manager = selectedManager {
@@ -712,7 +717,7 @@ private struct InspectorPackageDetailView: View {
     }
 
     private var livePackage: PackageItem {
-        core.allKnownPackages.first(where: { $0.id == package.id }) ?? package
+        core.knownPackage(withId: package.id) ?? package
     }
 
     private var managerCandidates: [PackageItem] {
@@ -761,6 +766,44 @@ private struct InspectorPackageDetailView: View {
         normalizedVersionText(activePackage.version) ?? L10n.Common.unknown.localized
     }
 
+    private struct RuntimeStateBadge: Identifiable {
+        let id: String
+        let title: String
+        let color: Color
+    }
+
+    private var runtimeStateBadges: [RuntimeStateBadge] {
+        var badges: [RuntimeStateBadge] = []
+        if activePackage.runtimeState.isActive {
+            badges.append(
+                RuntimeStateBadge(
+                    id: "active",
+                    title: L10n.App.Inspector.packageRuntimeStateActive.localized,
+                    color: .green
+                )
+            )
+        }
+        if activePackage.runtimeState.isDefault {
+            badges.append(
+                RuntimeStateBadge(
+                    id: "default",
+                    title: L10n.App.Inspector.packageRuntimeStateDefault.localized,
+                    color: .blue
+                )
+            )
+        }
+        if activePackage.runtimeState.hasOverride {
+            badges.append(
+                RuntimeStateBadge(
+                    id: "override",
+                    title: L10n.App.Inspector.packageRuntimeStateOverride.localized,
+                    color: .orange
+                )
+            )
+        }
+        return badges
+    }
+
     private var latestVersionText: String? {
         guard activePackage.status == .upgradable else { return nil }
         return normalizedVersionText(activePackage.latestVersion)
@@ -768,6 +811,18 @@ private struct InspectorPackageDetailView: View {
 
     private var resolvedPackageSummary: String? {
         core.packageDescriptionSummary(for: activePackage)
+    }
+
+    private var shouldShowRustupToolchainDetail: Bool {
+        activePackage.managerId == "rustup" && activePackage.status != .available
+    }
+
+    private var rustupToolchainDetail: CoreRustupToolchainDetail? {
+        core.rustupToolchainDetail(for: activePackage)
+    }
+
+    private var rustupToolchainActionInFlight: Bool {
+        core.isRustupToolchainActionInFlight(for: activePackage)
     }
 
     private var renderedPackageDescription: PackageDescriptionRenderer.RenderedDescription? {
@@ -785,6 +840,28 @@ private struct InspectorPackageDetailView: View {
         }
     }
 
+    private var rustupToolchainDetailLoadingView: some View {
+        HStack(spacing: 6) {
+            ProgressView()
+                .controlSize(.small)
+                .scaleEffect(0.8)
+            Text(L10n.App.Inspector.rustupDetailLoading.localized)
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private var rustupToolchainMutationLoadingView: some View {
+        HStack(spacing: 6) {
+            ProgressView()
+                .controlSize(.small)
+                .scaleEffect(0.8)
+            Text(L10n.App.Inspector.rustupConfiguring.localized)
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
@@ -793,6 +870,23 @@ private struct InspectorPackageDetailView: View {
                 Text(currentVersionText)
                     .font(.caption.monospacedDigit())
                     .foregroundColor(.secondary)
+                if !runtimeStateBadges.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(runtimeStateBadges) { badge in
+                            Text(badge.title)
+                                .font(.caption2.weight(.medium))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(
+                                    Capsule(style: .continuous)
+                                        .fill(badge.color.opacity(0.14))
+                                )
+                                .foregroundColor(badge.color)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(L10n.App.Inspector.packageRuntimeState.localized)
+                }
             }
 
             if let latestVersionText {
@@ -832,16 +926,22 @@ private struct InspectorPackageDetailView: View {
 
             managerSelectionField
 
+            if shouldShowRustupToolchainDetail {
+                rustupToolchainDetailSection
+            }
+
             packageIdField
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear {
             ensurePersistedManagerSelection()
             core.ensurePackageDescription(for: activePackage)
+            core.ensureRustupToolchainDetail(for: activePackage)
         }
         .onChange(of: package.id) { _ in
             ensurePersistedManagerSelection()
             core.ensurePackageDescription(for: activePackage)
+            core.ensureRustupToolchainDetail(for: activePackage)
         }
         .onChange(of: core.managerStatuses.mapValues(\.enabled)) { _ in
             ensurePersistedManagerSelection()
@@ -851,6 +951,7 @@ private struct InspectorPackageDetailView: View {
         }
         .onChange(of: selectedManagerId) { _ in
             core.ensurePackageDescription(for: activePackage)
+            core.ensureRustupToolchainDetail(for: activePackage)
         }
         .alert(item: $inspectorAlert) { action in
             switch action {
@@ -909,6 +1010,256 @@ private struct InspectorPackageDetailView: View {
                     secondaryButton: .cancel()
                 )
             }
+        }
+    }
+
+    @ViewBuilder
+    private var rustupToolchainDetailSection: some View {
+        if let detail = rustupToolchainDetail {
+            if rustupToolchainActionInFlight {
+                rustupToolchainMutationLoadingView
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            rustupProfileField(detail)
+            rustupOverridesField(detail)
+            rustupToolchainEntryField(
+                label: L10n.App.Inspector.rustupComponents.localized,
+                entries: detail.components,
+                addLabel: L10n.App.Inspector.rustupAddComponent.localized,
+                removeLabel: L10n.App.Inspector.rustupRemoveComponent.localized,
+                onAdd: { component in
+                    core.addRustupComponent(component, to: activePackage)
+                },
+                onRemove: { component in
+                    core.removeRustupComponent(component, from: activePackage)
+                }
+            )
+            rustupToolchainEntryField(
+                label: L10n.App.Inspector.rustupTargets.localized,
+                entries: detail.targets,
+                addLabel: L10n.App.Inspector.rustupAddTarget.localized,
+                removeLabel: L10n.App.Inspector.rustupRemoveTarget.localized,
+                onAdd: { target in
+                    core.addRustupTarget(target, to: activePackage)
+                },
+                onRemove: { target in
+                    core.removeRustupTarget(target, from: activePackage)
+                }
+            )
+        } else if core.isRustupToolchainDetailLoading(for: activePackage) {
+            rustupToolchainDetailLoadingView
+        } else if core.isRustupToolchainDetailUnavailable(for: activePackage) {
+            Text(L10n.App.Inspector.rustupDetailUnavailable.localized)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            rustupToolchainDetailLoadingView
+        }
+    }
+
+    private func rustupToolchainEntryField(
+        label: String,
+        entries: [CoreRustupToolchainDetailEntry],
+        addLabel: String,
+        removeLabel: String,
+        onAdd: @escaping (String) -> Void,
+        onRemove: @escaping (String) -> Void
+    ) -> some View {
+        let installedEntries = entries.filter(\.installed)
+        let availableEntries = entries.filter { !$0.installed }
+        return InspectorField(label: label) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .center, spacing: 8) {
+                    Text(
+                        L10n.App.Inspector.rustupInstalledOfAvailable.localized(
+                            with: [
+                                "installed": "\(installedEntries.count)",
+                                "available": "\(entries.count)",
+                            ]
+                        )
+                    )
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                    Spacer(minLength: 0)
+
+                    if !availableEntries.isEmpty {
+                        Menu {
+                            ForEach(availableEntries) { entry in
+                                Button(entry.name) {
+                                    onAdd(entry.name)
+                                }
+                            }
+                        } label: {
+                            rustupToolchainMenuLabel(addLabel)
+                        }
+                        .buttonStyle(HelmSecondaryButtonStyle(cornerRadius: 8, horizontalPadding: 8, verticalPadding: 4))
+                        .disabled(rustupToolchainActionInFlight)
+                    }
+
+                    if !installedEntries.isEmpty {
+                        Menu {
+                            ForEach(installedEntries) { entry in
+                                Button(entry.name) {
+                                    onRemove(entry.name)
+                                }
+                            }
+                        } label: {
+                            rustupToolchainMenuLabel(removeLabel)
+                        }
+                        .buttonStyle(HelmSecondaryButtonStyle(cornerRadius: 8, horizontalPadding: 8, verticalPadding: 4))
+                        .disabled(rustupToolchainActionInFlight)
+                    }
+                }
+
+                if installedEntries.isEmpty {
+                    Text(L10n.App.Inspector.rustupNoneInstalled.localized)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } else {
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 118), spacing: 6)],
+                        alignment: .leading,
+                        spacing: 6
+                    ) {
+                        ForEach(installedEntries) { entry in
+                            rustupToolchainEntryBadge(entry.name)
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func rustupProfileField(_ detail: CoreRustupToolchainDetail) -> some View {
+        let currentProfile = detail.currentProfile?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedCurrentProfile = currentProfile?.lowercased()
+        let profiles = ["minimal", "default", "complete"]
+        return InspectorField(label: L10n.App.Inspector.rustupProfile.localized) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Text(currentProfile?.isEmpty == false ? currentProfile! : "-")
+                        .font(.callout)
+                    Spacer(minLength: 0)
+
+                    Menu {
+                        ForEach(profiles, id: \.self) { profile in
+                            Button {
+                                core.setRustupProfile(profile, for: activePackage)
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Text(profile)
+                                    if normalizedCurrentProfile == profile {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        rustupToolchainMenuLabel(L10n.App.Inspector.rustupSetProfile.localized)
+                    }
+                    .buttonStyle(HelmSecondaryButtonStyle(cornerRadius: 8, horizontalPadding: 8, verticalPadding: 4))
+                    .disabled(rustupToolchainActionInFlight)
+
+                    Button(L10n.App.Inspector.rustupSetDefault.localized) {
+                        core.setRustupDefaultToolchain(activePackage)
+                    }
+                    .buttonStyle(HelmSecondaryButtonStyle(cornerRadius: 8, horizontalPadding: 8, verticalPadding: 4))
+                    .disabled(rustupToolchainActionInFlight || activePackage.runtimeState.isDefault)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func rustupOverridesField(_ detail: CoreRustupToolchainDetail) -> some View {
+        InspectorField(label: L10n.App.Inspector.rustupOverrides.localized) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Text(
+                        detail.overridePaths.isEmpty
+                            ? L10n.App.Inspector.rustupNoOverrides.localized
+                            : L10n.App.Inspector.rustupOverridesConfigured.localized(
+                                with: ["count": "\(detail.overridePaths.count)"]
+                            )
+                    )
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                    Spacer(minLength: 0)
+
+                    Button(L10n.App.Inspector.rustupSetOverride.localized) {
+                        pickRustupOverrideDirectory(for: activePackage)
+                    }
+                    .buttonStyle(HelmSecondaryButtonStyle(cornerRadius: 8, horizontalPadding: 8, verticalPadding: 4))
+                    .disabled(rustupToolchainActionInFlight)
+                }
+
+                if detail.overridePaths.isEmpty {
+                    Text(L10n.App.Inspector.rustupNoOverrides.localized)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } else {
+                    ForEach(detail.overridePaths, id: \.self) { path in
+                        HStack(alignment: .top, spacing: 8) {
+                            Text(path)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Button {
+                                core.unsetRustupOverride(activePackage, path: path)
+                            } label: {
+                                Image(systemName: "xmark.circle")
+                            }
+                            .buttonStyle(HelmIconButtonStyle())
+                            .help(L10n.App.Inspector.rustupClearOverride.localized)
+                            .disabled(rustupToolchainActionInFlight)
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func rustupToolchainEntryBadge(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(HelmTheme.surfaceElevated)
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .strokeBorder(HelmTheme.borderSubtle.opacity(0.9), lineWidth: 0.8)
+                    )
+            )
+            .foregroundColor(HelmTheme.textSecondary)
+    }
+
+    private func rustupToolchainMenuLabel(_ title: String) -> some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(.caption)
+            Image(systemName: "chevron.down")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private func pickRustupOverrideDirectory(for package: PackageItem) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.resolvesAliases = true
+        panel.prompt = L10n.Common.ok.localized
+        if panel.runModal() == .OK, let url = panel.url {
+            core.setRustupOverride(package, path: url.path)
         }
     }
 

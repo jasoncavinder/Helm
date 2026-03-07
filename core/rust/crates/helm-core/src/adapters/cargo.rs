@@ -327,6 +327,7 @@ pub(crate) fn parse_cargo_installed(output: &str) -> AdapterResult<Vec<Installed
             },
             installed_version: Some(version.to_string()),
             pinned: false,
+            runtime_state: Default::default(),
         });
     }
 
@@ -489,6 +490,7 @@ pub(crate) fn parse_cargo_outdated(output: &str) -> AdapterResult<Vec<OutdatedPa
             candidate_version: candidate.to_string(),
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         });
     }
 

@@ -16,6 +16,7 @@ pub enum TaskType {
     Install,
     Uninstall,
     Upgrade,
+    Configure,
     Pin,
     Unpin,
 }

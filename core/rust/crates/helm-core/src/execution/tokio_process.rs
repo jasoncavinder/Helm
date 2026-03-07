@@ -118,6 +118,7 @@ const HARD_TIMEOUT_EXTENSION_MIN_STEP: Duration = Duration::from_secs(30);
 const HARD_TIMEOUT_EXTENSION_MAX_ACTIVITY_WINDOW: Duration = Duration::from_secs(60);
 const HARD_TIMEOUT_EXTENSION_MIN_ACTIVITY_WINDOW: Duration = Duration::from_secs(15);
 const HARD_TIMEOUT_PROMPT_GRACE_PERIOD: Duration = Duration::from_secs(30);
+const TIMEOUT_REAP_GRACE_PERIOD: Duration = Duration::from_secs(1);
 const HARD_TIMEOUT_PROMPT_EXTENSION: Duration = Duration::from_secs(30 * 60);
 const READ_TASK_TIMEOUT_EXTENSION_MAX_BUDGET: Duration = Duration::from_secs(3 * 60);
 const READ_TASK_TIMEOUT_EXTENSION_MAX_ACTIVITY_WINDOW: Duration = Duration::from_secs(6 * 60);
@@ -511,7 +512,7 @@ fn hard_timeout_extension_budget(task_type: TaskType, hard_timeout: Duration) ->
     }
     if !matches!(
         task_type,
-        TaskType::Install | TaskType::Uninstall | TaskType::Upgrade
+        TaskType::Install | TaskType::Uninstall | TaskType::Upgrade | TaskType::Configure
     ) {
         return Duration::ZERO;
     }
@@ -849,7 +850,10 @@ impl RunningProcess for TokioRunningProcess {
             let allow_hard_timeout_prompt = task_id.is_some()
                 && matches!(
                     task_type,
-                    TaskType::Install | TaskType::Uninstall | TaskType::Upgrade
+                    TaskType::Install
+                        | TaskType::Uninstall
+                        | TaskType::Upgrade
+                        | TaskType::Configure
                 );
 
             let status = loop {
@@ -1118,15 +1122,18 @@ impl RunningProcess for TokioRunningProcess {
                     crate::execution::record_task_log_note(
                         format!("[helm] timeout event ({timeout_code}): {timeout_reason}").as_str(),
                     );
+                    drop(wait_future);
                     if let Some(pid) = pid {
                         let pgid = -(pid as libc::pid_t);
                         unsafe {
                             libc::kill(pgid, libc::SIGKILL);
                         }
                     }
-                    let _ = tokio::time::timeout(Duration::from_secs(1), &mut wait_future).await;
+                    let _ = child.start_kill();
                     stdout_reader.abort();
                     stderr_reader.abort();
+                    reap_or_detach_timed_out_child(child, pid, manager, task_type, action, task_id)
+                        .await;
                     let finished_at = SystemTime::now();
                     let message = append_error_context(
                         timeout_reason.as_str(),
@@ -1291,6 +1298,74 @@ impl RunningProcess for TokioRunningProcess {
                 finished_at,
             })
         })
+    }
+}
+
+async fn reap_or_detach_timed_out_child(
+    mut child: tokio::process::Child,
+    pid: Option<u32>,
+    manager: ManagerId,
+    task_type: TaskType,
+    action: ManagerAction,
+    task_id: Option<TaskId>,
+) {
+    match tokio::time::timeout(TIMEOUT_REAP_GRACE_PERIOD, child.wait()).await {
+        Ok(Ok(_)) => {}
+        Ok(Err(error)) => {
+            let message =
+                format!("[helm] failed to reap timed-out process after termination: {error}");
+            crate::execution::record_task_log_note(message.as_str());
+            tracing::warn!(
+                manager = ?manager,
+                task_type = ?task_type,
+                action = ?action,
+                task_id = task_id.map(|value| value.0),
+                pid,
+                error = %error,
+                "failed to reap timed-out process"
+            );
+            if let Some(task_id) = task_id {
+                crate::execution::task_output_store::append_stderr(
+                    task_id,
+                    format!("{message}\n").as_bytes(),
+                );
+            }
+        }
+        Err(_) => {
+            let message = format!(
+                "[helm] process did not exit within {}ms after termination; continuing background reap",
+                TIMEOUT_REAP_GRACE_PERIOD.as_millis()
+            );
+            crate::execution::record_task_log_note(message.as_str());
+            tracing::warn!(
+                manager = ?manager,
+                task_type = ?task_type,
+                action = ?action,
+                task_id = task_id.map(|value| value.0),
+                pid,
+                reap_grace_ms = TIMEOUT_REAP_GRACE_PERIOD.as_millis(),
+                "timed-out process still running after termination signal; detaching background reap"
+            );
+            if let Some(task_id) = task_id {
+                crate::execution::task_output_store::append_stderr(
+                    task_id,
+                    format!("{message}\n").as_bytes(),
+                );
+            }
+            tokio::spawn(async move {
+                if let Err(error) = child.wait().await {
+                    tracing::warn!(
+                        manager = ?manager,
+                        task_type = ?task_type,
+                        action = ?action,
+                        task_id = task_id.map(|value| value.0),
+                        pid,
+                        error = %error,
+                        "background reap for timed-out process failed"
+                    );
+                }
+            });
+        }
     }
 }
 

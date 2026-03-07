@@ -336,6 +336,7 @@ fn parse_poetry_plugins_installed(output: &str) -> AdapterResult<Vec<InstalledPa
                 },
                 installed_version: version,
                 pinned: false,
+                runtime_state: Default::default(),
             });
         }
     }
@@ -417,6 +418,7 @@ fn parse_poetry_plugins_outdated(output: &str) -> AdapterResult<Vec<OutdatedPack
             candidate_version: latest.to_string(),
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         });
     }
 

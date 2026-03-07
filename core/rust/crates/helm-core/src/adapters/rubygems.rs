@@ -342,6 +342,7 @@ fn parse_rubygems_list_installed(output: &str) -> AdapterResult<Vec<InstalledPac
             },
             installed_version,
             pinned: false,
+            runtime_state: Default::default(),
         });
     }
 
@@ -391,6 +392,7 @@ fn parse_rubygems_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> 
             candidate_version: candidate.to_string(),
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         });
     }
 

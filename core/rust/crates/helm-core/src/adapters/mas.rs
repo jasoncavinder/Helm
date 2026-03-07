@@ -183,6 +183,7 @@ fn parse_mas_list(output: &str) -> AdapterResult<Vec<InstalledPackage>> {
             },
             installed_version: version,
             pinned: false,
+            runtime_state: Default::default(),
         });
     }
 
@@ -217,6 +218,7 @@ fn parse_mas_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
             candidate_version: candidate,
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         });
     }
 
