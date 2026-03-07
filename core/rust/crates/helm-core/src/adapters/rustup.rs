@@ -855,9 +855,9 @@ impl RustupToolchainSelector {
         }
 
         let first = *parts.first()?;
-        let (mut channel, mut index) = if matches!(first, "stable" | "beta" | "nightly") {
-            (first.to_string(), 1usize)
-        } else if is_rustup_version_channel(first) {
+        let (mut channel, mut index) =
+            if matches!(first, "stable" | "beta" | "nightly") || is_rustup_version_channel(first)
+            {
             (first.to_string(), 1usize)
         } else {
             return None;

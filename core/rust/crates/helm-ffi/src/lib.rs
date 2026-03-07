@@ -7242,7 +7242,7 @@ fn queue_rustup_config_task(
             Ok(response) => response
                 .task_id
                 .map(|task_id| task_id as i64)
-                .unwrap_or_else(|| return return_error_i64(SERVICE_ERROR_PROCESS_FAILURE)),
+                .unwrap_or_else(|| return_error_i64(SERVICE_ERROR_PROCESS_FAILURE)),
             Err(_) => return return_error_i64(SERVICE_ERROR_PROCESS_FAILURE),
         };
     }
