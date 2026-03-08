@@ -202,17 +202,11 @@ struct CorePackageRef: Codable {
     let name: String
 }
 
-struct CorePackageRuntimeState: Codable {
-    let isActive: Bool
-    let isDefault: Bool
-    let hasOverride: Bool
-}
-
 struct CoreInstalledPackage: Codable {
     let package: CorePackageRef
     let installedVersion: String?
     let pinned: Bool
-    let runtimeState: CorePackageRuntimeState?
+    let runtimeState: PackageRuntimeState?
 }
 
 struct CoreOutdatedPackage: Codable {
@@ -221,7 +215,7 @@ struct CoreOutdatedPackage: Codable {
     let candidateVersion: String
     let pinned: Bool
     let restartRequired: Bool
-    let runtimeState: CorePackageRuntimeState?
+    let runtimeState: PackageRuntimeState?
 }
 
 struct CoreTaskRecord: Codable {
@@ -311,6 +305,21 @@ struct CoreSearchResult: Codable {
     let version: String?
     let summary: String?
     let sourceManager: String
+}
+
+struct CoreRustupToolchainDetailEntry: Codable, Hashable, Identifiable {
+    let name: String
+    let installed: Bool
+
+    var id: String { name }
+}
+
+struct CoreRustupToolchainDetail: Codable, Hashable {
+    let toolchain: String
+    let currentProfile: String?
+    let overridePaths: [String]
+    let components: [CoreRustupToolchainDetailEntry]
+    let targets: [CoreRustupToolchainDetailEntry]
 }
 
 struct CoreUpgradePlanStep: Codable, Identifiable, Equatable {
@@ -646,13 +655,13 @@ final class HelmCore: ObservableObject {
     }
     @Published var installedPackages: [PackageItem] = [] {
         didSet {
-            invalidatePackageSnapshotCache()
+            invalidateKnownPackageCaches()
             scheduleDerivedViewStateRefresh()
         }
     }
     @Published var outdatedPackages: [PackageItem] = [] {
         didSet {
-            invalidatePackageSnapshotCache()
+            invalidateKnownPackageCaches()
             scheduleDerivedViewStateRefresh()
         }
     }
@@ -662,7 +671,10 @@ final class HelmCore: ObservableObject {
     @Published var taskTimeoutPrompts: [CoreTaskTimeoutPrompt] = []
     @Published var searchResults: [PackageItem] = []
     @Published var cachedAvailablePackages: [PackageItem] = [] {
-        didSet { invalidatePackageSnapshotCache() }
+        didSet {
+            invalidateKnownPackageCaches()
+            scheduleDerivedViewStateRefresh()
+        }
     }
     @Published var upgradePlanSteps: [CoreUpgradePlanStep] = []
     @Published var upgradePlanTaskProjectionByStepId: [String: UpgradePlanTaskProjection] = [:]
@@ -672,13 +684,13 @@ final class HelmCore: ObservableObject {
     @Published var scopedUpgradePlanRunInProgress: Bool = false
     @Published var detectedManagers: Set<String> = [] {
         didSet {
-            invalidatePackageSnapshotCache()
+            invalidateKnownPackageCaches()
             scheduleDerivedViewStateRefresh()
         }
     }
     @Published var managerStatuses: [String: ManagerStatus] = [:] {
         didSet {
-            invalidatePackageSnapshotCache()
+            invalidateKnownPackageCaches()
             scheduleDerivedViewStateRefresh()
         }
     }
@@ -698,6 +710,10 @@ final class HelmCore: ObservableObject {
     @Published var packageDescriptionLoadingIds: Set<String> = []
     @Published var packageDescriptionUnavailableIds: Set<String> = []
     @Published var packageDescriptionSummaryByKey: [String: String] = [:]
+    @Published var rustupToolchainDetailsByKey: [String: CoreRustupToolchainDetail] = [:]
+    @Published var rustupToolchainDetailLoadingKeys: Set<String> = []
+    @Published var rustupToolchainDetailUnavailableKeys: Set<String> = []
+    @Published var rustupToolchainActionInFlightKeys: Set<String> = []
     @Published var onboardingDetectionInProgress: Bool = false
     @Published var homebrewKegAutoCleanupEnabled: Bool = false
     @Published var packageKegPolicyOverrides: [String: HomebrewKegPolicyOverride] = [:]
@@ -751,6 +767,9 @@ final class HelmCore: ObservableObject {
     var installActionNormalizedNameByPackageId: [String: String] = [:]
     var installActionTargetPackageById: [String: PackageItem] = [:]
     var uninstallActionTaskByPackage: [String: UInt64] = [:]
+    var rustupToolchainActionTaskByKey: [String: UInt64] = [:]
+    var rustupToolchainActionPackageByKey: [String: PackageItem] = [:]
+    var rustupToolchainActionSubmittedAtByKey: [String: Date] = [:]
     var descriptionLookupTaskIdsByPackage: [String: Set<UInt64>] = [:]
     var descriptionLookupStartedAtByPackage: [String: Date] = [:]
     var descriptionLookupPackageById: [String: PackageItem] = [:]
@@ -768,10 +787,9 @@ final class HelmCore: ObservableObject {
     private var isPopoverVisibleForPolling = false
     private var isControlCenterVisibleForPolling = false
     private var derivedViewStateRefreshWorkItem: DispatchWorkItem?
-    var packageSnapshotCacheValid = false
-    var cachedAllKnownPackages: [PackageItem] = []
-    var cachedAllKnownPackagesUnsorted: [PackageItem] = []
-    var cachedAllKnownPackagesById: [String: PackageItem] = [:]
+    var cachedAllKnownPackagesUnsorted: [PackageItem]?
+    var cachedAllKnownPackagesSorted: [PackageItem]?
+    var cachedKnownPackageById: [String: PackageItem] = [:]
     private var packageDescriptionRenderCache: [String: PackageDescriptionRenderCacheEntry] = [:]
     private var packageDescriptionRenderCacheOrder: [String] = []
     private static let maxPackageDescriptionRenderCacheEntries = 256
@@ -794,6 +812,12 @@ final class HelmCore: ObservableObject {
             return [:]
         }
         return decoded
+    }
+
+    func invalidateKnownPackageCaches() {
+        cachedAllKnownPackagesUnsorted = nil
+        cachedAllKnownPackagesSorted = nil
+        cachedKnownPackageById = [:]
     }
 
     static func requiresLicenseTermsAcceptance(
@@ -1266,10 +1290,17 @@ final class HelmCore: ObservableObject {
                     self?.packageDescriptionLoadingIds = []
                     self?.packageDescriptionUnavailableIds = []
                     self?.packageDescriptionSummaryByKey = [:]
+                    self?.rustupToolchainDetailsByKey = [:]
+                    self?.rustupToolchainDetailLoadingKeys = []
+                    self?.rustupToolchainDetailUnavailableKeys = []
+                    self?.rustupToolchainActionInFlightKeys = []
                     self?.upgradeActionTaskByPackage = [:]
                     self?.installActionTaskByPackage = [:]
                     self?.installActionNormalizedNameByPackageId = [:]
                     self?.uninstallActionTaskByPackage = [:]
+                    self?.rustupToolchainActionTaskByKey = [:]
+                    self?.rustupToolchainActionPackageByKey = [:]
+                    self?.rustupToolchainActionSubmittedAtByKey = [:]
                     self?.descriptionLookupTaskIdsByPackage = [:]
                     self?.descriptionLookupStartedAtByPackage = [:]
                     self?.descriptionLookupPackageById = [:]
@@ -1346,31 +1377,6 @@ final class HelmCore: ObservableObject {
         }
         derivedViewStateRefreshWorkItem = workItem
         DispatchQueue.main.async(execute: workItem)
-    }
-
-    func invalidatePackageSnapshotCache() {
-        packageSnapshotCacheValid = false
-    }
-
-    func ensurePackageSnapshotCache() {
-        guard !packageSnapshotCacheValid else { return }
-
-        let unsorted = buildAllKnownPackagesUnsorted()
-        cachedAllKnownPackagesUnsorted = unsorted
-        cachedAllKnownPackages = sortedPackagesByDisplayName(unsorted)
-
-        var byId: [String: PackageItem] = [:]
-        byId.reserveCapacity(unsorted.count)
-        for package in unsorted {
-            byId[package.id] = package
-        }
-        cachedAllKnownPackagesById = byId
-        packageSnapshotCacheValid = true
-    }
-
-    func packageItem(forId id: String) -> PackageItem? {
-        ensurePackageSnapshotCache()
-        return cachedAllKnownPackagesById[id]
     }
 
     private func refreshDerivedViewStates() {

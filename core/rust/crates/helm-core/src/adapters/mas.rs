@@ -231,7 +231,7 @@ fn split_app_id(line: &str) -> Option<(&str, &str)> {
     // Find end of numeric prefix
     let end = loop {
         match chars.next() {
-            Some((_i, ch)) if ch.is_ascii_digit() => continue,
+            Some((_, ch)) if ch.is_ascii_digit() => continue,
             Some((i, _)) => break i,
             None => return None, // entire line is digits, no rest
         }

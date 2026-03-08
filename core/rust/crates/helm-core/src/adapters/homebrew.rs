@@ -238,6 +238,16 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                     after_version: None,
                 }))
             }
+            AdapterRequest::RustupAddComponent(_)
+            | AdapterRequest::RustupRemoveComponent(_)
+            | AdapterRequest::RustupAddTarget(_)
+            | AdapterRequest::RustupRemoveTarget(_)
+            | AdapterRequest::RustupSetDefaultToolchain(_)
+            | AdapterRequest::RustupSetOverride(_)
+            | AdapterRequest::RustupUnsetOverride(_)
+            | AdapterRequest::RustupSetProfile(_) => unreachable!(
+                "unsupported rustup-only request should have been rejected by ensure_request_supported"
+            ),
         }
     }
 }

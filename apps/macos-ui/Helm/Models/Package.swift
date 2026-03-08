@@ -1,6 +1,14 @@
 import SwiftUI
 
-typealias PackageRuntimeState = PackageRuntimeStateProjection
+struct PackageRuntimeState: Codable, Hashable {
+    var isActive: Bool = false
+    var isDefault: Bool = false
+    var hasOverride: Bool = false
+
+    var isEmpty: Bool {
+        !isActive && !isDefault && !hasOverride
+    }
+}
 
 enum PackageStatus: String, CaseIterable {
     case installed
@@ -297,8 +305,16 @@ struct ConsolidatedPackageItem: Identifiable {
             rhsPinned: rhs.pinned,
             lhsRestartRequired: lhs.restartRequired,
             rhsRestartRequired: rhs.restartRequired,
-            lhsRuntimeState: lhs.runtimeState,
-            rhsRuntimeState: rhs.runtimeState,
+            lhsRuntimeState: PackageRuntimeStateProjection(
+                isActive: lhs.runtimeState.isActive,
+                isDefault: lhs.runtimeState.isDefault,
+                hasOverride: lhs.runtimeState.hasOverride
+            ),
+            rhsRuntimeState: PackageRuntimeStateProjection(
+                isActive: rhs.runtimeState.isActive,
+                isDefault: rhs.runtimeState.isDefault,
+                hasOverride: rhs.runtimeState.hasOverride
+            ),
             lhsVersion: lhs.version,
             rhsVersion: rhs.version,
             lhsManagerId: lhs.managerId,

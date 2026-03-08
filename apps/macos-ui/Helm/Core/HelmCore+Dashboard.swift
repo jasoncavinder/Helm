@@ -18,16 +18,22 @@ extension HelmCore {
     static let managerVerificationTimeoutSeconds: TimeInterval = 120
 
     var allKnownPackages: [PackageItem] {
-        ensurePackageSnapshotCache()
-        return cachedAllKnownPackages
+        if let cached = cachedAllKnownPackagesSorted {
+            return cached
+        }
+
+        let sorted = sortedPackagesByDisplayName(allKnownPackagesUnsorted)
+        cachedAllKnownPackagesSorted = sorted
+        if cachedKnownPackageById.isEmpty {
+            cachedKnownPackageById = Dictionary(uniqueKeysWithValues: sorted.map { ($0.id, $0) })
+        }
+        return sorted
     }
 
     private var allKnownPackagesUnsorted: [PackageItem] {
-        ensurePackageSnapshotCache()
-        return cachedAllKnownPackagesUnsorted
-    }
-
-    func buildAllKnownPackagesUnsorted() -> [PackageItem] {
+        if let cached = cachedAllKnownPackagesUnsorted {
+            return cached
+        }
         let enabledOutdated = outdatedPackages.filter { isManagerEnabled($0.managerId) }
         let outdatedStableIds = Set(
             enabledOutdated.map { package in
@@ -99,10 +105,20 @@ extension HelmCore {
             )
         })
 
+        cachedAllKnownPackagesUnsorted = combined
+        cachedKnownPackageById = Dictionary(uniqueKeysWithValues: combined.map { ($0.id, $0) })
         return combined
     }
 
-    func sortedPackagesByDisplayName(_ packages: [PackageItem]) -> [PackageItem] {
+    func knownPackage(withId packageId: String) -> PackageItem? {
+        if let package = cachedKnownPackageById[packageId] {
+            return package
+        }
+        _ = allKnownPackagesUnsorted
+        return cachedKnownPackageById[packageId]
+    }
+
+    private func sortedPackagesByDisplayName(_ packages: [PackageItem]) -> [PackageItem] {
         let keyed = packages.enumerated().map { index, package in
             (
                 index: index,
@@ -224,7 +240,7 @@ extension HelmCore {
     }
 
     private func packageManagerParticipatesInSearch(_ managerId: String) -> Bool {
-        managerId != "rustup"
+        managerStatuses[managerId]?.supportsRemoteSearch ?? true
     }
 
     private func packageMatchesQuery(_ package: PackageItem, queryToken: String) -> Bool {
@@ -466,7 +482,7 @@ extension HelmCore {
 
     func hasPackageDescriptionSummary(packageId: String) -> Bool {
         let package = descriptionLookupPackageById[packageId]
-            ?? allKnownPackagesUnsorted.first(where: { $0.id == packageId })
+            ?? knownPackage(withId: packageId)
         guard let package else { return false }
         return packageDescriptionSummary(for: package) != nil
     }
@@ -851,6 +867,53 @@ extension HelmCore {
             fetchPackages()
             fetchOutdatedPackages()
             refreshCachedAvailablePackages()
+        }
+    }
+
+    func syncRustupToolchainActions(from coreTasks: [CoreTaskRecord]) {
+        let statusById = Dictionary(uniqueKeysWithValues: coreTasks.map { ($0.id, $0.status.lowercased()) })
+        let inFlightStates = Set(["queued", "running"])
+        let now = Date()
+        var shouldRefreshSnapshots = false
+        var packagesNeedingDetailRefresh: [PackageItem] = []
+
+        for actionKey in Array(rustupToolchainActionTaskByKey.keys) {
+            guard let taskId = rustupToolchainActionTaskByKey[actionKey] else { continue }
+            guard let status = statusById[taskId] else {
+                let submittedAt = rustupToolchainActionSubmittedAtByKey[actionKey]
+                if taskId > lastObservedTaskId
+                    || submittedAt.map({ now.timeIntervalSince($0) < Self.managerActionTaskMissingGraceSeconds }) == true
+                {
+                    continue
+                }
+                clearRustupToolchainActionTracking(for: actionKey)
+                continue
+            }
+
+            if inFlightStates.contains(status) {
+                continue
+            }
+
+            if let package = rustupToolchainActionPackageByKey[actionKey] {
+                packagesNeedingDetailRefresh.append(package)
+            }
+            clearRustupToolchainActionTracking(for: actionKey)
+            if status == "completed" {
+                shouldRefreshSnapshots = true
+            }
+        }
+
+        if shouldRefreshSnapshots {
+            fetchPackages()
+            fetchOutdatedPackages()
+        }
+
+        let uniquePackages = Dictionary(
+            packagesNeedingDetailRefresh.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        ).values
+        for package in uniquePackages {
+            ensureRustupToolchainDetail(for: package, force: true)
         }
     }
 

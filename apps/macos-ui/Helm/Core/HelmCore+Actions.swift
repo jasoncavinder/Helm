@@ -644,6 +644,181 @@ extension HelmCore {
         }
     }
 
+    func isRustupToolchainActionInFlight(for package: PackageItem) -> Bool {
+        guard let prefix = rustupToolchainActionPrefix(for: package) else { return false }
+        return rustupToolchainActionInFlightKeys.contains { $0.hasPrefix(prefix) }
+    }
+
+    func isRustupToolchainActionInFlight(for package: PackageItem, scope: String) -> Bool {
+        guard let actionKey = rustupToolchainActionKey(for: package, scope: scope) else { return false }
+        return rustupToolchainActionInFlightKeys.contains(actionKey)
+    }
+
+    func addRustupComponent(_ component: String, to package: PackageItem) {
+        queueRustupToolchainAction(
+            package: package,
+            scope: "component:add:\(component)",
+            action: "rustupAddComponent"
+        ) { service, completion in
+            service.addRustupComponent(toolchain: package.name, component: component, withReply: completion)
+        }
+    }
+
+    func removeRustupComponent(_ component: String, from package: PackageItem) {
+        queueRustupToolchainAction(
+            package: package,
+            scope: "component:remove:\(component)",
+            action: "rustupRemoveComponent"
+        ) { service, completion in
+            service.removeRustupComponent(toolchain: package.name, component: component, withReply: completion)
+        }
+    }
+
+    func addRustupTarget(_ target: String, to package: PackageItem) {
+        queueRustupToolchainAction(
+            package: package,
+            scope: "target:add:\(target)",
+            action: "rustupAddTarget"
+        ) { service, completion in
+            service.addRustupTarget(toolchain: package.name, target: target, withReply: completion)
+        }
+    }
+
+    func removeRustupTarget(_ target: String, from package: PackageItem) {
+        queueRustupToolchainAction(
+            package: package,
+            scope: "target:remove:\(target)",
+            action: "rustupRemoveTarget"
+        ) { service, completion in
+            service.removeRustupTarget(toolchain: package.name, target: target, withReply: completion)
+        }
+    }
+
+    func setRustupDefaultToolchain(_ package: PackageItem) {
+        queueRustupToolchainAction(
+            package: package,
+            scope: "default",
+            action: "setRustupDefaultToolchain"
+        ) { service, completion in
+            service.setRustupDefaultToolchain(toolchain: package.name, withReply: completion)
+        }
+    }
+
+    func setRustupOverride(_ package: PackageItem, path: String) {
+        queueRustupToolchainAction(
+            package: package,
+            scope: "override:set:\(path)",
+            action: "setRustupOverride"
+        ) { service, completion in
+            service.setRustupOverride(toolchain: package.name, path: path, withReply: completion)
+        }
+    }
+
+    func unsetRustupOverride(_ package: PackageItem, path: String) {
+        queueRustupToolchainAction(
+            package: package,
+            scope: "override:unset:\(path)",
+            action: "unsetRustupOverride"
+        ) { service, completion in
+            service.unsetRustupOverride(toolchain: package.name, path: path, withReply: completion)
+        }
+    }
+
+    func setRustupProfile(_ profile: String, for package: PackageItem) {
+        queueRustupToolchainAction(
+            package: package,
+            scope: "profile:\(profile)",
+            action: "setRustupProfile"
+        ) { service, completion in
+            service.setRustupProfile(profile: profile, withReply: completion)
+        }
+    }
+
+    func clearRustupToolchainActionTracking(for actionKey: String) {
+        rustupToolchainActionInFlightKeys.remove(actionKey)
+        rustupToolchainActionTaskByKey.removeValue(forKey: actionKey)
+        rustupToolchainActionPackageByKey.removeValue(forKey: actionKey)
+        rustupToolchainActionSubmittedAtByKey.removeValue(forKey: actionKey)
+    }
+
+    private func queueRustupToolchainAction(
+        package: PackageItem,
+        scope: String,
+        action: String,
+        operation: @escaping (HelmServiceProtocol, @escaping (Int64) -> Void) -> Void
+    ) {
+        guard package.managerId == "rustup", package.status != .available else { return }
+        guard let actionKey = rustupToolchainActionKey(for: package, scope: scope) else { return }
+        guard !rustupToolchainActionInFlightKeys.contains(actionKey) else { return }
+
+        DispatchQueue.main.async {
+            self.rustupToolchainActionInFlightKeys.insert(actionKey)
+            self.rustupToolchainActionPackageByKey[actionKey] = package
+        }
+
+        guard let service = service() else {
+            recordLastError(
+                source: "core.actions",
+                action: "\(action).service_unavailable",
+                managerId: package.managerId,
+                taskType: "configure"
+            )
+            DispatchQueue.main.async {
+                self.clearRustupToolchainActionTracking(for: actionKey)
+            }
+            return
+        }
+
+        withTimeout(
+            300,
+            source: "core.actions",
+            action: action,
+            managerId: package.managerId,
+            taskType: "configure",
+            operation: { completion in
+                operation(service) { completion($0) }
+            },
+            fallback: Int64(-1)
+        ) { [weak self] taskId in
+            DispatchQueue.main.async {
+                guard let self, let taskId else { return }
+                if taskId < 0 {
+                    logger.error("\(action, privacy: .public)(\(package.name, privacy: .public)) failed")
+                    self.consumeLastServiceErrorKey { serviceErrorKey in
+                        self.recordLastError(
+                            message: serviceErrorKey?.localized ?? L10n.Common.error.localized,
+                            source: "core.actions",
+                            action: "\(action).queue_failed",
+                            managerId: package.managerId,
+                            taskType: "configure"
+                        )
+                    }
+                    self.clearRustupToolchainActionTracking(for: actionKey)
+                    return
+                }
+
+                self.rustupToolchainActionTaskByKey[actionKey] = UInt64(taskId)
+                self.rustupToolchainActionSubmittedAtByKey[actionKey] = Date()
+            }
+        }
+    }
+
+    private func rustupToolchainActionKey(for package: PackageItem, scope: String) -> String? {
+        guard let prefix = rustupToolchainActionPrefix(for: package) else { return nil }
+        let normalizedScope = scope.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalizedScope.isEmpty else { return nil }
+        return prefix + normalizedScope
+    }
+
+    private func rustupToolchainActionPrefix(for package: PackageItem) -> String? {
+        guard package.managerId == "rustup" else { return nil }
+        let normalizedToolchain = package.name
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !normalizedToolchain.isEmpty else { return nil }
+        return "rustup|\(normalizedToolchain)|"
+    }
+
     func setManagerEnabled(_ managerId: String, enabled: Bool, completion: ((Bool) -> Void)? = nil) {
         if isManagerUninstalling(managerId) {
             completion?(false)
@@ -811,6 +986,26 @@ extension HelmCore {
         let descriptionSummaryPrefix = "\(managerId.lowercased())|"
         packageDescriptionSummaryByKey = packageDescriptionSummaryByKey.filter {
             !$0.key.hasPrefix(descriptionSummaryPrefix)
+        }
+        let rustupPrefix = "\(managerId.lowercased())|"
+        rustupToolchainDetailsByKey = rustupToolchainDetailsByKey.filter { !$0.key.hasPrefix(rustupPrefix) }
+        rustupToolchainDetailLoadingKeys = Set(
+            rustupToolchainDetailLoadingKeys.filter { !$0.hasPrefix(rustupPrefix) }
+        )
+        rustupToolchainDetailUnavailableKeys = Set(
+            rustupToolchainDetailUnavailableKeys.filter { !$0.hasPrefix(rustupPrefix) }
+        )
+        rustupToolchainActionInFlightKeys = Set(
+            rustupToolchainActionInFlightKeys.filter { !$0.hasPrefix(rustupPrefix) }
+        )
+        rustupToolchainActionTaskByKey = rustupToolchainActionTaskByKey.filter {
+            !$0.key.hasPrefix(rustupPrefix)
+        }
+        rustupToolchainActionPackageByKey = rustupToolchainActionPackageByKey.filter {
+            !$0.key.hasPrefix(rustupPrefix)
+        }
+        rustupToolchainActionSubmittedAtByKey = rustupToolchainActionSubmittedAtByKey.filter {
+            !$0.key.hasPrefix(rustupPrefix)
         }
 
         if selectedManagerFilter == managerId {

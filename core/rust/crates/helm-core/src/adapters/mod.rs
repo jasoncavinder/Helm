@@ -186,7 +186,7 @@ pub use rustup::{
     RustupAdapter, RustupSource, rustup_check_request, rustup_detect_request,
     rustup_toolchain_list_request,
 };
-pub use rustup_process::ProcessRustupSource;
+pub use rustup_process::{ProcessRustupSource, load_rustup_toolchain_detail_with_runtime};
 pub use setapp::{SetappAdapter, SetappSource, setapp_detect_request};
 pub use setapp_process::ProcessSetappSource;
 pub use softwareupdate::{

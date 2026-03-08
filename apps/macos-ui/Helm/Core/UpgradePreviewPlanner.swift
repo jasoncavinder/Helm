@@ -10,70 +10,6 @@ struct PackageRuntimeStateProjection: Codable, Hashable {
     }
 }
 
-private enum UpgradePreviewPackageIdentity {
-    static func normalizedBaseName(_ value: String) -> String {
-        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-    }
-
-    static func normalizedIdentityKey(name: String, version: String?) -> String {
-        let normalizedName = normalizedBaseName(name)
-        guard !normalizedName.isEmpty else { return "" }
-        guard let qualifier = normalizedVariantQualifier(fromVersion: version) else {
-            return normalizedName
-        }
-        return "\(normalizedName)@\(qualifier)"
-    }
-
-    private static func normalizedVariantQualifier(fromVersion version: String?) -> String? {
-        guard let normalizedVersion = normalizedVersionSelectorInput(version) else { return nil }
-        return qualifierFromSelector(normalizedVersion, lowercase: true)
-    }
-
-    private static func normalizedVersionSelectorInput(_ value: String?) -> String? {
-        guard let value else { return nil }
-        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalized.isEmpty else { return nil }
-        if normalized.lowercased() == "unknown" {
-            return nil
-        }
-        return normalized
-    }
-
-    private static func qualifierFromSelector(_ selector: String, lowercase: Bool) -> String? {
-        let atoms = selector
-            .split(separator: "-")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        guard !atoms.isEmpty else { return nil }
-
-        let firstReleaseAtom = atoms.firstIndex(where: { atom in
-            isReleaseTokenAtom(atom)
-        })
-        let qualifierAtoms: ArraySlice<String> = {
-            guard let firstReleaseAtom else {
-                return atoms[atoms.startIndex..<atoms.endIndex]
-            }
-            guard firstReleaseAtom > 0 else { return [] }
-            return atoms[atoms.startIndex..<firstReleaseAtom]
-        }()
-        guard !qualifierAtoms.isEmpty else { return nil }
-        let qualifier = qualifierAtoms.joined(separator: "-")
-        return lowercase ? qualifier.lowercased() : qualifier
-    }
-
-    private static func isReleaseTokenAtom(_ atom: String) -> Bool {
-        guard let first = atom.first else { return false }
-        if first.isNumber {
-            return true
-        }
-        if first == "v" || first == "V" {
-            let next = atom.dropFirst().first
-            return next?.isNumber == true
-        }
-        return false
-    }
-}
-
 struct UpgradePreviewPlanner {
     struct Entry: Equatable {
         let manager: String
@@ -397,11 +333,11 @@ struct PackageConsolidationPolicy {
 
 enum PackageActionTracking {
     static func normalizedPackageName(_ value: String) -> String {
-        UpgradePreviewPackageIdentity.normalizedBaseName(value)
+        PackageActionIdentity.normalizedBaseName(value)
     }
 
     static func normalizedPackageIdentityKey(name: String, version: String?) -> String {
-        UpgradePreviewPackageIdentity.normalizedIdentityKey(name: name, version: version)
+        PackageActionIdentity.normalizedIdentityKey(name: name, version: version)
     }
 
     static func packageNameFromPackageId(_ packageId: String) -> String? {
@@ -451,5 +387,70 @@ enum PackageActionTracking {
         }
 
         return names
+    }
+}
+
+private enum PackageActionIdentity {
+    private static let unknownVersionTokens: Set<String> = ["unknown"]
+
+    static func normalizedBaseName(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    static func normalizedIdentityKey(name: String, version: String?) -> String {
+        let normalizedName = normalizedBaseName(name)
+        guard !normalizedName.isEmpty else { return "" }
+        guard let qualifier = normalizedVariantQualifier(fromVersion: version) else {
+            return normalizedName
+        }
+        return "\(normalizedName)@\(qualifier)"
+    }
+
+    private static func normalizedVariantQualifier(fromVersion version: String?) -> String? {
+        guard let normalizedVersion = normalizedVersionSelectorInput(version) else { return nil }
+        return qualifierFromSelector(normalizedVersion)
+    }
+
+    private static func normalizedVersionSelectorInput(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return nil }
+        if unknownVersionTokens.contains(normalized.lowercased()) {
+            return nil
+        }
+        return normalized
+    }
+
+    private static func qualifierFromSelector(_ selector: String) -> String? {
+        let atoms = selector
+            .split(separator: "-")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !atoms.isEmpty else { return nil }
+
+        let firstReleaseAtom = atoms.firstIndex(where: { atom in
+            isReleaseTokenAtom(atom)
+        })
+        let qualifierAtoms: ArraySlice<String> = {
+            guard let firstReleaseAtom else {
+                return atoms[atoms.startIndex..<atoms.endIndex]
+            }
+            guard firstReleaseAtom > 0 else { return [] }
+            return atoms[atoms.startIndex..<firstReleaseAtom]
+        }()
+        guard !qualifierAtoms.isEmpty else { return nil }
+        return qualifierAtoms.joined(separator: "-").lowercased()
+    }
+
+    private static func isReleaseTokenAtom(_ atom: String) -> Bool {
+        guard let first = atom.first else { return false }
+        if first.isNumber {
+            return true
+        }
+        if first == "v" || first == "V" {
+            let next = atom.dropFirst().first
+            return next?.isNumber == true
+        }
+        return false
     }
 }

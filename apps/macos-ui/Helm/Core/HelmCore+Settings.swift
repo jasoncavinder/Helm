@@ -874,6 +874,8 @@ extension HelmCore {
             return L10n.App.Packages.Action.pin.localized
         case "unpin":
             return L10n.App.Packages.Action.unpin.localized
+        case "configure":
+            return "Configure"
         default:
             return rawTaskType.capitalized
         }

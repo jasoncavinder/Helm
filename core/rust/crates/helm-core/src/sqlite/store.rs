@@ -522,7 +522,6 @@ WHERE manager_id = ?1 AND package_name = ?2
                 .optional()?;
 
             let mut clear_outdated = package.manager != ManagerId::Asdf;
-
             if let Some((
                 installed_version,
                 candidate_version,
@@ -2193,6 +2192,7 @@ fn task_type_to_str(value: TaskType) -> &'static str {
         TaskType::Install => "install",
         TaskType::Uninstall => "uninstall",
         TaskType::Upgrade => "upgrade",
+        TaskType::Configure => "configure",
         TaskType::Pin => "pin",
         TaskType::Unpin => "unpin",
     }
@@ -2207,6 +2207,7 @@ fn parse_task_type(raw: &str) -> rusqlite::Result<TaskType> {
         "install" => Ok(TaskType::Install),
         "uninstall" => Ok(TaskType::Uninstall),
         "upgrade" => Ok(TaskType::Upgrade),
+        "configure" => Ok(TaskType::Configure),
         "pin" => Ok(TaskType::Pin),
         "unpin" => Ok(TaskType::Unpin),
         _ => Err(storage_error_sqlite(&format!(
