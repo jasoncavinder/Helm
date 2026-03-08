@@ -114,6 +114,7 @@ impl ManagerAdapter for SearchAndRefreshAdapter {
                     },
                     installed_version: Some("1.24.5".to_string()),
                     pinned: false,
+                    runtime_state: Default::default(),
                 }]))
             }
             _ => Ok(AdapterResponse::Refreshed),

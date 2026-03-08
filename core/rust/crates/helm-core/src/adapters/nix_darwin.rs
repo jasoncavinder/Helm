@@ -314,6 +314,7 @@ fn parse_nix_darwin_installed(output: &str) -> Vec<InstalledPackage> {
             },
             installed_version: version,
             pinned: false,
+            runtime_state: Default::default(),
         });
     }
 
@@ -353,6 +354,7 @@ fn parse_nix_darwin_outdated(output: &str) -> Vec<OutdatedPackage> {
             candidate_version,
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         });
     }
 

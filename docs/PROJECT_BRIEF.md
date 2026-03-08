@@ -60,7 +60,7 @@ This is planned architecture only; implementation is staged in future milestones
 These define toolchain versions and are considered authoritative over downstream package managers:
 
 - **mise** (recommended)
-- **asdf** (optional / compatibility mode)
+- **asdf** (optional)
 - **rustup** (recommended)
 
 **Authority rules:** These should always execute before downstream package updates.

@@ -18,10 +18,16 @@ extension HelmCore {
     static let managerVerificationTimeoutSeconds: TimeInterval = 120
 
     var allKnownPackages: [PackageItem] {
-        sortedPackagesByDisplayName(allKnownPackagesUnsorted)
+        ensurePackageSnapshotCache()
+        return cachedAllKnownPackages
     }
 
     private var allKnownPackagesUnsorted: [PackageItem] {
+        ensurePackageSnapshotCache()
+        return cachedAllKnownPackagesUnsorted
+    }
+
+    func buildAllKnownPackagesUnsorted() -> [PackageItem] {
         let enabledOutdated = outdatedPackages.filter { isManagerEnabled($0.managerId) }
         let outdatedStableIds = Set(
             enabledOutdated.map { package in
@@ -43,6 +49,11 @@ extension HelmCore {
                 )
         }
         var combined = enabledOutdated + installedOnly
+        let shadowedAsdfStableKeys = Set(
+            combined
+                .filter { $0.managerId == "asdf" }
+                .map { packageStableLookupKey(managerId: $0.managerId, packageName: $0.name) }
+        )
 
         let cachedById = cachedAvailablePackages
             .filter { isManagerEnabled($0.managerId) }
@@ -54,20 +65,44 @@ extension HelmCore {
                 partial[package.id] = package
             }
         }
+        let cachedAsdfByStableKey = cachedById.values.reduce(into: [String: PackageItem]()) { partial, package in
+            guard package.managerId == "asdf" else { return }
+            let stableKey = packageStableLookupKey(managerId: package.managerId, packageName: package.name)
+            if var existing = partial[stableKey] {
+                mergeSummary(into: &existing, from: package.summary)
+                partial[stableKey] = existing
+            } else {
+                partial[stableKey] = package
+            }
+        }
 
         for index in combined.indices {
             if let cached = cachedById[combined[index].id] {
+                mergeSummary(into: &combined[index], from: cached.summary)
+            } else if combined[index].managerId == "asdf",
+                      let cached = cachedAsdfByStableKey[
+                        packageStableLookupKey(
+                            managerId: combined[index].managerId,
+                            packageName: combined[index].name
+                        )
+                      ] {
                 mergeSummary(into: &combined[index], from: cached.summary)
             }
         }
 
         let existing = Set(combined.map(\.id))
-        combined.append(contentsOf: cachedById.values.filter { !existing.contains($0.id) })
+        combined.append(contentsOf: cachedById.values.filter { package in
+            guard !existing.contains(package.id) else { return false }
+            guard package.managerId == "asdf" else { return true }
+            return !shadowedAsdfStableKeys.contains(
+                packageStableLookupKey(managerId: package.managerId, packageName: package.name)
+            )
+        })
 
         return combined
     }
 
-    private func sortedPackagesByDisplayName(_ packages: [PackageItem]) -> [PackageItem] {
+    func sortedPackagesByDisplayName(_ packages: [PackageItem]) -> [PackageItem] {
         let keyed = packages.enumerated().map { index, package in
             (
                 index: index,
@@ -557,6 +592,41 @@ extension HelmCore {
         syncManagerVerificationState(from: coreTasks)
     }
 
+    func syncManagerPostInstallSetupTasks(from coreTasks: [CoreTaskRecord]) {
+        let terminalStatuses = Set(["completed", "failed", "cancelled"])
+        let latestSetupTaskByManager = coreTasks.reduce(into: [String: CoreTaskRecord]()) { partial, task in
+            guard task.labelKey == "service.task.label.setup.manager",
+                  !task.manager.isEmpty else {
+                return
+            }
+            if let existing = partial[task.manager], existing.id > task.id {
+                return
+            }
+            partial[task.manager] = task
+        }
+
+        var refreshManagerStatus = false
+        var handledTaskIds = managerPostInstallSetupHandledTaskIds
+
+        for (managerId, task) in latestSetupTaskByManager {
+            let status = task.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard terminalStatuses.contains(status) else { continue }
+            if handledTaskIds[managerId] == task.id {
+                continue
+            }
+            handledTaskIds[managerId] = task.id
+            refreshManagerStatus = true
+        }
+
+        if handledTaskIds != managerPostInstallSetupHandledTaskIds {
+            managerPostInstallSetupHandledTaskIds = handledTaskIds
+        }
+
+        if refreshManagerStatus {
+            fetchManagerStatus()
+        }
+    }
+
     private func startManagerVerification(managerId: String, coreTasks: [CoreTaskRecord]) {
         let latestDetectionTaskId = coreTasks
             .filter { task in
@@ -728,16 +798,21 @@ extension HelmCore {
                 installActionTaskByPackage.removeValue(forKey: packageId)
                 installActionPackageIds.remove(packageId)
                 installActionNormalizedNameByPackageId.removeValue(forKey: packageId)
+                installActionTargetPackageById.removeValue(forKey: packageId)
                 continue
             }
             if inFlightStates.contains(status) {
                 continue
             }
 
+            let targetPackage = installActionTargetPackageById.removeValue(forKey: packageId)
             installActionTaskByPackage.removeValue(forKey: packageId)
             installActionPackageIds.remove(packageId)
             installActionNormalizedNameByPackageId.removeValue(forKey: packageId)
             if status == "completed" {
+                if let targetPackage {
+                    setPreferredManagerId(targetPackage.managerId, for: targetPackage)
+                }
                 shouldRefreshSnapshots = true
             }
         }
@@ -893,6 +968,10 @@ extension HelmCore {
             packageDescriptionLoadingIds.insert(packageId)
             refreshPackageDescriptionSummaryFromLocalCache(for: package)
         }
+    }
+
+    func packageStableLookupKey(managerId: String, packageName: String) -> String {
+        packageDescriptionLookupKey(managerId: managerId, packageName: packageName, version: nil)
     }
 
     func updateOnboardingDetectionProgress(from coreTasks: [CoreTaskRecord]) {

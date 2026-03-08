@@ -134,6 +134,7 @@ fn upsert_and_list_installed_roundtrip() {
             },
             installed_version: Some("2.45.1".to_string()),
             pinned: false,
+            runtime_state: Default::default(),
         },
         InstalledPackage {
             package: PackageRef {
@@ -142,6 +143,7 @@ fn upsert_and_list_installed_roundtrip() {
             },
             installed_version: Some("5.5.2".to_string()),
             pinned: true,
+            runtime_state: Default::default(),
         },
     ];
 
@@ -172,6 +174,7 @@ fn upsert_and_list_installed_preserves_multiple_versions_per_package() {
                 },
                 installed_version: Some("3.11.9".to_string()),
                 pinned: false,
+                runtime_state: Default::default(),
             },
             InstalledPackage {
                 package: PackageRef {
@@ -180,6 +183,7 @@ fn upsert_and_list_installed_preserves_multiple_versions_per_package() {
                 },
                 installed_version: Some("3.12.3".to_string()),
                 pinned: false,
+                runtime_state: Default::default(),
             },
         ])
         .unwrap();
@@ -213,6 +217,7 @@ fn upsert_and_list_outdated_roundtrip() {
         candidate_version: "3.3.2".to_string(),
         pinned: false,
         restart_required: false,
+        runtime_state: Default::default(),
     }];
 
     store.upsert_outdated(&packages).unwrap();
@@ -241,6 +246,7 @@ fn replace_outdated_snapshot_clears_stale_rows_for_manager() {
             candidate_version: "26.00".to_string(),
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         }])
         .unwrap();
 
@@ -481,6 +487,7 @@ fn list_installed_marks_package_pinned_when_pin_record_exists() {
             },
             installed_version: Some("2.45.1".to_string()),
             pinned: false,
+            runtime_state: Default::default(),
         }])
         .unwrap();
 
@@ -519,6 +526,7 @@ fn list_outdated_marks_package_pinned_when_pin_record_exists() {
             candidate_version: "16.2".to_string(),
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         }])
         .unwrap();
 
@@ -557,6 +565,7 @@ fn set_snapshot_pinned_updates_cached_rows_immediately() {
             package: package.clone(),
             installed_version: Some("1.11.4".to_string()),
             pinned: true,
+            runtime_state: Default::default(),
         }])
         .unwrap();
     store
@@ -566,6 +575,7 @@ fn set_snapshot_pinned_updates_cached_rows_immediately() {
             candidate_version: "1.11.4_1".to_string(),
             pinned: true,
             restart_required: false,
+            runtime_state: Default::default(),
         }])
         .unwrap();
 
@@ -599,6 +609,7 @@ fn apply_install_result_updates_installed_snapshot_and_clears_outdated_entry() {
             candidate_version: "9.25.0".to_string(),
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         }])
         .unwrap();
 
@@ -635,6 +646,7 @@ fn apply_uninstall_result_removes_package_from_cached_snapshots() {
             package: package.clone(),
             installed_version: Some("5.8.3".to_string()),
             pinned: false,
+            runtime_state: Default::default(),
         }])
         .unwrap();
     store
@@ -644,10 +656,11 @@ fn apply_uninstall_result_removes_package_from_cached_snapshots() {
             candidate_version: "5.9.0".to_string(),
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         }])
         .unwrap();
 
-    store.apply_uninstall_result(&package).unwrap();
+    store.apply_uninstall_result(&package, None).unwrap();
 
     let installed = store.list_installed().unwrap();
     let outdated = store.list_outdated().unwrap();
@@ -673,6 +686,7 @@ fn apply_upgrade_result_promotes_package_to_installed_snapshot() {
             package: package.clone(),
             installed_version: Some("20250127.0".to_string()),
             pinned: false,
+            runtime_state: Default::default(),
         }])
         .unwrap();
     store
@@ -682,10 +696,13 @@ fn apply_upgrade_result_promotes_package_to_installed_snapshot() {
             candidate_version: "20250814.0".to_string(),
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         }])
         .unwrap();
 
-    store.apply_upgrade_result(&package).unwrap();
+    store
+        .apply_upgrade_result(&package, Some("20250127.0"), Some("20250814.0"))
+        .unwrap();
 
     let installed = store.list_installed().unwrap();
     let outdated = store.list_outdated().unwrap();
@@ -717,11 +734,13 @@ fn apply_upgrade_result_replaces_only_matching_installed_version() {
                 package: package.clone(),
                 installed_version: Some("3.11.9".to_string()),
                 pinned: false,
+                runtime_state: Default::default(),
             },
             InstalledPackage {
                 package: package.clone(),
                 installed_version: Some("3.12.3".to_string()),
                 pinned: false,
+                runtime_state: Default::default(),
             },
         ])
         .unwrap();
@@ -732,10 +751,13 @@ fn apply_upgrade_result_replaces_only_matching_installed_version() {
             candidate_version: "3.12.8".to_string(),
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         }])
         .unwrap();
 
-    store.apply_upgrade_result(&package).unwrap();
+    store
+        .apply_upgrade_result(&package, Some("3.12.3"), Some("3.12.8"))
+        .unwrap();
 
     let installed = store.list_installed().unwrap();
     let versions: Vec<String> = installed

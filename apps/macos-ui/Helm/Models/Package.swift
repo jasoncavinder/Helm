@@ -1,5 +1,7 @@
 import SwiftUI
 
+typealias PackageRuntimeState = PackageRuntimeStateProjection
+
 enum PackageStatus: String, CaseIterable {
     case installed
     case upgradable
@@ -40,6 +42,7 @@ struct PackageItem: Identifiable {
     var summary: String?
     var pinned: Bool = false
     var restartRequired: Bool = false
+    var runtimeState: PackageRuntimeState = PackageRuntimeState()
     private var statusOverride: PackageStatus?
 
     var status: PackageStatus {
@@ -47,7 +50,7 @@ struct PackageItem: Identifiable {
         return latestVersion != nil ? .upgradable : .installed
     }
 
-    init(id: String, name: String, version: String, latestVersion: String? = nil, managerId: String? = nil, manager: String, summary: String? = nil, pinned: Bool = false, restartRequired: Bool = false, status: PackageStatus? = nil) {
+    init(id: String, name: String, version: String, latestVersion: String? = nil, managerId: String? = nil, manager: String, summary: String? = nil, pinned: Bool = false, restartRequired: Bool = false, runtimeState: PackageRuntimeState = PackageRuntimeState(), status: PackageStatus? = nil) {
         self.id = id
         self.name = name
         self.version = version
@@ -57,6 +60,7 @@ struct PackageItem: Identifiable {
         self.summary = summary
         self.pinned = pinned
         self.restartRequired = restartRequired
+        self.runtimeState = runtimeState
         self.statusOverride = status
     }
 
@@ -70,6 +74,22 @@ struct PackageItem: Identifiable {
 
     var normalizedBaseName: String {
         PackageIdentity.normalizedBaseName(name)
+    }
+
+    var mutationPackageName: String {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return name }
+        if managerId.lowercased() == "mise", status == .available {
+            let qualifiedDisplayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !qualifiedDisplayName.isEmpty, qualifiedDisplayName.contains("@") {
+                return qualifiedDisplayName
+            }
+        }
+        guard managerId.lowercased() == "asdf",
+              PackageIdentity.hasKnownVersion(version) else {
+            return trimmedName
+        }
+        return "\(trimmedName)@\(version.trimmingCharacters(in: .whitespacesAndNewlines))"
     }
 }
 
@@ -87,6 +107,10 @@ enum PackageIdentity {
 
     static func normalizedBaseName(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    static func hasKnownVersion(_ value: String?) -> Bool {
+        normalizedVersionSelectorInput(value) != nil
     }
 
     static func variantQualifier(fromVersion version: String?) -> String? {
@@ -273,6 +297,8 @@ struct ConsolidatedPackageItem: Identifiable {
             rhsPinned: rhs.pinned,
             lhsRestartRequired: lhs.restartRequired,
             rhsRestartRequired: rhs.restartRequired,
+            lhsRuntimeState: lhs.runtimeState,
+            rhsRuntimeState: rhs.runtimeState,
             lhsVersion: lhs.version,
             rhsVersion: rhs.version,
             lhsManagerId: lhs.managerId,

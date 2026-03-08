@@ -14,7 +14,7 @@ struct ControlCenterInspectorView: View {
 
     private var selectedPackage: PackageItem? {
         guard let packageId = context.selectedPackageId else { return nil }
-        return core.allKnownPackages.first { $0.id == packageId }
+        return core.packageItem(forId: packageId)
     }
 
     private var selectedUpgradePlanTask: TaskItem? {
@@ -712,7 +712,7 @@ private struct InspectorPackageDetailView: View {
     }
 
     private var livePackage: PackageItem {
-        core.allKnownPackages.first(where: { $0.id == package.id }) ?? package
+        core.packageItem(forId: package.id) ?? package
     }
 
     private var managerCandidates: [PackageItem] {
@@ -1838,9 +1838,18 @@ private struct InspectorManagerDetailView: View {
     }
 
     private var postInstallSetupIssue: ManagerPackageStateIssue? {
-        (status?.packageStateIssues ?? []).first(where: { issue in
+        guard !postInstallSetupTaskInFlight else { return nil }
+        return (status?.packageStateIssues ?? []).first(where: { issue in
             issue.issueCode == "post_install_setup_required"
         })
+    }
+
+    private var postInstallSetupTaskInFlight: Bool {
+        core.activeTasks.contains { task in
+            task.managerId == manager.id
+                && task.labelKey == "service.task.label.setup.manager"
+                && task.isRunning
+        }
     }
 
     private var supportsPostInstallSetupAutomation: Bool {

@@ -1055,7 +1055,7 @@ Delivered:
   - `asdf` process source now resolves executable path via structured `which` lookup with absolute-path fallback
   - `asdf` outdated scan now degrades gracefully when individual latest-version probes fail
 - ✅ Implemented adapter capabilities for this slice:
-  - `asdf`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade (compatibility mode)
+  - `asdf`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade, with plugin bootstrap, version-aware mutation targeting, and active/default/override runtime-state tracking
   - `macports`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade
   - `nix_darwin`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade (compatibility mode via `nix-env`)
 - ✅ Added adapter tests + fixtures for:

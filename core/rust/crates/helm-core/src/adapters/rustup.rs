@@ -402,6 +402,7 @@ fn parse_toolchain_list(output: &str) -> AdapterResult<Vec<InstalledPackage>> {
             },
             installed_version: None,
             pinned: false,
+            runtime_state: Default::default(),
         });
     }
 
@@ -457,6 +458,7 @@ fn parse_rustup_check(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
             candidate_version: new_version.to_owned(),
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         });
     }
 

@@ -204,6 +204,7 @@ fn parse_homebrew_cask_installed(output: &str) -> AdapterResult<Vec<InstalledPac
             },
             installed_version: Some(installed_version),
             pinned: false,
+            runtime_state: Default::default(),
         });
     }
 
@@ -268,6 +269,7 @@ fn parse_homebrew_cask_outdated(output: &str) -> AdapterResult<Vec<OutdatedPacka
             candidate_version,
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         });
     }
 

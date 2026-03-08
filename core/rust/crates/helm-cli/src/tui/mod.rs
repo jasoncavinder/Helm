@@ -4280,6 +4280,7 @@ mod tests {
                 package: package.clone(),
                 installed_version: Some("2026.1.4".to_string()),
                 pinned: false,
+                runtime_state: Default::default(),
             }])
             .expect("failed to seed installed package");
 

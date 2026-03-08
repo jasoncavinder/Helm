@@ -1,17 +1,17 @@
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use std::collections::{HashMap, HashSet};
 
 use crate::adapters::detect_utils::which_executable;
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::mise::{
     MiseDetectOutput, MiseInstallSource, MiseRegistryPackage, MiseRemotePackage, MiseSource,
-    MiseUninstallMode,
-    mise_detect_request, mise_download_install_script_request, mise_implode_request,
-    mise_install_tool_request, mise_list_installed_request, mise_list_outdated_request,
-    mise_list_remote_request, mise_registry_request, mise_run_downloaded_install_script_request,
-    mise_upgrade_request, parse_mise_registry_catalog, parse_mise_remote_catalog,
+    MiseUninstallMode, mise_detect_request, mise_download_install_script_request,
+    mise_implode_request, mise_install_tool_request, mise_list_installed_request,
+    mise_list_outdated_request, mise_list_remote_request, mise_registry_request,
+    mise_run_downloaded_install_script_request, mise_upgrade_request, parse_mise_registry_catalog,
+    parse_mise_remote_catalog,
 };
 use crate::adapters::process_utils::{run_and_collect_stdout, run_and_collect_version_output};
 use crate::execution::{ProcessExecutor, ProcessSpawnRequest};
@@ -41,11 +41,7 @@ fn mise_registry_summary_key(name: &str) -> String {
         .unwrap_or(normalized.as_str())
         .trim()
         .to_string();
-    if base.is_empty() {
-        normalized
-    } else {
-        base
-    }
+    if base.is_empty() { normalized } else { base }
 }
 
 fn home_local_bin_root(home: Option<&str>) -> Option<String> {
@@ -452,7 +448,8 @@ impl MiseSource for ProcessMiseSource {
                 "[helm] mise catalog loaded from registry-only fallback (ls-remote data unavailable)",
             );
         }
-        if packages.is_empty() && registry_packages.is_empty()
+        if packages.is_empty()
+            && registry_packages.is_empty()
             && let Some(error) = retrieval_errors.into_iter().next()
         {
             return Err(error);
@@ -857,9 +854,6 @@ mod tests {
             .iter()
             .find(|package| package.name == "python@mambaforge")
             .expect("qualified python tool should exist");
-        assert_eq!(
-            qualified_python.summary.as_deref(),
-            Some("python language")
-        );
+        assert_eq!(qualified_python.summary.as_deref(), Some("python language"));
     }
 }

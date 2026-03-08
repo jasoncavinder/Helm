@@ -41,8 +41,8 @@ use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
     CachedSearchResult, Capability, DetectionInfo, HomebrewKegPolicy, InstalledPackage,
     ManagerAuthority, ManagerId, ManagerInstallInstance, ManagerUninstallPreview, OutdatedPackage,
-    PackageRef, PackageUninstallPreview, PinKind, PinRecord, SearchQuery, StrategyKind, TaskId,
-    TaskLogLevel, TaskRecord, TaskStatus,
+    PackageRef, PackageRuntimeState, PackageUninstallPreview, PinKind, PinRecord, SearchQuery,
+    StrategyKind, TaskId, TaskLogLevel, TaskRecord, TaskStatus,
 };
 use helm_core::orchestration::{AdapterRuntime, AdapterTaskTerminalState, CancellationMode};
 use helm_core::persistence::{DetectionStore, PackageStore, PinStore, SearchCacheStore, TaskStore};
@@ -2245,7 +2245,12 @@ fn collect_package_show_rows(
         {
             continue;
         }
-        installed_map.insert(package.package.manager, package);
+        let entry = installed_map
+            .entry(package.package.manager)
+            .or_insert(package);
+        if prefer_installed_package_for_show(package, entry) {
+            *entry = package;
+        }
     }
 
     let mut outdated_map: HashMap<ManagerId, &OutdatedPackage> = HashMap::new();
@@ -2259,7 +2264,12 @@ fn collect_package_show_rows(
         {
             continue;
         }
-        outdated_map.insert(package.package.manager, package);
+        let entry = outdated_map
+            .entry(package.package.manager)
+            .or_insert(package);
+        if prefer_outdated_package_for_show(package, entry) {
+            *entry = package;
+        }
     }
 
     let mut candidate_managers: Vec<ManagerId> = installed_map
@@ -2287,6 +2297,44 @@ fn collect_package_show_rows(
     }
 
     rows
+}
+
+fn prefer_installed_package_for_show(
+    candidate: &InstalledPackage,
+    current: &InstalledPackage,
+) -> bool {
+    runtime_state_rank(&candidate.runtime_state).cmp(&runtime_state_rank(&current.runtime_state))
+        == std::cmp::Ordering::Greater
+        || (candidate.runtime_state == current.runtime_state
+            && version_text_rank(candidate.installed_version.as_deref())
+                > version_text_rank(current.installed_version.as_deref()))
+}
+
+fn prefer_outdated_package_for_show(
+    candidate: &OutdatedPackage,
+    current: &OutdatedPackage,
+) -> bool {
+    runtime_state_rank(&candidate.runtime_state).cmp(&runtime_state_rank(&current.runtime_state))
+        == std::cmp::Ordering::Greater
+        || (candidate.runtime_state == current.runtime_state
+            && version_text_rank(candidate.installed_version.as_deref())
+                > version_text_rank(current.installed_version.as_deref()))
+}
+
+fn runtime_state_rank(runtime_state: &PackageRuntimeState) -> (u8, u8, u8) {
+    (
+        u8::from(runtime_state.is_active),
+        u8::from(runtime_state.is_default),
+        u8::from(!runtime_state.has_override),
+    )
+}
+
+fn version_text_rank(version: Option<&str>) -> String {
+    version
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_default()
 }
 
 fn cmd_packages_mutation(

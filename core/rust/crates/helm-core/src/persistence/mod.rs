@@ -38,9 +38,18 @@ pub trait PackageStore: Send + Sync {
         installed_version: Option<&str>,
     ) -> PersistenceResult<()>;
 
-    fn apply_uninstall_result(&self, package: &PackageRef) -> PersistenceResult<()>;
+    fn apply_uninstall_result(
+        &self,
+        package: &PackageRef,
+        removed_version: Option<&str>,
+    ) -> PersistenceResult<()>;
 
-    fn apply_upgrade_result(&self, package: &PackageRef) -> PersistenceResult<()>;
+    fn apply_upgrade_result(
+        &self,
+        package: &PackageRef,
+        before_version: Option<&str>,
+        after_version: Option<&str>,
+    ) -> PersistenceResult<()>;
 }
 
 pub trait PinStore: Send + Sync {

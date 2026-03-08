@@ -1,6 +1,7 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use helm_core::adapters::manager::{
     AdapterRequest, AdapterResponse, AdapterResult, ManagerAdapter,
@@ -10,6 +11,44 @@ use helm_core::models::{
     ManagerAuthority, ManagerCategory, ManagerDescriptor, ManagerId,
 };
 use helm_core::orchestration::AdapterRuntime;
+use helm_core::persistence::DetectionStore;
+use helm_core::sqlite::SqliteStore;
+
+fn test_db_path(test_name: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock before unix epoch")
+        .as_nanos();
+    std::env::temp_dir().join(format!("helm-{test_name}-{nanos}.sqlite3"))
+}
+
+fn runtime_with_detection_rows<I>(
+    test_name: &str,
+    adapters: I,
+    detections: &[(ManagerId, bool)],
+) -> AdapterRuntime
+where
+    I: IntoIterator<Item = Arc<dyn ManagerAdapter>>,
+{
+    let path = test_db_path(test_name);
+    let store = Arc::new(SqliteStore::new(&path));
+    store.migrate_to_latest().unwrap();
+    for (manager, installed) in detections {
+        store
+            .upsert_detection(
+                *manager,
+                &DetectionInfo {
+                    installed: *installed,
+                    executable_path: None,
+                    version: (*installed).then(|| "1.0.0".to_string()),
+                },
+            )
+            .unwrap();
+    }
+
+    AdapterRuntime::with_all_stores(adapters, store.clone(), store.clone(), store.clone(), store)
+        .unwrap()
+}
 
 struct TimestampedAdapter {
     descriptor: ManagerDescriptor,
@@ -209,13 +248,18 @@ async fn authoritative_phase_completes_before_guarded_phase() {
         completion_order.clone(),
     ));
 
-    let runtime = AdapterRuntime::new([mise, brew]).unwrap();
+    let runtime = runtime_with_detection_rows(
+        "authority-ordering-authoritative-before-guarded",
+        [mise, brew],
+        &[(ManagerId::Mise, true), (ManagerId::HomebrewFormula, true)],
+    );
     let results = runtime.refresh_all_ordered().await;
 
     assert_eq!(results.len(), 2);
     for (_, result) in &results {
         assert!(result.is_ok());
     }
+    assert_eq!(completion_order.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
@@ -241,7 +285,15 @@ async fn failure_isolation_one_manager_failing_does_not_block_others() {
         completion_order.clone(),
     ));
 
-    let runtime = AdapterRuntime::new([mise, failing, brew]).unwrap();
+    let runtime = runtime_with_detection_rows(
+        "authority-ordering-failure-isolation",
+        [mise, failing, brew],
+        &[
+            (ManagerId::Mise, true),
+            (ManagerId::Npm, true),
+            (ManagerId::HomebrewFormula, true),
+        ],
+    );
     let results = runtime.refresh_all_ordered().await;
 
     // Should have results for at least mise and brew (npm fails)
@@ -251,6 +303,7 @@ async fn failure_isolation_one_manager_failing_does_not_block_others() {
     assert_eq!(succeeded.len(), 2);
     assert_eq!(failed.len(), 1);
     assert_eq!(failed[0].0, ManagerId::Npm);
+    assert_eq!(completion_order.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
@@ -271,7 +324,11 @@ async fn parallel_within_authoritative_phase() {
         completion_order.clone(),
     ));
 
-    let runtime = AdapterRuntime::new([mise, rustup]).unwrap();
+    let runtime = runtime_with_detection_rows(
+        "authority-ordering-parallel-authoritative-phase",
+        [mise, rustup],
+        &[(ManagerId::Mise, true), (ManagerId::Rustup, true)],
+    );
 
     let start = std::time::Instant::now();
     let results = runtime.refresh_all_ordered().await;
@@ -289,6 +346,7 @@ async fn parallel_within_authoritative_phase() {
         elapsed < Duration::from_millis(1000),
         "Expected parallel execution within single phase, took {elapsed:?}"
     );
+    assert_eq!(completion_order.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
@@ -305,15 +363,20 @@ async fn refresh_all_ordered_skips_missing_list_installed_capability() {
         ManagerAuthority::Guarded,
         SWUPD_CAPS,
         true,
-        detect_calls,
+        detect_calls.clone(),
         list_outdated_calls.clone(),
     ));
 
-    let runtime = AdapterRuntime::new([swupd]).unwrap();
+    let runtime = runtime_with_detection_rows(
+        "authority-ordering-refresh-missing-list-installed",
+        [swupd],
+        &[(ManagerId::SoftwareUpdate, true)],
+    );
     let results = runtime.refresh_all_ordered().await;
 
     assert_eq!(results.len(), 1);
     assert!(results[0].1.is_ok());
+    assert_eq!(detect_calls.load(Ordering::SeqCst), 0);
     assert_eq!(list_outdated_calls.load(Ordering::SeqCst), 1);
 }
 
@@ -331,15 +394,20 @@ async fn refresh_all_ordered_skips_list_actions_for_not_installed_manager() {
         ManagerAuthority::Guarded,
         SWUPD_CAPS,
         false,
-        detect_calls,
+        detect_calls.clone(),
         list_outdated_calls.clone(),
     ));
 
-    let runtime = AdapterRuntime::new([swupd]).unwrap();
+    let runtime = runtime_with_detection_rows(
+        "authority-ordering-refresh-skip-not-installed",
+        [swupd],
+        &[(ManagerId::SoftwareUpdate, false)],
+    );
     let results = runtime.refresh_all_ordered().await;
 
     assert_eq!(results.len(), 1);
     assert!(results[0].1.is_ok());
+    assert_eq!(detect_calls.load(Ordering::SeqCst), 0);
     assert_eq!(list_outdated_calls.load(Ordering::SeqCst), 0);
 }
 

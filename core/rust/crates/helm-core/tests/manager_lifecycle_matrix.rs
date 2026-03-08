@@ -8,7 +8,9 @@ use helm_core::adapters::{
     HomebrewSource, InstallRequest, ManagerAdapter, NpmAdapter, NpmSource, PinRequest,
     UninstallRequest, UnpinRequest, UpgradeRequest,
 };
-use helm_core::models::{CoreError, CoreErrorKind, ManagerAction, ManagerId, PackageRef};
+use helm_core::models::{
+    CoreError, CoreErrorKind, ManagerAction, ManagerId, PackageRef, SearchQuery,
+};
 
 fn package(manager: ManagerId, name: &str) -> PackageRef {
     PackageRef {
@@ -38,19 +40,27 @@ impl AsdfSource for AsdfLifecycleSource {
     }
 
     fn list_current(&self) -> AdapterResult<String> {
-        Ok("nodejs 20.12.2\n".to_string())
+        Ok("nodejs 20.12.2 /Users/dev/.tool-versions\n".to_string())
     }
 
     fn list_plugins(&self) -> AdapterResult<String> {
-        Ok(String::new())
+        Ok("nodejs\n".to_string())
     }
 
-    fn list_all_plugins(&self) -> AdapterResult<String> {
+    fn list_installed_versions(&self, _plugin: &str) -> AdapterResult<String> {
+        Ok("20.12.2\n".to_string())
+    }
+
+    fn search_plugins(&self, _query: &SearchQuery) -> AdapterResult<String> {
         Ok(String::new())
     }
 
     fn latest_version(&self, _plugin: &str) -> AdapterResult<String> {
-        Ok(String::new())
+        Ok("20.12.3\n".to_string())
+    }
+
+    fn add_plugin(&self, _plugin: &str) -> AdapterResult<String> {
+        Ok("added".to_string())
     }
 
     fn install_plugin(&self, _plugin: &str, _version: Option<&str>) -> AdapterResult<String> {
@@ -61,8 +71,8 @@ impl AsdfSource for AsdfLifecycleSource {
         Ok("uninstalled".to_string())
     }
 
-    fn upgrade_plugins(&self, _plugin: Option<&str>) -> AdapterResult<String> {
-        Ok("upgraded".to_string())
+    fn set_home_version(&self, _plugin: &str, _version: &str) -> AdapterResult<String> {
+        Ok("set".to_string())
     }
 
     fn install_self(&self, _source: AsdfInstallSource) -> AdapterResult<String> {

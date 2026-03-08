@@ -2,10 +2,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::adapters::asdf::{
-    AsdfDetectOutput, AsdfInstallSource, AsdfSource, asdf_clone_install_request,
-    asdf_detect_request, asdf_install_request, asdf_latest_request, asdf_list_all_plugins_request,
-    asdf_list_current_request, asdf_list_plugins_request, asdf_self_update_request,
-    asdf_uninstall_request, asdf_upgrade_request,
+    AsdfDetectOutput, AsdfInstallSource, AsdfSource, asdf_add_plugin_request,
+    asdf_clone_install_request, asdf_detect_request, asdf_install_request, asdf_latest_request,
+    asdf_list_current_request, asdf_list_installed_versions_request, asdf_list_plugins_request,
+    asdf_search_plugins_request, asdf_self_update_request, asdf_set_home_version_request,
+    asdf_uninstall_request,
 };
 use crate::adapters::detect_utils::which_executable;
 use crate::adapters::manager::AdapterResult;
@@ -30,26 +31,82 @@ fn core_error(
     }
 }
 
-fn safe_asdf_install_root(path: &Path, home: Option<&str>) -> bool {
+fn default_home_asdf_root() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .filter(|path| !path.as_os_str().is_empty())
+        .map(|home| home.join(".asdf"))
+}
+
+fn configured_asdf_dir() -> Option<PathBuf> {
+    std::env::var_os("ASDF_DIR")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute() && !path.as_os_str().is_empty())
+}
+
+fn configured_asdf_data_dir() -> Option<PathBuf> {
+    std::env::var_os("ASDF_DATA_DIR")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute() && !path.as_os_str().is_empty())
+}
+
+fn asdf_bin_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Some(asdf_dir) = configured_asdf_dir() {
+        roots.push(asdf_dir.join("bin"));
+    }
+    if let Some(data_dir) = configured_asdf_data_dir() {
+        roots.push(data_dir.join("bin"));
+        roots.push(data_dir.join("shims"));
+    }
+    if let Some(home_root) = default_home_asdf_root() {
+        roots.push(home_root.join("bin"));
+        roots.push(home_root.join("shims"));
+    }
+    roots.sort();
+    roots.dedup();
+    roots
+}
+
+fn configured_manager_root() -> Option<(PathBuf, bool)> {
+    if let Some(asdf_dir) = configured_asdf_dir() {
+        return Some((asdf_dir, true));
+    }
+    if let Some(data_dir) = configured_asdf_data_dir() {
+        return Some((data_dir, true));
+    }
+    default_home_asdf_root().map(|path| (path, false))
+}
+
+fn safe_asdf_install_root(path: &Path, home: Option<&Path>, explicit_env: bool) -> bool {
     if !path.is_absolute() || path.as_os_str().is_empty() || path.parent().is_none() {
         return false;
     }
     if path == Path::new("/") {
         return false;
     }
-    let Some(file_name) = path.file_name().and_then(|value| value.to_str()) else {
-        return false;
-    };
-    if !file_name.eq_ignore_ascii_case(".asdf") {
+    if let Some(home) = home
+        && !path.starts_with(home)
+    {
         return false;
     }
-    if let Some(home) = home {
-        return path.starts_with(home);
+    if explicit_env {
+        return true;
     }
-    false
+    path.file_name()
+        .and_then(|value| value.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case(".asdf"))
 }
 
 fn detect_asdf_root_from_path(path: &Path) -> Option<PathBuf> {
+    if path.file_name().and_then(|value| value.to_str()) == Some("asdf")
+        && let Some(parent) = path.parent()
+        && let Some(parent_name) = parent.file_name().and_then(|value| value.to_str())
+        && (parent_name.eq_ignore_ascii_case("bin") || parent_name.eq_ignore_ascii_case("shims"))
+    {
+        return parent.parent().map(Path::to_path_buf);
+    }
+
     path.ancestors().find_map(|ancestor| {
         let name = ancestor.file_name()?.to_str()?;
         if name.eq_ignore_ascii_case(".asdf") {
@@ -73,18 +130,16 @@ impl ProcessAsdfSource {
         &self,
         mut request: crate::execution::ProcessSpawnRequest,
     ) -> crate::execution::ProcessSpawnRequest {
-        // XPC service context has a minimal PATH. Include common asdf install roots.
         let path = std::env::var("PATH").unwrap_or_default();
-        let home = std::env::var("HOME").unwrap_or_default();
-        let asdf_bin = if home.is_empty() {
-            String::new()
-        } else {
-            format!("{home}/.asdf/bin:{home}/.asdf/shims:")
-        };
-        request.command = request.command.env(
-            "PATH",
-            format!("{asdf_bin}/opt/homebrew/bin:/usr/local/bin:{path}"),
-        );
+        let mut path_entries = asdf_bin_roots()
+            .into_iter()
+            .map(|path| path.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+        path_entries.extend(ASDF_PATH_ROOTS.iter().map(|value| value.to_string()));
+        if !path.is_empty() {
+            path_entries.push(path);
+        }
+        request.command = request.command.env("PATH", path_entries.join(":"));
 
         if request.command.program.to_str() == Some("asdf")
             && let Some(executable) = self.detect_executable_path()
@@ -96,14 +151,11 @@ impl ProcessAsdfSource {
     }
 
     fn detect_executable_path(&self) -> Option<PathBuf> {
-        let mut dynamic_roots: Vec<String> = Vec::new();
-        if let Ok(home) = std::env::var("HOME")
-            && !home.trim().is_empty()
-        {
-            dynamic_roots.push(format!("{home}/.asdf/bin"));
-            dynamic_roots.push(format!("{home}/.asdf/shims"));
-        }
-        let mut search_roots: Vec<&str> = dynamic_roots.iter().map(String::as_str).collect();
+        let mut dynamic_roots = asdf_bin_roots()
+            .into_iter()
+            .map(|path| path.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+        let mut search_roots = dynamic_roots.iter().map(String::as_str).collect::<Vec<_>>();
         search_roots.extend_from_slice(ASDF_PATH_ROOTS);
 
         if let Some(executable) = which_executable(
@@ -119,26 +171,26 @@ impl ProcessAsdfSource {
             PathBuf::from("/opt/homebrew/bin/asdf"),
             PathBuf::from("/usr/local/bin/asdf"),
         ];
-        for root in dynamic_roots {
-            candidates.push(PathBuf::from(root).join("asdf"));
-        }
-
+        candidates.extend(
+            dynamic_roots
+                .drain(..)
+                .map(PathBuf::from)
+                .map(|root| root.join("asdf")),
+        );
         candidates.into_iter().find(|candidate| candidate.exists())
     }
 
     fn resolve_install_root(&self) -> AdapterResult<PathBuf> {
-        let home = std::env::var("HOME").unwrap_or_default();
-        let trimmed_home = home.trim();
-        if trimmed_home.is_empty() {
+        let home = std::env::var_os("HOME").map(PathBuf::from);
+        let Some((install_root, explicit_env)) = configured_manager_root() else {
             return Err(core_error(
                 CoreErrorKind::InvalidInput,
                 TaskType::Install,
                 ManagerAction::Install,
-                "HOME is required for asdf script installer",
+                "HOME or ASDF_DIR/ASDF_DATA_DIR is required for asdf installation",
             ));
-        }
-        let install_root = Path::new(trimmed_home).join(".asdf");
-        if !safe_asdf_install_root(install_root.as_path(), Some(trimmed_home)) {
+        };
+        if !safe_asdf_install_root(install_root.as_path(), home.as_deref(), explicit_env) {
             return Err(core_error(
                 CoreErrorKind::InvalidInput,
                 TaskType::Install,
@@ -185,17 +237,27 @@ impl ProcessAsdfSource {
         task_type: TaskType,
         action: ManagerAction,
     ) -> AdapterResult<PathBuf> {
-        let home = std::env::var("HOME").ok();
+        let home = std::env::var_os("HOME").map(PathBuf::from);
+        if let Some((configured_root, explicit_env)) = configured_manager_root()
+            && safe_asdf_install_root(configured_root.as_path(), home.as_deref(), explicit_env)
+        {
+            return Ok(configured_root);
+        }
+
         let detection = self.detect()?;
-        let from_executable = detection
+        let candidate = detection
             .executable_path
             .as_deref()
-            .and_then(detect_asdf_root_from_path);
-        let candidate = from_executable.unwrap_or_else(|| {
-            let home_path = home.as_deref().unwrap_or_default();
-            Path::new(home_path).join(".asdf")
-        });
-        if !safe_asdf_install_root(candidate.as_path(), home.as_deref()) {
+            .and_then(detect_asdf_root_from_path)
+            .ok_or_else(|| {
+                core_error(
+                    CoreErrorKind::InvalidInput,
+                    task_type,
+                    action,
+                    "failed to resolve active asdf install root from executable path",
+                )
+            })?;
+        if !safe_asdf_install_root(candidate.as_path(), home.as_deref(), false) {
             return Err(core_error(
                 CoreErrorKind::InvalidInput,
                 task_type,
@@ -232,19 +294,23 @@ impl AsdfSource for ProcessAsdfSource {
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 
-    fn list_all_plugins(&self) -> AdapterResult<String> {
-        let request = self.configure_request(asdf_list_all_plugins_request(
-            None,
-            &SearchQuery {
-                text: String::new(),
-                issued_at: std::time::SystemTime::now(),
-            },
-        ));
+    fn list_installed_versions(&self, plugin: &str) -> AdapterResult<String> {
+        let request = self.configure_request(asdf_list_installed_versions_request(None, plugin));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn search_plugins(&self, query: &SearchQuery) -> AdapterResult<String> {
+        let request = self.configure_request(asdf_search_plugins_request(None, query));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 
     fn latest_version(&self, plugin: &str) -> AdapterResult<String> {
         let request = self.configure_request(asdf_latest_request(None, plugin));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn add_plugin(&self, plugin: &str) -> AdapterResult<String> {
+        let request = self.configure_request(asdf_add_plugin_request(None, plugin));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 
@@ -258,29 +324,9 @@ impl AsdfSource for ProcessAsdfSource {
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 
-    fn upgrade_plugins(&self, plugin: Option<&str>) -> AdapterResult<String> {
-        if let Some(plugin) = plugin {
-            let request = self.configure_request(asdf_upgrade_request(None, plugin));
-            return run_and_collect_stdout(self.executor.as_ref(), request);
-        }
-
-        let plugin_listing = self.list_plugins()?;
-        let mut output = String::new();
-        for line in plugin_listing.lines().map(str::trim) {
-            if line.is_empty() {
-                continue;
-            }
-            let request = self.configure_request(asdf_upgrade_request(None, line));
-            let command_output = run_and_collect_stdout(self.executor.as_ref(), request)?;
-            if !command_output.trim().is_empty() {
-                if !output.is_empty() {
-                    output.push('\n');
-                }
-                output.push_str(command_output.trim());
-            }
-        }
-
-        Ok(output)
+    fn set_home_version(&self, plugin: &str, version: &str) -> AdapterResult<String> {
+        let request = self.configure_request(asdf_set_home_version_request(None, plugin, version));
+        run_and_collect_stdout(self.executor.as_ref(), request)
     }
 
     fn install_self(&self, source: AsdfInstallSource) -> AdapterResult<String> {

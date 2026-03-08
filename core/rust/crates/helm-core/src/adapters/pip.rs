@@ -372,6 +372,7 @@ fn parse_pip_list(output: &str) -> AdapterResult<Vec<InstalledPackage>> {
                     Some(version)
                 },
                 pinned: false,
+                runtime_state: Default::default(),
             })
         })
         .collect();
@@ -429,6 +430,7 @@ fn parse_pip_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
                 candidate_version: latest,
                 pinned: false,
                 restart_required: false,
+                runtime_state: Default::default(),
             })
         })
         .collect();

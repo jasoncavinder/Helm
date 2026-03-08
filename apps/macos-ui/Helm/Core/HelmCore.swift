@@ -202,10 +202,17 @@ struct CorePackageRef: Codable {
     let name: String
 }
 
+struct CorePackageRuntimeState: Codable {
+    let isActive: Bool
+    let isDefault: Bool
+    let hasOverride: Bool
+}
+
 struct CoreInstalledPackage: Codable {
     let package: CorePackageRef
     let installedVersion: String?
     let pinned: Bool
+    let runtimeState: CorePackageRuntimeState?
 }
 
 struct CoreOutdatedPackage: Codable {
@@ -214,6 +221,7 @@ struct CoreOutdatedPackage: Codable {
     let candidateVersion: String
     let pinned: Bool
     let restartRequired: Bool
+    let runtimeState: CorePackageRuntimeState?
 }
 
 struct CoreTaskRecord: Codable {
@@ -637,17 +645,25 @@ final class HelmCore: ObservableObject {
         didSet { onSearchTextChanged(searchText) }
     }
     @Published var installedPackages: [PackageItem] = [] {
-        didSet { scheduleDerivedViewStateRefresh() }
+        didSet {
+            invalidatePackageSnapshotCache()
+            scheduleDerivedViewStateRefresh()
+        }
     }
     @Published var outdatedPackages: [PackageItem] = [] {
-        didSet { scheduleDerivedViewStateRefresh() }
+        didSet {
+            invalidatePackageSnapshotCache()
+            scheduleDerivedViewStateRefresh()
+        }
     }
     @Published var activeTasks: [TaskItem] = [] {
         didSet { scheduleDerivedViewStateRefresh() }
     }
     @Published var taskTimeoutPrompts: [CoreTaskTimeoutPrompt] = []
     @Published var searchResults: [PackageItem] = []
-    @Published var cachedAvailablePackages: [PackageItem] = []
+    @Published var cachedAvailablePackages: [PackageItem] = [] {
+        didSet { invalidatePackageSnapshotCache() }
+    }
     @Published var upgradePlanSteps: [CoreUpgradePlanStep] = []
     @Published var upgradePlanTaskProjectionByStepId: [String: UpgradePlanTaskProjection] = [:]
     @Published var upgradePlanFailureGroups: [UpgradePlanFailureGroup] = []
@@ -655,10 +671,16 @@ final class HelmCore: ObservableObject {
     @Published var upgradePlanIncludePinned: Bool = false
     @Published var scopedUpgradePlanRunInProgress: Bool = false
     @Published var detectedManagers: Set<String> = [] {
-        didSet { scheduleDerivedViewStateRefresh() }
+        didSet {
+            invalidatePackageSnapshotCache()
+            scheduleDerivedViewStateRefresh()
+        }
     }
     @Published var managerStatuses: [String: ManagerStatus] = [:] {
-        didSet { scheduleDerivedViewStateRefresh() }
+        didSet {
+            invalidatePackageSnapshotCache()
+            scheduleDerivedViewStateRefresh()
+        }
     }
     @Published var managerPriorityOverrides: [String: Int] = HelmCore.loadManagerPriorityOverrides() {
         didSet { scheduleDerivedViewStateRefresh() }
@@ -721,11 +743,13 @@ final class HelmCore: ObservableObject {
     var managerActionTaskSubmittedAt: [UInt64: Date] = [:]
     var managerVerificationAnchorTaskIdByManager: [String: UInt64] = [:]
     var managerVerificationStartedAtByManager: [String: Date] = [:]
+    var managerPostInstallSetupHandledTaskIds: [String: UInt64] = [:]
     var localManagerActionTasks: [String: TaskItem] = [:]
     var localManagerActionTaskCreatedAt: [String: Date] = [:]
     var upgradeActionTaskByPackage: [String: UInt64] = [:]
     var installActionTaskByPackage: [String: UInt64] = [:]
     var installActionNormalizedNameByPackageId: [String: String] = [:]
+    var installActionTargetPackageById: [String: PackageItem] = [:]
     var uninstallActionTaskByPackage: [String: UInt64] = [:]
     var descriptionLookupTaskIdsByPackage: [String: Set<UInt64>] = [:]
     var descriptionLookupStartedAtByPackage: [String: Date] = [:]
@@ -744,6 +768,10 @@ final class HelmCore: ObservableObject {
     private var isPopoverVisibleForPolling = false
     private var isControlCenterVisibleForPolling = false
     private var derivedViewStateRefreshWorkItem: DispatchWorkItem?
+    var packageSnapshotCacheValid = false
+    var cachedAllKnownPackages: [PackageItem] = []
+    var cachedAllKnownPackagesUnsorted: [PackageItem] = []
+    var cachedAllKnownPackagesById: [String: PackageItem] = [:]
     private var packageDescriptionRenderCache: [String: PackageDescriptionRenderCacheEntry] = [:]
     private var packageDescriptionRenderCacheOrder: [String] = []
     private static let maxPackageDescriptionRenderCacheEntries = 256
@@ -1252,6 +1280,7 @@ final class HelmCore: ObservableObject {
                     self?.managerActionTaskSubmittedAt = [:]
                     self?.managerVerificationAnchorTaskIdByManager = [:]
                     self?.managerVerificationStartedAtByManager = [:]
+                    self?.managerPostInstallSetupHandledTaskIds = [:]
                     self?.localManagerActionTasks = [:]
                     self?.localManagerActionTaskCreatedAt = [:]
                     self?.lastObservedTaskId = 0
@@ -1317,6 +1346,31 @@ final class HelmCore: ObservableObject {
         }
         derivedViewStateRefreshWorkItem = workItem
         DispatchQueue.main.async(execute: workItem)
+    }
+
+    func invalidatePackageSnapshotCache() {
+        packageSnapshotCacheValid = false
+    }
+
+    func ensurePackageSnapshotCache() {
+        guard !packageSnapshotCacheValid else { return }
+
+        let unsorted = buildAllKnownPackagesUnsorted()
+        cachedAllKnownPackagesUnsorted = unsorted
+        cachedAllKnownPackages = sortedPackagesByDisplayName(unsorted)
+
+        var byId: [String: PackageItem] = [:]
+        byId.reserveCapacity(unsorted.count)
+        for package in unsorted {
+            byId[package.id] = package
+        }
+        cachedAllKnownPackagesById = byId
+        packageSnapshotCacheValid = true
+    }
+
+    func packageItem(forId id: String) -> PackageItem? {
+        ensurePackageSnapshotCache()
+        return cachedAllKnownPackagesById[id]
     }
 
     private func refreshDerivedViewStates() {

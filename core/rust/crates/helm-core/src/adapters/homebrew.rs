@@ -539,6 +539,7 @@ fn parse_installed_formulae(output: &str) -> AdapterResult<Vec<InstalledPackage>
                 },
                 installed_version: version,
                 pinned: false,
+                runtime_state: Default::default(),
             }),
             None => malformed_lines += 1,
         }
@@ -586,6 +587,7 @@ fn parse_outdated_formulae(output: &str) -> AdapterResult<Vec<OutdatedPackage>> 
                     candidate_version,
                     pinned,
                     restart_required: false,
+                    runtime_state: Default::default(),
                 })
             }
             None => {
