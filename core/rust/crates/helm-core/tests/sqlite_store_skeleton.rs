@@ -660,7 +660,7 @@ fn apply_uninstall_result_removes_package_from_cached_snapshots() {
         }])
         .unwrap();
 
-    store.apply_uninstall_result(&package).unwrap();
+    store.apply_uninstall_result(&package, None).unwrap();
 
     let installed = store.list_installed().unwrap();
     let outdated = store.list_outdated().unwrap();
@@ -700,7 +700,9 @@ fn apply_upgrade_result_promotes_package_to_installed_snapshot() {
         }])
         .unwrap();
 
-    store.apply_upgrade_result(&package).unwrap();
+    store
+        .apply_upgrade_result(&package, Some("20250127.0"), Some("20250814.0"))
+        .unwrap();
 
     let installed = store.list_installed().unwrap();
     let outdated = store.list_outdated().unwrap();
@@ -753,7 +755,9 @@ fn apply_upgrade_result_replaces_only_matching_installed_version() {
         }])
         .unwrap();
 
-    store.apply_upgrade_result(&package).unwrap();
+    store
+        .apply_upgrade_result(&package, Some("3.12.3"), Some("3.12.8"))
+        .unwrap();
 
     let installed = store.list_installed().unwrap();
     let versions: Vec<String> = installed

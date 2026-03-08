@@ -5,3 +5,5 @@ sccache = "latest"
 [env]
 RUSTC_WRAPPER = "sccache"
 SCCACHE_DIR = "/Users/jasoncavinder/.cache/sccache"
+SCCACHE_CACHE_SIZE = "20G"
+CARGO_TARGET_DIR = ".cargo-target"

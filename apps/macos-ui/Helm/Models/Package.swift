@@ -83,6 +83,22 @@ struct PackageItem: Identifiable {
     var normalizedBaseName: String {
         PackageIdentity.normalizedBaseName(name)
     }
+
+    var mutationPackageName: String {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return name }
+        if managerId.lowercased() == "mise", status == .available {
+            let qualifiedDisplayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !qualifiedDisplayName.isEmpty, qualifiedDisplayName.contains("@") {
+                return qualifiedDisplayName
+            }
+        }
+        guard managerId.lowercased() == "asdf",
+              PackageIdentity.hasKnownVersion(version) else {
+            return trimmedName
+        }
+        return "\(trimmedName)@\(version.trimmingCharacters(in: .whitespacesAndNewlines))"
+    }
 }
 
 enum PackageIdentity {
@@ -99,6 +115,10 @@ enum PackageIdentity {
 
     static func normalizedBaseName(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    static func hasKnownVersion(_ value: String?) -> Bool {
+        normalizedVersionSelectorInput(value) != nil
     }
 
     static func variantQualifier(fromVersion version: String?) -> String? {
@@ -285,6 +305,16 @@ struct ConsolidatedPackageItem: Identifiable {
             rhsPinned: rhs.pinned,
             lhsRestartRequired: lhs.restartRequired,
             rhsRestartRequired: rhs.restartRequired,
+            lhsRuntimeState: PackageRuntimeStateProjection(
+                isActive: lhs.runtimeState.isActive,
+                isDefault: lhs.runtimeState.isDefault,
+                hasOverride: lhs.runtimeState.hasOverride
+            ),
+            rhsRuntimeState: PackageRuntimeStateProjection(
+                isActive: rhs.runtimeState.isActive,
+                isDefault: rhs.runtimeState.isDefault,
+                hasOverride: rhs.runtimeState.hasOverride
+            ),
             lhsVersion: lhs.version,
             rhsVersion: rhs.version,
             lhsManagerId: lhs.managerId,

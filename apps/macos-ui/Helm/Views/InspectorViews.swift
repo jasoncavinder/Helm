@@ -2189,9 +2189,18 @@ private struct InspectorManagerDetailView: View {
     }
 
     private var postInstallSetupIssue: ManagerPackageStateIssue? {
-        (status?.packageStateIssues ?? []).first(where: { issue in
+        guard !postInstallSetupTaskInFlight else { return nil }
+        return (status?.packageStateIssues ?? []).first(where: { issue in
             issue.issueCode == "post_install_setup_required"
         })
+    }
+
+    private var postInstallSetupTaskInFlight: Bool {
+        core.activeTasks.contains { task in
+            task.managerId == manager.id
+                && task.labelKey == "service.task.label.setup.manager"
+                && task.isRunning
+        }
     }
 
     private var supportsPostInstallSetupAutomation: Bool {

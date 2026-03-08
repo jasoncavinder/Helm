@@ -957,6 +957,28 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
             );
         }
 
+        if let Some(detection_store) = detection_store.as_ref()
+            && let Some(AdapterTaskTerminalState::Succeeded(response)) = &snapshot.terminal_state
+            && let Err(error) = persist_manager_uninstall_state_reset(
+                detection_store.clone(),
+                response,
+                manager,
+                task_type,
+                action,
+            )
+            .await
+        {
+            tracing::error!(
+                manager = ?manager,
+                task_id = task_id.0,
+                task_type = ?task_type,
+                action = ?action,
+                kind = ?error.kind,
+                message = %error.message,
+                "failed to persist manager uninstall state reset"
+            );
+        }
+
         // Persist detection results
         if let Some(detection_store) = detection_store
             && let Some(AdapterTaskTerminalState::Succeeded(response)) = &snapshot.terminal_state
@@ -1138,8 +1160,13 @@ async fn persist_adapter_response(
                 ManagerAction::Unpin => package_store.set_snapshot_pinned(&mutation.package, false),
                 ManagerAction::Install => package_store
                     .apply_install_result(&mutation.package, mutation.after_version.as_deref()),
-                ManagerAction::Uninstall => package_store.apply_uninstall_result(&mutation.package),
-                ManagerAction::Upgrade => package_store.apply_upgrade_result(&mutation.package),
+                ManagerAction::Uninstall => package_store
+                    .apply_uninstall_result(&mutation.package, mutation.before_version.as_deref()),
+                ManagerAction::Upgrade => package_store.apply_upgrade_result(
+                    &mutation.package,
+                    mutation.before_version.as_deref(),
+                    mutation.after_version.as_deref(),
+                ),
                 _ => Ok(()),
             },
             _ => Ok(()), // Other responses not persisted yet
@@ -1152,6 +1179,75 @@ async fn persist_adapter_response(
         action: Some(action),
         kind: CoreErrorKind::Internal,
         message: format!("response persistence join failure: {join_error}"),
+    })?
+    .map_err(|error| attribute_error(error, manager, task_type, action))
+}
+
+fn manager_uninstall_reset_targets(
+    manager: ManagerId,
+    response: &AdapterResponse,
+) -> Vec<ManagerId> {
+    let AdapterResponse::Mutation(mutation) = response else {
+        return Vec::new();
+    };
+    if mutation.action != ManagerAction::Uninstall {
+        return Vec::new();
+    }
+
+    let package_name = mutation.package.name.trim();
+    if package_name == "__self__" || package_name.starts_with("__self__:") {
+        return vec![manager];
+    }
+
+    crate::manager_lifecycle::parse_homebrew_manager_uninstall_package_name(package_name)
+        .map(|spec| vec![spec.requested_manager])
+        .unwrap_or_default()
+}
+
+fn persist_manager_uninstall_state_reset_sync(
+    detection_store: &dyn DetectionStore,
+    response: &AdapterResponse,
+    manager: ManagerId,
+) -> crate::persistence::PersistenceResult<()> {
+    let targets = manager_uninstall_reset_targets(manager, response);
+    if targets.is_empty() {
+        return Ok(());
+    }
+
+    let cleared_detection = DetectionInfo {
+        installed: false,
+        executable_path: None,
+        version: None,
+    };
+
+    for target in targets {
+        detection_store.upsert_detection(target, &cleared_detection)?;
+        detection_store.replace_install_instances(target, &[])?;
+        detection_store.set_manager_selected_executable_path(target, None)?;
+    }
+
+    Ok(())
+}
+
+async fn persist_manager_uninstall_state_reset(
+    detection_store: Arc<dyn DetectionStore>,
+    response: &AdapterResponse,
+    manager: ManagerId,
+    task_type: TaskType,
+    action: ManagerAction,
+) -> OrchestrationResult<()> {
+    let response = response.clone();
+
+    tokio::task::spawn_blocking(move || {
+        persist_manager_uninstall_state_reset_sync(detection_store.as_ref(), &response, manager)
+    })
+    .await
+    .map_err(|join_error| CoreError {
+        manager: Some(manager),
+        task: Some(task_type),
+        action: Some(action),
+        kind: CoreErrorKind::Internal,
+        message: format!("manager uninstall persistence join failure: {join_error}"),
     })?
     .map_err(|error| attribute_error(error, manager, task_type, action))
 }
@@ -2168,24 +2264,27 @@ mod tests {
         SelectedExecutablePathUpdate, TaskTerminalErrorDetails, TaskType,
         build_failure_diagnostic_envelope, build_manager_enablement_map,
         build_refresh_capability_plan, classify_failure_issue, failure_fingerprint,
+        manager_uninstall_reset_targets, persist_manager_uninstall_state_reset_sync,
         reconcile_detected_install_instances, reduce_detect_request_result, refresh_wait_budget,
         task_type_code, task_type_for_request, truncate_for_diagnostic,
     };
-    use crate::adapters::{AdapterRequest, AdapterResponse, SearchRequest};
+    use crate::adapters::{AdapterRequest, AdapterResponse, MutationResult, SearchRequest};
     use crate::execution::{
         ManagerTimeoutProfile, TaskOutputRecord, clear_manager_timeout_profiles,
         set_manager_timeout_profile,
     };
     use crate::models::{
         AutomationLevel, CoreError, CoreErrorKind, DetectionInfo, InstallInstanceIdentityKind,
-        InstallProvenance, ManagerAction, ManagerId, ManagerInstallInstance, SearchQuery,
-        StrategyKind, TaskId, TaskStatus,
+        InstallProvenance, ManagerAction, ManagerId, ManagerInstallInstance, PackageRef,
+        SearchQuery, StrategyKind, TaskId, TaskStatus,
     };
     use crate::orchestration::{
         AdapterTaskSnapshot, AdapterTaskTerminalState, TaskRuntimeSnapshot,
     };
-    use crate::persistence::ManagerPreference;
+    use crate::persistence::{DetectionStore, ManagerPreference};
+    use crate::sqlite::SqliteStore;
     use std::collections::HashMap;
+    use std::fs;
     use std::path::PathBuf;
     use std::sync::{Mutex, OnceLock};
     use std::time::{Duration, SystemTime};
@@ -2195,6 +2294,20 @@ mod tests {
         LOCK.get_or_init(|| Mutex::new(()))
             .lock()
             .expect("timeout profile test lock should be available")
+    }
+
+    fn temp_sqlite_store(test_name: &str) -> SqliteStore {
+        let stamp = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("system clock before unix epoch")
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("helm-adapter-runtime-{test_name}-{stamp}.db"));
+        let store = SqliteStore::new(path);
+        store
+            .migrate_to_latest()
+            .expect("sqlite migrations should apply");
+        store
     }
 
     fn test_instance(
@@ -2461,6 +2574,96 @@ mod tests {
             Some("/opt/homebrew/bin/rustup"),
         );
         assert_eq!(update, SelectedExecutablePathUpdate::Clear);
+    }
+
+    #[test]
+    fn manager_self_uninstall_resets_persisted_detection_state() {
+        let store = temp_sqlite_store("manager-self-uninstall-reset");
+        let detection = DetectionInfo {
+            installed: true,
+            executable_path: Some(PathBuf::from("/Users/test/.asdf/bin/asdf")),
+            version: Some("0.15.0".to_string()),
+        };
+        store
+            .upsert_detection(ManagerId::Asdf, &detection)
+            .expect("detection insert should succeed");
+        let mut instance = test_instance(
+            ManagerId::Asdf,
+            "asdf-self",
+            "/Users/test/.asdf/bin/asdf",
+            InstallProvenance::Asdf,
+        );
+        instance.is_active = true;
+        store
+            .replace_install_instances(ManagerId::Asdf, &[instance])
+            .expect("install instance insert should succeed");
+        store
+            .set_manager_selected_executable_path(
+                ManagerId::Asdf,
+                Some("/Users/test/.asdf/bin/asdf"),
+            )
+            .expect("selected executable path should persist");
+
+        let response = AdapterResponse::Mutation(MutationResult {
+            package: PackageRef {
+                manager: ManagerId::Asdf,
+                name: "__self__:removeShellSetup".to_string(),
+            },
+            action: ManagerAction::Uninstall,
+            before_version: None,
+            after_version: None,
+        });
+        persist_manager_uninstall_state_reset_sync(&store, &response, ManagerId::Asdf)
+            .expect("manager uninstall reset should succeed");
+
+        let detections = store
+            .list_detections()
+            .expect("detections should load")
+            .into_iter()
+            .collect::<HashMap<_, _>>();
+        let asdf = detections
+            .get(&ManagerId::Asdf)
+            .expect("asdf detection row should remain present");
+        assert!(!asdf.installed);
+        assert_eq!(asdf.executable_path, None);
+        assert_eq!(asdf.version, None);
+        assert!(
+            store
+                .list_install_instances(Some(ManagerId::Asdf))
+                .expect("install instances should load")
+                .is_empty()
+        );
+        let selected = store
+            .list_manager_preferences()
+            .expect("preferences should load")
+            .into_iter()
+            .find(|pref| pref.manager == ManagerId::Asdf)
+            .and_then(|pref| pref.selected_executable_path);
+        assert_eq!(selected, None);
+
+        let _ = fs::remove_file(store.database_path());
+    }
+
+    #[test]
+    fn homebrew_manager_uninstall_resets_requested_manager_detection_state() {
+        let targets = manager_uninstall_reset_targets(
+            ManagerId::HomebrewFormula,
+            &AdapterResponse::Mutation(MutationResult {
+                package: PackageRef {
+                    manager: ManagerId::HomebrewFormula,
+                    name: crate::manager_lifecycle::encode_homebrew_manager_uninstall_package_name_with_options(
+                        "asdf",
+                        ManagerId::Asdf,
+                        crate::manager_lifecycle::HomebrewUninstallCleanupMode::ManagerOnly,
+                        true,
+                    ),
+                },
+                action: ManagerAction::Uninstall,
+                before_version: None,
+                after_version: None,
+            }),
+        );
+        assert_eq!(targets, vec![ManagerId::Asdf]);
     }
 
     fn failed_snapshot(

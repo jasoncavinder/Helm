@@ -81,6 +81,14 @@ struct ManagersSectionView: View {
                                         context.selectedSection = .managers
                                         core.triggerDetection(for: manager.id)
                                     },
+                                    onInstallManager: {
+                                        context.selectedManagerId = manager.id
+                                        context.selectedPackageId = nil
+                                        context.selectedTaskId = nil
+                                        context.selectedUpgradePlanStepId = nil
+                                        context.selectedSection = .managers
+                                        context.requestManagerInstallSheet(for: manager.id)
+                                    },
                                     onToggleEnabled: { enabled in
                                         handleManagerToggle(managerId: manager.id, enable: enabled)
                                     }
@@ -226,6 +234,7 @@ private struct ManagerSectionRow: View {
     let onSelect: () -> Void
     let onViewPackages: () -> Void
     let onDetectManager: () -> Void
+    let onInstallManager: () -> Void
     let onToggleEnabled: (Bool) -> Void
 
     private var detected: Bool {
@@ -354,6 +363,14 @@ private struct ManagerSectionRow: View {
                         enabled: packageActionEnabled
                     ) {
                         onViewPackages()
+                    }
+                } else if manager.canInstall {
+                    managerCardActionButton(
+                        symbol: "arrow.down.circle",
+                        tooltip: L10n.Common.install.localized,
+                        enabled: !isManagerUninstalling
+                    ) {
+                        onInstallManager()
                     }
                 } else {
                     managerCardActionButton(

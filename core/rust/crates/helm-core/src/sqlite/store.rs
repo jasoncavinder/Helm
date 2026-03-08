@@ -430,31 +430,52 @@ ON CONFLICT(manager_id, package_name, installed_version) DO UPDATE SET
                 ],
             )?;
 
-            transaction.execute(
-                "
+            if package.manager != ManagerId::Asdf {
+                transaction.execute(
+                    "
 DELETE FROM outdated_packages
 WHERE manager_id = ?1 AND package_name = ?2
 ",
-                params![package.manager.as_str(), package.name.as_str()],
-            )?;
+                    params![package.manager.as_str(), package.name.as_str()],
+                )?;
+            }
 
             transaction.commit()?;
             Ok(())
         })
     }
 
-    fn apply_uninstall_result(&self, package: &PackageRef) -> PersistenceResult<()> {
+    fn apply_uninstall_result(
+        &self,
+        package: &PackageRef,
+        removed_version: Option<&str>,
+    ) -> PersistenceResult<()> {
         self.with_connection("apply_uninstall_result", |connection| {
             ensure_schema_ready(connection)?;
             let transaction = connection.transaction()?;
 
-            transaction.execute(
-                "
+            if let Some(removed_version) = removed_version {
+                let removed_version_token = to_installed_version_token(Some(removed_version));
+                transaction.execute(
+                    "
+DELETE FROM installed_package_versions
+WHERE manager_id = ?1 AND package_name = ?2 AND installed_version = ?3
+",
+                    params![
+                        package.manager.as_str(),
+                        package.name.as_str(),
+                        removed_version_token.as_str(),
+                    ],
+                )?;
+            } else {
+                transaction.execute(
+                    "
 DELETE FROM installed_package_versions
 WHERE manager_id = ?1 AND package_name = ?2
 ",
-                params![package.manager.as_str(), package.name.as_str()],
-            )?;
+                    params![package.manager.as_str(), package.name.as_str()],
+                )?;
+            }
 
             transaction.execute(
                 "
@@ -469,7 +490,12 @@ WHERE manager_id = ?1 AND package_name = ?2
         })
     }
 
-    fn apply_upgrade_result(&self, package: &PackageRef) -> PersistenceResult<()> {
+    fn apply_upgrade_result(
+        &self,
+        package: &PackageRef,
+        before_version: Option<&str>,
+        after_version: Option<&str>,
+    ) -> PersistenceResult<()> {
         self.with_connection("apply_upgrade_result", |connection| {
             ensure_schema_ready(connection)?;
             let transaction = connection.transaction()?;
@@ -495,6 +521,7 @@ WHERE manager_id = ?1 AND package_name = ?2
                 )
                 .optional()?;
 
+            let mut clear_outdated = package.manager != ManagerId::Asdf;
             if let Some((
                 installed_version,
                 candidate_version,
@@ -504,8 +531,9 @@ WHERE manager_id = ?1 AND package_name = ?2
                 has_override,
             )) = outdated_entry
             {
-                let candidate_version_token =
-                    to_installed_version_token(Some(candidate_version.as_str()));
+                let promoted_version = after_version.unwrap_or(candidate_version.as_str());
+                let promoted_version_token =
+                    to_installed_version_token(Some(promoted_version));
                 transaction.execute(
                     "
 INSERT INTO installed_package_versions (
@@ -521,7 +549,7 @@ ON CONFLICT(manager_id, package_name, installed_version) DO UPDATE SET
                     params![
                         package.manager.as_str(),
                         package.name.as_str(),
-                        candidate_version_token.as_str(),
+                        promoted_version_token.as_str(),
                         pinned,
                         is_active,
                         is_default,
@@ -529,9 +557,10 @@ ON CONFLICT(manager_id, package_name, installed_version) DO UPDATE SET
                     ],
                 )?;
 
-                let installed_version_token =
-                    to_installed_version_token(installed_version.as_deref());
-                if installed_version_token != candidate_version_token {
+                let prior_version_token = to_installed_version_token(
+                    before_version.or(installed_version.as_deref()),
+                );
+                if prior_version_token != promoted_version_token {
                     transaction.execute(
                         "
 DELETE FROM installed_package_versions
@@ -542,19 +571,24 @@ WHERE manager_id = ?1
                         params![
                             package.manager.as_str(),
                             package.name.as_str(),
-                            installed_version_token.as_str(),
+                            prior_version_token.as_str(),
                         ],
                     )?;
                 }
+                if package.manager == ManagerId::Asdf {
+                    clear_outdated = is_active != 0 && is_default != 0 && has_override == 0;
+                }
             }
 
-            transaction.execute(
-                "
+            if clear_outdated {
+                transaction.execute(
+                    "
 DELETE FROM outdated_packages
 WHERE manager_id = ?1 AND package_name = ?2
 ",
-                params![package.manager.as_str(), package.name.as_str()],
-            )?;
+                    params![package.manager.as_str(), package.name.as_str()],
+                )?;
+            }
 
             transaction.commit()?;
             Ok(())

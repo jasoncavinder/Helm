@@ -683,7 +683,10 @@ final class HelmCore: ObservableObject {
     @Published var upgradePlanIncludePinned: Bool = false
     @Published var scopedUpgradePlanRunInProgress: Bool = false
     @Published var detectedManagers: Set<String> = [] {
-        didSet { scheduleDerivedViewStateRefresh() }
+        didSet {
+            invalidateKnownPackageCaches()
+            scheduleDerivedViewStateRefresh()
+        }
     }
     @Published var managerStatuses: [String: ManagerStatus] = [:] {
         didSet {
@@ -756,11 +759,13 @@ final class HelmCore: ObservableObject {
     var managerActionTaskSubmittedAt: [UInt64: Date] = [:]
     var managerVerificationAnchorTaskIdByManager: [String: UInt64] = [:]
     var managerVerificationStartedAtByManager: [String: Date] = [:]
+    var managerPostInstallSetupHandledTaskIds: [String: UInt64] = [:]
     var localManagerActionTasks: [String: TaskItem] = [:]
     var localManagerActionTaskCreatedAt: [String: Date] = [:]
     var upgradeActionTaskByPackage: [String: UInt64] = [:]
     var installActionTaskByPackage: [String: UInt64] = [:]
     var installActionNormalizedNameByPackageId: [String: String] = [:]
+    var installActionTargetPackageById: [String: PackageItem] = [:]
     var uninstallActionTaskByPackage: [String: UInt64] = [:]
     var rustupToolchainActionTaskByKey: [String: UInt64] = [:]
     var rustupToolchainActionPackageByKey: [String: PackageItem] = [:]
@@ -1306,6 +1311,7 @@ final class HelmCore: ObservableObject {
                     self?.managerActionTaskSubmittedAt = [:]
                     self?.managerVerificationAnchorTaskIdByManager = [:]
                     self?.managerVerificationStartedAtByManager = [:]
+                    self?.managerPostInstallSetupHandledTaskIds = [:]
                     self?.localManagerActionTasks = [:]
                     self?.localManagerActionTaskCreatedAt = [:]
                     self?.lastObservedTaskId = 0

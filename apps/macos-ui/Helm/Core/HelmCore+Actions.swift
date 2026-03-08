@@ -129,7 +129,10 @@ extension HelmCore {
             managerId: package.managerId,
             taskType: "upgrade",
             operation: { completion in
-            service.upgradePackage(managerId: package.managerId, packageName: package.name) { completion($0) }
+            service.upgradePackage(
+                managerId: package.managerId,
+                packageName: package.mutationPackageName
+            ) { completion($0) }
         }, fallback: Int64(-1)) { [weak self] taskId in
             DispatchQueue.main.async {
                 guard let self = self, let taskId = taskId else { return }
@@ -456,6 +459,7 @@ extension HelmCore {
         DispatchQueue.main.async {
             self.installActionPackageIds.insert(targetPackage.id)
             self.installActionNormalizedNameByPackageId[targetPackage.id] = normalizedTargetPackageIdentity
+            self.installActionTargetPackageById[targetPackage.id] = targetPackage
         }
 
         guard let service = service() else {
@@ -471,11 +475,12 @@ extension HelmCore {
             DispatchQueue.main.async {
                 self.installActionPackageIds.remove(targetPackage.id)
                 self.installActionNormalizedNameByPackageId.removeValue(forKey: targetPackage.id)
+                self.installActionTargetPackageById.removeValue(forKey: targetPackage.id)
             }
             return
         }
 
-        let installRequestPackageName = self.installRequestPackageName(for: targetPackage)
+        let installRequestPackageName = targetPackage.mutationPackageName
 
         withTimeout(
             300,
@@ -495,6 +500,7 @@ extension HelmCore {
                     self.installActionTaskByPackage.removeValue(forKey: targetPackage.id)
                     self.installActionPackageIds.remove(targetPackage.id)
                     self.installActionNormalizedNameByPackageId.removeValue(forKey: targetPackage.id)
+                    self.installActionTargetPackageById.removeValue(forKey: targetPackage.id)
                     logger.error("installPackage(\(targetPackage.managerId):\(targetPackage.name)) failed")
                     self.recordLastError(
                         source: "core.actions",
@@ -508,21 +514,6 @@ extension HelmCore {
                 self.installActionTaskByPackage[targetPackage.id] = UInt64(taskId)
             }
         }
-    }
-
-    private func installRequestPackageName(for package: PackageItem) -> String {
-        let normalizedName = package.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedName.isEmpty else { return package.name }
-        guard package.managerId.lowercased() == "mise", package.status == .available else {
-            return normalizedName
-        }
-
-        let qualifiedDisplayName = package.displayName
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !qualifiedDisplayName.isEmpty, qualifiedDisplayName.contains("@") else {
-            return normalizedName
-        }
-        return qualifiedDisplayName
     }
 
     func uninstallPackage(_ package: PackageItem) {
@@ -553,7 +544,10 @@ extension HelmCore {
             managerId: package.managerId,
             taskType: "uninstall",
             operation: { completion in
-            service.uninstallPackage(managerId: package.managerId, packageName: package.name) { completion($0) }
+            service.uninstallPackage(
+                managerId: package.managerId,
+                packageName: package.mutationPackageName
+            ) { completion($0) }
         }, fallback: Int64(-1)) { [weak self] taskId in
             DispatchQueue.main.async {
                 guard let self = self, let taskId = taskId else { return }
@@ -963,6 +957,9 @@ extension HelmCore {
 
         upgradeActionTaskByPackage = upgradeActionTaskByPackage.filter { !$0.key.hasPrefix(packageIdPrefix) }
         installActionTaskByPackage = installActionTaskByPackage.filter { !$0.key.hasPrefix(packageIdPrefix) }
+        installActionTargetPackageById = installActionTargetPackageById.filter {
+            !$0.key.hasPrefix(packageIdPrefix)
+        }
         uninstallActionTaskByPackage = uninstallActionTaskByPackage.filter { !$0.key.hasPrefix(packageIdPrefix) }
 
         upgradeActionPackageIds = Set(upgradeActionPackageIds.filter { !$0.hasPrefix(packageIdPrefix) })
@@ -1570,7 +1567,7 @@ extension HelmCore {
             operation: { timeoutCompletion in
                 svc.previewPackageUninstall(
                     managerId: package.managerId,
-                    packageName: package.name
+                    packageName: package.mutationPackageName
                 ) { timeoutCompletion($0) }
             },
             fallback: String?.none

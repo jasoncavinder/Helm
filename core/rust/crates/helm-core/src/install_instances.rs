@@ -32,6 +32,60 @@ struct ScoreFactor {
     reason: String,
 }
 
+fn configured_asdf_root_paths() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        roots.push(home.join(".asdf"));
+    }
+    if let Some(path) = std::env::var_os("ASDF_DIR").map(PathBuf::from)
+        && path.is_absolute()
+        && !path.as_os_str().is_empty()
+    {
+        roots.push(path);
+    }
+    if let Some(path) = std::env::var_os("ASDF_DATA_DIR").map(PathBuf::from)
+        && path.is_absolute()
+        && !path.as_os_str().is_empty()
+    {
+        roots.push(path);
+    }
+    roots.sort();
+    roots.dedup();
+    roots
+}
+
+fn path_contains_asdf_root_subpath(text: &str, suffix: &str) -> bool {
+    text.contains("/.asdf/")
+        || configured_asdf_root_paths().iter().any(|root| {
+            let needle = format!(
+                "{}/{}",
+                root.to_string_lossy().to_string().to_lowercase(),
+                suffix
+            );
+            text.contains(needle.as_str())
+        })
+}
+
+fn path_contains_asdf_shims(text: &str) -> bool {
+    path_contains_asdf_root_subpath(text, "shims/")
+}
+
+fn path_contains_asdf_installs(text: &str) -> bool {
+    path_contains_asdf_root_subpath(text, "installs/")
+}
+
+fn path_contains_asdf_bin_exec(text: &str, executable: &str) -> bool {
+    text.contains(format!("/.asdf/bin/{executable}").as_str())
+        || configured_asdf_root_paths().iter().any(|root| {
+            let needle = format!(
+                "{}/bin/{}",
+                root.to_string_lossy().to_string().to_lowercase(),
+                executable
+            );
+            text.contains(needle.as_str())
+        })
+}
+
 trait ProvenanceSpec {
     fn classify(
         &self,
@@ -713,12 +767,12 @@ fn classify_asdf_instance(instance: &mut ManagerInstallInstance) {
         .to_string()
         .to_lowercase();
 
-    let asdf_layout = canonical.contains("/.asdf/bin/asdf")
-        || canonical.contains("/.asdf/shims/asdf")
-        || canonical.contains("/.asdf/installs/")
-        || display.contains("/.asdf/bin/asdf")
-        || display.contains("/.asdf/shims/asdf")
-        || display.contains("/.asdf/installs/");
+    let asdf_layout = path_contains_asdf_bin_exec(canonical.as_str(), "asdf")
+        || path_contains_asdf_shims(canonical.as_str())
+        || path_contains_asdf_installs(canonical.as_str())
+        || path_contains_asdf_bin_exec(display.as_str(), "asdf")
+        || path_contains_asdf_shims(display.as_str())
+        || path_contains_asdf_installs(display.as_str());
 
     if asdf_layout {
         let confidence = 0.92;
@@ -1218,10 +1272,10 @@ fn classify_runtime_manager_instance(
     add_score(
         &mut scores,
         &mut factors,
-        (canonical.contains("/.asdf/shims/") && canonical_matches_exec)
-            || (display.contains("/.asdf/shims/") && display_matches_exec)
-            || (canonical.contains("/.asdf/installs/") && canonical_matches_bin_exec)
-            || (display.contains("/.asdf/installs/") && display_matches_bin_exec),
+        (path_contains_asdf_shims(canonical.as_str()) && canonical_matches_exec)
+            || (path_contains_asdf_shims(display.as_str()) && display_matches_exec)
+            || (path_contains_asdf_installs(canonical.as_str()) && canonical_matches_bin_exec)
+            || (path_contains_asdf_installs(display.as_str()) && display_matches_bin_exec),
         InstallProvenance::Asdf,
         0.92,
         format!(
@@ -1769,9 +1823,9 @@ fn classify_rustup_instance(
     add_score(
         &mut scores,
         &mut factors,
-        canonical_lower.contains("/.asdf/shims/rustup")
-            || display_lower.contains("/.asdf/shims/rustup")
-            || (canonical_lower.contains("/.asdf/installs/")
+        path_contains_asdf_root_subpath(canonical_lower.as_str(), "shims/rustup")
+            || path_contains_asdf_root_subpath(display_lower.as_str(), "shims/rustup")
+            || (path_contains_asdf_installs(canonical_lower.as_str())
                 && canonical_lower.ends_with("/bin/rustup")),
         InstallProvenance::Asdf,
         0.92,
@@ -2083,7 +2137,7 @@ fn is_custom_cargo_home_rustup_path(canonical_lower: &str, display_lower: &str) 
     let known_non_rustup_init_layout = canonical_lower.contains("/cellar/")
         || canonical_lower.contains("/homebrew/")
         || canonical_lower.contains("/nix/store/")
-        || canonical_lower.contains("/.asdf/")
+        || path_contains_asdf_root_subpath(canonical_lower, "")
         || canonical_lower.contains("/.local/share/mise/")
         || canonical_lower.contains("/.local/share/rtx/");
     looks_like_rustup_bin && cargo_home_style_path && !known_non_rustup_init_layout
@@ -2382,6 +2436,10 @@ fn manager_additional_bin_roots() -> Vec<PathBuf> {
         roots.push(home.join(".local/share/rtx/shims"));
         roots.push(home.join(".nix-profile/bin"));
     }
+    for root in configured_asdf_root_paths() {
+        roots.push(root.join("bin"));
+        roots.push(root.join("shims"));
+    }
 
     roots
 }
@@ -2432,6 +2490,9 @@ fn manager_versioned_install_roots(id: ManagerId) -> Vec<PathBuf> {
         roots.push(home.join(".asdf/installs"));
         roots.push(home.join(".local/share/mise/installs"));
         roots.push(home.join(".local/share/rtx/installs"));
+    }
+    for root in configured_asdf_root_paths() {
+        roots.push(root.join("installs"));
     }
 
     roots

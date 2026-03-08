@@ -774,7 +774,7 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
   - `asdf` process source now resolves executable via structured `which` lookup with absolute-path fallback and rewrites request program paths
   - `asdf` outdated scan now tolerates per-tool latest-version probe failures (skips failing tool probes instead of failing the full scan)
 - Implemented adapter capabilities for this slice:
-  - `asdf`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade (compatibility mode)
+  - `asdf`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade, with plugin bootstrap, version-aware mutation targeting, and active/default/override runtime-state tracking
   - `macports`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade
   - `nix_darwin`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade (compatibility mode via `nix-env`)
 - Added fixtures + adapter tests for:
@@ -911,7 +911,7 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
 - Onboarding flow updated with friendlier tone; guided walkthrough (spotlight/coach marks) now implemented
 - 0.14 manager inventory is scaffolded in metadata; alpha.2/alpha.3/alpha.4 delivered container/VM, detection-only, security/firmware, and optional-manager slices
 - Optional-manager compatibility caveats:
-  - `asdf` support currently assumes plugin already exists; Helm currently manages install/uninstall/upgrade of tool versions, not plugin bootstrap/removal
+  - `asdf` now bootstraps missing plugins, inventories installed versions independently of `asdf current`, and tracks active/default/override state from current selection metadata; explicit `asdf` selection-management actions and plugin removal remain future work
   - `nix_darwin` support currently operates through `nix-env` compatibility flows and does not edit declarative nix-darwin configuration files
 - Self-update is intentionally limited to eligible direct Developer ID installs; package-manager-managed installs remain blocked by policy.
 - Diagnostics UI is available in the Inspector (`diagnostics`/`stderr`/`stdout`), including the v0.17 task-log viewer (`logs` tab with level/status filters and pagination).

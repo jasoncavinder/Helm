@@ -146,6 +146,7 @@ extension HelmCore {
                     )
                 }
                 self.syncManagerOperations(from: coreTasks)
+                self.syncManagerPostInstallSetupTasks(from: coreTasks)
                 self.syncUpgradeActions(from: coreTasks)
                 self.syncInstallActions(from: coreTasks)
                 self.syncUninstallActions(from: coreTasks)
@@ -362,6 +363,7 @@ extension HelmCore {
                 guard self.localSearchRequestGeneration == requestGeneration else { return }
                 self.mergePackageDescriptionSummaryIndex(from: results)
                 var installedOrOutdatedRepresentativeIdsByIdentity: [String: String] = [:]
+                var installedOrOutdatedRepresentativeIdsByStableKey: [String: String] = [:]
                 for package in (self.outdatedPackages + self.installedPackages) {
                     let identityId = self.packageIdentityId(
                         managerId: package.managerId,
@@ -370,6 +372,15 @@ extension HelmCore {
                     )
                     if installedOrOutdatedRepresentativeIdsByIdentity[identityId] == nil {
                         installedOrOutdatedRepresentativeIdsByIdentity[identityId] = package.id
+                    }
+                    if package.managerId == "asdf" {
+                        let stableKey = self.packageStableLookupKey(
+                            managerId: package.managerId,
+                            packageName: package.name
+                        )
+                        if installedOrOutdatedRepresentativeIdsByStableKey[stableKey] == nil {
+                            installedOrOutdatedRepresentativeIdsByStableKey[stableKey] = package.id
+                        }
                     }
                 }
                 let resolvedSummaryIds = Set(
@@ -384,6 +395,15 @@ extension HelmCore {
                             version: result.version
                         )
                         if let representativeId = installedOrOutdatedRepresentativeIdsByIdentity[identityId] {
+                            return representativeId
+                        }
+                        if result.sourceManager == "asdf",
+                           let representativeId = installedOrOutdatedRepresentativeIdsByStableKey[
+                            self.packageStableLookupKey(
+                                managerId: result.sourceManager,
+                                packageName: result.name
+                            )
+                           ] {
                             return representativeId
                         }
                         return self.availablePackageId(
@@ -401,6 +421,16 @@ extension HelmCore {
                         version: result.version
                     )
                     let packageId = installedOrOutdatedRepresentativeIdsByIdentity[identityId]
+                        ?? (
+                            result.sourceManager == "asdf"
+                                ? installedOrOutdatedRepresentativeIdsByStableKey[
+                                    self.packageStableLookupKey(
+                                        managerId: result.sourceManager,
+                                        packageName: result.name
+                                    )
+                                  ]
+                                : nil
+                        )
                         ?? self.availablePackageId(
                             managerId: result.sourceManager,
                             packageName: result.name,
@@ -457,6 +487,16 @@ extension HelmCore {
                         )
                     }
                 )
+                let excludedAsdfStableKeys = Set(
+                    (self.installedPackages + self.outdatedPackages)
+                        .filter { $0.managerId == "asdf" }
+                        .map { package in
+                            self.packageStableLookupKey(
+                                managerId: package.managerId,
+                                packageName: package.name
+                            )
+                        }
+                )
                 var dedupedById: [String: PackageItem] = [:]
 
                 for result in results {
@@ -466,6 +506,15 @@ extension HelmCore {
                         version: result.version
                     )
                     guard !excludedIdentityIds.contains(identityId) else { continue }
+                    if result.sourceManager == "asdf",
+                       excludedAsdfStableKeys.contains(
+                        self.packageStableLookupKey(
+                            managerId: result.sourceManager,
+                            packageName: result.name
+                        )
+                       ) {
+                        continue
+                    }
 
                     let id = self.availablePackageId(
                         managerId: result.sourceManager,

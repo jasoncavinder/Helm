@@ -1,5 +1,15 @@
 import Foundation
 
+struct PackageRuntimeStateProjection: Codable, Hashable {
+    var isActive: Bool = false
+    var isDefault: Bool = false
+    var hasOverride: Bool = false
+
+    var isEmpty: Bool {
+        !isActive && !isDefault && !hasOverride
+    }
+}
+
 struct UpgradePreviewPlanner {
     struct Entry: Equatable {
         let manager: String
@@ -253,6 +263,8 @@ struct PackageConsolidationPolicy {
         rhsPinned: Bool,
         lhsRestartRequired: Bool,
         rhsRestartRequired: Bool,
+        lhsRuntimeState: PackageRuntimeStateProjection = PackageRuntimeStateProjection(),
+        rhsRuntimeState: PackageRuntimeStateProjection = PackageRuntimeStateProjection(),
         lhsVersion: String? = nil,
         rhsVersion: String? = nil,
         lhsManagerId: String,
@@ -270,6 +282,15 @@ struct PackageConsolidationPolicy {
         }
         if lhsRestartRequired != rhsRestartRequired {
             return lhsRestartRequired
+        }
+        if lhsRuntimeState.isActive != rhsRuntimeState.isActive {
+            return lhsRuntimeState.isActive
+        }
+        if lhsRuntimeState.isDefault != rhsRuntimeState.isDefault {
+            return lhsRuntimeState.isDefault
+        }
+        if lhsRuntimeState.hasOverride != rhsRuntimeState.hasOverride {
+            return !lhsRuntimeState.hasOverride
         }
 
         let lhsVersionToken = normalizedVersionToken(lhsVersion)

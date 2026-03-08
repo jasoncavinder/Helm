@@ -60,9 +60,10 @@ pub mod yarn;
 pub mod yarn_process;
 
 pub use asdf::{
-    AsdfAdapter, AsdfSource, asdf_detect_request, asdf_install_request, asdf_latest_request,
-    asdf_list_all_plugins_request, asdf_list_current_request, asdf_list_plugins_request,
-    asdf_uninstall_request, asdf_upgrade_request,
+    AsdfAdapter, AsdfSource, asdf_add_plugin_request, asdf_detect_request, asdf_install_request,
+    asdf_latest_request, asdf_list_current_request, asdf_list_installed_versions_request,
+    asdf_list_plugins_request, asdf_search_plugins_request, asdf_set_home_version_request,
+    asdf_uninstall_request,
 };
 pub use asdf_process::ProcessAsdfSource;
 pub use bundler::{

@@ -1134,6 +1134,20 @@ fn manager_additional_bin_roots() -> Vec<std::path::PathBuf> {
         roots.push(home.join(".asdf/bin"));
         roots.push(home.join(".asdf/shims"));
     }
+    if let Some(path) = std::env::var_os("ASDF_DIR")
+        .map(std::path::PathBuf::from)
+        .filter(|path| path.is_absolute() && !path.as_os_str().is_empty())
+    {
+        roots.push(path.join("bin"));
+        roots.push(path.join("shims"));
+    }
+    if let Some(path) = std::env::var_os("ASDF_DATA_DIR")
+        .map(std::path::PathBuf::from)
+        .filter(|path| path.is_absolute() && !path.as_os_str().is_empty())
+    {
+        roots.push(path.join("bin"));
+        roots.push(path.join("shims"));
+    }
 
     roots
 }
@@ -1183,6 +1197,18 @@ fn manager_versioned_install_roots(id: ManagerId) -> Vec<std::path::PathBuf> {
     {
         roots.push(home.join(".asdf/installs"));
         roots.push(home.join(".local/share/mise/installs"));
+    }
+    if let Some(path) = std::env::var_os("ASDF_DIR")
+        .map(std::path::PathBuf::from)
+        .filter(|path| path.is_absolute() && !path.as_os_str().is_empty())
+    {
+        roots.push(path.join("installs"));
+    }
+    if let Some(path) = std::env::var_os("ASDF_DATA_DIR")
+        .map(std::path::PathBuf::from)
+        .filter(|path| path.is_absolute() && !path.as_os_str().is_empty())
+    {
+        roots.push(path.join("installs"));
     }
 
     roots
@@ -2653,7 +2679,8 @@ fn supports_individual_package_uninstall(runtime: &AdapterRuntime, manager: Mana
 fn manager_allows_individual_package_uninstall(manager: ManagerId) -> bool {
     matches!(
         manager,
-        ManagerId::HomebrewFormula
+        ManagerId::Asdf
+            | ManagerId::HomebrewFormula
             | ManagerId::Npm
             | ManagerId::Pnpm
             | ManagerId::Yarn
@@ -2677,7 +2704,8 @@ fn supports_individual_package_upgrade(runtime: &AdapterRuntime, manager: Manage
 
     matches!(
         manager,
-        ManagerId::HomebrewFormula
+        ManagerId::Asdf
+            | ManagerId::HomebrewFormula
             | ManagerId::Mise
             | ManagerId::Npm
             | ManagerId::Pip
@@ -8704,6 +8732,17 @@ fn spawn_post_install_setup_task(
                 return;
             }
         };
+        if wait_for_install_task.is_some() && instances.is_empty() {
+            append_local_task_log(
+                store.as_ref(),
+                task_id,
+                manager,
+                task_type,
+                TaskStatus::Running,
+                TaskLogLevel::Info,
+                "manager install-instance state is not available yet; applying post-install setup based on successful install task",
+            );
+        }
 
         let apply_result = helm_core::post_install_setup::apply_recommended_post_install_setup(
             manager,
