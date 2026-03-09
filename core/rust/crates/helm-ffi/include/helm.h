@@ -376,9 +376,11 @@ bool helm_pin_package(const char *manager_id, const char *package_name, const ch
  * # Safety
  *
  * `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
- * strings.
+ * strings. `pinned_version` may be null.
  */
-bool helm_unpin_package(const char *manager_id, const char *package_name);
+bool helm_unpin_package(const char *manager_id,
+                        const char *package_name,
+                        const char *pinned_version);
 
 /**
  * Set a manager as enabled or disabled.

@@ -87,13 +87,14 @@ struct PackageItem: Identifiable {
     var mutationPackageName: String {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else { return name }
-        if managerId.lowercased() == "mise", status == .available {
+        let normalizedManagerId = managerId.lowercased()
+        if normalizedManagerId == "mise", status == .available {
             let qualifiedDisplayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
             if !qualifiedDisplayName.isEmpty, qualifiedDisplayName.contains("@") {
                 return qualifiedDisplayName
             }
         }
-        guard managerId.lowercased() == "asdf",
+        guard normalizedManagerId == "asdf" || normalizedManagerId == "mise",
               PackageIdentity.hasKnownVersion(version) else {
             return trimmedName
         }

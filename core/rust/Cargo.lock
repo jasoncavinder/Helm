@@ -654,6 +654,7 @@ version = "0.17.8"
 dependencies = [
  "crossterm 0.28.1",
  "helm-core",
+ "libc",
  "ratatui",
  "semver",
  "serde",

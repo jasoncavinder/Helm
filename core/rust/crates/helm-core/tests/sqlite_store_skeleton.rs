@@ -281,22 +281,48 @@ fn upsert_and_remove_pins_roundtrip() {
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].package.name, "git");
     assert_eq!(listed[0].kind, PinKind::Native);
+    assert_eq!(listed[0].pinned_version.as_deref(), Some("2.45.1"));
 
-    store.remove_pin("homebrew_formula:git").unwrap();
+    store
+        .remove_pin(
+            &PackageRef {
+                manager: ManagerId::HomebrewFormula,
+                name: "git".to_string(),
+            },
+            Some("2.45.1"),
+        )
+        .unwrap();
     assert!(store.list_pins().unwrap().is_empty());
 
     let _ = std::fs::remove_file(path);
 }
 
 #[test]
-fn remove_pin_requires_structured_package_key() {
-    let path = test_db_path("pin-key-format");
+fn remove_pin_is_version_scoped() {
+    let path = test_db_path("pin-version-scope");
     let store = SqliteStore::new(&path);
     store.migrate_to_latest().unwrap();
 
-    let error = store.remove_pin("git").unwrap_err();
-    assert_eq!(error.kind, CoreErrorKind::StorageFailure);
-    assert!(error.message.contains("package_key"));
+    let package = PackageRef {
+        manager: ManagerId::Mise,
+        name: "python".to_string(),
+    };
+    for version in ["3.12.3", "3.13.0"] {
+        store
+            .upsert_pin(&PinRecord {
+                package: package.clone(),
+                kind: PinKind::Virtual,
+                pinned_version: Some(version.to_string()),
+                created_at: UNIX_EPOCH + Duration::from_secs(123),
+            })
+            .unwrap();
+    }
+
+    store.remove_pin(&package, Some("3.12.3")).unwrap();
+
+    let listed = store.list_pins().unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].pinned_version.as_deref(), Some("3.13.0"));
 
     let _ = std::fs::remove_file(path);
 }
@@ -550,6 +576,53 @@ fn list_outdated_marks_package_pinned_when_pin_record_exists() {
 }
 
 #[test]
+fn list_installed_marks_only_matching_version_pinned() {
+    let path = test_db_path("installed-version-pin-overlay");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let package = PackageRef {
+        manager: ManagerId::Mise,
+        name: "python".to_string(),
+    };
+    store
+        .upsert_installed(&[
+            InstalledPackage {
+                package: package.clone(),
+                installed_version: Some("3.12.3".to_string()),
+                pinned: false,
+                runtime_state: Default::default(),
+            },
+            InstalledPackage {
+                package: package.clone(),
+                installed_version: Some("3.13.0".to_string()),
+                pinned: false,
+                runtime_state: Default::default(),
+            },
+        ])
+        .unwrap();
+    store
+        .upsert_pin(&PinRecord {
+            package,
+            kind: PinKind::Virtual,
+            pinned_version: Some("3.12.3".to_string()),
+            created_at: UNIX_EPOCH + Duration::from_secs(777),
+        })
+        .unwrap();
+
+    let installed = store.list_installed().unwrap();
+    assert_eq!(installed.len(), 2);
+    let pinned_versions = installed
+        .into_iter()
+        .filter(|entry| entry.pinned)
+        .filter_map(|entry| entry.installed_version)
+        .collect::<Vec<_>>();
+    assert_eq!(pinned_versions, vec!["3.12.3".to_string()]);
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn set_snapshot_pinned_updates_cached_rows_immediately() {
     let path = test_db_path("set-snapshot-pinned");
     let store = SqliteStore::new(&path);
@@ -579,7 +652,9 @@ fn set_snapshot_pinned_updates_cached_rows_immediately() {
         }])
         .unwrap();
 
-    store.set_snapshot_pinned(&package, false).unwrap();
+    store
+        .set_snapshot_pinned(&package, Some("1.11.4"), false)
+        .unwrap();
 
     let installed = store.list_installed().unwrap();
     let outdated = store.list_outdated().unwrap();
@@ -587,6 +662,48 @@ fn set_snapshot_pinned_updates_cached_rows_immediately() {
     assert_eq!(outdated.len(), 1);
     assert!(!installed[0].pinned);
     assert!(!outdated[0].pinned);
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn set_snapshot_pinned_only_updates_matching_version() {
+    let path = test_db_path("set-snapshot-pinned-version-scope");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let package = PackageRef {
+        manager: ManagerId::Asdf,
+        name: "python".to_string(),
+    };
+    store
+        .upsert_installed(&[
+            InstalledPackage {
+                package: package.clone(),
+                installed_version: Some("3.12.3".to_string()),
+                pinned: false,
+                runtime_state: Default::default(),
+            },
+            InstalledPackage {
+                package: package.clone(),
+                installed_version: Some("3.13.0".to_string()),
+                pinned: false,
+                runtime_state: Default::default(),
+            },
+        ])
+        .unwrap();
+
+    store
+        .set_snapshot_pinned(&package, Some("3.12.3"), true)
+        .unwrap();
+
+    let installed = store.list_installed().unwrap();
+    let pinned_versions = installed
+        .into_iter()
+        .filter(|entry| entry.pinned)
+        .filter_map(|entry| entry.installed_version)
+        .collect::<Vec<_>>();
+    assert_eq!(pinned_versions, vec!["3.12.3".to_string()]);
 
     let _ = std::fs::remove_file(path);
 }

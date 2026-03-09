@@ -4,6 +4,28 @@ import os.log
 private let logger = Logger(subsystem: "app.jasoncavinder.Helm.HelmService", category: "service")
 
 class HelmService: NSObject, HelmServiceProtocol {
+    private struct HelmCliShimInstallResponse: Codable {
+        let accepted: Bool
+        let installed: Bool
+        let channel: String
+        let updatePolicy: String
+        let currentVersion: String?
+        let shimPath: String?
+        let markerPath: String?
+        let reason: String?
+
+        enum CodingKeys: String, CodingKey {
+            case accepted
+            case installed
+            case channel
+            case updatePolicy = "update_policy"
+            case currentVersion = "current_version"
+            case shimPath = "shim_path"
+            case markerPath = "marker_path"
+            case reason
+        }
+    }
+
     override init() {
         super.init()
 
@@ -319,6 +341,106 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(result)
     }
 
+    func installHelmCliShim(
+        appBundlePath: String,
+        appBundleIdentifier: String,
+        withReply reply: @escaping (String?) -> Void
+    ) {
+        let appBundleURL = URL(fileURLWithPath: appBundlePath, isDirectory: true)
+        let cliURL = appBundleURL
+            .appendingPathComponent("Contents", isDirectory: true)
+            .appendingPathComponent("Resources", isDirectory: true)
+            .appendingPathComponent("helm-cli", isDirectory: false)
+
+        guard FileManager.default.isExecutableFile(atPath: cliURL.path) else {
+            logger.warning("installHelmCliShim missing bundled CLI at \(cliURL.path, privacy: .public)")
+            reply(encodeHelmCliShimInstallResponse(
+                HelmCliShimInstallResponse(
+                    accepted: false,
+                    installed: false,
+                    channel: "app-bundle-shim",
+                    updatePolicy: "channel",
+                    currentVersion: nil,
+                    shimPath: nil,
+                    markerPath: nil,
+                    reason: "Bundled Helm CLI binary is missing from the app bundle."
+                )
+            ))
+            return
+        }
+
+        let process = Process()
+        process.executableURL = cliURL
+        process.arguments = [
+            "--json",
+            "self",
+            "install-shim",
+            "--app-bundle-path",
+            appBundlePath,
+            "--app-bundle-id",
+            appBundleIdentifier,
+        ]
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            logger.error("installHelmCliShim failed to launch bundled CLI: \(error.localizedDescription, privacy: .public)")
+            reply(encodeHelmCliShimInstallResponse(
+                HelmCliShimInstallResponse(
+                    accepted: false,
+                    installed: false,
+                    channel: "app-bundle-shim",
+                    updatePolicy: "channel",
+                    currentVersion: nil,
+                    shimPath: nil,
+                    markerPath: nil,
+                    reason: error.localizedDescription
+                )
+            ))
+            return
+        }
+
+        let stdout = String(
+            data: stdoutPipe.fileHandleForReading.readDataToEndOfFile(),
+            encoding: .utf8
+        )?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let stderr = String(
+            data: stderrPipe.fileHandleForReading.readDataToEndOfFile(),
+            encoding: .utf8
+        )?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let stdout, !stdout.isEmpty {
+            logger.info("installHelmCliShim bundled CLI exited \(process.terminationStatus) with JSON payload")
+            reply(stdout)
+            return
+        }
+
+        let reason: String
+        if let stderr, !stderr.isEmpty {
+            reason = stderr
+        } else {
+            reason = "Bundled Helm CLI shim install failed without output."
+        }
+        logger.error("installHelmCliShim bundled CLI exited \(process.terminationStatus) without JSON payload: \(reason, privacy: .public)")
+        reply(encodeHelmCliShimInstallResponse(
+            HelmCliShimInstallResponse(
+                accepted: false,
+                installed: false,
+                channel: "app-bundle-shim",
+                updatePolicy: "channel",
+                currentVersion: nil,
+                shimPath: nil,
+                markerPath: nil,
+                reason: reason
+            )
+        ))
+    }
+
     func listPackageManagerPreferences(withReply reply: @escaping (String?) -> Void) {
         guard let cString = helm_list_package_manager_preferences() else {
             logger.warning("helm_list_package_manager_preferences returned nil")
@@ -435,10 +557,21 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(result)
     }
 
-    func unpinPackage(managerId: String, packageName: String, withReply reply: @escaping (Bool) -> Void) {
-        let result = managerId.withCString { manager in
-            packageName.withCString { package in
-                helm_unpin_package(manager, package)
+    func unpinPackage(managerId: String, packageName: String, version: String?, withReply reply: @escaping (Bool) -> Void) {
+        let result: Bool
+        if let version {
+            result = managerId.withCString { manager in
+                packageName.withCString { package in
+                    version.withCString { versionPtr in
+                        helm_unpin_package(manager, package, versionPtr)
+                    }
+                }
+            }
+        } else {
+            result = managerId.withCString { manager in
+                packageName.withCString { package in
+                    helm_unpin_package(manager, package, nil)
+                }
             }
         }
         logger.info("helm_unpin_package(\(managerId), \(packageName)) result: \(result)")
@@ -696,5 +829,13 @@ class HelmService: NSObject, HelmServiceProtocol {
         }
         defer { helm_free_string(cString) }
         reply(String(cString: cString))
+    }
+
+    private func encodeHelmCliShimInstallResponse(_ response: HelmCliShimInstallResponse) -> String? {
+        let encoder = JSONEncoder()
+        guard let data = try? encoder.encode(response) else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
     }
 }

@@ -258,6 +258,7 @@ enum ConfirmAction {
     TogglePin {
         manager: ManagerId,
         package_name: String,
+        version: Option<String>,
         pinned: bool,
     },
     SetPackageKegPolicy {
@@ -328,13 +329,18 @@ impl ConfirmAction {
             Self::TogglePin {
                 manager,
                 package_name,
+                version,
                 pinned,
             } => {
                 let action = if *pinned { "Unpin" } else { "Pin" };
+                let package_target = version
+                    .as_deref()
+                    .map(|value| format!("{package_name}@{value}"))
+                    .unwrap_or_else(|| package_name.clone());
                 format!(
                     "{} '{}@{}'? [Enter confirm / Esc cancel]",
                     action,
-                    package_name,
+                    package_target,
                     manager.as_str()
                 )
             }
@@ -431,6 +437,7 @@ struct PackageRow {
     kind: PackageRowKind,
     manager: ManagerId,
     package_name: String,
+    action_package_name: String,
     installed_version: Option<String>,
     candidate_version: Option<String>,
     pinned: bool,
@@ -1641,7 +1648,11 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                 if let Some(update) = app.selected_update() {
                     app.confirm_action = Some(ConfirmAction::UpgradePackage {
                         manager: update.package.manager,
-                        package_name: update.package.name.clone(),
+                        package_name: package_row_action_package_name(
+                            update.package.manager,
+                            update.package.name.as_str(),
+                            update.installed_version.as_deref(),
+                        ),
                     });
                 }
             }
@@ -1651,7 +1662,7 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                 {
                     app.confirm_action = Some(ConfirmAction::UpgradePackage {
                         manager: package.manager,
-                        package_name: package.package_name.clone(),
+                        package_name: package.action_package_name.clone(),
                     });
                 }
             }
@@ -1682,7 +1693,7 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                     match prepare_package_uninstall_confirm_action(
                         store,
                         package.manager,
-                        package.package_name.clone(),
+                        package.action_package_name.clone(),
                     ) {
                         Ok(action) => app.confirm_action = Some(action),
                         Err(error) => app.note_error(error),
@@ -1782,6 +1793,7 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                 app.confirm_action = Some(ConfirmAction::TogglePin {
                     manager: package.manager,
                     package_name: package.package_name.clone(),
+                    version: package.installed_version.clone(),
                     pinned: package.pinned,
                 });
             }
@@ -1957,7 +1969,7 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
             {
                 app.confirm_action = Some(ConfirmAction::InstallPackage {
                     manager: package.manager,
-                    package_name: package.package_name.clone(),
+                    package_name: package.action_package_name.clone(),
                 });
             } else if app.section == Section::Managers
                 && let Some(manager) = app.selected_manager()
@@ -2458,6 +2470,7 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
         ConfirmAction::TogglePin {
             manager,
             package_name,
+            version,
             pinned,
         } => {
             let supports_native_pin = registry::manager(manager)
@@ -2474,6 +2487,7 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
                         manager,
                         CoordinatorSubmitRequest::Unpin {
                             package_name: package_name.clone(),
+                            version: version.clone(),
                         },
                         ExecutionMode::Wait,
                     )?;
@@ -2488,12 +2502,11 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
                         manager,
                         name: package_name.clone(),
                     };
-                    let package_key = format!("{}:{}", manager.as_str(), package_name);
                     store
-                        .remove_pin(&package_key)
+                        .remove_pin(&package, version.as_deref())
                         .map_err(|error| format!("failed to remove pin record: {error}"))?;
                     store
-                        .set_snapshot_pinned(&package, false)
+                        .set_snapshot_pinned(&package, version.as_deref(), false)
                         .map_err(|error| {
                             format!("failed to unmark package pinned in snapshot: {error}")
                         })?;
@@ -2509,7 +2522,7 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
                     manager,
                     CoordinatorSubmitRequest::Pin {
                         package_name: package_name.clone(),
-                        version: None,
+                        version: version.clone(),
                     },
                     ExecutionMode::Wait,
                 )?;
@@ -2528,13 +2541,15 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
                     .upsert_pin(&PinRecord {
                         package: package.clone(),
                         kind: PinKind::Virtual,
-                        pinned_version: None,
+                        pinned_version: version.clone(),
                         created_at: SystemTime::now(),
                     })
                     .map_err(|error| format!("failed to persist pin record: {error}"))?;
-                store.set_snapshot_pinned(&package, true).map_err(|error| {
-                    format!("failed to mark package pinned in snapshot: {error}")
-                })?;
+                store
+                    .set_snapshot_pinned(&package, version.as_deref(), true)
+                    .map_err(|error| {
+                        format!("failed to mark package pinned in snapshot: {error}")
+                    })?;
                 Ok(format!(
                     "Virtual pin applied for '{}@{}'.",
                     package_name,
@@ -4393,21 +4408,30 @@ fn build_package_rows(
         } else {
             None
         };
-        rows_by_key.insert(
-            (package.package.manager, package.package.name.clone()),
-            PackageRow {
-                kind: PackageRowKind::Installed,
-                manager: package.package.manager,
-                package_name: package.package.name.clone(),
-                installed_version: package.installed_version.clone(),
-                candidate_version: None,
-                pinned: package.pinned,
-                summary: None,
-                homebrew_keg_policy,
-                preferred_manager,
-                runtime_state: package.runtime_state.clone(),
-            },
-        );
+        let key = (package.package.manager, package.package.name.clone());
+        let next_row = PackageRow {
+            kind: PackageRowKind::Installed,
+            manager: package.package.manager,
+            package_name: package.package.name.clone(),
+            action_package_name: package_row_action_package_name(
+                package.package.manager,
+                package.package.name.as_str(),
+                package.installed_version.as_deref(),
+            ),
+            installed_version: package.installed_version.clone(),
+            candidate_version: None,
+            pinned: package.pinned,
+            summary: None,
+            homebrew_keg_policy,
+            preferred_manager,
+            runtime_state: package.runtime_state.clone(),
+        };
+        match rows_by_key.get(&key) {
+            Some(existing) if !should_replace_installed_row(existing, package) => {}
+            _ => {
+                rows_by_key.insert(key, next_row);
+            }
+        }
     }
 
     for result in search_results {
@@ -4450,6 +4474,11 @@ fn build_package_rows(
                 kind: PackageRowKind::Available,
                 manager,
                 package_name,
+                action_package_name: package_row_action_package_name(
+                    manager,
+                    result.result.package.name.as_str(),
+                    result.result.version.as_deref(),
+                ),
                 installed_version: None,
                 candidate_version: result.result.version.clone(),
                 pinned: false,
@@ -4493,6 +4522,40 @@ fn build_package_rows(
         left.manager.as_str().cmp(right.manager.as_str())
     });
     Ok(rows)
+}
+
+fn package_row_action_package_name(
+    manager: ManagerId,
+    package_name: &str,
+    version: Option<&str>,
+) -> String {
+    let trimmed_name = package_name.trim();
+    if trimmed_name.is_empty() {
+        return package_name.to_string();
+    }
+    if matches!(manager, ManagerId::Asdf | ManagerId::Mise)
+        && let Some(version) = version.map(str::trim).filter(|value| !value.is_empty())
+    {
+        return format!("{trimmed_name}@{version}");
+    }
+    trimmed_name.to_string()
+}
+
+fn should_replace_installed_row(existing: &PackageRow, candidate: &InstalledPackage) -> bool {
+    let existing_active_rank = (
+        existing.runtime_state.is_active,
+        existing.runtime_state.is_default,
+        !existing.runtime_state.has_override,
+    );
+    let candidate_active_rank = (
+        candidate.runtime_state.is_active,
+        candidate.runtime_state.is_default,
+        !candidate.runtime_state.has_override,
+    );
+    if candidate_active_rank != existing_active_rank {
+        return candidate_active_rank > existing_active_rank;
+    }
+    candidate.installed_version > existing.installed_version
 }
 
 fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
@@ -4746,6 +4809,7 @@ mod tests {
             ConfirmAction::TogglePin {
                 manager: ManagerId::Pip,
                 package_name: "certifi".to_string(),
+                version: Some("2026.1.4".to_string()),
                 pinned: false,
             },
         )
@@ -4776,6 +4840,7 @@ mod tests {
             ConfirmAction::TogglePin {
                 manager: ManagerId::Pip,
                 package_name: "certifi".to_string(),
+                version: Some("2026.1.4".to_string()),
                 pinned: true,
             },
         )

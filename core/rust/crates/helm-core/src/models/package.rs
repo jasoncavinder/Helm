@@ -7,6 +7,17 @@ pub struct PackageRef {
     pub name: String,
 }
 
+impl PackageRef {
+    pub fn is_manager_self_package(&self) -> bool {
+        let trimmed = self.name.trim();
+        trimmed == "__self__" || trimmed.starts_with("__self__:")
+    }
+
+    pub fn is_user_visible_package(&self) -> bool {
+        !self.is_manager_self_package()
+    }
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PackageRuntimeState {

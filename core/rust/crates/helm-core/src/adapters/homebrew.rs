@@ -226,7 +226,7 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                     package: pin_request.package,
                     action: ManagerAction::Pin,
                     before_version: None,
-                    after_version: pin_request.version,
+                    after_version: None,
                 }))
             }
             AdapterRequest::Unpin(unpin_request) => {

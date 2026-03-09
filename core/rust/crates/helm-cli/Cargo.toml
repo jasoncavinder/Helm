@@ -19,3 +19,4 @@ time = { version = "0.3", features = ["formatting"] }
 ureq = "2.10"
 ratatui = "0.30"
 crossterm = "0.28"
+libc = "0.2"

@@ -1,7 +1,11 @@
 use std::collections::{BTreeMap, HashMap};
 use std::env;
+#[cfg(target_vendor = "apple")]
+use std::ffi::CString;
 use std::fs::{self, OpenOptions};
 use std::io::{IsTerminal, Read, Write};
+#[cfg(target_vendor = "apple")]
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{ExitCode, Stdio};
@@ -612,6 +616,7 @@ enum CoordinatorSubmitRequest {
     },
     Unpin {
         package_name: String,
+        version: Option<String>,
     },
 }
 
@@ -846,6 +851,7 @@ fn main() -> ExitCode {
         verbose_log(format!("manager policy self-heal skipped: {}", error));
     }
     if command_requires_cli_onboarding(command)
+        && !command_bypasses_cli_onboarding(command, &command_args)
         && let Err(error) = ensure_cli_onboarding_completed(store.as_ref(), &options)
     {
         let (json_emitted, normalized_error) = strip_json_error_marker(error.as_str());
@@ -1520,6 +1526,13 @@ fn command_requires_cli_onboarding(command: Command) -> bool {
             | Command::Completion
             | Command::Onboarding
             | Command::InternalCoordinator
+    )
+}
+
+fn command_bypasses_cli_onboarding(command: Command, command_args: &[String]) -> bool {
+    matches!(
+        (command, command_args.first().map(String::as_str)),
+        (Command::SelfCmd, Some("install-shim"))
     )
 }
 
@@ -2732,7 +2745,7 @@ fn cmd_packages_mutation(
     subcommand: &str,
     command_args: &[String],
 ) -> Result<(), String> {
-    let allow_version = matches!(subcommand, "install" | "pin");
+    let allow_version = matches!(subcommand, "install" | "pin" | "unpin");
     let parsed = parse_package_mutation_args(subcommand, command_args, allow_version)?;
     let package = PackageRef {
         manager: parsed.manager,
@@ -2799,6 +2812,7 @@ fn cmd_packages_mutation(
         }),
         "unpin" if supports_native_unpin => Some(CoordinatorSubmitRequest::Unpin {
             package_name: parsed.package_name.clone(),
+            version: parsed.version.clone(),
         }),
         "pin" | "unpin" => None,
         _ => {
@@ -2830,22 +2844,25 @@ fn cmd_packages_mutation(
             .upsert_pin(&PinRecord {
                 package: package.clone(),
                 kind: pin_kind,
-                pinned_version: parsed.version.clone(),
+                pinned_version: if pin_kind == PinKind::Native {
+                    None
+                } else {
+                    parsed.version.clone()
+                },
                 created_at: SystemTime::now(),
             })
             .map_err(|error| format!("failed to persist pin record: {error}"))?;
         store
-            .set_snapshot_pinned(&package, true)
+            .set_snapshot_pinned(&package, parsed.version.as_deref(), true)
             .map_err(|error| format!("failed to mark package pinned in snapshot: {error}"))?;
     }
 
     if subcommand == "unpin" {
-        let package_key = format!("{}:{}", parsed.manager.as_str(), parsed.package_name);
         store
-            .remove_pin(&package_key)
+            .remove_pin(&package, parsed.version.as_deref())
             .map_err(|error| format!("failed to remove pin record: {error}"))?;
         store
-            .set_snapshot_pinned(&package, false)
+            .set_snapshot_pinned(&package, parsed.version.as_deref(), false)
             .map_err(|error| format!("failed to unmark package pinned in snapshot: {error}"))?;
     }
 
@@ -5394,6 +5411,12 @@ struct ParsedSelfUpdateArgs {
     force: bool,
 }
 
+#[derive(Debug, Clone)]
+struct ParsedSelfInstallShimArgs {
+    app_bundle_path: PathBuf,
+    app_bundle_id: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct CliUpdateManifest {
     version: String,
@@ -5817,6 +5840,59 @@ fn parse_self_update_args(command_args: &[String]) -> Result<ParsedSelfUpdateArg
         }
     }
     Ok(parsed)
+}
+
+fn parse_self_install_shim_args(
+    command_args: &[String],
+) -> Result<ParsedSelfInstallShimArgs, String> {
+    let mut app_bundle_path: Option<PathBuf> = None;
+    let mut app_bundle_id: Option<String> = None;
+
+    let mut index = 0usize;
+    while index < command_args.len() {
+        match command_args[index].as_str() {
+            "--app-bundle-path" => {
+                index += 1;
+                let Some(value) = command_args.get(index) else {
+                    return Err("--app-bundle-path requires a value".to_string());
+                };
+                if value.trim().is_empty() {
+                    return Err("--app-bundle-path must not be empty".to_string());
+                }
+                app_bundle_path = Some(PathBuf::from(value));
+            }
+            "--app-bundle-id" => {
+                index += 1;
+                let Some(value) = command_args.get(index) else {
+                    return Err("--app-bundle-id requires a value".to_string());
+                };
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    return Err("--app-bundle-id must not be empty".to_string());
+                }
+                app_bundle_id = Some(trimmed.to_string());
+            }
+            other => {
+                return Err(format!(
+                    "unsupported self install-shim argument '{}' (supported: --app-bundle-path, --app-bundle-id)",
+                    other
+                ));
+            }
+        }
+        index += 1;
+    }
+
+    let app_bundle_path =
+        app_bundle_path.ok_or_else(|| "--app-bundle-path is required".to_string())?;
+    if !app_bundle_path.is_absolute() {
+        return Err("--app-bundle-path must be absolute".to_string());
+    }
+    let app_bundle_id = app_bundle_id.ok_or_else(|| "--app-bundle-id is required".to_string())?;
+
+    Ok(ParsedSelfInstallShimArgs {
+        app_bundle_path,
+        app_bundle_id,
+    })
 }
 
 fn fetch_cli_update_manifest(endpoint: &str) -> Result<CliUpdateManifest, SelfUpdateCommandError> {
@@ -6351,6 +6427,289 @@ fn default_helm_cli_shim_path() -> Result<PathBuf, String> {
     Ok(PathBuf::from(home).join(DEFAULT_HELM_CLI_SHIM_RELATIVE_PATH))
 }
 
+fn default_helm_cli_shim_marker(version: &str) -> Result<InstallMarker, String> {
+    let installed_at = OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string());
+    Ok(InstallMarker {
+        channel: InstallChannel::AppBundleShim.as_str().to_string(),
+        artifact: "helm-cli".to_string(),
+        installed_at,
+        update_policy: UpdatePolicy::ChannelManaged.as_str().to_string(),
+        version: Some(version.to_string()),
+    })
+}
+
+fn shell_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+fn render_app_bundle_shim_script(app_bundle_path: &Path, app_bundle_id: &str) -> String {
+    let quoted_bundle_path = shell_single_quote(&app_bundle_path.display().to_string());
+    let quoted_bundle_id = shell_single_quote(app_bundle_id);
+    format!(
+        "#!/bin/sh\nset -eu\n\nHELM_APP_BUNDLE_PATH={quoted_bundle_path}\nHELM_APP_BUNDLE_ID={quoted_bundle_id}\nHELM_CLI_RELATIVE_PATH='Contents/Resources/helm-cli'\nHELM_SHIM_SELF=\"$0\"\n{APP_BUNDLE_SHIM_SENTINEL}\n\nresolve_cli_from_bundle() {{\n  bundle_path=\"$1\"\n  candidate=\"${{bundle_path%/}}/${{HELM_CLI_RELATIVE_PATH}}\"\n  if [ -x \"$candidate\" ]; then\n    printf '%s\\n' \"$candidate\"\n    return 0\n  fi\n  return 1\n}}\n\nresolve_cli() {{\n  if candidate=\"$(resolve_cli_from_bundle \"$HELM_APP_BUNDLE_PATH\")\"; then\n    printf '%s\\n' \"$candidate\"\n    return 0\n  fi\n\n  if command -v osascript >/dev/null 2>&1; then\n    discovered=\"$(osascript -e 'try' -e \"POSIX path of (path to application id \\\"${{HELM_APP_BUNDLE_ID}}\\\")\" -e 'on error' -e 'return \"\"' -e 'end try' 2>/dev/null | tr -d '\\r')\"\n    if [ -n \"$discovered\" ]; then\n      if candidate=\"$(resolve_cli_from_bundle \"${{discovered%/}}\")\"; then\n        printf '%s\\n' \"$candidate\"\n        return 0\n      fi\n    fi\n  fi\n\n  return 1\n}}\n\nif cli_path=\"$(resolve_cli)\"; then\n  exec \"$cli_path\" \"$@\"\nfi\n\necho \"Helm app bundle was not found or is missing its embedded CLI binary.\" >&2\necho \"If Helm is removed, this shim can remove itself.\" >&2\necho \"Shim path: ${{HELM_SHIM_SELF}}\" >&2\n\nif [ -t 0 ]; then\n  printf \"Remove this shim now? [y/N] \" >&2\n  if read -r answer; then\n    case \"$answer\" in\n      y|Y|yes|YES)\n        if rm -f -- \"$HELM_SHIM_SELF\"; then\n          echo \"Removed shim: ${{HELM_SHIM_SELF}}\" >&2\n        else\n          echo \"Failed to remove shim: ${{HELM_SHIM_SELF}}\" >&2\n        fi\n        ;;\n    esac\n  fi\nfi\n\nexit 1\n"
+    )
+}
+
+fn reject_symlink_file_path(path: &Path, label: &str) -> Result<(), String> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(format!(
+                "failed to inspect {} '{}': {}",
+                label,
+                path.display(),
+                error
+            ));
+        }
+    };
+    if metadata.file_type().is_symlink() {
+        return Err(format!(
+            "refusing to replace {} symlink path '{}'",
+            label,
+            path.display()
+        ));
+    }
+    if !metadata.file_type().is_file() {
+        return Err(format!(
+            "refusing to replace non-file {} path '{}'",
+            label,
+            path.display()
+        ));
+    }
+    Ok(())
+}
+
+fn write_regular_file_atomically(
+    path: &Path,
+    bytes: &[u8],
+    mode: u32,
+    label: &str,
+) -> Result<(), String> {
+    reject_symlink_file_path(path, label)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "failed to create parent directory for {} '{}': {}",
+                label,
+                path.display(),
+                error
+            )
+        })?;
+    }
+    reject_symlink_file_path(path, label)?;
+
+    let temp_path = update_temp_path(path);
+    let mut temp_file = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .mode(mode)
+        .open(&temp_path)
+        .map_err(|error| {
+            format!(
+                "failed to create temporary {} '{}': {}",
+                label,
+                temp_path.display(),
+                error
+            )
+        })?;
+    temp_file.write_all(bytes).map_err(|error| {
+        format!(
+            "failed to write temporary {} '{}': {}",
+            label,
+            temp_path.display(),
+            error
+        )
+    })?;
+    temp_file.sync_all().map_err(|error| {
+        format!(
+            "failed to flush temporary {} '{}': {}",
+            label,
+            temp_path.display(),
+            error
+        )
+    })?;
+
+    let mut permissions = temp_file
+        .metadata()
+        .map_err(|error| {
+            format!(
+                "failed to inspect temporary {} '{}': {}",
+                label,
+                temp_path.display(),
+                error
+            )
+        })?
+        .permissions();
+    permissions.set_mode(mode);
+    fs::set_permissions(&temp_path, permissions).map_err(|error| {
+        format!(
+            "failed to set permissions on temporary {} '{}': {}",
+            label,
+            temp_path.display(),
+            error
+        )
+    })?;
+
+    if let Err(error) = fs::rename(&temp_path, path) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(format!(
+            "failed to atomically replace {} '{}': {}",
+            label,
+            path.display(),
+            error
+        ));
+    }
+
+    sync_parent_directory(path)?;
+    Ok(())
+}
+
+#[cfg(target_vendor = "apple")]
+fn path_cstring(path: &Path) -> Result<CString, String> {
+    CString::new(path.as_os_str().as_bytes()).map_err(|_| {
+        format!(
+            "path '{}' contains interior NUL bytes and cannot be used",
+            path.display()
+        )
+    })
+}
+
+#[cfg(target_vendor = "apple")]
+fn quarantine_attr_name() -> CString {
+    CString::new("com.apple.quarantine").expect("static string should not contain NUL")
+}
+
+#[cfg(target_vendor = "apple")]
+fn has_quarantine_attribute(path: &Path) -> Result<bool, String> {
+    let path_c = path_cstring(path)?;
+    let attr_name = quarantine_attr_name();
+    let length = unsafe {
+        libc::getxattr(
+            path_c.as_ptr(),
+            attr_name.as_ptr(),
+            std::ptr::null_mut(),
+            0,
+            0,
+            0,
+        )
+    };
+    if length >= 0 {
+        return Ok(true);
+    }
+    let error = std::io::Error::last_os_error();
+    if error.raw_os_error() == Some(libc::ENOATTR) {
+        return Ok(false);
+    }
+    Err(format!(
+        "failed to inspect quarantine attribute for '{}': {}",
+        path.display(),
+        error
+    ))
+}
+
+#[cfg(not(target_vendor = "apple"))]
+fn has_quarantine_attribute(_path: &Path) -> Result<bool, String> {
+    Ok(false)
+}
+
+#[cfg(target_vendor = "apple")]
+fn clear_quarantine_attribute_if_present(path: &Path) -> Result<bool, String> {
+    if !has_quarantine_attribute(path)? {
+        return Ok(false);
+    }
+    let path_c = path_cstring(path)?;
+    let attr_name = quarantine_attr_name();
+    let result = unsafe { libc::removexattr(path_c.as_ptr(), attr_name.as_ptr(), 0) };
+    if result == 0 {
+        return Ok(true);
+    }
+    Err(format!(
+        "failed to clear quarantine attribute from '{}': {}",
+        path.display(),
+        std::io::Error::last_os_error()
+    ))
+}
+
+#[cfg(not(target_vendor = "apple"))]
+fn clear_quarantine_attribute_if_present(_path: &Path) -> Result<bool, String> {
+    Ok(false)
+}
+
+fn install_managed_app_bundle_shim(
+    app_bundle_path: &Path,
+    app_bundle_id: &str,
+    version: &str,
+) -> Result<(PathBuf, PathBuf), String> {
+    let bundled_cli_path = app_bundle_path
+        .join("Contents")
+        .join("Resources")
+        .join("helm-cli");
+    let metadata = fs::metadata(&bundled_cli_path).map_err(|error| {
+        format!(
+            "bundled CLI '{}' is unavailable: {}",
+            bundled_cli_path.display(),
+            error
+        )
+    })?;
+    if !metadata.is_file() {
+        return Err(format!(
+            "bundled CLI path '{}' is not a file",
+            bundled_cli_path.display()
+        ));
+    }
+
+    let shim_path = default_helm_cli_shim_path()?;
+    let marker_path = install_marker_path()?;
+    let shim_existed = shim_path.exists();
+    if shim_existed {
+        reject_symlink_file_path(&shim_path, "Helm CLI shim")?;
+        let script = fs::read_to_string(&shim_path).map_err(|error| {
+            format!(
+                "failed to read Helm CLI shim '{}': {}",
+                shim_path.display(),
+                error
+            )
+        })?;
+        if !script.contains(APP_BUNDLE_SHIM_SENTINEL) {
+            return Err(format!(
+                "refusing to replace non-managed Helm CLI shim at '{}'",
+                shim_path.display()
+            ));
+        }
+    }
+
+    let script = render_app_bundle_shim_script(app_bundle_path, app_bundle_id);
+    write_regular_file_atomically(&shim_path, script.as_bytes(), 0o755, "Helm CLI shim")?;
+    if let Err(error) = clear_quarantine_attribute_if_present(&shim_path) {
+        if !shim_existed {
+            let _ = fs::remove_file(&shim_path);
+        }
+        return Err(error);
+    }
+    if has_quarantine_attribute(&shim_path)? {
+        if !shim_existed {
+            let _ = fs::remove_file(&shim_path);
+        }
+        return Err(format!(
+            "installed Helm CLI shim remains quarantined at '{}'",
+            shim_path.display()
+        ));
+    }
+
+    let marker = default_helm_cli_shim_marker(version)?;
+    if let Err(error) = write_install_marker(&marker_path, &marker) {
+        if !shim_existed {
+            let _ = fs::remove_file(&shim_path);
+        }
+        return Err(error);
+    }
+
+    Ok((shim_path, marker_path))
+}
+
 fn self_uninstall_recommended_action(channel: InstallChannel, executable_path: &Path) -> String {
     match channel {
         InstallChannel::DirectScript => "helm self uninstall".to_string(),
@@ -6694,6 +7053,62 @@ fn cmd_self(
             print_self_help();
         }
         return Ok(());
+    }
+
+    if command_args[0] == "install-shim" {
+        if options.execution_mode == ExecutionMode::Detach {
+            return Err("self install-shim does not support --detach".to_string());
+        }
+        let parsed = parse_self_install_shim_args(&command_args[1..])?;
+        let current_version = current_cli_version();
+        match install_managed_app_bundle_shim(
+            parsed.app_bundle_path.as_path(),
+            parsed.app_bundle_id.as_str(),
+            &current_version,
+        ) {
+            Ok((shim_path, marker_path)) => {
+                if options.json {
+                    emit_json_payload(
+                        "helm.cli.v1.self.install_shim",
+                        json!({
+                            "accepted": true,
+                            "installed": true,
+                            "channel": InstallChannel::AppBundleShim.as_str(),
+                            "update_policy": UpdatePolicy::ChannelManaged.as_str(),
+                            "current_version": current_version,
+                            "shim_path": shim_path.to_string_lossy().to_string(),
+                            "marker_path": marker_path.to_string_lossy().to_string(),
+                            "reason": serde_json::Value::Null
+                        }),
+                    );
+                } else {
+                    println!("Helm CLI shim installed.");
+                    println!("  channel: {}", InstallChannel::AppBundleShim.as_str());
+                    println!("  shim_path: {}", shim_path.display());
+                    println!("  marker_path: {}", marker_path.display());
+                }
+                return Ok(());
+            }
+            Err(error) => {
+                if options.json {
+                    emit_json_payload(
+                        "helm.cli.v1.self.install_shim",
+                        json!({
+                            "accepted": false,
+                            "installed": false,
+                            "channel": InstallChannel::AppBundleShim.as_str(),
+                            "update_policy": UpdatePolicy::ChannelManaged.as_str(),
+                            "current_version": current_version,
+                            "shim_path": serde_json::Value::Null,
+                            "marker_path": serde_json::Value::Null,
+                            "reason": error
+                        }),
+                    );
+                    return Err(mark_json_error_emitted("self install-shim failed"));
+                }
+                return Err(error);
+            }
+        }
     }
 
     let executable_path = env::current_exe()
@@ -8869,7 +9284,10 @@ fn coordinator_submit_request_to_adapter(
             },
             version,
         }),
-        CoordinatorSubmitRequest::Unpin { package_name } => AdapterRequest::Unpin(UnpinRequest {
+        CoordinatorSubmitRequest::Unpin {
+            package_name,
+            version: _,
+        } => AdapterRequest::Unpin(UnpinRequest {
             package: PackageRef {
                 manager,
                 name: package_name,
@@ -8946,6 +9364,7 @@ fn adapter_request_to_coordinator_submit(
         }),
         AdapterRequest::Unpin(unpin) => Ok(CoordinatorSubmitRequest::Unpin {
             package_name: unpin.package.name,
+            version: None,
         }),
         unsupported => Err(format!(
             "coordinator submit request does not support adapter action '{:?}'",
@@ -10962,10 +11381,11 @@ fn list_installed_for_enabled(
     Ok(packages
         .into_iter()
         .filter(|package| {
-            enabled_map
-                .get(&package.package.manager)
-                .copied()
-                .unwrap_or(true)
+            package.package.is_user_visible_package()
+                && enabled_map
+                    .get(&package.package.manager)
+                    .copied()
+                    .unwrap_or(true)
         })
         .collect())
 }
@@ -10980,10 +11400,11 @@ fn list_outdated_for_enabled(
     Ok(packages
         .into_iter()
         .filter(|package| {
-            enabled_map
-                .get(&package.package.manager)
-                .copied()
-                .unwrap_or(true)
+            package.package.is_user_visible_package()
+                && enabled_map
+                    .get(&package.package.manager)
+                    .copied()
+                    .unwrap_or(true)
         })
         .collect())
 }
@@ -11025,7 +11446,8 @@ fn search_local_for_enabled(
     Ok(results
         .into_iter()
         .filter(|result| {
-            manager_participates_in_package_search(result.result.package.manager)
+            result.result.package.is_user_visible_package()
+                && manager_participates_in_package_search(result.result.package.manager)
                 && manager_participates_in_package_search(result.source_manager)
                 && enabled_map
                     .get(&result.result.package.manager)
@@ -13300,37 +13722,69 @@ fn package_runtime_state_from_snapshot(
     store: &SqliteStore,
     package: &PackageRef,
 ) -> Result<Option<PackageRuntimeState>, String> {
-    if let Some(state) = store
+    let installed = store
         .list_installed()
-        .map_err(|error| format!("failed to list installed packages: {error}"))?
-        .into_iter()
-        .find(|row| row.package == *package)
-        .map(|row| row.runtime_state)
-    {
+        .map_err(|error| format!("failed to list installed packages: {error}"))?;
+    if let Some(state) = installed.iter().find_map(|row| {
+        package_runtime_state_match(package, &row.package, row.installed_version.as_deref())
+            .then(|| row.runtime_state.clone())
+    }) {
         return Ok(Some(state));
     }
 
-    Ok(store
+    let outdated = store
         .list_outdated()
-        .map_err(|error| format!("failed to list outdated packages: {error}"))?
-        .into_iter()
-        .find(|row| row.package == *package)
-        .map(|row| row.runtime_state))
+        .map_err(|error| format!("failed to list outdated packages: {error}"))?;
+    Ok(outdated.iter().find_map(|row| {
+        package_runtime_state_match(package, &row.package, row.installed_version.as_deref())
+            .then(|| row.runtime_state.clone())
+    }))
 }
 
 fn rustup_override_paths_for_preview(
     package: &PackageRef,
     runtime_state: Option<&PackageRuntimeState>,
 ) -> Vec<String> {
-    if package.manager != ManagerId::Rustup
-        || !runtime_state.is_some_and(|state| state.has_override)
-    {
+    if package.manager != ManagerId::Rustup {
         return Vec::new();
     }
 
     load_rustup_toolchain_detail_for_cli(package.name.as_str(), "preview package uninstall")
         .map(|detail| detail.override_paths)
+        .or_else(|| {
+            runtime_state
+                .is_some_and(|state| state.has_override)
+                .then(Vec::new)
+        })
         .unwrap_or_default()
+}
+
+fn package_runtime_state_match(
+    requested: &PackageRef,
+    snapshot: &PackageRef,
+    snapshot_installed_version: Option<&str>,
+) -> bool {
+    if requested == snapshot {
+        return true;
+    }
+    if requested.manager != snapshot.manager {
+        return false;
+    }
+    if !matches!(requested.manager, ManagerId::Asdf | ManagerId::Mise) {
+        return false;
+    }
+
+    let Some(coordinate) = PackageCoordinate::parse(requested.name.as_str()) else {
+        return false;
+    };
+    let requested_base = coordinate.package_name.trim();
+    if requested_base != snapshot.name {
+        return false;
+    }
+    match coordinate.version_selector {
+        Some(selector) => snapshot_installed_version == Some(selector.raw.as_str()),
+        None => true,
+    }
 }
 
 fn parse_manager_id(raw: &str) -> Result<ManagerId, String> {
@@ -14381,6 +14835,10 @@ fn print_self_help_topic(path: &[String]) -> bool {
                 print_self_update_help();
                 return true;
             }
+            "install-shim" => {
+                print_self_install_shim_help();
+                return true;
+            }
             "uninstall" => {
                 print_self_uninstall_help();
                 return true;
@@ -14673,10 +15131,11 @@ fn print_packages_pin_help() {
 
 fn print_packages_unpin_help() {
     println!("USAGE:");
-    println!("  helm packages unpin <name|name@manager> --manager <id>");
+    println!("  helm packages unpin <name|name@manager> --manager <id> [--version <v>]");
     println!();
     println!("DESCRIPTION:");
-    println!("  Remove pin state for a package.");
+    println!("  Remove pin state for a package version.");
+    println!("  For asdf/mise, <name@selector> can be used instead of --version <selector>.");
 }
 
 fn print_packages_rustup_help() {
@@ -15341,6 +15800,7 @@ fn print_self_help() {
     println!("  helm self status");
     println!("  helm self check");
     println!("  helm self update [--check] [--force]");
+    println!("  helm self install-shim --app-bundle-path <path> --app-bundle-id <id>");
     println!("  helm self uninstall");
     println!("  helm self auto-check status");
     println!("  helm self auto-check enable");
@@ -15377,6 +15837,17 @@ fn print_self_update_help() {
     println!("  Apply direct CLI self-update when provenance policy allows it.");
     println!("  --check performs a non-mutating availability check.");
     println!("  --force is only honored for direct-script installs.");
+}
+
+fn print_self_install_shim_help() {
+    println!("USAGE:");
+    println!("  helm self install-shim --app-bundle-path <path> --app-bundle-id <id>");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Install the managed ~/.local/bin/helm shim for a Helm.app bundle.");
+    println!(
+        "  Intended for the GUI/XPC install flow so shim creation happens outside the app sandbox."
+    );
 }
 
 fn print_self_uninstall_help() {
@@ -15450,19 +15921,19 @@ mod tests {
         SelfUpdateErrorKind, UpdatePolicy, UpgradeExecutionStep,
         acquire_coordinator_bootstrap_lock, apply_manager_enablement_self_heal,
         build_json_payload_lines, classify_failure_class, cmd_updates_run,
-        command_help_topic_exists, coordinator_transport_for_cancel,
-        coordinator_transport_for_submit, coordinator_transport_for_workflow,
-        count_upgrade_step_failures, ensure_cli_onboarding_completed, exit_code_for_error,
-        failure_class_hint, list_managers, manager_operation_failure_error, mark_exit_code,
-        parse_args, parse_args_with_tty, parse_homebrew_keg_policy_arg, parse_manager_id,
-        parse_manager_mutation_args, parse_package_mutation_args, parse_package_selector,
-        parse_package_show_args, parse_packages_rustup_args, parse_search_args,
-        parse_structured_terminal_error_message, parse_updates_run_preview_args,
-        provenance_can_self_update, raw_args_request_json, raw_args_request_ndjson,
-        read_update_bytes_with_limit, remove_install_marker_if_channel, resolve_redirect_url,
-        resolve_update_redirect_target, selected_executable_differs_from_default,
-        self_uninstall_recommended_action, should_launch_coordinator_on_demand,
-        strip_exit_code_marker, upgrade_request_name,
+        command_bypasses_cli_onboarding, command_help_topic_exists,
+        coordinator_transport_for_cancel, coordinator_transport_for_submit,
+        coordinator_transport_for_workflow, count_upgrade_step_failures,
+        ensure_cli_onboarding_completed, exit_code_for_error, failure_class_hint, list_managers,
+        manager_operation_failure_error, mark_exit_code, parse_args, parse_args_with_tty,
+        parse_homebrew_keg_policy_arg, parse_manager_id, parse_manager_mutation_args,
+        parse_package_mutation_args, parse_package_selector, parse_package_show_args,
+        parse_packages_rustup_args, parse_search_args, parse_structured_terminal_error_message,
+        parse_updates_run_preview_args, provenance_can_self_update, raw_args_request_json,
+        raw_args_request_ndjson, read_update_bytes_with_limit, remove_install_marker_if_channel,
+        resolve_redirect_url, resolve_update_redirect_target,
+        selected_executable_differs_from_default, self_uninstall_recommended_action,
+        should_launch_coordinator_on_demand, strip_exit_code_marker, upgrade_request_name,
     };
     use helm_core::execution::TaskOutputRecord;
     use helm_core::models::{
@@ -16161,6 +16632,19 @@ mod tests {
         assert!(options.accept_defaults);
         assert_eq!(command, Command::Onboarding);
         assert_eq!(args, vec!["status".to_string()]);
+    }
+
+    #[test]
+    fn self_install_shim_bypasses_cli_onboarding_gate() {
+        assert!(command_bypasses_cli_onboarding(
+            Command::SelfCmd,
+            &["install-shim".to_string()]
+        ));
+        assert!(!command_bypasses_cli_onboarding(
+            Command::SelfCmd,
+            &["status".to_string()]
+        ));
+        assert!(!command_bypasses_cli_onboarding(Command::Status, &[]));
     }
 
     #[test]
@@ -17145,6 +17629,24 @@ mod tests {
         assert_eq!(parsed.package_name, "python@3.12");
         assert_eq!(parsed.manager, ManagerId::HomebrewFormula);
         assert_eq!(parsed.version, None);
+    }
+
+    #[test]
+    fn parse_package_mutation_args_unpin_infers_coordinate_version_for_asdf() {
+        let parsed = parse_package_mutation_args(
+            "unpin",
+            &[
+                "python@mambaforge-24.11.0-1".to_string(),
+                "--manager".to_string(),
+                "asdf".to_string(),
+            ],
+            true,
+        )
+        .expect("asdf package coordinate should infer version for unpin");
+
+        assert_eq!(parsed.package_name, "python");
+        assert_eq!(parsed.manager, ManagerId::Asdf);
+        assert_eq!(parsed.version.as_deref(), Some("mambaforge-24.11.0-1"));
     }
 
     #[test]

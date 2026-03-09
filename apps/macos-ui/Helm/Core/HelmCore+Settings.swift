@@ -202,45 +202,123 @@ extension HelmCore {
             self.helmCliShimStatusMessage = nil
         }
 
-        do {
-            let installResult = try HelmCliShimInstaller.install(
-                bundle: .main,
-                shimURL: Self.defaultHelmCliShimURL(),
-                markerURL: Self.defaultHelmCliInstallMarkerURL()
-            )
-
-            logger.info("Installed Helm CLI shim at \(installResult.shimPath, privacy: .public)")
-            DispatchQueue.main.async {
-                self.helmCliShimStatusMessage = L10n.App.Settings.CLI.Message.installSuccess.localized
-            }
-        } catch let error as HelmCliShimInstaller.Error {
-            logger.error("installHelmCliShim failed: \(error.logDescription, privacy: .public)")
+        guard let service = service() else {
             recordLastError(
                 source: "core.settings",
-                action: "installHelmCliShim",
-                taskType: "settings"
-            )
-            DispatchQueue.main.async {
-                self.helmCliShimStatusMessage = self.messageForHelmCliShimError(
-                    error,
-                    installOperation: true
-                )
-            }
-        } catch {
-            logger.error("installHelmCliShim failed: \(error.localizedDescription, privacy: .public)")
-            recordLastError(
-                source: "core.settings",
-                action: "installHelmCliShim",
+                action: "installHelmCliShim.serviceUnavailable",
                 taskType: "settings"
             )
             DispatchQueue.main.async {
                 self.helmCliShimStatusMessage = L10n.App.Settings.CLI.Message.installFailed.localized
+                self.helmCliShimOperationInProgress = false
             }
+            return
         }
 
-        refreshHelmCliShimStatus()
-        DispatchQueue.main.async {
-            self.helmCliShimOperationInProgress = false
+        let bundlePath = Bundle.main.bundleURL.standardizedFileURL.path
+        let bundleIdentifier = Bundle.main.bundleIdentifier ?? "app.jasoncavinder.Helm"
+        withTimeout(
+            20,
+            source: "core.settings",
+            action: "installHelmCliShim",
+            taskType: "settings",
+            operation: { completion in
+                service.installHelmCliShim(
+                    appBundlePath: bundlePath,
+                    appBundleIdentifier: bundleIdentifier
+                ) { result in
+                    completion(result)
+                }
+            },
+            fallback: nil
+        ) { [weak self] result in
+            guard let self else { return }
+            defer {
+                self.refreshHelmCliShimStatus()
+                DispatchQueue.main.async {
+                    self.helmCliShimOperationInProgress = false
+                }
+            }
+
+            guard let result else {
+                logger.error("installHelmCliShim failed: timed out waiting for service reply")
+                self.recordLastError(
+                    source: "core.settings",
+                    action: "installHelmCliShim.timeout",
+                    taskType: "settings"
+                )
+                DispatchQueue.main.async {
+                    self.helmCliShimStatusMessage = L10n.App.Settings.CLI.Message.installFailed.localized
+                }
+                return
+            }
+
+            guard let data = result.data(using: .utf8) else {
+                logger.error("installHelmCliShim failed: invalid service payload \(result, privacy: .public)")
+                self.recordLastError(
+                    source: "core.settings",
+                    action: "installHelmCliShim.invalidPayload",
+                    taskType: "settings"
+                )
+                DispatchQueue.main.async {
+                    self.helmCliShimStatusMessage = L10n.App.Settings.CLI.Message.installFailed.localized
+                }
+                return
+            }
+
+            let decoder = JSONDecoder()
+            let decoded: HelmCliShimInstallCommandResponse
+            if let envelope = try? decoder.decode(HelmCliJsonEnvelope<HelmCliShimInstallCommandResponse>.self, from: data) {
+                decoded = envelope.data
+            } else if let legacy = try? decoder.decode(HelmCliShimInstallCommandResponse.self, from: data) {
+                decoded = legacy
+            } else if let errorEnvelope = try? decoder.decode(HelmCliJsonEnvelope<HelmCliErrorResponse>.self, from: data) {
+                let reason = errorEnvelope.data.message?.trimmingCharacters(in: .whitespacesAndNewlines)
+                logger.error("installHelmCliShim failed: \(reason ?? "unknown", privacy: .public)")
+                self.recordLastError(
+                    source: "core.settings",
+                    action: "installHelmCliShim",
+                    taskType: "settings"
+                )
+                DispatchQueue.main.async {
+                    self.helmCliShimStatusMessage = (reason?.isEmpty == false)
+                        ? reason
+                        : L10n.App.Settings.CLI.Message.installFailed.localized
+                }
+                return
+            } else {
+                logger.error("installHelmCliShim failed: invalid service payload \(result, privacy: .public)")
+                self.recordLastError(
+                    source: "core.settings",
+                    action: "installHelmCliShim.invalidPayload",
+                    taskType: "settings"
+                )
+                DispatchQueue.main.async {
+                    self.helmCliShimStatusMessage = L10n.App.Settings.CLI.Message.installFailed.localized
+                }
+                return
+            }
+
+            if decoded.accepted && decoded.installed {
+                logger.info("Installed Helm CLI shim at \(decoded.shimPath ?? Self.defaultHelmCliShimURL().path, privacy: .public)")
+                DispatchQueue.main.async {
+                    self.helmCliShimStatusMessage = L10n.App.Settings.CLI.Message.installSuccess.localized
+                }
+                return
+            }
+
+            let reason = decoded.reason?.trimmingCharacters(in: .whitespacesAndNewlines)
+            logger.error("installHelmCliShim failed: \(reason ?? "unknown", privacy: .public)")
+            self.recordLastError(
+                source: "core.settings",
+                action: "installHelmCliShim",
+                taskType: "settings"
+            )
+            DispatchQueue.main.async {
+                self.helmCliShimStatusMessage = (reason?.isEmpty == false)
+                    ? reason
+                    : L10n.App.Settings.CLI.Message.installFailed.localized
+            }
         }
     }
 
@@ -1134,6 +1212,34 @@ private struct HelmCliShimStatus {
     let shimInstalled: Bool
 }
 
+private struct HelmCliShimInstallCommandResponse: Decodable {
+    let accepted: Bool
+    let installed: Bool
+    let shimPath: String?
+    let reason: String?
+
+    enum CodingKeys: String, CodingKey {
+        case accepted
+        case installed
+        case shimPath = "shim_path"
+        case reason
+    }
+}
+
+private struct HelmCliJsonEnvelope<T: Decodable>: Decodable {
+    let data: T
+}
+
+private struct HelmCliErrorResponse: Decodable {
+    let exitCode: Int?
+    let message: String?
+
+    enum CodingKeys: String, CodingKey {
+        case exitCode = "exit_code"
+        case message
+    }
+}
+
 private enum HelmCliShimInstaller {
     struct InstallResult {
         let shimPath: String
@@ -1176,6 +1282,7 @@ private enum HelmCliShimInstaller {
             throw Error.bundledCliMissing
         }
 
+        let shimExisted = FileManager.default.fileExists(atPath: shimURL.path)
         if FileManager.default.fileExists(atPath: shimURL.path),
            !isManagedShimInstalled(shimURL: shimURL) {
             throw Error.existingNonManagedShim(path: shimURL.path)
@@ -1196,7 +1303,7 @@ private enum HelmCliShimInstaller {
                 disallowSymlinkTarget: false,
                 stagingFileName: ".helm.tmp"
             )
-            let quarantineStatus = try removeQuarantineAttributeIfPresent(at: shimURL)
+            let quarantineStatus = try ensureNoQuarantineAttribute(at: shimURL)
             try writeInstallMarker(
                 markerURL: markerURL,
                 version: bundleVersion(bundle: bundle)
@@ -1205,6 +1312,9 @@ private enum HelmCliShimInstaller {
                 "Helm CLI shim post-install attributes. shim=\(shimURL.path, privacy: .public), quarantine_status=\(quarantineStatus.logValue, privacy: .public)"
             )
         } catch {
+            if !shimExisted {
+                try? FileManager.default.removeItem(at: shimURL)
+            }
             throw Error.ioFailure(description: error.localizedDescription)
         }
 
@@ -1397,6 +1507,33 @@ private enum HelmCliShimInstaller {
         }
     }
 
+    private static func hasQuarantineAttribute(at url: URL) throws -> Bool {
+        let attributeName = "com.apple.quarantine"
+        errno = 0
+        let length = url.path.withCString { pathPointer in
+            attributeName.withCString { attributePointer in
+                getxattr(pathPointer, attributePointer, nil, 0, 0, 0)
+            }
+        }
+        if length >= 0 {
+            return true
+        }
+        if errno == ENOATTR {
+            return false
+        }
+
+        let errorCode = errno
+        let errorMessage = String(cString: strerror(errorCode))
+        throw NSError(
+            domain: "HelmCliShimInstaller",
+            code: Int(errorCode),
+            userInfo: [
+                NSLocalizedDescriptionKey:
+                    "Failed to inspect \(attributeName) on \(url.path): \(errorMessage)"
+            ]
+        )
+    }
+
     @discardableResult
     private static func removeQuarantineAttributeIfPresent(at url: URL) throws -> QuarantineRemovalStatus {
         let attributeName = "com.apple.quarantine"
@@ -1432,6 +1569,26 @@ private enum HelmCliShimInstaller {
                     "Failed to clear \(attributeName) from \(url.path): \(errorMessage)"
             ]
         )
+    }
+
+    @discardableResult
+    private static func ensureNoQuarantineAttribute(at url: URL) throws -> QuarantineRemovalStatus {
+        guard try hasQuarantineAttribute(at: url) else {
+            return .notPresent
+        }
+
+        let removalStatus = try removeQuarantineAttributeIfPresent(at: url)
+        if try hasQuarantineAttribute(at: url) {
+            throw NSError(
+                domain: "HelmCliShimInstaller",
+                code: 4,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Installed Helm CLI shim remains quarantined at \(url.path)."
+                ]
+            )
+        }
+        return removalStatus
     }
 
     private static func removeInstallMarkerIfAppBundleShim(markerURL: URL) throws {
@@ -1495,24 +1652,129 @@ private enum HelmCliShimInstaller {
                     userInfo: [NSLocalizedDescriptionKey: "Failed to encode text content as UTF-8"]
                 )
             }
-            try encoded.write(to: tempURL, options: .withoutOverwriting)
-            try fileManager.setAttributes(
-                [.posixPermissions: NSNumber(value: filePermissions)],
-                ofItemAtPath: tempURL.path
+            let fileDescriptor = open(
+                tempURL.path,
+                O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC,
+                mode_t(filePermissions)
             )
-            if fileManager.fileExists(atPath: url.path) {
-                _ = try fileManager.replaceItemAt(
-                    url,
-                    withItemAt: tempURL,
-                    backupItemName: nil,
-                    options: [.usingNewMetadataOnly]
+            if fileDescriptor < 0 {
+                let errorCode = errno
+                let errorMessage = String(cString: strerror(errorCode))
+                throw NSError(
+                    domain: "HelmCliShimInstaller",
+                    code: Int(errorCode),
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "Failed to create temporary file at \(tempURL.path): \(errorMessage)"
+                    ]
                 )
-            } else {
-                try fileManager.moveItem(at: tempURL, to: url)
             }
+            defer { close(fileDescriptor) }
+
+            try writeAll(encoded, to: fileDescriptor, path: tempURL.path)
+
+            if fchmod(fileDescriptor, mode_t(filePermissions)) != 0 {
+                let errorCode = errno
+                let errorMessage = String(cString: strerror(errorCode))
+                throw NSError(
+                    domain: "HelmCliShimInstaller",
+                    code: Int(errorCode),
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "Failed to set permissions on temporary file \(tempURL.path): \(errorMessage)"
+                    ]
+                )
+            }
+            if fsync(fileDescriptor) != 0 {
+                let errorCode = errno
+                let errorMessage = String(cString: strerror(errorCode))
+                throw NSError(
+                    domain: "HelmCliShimInstaller",
+                    code: Int(errorCode),
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "Failed to sync temporary file \(tempURL.path): \(errorMessage)"
+                    ]
+                )
+            }
+            if rename(tempURL.path, url.path) != 0 {
+                let errorCode = errno
+                let errorMessage = String(cString: strerror(errorCode))
+                throw NSError(
+                    domain: "HelmCliShimInstaller",
+                    code: Int(errorCode),
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "Failed to replace \(url.path) with staged file: \(errorMessage)"
+                    ]
+                )
+            }
+            try syncParentDirectory(of: url)
         } catch {
             try? fileManager.removeItem(at: tempURL)
             throw error
+        }
+    }
+
+    private static func writeAll(_ data: Data, to fileDescriptor: Int32, path: String) throws {
+        try data.withUnsafeBytes { rawBuffer in
+            guard let baseAddress = rawBuffer.baseAddress else {
+                return
+            }
+
+            var remainingBytes = rawBuffer.count
+            var cursor = baseAddress.assumingMemoryBound(to: UInt8.self)
+            while remainingBytes > 0 {
+                let written = Darwin.write(fileDescriptor, cursor, remainingBytes)
+                if written < 0 {
+                    if errno == EINTR {
+                        continue
+                    }
+                    let errorCode = errno
+                    let errorMessage = String(cString: strerror(errorCode))
+                    throw NSError(
+                        domain: "HelmCliShimInstaller",
+                        code: Int(errorCode),
+                        userInfo: [
+                            NSLocalizedDescriptionKey:
+                                "Failed to write temporary file \(path): \(errorMessage)"
+                        ]
+                    )
+                }
+                remainingBytes -= written
+                cursor = cursor.advanced(by: written)
+            }
+        }
+    }
+
+    private static func syncParentDirectory(of url: URL) throws {
+        let parentPath = url.deletingLastPathComponent().path
+        let directoryDescriptor = open(parentPath, O_RDONLY | O_CLOEXEC)
+        if directoryDescriptor < 0 {
+            let errorCode = errno
+            let errorMessage = String(cString: strerror(errorCode))
+            throw NSError(
+                domain: "HelmCliShimInstaller",
+                code: Int(errorCode),
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Failed to open parent directory \(parentPath): \(errorMessage)"
+                ]
+            )
+        }
+        defer { close(directoryDescriptor) }
+
+        if fsync(directoryDescriptor) != 0 {
+            let errorCode = errno
+            let errorMessage = String(cString: strerror(errorCode))
+            throw NSError(
+                domain: "HelmCliShimInstaller",
+                code: Int(errorCode),
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Failed to sync parent directory \(parentPath): \(errorMessage)"
+                ]
+            )
         }
     }
 }

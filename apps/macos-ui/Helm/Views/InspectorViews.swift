@@ -817,6 +817,10 @@ private struct InspectorPackageDetailView: View {
         activePackage.managerId == "rustup" && activePackage.status != .available
     }
 
+    private var shouldShowManagerSpecificPackageSection: Bool {
+        shouldShowRustupToolchainDetail
+    }
+
     private var rustupToolchainDetail: CoreRustupToolchainDetail? {
         core.rustupToolchainDetail(for: activePackage)
     }
@@ -925,6 +929,11 @@ private struct InspectorPackageDetailView: View {
             }
 
             managerSelectionField
+
+            if shouldShowManagerSpecificPackageSection {
+                Divider()
+                    .padding(.vertical, 4)
+            }
 
             if shouldShowRustupToolchainDetail {
                 rustupToolchainDetailSection

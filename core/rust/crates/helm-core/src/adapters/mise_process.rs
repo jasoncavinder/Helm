@@ -10,8 +10,8 @@ use crate::adapters::mise::{
     MiseUninstallMode, mise_detect_request, mise_download_install_script_request,
     mise_implode_request, mise_install_tool_request, mise_list_installed_request,
     mise_list_outdated_request, mise_list_remote_request, mise_registry_request,
-    mise_run_downloaded_install_script_request, mise_upgrade_request, parse_mise_registry_catalog,
-    parse_mise_remote_catalog,
+    mise_run_downloaded_install_script_request, mise_uninstall_tool_request, mise_upgrade_request,
+    parse_mise_registry_catalog, parse_mise_remote_catalog,
 };
 use crate::adapters::process_utils::{run_and_collect_stdout, run_and_collect_version_output};
 use crate::execution::{ProcessExecutor, ProcessSpawnRequest};
@@ -476,6 +476,11 @@ impl MiseSource for ProcessMiseSource {
 
     fn install_tool(&self, name: &str, version: Option<&str>) -> AdapterResult<String> {
         let request = self.configure_request(mise_install_tool_request(None, name, version));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn uninstall_tool(&self, name: &str, version: Option<&str>) -> AdapterResult<String> {
+        let request = self.configure_request(mise_uninstall_tool_request(None, name, version));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 
