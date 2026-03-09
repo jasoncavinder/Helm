@@ -54,6 +54,7 @@ extension L10n {
                 static let restartRequired = "app.packages.label.restart_required"
                 static let pinned = "app.packages.label.pinned"
                 static let homebrewKegPolicy = "app.packages.label.homebrew_keg_policy"
+                static let versionCount = "app.packages.label.version_count"
             }
             struct Action {
                 static let install = "app.packages.action.install"

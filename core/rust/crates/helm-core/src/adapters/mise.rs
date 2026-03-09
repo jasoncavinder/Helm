@@ -74,7 +74,7 @@ pub trait MiseSource: Send + Sync {
     fn install_tool(&self, name: &str, version: Option<&str>) -> AdapterResult<String>;
     fn uninstall_tool(&self, name: &str, version: Option<&str>) -> AdapterResult<String>;
     fn self_uninstall(&self, mode: MiseUninstallMode) -> AdapterResult<String>;
-    fn upgrade_tool(&self, name: &str) -> AdapterResult<String>;
+    fn upgrade_tool(&self, name: &str, version: Option<&str>) -> AdapterResult<String>;
 }
 
 pub struct MiseAdapter<S: MiseSource> {
@@ -94,9 +94,11 @@ impl<S: MiseSource> MiseAdapter<S> {
     fn resolve_installed_target(
         &self,
         raw_package_name: &str,
+        explicit_version: Option<&str>,
         action: ManagerAction,
     ) -> AdapterResult<ResolvedMiseInstalledTarget> {
-        let (tool_name, requested_version) = parse_package_uninstall_target(raw_package_name)?;
+        let (tool_name, requested_version) =
+            parse_package_uninstall_target(raw_package_name, explicit_version)?;
         crate::adapters::validate_package_identifier(ManagerId::Mise, action, tool_name.as_str())?;
 
         let mut matches = self
@@ -332,6 +334,7 @@ impl<S: MiseSource> ManagerAdapter for MiseAdapter<S> {
 
                 let target = self.resolve_installed_target(
                     uninstall_request.package.name.as_str(),
+                    uninstall_request.version.as_deref(),
                     ManagerAction::Uninstall,
                 )?;
                 let _ = self
@@ -371,9 +374,23 @@ impl<S: MiseSource> ManagerAdapter for MiseAdapter<S> {
                     manager: ManagerId::Mise,
                     name: "__all__".to_string(),
                 });
-                let _ = self.source.upgrade_tool(&package.name)?;
+                let (tool_name, requested_version) = if package.name == "__all__" {
+                    ("__all__".to_string(), None)
+                } else {
+                    parse_package_target(
+                        package.name.as_str(),
+                        upgrade_request.version.as_deref(),
+                        ManagerAction::Upgrade,
+                    )?
+                };
+                let _ = self
+                    .source
+                    .upgrade_tool(tool_name.as_str(), requested_version.as_deref())?;
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
-                    package,
+                    package: PackageRef {
+                        manager: package.manager,
+                        name: tool_name,
+                    },
                     action: ManagerAction::Upgrade,
                     before_version: None,
                     after_version: None,
@@ -659,8 +676,11 @@ fn parse_package_install_target(
     parse_package_target(package_name, version, ManagerAction::Install)
 }
 
-fn parse_package_uninstall_target(package_name: &str) -> AdapterResult<(String, Option<String>)> {
-    parse_package_target(package_name, None, ManagerAction::Uninstall)
+fn parse_package_uninstall_target(
+    package_name: &str,
+    version: Option<&str>,
+) -> AdapterResult<(String, Option<String>)> {
+    parse_package_target(package_name, version, ManagerAction::Uninstall)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1757,6 +1777,7 @@ mod tests {
                         manager: ManagerId::Mise,
                         name: "__self__".to_string(),
                     },
+                    version: None,
                 },
             ))
             .unwrap();
@@ -1775,6 +1796,7 @@ mod tests {
                         manager: ManagerId::Mise,
                         name: "python@3.12.3".to_string(),
                     },
+                    version: None,
                 },
             ))
             .expect("tool uninstall should succeed");
@@ -1810,6 +1832,7 @@ mod tests {
                     manager: ManagerId::Mise,
                     name: "node".to_string(),
                 }),
+                version: None,
             }))
             .unwrap();
         assert!(matches!(result, AdapterResponse::Mutation(_)));
@@ -1994,7 +2017,7 @@ mod tests {
     #[test]
     fn parse_package_uninstall_target_supports_exact_version_input() {
         let (name, version) =
-            parse_package_uninstall_target("python@3.12.3").expect("target should parse");
+            parse_package_uninstall_target("python@3.12.3", None).expect("target should parse");
         assert_eq!(name, "python");
         assert_eq!(version.as_deref(), Some("3.12.3"));
     }
@@ -2090,7 +2113,7 @@ mod tests {
             Ok(String::new())
         }
 
-        fn upgrade_tool(&self, _name: &str) -> AdapterResult<String> {
+        fn upgrade_tool(&self, _name: &str, _version: Option<&str>) -> AdapterResult<String> {
             Ok(String::new())
         }
     }

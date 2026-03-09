@@ -3,6 +3,13 @@ import os.log
 
 private let logger = Logger(subsystem: "app.jasoncavinder.Helm.HelmService", category: "service")
 
+private func withOptionalCString<T>(_ value: String?, _ body: (UnsafePointer<CChar>?) -> T) -> T {
+    guard let value else {
+        return body(nil)
+    }
+    return value.withCString { body($0) }
+}
+
 class HelmService: NSObject, HelmServiceProtocol {
     private struct HelmCliShimInstallResponse: Codable {
         let accepted: Bool
@@ -451,8 +458,8 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(String(cString: cString))
     }
 
-    func setPackageManagerPreference(packageName: String, managerId: String?, withReply reply: @escaping (Bool) -> Void) {
-        let result = packageName.withCString { package in
+    func setPackageManagerPreference(packageFamilyKey: String, managerId: String?, withReply reply: @escaping (Bool) -> Void) {
+        let result = packageFamilyKey.withCString { package in
             if let managerId {
                 return managerId.withCString { manager in
                     helm_set_package_manager_preference(package, manager)
@@ -461,7 +468,7 @@ class HelmService: NSObject, HelmServiceProtocol {
             return helm_set_package_manager_preference(package, nil)
         }
         logger.info(
-            "helm_set_package_manager_preference(\(packageName), \(managerId ?? "nil")) result: \(result)"
+            "helm_set_package_manager_preference(\(packageFamilyKey), \(managerId ?? "nil")) result: \(result)"
         )
         reply(result)
     }
@@ -482,43 +489,51 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(result)
     }
 
-    func upgradePackage(managerId: String, packageName: String, withReply reply: @escaping (Int64) -> Void) {
+    func upgradePackage(managerId: String, packageName: String, version: String?, withReply reply: @escaping (Int64) -> Void) {
         let taskId = managerId.withCString { manager in
             packageName.withCString { package in
-                helm_upgrade_package(manager, package)
+                withOptionalCString(version) { versionPtr in
+                    helm_upgrade_package(manager, package, versionPtr)
+                }
             }
         }
-        logger.info("helm_upgrade_package(\(managerId), \(packageName)) result: \(taskId)")
+        logger.info("helm_upgrade_package(\(managerId), \(packageName), version=\(version ?? "-", privacy: .public)) result: \(taskId)")
         reply(taskId)
     }
 
-    func installPackage(managerId: String, packageName: String, withReply reply: @escaping (Int64) -> Void) {
+    func installPackage(managerId: String, packageName: String, version: String?, withReply reply: @escaping (Int64) -> Void) {
         let taskId = managerId.withCString { manager in
             packageName.withCString { package in
-                helm_install_package(manager, package)
+                withOptionalCString(version) { versionPtr in
+                    helm_install_package(manager, package, versionPtr)
+                }
             }
         }
-        logger.info("helm_install_package(\(managerId), \(packageName)) result: \(taskId)")
+        logger.info("helm_install_package(\(managerId), \(packageName), version=\(version ?? "-", privacy: .public)) result: \(taskId)")
         reply(taskId)
     }
 
-    func uninstallPackage(managerId: String, packageName: String, withReply reply: @escaping (Int64) -> Void) {
+    func uninstallPackage(managerId: String, packageName: String, version: String?, withReply reply: @escaping (Int64) -> Void) {
         let taskId = managerId.withCString { manager in
             packageName.withCString { package in
-                helm_uninstall_package(manager, package)
+                withOptionalCString(version) { versionPtr in
+                    helm_uninstall_package(manager, package, versionPtr)
+                }
             }
         }
-        logger.info("helm_uninstall_package(\(managerId), \(packageName)) result: \(taskId)")
+        logger.info("helm_uninstall_package(\(managerId), \(packageName), version=\(version ?? "-", privacy: .public)) result: \(taskId)")
         reply(taskId)
     }
 
-    func previewPackageUninstall(managerId: String, packageName: String, withReply reply: @escaping (String?) -> Void) {
+    func previewPackageUninstall(managerId: String, packageName: String, version: String?, withReply reply: @escaping (String?) -> Void) {
         guard let cString = managerId.withCString({ manager in
             packageName.withCString { package in
-                helm_preview_package_uninstall(manager, package)
+                withOptionalCString(version) { versionPtr in
+                    helm_preview_package_uninstall(manager, package, versionPtr)
+                }
             }
         }) else {
-            logger.warning("helm_preview_package_uninstall(\(managerId), \(packageName)) returned nil")
+            logger.warning("helm_preview_package_uninstall(\(managerId), \(packageName), version=\(version ?? "-", privacy: .public)) returned nil")
             reply(nil)
             return
         }

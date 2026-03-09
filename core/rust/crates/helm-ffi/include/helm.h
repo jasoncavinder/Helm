@@ -204,10 +204,10 @@ bool helm_set_package_keg_policy(const char *manager_id,
  *
  * # Safety
  *
- * `package_name` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ * `package_family_key` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
  * `manager_id` may be null; when non-null it must point to a NUL-terminated UTF-8 C string.
  */
-bool helm_set_package_manager_preference(const char *package_name, const char *manager_id);
+bool helm_set_package_manager_preference(const char *package_family_key, const char *manager_id);
 
 /**
  * Build an ordered upgrade execution plan from cached outdated snapshot as JSON.
@@ -249,7 +249,7 @@ bool helm_upgrade_all(bool include_pinned, bool allow_os_updates);
  * `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
  * strings.
  */
-int64_t helm_upgrade_package(const char *manager_id, const char *package_name);
+int64_t helm_upgrade_package(const char *manager_id, const char *package_name, const char *version);
 
 /**
  * Queue an install task for a single package. Returns the task ID, or -1 on error.
@@ -259,7 +259,7 @@ int64_t helm_upgrade_package(const char *manager_id, const char *package_name);
  * `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
  * strings.
  */
-int64_t helm_install_package(const char *manager_id, const char *package_name);
+int64_t helm_install_package(const char *manager_id, const char *package_name, const char *version);
 
 /**
  * Queue an uninstall task for a single package. Returns the task ID, or -1 on error.
@@ -269,7 +269,9 @@ int64_t helm_install_package(const char *manager_id, const char *package_name);
  * `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
  * strings.
  */
-int64_t helm_uninstall_package(const char *manager_id, const char *package_name);
+int64_t helm_uninstall_package(const char *manager_id,
+                               const char *package_name,
+                               const char *version);
 
 /**
  * Queue a rustup component-add task. Returns the task ID, or -1 on error.
@@ -353,7 +355,9 @@ int64_t helm_rustup_set_profile(const char *profile);
  * `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
  * strings.
  */
-char *helm_preview_package_uninstall(const char *manager_id, const char *package_name);
+char *helm_preview_package_uninstall(const char *manager_id,
+                                     const char *package_name,
+                                     const char *version);
 
 /**
  * List pin records as JSON.

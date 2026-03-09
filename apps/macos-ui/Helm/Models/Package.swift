@@ -86,19 +86,17 @@ struct PackageItem: Identifiable {
 
     var mutationPackageName: String {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedName.isEmpty else { return name }
+        return trimmedName.isEmpty ? name : trimmedName
+    }
+
+    var mutationVersion: String? {
         let normalizedManagerId = managerId.lowercased()
-        if normalizedManagerId == "mise", status == .available {
-            let qualifiedDisplayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !qualifiedDisplayName.isEmpty, qualifiedDisplayName.contains("@") {
-                return qualifiedDisplayName
-            }
-        }
         guard normalizedManagerId == "asdf" || normalizedManagerId == "mise",
               PackageIdentity.hasKnownVersion(version) else {
-            return trimmedName
+            return nil
         }
-        return "\(trimmedName)@\(version.trimmingCharacters(in: .whitespacesAndNewlines))"
+        let trimmedVersion = version.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedVersion.isEmpty ? nil : trimmedVersion
     }
 }
 
@@ -247,14 +245,28 @@ struct ConsolidatedPackageItem: Identifiable {
         return memberPackages.contains { $0.id == packageId }
     }
 
-    func actionTarget(preferredManagerId: String?) -> PackageItem {
+    func packages(forManagerId managerId: String) -> [PackageItem] {
+        memberPackages.filter { $0.managerId == managerId }
+    }
+
+    func preferredPackage(forManagerId managerId: String, selectedPackageId: String? = nil) -> PackageItem? {
+        let managerPackages = packages(forManagerId: managerId)
+        guard !managerPackages.isEmpty else { return nil }
+        if let selectedPackageId,
+           let selectedPackage = managerPackages.first(where: { $0.id == selectedPackageId }) {
+            return selectedPackage
+        }
+        return managerPackages.first
+    }
+
+    func actionTarget(preferredManagerId: String?, selectedPackageId: String? = nil) -> PackageItem {
         guard let managerId = PackageConsolidationPolicy.preferredManagerId(
             managerIds: managerIds,
             preferredManagerId: preferredManagerId
         ) else {
             return package
         }
-        return memberPackages.first(where: { $0.managerId == managerId }) ?? package
+        return preferredPackage(forManagerId: managerId, selectedPackageId: selectedPackageId) ?? package
     }
 
     static func consolidate(

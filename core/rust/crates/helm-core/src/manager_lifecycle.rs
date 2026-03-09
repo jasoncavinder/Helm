@@ -378,6 +378,7 @@ pub fn plan_manager_uninstall_route_with_options(
                         manager: ManagerId::HomebrewFormula,
                         name: "mise".to_string(),
                     },
+                    version: None,
                 }),
             ),
             MiseUninstallTarget::MacPortsPort => (
@@ -387,6 +388,7 @@ pub fn plan_manager_uninstall_route_with_options(
                         manager: ManagerId::MacPorts,
                         name: "mise".to_string(),
                     },
+                    version: None,
                 }),
             ),
             MiseUninstallTarget::SelfManaged | MiseUninstallTarget::ReadOnly => {
@@ -399,6 +401,7 @@ pub fn plan_manager_uninstall_route_with_options(
                             manager: ManagerId::Mise,
                             name: package_name,
                         },
+                        version: None,
                     }),
                 )
             }
@@ -425,6 +428,7 @@ pub fn plan_manager_uninstall_route_with_options(
                             manager: ManagerId::HomebrewFormula,
                             name: package_name,
                         },
+                        version: None,
                     }),
                     strategy: resolution.strategy,
                     unknown_override_required: resolution.unknown_override_required,
@@ -478,6 +482,7 @@ pub fn plan_manager_uninstall_route_with_options(
                                 remove_shell_setup_requested(options),
                             ),
                         },
+                        version: None,
                     }),
                 )
             }
@@ -492,6 +497,7 @@ pub fn plan_manager_uninstall_route_with_options(
                             "__self__".to_string()
                         },
                     },
+                    version: None,
                 }),
             ),
             _ => return Err(ManagerUninstallRouteError::AmbiguousProvenance),
@@ -537,6 +543,7 @@ pub fn plan_manager_uninstall_route_with_options(
                             remove_shell_setup_requested(options),
                         ),
                     },
+                    version: None,
                 }),
             ),
             StrategyKind::AsdfSelf => (
@@ -550,6 +557,7 @@ pub fn plan_manager_uninstall_route_with_options(
                             "__self__".to_string()
                         },
                     },
+                    version: None,
                 }),
             ),
             StrategyKind::ReadOnly => {
@@ -607,6 +615,7 @@ pub fn plan_manager_uninstall_route_with_options(
                         remove_shell_setup_requested(options),
                     ),
                 },
+                version: None,
             }),
             strategy: resolution.strategy,
             unknown_override_required: resolution.unknown_override_required,
@@ -645,6 +654,7 @@ pub fn plan_manager_uninstall_route_with_options(
                         remove_shell_setup_requested(options),
                     ),
                 },
+                version: None,
             }),
             strategy: resolution.strategy,
             unknown_override_required: resolution.unknown_override_required,
@@ -667,6 +677,7 @@ fn read_only_uninstall_route_plan(
                 manager,
                 name: "__self__".to_string(),
             },
+            version: None,
         }),
         strategy: StrategyKind::ReadOnly,
         unknown_override_required,
@@ -1045,6 +1056,7 @@ pub fn build_update_request(
                     manager: ManagerId::HomebrewFormula,
                     name: "__self__".to_string(),
                 }),
+                version: None,
             }))
         }
         (ManagerUpdateTarget::ManagerSelf, ManagerId::Rustup) => {
@@ -1053,6 +1065,7 @@ pub fn build_update_request(
                     manager: ManagerId::Rustup,
                     name: "__self__".to_string(),
                 }),
+                version: None,
             }))
         }
         (ManagerUpdateTarget::ManagerSelf, ManagerId::Mise) => {
@@ -1061,6 +1074,7 @@ pub fn build_update_request(
                     manager: ManagerId::Mise,
                     name: "__self__".to_string(),
                 }),
+                version: None,
             }))
         }
         (ManagerUpdateTarget::HomebrewFormula { .. }, ManagerId::HomebrewFormula) => {
@@ -1070,6 +1084,7 @@ pub fn build_update_request(
                         manager: ManagerId::HomebrewFormula,
                         name: package_name,
                     }),
+                    version: None,
                 })
             })
         }

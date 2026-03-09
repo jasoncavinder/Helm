@@ -201,6 +201,7 @@ fn authoritative_asdf_lifecycle_mutations_are_emitted() {
     let upgrade = adapter
         .execute(AdapterRequest::Upgrade(UpgradeRequest {
             package: Some(package(ManagerId::Asdf, "nodejs")),
+            version: None,
         }))
         .expect("authoritative upgrade should succeed");
     match upgrade {
@@ -214,6 +215,7 @@ fn authoritative_asdf_lifecycle_mutations_are_emitted() {
     let uninstall = adapter
         .execute(AdapterRequest::Uninstall(UninstallRequest {
             package: package(ManagerId::Asdf, "nodejs"),
+            version: None,
         }))
         .expect("authoritative uninstall should succeed");
     match uninstall {
@@ -250,6 +252,7 @@ fn standard_npm_lifecycle_mutations_are_emitted() {
     let upgrade = adapter
         .execute(AdapterRequest::Upgrade(UpgradeRequest {
             package: Some(package(ManagerId::Npm, "eslint")),
+            version: None,
         }))
         .expect("standard upgrade should succeed");
     match upgrade {
@@ -263,6 +266,7 @@ fn standard_npm_lifecycle_mutations_are_emitted() {
     let uninstall = adapter
         .execute(AdapterRequest::Uninstall(UninstallRequest {
             package: package(ManagerId::Npm, "eslint"),
+            version: None,
         }))
         .expect("standard uninstall should succeed");
     match uninstall {
@@ -296,6 +300,7 @@ fn guarded_homebrew_lifecycle_is_idempotent_for_already_installed_or_absent_form
     let uninstall = adapter
         .execute(AdapterRequest::Uninstall(UninstallRequest {
             package: package(ManagerId::HomebrewFormula, "ripgrep"),
+            version: None,
         }))
         .expect("guarded uninstall should be idempotent for already-absent formula");
     match uninstall {
@@ -309,6 +314,7 @@ fn guarded_homebrew_lifecycle_is_idempotent_for_already_installed_or_absent_form
     let upgrade = adapter
         .execute(AdapterRequest::Upgrade(UpgradeRequest {
             package: Some(package(ManagerId::HomebrewFormula, "ripgrep")),
+            version: None,
         }))
         .expect("guarded upgrade should succeed");
     match upgrade {

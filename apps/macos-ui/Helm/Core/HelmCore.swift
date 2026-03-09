@@ -363,7 +363,7 @@ struct CorePackageKegPolicy: Codable {
 }
 
 struct CorePackageManagerPreference: Codable {
-    let packageName: String
+    let packageFamilyKey: String
     let managerId: String
 }
 
@@ -717,7 +717,7 @@ final class HelmCore: ObservableObject {
     @Published var onboardingDetectionInProgress: Bool = false
     @Published var homebrewKegAutoCleanupEnabled: Bool = false
     @Published var packageKegPolicyOverrides: [String: HomebrewKegPolicyOverride] = [:]
-    @Published var packageManagerPreferencesByName: [String: String] = [:]
+    @Published var packageManagerPreferencesByFamilyKey: [String: String] = [:]
     @Published var safeModeEnabled: Bool = false
     @Published var lastError: String?
     @Published var lastErrorAttribution: CoreErrorAttribution?
@@ -1278,7 +1278,7 @@ final class HelmCore: ObservableObject {
                     self?.managerOperations = [:]
                     self?.verifyingManagerIds = []
                     self?.packageKegPolicyOverrides = [:]
-                    self?.packageManagerPreferencesByName = [:]
+                    self?.packageManagerPreferencesByFamilyKey = [:]
                     self?.homebrewKegAutoCleanupEnabled = false
                     self?.searchText = ""
                     self?.isRefreshing = false

@@ -10,7 +10,7 @@ use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
 use helm_core::persistence::{DetectionStore, PackageStore, PinStore, TaskStore};
-use helm_core::versioning::PackageCoordinate;
+use helm_core::versioning::package_family_preference_key;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
@@ -52,29 +52,7 @@ const SPLASH_LARGE: &str = include_str!("assets/splash_large.txt");
 const SPLASH_COMPACT: &str = include_str!("assets/splash_compact.txt");
 
 fn package_manager_preference_key(package_name: &str, version: Option<&str>) -> String {
-    let normalized_name = package_name.trim().to_ascii_lowercase();
-    if normalized_name.is_empty() {
-        return String::new();
-    }
-
-    let normalized_version = version.map(str::trim).filter(|value| !value.is_empty());
-    let Some(normalized_version) = normalized_version else {
-        return normalized_name;
-    };
-
-    let coordinate_raw = format!("{}@{}", package_name.trim(), normalized_version);
-    let qualifier_key = PackageCoordinate::parse(coordinate_raw.as_str())
-        .and_then(|coordinate| coordinate.version_selector)
-        .map(|selector| selector.qualifier_atoms())
-        .filter(|atoms| !atoms.is_empty())
-        .map(|atoms| atoms.join("-").trim().to_ascii_lowercase())
-        .filter(|value| !value.is_empty());
-
-    if let Some(qualifier_key) = qualifier_key {
-        format!("{}@{}", normalized_name, qualifier_key)
-    } else {
-        normalized_name
-    }
+    package_family_preference_key(package_name, version)
 }
 
 fn preferred_manager_for_package(
@@ -89,7 +67,7 @@ fn preferred_manager_for_package(
         return Some(*preferred);
     }
 
-    let fallback_key = package_name.trim().to_ascii_lowercase();
+    let fallback_key = package_family_preference_key(package_name, None);
     if fallback_key.is_empty() || fallback_key == preference_key {
         return None;
     }
@@ -245,14 +223,17 @@ enum ConfirmAction {
     InstallPackage {
         manager: ManagerId,
         package_name: String,
+        package_version: Option<String>,
     },
     UpgradePackage {
         manager: ManagerId,
         package_name: String,
+        package_version: Option<String>,
     },
     UninstallPackage {
         manager: ManagerId,
         package_name: String,
+        package_version: Option<String>,
         uninstall_preview_summary: Option<String>,
     },
     TogglePin {
@@ -300,25 +281,32 @@ impl ConfirmAction {
             Self::InstallPackage {
                 manager,
                 package_name,
+                package_version,
             } => format!(
                 "Install '{}@{}'? [Enter confirm / Esc cancel]",
-                package_name,
+                render_package_target(package_name, package_version.as_deref()),
                 manager.as_str()
             ),
             Self::UpgradePackage {
                 manager,
                 package_name,
+                package_version,
             } => format!(
                 "Upgrade '{}@{}'? [Enter confirm / Esc cancel]",
-                package_name,
+                render_package_target(package_name, package_version.as_deref()),
                 manager.as_str()
             ),
             Self::UninstallPackage {
                 manager,
                 package_name,
+                package_version,
                 uninstall_preview_summary,
             } => {
-                let mut prompt = format!("Uninstall '{}@{}'?", package_name, manager.as_str());
+                let mut prompt = format!(
+                    "Uninstall '{}@{}'?",
+                    render_package_target(package_name, package_version.as_deref()),
+                    manager.as_str()
+                );
                 if let Some(summary) = uninstall_preview_summary.as_deref() {
                     prompt.push(' ');
                     prompt.push_str(summary);
@@ -438,6 +426,7 @@ struct PackageRow {
     manager: ManagerId,
     package_name: String,
     action_package_name: String,
+    action_package_version: Option<String>,
     installed_version: Option<String>,
     candidate_version: Option<String>,
     pinned: bool,
@@ -1653,6 +1642,10 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                             update.package.name.as_str(),
                             update.installed_version.as_deref(),
                         ),
+                        package_version: package_row_action_version(
+                            update.package.manager,
+                            update.installed_version.as_deref(),
+                        ),
                     });
                 }
             }
@@ -1663,6 +1656,7 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                     app.confirm_action = Some(ConfirmAction::UpgradePackage {
                         manager: package.manager,
                         package_name: package.action_package_name.clone(),
+                        package_version: package.action_package_version.clone(),
                     });
                 }
             }
@@ -1694,6 +1688,7 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                         store,
                         package.manager,
                         package.action_package_name.clone(),
+                        package.action_package_version.clone(),
                     ) {
                         Ok(action) => app.confirm_action = Some(action),
                         Err(error) => app.note_error(error),
@@ -1970,6 +1965,7 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                 app.confirm_action = Some(ConfirmAction::InstallPackage {
                     manager: package.manager,
                     package_name: package.action_package_name.clone(),
+                    package_version: package.action_package_version.clone(),
                 });
             } else if app.section == Section::Managers
                 && let Some(manager) = app.selected_manager()
@@ -2411,19 +2407,20 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
         ConfirmAction::InstallPackage {
             manager,
             package_name,
+            package_version,
         } => {
             let response = coordinator_submit_request(
                 store,
                 manager,
                 CoordinatorSubmitRequest::Install {
                     package_name: package_name.clone(),
-                    version: None,
+                    version: package_version.clone(),
                 },
                 ExecutionMode::Wait,
             )?;
             Ok(format!(
                 "Install requested for '{}@{}' (task #{}).",
-                package_name,
+                render_package_target(package_name.as_str(), package_version.as_deref()),
                 manager.as_str(),
                 response.task_id.unwrap_or(0)
             ))
@@ -2431,18 +2428,20 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
         ConfirmAction::UpgradePackage {
             manager,
             package_name,
+            package_version,
         } => {
             let response = coordinator_submit_request(
                 store,
                 manager,
                 CoordinatorSubmitRequest::Upgrade {
                     package_name: Some(package_name.clone()),
+                    version: package_version.clone(),
                 },
                 ExecutionMode::Wait,
             )?;
             Ok(format!(
                 "Upgrade requested for '{}@{}' (task #{}).",
-                package_name,
+                render_package_target(package_name.as_str(), package_version.as_deref()),
                 manager.as_str(),
                 response.task_id.unwrap_or(0)
             ))
@@ -2450,6 +2449,7 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
         ConfirmAction::UninstallPackage {
             manager,
             package_name,
+            package_version,
             uninstall_preview_summary: _,
         } => {
             let response = coordinator_submit_request(
@@ -2457,12 +2457,13 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
                 manager,
                 CoordinatorSubmitRequest::Uninstall {
                     package_name: package_name.clone(),
+                    version: package_version.clone(),
                 },
                 ExecutionMode::Wait,
             )?;
             Ok(format!(
                 "Uninstall requested for '{}@{}' (task #{}).",
-                package_name,
+                render_package_target(package_name.as_str(), package_version.as_deref()),
                 manager.as_str(),
                 response.task_id.unwrap_or(0)
             ))
@@ -2755,12 +2756,14 @@ fn prepare_package_uninstall_confirm_action(
     store: &SqliteStore,
     manager: ManagerId,
     package_name: String,
+    package_version: Option<String>,
 ) -> Result<ConfirmAction, String> {
     let package = PackageRef {
         manager,
         name: package_name.clone(),
     };
-    let preview = build_package_uninstall_preview_for_package(store, &package)?;
+    let preview =
+        build_package_uninstall_preview_for_package(store, &package, package_version.as_deref())?;
 
     if preview.manager_automation_level.as_deref() == Some("read_only") {
         return Err(format!(
@@ -2779,6 +2782,7 @@ fn prepare_package_uninstall_confirm_action(
     Ok(ConfirmAction::UninstallPackage {
         manager,
         package_name,
+        package_version,
         uninstall_preview_summary: Some(summary),
     })
 }
@@ -4384,7 +4388,7 @@ fn build_package_rows(
         .list_package_manager_preferences()
         .map_err(|error| format!("failed to list package manager preferences: {error}"))?
         .into_iter()
-        .map(|entry| (entry.package_name, entry.manager))
+        .map(|entry| (entry.package_family_key, entry.manager))
         .collect();
 
     let mut rows_by_key: HashMap<(ManagerId, String), PackageRow> = HashMap::new();
@@ -4416,6 +4420,10 @@ fn build_package_rows(
             action_package_name: package_row_action_package_name(
                 package.package.manager,
                 package.package.name.as_str(),
+                package.installed_version.as_deref(),
+            ),
+            action_package_version: package_row_action_version(
+                package.package.manager,
                 package.installed_version.as_deref(),
             ),
             installed_version: package.installed_version.clone(),
@@ -4479,6 +4487,10 @@ fn build_package_rows(
                     result.result.package.name.as_str(),
                     result.result.version.as_deref(),
                 ),
+                action_package_version: package_row_action_version(
+                    manager,
+                    result.result.version.as_deref(),
+                ),
                 installed_version: None,
                 candidate_version: result.result.version.clone(),
                 pinned: false,
@@ -4525,20 +4537,32 @@ fn build_package_rows(
 }
 
 fn package_row_action_package_name(
-    manager: ManagerId,
+    _manager: ManagerId,
     package_name: &str,
-    version: Option<&str>,
+    _version: Option<&str>,
 ) -> String {
     let trimmed_name = package_name.trim();
     if trimmed_name.is_empty() {
         return package_name.to_string();
     }
-    if matches!(manager, ManagerId::Asdf | ManagerId::Mise)
-        && let Some(version) = version.map(str::trim).filter(|value| !value.is_empty())
-    {
-        return format!("{trimmed_name}@{version}");
-    }
     trimmed_name.to_string()
+}
+
+fn package_row_action_version(manager: ManagerId, version: Option<&str>) -> Option<String> {
+    if !matches!(manager, ManagerId::Asdf | ManagerId::Mise) {
+        return None;
+    }
+    version
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "unknown")
+        .map(str::to_string)
+}
+
+fn render_package_target(package_name: &str, version: Option<&str>) -> String {
+    match version.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(version) => format!("{package_name}@{version}"),
+        None => package_name.to_string(),
+    }
 }
 
 fn should_replace_installed_row(existing: &PackageRow, candidate: &InstalledPackage) -> bool {
@@ -4764,6 +4788,7 @@ mod tests {
         let prompt = ConfirmAction::UninstallPackage {
             manager: ManagerId::Rustup,
             package_name: "stable".to_string(),
+            package_version: None,
             uninstall_preview_summary: Some(
                 "[manager_strategy=rustup_self manager_provenance=rustup_init blast_radius=5 requires_confirmation=true]"
                     .to_string(),

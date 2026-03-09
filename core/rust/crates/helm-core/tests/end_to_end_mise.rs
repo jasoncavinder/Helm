@@ -340,6 +340,7 @@ async fn uninstall_mise_tool_through_full_orchestration_path() {
                     manager: ManagerId::Mise,
                     name: "python@3.12.3".to_string(),
                 },
+                version: None,
             }),
         )
         .await
@@ -366,6 +367,7 @@ async fn upgrade_mise_tool_through_full_orchestration_path() {
                     manager: ManagerId::Mise,
                     name: "python@3.12.3".to_string(),
                 }),
+                version: None,
             }),
         )
         .await

@@ -886,6 +886,7 @@ async fn uninstall_mutation_removes_cached_snapshots_without_manual_refresh() {
             ManagerId::Pnpm,
             AdapterRequest::Uninstall(UninstallRequest {
                 package: package.clone(),
+                version: None,
             }),
         )
         .await

@@ -101,6 +101,7 @@
   "app.packages.keg_policy.keep_old": "古いkegを保持",
   "app.packages.keg_policy.use_global": "グローバル設定を使用",
   "app.packages.label.homebrew_keg_policy": "Homebrew keg ポリシー",
+  "app.packages.label.version_count": "{count} versions",
   "app.packages.label.pinned": "固定済み",
   "app.packages.label.restart_required": "再起動が必要",
   "app.packages.state.no_packages_found": "パッケージが見つかりません",

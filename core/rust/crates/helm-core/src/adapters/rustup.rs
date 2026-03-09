@@ -3,10 +3,8 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::adapters::manager::{
-    AdapterRequest, AdapterResponse, AdapterResult, ManagerAdapter, RustupAddComponentRequest,
-    RustupAddTargetRequest, RustupRemoveComponentRequest, RustupRemoveTargetRequest,
-    RustupSetDefaultToolchainRequest, RustupSetOverrideRequest, RustupSetProfileRequest,
-    RustupUnsetOverrideRequest,
+    AdapterRequest, AdapterResponse, AdapterResult, ManagerAdapter, PackageDetailChildKind,
+    PackageDetailOperation, PackageDetailRequest,
 };
 use crate::execution::{CommandSpec, ProcessSpawnRequest};
 use crate::models::{
@@ -252,77 +250,107 @@ impl<S: RustupSource> ManagerAdapter for RustupAdapter<S> {
                     after_version: None,
                 }))
             }
-            AdapterRequest::RustupAddComponent(RustupAddComponentRequest {
-                toolchain,
-                component,
+            AdapterRequest::ConfigurePackageDetail(PackageDetailRequest {
+                manager,
+                package,
+                operation,
             }) => {
-                validate_rustup_toolchain_identifier(&toolchain, TaskType::Configure)?;
-                validate_rustup_detail_identifier(
-                    component.as_str(),
-                    "component",
-                    TaskType::Configure,
-                )?;
-                let _ = self
-                    .source
-                    .add_component(toolchain.as_str(), component.as_str())?;
-                sync_package_state_after_configuration(&self.source)
-            }
-            AdapterRequest::RustupRemoveComponent(RustupRemoveComponentRequest {
-                toolchain,
-                component,
-            }) => {
-                validate_rustup_toolchain_identifier(&toolchain, TaskType::Configure)?;
-                validate_rustup_detail_identifier(
-                    component.as_str(),
-                    "component",
-                    TaskType::Configure,
-                )?;
-                let _ = self
-                    .source
-                    .remove_component(toolchain.as_str(), component.as_str())?;
-                sync_package_state_after_configuration(&self.source)
-            }
-            AdapterRequest::RustupAddTarget(RustupAddTargetRequest { toolchain, target }) => {
-                validate_rustup_toolchain_identifier(&toolchain, TaskType::Configure)?;
-                validate_rustup_detail_identifier(target.as_str(), "target", TaskType::Configure)?;
-                let _ = self
-                    .source
-                    .add_target(toolchain.as_str(), target.as_str())?;
-                sync_package_state_after_configuration(&self.source)
-            }
-            AdapterRequest::RustupRemoveTarget(RustupRemoveTargetRequest { toolchain, target }) => {
-                validate_rustup_toolchain_identifier(&toolchain, TaskType::Configure)?;
-                validate_rustup_detail_identifier(target.as_str(), "target", TaskType::Configure)?;
-                let _ = self
-                    .source
-                    .remove_target(toolchain.as_str(), target.as_str())?;
-                sync_package_state_after_configuration(&self.source)
-            }
-            AdapterRequest::RustupSetDefaultToolchain(RustupSetDefaultToolchainRequest {
-                toolchain,
-            }) => {
-                validate_rustup_toolchain_identifier(&toolchain, TaskType::Configure)?;
-                let _ = self.source.set_default_toolchain(toolchain.as_str())?;
-                sync_package_state_after_configuration(&self.source)
-            }
-            AdapterRequest::RustupSetOverride(RustupSetOverrideRequest { toolchain, path }) => {
-                validate_rustup_toolchain_identifier(&toolchain, TaskType::Configure)?;
-                validate_rustup_override_path(path.as_path(), TaskType::Configure)?;
-                let _ = self
-                    .source
-                    .set_override(toolchain.as_str(), path.as_path())?;
-                sync_package_state_after_configuration(&self.source)
-            }
-            AdapterRequest::RustupUnsetOverride(RustupUnsetOverrideRequest { toolchain, path }) => {
-                validate_rustup_toolchain_identifier(&toolchain, TaskType::Configure)?;
-                validate_rustup_override_path(path.as_path(), TaskType::Configure)?;
-                let _ = self.source.unset_override(path.as_path())?;
-                sync_package_state_after_configuration(&self.source)
-            }
-            AdapterRequest::RustupSetProfile(RustupSetProfileRequest { profile }) => {
-                validate_rustup_profile(profile.as_str())?;
-                let _ = self.source.set_profile(profile.as_str())?;
-                sync_package_state_after_configuration(&self.source)
+                if manager != ManagerId::Rustup {
+                    return Err(CoreError {
+                        manager: Some(ManagerId::Rustup),
+                        task: Some(TaskType::Configure),
+                        action: Some(ManagerAction::Configure),
+                        kind: CoreErrorKind::InvalidInput,
+                        message: format!(
+                            "rustup package detail configuration does not support manager '{}'",
+                            manager.as_str()
+                        ),
+                    });
+                }
+
+                match operation {
+                    PackageDetailOperation::AddChild {
+                        kind: PackageDetailChildKind::Component,
+                        value,
+                    } => {
+                        let toolchain = rustup_package_detail_toolchain_name(package.as_ref())?;
+                        validate_rustup_toolchain_identifier(toolchain, TaskType::Configure)?;
+                        validate_rustup_detail_identifier(
+                            value.as_str(),
+                            "component",
+                            TaskType::Configure,
+                        )?;
+                        let _ = self.source.add_component(toolchain, value.as_str())?;
+                        sync_package_state_after_configuration(&self.source)
+                    }
+                    PackageDetailOperation::RemoveChild {
+                        kind: PackageDetailChildKind::Component,
+                        value,
+                    } => {
+                        let toolchain = rustup_package_detail_toolchain_name(package.as_ref())?;
+                        validate_rustup_toolchain_identifier(toolchain, TaskType::Configure)?;
+                        validate_rustup_detail_identifier(
+                            value.as_str(),
+                            "component",
+                            TaskType::Configure,
+                        )?;
+                        let _ = self.source.remove_component(toolchain, value.as_str())?;
+                        sync_package_state_after_configuration(&self.source)
+                    }
+                    PackageDetailOperation::AddChild {
+                        kind: PackageDetailChildKind::Target,
+                        value,
+                    } => {
+                        let toolchain = rustup_package_detail_toolchain_name(package.as_ref())?;
+                        validate_rustup_toolchain_identifier(toolchain, TaskType::Configure)?;
+                        validate_rustup_detail_identifier(
+                            value.as_str(),
+                            "target",
+                            TaskType::Configure,
+                        )?;
+                        let _ = self.source.add_target(toolchain, value.as_str())?;
+                        sync_package_state_after_configuration(&self.source)
+                    }
+                    PackageDetailOperation::RemoveChild {
+                        kind: PackageDetailChildKind::Target,
+                        value,
+                    } => {
+                        let toolchain = rustup_package_detail_toolchain_name(package.as_ref())?;
+                        validate_rustup_toolchain_identifier(toolchain, TaskType::Configure)?;
+                        validate_rustup_detail_identifier(
+                            value.as_str(),
+                            "target",
+                            TaskType::Configure,
+                        )?;
+                        let _ = self.source.remove_target(toolchain, value.as_str())?;
+                        sync_package_state_after_configuration(&self.source)
+                    }
+                    PackageDetailOperation::SetDefault => {
+                        let toolchain = rustup_package_detail_toolchain_name(package.as_ref())?;
+                        validate_rustup_toolchain_identifier(toolchain, TaskType::Configure)?;
+                        let _ = self.source.set_default_toolchain(toolchain)?;
+                        sync_package_state_after_configuration(&self.source)
+                    }
+                    PackageDetailOperation::SetPathOverride { path } => {
+                        let toolchain = rustup_package_detail_toolchain_name(package.as_ref())?;
+                        validate_rustup_toolchain_identifier(toolchain, TaskType::Configure)?;
+                        validate_rustup_override_path(path.as_path(), TaskType::Configure)?;
+                        let _ = self.source.set_override(toolchain, path.as_path())?;
+                        sync_package_state_after_configuration(&self.source)
+                    }
+                    PackageDetailOperation::ClearPathOverride { path } => {
+                        let toolchain = rustup_package_detail_toolchain_name(package.as_ref())?;
+                        validate_rustup_toolchain_identifier(toolchain, TaskType::Configure)?;
+                        validate_rustup_override_path(path.as_path(), TaskType::Configure)?;
+                        let _ = self.source.unset_override(path.as_path())?;
+                        sync_package_state_after_configuration(&self.source)
+                    }
+                    PackageDetailOperation::SetProfile { profile } => {
+                        validate_rustup_profile(profile.as_str())?;
+                        let _ = self.source.set_profile(profile.as_str())?;
+                        sync_package_state_after_configuration(&self.source)
+                    }
+                }
             }
             _ => Err(CoreError {
                 manager: Some(ManagerId::Rustup),
@@ -762,6 +790,31 @@ fn reject_toolchain_install_version(version: Option<&str>) -> AdapterResult<()> 
         kind: CoreErrorKind::InvalidInput,
         message: "rustup toolchain install does not support --version; include the full toolchain selector in the package name".to_string(),
     })
+}
+
+fn rustup_package_detail_toolchain_name(package: Option<&PackageRef>) -> AdapterResult<&str> {
+    let package = package.ok_or(CoreError {
+        manager: Some(ManagerId::Rustup),
+        task: Some(TaskType::Configure),
+        action: Some(ManagerAction::Configure),
+        kind: CoreErrorKind::InvalidInput,
+        message: "rustup package detail configuration requires a toolchain target".to_string(),
+    })?;
+
+    if package.manager != ManagerId::Rustup {
+        return Err(CoreError {
+            manager: Some(ManagerId::Rustup),
+            task: Some(TaskType::Configure),
+            action: Some(ManagerAction::Configure),
+            kind: CoreErrorKind::InvalidInput,
+            message: format!(
+                "rustup package detail configuration received mismatched package manager '{}'",
+                package.manager.as_str()
+            ),
+        });
+    }
+
+    Ok(package.name.as_str())
 }
 
 fn validate_rustup_toolchain_identifier(raw: &str, task_type: TaskType) -> AdapterResult<()> {
@@ -1608,12 +1661,10 @@ mod tests {
 
     use crate::adapters::manager::{
         AdapterRequest, AdapterResponse, AdapterResult, DetectRequest, ListInstalledRequest,
-        ListOutdatedRequest, ManagerAdapter, RustupAddComponentRequest, RustupAddTargetRequest,
-        RustupRemoveComponentRequest, RustupRemoveTargetRequest, RustupSetDefaultToolchainRequest,
-        RustupSetOverrideRequest, RustupSetProfileRequest, RustupUnsetOverrideRequest,
-        SearchRequest,
+        ListOutdatedRequest, ManagerAdapter, PackageDetailChildKind, PackageDetailOperation,
+        PackageDetailRequest, SearchRequest,
     };
-    use crate::models::{ManagerAction, ManagerId, SearchQuery, TaskId, TaskType};
+    use crate::models::{ManagerAction, ManagerId, PackageRef, SearchQuery, TaskId, TaskType};
 
     use super::{
         INSTALL_IDLE_TIMEOUT, INSTALL_TIMEOUT, RustupAdapter, RustupDetectOutput,
@@ -2089,6 +2140,7 @@ wasm32-unknown-unknown\n";
                         manager: ManagerId::Rustup,
                         name: "__self__".to_string(),
                     },
+                    version: None,
                 },
             ))
             .unwrap();
@@ -2110,6 +2162,7 @@ wasm32-unknown-unknown\n";
                         manager: ManagerId::Rustup,
                         name: "stable-x86_64-apple-darwin".to_string(),
                     },
+                    version: None,
                 },
             ))
             .unwrap();
@@ -2132,6 +2185,7 @@ wasm32-unknown-unknown\n";
                     manager: ManagerId::Rustup,
                     name: "__self__".to_string(),
                 }),
+                version: None,
             }))
             .unwrap();
         assert!(matches!(result, AdapterResponse::Mutation(_)));
@@ -2148,6 +2202,7 @@ wasm32-unknown-unknown\n";
                     manager: ManagerId::Rustup,
                     name: "stable-x86_64-apple-darwin".to_string(),
                 }),
+                version: None,
             }))
             .unwrap();
         assert!(matches!(result, AdapterResponse::Mutation(_)));
@@ -2160,10 +2215,17 @@ wasm32-unknown-unknown\n";
         let adapter = RustupAdapter::new(source);
 
         let add_result = adapter
-            .execute(AdapterRequest::RustupAddComponent(
-                RustupAddComponentRequest {
-                    toolchain: "stable-x86_64-apple-darwin".to_string(),
-                    component: "clippy".to_string(),
+            .execute(AdapterRequest::ConfigurePackageDetail(
+                PackageDetailRequest {
+                    manager: ManagerId::Rustup,
+                    package: Some(PackageRef {
+                        manager: ManagerId::Rustup,
+                        name: "stable-x86_64-apple-darwin".to_string(),
+                    }),
+                    operation: PackageDetailOperation::AddChild {
+                        kind: PackageDetailChildKind::Component,
+                        value: "clippy".to_string(),
+                    },
                 },
             ))
             .unwrap();
@@ -2176,10 +2238,17 @@ wasm32-unknown-unknown\n";
         ));
 
         let remove_result = adapter
-            .execute(AdapterRequest::RustupRemoveComponent(
-                RustupRemoveComponentRequest {
-                    toolchain: "stable-x86_64-apple-darwin".to_string(),
-                    component: "clippy".to_string(),
+            .execute(AdapterRequest::ConfigurePackageDetail(
+                PackageDetailRequest {
+                    manager: ManagerId::Rustup,
+                    package: Some(PackageRef {
+                        manager: ManagerId::Rustup,
+                        name: "stable-x86_64-apple-darwin".to_string(),
+                    }),
+                    operation: PackageDetailOperation::RemoveChild {
+                        kind: PackageDetailChildKind::Component,
+                        value: "clippy".to_string(),
+                    },
                 },
             ))
             .unwrap();
@@ -2207,10 +2276,19 @@ wasm32-unknown-unknown\n";
         let adapter = RustupAdapter::new(source);
 
         let add_result = adapter
-            .execute(AdapterRequest::RustupAddTarget(RustupAddTargetRequest {
-                toolchain: "stable-x86_64-apple-darwin".to_string(),
-                target: "aarch64-apple-darwin".to_string(),
-            }))
+            .execute(AdapterRequest::ConfigurePackageDetail(
+                PackageDetailRequest {
+                    manager: ManagerId::Rustup,
+                    package: Some(PackageRef {
+                        manager: ManagerId::Rustup,
+                        name: "stable-x86_64-apple-darwin".to_string(),
+                    }),
+                    operation: PackageDetailOperation::AddChild {
+                        kind: PackageDetailChildKind::Target,
+                        value: "aarch64-apple-darwin".to_string(),
+                    },
+                },
+            ))
             .unwrap();
         assert!(matches!(
             add_result,
@@ -2221,10 +2299,17 @@ wasm32-unknown-unknown\n";
         ));
 
         let remove_result = adapter
-            .execute(AdapterRequest::RustupRemoveTarget(
-                RustupRemoveTargetRequest {
-                    toolchain: "stable-x86_64-apple-darwin".to_string(),
-                    target: "aarch64-apple-darwin".to_string(),
+            .execute(AdapterRequest::ConfigurePackageDetail(
+                PackageDetailRequest {
+                    manager: ManagerId::Rustup,
+                    package: Some(PackageRef {
+                        manager: ManagerId::Rustup,
+                        name: "stable-x86_64-apple-darwin".to_string(),
+                    }),
+                    operation: PackageDetailOperation::RemoveChild {
+                        kind: PackageDetailChildKind::Target,
+                        value: "aarch64-apple-darwin".to_string(),
+                    },
                 },
             ))
             .unwrap();
@@ -2252,9 +2337,14 @@ wasm32-unknown-unknown\n";
         let adapter = RustupAdapter::new(source);
 
         let default_result = adapter
-            .execute(AdapterRequest::RustupSetDefaultToolchain(
-                RustupSetDefaultToolchainRequest {
-                    toolchain: "stable-x86_64-apple-darwin".to_string(),
+            .execute(AdapterRequest::ConfigurePackageDetail(
+                PackageDetailRequest {
+                    manager: ManagerId::Rustup,
+                    package: Some(PackageRef {
+                        manager: ManagerId::Rustup,
+                        name: "stable-x86_64-apple-darwin".to_string(),
+                    }),
+                    operation: PackageDetailOperation::SetDefault,
                 },
             ))
             .unwrap();
@@ -2267,10 +2357,16 @@ wasm32-unknown-unknown\n";
         ));
 
         let override_result = adapter
-            .execute(AdapterRequest::RustupSetOverride(
-                RustupSetOverrideRequest {
-                    toolchain: "stable-x86_64-apple-darwin".to_string(),
-                    path: "/tmp/helm-rustup-override".into(),
+            .execute(AdapterRequest::ConfigurePackageDetail(
+                PackageDetailRequest {
+                    manager: ManagerId::Rustup,
+                    package: Some(PackageRef {
+                        manager: ManagerId::Rustup,
+                        name: "stable-x86_64-apple-darwin".to_string(),
+                    }),
+                    operation: PackageDetailOperation::SetPathOverride {
+                        path: "/tmp/helm-rustup-override".into(),
+                    },
                 },
             ))
             .unwrap();
@@ -2283,10 +2379,16 @@ wasm32-unknown-unknown\n";
         ));
 
         let unset_override_result = adapter
-            .execute(AdapterRequest::RustupUnsetOverride(
-                RustupUnsetOverrideRequest {
-                    toolchain: "stable-x86_64-apple-darwin".to_string(),
-                    path: "/tmp/helm-rustup-override".into(),
+            .execute(AdapterRequest::ConfigurePackageDetail(
+                PackageDetailRequest {
+                    manager: ManagerId::Rustup,
+                    package: Some(PackageRef {
+                        manager: ManagerId::Rustup,
+                        name: "stable-x86_64-apple-darwin".to_string(),
+                    }),
+                    operation: PackageDetailOperation::ClearPathOverride {
+                        path: "/tmp/helm-rustup-override".into(),
+                    },
                 },
             ))
             .unwrap();
@@ -2299,9 +2401,15 @@ wasm32-unknown-unknown\n";
         ));
 
         let profile_result = adapter
-            .execute(AdapterRequest::RustupSetProfile(RustupSetProfileRequest {
-                profile: "minimal".to_string(),
-            }))
+            .execute(AdapterRequest::ConfigurePackageDetail(
+                PackageDetailRequest {
+                    manager: ManagerId::Rustup,
+                    package: None,
+                    operation: PackageDetailOperation::SetProfile {
+                        profile: "minimal".to_string(),
+                    },
+                },
+            ))
             .unwrap();
         assert!(matches!(
             profile_result,

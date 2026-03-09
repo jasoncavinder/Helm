@@ -16,6 +16,7 @@ use crate::persistence::{
     PersistenceResult, PinStore, SearchCacheStore, TaskStore,
 };
 use crate::sqlite::migrations::{SqliteMigration, current_schema_version, migration, migrations};
+use crate::versioning::normalize_package_family_key;
 
 const MIGRATIONS_TABLE: &str = "helm_schema_migrations";
 
@@ -1945,14 +1946,15 @@ ORDER BY manager_id, package_name
 
     fn set_package_manager_preference(
         &self,
-        package_name: &str,
+        package_family_key: &str,
         manager: Option<ManagerId>,
     ) -> PersistenceResult<()> {
         self.with_connection("set_package_manager_preference", |connection| {
             ensure_schema_ready(connection)?;
-            let Some(normalized_package_name) = normalize_package_preference_key(package_name)
+            let Some(normalized_package_family_key) =
+                normalize_package_family_key(package_family_key)
             else {
-                return Err(storage_error_sqlite("package_name cannot be empty"));
+                return Err(storage_error_sqlite("package_family_key cannot be empty"));
             };
 
             match manager {
@@ -1965,13 +1967,13 @@ ON CONFLICT(package_name) DO UPDATE SET
     manager_id = excluded.manager_id,
     updated_at_unix = excluded.updated_at_unix
 ",
-                        params![normalized_package_name, manager.as_str()],
+                        params![normalized_package_family_key, manager.as_str()],
                     )?;
                 }
                 None => {
                     connection.execute(
                         "DELETE FROM package_manager_preferences WHERE package_name = ?1",
-                        params![normalized_package_name],
+                        params![normalized_package_family_key],
                     )?;
                 }
             }
@@ -1982,11 +1984,12 @@ ON CONFLICT(package_name) DO UPDATE SET
 
     fn package_manager_preference(
         &self,
-        package_name: &str,
+        package_family_key: &str,
     ) -> PersistenceResult<Option<ManagerId>> {
         self.with_connection("package_manager_preference", |connection| {
             ensure_schema_ready(connection)?;
-            let Some(normalized_package_name) = normalize_package_preference_key(package_name)
+            let Some(normalized_package_family_key) =
+                normalize_package_family_key(package_family_key)
             else {
                 return Ok(None);
             };
@@ -1998,7 +2001,7 @@ FROM package_manager_preferences
 WHERE package_name = ?1
 ",
             )?;
-            let mut rows = statement.query(params![normalized_package_name])?;
+            let mut rows = statement.query(params![normalized_package_family_key])?;
             let Some(row) = rows.next()? else {
                 return Ok(None);
             };
@@ -2018,11 +2021,11 @@ ORDER BY package_name
 ",
             )?;
             let rows = statement.query_map([], |row| {
-                let package_name: String = row.get(0)?;
+                let package_family_key: String = row.get(0)?;
                 let manager_raw: String = row.get(1)?;
                 let manager = parse_manager_id(manager_raw.as_str())?;
                 Ok(PackageManagerPreference {
-                    package_name,
+                    package_family_key,
                     manager,
                 })
             })?;
@@ -2313,14 +2316,6 @@ fn from_installed_version_token(value: String) -> Option<String> {
     } else {
         Some(trimmed.to_string())
     }
-}
-
-fn normalize_package_preference_key(value: &str) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    Some(trimmed.to_ascii_lowercase())
 }
 
 fn to_unix_seconds(value: SystemTime) -> rusqlite::Result<i64> {

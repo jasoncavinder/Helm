@@ -314,6 +314,7 @@ async fn uninstall_toolchain_through_full_orchestration_path() {
                     manager: ManagerId::Rustup,
                     name: "stable-x86_64-apple-darwin".to_string(),
                 },
+                version: None,
             }),
         )
         .await

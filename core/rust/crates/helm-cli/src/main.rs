@@ -15,9 +15,7 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use helm_core::adapters::manager::{
-    RustupAddComponentRequest, RustupAddTargetRequest, RustupRemoveComponentRequest,
-    RustupRemoveTargetRequest, RustupSetDefaultToolchainRequest, RustupSetOverrideRequest,
-    RustupSetProfileRequest, RustupUnsetOverrideRequest,
+    PackageDetailChildKind, PackageDetailOperation, PackageDetailRequest,
 };
 use helm_core::adapters::{
     AdapterRequest, AdapterResponse, AsdfAdapter, BundlerAdapter, CargoAdapter,
@@ -64,6 +62,7 @@ use helm_core::uninstall_preview::{
     build_package_uninstall_preview,
 };
 use helm_core::versioning::PackageCoordinate;
+use helm_core::versioning::package_family_preference_key;
 use semver::Version;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -606,9 +605,11 @@ enum CoordinatorSubmitRequest {
     },
     Uninstall {
         package_name: String,
+        version: Option<String>,
     },
     Upgrade {
         package_name: Option<String>,
+        version: Option<String>,
     },
     Pin {
         package_name: String,
@@ -2769,6 +2770,7 @@ fn cmd_packages_mutation(
         Some(build_package_uninstall_preview_for_package(
             store.as_ref(),
             &package,
+            parsed.version.as_deref(),
         )?)
     } else {
         None
@@ -2802,9 +2804,11 @@ fn cmd_packages_mutation(
         }),
         "uninstall" => Some(CoordinatorSubmitRequest::Uninstall {
             package_name: parsed.package_name.clone(),
+            version: parsed.version.clone(),
         }),
         "upgrade" => Some(CoordinatorSubmitRequest::Upgrade {
             package_name: Some(parsed.package_name.clone()),
+            version: parsed.version.clone(),
         }),
         "pin" if supports_native_pin => Some(CoordinatorSubmitRequest::Pin {
             package_name: parsed.package_name.clone(),
@@ -3540,6 +3544,7 @@ fn cmd_updates_run(
                 manager: step.manager,
                 name: upgrade_request_name(step),
             }),
+            version: None,
         });
         let response = tokio_runtime.block_on(submit_request_wait(&runtime, step.manager, request));
         match response {
@@ -9180,6 +9185,7 @@ fn run_coordinator_workflow(
                         manager: step.manager,
                         name: upgrade_request_name(step),
                     }),
+                    version: None,
                 });
                 tokio_runtime
                     .block_on(submit_request_wait(&runtime, step.manager, request))
@@ -9214,42 +9220,97 @@ fn coordinator_submit_request_to_adapter(
         CoordinatorSubmitRequest::RustupAddComponent {
             toolchain,
             component,
-        } => AdapterRequest::RustupAddComponent(RustupAddComponentRequest {
-            toolchain,
-            component,
+        } => AdapterRequest::ConfigurePackageDetail(PackageDetailRequest {
+            manager,
+            package: Some(PackageRef {
+                manager,
+                name: toolchain,
+            }),
+            operation: PackageDetailOperation::AddChild {
+                kind: PackageDetailChildKind::Component,
+                value: component,
+            },
         }),
         CoordinatorSubmitRequest::RustupRemoveComponent {
             toolchain,
             component,
-        } => AdapterRequest::RustupRemoveComponent(RustupRemoveComponentRequest {
-            toolchain,
-            component,
+        } => AdapterRequest::ConfigurePackageDetail(PackageDetailRequest {
+            manager,
+            package: Some(PackageRef {
+                manager,
+                name: toolchain,
+            }),
+            operation: PackageDetailOperation::RemoveChild {
+                kind: PackageDetailChildKind::Component,
+                value: component,
+            },
         }),
         CoordinatorSubmitRequest::RustupAddTarget { toolchain, target } => {
-            AdapterRequest::RustupAddTarget(RustupAddTargetRequest { toolchain, target })
+            AdapterRequest::ConfigurePackageDetail(PackageDetailRequest {
+                manager,
+                package: Some(PackageRef {
+                    manager,
+                    name: toolchain,
+                }),
+                operation: PackageDetailOperation::AddChild {
+                    kind: PackageDetailChildKind::Target,
+                    value: target,
+                },
+            })
         }
         CoordinatorSubmitRequest::RustupRemoveTarget { toolchain, target } => {
-            AdapterRequest::RustupRemoveTarget(RustupRemoveTargetRequest { toolchain, target })
+            AdapterRequest::ConfigurePackageDetail(PackageDetailRequest {
+                manager,
+                package: Some(PackageRef {
+                    manager,
+                    name: toolchain,
+                }),
+                operation: PackageDetailOperation::RemoveChild {
+                    kind: PackageDetailChildKind::Target,
+                    value: target,
+                },
+            })
         }
         CoordinatorSubmitRequest::RustupSetDefaultToolchain { toolchain } => {
-            AdapterRequest::RustupSetDefaultToolchain(RustupSetDefaultToolchainRequest {
-                toolchain,
+            AdapterRequest::ConfigurePackageDetail(PackageDetailRequest {
+                manager,
+                package: Some(PackageRef {
+                    manager,
+                    name: toolchain,
+                }),
+                operation: PackageDetailOperation::SetDefault,
             })
         }
         CoordinatorSubmitRequest::RustupSetOverride { toolchain, path } => {
-            AdapterRequest::RustupSetOverride(RustupSetOverrideRequest {
-                toolchain,
-                path: PathBuf::from(path),
+            AdapterRequest::ConfigurePackageDetail(PackageDetailRequest {
+                manager,
+                package: Some(PackageRef {
+                    manager,
+                    name: toolchain,
+                }),
+                operation: PackageDetailOperation::SetPathOverride {
+                    path: PathBuf::from(path),
+                },
             })
         }
         CoordinatorSubmitRequest::RustupUnsetOverride { toolchain, path } => {
-            AdapterRequest::RustupUnsetOverride(RustupUnsetOverrideRequest {
-                toolchain,
-                path: PathBuf::from(path),
+            AdapterRequest::ConfigurePackageDetail(PackageDetailRequest {
+                manager,
+                package: Some(PackageRef {
+                    manager,
+                    name: toolchain,
+                }),
+                operation: PackageDetailOperation::ClearPathOverride {
+                    path: PathBuf::from(path),
+                },
             })
         }
         CoordinatorSubmitRequest::RustupSetProfile { profile } => {
-            AdapterRequest::RustupSetProfile(RustupSetProfileRequest { profile })
+            AdapterRequest::ConfigurePackageDetail(PackageDetailRequest {
+                manager,
+                package: None,
+                operation: PackageDetailOperation::SetProfile { profile },
+            })
         }
         CoordinatorSubmitRequest::Install {
             package_name,
@@ -9261,19 +9322,23 @@ fn coordinator_submit_request_to_adapter(
             },
             version,
         }),
-        CoordinatorSubmitRequest::Uninstall { package_name } => {
-            AdapterRequest::Uninstall(UninstallRequest {
-                package: PackageRef {
-                    manager,
-                    name: package_name,
-                },
-            })
-        }
-        CoordinatorSubmitRequest::Upgrade { package_name } => {
-            AdapterRequest::Upgrade(UpgradeRequest {
-                package: package_name.map(|name| PackageRef { manager, name }),
-            })
-        }
+        CoordinatorSubmitRequest::Uninstall {
+            package_name,
+            version,
+        } => AdapterRequest::Uninstall(UninstallRequest {
+            package: PackageRef {
+                manager,
+                name: package_name,
+            },
+            version,
+        }),
+        CoordinatorSubmitRequest::Upgrade {
+            package_name,
+            version,
+        } => AdapterRequest::Upgrade(UpgradeRequest {
+            package: package_name.map(|name| PackageRef { manager, name }),
+            version,
+        }),
         CoordinatorSubmitRequest::Pin {
             package_name,
             version,
@@ -9304,59 +9369,88 @@ fn adapter_request_to_coordinator_submit(
         AdapterRequest::Search(search) => Ok(CoordinatorSubmitRequest::Search {
             query: search.query.text,
         }),
-        AdapterRequest::RustupAddComponent(request) => {
-            Ok(CoordinatorSubmitRequest::RustupAddComponent {
-                toolchain: request.toolchain,
-                component: request.component,
-            })
-        }
-        AdapterRequest::RustupRemoveComponent(request) => {
-            Ok(CoordinatorSubmitRequest::RustupRemoveComponent {
-                toolchain: request.toolchain,
-                component: request.component,
-            })
-        }
-        AdapterRequest::RustupAddTarget(request) => Ok(CoordinatorSubmitRequest::RustupAddTarget {
-            toolchain: request.toolchain,
-            target: request.target,
-        }),
-        AdapterRequest::RustupRemoveTarget(request) => {
-            Ok(CoordinatorSubmitRequest::RustupRemoveTarget {
-                toolchain: request.toolchain,
-                target: request.target,
-            })
-        }
-        AdapterRequest::RustupSetDefaultToolchain(request) => {
-            Ok(CoordinatorSubmitRequest::RustupSetDefaultToolchain {
-                toolchain: request.toolchain,
-            })
-        }
-        AdapterRequest::RustupSetOverride(request) => {
-            Ok(CoordinatorSubmitRequest::RustupSetOverride {
-                toolchain: request.toolchain,
-                path: request.path.to_string_lossy().to_string(),
-            })
-        }
-        AdapterRequest::RustupUnsetOverride(request) => {
-            Ok(CoordinatorSubmitRequest::RustupUnsetOverride {
-                toolchain: request.toolchain,
-                path: request.path.to_string_lossy().to_string(),
-            })
-        }
-        AdapterRequest::RustupSetProfile(request) => {
-            Ok(CoordinatorSubmitRequest::RustupSetProfile {
-                profile: request.profile,
-            })
-        }
+        AdapterRequest::ConfigurePackageDetail(request) => match request.operation {
+            PackageDetailOperation::AddChild {
+                kind: PackageDetailChildKind::Component,
+                value,
+            } => Ok(CoordinatorSubmitRequest::RustupAddComponent {
+                toolchain: request
+                    .package
+                    .ok_or("package detail add-component request missing package target")?
+                    .name,
+                component: value,
+            }),
+            PackageDetailOperation::RemoveChild {
+                kind: PackageDetailChildKind::Component,
+                value,
+            } => Ok(CoordinatorSubmitRequest::RustupRemoveComponent {
+                toolchain: request
+                    .package
+                    .ok_or("package detail remove-component request missing package target")?
+                    .name,
+                component: value,
+            }),
+            PackageDetailOperation::AddChild {
+                kind: PackageDetailChildKind::Target,
+                value,
+            } => Ok(CoordinatorSubmitRequest::RustupAddTarget {
+                toolchain: request
+                    .package
+                    .ok_or("package detail add-target request missing package target")?
+                    .name,
+                target: value,
+            }),
+            PackageDetailOperation::RemoveChild {
+                kind: PackageDetailChildKind::Target,
+                value,
+            } => Ok(CoordinatorSubmitRequest::RustupRemoveTarget {
+                toolchain: request
+                    .package
+                    .ok_or("package detail remove-target request missing package target")?
+                    .name,
+                target: value,
+            }),
+            PackageDetailOperation::SetDefault => {
+                Ok(CoordinatorSubmitRequest::RustupSetDefaultToolchain {
+                    toolchain: request
+                        .package
+                        .ok_or("package detail set-default request missing package target")?
+                        .name,
+                })
+            }
+            PackageDetailOperation::SetPathOverride { path } => {
+                Ok(CoordinatorSubmitRequest::RustupSetOverride {
+                    toolchain: request
+                        .package
+                        .ok_or("package detail set-override request missing package target")?
+                        .name,
+                    path: path.to_string_lossy().to_string(),
+                })
+            }
+            PackageDetailOperation::ClearPathOverride { path } => {
+                Ok(CoordinatorSubmitRequest::RustupUnsetOverride {
+                    toolchain: request
+                        .package
+                        .ok_or("package detail clear-override request missing package target")?
+                        .name,
+                    path: path.to_string_lossy().to_string(),
+                })
+            }
+            PackageDetailOperation::SetProfile { profile } => {
+                Ok(CoordinatorSubmitRequest::RustupSetProfile { profile })
+            }
+        },
         AdapterRequest::Install(install) => Ok(CoordinatorSubmitRequest::Install {
             package_name: install.package.name,
             version: install.version,
         }),
         AdapterRequest::Uninstall(uninstall) => Ok(CoordinatorSubmitRequest::Uninstall {
             package_name: uninstall.package.name,
+            version: uninstall.version,
         }),
         AdapterRequest::Upgrade(upgrade) => Ok(CoordinatorSubmitRequest::Upgrade {
             package_name: upgrade.package.map(|package| package.name),
+            version: upgrade.version,
         }),
         AdapterRequest::Pin(pin) => Ok(CoordinatorSubmitRequest::Pin {
             package_name: pin.package.name,
@@ -11410,29 +11504,7 @@ fn list_outdated_for_enabled(
 }
 
 fn package_manager_preference_key(package_name: &str, version: Option<&str>) -> String {
-    let normalized_name = package_name.trim().to_ascii_lowercase();
-    if normalized_name.is_empty() {
-        return String::new();
-    }
-
-    let normalized_version = version.map(str::trim).filter(|value| !value.is_empty());
-    let Some(normalized_version) = normalized_version else {
-        return normalized_name;
-    };
-
-    let coordinate_raw = format!("{}@{}", package_name.trim(), normalized_version);
-    let qualifier_key = PackageCoordinate::parse(coordinate_raw.as_str())
-        .and_then(|coordinate| coordinate.version_selector)
-        .map(|selector| selector.qualifier_atoms())
-        .filter(|atoms| !atoms.is_empty())
-        .map(|atoms| atoms.join("-").trim().to_ascii_lowercase())
-        .filter(|value| !value.is_empty());
-
-    if let Some(qualifier_key) = qualifier_key {
-        format!("{}@{}", normalized_name, qualifier_key)
-    } else {
-        normalized_name
-    }
+    package_family_preference_key(package_name, version)
 }
 
 fn search_local_for_enabled(
@@ -13002,6 +13074,7 @@ fn build_manager_mutation_request_with_options(
                         manager: ManagerId::Rustup,
                         name: "__self__".to_string(),
                     },
+                    version: None,
                 }),
             ),
             _ => {
@@ -13013,6 +13086,7 @@ fn build_manager_mutation_request_with_options(
                                 manager: ManagerId::HomebrewFormula,
                                 name: formula_name.to_string(),
                             },
+                            version: None,
                         }),
                     )
                 } else {
@@ -13703,9 +13777,10 @@ fn active_manager_install_instance(
 fn build_package_uninstall_preview_for_package(
     store: &SqliteStore,
     package: &PackageRef,
+    requested_version: Option<&str>,
 ) -> Result<PackageUninstallPreview, String> {
     let active_instance = active_manager_install_instance(store, package.manager)?;
-    let runtime_state = package_runtime_state_from_snapshot(store, package)?;
+    let runtime_state = package_runtime_state_from_snapshot(store, package, requested_version)?;
     let rustup_override_paths = rustup_override_paths_for_preview(package, runtime_state.as_ref());
     Ok(build_package_uninstall_preview(
         PackageUninstallPreviewContext {
@@ -13721,13 +13796,19 @@ fn build_package_uninstall_preview_for_package(
 fn package_runtime_state_from_snapshot(
     store: &SqliteStore,
     package: &PackageRef,
+    requested_version: Option<&str>,
 ) -> Result<Option<PackageRuntimeState>, String> {
     let installed = store
         .list_installed()
         .map_err(|error| format!("failed to list installed packages: {error}"))?;
     if let Some(state) = installed.iter().find_map(|row| {
-        package_runtime_state_match(package, &row.package, row.installed_version.as_deref())
-            .then(|| row.runtime_state.clone())
+        package_runtime_state_match(
+            package,
+            requested_version,
+            &row.package,
+            row.installed_version.as_deref(),
+        )
+        .then(|| row.runtime_state.clone())
     }) {
         return Ok(Some(state));
     }
@@ -13736,8 +13817,13 @@ fn package_runtime_state_from_snapshot(
         .list_outdated()
         .map_err(|error| format!("failed to list outdated packages: {error}"))?;
     Ok(outdated.iter().find_map(|row| {
-        package_runtime_state_match(package, &row.package, row.installed_version.as_deref())
-            .then(|| row.runtime_state.clone())
+        package_runtime_state_match(
+            package,
+            requested_version,
+            &row.package,
+            row.installed_version.as_deref(),
+        )
+        .then(|| row.runtime_state.clone())
     }))
 }
 
@@ -13761,11 +13847,18 @@ fn rustup_override_paths_for_preview(
 
 fn package_runtime_state_match(
     requested: &PackageRef,
+    requested_version: Option<&str>,
     snapshot: &PackageRef,
     snapshot_installed_version: Option<&str>,
 ) -> bool {
     if requested == snapshot {
-        return true;
+        return match requested_version
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            Some(version) => snapshot_installed_version == Some(version),
+            None => true,
+        };
     }
     if requested.manager != snapshot.manager {
         return false;
@@ -13781,8 +13874,16 @@ fn package_runtime_state_match(
     if requested_base != snapshot.name {
         return false;
     }
-    match coordinate.version_selector {
-        Some(selector) => snapshot_installed_version == Some(selector.raw.as_str()),
+    match requested_version
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            coordinate
+                .version_selector
+                .as_ref()
+                .map(|selector| selector.raw.as_str())
+        }) {
+        Some(version) => snapshot_installed_version == Some(version),
         None => true,
     }
 }

@@ -150,9 +150,10 @@ impl<S: AsdfSource> AsdfAdapter<S> {
     fn resolve_installed_target(
         &self,
         raw_package_name: &str,
+        explicit_version: Option<&str>,
         action: ManagerAction,
     ) -> AdapterResult<ResolvedAsdfInstalledTarget> {
-        let target = parse_asdf_mutation_target(raw_package_name, action, None)?;
+        let target = parse_asdf_mutation_target(raw_package_name, action, explicit_version)?;
         let installed = self.load_installed_packages()?;
         let mut matches = installed
             .into_iter()
@@ -259,8 +260,13 @@ impl<S: AsdfSource> AsdfAdapter<S> {
     fn upgrade_single_plugin(
         &self,
         raw_package_name: &str,
+        explicit_version: Option<&str>,
     ) -> AdapterResult<crate::adapters::MutationResult> {
-        let target = self.resolve_installed_target(raw_package_name, ManagerAction::Upgrade)?;
+        let target = self.resolve_installed_target(
+            raw_package_name,
+            explicit_version,
+            ManagerAction::Upgrade,
+        )?;
         let latest_raw = self.source.latest_version(target.plugin.as_str())?;
         let latest_version = parse_asdf_latest_version(&latest_raw).ok_or(CoreError {
             manager: Some(ManagerId::Asdf),
@@ -573,6 +579,7 @@ impl<S: AsdfSource> ManagerAdapter for AsdfAdapter<S> {
 
                 let target = self.resolve_installed_target(
                     uninstall_request.package.name.as_str(),
+                    uninstall_request.version.as_deref(),
                     ManagerAction::Uninstall,
                 )?;
                 let _ = self
@@ -615,7 +622,10 @@ impl<S: AsdfSource> ManagerAdapter for AsdfAdapter<S> {
                 let result = if package.name == "__all__" {
                     self.upgrade_all_plugins()?
                 } else {
-                    self.upgrade_single_plugin(package.name.as_str())?
+                    self.upgrade_single_plugin(
+                        package.name.as_str(),
+                        upgrade_request.version.as_deref(),
+                    )?
                 };
                 Ok(AdapterResponse::Mutation(result))
             }
@@ -1564,6 +1574,7 @@ python 3.11.9 /Users/test/.tool-versions
                     manager: ManagerId::Asdf,
                     name: "python@3.11.9".to_string(),
                 },
+                version: None,
             }))
             .unwrap();
 
@@ -1593,6 +1604,7 @@ python 3.11.9 /Users/test/.tool-versions
                     manager: ManagerId::Asdf,
                     name: "python".to_string(),
                 },
+                version: None,
             }))
             .expect_err("ambiguous uninstall should fail");
         assert!(error.message.contains("multiple installed versions"));
@@ -1614,6 +1626,7 @@ python 3.11.9 /Users/test/.tool-versions
                     manager: ManagerId::Asdf,
                     name: "python".to_string(),
                 }),
+                version: None,
             }))
             .unwrap();
 
@@ -1682,6 +1695,7 @@ python 3.11.9 /Users/test/.tool-versions
                     manager: ManagerId::Asdf,
                     name: "__self__".to_string(),
                 },
+                version: None,
             }))
             .expect("manager uninstall should succeed");
         assert!(matches!(uninstall_response, AdapterResponse::Mutation(_)));
@@ -1692,6 +1706,7 @@ python 3.11.9 /Users/test/.tool-versions
                     manager: ManagerId::Asdf,
                     name: "__self__".to_string(),
                 }),
+                version: None,
             }))
             .expect("manager update should succeed");
         assert!(matches!(upgrade_response, AdapterResponse::Mutation(_)));

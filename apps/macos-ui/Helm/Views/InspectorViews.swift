@@ -716,12 +716,39 @@ private struct InspectorPackageDetailView: View {
         }
     }
 
+    private struct ManagerPackageGroup: Identifiable {
+        let managerId: String
+        let packages: [PackageItem]
+
+        var id: String { managerId }
+
+        var representativePackage: PackageItem? {
+            packages.first
+        }
+    }
+
     private var livePackage: PackageItem {
         core.knownPackage(withId: package.id) ?? package
     }
 
+    private var managerGroups: [ManagerPackageGroup] {
+        let grouped = Dictionary(grouping: packageFamilyMembers(for: livePackage), by: \.managerId)
+        return grouped.compactMap { managerId, candidates in
+            let sortedCandidates = candidates.sorted(by: memberCandidateOrdering)
+            guard !sortedCandidates.isEmpty else { return nil }
+            return ManagerPackageGroup(managerId: managerId, packages: sortedCandidates)
+        }
+        .sorted { lhs, rhs in
+            guard let lhsRepresentative = lhs.representativePackage,
+                  let rhsRepresentative = rhs.representativePackage else {
+                return lhs.managerId < rhs.managerId
+            }
+            return managerCandidateOrdering(lhsRepresentative, rhsRepresentative)
+        }
+    }
+
     private var managerCandidates: [PackageItem] {
-        packageCandidates(for: livePackage)
+        managerGroups.compactMap(\.representativePackage)
     }
 
     private var installedManagerCandidates: [PackageItem] {
@@ -750,8 +777,17 @@ private struct InspectorPackageDetailView: View {
         return recommendedManagerPackage.managerId
     }
 
+    private var activeManagerGroup: ManagerPackageGroup? {
+        managerGroups.first(where: { $0.managerId == selectedManagerId })
+    }
+
     private var activePackage: PackageItem {
-        managerCandidates.first(where: { $0.managerId == selectedManagerId }) ?? recommendedManagerPackage
+        if let activeManagerGroup,
+           let selectedPackageId = context.selectedPackageId,
+           let selectedPackage = activeManagerGroup.packages.first(where: { $0.id == selectedPackageId }) {
+            return selectedPackage
+        }
+        return activeManagerGroup?.representativePackage ?? recommendedManagerPackage
     }
 
     private var supportsKegPolicyOverride: Bool {
@@ -944,21 +980,25 @@ private struct InspectorPackageDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear {
             ensurePersistedManagerSelection()
+            ensureSelectedPackageMember()
             core.ensurePackageDescription(for: activePackage)
             core.ensureRustupToolchainDetail(for: activePackage)
         }
         .onChange(of: package.id) { _ in
             ensurePersistedManagerSelection()
+            ensureSelectedPackageMember()
             core.ensurePackageDescription(for: activePackage)
             core.ensureRustupToolchainDetail(for: activePackage)
         }
         .onChange(of: core.managerStatuses.mapValues(\.enabled)) { _ in
             ensurePersistedManagerSelection()
+            ensureSelectedPackageMember()
         }
         .onChange(of: package.summary) { _ in
             core.ensurePackageDescription(for: activePackage)
         }
         .onChange(of: selectedManagerId) { _ in
+            ensureSelectedPackageMember()
             core.ensurePackageDescription(for: activePackage)
             core.ensureRustupToolchainDetail(for: activePackage)
         }
@@ -1323,7 +1363,7 @@ private struct InspectorPackageDetailView: View {
 
     private var managerSelectionField: some View {
         InspectorField(label: L10n.App.Inspector.manager.localized) {
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 8) {
                 ForEach(managerCandidates, id: \.managerId) { candidate in
                     let isActive = candidate.managerId == selectedManagerId
                     Button {
@@ -1344,6 +1384,31 @@ private struct InspectorPackageDetailView: View {
                     .disabled(isActive)
                     .helmPointer(enabled: !isActive)
                 }
+
+                if let activeManagerGroup, activeManagerGroup.packages.count > 1 {
+                    Divider()
+                        .padding(.vertical, 2)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(L10n.App.Inspector.version.localized)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        Picker(
+                            L10n.App.Inspector.version.localized,
+                            selection: Binding(
+                                get: { activePackage.id },
+                                set: { selectPackageMember(withId: $0) }
+                            )
+                        ) {
+                            ForEach(activeManagerGroup.packages, id: \.id) { candidate in
+                                Text(versionSelectionLabel(for: candidate))
+                                    .tag(candidate.id)
+                            }
+                        }
+                        .pickerStyle(.radioGroup)
+                    }
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -1351,20 +1416,24 @@ private struct InspectorPackageDetailView: View {
 
     private var packageIdField: some View {
         InspectorField(label: L10n.App.Inspector.packageId.localized) {
-            if managerCandidates.count <= 1 {
+            if managerGroups.count <= 1,
+               let activeManagerGroup,
+               activeManagerGroup.packages.count <= 1 {
                 Text(activePackage.id)
                     .font(.caption.monospacedDigit())
                     .foregroundColor(.secondary)
             } else {
                 VStack(alignment: .leading, spacing: 3) {
-                    ForEach(managerCandidates, id: \.managerId) { candidate in
-                        HStack(spacing: 6) {
-                            Text(localizedManagerDisplayName(candidate.managerId))
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text(candidate.id)
-                                .font(.caption.monospacedDigit())
-                                .foregroundColor(.secondary)
+                    ForEach(managerGroups) { group in
+                        ForEach(group.packages, id: \.id) { candidate in
+                            HStack(spacing: 6) {
+                                Text(packageIdLabel(for: candidate, within: group))
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                Text(candidate.id)
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundColor(.secondary)
+                            }
                         }
                     }
                 }
@@ -1574,6 +1643,10 @@ private struct InspectorPackageDetailView: View {
     }
 
     private func persistManagerSelection(_ managerId: String) {
+        context.selectedManagerId = managerId
+        if let preferredPackage = preferredPackage(forManagerId: managerId) {
+            context.selectedPackageId = preferredPackage.id
+        }
         core.setPreferredManagerId(managerId, for: livePackage)
     }
 
@@ -1585,27 +1658,43 @@ private struct InspectorPackageDetailView: View {
         persistManagerSelection(recommendedManagerPackage.managerId)
     }
 
-    private func packageCandidates(for package: PackageItem) -> [PackageItem] {
-        let normalizedIdentity = package.normalizedIdentityKey
-        guard !normalizedIdentity.isEmpty else { return [package] }
+    private func ensureSelectedPackageMember() {
+        if let activeManagerGroup,
+           let selectedPackageId = context.selectedPackageId,
+           activeManagerGroup.packages.contains(where: { $0.id == selectedPackageId }) {
+            return
+        }
+        if let preferredPackage = preferredPackage(forManagerId: selectedManagerId) {
+            context.selectedPackageId = preferredPackage.id
+        }
+    }
 
-        var candidatesByManager: [String: PackageItem] = [:]
-        let sourcePackages = core.outdatedPackages + core.installedPackages + core.cachedAvailablePackages
-        for candidate in sourcePackages {
-            guard core.isManagerEnabled(candidate.managerId) else { continue }
-            guard candidate.normalizedIdentityKey == normalizedIdentity else { continue }
-            if let existing = candidatesByManager[candidate.managerId] {
-                candidatesByManager[candidate.managerId] = preferredCandidate(existing, candidate)
-            } else {
-                candidatesByManager[candidate.managerId] = candidate
+    private func selectPackageMember(withId packageId: String) {
+        guard let activeManagerGroup,
+              activeManagerGroup.packages.contains(where: { $0.id == packageId }) else {
+            return
+        }
+        context.selectedManagerId = selectedManagerId
+        context.selectedPackageId = packageId
+    }
+
+    private func preferredPackage(forManagerId managerId: String) -> PackageItem? {
+        activePackageGroup(forManagerId: managerId)?.representativePackage
+    }
+
+    private func activePackageGroup(forManagerId managerId: String) -> ManagerPackageGroup? {
+        managerGroups.first(where: { $0.managerId == managerId })
+    }
+
+    private func packageFamilyMembers(for package: PackageItem) -> [PackageItem] {
+        core.packageFamilyCandidates(for: package)
+            .filter { core.isManagerEnabled($0.managerId) }
+            .sorted { lhs, rhs in
+            if lhs.managerId == rhs.managerId {
+                return memberCandidateOrdering(lhs, rhs)
             }
+            return managerCandidateOrdering(lhs, rhs)
         }
-
-        if candidatesByManager[package.managerId] == nil {
-            candidatesByManager[package.managerId] = package
-        }
-
-        return candidatesByManager.values.sorted(by: managerCandidateOrdering)
     }
 
     private func preferredCandidate(_ lhs: PackageItem, _ rhs: PackageItem) -> PackageItem {
@@ -1636,7 +1725,17 @@ private struct InspectorPackageDetailView: View {
             return lhsSummary.isEmpty ? rhs : lhs
         }
 
+        let lhsId = lhs.id.lowercased()
+        let rhsId = rhs.id.lowercased()
+        if lhsId != rhsId {
+            return lhsId < rhsId ? lhs : rhs
+        }
+
         return lhs
+    }
+
+    private func memberCandidateOrdering(_ lhs: PackageItem, _ rhs: PackageItem) -> Bool {
+        preferredCandidate(lhs, rhs).id == lhs.id
     }
 
     private func managerCandidateOrdering(_ lhs: PackageItem, _ rhs: PackageItem) -> Bool {
@@ -1668,6 +1767,33 @@ private struct InspectorPackageDetailView: View {
             return nil
         }
         return normalized
+    }
+
+    private func versionSelectionLabel(for package: PackageItem) -> String {
+        let versionText = normalizedVersionText(package.version) ?? package.displayName
+        var flags: [String] = []
+        if package.runtimeState.isActive {
+            flags.append(L10n.App.Inspector.packageRuntimeStateActive.localized)
+        }
+        if package.runtimeState.isDefault {
+            flags.append(L10n.App.Inspector.packageRuntimeStateDefault.localized)
+        }
+        if package.runtimeState.hasOverride {
+            flags.append(L10n.App.Inspector.packageRuntimeStateOverride.localized)
+        }
+        if package.status == .upgradable, let latestVersion = normalizedVersionText(package.latestVersion) {
+            flags.append(L10n.App.Inspector.latest.localized + " " + latestVersion)
+        }
+        guard !flags.isEmpty else { return versionText }
+        return versionText + " (" + flags.joined(separator: ", ") + ")"
+    }
+
+    private func packageIdLabel(for package: PackageItem, within group: ManagerPackageGroup) -> String {
+        let managerName = localizedManagerDisplayName(group.managerId)
+        guard group.packages.count > 1, let versionText = normalizedVersionText(package.version) else {
+            return managerName
+        }
+        return managerName + " " + versionText
     }
 }
 

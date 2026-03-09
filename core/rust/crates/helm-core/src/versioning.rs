@@ -1,5 +1,39 @@
 use serde::{Deserialize, Serialize};
 
+pub fn normalize_package_family_key(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.to_ascii_lowercase())
+}
+
+pub fn package_family_preference_key(package_name: &str, version: Option<&str>) -> String {
+    let normalized_name = normalize_package_family_key(package_name).unwrap_or_default();
+    if normalized_name.is_empty() {
+        return String::new();
+    }
+
+    let normalized_version = version.map(str::trim).filter(|value| !value.is_empty());
+    let Some(normalized_version) = normalized_version else {
+        return normalized_name;
+    };
+
+    let coordinate_raw = format!("{}@{}", package_name.trim(), normalized_version);
+    let qualifier_key = PackageCoordinate::parse(coordinate_raw.as_str())
+        .and_then(|coordinate| coordinate.version_selector)
+        .map(|selector| selector.qualifier_atoms())
+        .filter(|atoms| !atoms.is_empty())
+        .map(|atoms| atoms.join("-"))
+        .and_then(|qualifier| normalize_package_family_key(qualifier.as_str()));
+
+    if let Some(qualifier_key) = qualifier_key {
+        format!("{}@{}", normalized_name, qualifier_key)
+    } else {
+        normalized_name
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PackageCoordinate {
     pub package_name: String,
@@ -92,7 +126,7 @@ fn atom_starts_release_token(atom: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::PackageCoordinate;
+    use super::{PackageCoordinate, normalize_package_family_key, package_family_preference_key};
 
     #[test]
     fn parses_package_coordinate_without_selector() {
@@ -148,5 +182,35 @@ mod tests {
         let parsed = PackageCoordinate::parse("@jdxcode/mise").expect("coordinate should parse");
         assert_eq!(parsed.package_name, "@jdxcode/mise");
         assert!(parsed.version_selector.is_none());
+    }
+
+    #[test]
+    fn normalizes_package_family_key_values() {
+        assert_eq!(
+            normalize_package_family_key("  Certifi  ").as_deref(),
+            Some("certifi")
+        );
+        assert_eq!(normalize_package_family_key("   "), None);
+    }
+
+    #[test]
+    fn package_family_preference_key_uses_variant_qualifier_when_present() {
+        assert_eq!(
+            package_family_preference_key("python", Some("mambaforge-24.11.0-1")),
+            "python@mambaforge"
+        );
+        assert_eq!(
+            package_family_preference_key("java", Some("zulu-jre-javafx-8.92.0.21")),
+            "java@zulu-jre-javafx"
+        );
+    }
+
+    #[test]
+    fn package_family_preference_key_falls_back_to_base_name_for_release_only_versions() {
+        assert_eq!(
+            package_family_preference_key("rust", Some("1.92.0")),
+            "rust"
+        );
+        assert_eq!(package_family_preference_key(" rust ", None), "rust");
     }
 }

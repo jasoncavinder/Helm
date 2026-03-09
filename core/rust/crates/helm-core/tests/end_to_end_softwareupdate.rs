@@ -235,6 +235,7 @@ async fn safe_mode_blocks_softwareupdate_upgrade_submission() {
                     manager: ManagerId::SoftwareUpdate,
                     name: "__confirm_os_updates__".to_string(),
                 }),
+                version: None,
             }),
         )
         .await
@@ -266,6 +267,7 @@ async fn safe_mode_off_allows_confirmed_softwareupdate_upgrade() {
                     manager: ManagerId::SoftwareUpdate,
                     name: "__confirm_os_updates__".to_string(),
                 }),
+                version: None,
             }),
         )
         .await
