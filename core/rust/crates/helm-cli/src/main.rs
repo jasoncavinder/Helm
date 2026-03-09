@@ -6578,6 +6578,7 @@ fn quarantine_attr_name() -> CString {
     CString::new("com.apple.quarantine").expect("static string should not contain NUL")
 }
 
+#[cfg(target_vendor = "apple")]
 fn has_quarantine_attribute(path: &Path) -> Result<bool, String> {
     let path_c = path_cstring(path)?;
     let attr_name = quarantine_attr_name();
@@ -6605,6 +6606,12 @@ fn has_quarantine_attribute(path: &Path) -> Result<bool, String> {
     ))
 }
 
+#[cfg(not(target_vendor = "apple"))]
+fn has_quarantine_attribute(_path: &Path) -> Result<bool, String> {
+    Ok(false)
+}
+
+#[cfg(target_vendor = "apple")]
 fn clear_quarantine_attribute_if_present(path: &Path) -> Result<bool, String> {
     if !has_quarantine_attribute(path)? {
         return Ok(false);
@@ -6620,6 +6627,11 @@ fn clear_quarantine_attribute_if_present(path: &Path) -> Result<bool, String> {
         path.display(),
         std::io::Error::last_os_error()
     ))
+}
+
+#[cfg(not(target_vendor = "apple"))]
+fn clear_quarantine_attribute_if_present(_path: &Path) -> Result<bool, String> {
+    Ok(false)
 }
 
 fn install_managed_app_bundle_shim(
