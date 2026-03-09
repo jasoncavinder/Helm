@@ -625,7 +625,8 @@ extension HelmCore {
             }
             return
         }
-        service.unpinPackage(managerId: package.managerId, packageName: package.name) { [weak self] success in
+        let version = package.version.isEmpty || package.version == "unknown" ? nil : package.version
+        service.unpinPackage(managerId: package.managerId, packageName: package.name, version: version) { [weak self] success in
             DispatchQueue.main.async {
                 self?.pinActionPackageIds.remove(package.id)
                 if success {

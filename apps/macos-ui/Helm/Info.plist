@@ -10,6 +10,11 @@
 	<true/>
 	<key>LSFileQuarantineEnabled</key>
 	<false/>
+	<key>LSFileQuarantineExcludedPathPatterns</key>
+	<array>
+		<string>~/.local/bin/*</string>
+		<string>~/.local/share/helm/*</string>
+	</array>
 	<key>SUEnableInstallerLauncherService</key>
 	<true/>
 	<key>SUAllowsDowngrades</key>

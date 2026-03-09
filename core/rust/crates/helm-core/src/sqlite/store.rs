@@ -263,16 +263,19 @@ SELECT
     ipv.package_name,
     ipv.installed_version,
     CASE
-        WHEN pr.manager_id IS NOT NULL THEN 1
+        WHEN EXISTS (
+            SELECT 1
+            FROM pin_records pr
+            WHERE pr.manager_id = ipv.manager_id
+              AND pr.package_name = ipv.package_name
+              AND (pr.pinned_version = '' OR pr.pinned_version = ipv.installed_version)
+        ) THEN 1
         ELSE ipv.pinned
     END AS pinned,
     ipv.is_active,
     ipv.is_default,
     ipv.has_override
 FROM installed_package_versions ipv
-LEFT JOIN pin_records pr
-    ON pr.manager_id = ipv.manager_id
-   AND pr.package_name = ipv.package_name
 ORDER BY ipv.manager_id, ipv.package_name, ipv.installed_version
 ",
             )?;
@@ -317,7 +320,16 @@ SELECT
     op.installed_version,
     op.candidate_version,
     CASE
-        WHEN pr.manager_id IS NOT NULL THEN 1
+        WHEN EXISTS (
+            SELECT 1
+            FROM pin_records pr
+            WHERE pr.manager_id = op.manager_id
+              AND pr.package_name = op.package_name
+              AND (
+                    pr.pinned_version = ''
+                    OR pr.pinned_version = COALESCE(op.installed_version, '')
+              )
+        ) THEN 1
         ELSE op.pinned
     END AS pinned,
     op.restart_required,
@@ -325,9 +337,6 @@ SELECT
     op.is_default,
     op.has_override
 FROM outdated_packages op
-LEFT JOIN pin_records pr
-    ON pr.manager_id = op.manager_id
-   AND pr.package_name = op.package_name
 ORDER BY op.manager_id, op.package_name
 ",
             )?;
@@ -365,21 +374,30 @@ ORDER BY op.manager_id, op.package_name
         })
     }
 
-    fn set_snapshot_pinned(&self, package: &PackageRef, pinned: bool) -> PersistenceResult<()> {
+    fn set_snapshot_pinned(
+        &self,
+        package: &PackageRef,
+        version: Option<&str>,
+        pinned: bool,
+    ) -> PersistenceResult<()> {
         self.with_connection("set_snapshot_pinned", |connection| {
             ensure_schema_ready(connection)?;
             let transaction = connection.transaction()?;
+            let version_token = to_installed_version_token(version);
 
             transaction.execute(
                 "
 UPDATE installed_package_versions
 SET pinned = ?3, updated_at_unix = strftime('%s', 'now')
-WHERE manager_id = ?1 AND package_name = ?2
+WHERE manager_id = ?1
+  AND package_name = ?2
+  AND (?4 = '' OR installed_version = ?4)
 ",
                 params![
                     package.manager.as_str(),
                     package.name.as_str(),
                     bool_to_sqlite(pinned),
+                    version_token.as_str(),
                 ],
             )?;
 
@@ -387,12 +405,15 @@ WHERE manager_id = ?1 AND package_name = ?2
                 "
 UPDATE outdated_packages
 SET pinned = ?3, updated_at_unix = strftime('%s', 'now')
-WHERE manager_id = ?1 AND package_name = ?2
+WHERE manager_id = ?1
+  AND package_name = ?2
+  AND (?4 = '' OR COALESCE(installed_version, '') = ?4)
 ",
                 params![
                     package.manager.as_str(),
                     package.name.as_str(),
                     bool_to_sqlite(pinned),
+                    version_token.as_str(),
                 ],
             )?;
 
@@ -605,16 +626,15 @@ impl PinStore for SqliteStore {
 INSERT INTO pin_records (
     manager_id, package_name, pin_kind, pinned_version, created_at_unix
 ) VALUES (?1, ?2, ?3, ?4, ?5)
-ON CONFLICT(manager_id, package_name) DO UPDATE SET
+ON CONFLICT(manager_id, package_name, pinned_version) DO UPDATE SET
     pin_kind = excluded.pin_kind,
-    pinned_version = excluded.pinned_version,
     created_at_unix = excluded.created_at_unix
 ",
                 params![
                     pin.package.manager.as_str(),
                     pin.package.name.as_str(),
                     pin_kind_to_str(pin.kind),
-                    pin.pinned_version.as_deref(),
+                    to_installed_version_token(pin.pinned_version.as_deref()),
                     to_unix_seconds(pin.created_at)?,
                 ],
             )?;
@@ -622,13 +642,26 @@ ON CONFLICT(manager_id, package_name) DO UPDATE SET
         })
     }
 
-    fn remove_pin(&self, package_key: &str) -> PersistenceResult<()> {
+    fn remove_pin(
+        &self,
+        package: &PackageRef,
+        pinned_version: Option<&str>,
+    ) -> PersistenceResult<()> {
         self.with_connection("remove_pin", |connection| {
             ensure_schema_ready(connection)?;
-            let (manager, package_name) = parse_package_key(package_key)?;
+            let version_token = to_installed_version_token(pinned_version);
             connection.execute(
-                "DELETE FROM pin_records WHERE manager_id = ?1 AND package_name = ?2",
-                params![manager.as_str(), package_name],
+                "
+DELETE FROM pin_records
+WHERE manager_id = ?1
+  AND package_name = ?2
+  AND pinned_version = ?3
+",
+                params![
+                    package.manager.as_str(),
+                    package.name.as_str(),
+                    version_token.as_str(),
+                ],
             )?;
             Ok(())
         })
@@ -641,14 +674,14 @@ ON CONFLICT(manager_id, package_name) DO UPDATE SET
                 "
 SELECT manager_id, package_name, pin_kind, pinned_version, created_at_unix
 FROM pin_records
-ORDER BY manager_id, package_name
+ORDER BY manager_id, package_name, pinned_version
 ",
             )?;
             let rows = statement.query_map([], |row| {
                 let manager_raw: String = row.get(0)?;
                 let package_name: String = row.get(1)?;
                 let pin_kind_raw: String = row.get(2)?;
-                let pinned_version: Option<String> = row.get(3)?;
+                let pinned_version_raw: String = row.get(3)?;
                 let created_at_unix: i64 = row.get(4)?;
 
                 Ok(PinRecord {
@@ -657,7 +690,7 @@ ORDER BY manager_id, package_name
                         name: package_name,
                     },
                     kind: parse_pin_kind(&pin_kind_raw)?,
-                    pinned_version,
+                    pinned_version: from_installed_version_token(pinned_version_raw),
                     created_at: from_unix_seconds(created_at_unix)?,
                 })
             })?;
@@ -2152,18 +2185,6 @@ fn parse_strategy_kind(raw: &str) -> rusqlite::Result<StrategyKind> {
     raw.parse::<StrategyKind>().map_err(|_| {
         storage_error_sqlite(&format!("unknown strategy kind '{raw}' in sqlite record"))
     })
-}
-
-fn parse_package_key(package_key: &str) -> rusqlite::Result<(ManagerId, &str)> {
-    let (manager_raw, package_name) = package_key.split_once(':').ok_or_else(|| {
-        storage_error_sqlite("package_key must use '<manager_id>:<package_name>' format")
-    })?;
-    if package_name.trim().is_empty() {
-        return Err(storage_error_sqlite(
-            "package_key must include a non-empty package_name",
-        ));
-    }
-    Ok((parse_manager_id(manager_raw)?, package_name))
 }
 
 fn pin_kind_to_str(kind: PinKind) -> &'static str {

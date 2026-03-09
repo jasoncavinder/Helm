@@ -324,6 +324,38 @@ pub fn build_package_uninstall_preview(
                 context.package.name
             ));
         }
+    } else if context.package.manager == ManagerId::Asdf {
+        secondary_effects.push(format!(
+            "asdf package '{}' will be removed.",
+            context.package.name
+        ));
+        if context
+            .package_runtime_state
+            .is_some_and(|state| state.is_active)
+        {
+            secondary_effects.push(format!(
+                "asdf package '{}' is currently active for at least one shell context.",
+                context.package.name
+            ));
+        }
+        if context
+            .package_runtime_state
+            .is_some_and(|state| state.is_default)
+        {
+            secondary_effects.push(format!(
+                "asdf package '{}' is configured through your default home selection.",
+                context.package.name
+            ));
+        }
+        if context
+            .package_runtime_state
+            .is_some_and(|state| state.has_override)
+        {
+            secondary_effects.push(format!(
+                "A local or environment-specific asdf override may still reference '{}'.",
+                context.package.name
+            ));
+        }
     } else if context.package.manager == ManagerId::HomebrewFormula {
         secondary_effects.push(format!(
             "Homebrew formula '{}' will be uninstalled.",
@@ -339,11 +371,18 @@ pub fn build_package_uninstall_preview(
         ));
     }
 
-    let confidence_requires_confirmation = context.package.manager == ManagerId::Rustup
-        && (context
+    let confidence_requires_confirmation = match context.package.manager {
+        ManagerId::Rustup => {
+            context
+                .package_runtime_state
+                .is_some_and(|state| state.is_active || state.is_default || state.has_override)
+                || !context.rustup_override_paths.is_empty()
+        }
+        ManagerId::Asdf => context
             .package_runtime_state
-            .is_some_and(|state| state.is_active || state.is_default || state.has_override)
-            || !context.rustup_override_paths.is_empty());
+            .is_some_and(|state| state.is_active || state.is_default || state.has_override),
+        _ => false,
+    };
     let blast_radius_score = compute_uninstall_blast_radius_score_with_base_risk(
         files_removed.len(),
         directories_removed.len(),

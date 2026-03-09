@@ -18,11 +18,10 @@ struct TasksSectionView: View {
             }
 
             if core.activeTasks.isEmpty {
-                Spacer()
                 Text(L10n.App.TasksSection.empty.localized)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
-                Spacer()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {

@@ -175,6 +175,7 @@ use helm_core::uninstall_preview::{
     PackageUninstallPreviewContext, build_manager_uninstall_preview,
     build_package_uninstall_preview,
 };
+use helm_core::versioning::PackageCoordinate;
 use lazy_static::lazy_static;
 
 struct HelmState {
@@ -813,6 +814,7 @@ enum CoordinatorSubmitRequest {
     },
     Unpin {
         package_name: String,
+        version: Option<String>,
     },
     RustupAddComponent {
         toolchain: String,
@@ -2681,6 +2683,7 @@ fn manager_allows_individual_package_uninstall(manager: ManagerId) -> bool {
         manager,
         ManagerId::Asdf
             | ManagerId::HomebrewFormula
+            | ManagerId::Mise
             | ManagerId::Npm
             | ManagerId::Pnpm
             | ManagerId::Yarn
@@ -2813,6 +2816,7 @@ fn parse_homebrew_config_version(output: &str) -> Option<String> {
 
 #[derive(Default)]
 struct UpgradeAllTargets {
+    asdf: Vec<String>,
     homebrew: Vec<String>,
     mise: Vec<String>,
     npm: Vec<String>,
@@ -2936,10 +2940,10 @@ fn push_upgrade_plan_step(
 
 fn collect_upgrade_all_targets(
     outdated: &[OutdatedPackage],
-    pinned_keys: &std::collections::HashSet<String>,
     include_pinned: bool,
 ) -> UpgradeAllTargets {
     let mut targets = UpgradeAllTargets::default();
+    let mut seen_asdf = std::collections::HashSet::new();
     let mut seen_homebrew = std::collections::HashSet::new();
     let mut seen_mise = std::collections::HashSet::new();
     let mut seen_npm = std::collections::HashSet::new();
@@ -2955,16 +2959,16 @@ fn collect_upgrade_all_targets(
     let mut seen_rustup = std::collections::HashSet::new();
 
     for package in outdated {
-        let package_key = format!(
-            "{}:{}",
-            package.package.manager.as_str(),
-            package.package.name.as_str()
-        );
-        if !include_pinned && (package.pinned || pinned_keys.contains(&package_key)) {
+        if !include_pinned && package.pinned {
             continue;
         }
 
         match package.package.manager {
+            ManagerId::Asdf => {
+                if seen_asdf.insert(package.package.name.clone()) {
+                    targets.asdf.push(package.package.name.clone());
+                }
+            }
             ManagerId::HomebrewFormula => {
                 if seen_homebrew.insert(package.package.name.clone()) {
                     targets.homebrew.push(package.package.name.clone());
@@ -3167,11 +3171,10 @@ fn package_runtime_state_from_snapshot(
 ) -> Result<Option<PackageRuntimeState>, &'static str> {
     match store.list_installed() {
         Ok(installed) => {
-            if let Some(state) = installed
-                .into_iter()
-                .find(|row| row.package == *package)
-                .map(|row| row.runtime_state)
-            {
+            if let Some(state) = installed.iter().find_map(|row| {
+                package_runtime_state_match(package, &row.package, row.installed_version.as_deref())
+                    .then(|| row.runtime_state.clone())
+            }) {
                 return Ok(Some(state));
             }
         }
@@ -3182,10 +3185,10 @@ fn package_runtime_state_from_snapshot(
     }
 
     match store.list_outdated() {
-        Ok(outdated) => Ok(outdated
-            .into_iter()
-            .find(|row| row.package == *package)
-            .map(|row| row.runtime_state)),
+        Ok(outdated) => Ok(outdated.iter().find_map(|row| {
+            package_runtime_state_match(package, &row.package, row.installed_version.as_deref())
+                .then(|| row.runtime_state.clone())
+        })),
         Err(error) => {
             eprintln!("preview_package_uninstall: failed to list outdated packages: {error}");
             Err(SERVICE_ERROR_STORAGE_FAILURE)
@@ -3197,15 +3200,48 @@ fn rustup_override_paths_for_preview(
     package: &PackageRef,
     runtime_state: Option<&PackageRuntimeState>,
 ) -> Vec<String> {
-    if package.manager != ManagerId::Rustup
-        || !runtime_state.is_some_and(|state| state.has_override)
-    {
+    if package.manager != ManagerId::Rustup {
         return Vec::new();
     }
 
     load_rustup_toolchain_detail_from_state(package.name.as_str(), "preview_package_uninstall")
         .map(|detail| detail.override_paths)
+        .or_else(|_| {
+            if runtime_state.is_some_and(|state| state.has_override) {
+                Ok(Vec::new())
+            } else {
+                Err(SERVICE_ERROR_PROCESS_FAILURE)
+            }
+        })
         .unwrap_or_default()
+}
+
+fn package_runtime_state_match(
+    requested: &PackageRef,
+    snapshot: &PackageRef,
+    snapshot_installed_version: Option<&str>,
+) -> bool {
+    if requested == snapshot {
+        return true;
+    }
+    if requested.manager != snapshot.manager {
+        return false;
+    }
+    if !matches!(requested.manager, ManagerId::Asdf | ManagerId::Mise) {
+        return false;
+    }
+
+    let Some(coordinate) = PackageCoordinate::parse(requested.name.as_str()) else {
+        return false;
+    };
+    let requested_base = coordinate.package_name.trim();
+    if requested_base != snapshot.name {
+        return false;
+    }
+    match coordinate.version_selector {
+        Some(selector) => snapshot_installed_version == Some(selector.raw.as_str()),
+        None => true,
+    }
 }
 
 fn build_manager_uninstall_request_legacy(
@@ -4288,15 +4324,19 @@ fn run_updates_workflow(
     let outdated = store
         .list_outdated()
         .map_err(|error| format!("failed to list outdated packages: {error}"))?;
-    let pinned_keys: std::collections::HashSet<String> = store
-        .list_pins()
-        .map(|pins| {
-            pins.into_iter()
-                .map(|pin| format!("{}:{}", pin.package.manager.as_str(), pin.package.name))
-                .collect()
-        })
-        .unwrap_or_default();
-    let targets = collect_upgrade_all_targets(&outdated, &pinned_keys, include_pinned);
+    let targets = collect_upgrade_all_targets(&outdated, include_pinned);
+
+    if runtime.is_manager_enabled(ManagerId::Asdf) {
+        for package_name in targets.asdf {
+            let request = AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Asdf,
+                    name: package_name,
+                }),
+            });
+            let _ = submit_request_wait(runtime, rt_handle, ManagerId::Asdf, request)?;
+        }
+    }
 
     if runtime.is_manager_enabled(ManagerId::HomebrewFormula) {
         for package_name in targets.homebrew {
@@ -4436,7 +4476,10 @@ fn coordinator_submit_to_adapter(
             },
             version,
         }),
-        CoordinatorSubmitRequest::Unpin { package_name } => AdapterRequest::Unpin(UnpinRequest {
+        CoordinatorSubmitRequest::Unpin {
+            package_name,
+            version: _,
+        } => AdapterRequest::Unpin(UnpinRequest {
             package: PackageRef {
                 manager,
                 name: package_name,
@@ -4506,6 +4549,7 @@ fn adapter_request_to_coordinator_submit(
         }),
         AdapterRequest::Unpin(unpin) => Ok(CoordinatorSubmitRequest::Unpin {
             package_name: unpin.package.name,
+            version: None,
         }),
         AdapterRequest::RustupAddComponent(request) => {
             Ok(CoordinatorSubmitRequest::RustupAddComponent {
@@ -4820,7 +4864,10 @@ pub extern "C" fn helm_list_installed_packages() -> *mut c_char {
         }
     }
     .into_iter()
-    .filter(|package| manager_is_enabled(&enabled_by_manager, package.package.manager))
+    .filter(|package| {
+        package.package.is_user_visible_package()
+            && manager_is_enabled(&enabled_by_manager, package.package.manager)
+    })
     .collect::<Vec<_>>();
 
     let json = match serde_json::to_string(&packages) {
@@ -4852,7 +4899,10 @@ pub extern "C" fn helm_list_outdated_packages() -> *mut c_char {
         }
     }
     .into_iter()
-    .filter(|package| manager_is_enabled(&enabled_by_manager, package.package.manager))
+    .filter(|package| {
+        package.package.is_user_visible_package()
+            && manager_is_enabled(&enabled_by_manager, package.package.manager)
+    })
     .collect::<Vec<_>>();
 
     let json = match serde_json::to_string(&packages) {
@@ -5572,7 +5622,8 @@ pub unsafe extern "C" fn helm_search_local(query: *const c_char) -> *mut c_char 
     }
     .into_iter()
     .filter(|result| {
-        manager_participates_in_package_search(result.result.package.manager)
+        result.result.package.is_user_visible_package()
+            && manager_participates_in_package_search(result.result.package.manager)
             && manager_participates_in_package_search(result.source_manager)
             && manager_is_enabled(&enabled_by_manager, result.result.package.manager)
             && manager_is_enabled(&enabled_by_manager, result.source_manager)
@@ -6313,19 +6364,21 @@ pub extern "C" fn helm_preview_upgrade_plan(
         }
     };
 
-    let pinned_keys: std::collections::HashSet<String> = state
-        .store
-        .list_pins()
-        .map(|pins| {
-            pins.into_iter()
-                .map(|pin| format!("{}:{}", pin.package.manager.as_str(), pin.package.name))
-                .collect()
-        })
-        .unwrap_or_default();
-
-    let targets = collect_upgrade_all_targets(&outdated, &pinned_keys, include_pinned);
+    let targets = collect_upgrade_all_targets(&outdated, include_pinned);
     let mut steps: Vec<FfiUpgradePlanStep> = Vec::new();
     let mut order_index = 0_u64;
+
+    if state.runtime.is_manager_enabled(ManagerId::Asdf) {
+        for package_name in targets.asdf {
+            push_upgrade_plan_step(
+                &mut steps,
+                ManagerId::Asdf,
+                package_name,
+                false,
+                &mut order_index,
+            );
+        }
+    }
 
     if state.runtime.is_manager_enabled(ManagerId::HomebrewFormula) {
         for package_name in targets.homebrew {
@@ -6549,16 +6602,28 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
             }
         };
 
-        let pinned_keys: std::collections::HashSet<String> = store
-            .list_pins()
-            .map(|pins| {
-                pins.into_iter()
-                    .map(|pin| format!("{}:{}", pin.package.manager.as_str(), pin.package.name))
-                    .collect()
-            })
-            .unwrap_or_default();
+        let targets = collect_upgrade_all_targets(&outdated, include_pinned);
 
-        let targets = collect_upgrade_all_targets(&outdated, &pinned_keys, include_pinned);
+        if runtime.is_manager_enabled(ManagerId::Asdf) {
+            for package_name in targets.asdf {
+                let request = AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::Asdf,
+                        name: package_name.clone(),
+                    }),
+                });
+                match runtime.submit(ManagerId::Asdf, request).await {
+                    Ok(task_id) => {
+                        let (label_key, label_args) =
+                            upgrade_task_label_for(ManagerId::Asdf, &package_name, false);
+                        set_task_label(task_id, label_key, &label_args);
+                    }
+                    Err(error) => {
+                        eprintln!("upgrade_all: failed to queue asdf upgrade task: {error}");
+                    }
+                }
+            }
+        }
 
         if runtime.is_manager_enabled(ManagerId::HomebrewFormula) {
             for package_name in targets.homebrew {
@@ -8020,12 +8085,17 @@ pub unsafe extern "C" fn helm_pin_package(
     } else {
         PinKind::Virtual
     };
+    let persisted_pinned_version = if pin_kind == PinKind::Native {
+        None
+    } else {
+        pinned_version
+    };
 
     store
         .upsert_pin(&PinRecord {
             package,
             kind: pin_kind,
-            pinned_version,
+            pinned_version: persisted_pinned_version,
             created_at: std::time::SystemTime::now(),
         })
         .map_err(|_| set_last_error_key(SERVICE_ERROR_STORAGE_FAILURE))
@@ -8037,11 +8107,12 @@ pub unsafe extern "C" fn helm_pin_package(
 /// # Safety
 ///
 /// `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
-/// strings.
+/// strings. `pinned_version` may be null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn helm_unpin_package(
     manager_id: *const c_char,
     package_name: *const c_char,
+    pinned_version: *const c_char,
 ) -> bool {
     clear_last_error_key();
     if manager_id.is_null() || package_name.is_null() {
@@ -8065,6 +8136,22 @@ pub unsafe extern "C" fn helm_unpin_package(
         match c_str.to_str() {
             Ok(value) if !value.trim().is_empty() => value.to_string(),
             _ => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
+        }
+    };
+    let pinned_version = if pinned_version.is_null() {
+        None
+    } else {
+        let c_str = unsafe { CStr::from_ptr(pinned_version) };
+        match c_str.to_str() {
+            Ok(value) => {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                }
+            }
+            Err(_) => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
         }
     };
 
@@ -8120,9 +8207,12 @@ pub unsafe extern "C" fn helm_unpin_package(
         }
     }
 
-    let package_key = format!("{}:{}", manager.as_str(), package_name);
+    let package = PackageRef {
+        manager,
+        name: package_name,
+    };
     store
-        .remove_pin(&package_key)
+        .remove_pin(&package, pinned_version.as_deref())
         .map_err(|_| set_last_error_key(SERVICE_ERROR_STORAGE_FAILURE))
         .is_ok()
 }
@@ -10481,14 +10571,14 @@ mod tests {
     #[test]
     fn collect_upgrade_all_targets_routes_supported_managers() {
         let outdated = vec![
+            outdated_pkg(ManagerId::Asdf, "python", false),
             outdated_pkg(ManagerId::HomebrewFormula, "git", false),
             outdated_pkg(ManagerId::Mise, "node", false),
             outdated_pkg(ManagerId::Rustup, "stable-x86_64-apple-darwin", false),
             outdated_pkg(ManagerId::SoftwareUpdate, "macos", false),
         ];
-        let pinned = std::collections::HashSet::new();
-
-        let targets = collect_upgrade_all_targets(&outdated, &pinned, true);
+        let targets = collect_upgrade_all_targets(&outdated, true);
+        assert_eq!(targets.asdf, vec!["python".to_string()]);
         assert_eq!(targets.homebrew, vec!["git".to_string()]);
         assert_eq!(targets.mise, vec!["node".to_string()]);
         assert_eq!(
@@ -10501,15 +10591,15 @@ mod tests {
     #[test]
     fn collect_upgrade_all_targets_excludes_pinned_and_deduplicates() {
         let outdated = vec![
+            outdated_pkg(ManagerId::Asdf, "python", true),
+            outdated_pkg(ManagerId::Asdf, "python", true),
             outdated_pkg(ManagerId::HomebrewFormula, "git", false),
             outdated_pkg(ManagerId::HomebrewFormula, "git", false),
             outdated_pkg(ManagerId::Mise, "node", true),
-            outdated_pkg(ManagerId::Rustup, "stable-x86_64-apple-darwin", false),
+            outdated_pkg(ManagerId::Rustup, "stable-x86_64-apple-darwin", true),
         ];
-        let pinned =
-            std::collections::HashSet::from(["rustup:stable-x86_64-apple-darwin".to_string()]);
-
-        let targets = collect_upgrade_all_targets(&outdated, &pinned, false);
+        let targets = collect_upgrade_all_targets(&outdated, false);
+        assert!(targets.asdf.is_empty());
         assert_eq!(targets.homebrew, vec!["git".to_string()]);
         assert!(targets.mise.is_empty());
         assert!(targets.rustup.is_empty());
@@ -11565,6 +11655,7 @@ mod tests {
         assert!(manager_allows_individual_package_uninstall(
             ManagerId::Rustup
         ));
+        assert!(manager_allows_individual_package_uninstall(ManagerId::Mise));
         assert!(manager_allows_individual_package_uninstall(ManagerId::Pip));
         assert!(!manager_allows_individual_package_uninstall(ManagerId::Mas));
         assert!(!manager_allows_individual_package_uninstall(

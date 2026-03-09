@@ -43,6 +43,8 @@ const SEARCH_TIMEOUT: Duration = Duration::from_secs(30);
 const TOOLCHAIN_VERSION_TIMEOUT: Duration = Duration::from_secs(15);
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 const INSTALL_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
+const UPGRADE_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+const UPGRADE_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 
 const UNINSTALL_TIMEOUT: Duration = Duration::from_secs(25 * 60);
 const UNINSTALL_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
@@ -523,8 +525,9 @@ pub fn rustup_self_update_request(task_id: Option<TaskId>) -> ProcessSpawnReques
         TaskType::Upgrade,
         ManagerAction::Upgrade,
         CommandSpec::new(RUSTUP_COMMAND).args(["self", "update"]),
-        LIST_TIMEOUT,
+        UPGRADE_TIMEOUT,
     )
+    .idle_timeout(UPGRADE_IDLE_TIMEOUT)
 }
 
 pub fn rustup_toolchain_update_request(
@@ -536,8 +539,9 @@ pub fn rustup_toolchain_update_request(
         TaskType::Upgrade,
         ManagerAction::Upgrade,
         CommandSpec::new(RUSTUP_COMMAND).args(["update", toolchain]),
-        LIST_TIMEOUT,
+        UPGRADE_TIMEOUT,
     )
+    .idle_timeout(UPGRADE_IDLE_TIMEOUT)
 }
 
 pub fn rustup_add_component_request(
@@ -701,14 +705,15 @@ fn parse_install_source(version: Option<&str>) -> AdapterResult<RustupInstallSou
     }
     if let Some(path) = version.strip_prefix("existingBinaryPath:") {
         let path = path.trim();
-        if path.is_empty() {
+        if path.is_empty() || !PathBuf::from(path).is_absolute() {
             return Err(CoreError {
                 manager: Some(ManagerId::Rustup),
                 task: Some(TaskType::Install),
                 action: Some(ManagerAction::Install),
                 kind: CoreErrorKind::InvalidInput,
-                message: "rustup existingBinaryPath install source requires a non-empty path"
-                    .to_string(),
+                message:
+                    "rustup existingBinaryPath install source requires a non-empty absolute path"
+                        .to_string(),
             });
         }
         return Ok(RustupInstallSource::ExistingBinaryPath(PathBuf::from(path)));
@@ -1613,7 +1618,7 @@ mod tests {
     use super::{
         INSTALL_IDLE_TIMEOUT, INSTALL_TIMEOUT, RustupAdapter, RustupDetectOutput,
         RustupInstallSource, RustupSource, RustupToolchainSelector, UNINSTALL_IDLE_TIMEOUT,
-        UNINSTALL_TIMEOUT, build_rustup_search_results,
+        UNINSTALL_TIMEOUT, UPGRADE_IDLE_TIMEOUT, UPGRADE_TIMEOUT, build_rustup_search_results,
         infer_default_host_from_installed_toolchains, parse_install_source, parse_rustup_check,
         parse_rustup_component_list, parse_rustup_default_host, parse_rustup_runtime_state,
         parse_rustup_target_list, parse_rustup_version, parse_toolchain_list,
@@ -2384,6 +2389,8 @@ wasm32-unknown-unknown\n";
         );
         assert_eq!(request.action, ManagerAction::Upgrade);
         assert_eq!(request.task_type, TaskType::Upgrade);
+        assert_eq!(request.timeout, Some(UPGRADE_TIMEOUT));
+        assert_eq!(request.idle_timeout, Some(UPGRADE_IDLE_TIMEOUT));
     }
 
     #[test]
@@ -2512,6 +2519,7 @@ wasm32-unknown-unknown\n";
     #[test]
     fn parse_install_source_rejects_invalid_values() {
         assert!(parse_install_source(Some("existingBinaryPath:")).is_err());
+        assert!(parse_install_source(Some("existingBinaryPath:relative/rustup-init")).is_err());
         assert!(parse_install_source(Some("bad-source")).is_err());
     }
 
@@ -2529,6 +2537,8 @@ wasm32-unknown-unknown\n";
         );
         assert_eq!(request.action, ManagerAction::Upgrade);
         assert_eq!(request.task_type, TaskType::Upgrade);
+        assert_eq!(request.timeout, Some(UPGRADE_TIMEOUT));
+        assert_eq!(request.idle_timeout, Some(UPGRADE_IDLE_TIMEOUT));
     }
 
     #[derive(Default, Clone)]

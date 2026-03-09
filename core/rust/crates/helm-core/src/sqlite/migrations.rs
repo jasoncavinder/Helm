@@ -489,7 +489,72 @@ ALTER TABLE outdated_packages_backup RENAME TO outdated_packages;
 "#,
 };
 
-const MIGRATIONS: [SqliteMigration; 14] = [
+const MIGRATION_0015: SqliteMigration = SqliteMigration {
+    version: 15,
+    name: "make_pin_records_version_scoped",
+    up_sql: r#"
+CREATE TABLE pin_records_version_scoped (
+    manager_id TEXT NOT NULL,
+    package_name TEXT NOT NULL,
+    pin_kind TEXT NOT NULL,
+    pinned_version TEXT NOT NULL DEFAULT '',
+    created_at_unix INTEGER NOT NULL,
+    PRIMARY KEY (manager_id, package_name, pinned_version)
+);
+
+INSERT INTO pin_records_version_scoped (
+    manager_id,
+    package_name,
+    pin_kind,
+    pinned_version,
+    created_at_unix
+)
+SELECT
+    manager_id,
+    package_name,
+    pin_kind,
+    CASE
+        WHEN manager_id = 'homebrew_formula' AND pin_kind = 'native' THEN ''
+        ELSE COALESCE(pinned_version, '')
+    END,
+    created_at_unix
+FROM pin_records;
+
+DROP TABLE pin_records;
+ALTER TABLE pin_records_version_scoped RENAME TO pin_records;
+"#,
+    down_sql: r#"
+CREATE TABLE pin_records_legacy (
+    manager_id TEXT NOT NULL,
+    package_name TEXT NOT NULL,
+    pin_kind TEXT NOT NULL,
+    pinned_version TEXT,
+    created_at_unix INTEGER NOT NULL,
+    PRIMARY KEY (manager_id, package_name)
+);
+
+INSERT OR REPLACE INTO pin_records_legacy (
+    manager_id,
+    package_name,
+    pin_kind,
+    pinned_version,
+    created_at_unix
+)
+SELECT
+    manager_id,
+    package_name,
+    pin_kind,
+    NULLIF(pinned_version, ''),
+    created_at_unix
+FROM pin_records
+ORDER BY created_at_unix DESC;
+
+DROP TABLE pin_records;
+ALTER TABLE pin_records_legacy RENAME TO pin_records;
+"#,
+};
+
+const MIGRATIONS: [SqliteMigration; 15] = [
     MIGRATION_0001,
     MIGRATION_0002,
     MIGRATION_0003,
@@ -504,6 +569,7 @@ const MIGRATIONS: [SqliteMigration; 14] = [
     MIGRATION_0012,
     MIGRATION_0013,
     MIGRATION_0014,
+    MIGRATION_0015,
 ];
 
 pub fn migrations() -> &'static [SqliteMigration] {

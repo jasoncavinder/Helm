@@ -808,6 +808,9 @@ fn rustup_install_request_version(
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
                 .ok_or(ManagerInstallPlanError::InvalidRustupBinaryPath)?;
+            if !Path::new(path).is_absolute() {
+                return Err(ManagerInstallPlanError::InvalidRustupBinaryPath);
+            }
             Ok(Some(format!("existingBinaryPath:{path}")))
         }
     }
