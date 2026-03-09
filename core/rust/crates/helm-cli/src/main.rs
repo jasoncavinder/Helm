@@ -6565,6 +6565,7 @@ fn write_regular_file_atomically(
     Ok(())
 }
 
+#[cfg(target_vendor = "apple")]
 fn path_cstring(path: &Path) -> Result<CString, String> {
     CString::new(path.as_os_str().as_bytes()).map_err(|_| {
         format!(
@@ -6574,6 +6575,7 @@ fn path_cstring(path: &Path) -> Result<CString, String> {
     })
 }
 
+#[cfg(target_vendor = "apple")]
 fn quarantine_attr_name() -> CString {
     CString::new("com.apple.quarantine").expect("static string should not contain NUL")
 }
