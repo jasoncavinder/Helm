@@ -378,6 +378,7 @@ mod tests {
                     manager: ManagerId::SoftwareUpdate,
                     name: "__all__".to_string(),
                 }),
+                version: None,
             }))
             .unwrap_err();
         assert_eq!(error.kind, CoreErrorKind::InvalidInput);
@@ -394,6 +395,7 @@ mod tests {
                     manager: ManagerId::SoftwareUpdate,
                     name: "__confirm_os_updates__".to_string(),
                 }),
+                version: None,
             }))
             .unwrap();
         assert!(matches!(result, AdapterResponse::Mutation(_)));

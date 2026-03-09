@@ -238,15 +238,8 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                     after_version: None,
                 }))
             }
-            AdapterRequest::RustupAddComponent(_)
-            | AdapterRequest::RustupRemoveComponent(_)
-            | AdapterRequest::RustupAddTarget(_)
-            | AdapterRequest::RustupRemoveTarget(_)
-            | AdapterRequest::RustupSetDefaultToolchain(_)
-            | AdapterRequest::RustupSetOverride(_)
-            | AdapterRequest::RustupUnsetOverride(_)
-            | AdapterRequest::RustupSetProfile(_) => unreachable!(
-                "unsupported rustup-only request should have been rejected by ensure_request_supported"
+            AdapterRequest::ConfigurePackageDetail(_) => unreachable!(
+                "unsupported package detail request should have been rejected by ensure_request_supported"
             ),
         }
     }
@@ -1174,6 +1167,7 @@ mod tests {
                         manager: crate::models::ManagerId::HomebrewFormula,
                         name: "ripgrep".to_string(),
                     },
+                    version: None,
                 },
             ))
             .unwrap();
@@ -1193,6 +1187,7 @@ mod tests {
                         manager: crate::models::ManagerId::HomebrewFormula,
                         name: "mas".to_string(),
                     },
+                    version: None,
                 },
             ))
             .unwrap();
@@ -1212,6 +1207,7 @@ mod tests {
                         manager: crate::models::ManagerId::HomebrewFormula,
                         name: "mas".to_string(),
                     },
+                    version: None,
                 },
             ))
             .expect_err("non-idempotent uninstall error should be returned");
@@ -1230,6 +1226,7 @@ mod tests {
                     manager: crate::models::ManagerId::HomebrewFormula,
                     name: "mise".to_string(),
                 }),
+                version: None,
             }))
             .unwrap();
         assert!(matches!(result, AdapterResponse::Mutation(_)));
@@ -1392,6 +1389,7 @@ mod tests {
                     manager: crate::models::ManagerId::HomebrewFormula,
                     name: format!("sevenzip{}", super::HOMEBREW_CLEANUP_MARKER),
                 }),
+                version: None,
             }))
             .unwrap();
         match result {
@@ -1442,6 +1440,7 @@ mod tests {
                     manager: crate::models::ManagerId::HomebrewFormula,
                     name: "gdu".to_string(),
                 }),
+                version: None,
             }))
             .unwrap_err();
 

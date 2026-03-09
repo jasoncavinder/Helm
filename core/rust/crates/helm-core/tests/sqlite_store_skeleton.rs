@@ -487,7 +487,7 @@ fn package_manager_preference_roundtrip_and_clear() {
 
     let listed = store.list_package_manager_preferences().unwrap();
     assert_eq!(listed.len(), 1);
-    assert_eq!(listed[0].package_name, "certifi");
+    assert_eq!(listed[0].package_family_key, "certifi");
     assert_eq!(listed[0].manager, ManagerId::HomebrewFormula);
 
     store
@@ -495,6 +495,31 @@ fn package_manager_preference_roundtrip_and_clear() {
         .unwrap();
     assert_eq!(store.package_manager_preference("certifi").unwrap(), None);
     assert!(store.list_package_manager_preferences().unwrap().is_empty());
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn package_manager_preference_preserves_variant_family_key() {
+    let path = test_db_path("package-manager-preference-variant-family");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    store
+        .set_package_manager_preference(" python@mambaforge ", Some(ManagerId::Mise))
+        .unwrap();
+
+    assert_eq!(
+        store
+            .package_manager_preference("PYTHON@MAMBAFORGE")
+            .unwrap(),
+        Some(ManagerId::Mise)
+    );
+
+    let listed = store.list_package_manager_preferences().unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].package_family_key, "python@mambaforge");
+    assert_eq!(listed[0].manager, ManagerId::Mise);
 
     let _ = std::fs::remove_file(path);
 }

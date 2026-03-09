@@ -748,6 +748,7 @@ mod tests {
                     manager: ManagerId::RubyGems,
                     name: "rake".to_string(),
                 }),
+                version: None,
             }))
             .expect("upgrade should succeed when gem is no longer outdated");
 
@@ -771,6 +772,7 @@ mod tests {
                     manager: ManagerId::RubyGems,
                     name: "rake".to_string(),
                 }),
+                version: None,
             }))
             .expect_err("upgrade should fail when gem remains outdated");
 
@@ -786,6 +788,7 @@ mod tests {
         let response = adapter
             .execute(AdapterRequest::Upgrade(crate::adapters::UpgradeRequest {
                 package: None,
+                version: None,
             }))
             .expect("upgrade all should succeed without post-validation");
 

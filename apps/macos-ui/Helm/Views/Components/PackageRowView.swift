@@ -3,6 +3,7 @@ import SwiftUI
 struct PackageRowView: View {
     let package: PackageItem
     var managerDisplayNames: [String]?
+    var detailBadges: [String] = []
     var isSelected: Bool = false
 
     private var accessibilityDescription: String {
@@ -17,6 +18,9 @@ struct PackageRowView: View {
         }
         if package.restartRequired {
             parts.append(L10n.App.Packages.Label.restartRequired.localized)
+        }
+        if !detailBadges.isEmpty {
+            parts.append(detailBadges.joined(separator: ", "))
         }
         parts.append(managerList)
         return parts.joined(separator: ", ")
@@ -54,6 +58,13 @@ struct PackageRowView: View {
                 HStack(spacing: 4) {
                     ForEach(Array(displayedManagerNames.enumerated()), id: \.offset) { _, managerName in
                         self.managerBadge(managerName)
+                    }
+                }
+                if !detailBadges.isEmpty {
+                    HStack(spacing: 4) {
+                        ForEach(Array(detailBadges.enumerated()), id: \.offset) { _, badge in
+                            self.detailBadge(badge)
+                        }
                     }
                 }
             }
@@ -102,6 +113,22 @@ struct PackageRowView: View {
     }
 
     private func managerBadge(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(HelmTheme.surfaceElevated)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .strokeBorder(HelmTheme.borderSubtle.opacity(0.9), lineWidth: 0.8)
+                    )
+            )
+            .foregroundColor(HelmTheme.textSecondary)
+    }
+
+    private func detailBadge(_ text: String) -> some View {
         Text(text)
             .font(.caption2)
             .padding(.horizontal, 4)

@@ -101,6 +101,7 @@
   "app.packages.keg_policy.keep_old": "Conserver les anciens kegs",
   "app.packages.keg_policy.use_global": "Utiliser global",
   "app.packages.label.homebrew_keg_policy": "Politique des kegs Homebrew",
+  "app.packages.label.version_count": "{count} versions",
   "app.packages.label.pinned": "Épinglé",
   "app.packages.label.restart_required": "Redémarrage requis",
   "app.packages.state.no_packages_found": "Aucun paquet trouvé",

@@ -16,7 +16,7 @@ pub struct ManagerPreference {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PackageManagerPreference {
-    pub package_name: String,
+    pub package_family_key: String,
     pub manager: ManagerId,
 }
 
@@ -128,13 +128,13 @@ pub trait DetectionStore: Send + Sync {
 
     fn set_package_manager_preference(
         &self,
-        package_name: &str,
+        package_family_key: &str,
         manager: Option<ManagerId>,
     ) -> PersistenceResult<()>;
 
     fn package_manager_preference(
         &self,
-        package_name: &str,
+        package_family_key: &str,
     ) -> PersistenceResult<Option<ManagerId>>;
 
     fn list_package_manager_preferences(&self) -> PersistenceResult<Vec<PackageManagerPreference>>;

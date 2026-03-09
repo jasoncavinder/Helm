@@ -115,7 +115,36 @@ extension HelmCore {
             return package
         }
         _ = allKnownPackagesUnsorted
-        return cachedKnownPackageById[packageId]
+        if let package = cachedKnownPackageById[packageId] {
+            return package
+        }
+        return searchResults.first(where: { $0.id == packageId })
+    }
+
+    func packageFamilyCandidates(for package: PackageItem) -> [PackageItem] {
+        let normalizedIdentityKey = package.normalizedIdentityKey
+        guard !normalizedIdentityKey.isEmpty else { return [package] }
+
+        var candidatesById: [String: PackageItem] = [:]
+        for candidate in packageCandidateSources() {
+            guard candidate.normalizedIdentityKey == normalizedIdentityKey else { continue }
+            if var existing = candidatesById[candidate.id] {
+                mergeSummary(into: &existing, from: candidate.summary)
+                if existing.latestVersion == nil {
+                    existing.latestVersion = candidate.latestVersion
+                }
+                existing.restartRequired = existing.restartRequired || candidate.restartRequired
+                candidatesById[candidate.id] = existing
+            } else {
+                candidatesById[candidate.id] = candidate
+            }
+        }
+
+        if candidatesById[package.id] == nil {
+            candidatesById[package.id] = package
+        }
+
+        return sortedPackagesByDisplayName(Array(candidatesById.values))
     }
 
     private func sortedPackagesByDisplayName(_ packages: [PackageItem]) -> [PackageItem] {
@@ -366,25 +395,9 @@ extension HelmCore {
 
     func installCandidates(for package: PackageItem) -> [PackageItem] {
         guard package.status == .available else { return [] }
-        let normalizedIdentityKey = package.normalizedIdentityKey
-        guard !normalizedIdentityKey.isEmpty else { return [] }
-
-        var candidatesByManager: [String: PackageItem] = [:]
-        for candidate in allKnownPackagesUnsorted where candidate.status == .available {
-            guard candidate.normalizedIdentityKey == normalizedIdentityKey else { continue }
-
-            if let existing = candidatesByManager[candidate.managerId] {
-                candidatesByManager[candidate.managerId] = preferredInstallCandidate(existing, candidate)
-            } else {
-                candidatesByManager[candidate.managerId] = candidate
-            }
-        }
-
-        if candidatesByManager[package.managerId] == nil {
-            candidatesByManager[package.managerId] = package
-        }
-
-        return candidatesByManager.values.sorted(by: installCandidateOrdering)
+        return packageFamilyCandidates(for: package)
+            .filter { $0.status == .available }
+            .sorted(by: installCandidateOrdering)
     }
 
     func preferredInstallCandidate(for package: PackageItem) -> PackageItem? {
@@ -1206,6 +1219,26 @@ extension HelmCore {
         return lhs
     }
 
+    private func packageCandidateSources() -> [PackageItem] {
+        var mergedById = Dictionary(uniqueKeysWithValues: allKnownPackagesUnsorted.map { ($0.id, $0) })
+
+        for candidate in searchResults {
+            guard isManagerEnabled(candidate.managerId) else { continue }
+            if var existing = mergedById[candidate.id] {
+                mergeSummary(into: &existing, from: candidate.summary)
+                if existing.latestVersion == nil {
+                    existing.latestVersion = candidate.latestVersion
+                }
+                existing.restartRequired = existing.restartRequired || candidate.restartRequired
+                mergedById[candidate.id] = existing
+            } else {
+                mergedById[candidate.id] = candidate
+            }
+        }
+
+        return Array(mergedById.values)
+    }
+
     private func installCandidateOrdering(_ lhs: PackageItem, _ rhs: PackageItem) -> Bool {
         let lhsInstallable = canInstallPackage(lhs, includeAlternates: false)
         let rhsInstallable = canInstallPackage(rhs, includeAlternates: false)
@@ -1217,6 +1250,23 @@ extension HelmCore {
         let rhsPriority = managerPriorityRank(for: rhs.managerId)
         if lhsPriority != rhsPriority {
             return lhsPriority < rhsPriority
+        }
+
+        let lhsVersion = normalizedDescriptionVersionToken(lhs.version)
+        let rhsVersion = normalizedDescriptionVersionToken(rhs.version)
+        if lhsVersion != rhsVersion {
+            if lhsVersion == nil {
+                return false
+            }
+            if rhsVersion == nil {
+                return true
+            }
+            if let lhsVersion, let rhsVersion {
+                let order = lhsVersion.compare(rhsVersion, options: [.numeric, .caseInsensitive])
+                if order != .orderedSame {
+                    return order == .orderedDescending
+                }
+            }
         }
 
         return normalizedManagerName(lhs.managerId)

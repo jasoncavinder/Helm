@@ -492,8 +492,12 @@ impl MiseSource for ProcessMiseSource {
         }
     }
 
-    fn upgrade_tool(&self, name: &str) -> AdapterResult<String> {
-        let request = self.configure_request(mise_upgrade_request(None, name));
+    fn upgrade_tool(&self, name: &str, version: Option<&str>) -> AdapterResult<String> {
+        let target = match version.map(str::trim).filter(|value| !value.is_empty()) {
+            Some(version) if name != "__all__" => format!("{name}@{version}"),
+            _ => name.to_string(),
+        };
+        let request = self.configure_request(mise_upgrade_request(None, target.as_str()));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 }

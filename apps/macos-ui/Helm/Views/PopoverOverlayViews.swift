@@ -6,6 +6,10 @@ struct PopoverSearchOverlayContent: View {
     @EnvironmentObject private var context: ControlCenterContext
     @State private var loadingPackageUninstallPreviewIds: Set<String> = []
     @State private var pendingPackageUninstall: PendingPackageUninstall?
+    @State private var showInstallSelectionSheet = false
+    @State private var installSelectionRow: ConsolidatedPackageItem?
+    @State private var selectedInstallManagerId: String?
+    @State private var selectedInstallPackageId: String?
     @Binding var popoverSearchQuery: String
     let searchResults: [ConsolidatedPackageItem]
     let onSyncSearchQuery: (String) -> Void
@@ -69,7 +73,13 @@ struct PopoverSearchOverlayContent: View {
                     LazyVStack(spacing: 6) {
                         ForEach(searchResults) { result in
                             let preferredManagerId = core.preferredManagerId(for: result.package)
-                            let package = result.actionTarget(preferredManagerId: preferredManagerId)
+                            let selectedPackageId = result.containsPackageId(context.selectedPackageId)
+                                ? context.selectedPackageId
+                                : nil
+                            let package = result.actionTarget(
+                                preferredManagerId: preferredManagerId,
+                                selectedPackageId: selectedPackageId
+                            )
                             HStack(spacing: 8) {
                                 Button {
                                     context.selectedPackageId = package.id
@@ -119,7 +129,7 @@ struct PopoverSearchOverlayContent: View {
                                 .helmPointer()
                                 .accessibilityElement(children: .combine)
 
-                                quickActionButtons(for: package)
+                                quickActionButtons(for: result, actionTarget: package)
                             }
                         }
                     }
@@ -197,10 +207,16 @@ struct PopoverSearchOverlayContent: View {
                 secondaryButton: .cancel()
             )
         }
+        .sheet(isPresented: $showInstallSelectionSheet) {
+            installSelectionSheet
+        }
     }
 
     @ViewBuilder
-    private func quickActionButtons(for package: PackageItem) -> some View {
+    private func quickActionButtons(
+        for packageRow: ConsolidatedPackageItem,
+        actionTarget package: PackageItem
+    ) -> some View {
         HStack(spacing: 4) {
             if core.canInstallPackage(package) {
                 iconActionButton(
@@ -208,7 +224,7 @@ struct PopoverSearchOverlayContent: View {
                     tooltip: L10n.App.Packages.Action.install.localized,
                     enabled: !installActionInFlight(for: package)
                 ) {
-                    core.installPackage(package)
+                    startInstallAction(for: packageRow)
                 }
             }
 
@@ -254,6 +270,154 @@ struct PopoverSearchOverlayContent: View {
 
     private func installActionInFlight(for package: PackageItem) -> Bool {
         core.isInstallActionInFlight(for: package)
+    }
+
+    private var installSelectionCandidates: [PackageItem] {
+        guard let installSelectionRow else { return [] }
+        let managerConstraint = selectedInstallManagerId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return installSelectionRow.memberPackages.filter {
+            guard $0.status == .available else { return false }
+            guard core.canInstallPackage($0, includeAlternates: false) else { return false }
+            guard let managerConstraint, !managerConstraint.isEmpty else { return true }
+            return $0.managerId == managerConstraint
+        }
+    }
+
+    private var selectedInstallCandidate: PackageItem? {
+        if let selectedInstallPackageId,
+           let matched = installSelectionCandidates.first(where: { $0.id == selectedInstallPackageId }) {
+            return matched
+        }
+        return installSelectionCandidates.first
+    }
+
+    private var installSelectionManagerIds: [String] {
+        let managerIds = installSelectionRow?.memberPackages.compactMap { candidate -> String? in
+            guard candidate.status == .available,
+                  core.canInstallPackage(candidate, includeAlternates: false) else {
+                return nil
+            }
+            return candidate.managerId
+        } ?? []
+        return PackageConsolidationPolicy.sortedManagerIds(
+            managerIds,
+            localizedManagerName: localizedManagerDisplayName,
+            priorityRank: { core.managerPriorityRank(for: $0) }
+        )
+    }
+
+    private var installSelectionMembersForSelectedManager: [PackageItem] {
+        let managerId = selectedInstallManagerId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return installSelectionCandidates.filter {
+            guard let managerId, !managerId.isEmpty else { return true }
+            return $0.managerId == managerId
+        }
+    }
+
+    private var installSelectionSheet: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(
+                "\(L10n.App.Packages.Action.install.localized) \(installSelectionRow?.package.displayName ?? "")"
+            )
+            .font(.headline)
+
+            Picker(
+                L10n.App.Inspector.manager.localized,
+                selection: Binding(
+                    get: { selectedInstallManagerId ?? installSelectionManagerIds.first ?? "" },
+                    set: { newValue in
+                        selectedInstallManagerId = newValue
+                        selectedInstallPackageId = installSelectionMembersForManager(newValue).first?.id
+                    }
+                )
+            ) {
+                ForEach(installSelectionManagerIds, id: \.self) { managerId in
+                    Text(localizedManagerDisplayName(managerId))
+                        .tag(managerId)
+                }
+            }
+            .pickerStyle(.radioGroup)
+
+            if installSelectionMembersForSelectedManager.count > 1 {
+                Picker(
+                    L10n.App.Inspector.version.localized,
+                    selection: Binding(
+                        get: { selectedInstallPackageId ?? installSelectionMembersForSelectedManager.first?.id ?? "" },
+                        set: { selectedInstallPackageId = $0 }
+                    )
+                ) {
+                    ForEach(installSelectionMembersForSelectedManager, id: \.id) { candidate in
+                        Text(installSelectionLabel(for: candidate))
+                            .tag(candidate.id)
+                    }
+                }
+                .pickerStyle(.radioGroup)
+            }
+
+            HStack(spacing: 8) {
+                Spacer()
+                Button(L10n.Common.cancel.localized) {
+                    dismissInstallSelectionSheet()
+                }
+                Button(L10n.Common.install.localized) {
+                    guard let selectedInstallCandidate else { return }
+                    dismissInstallSelectionSheet()
+                    core.installPackage(selectedInstallCandidate)
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(selectedInstallCandidate == nil)
+            }
+        }
+        .padding(18)
+        .frame(width: 320)
+    }
+
+    private func startInstallAction(for packageRow: ConsolidatedPackageItem) {
+        let candidates = packageRow.memberPackages.filter {
+            $0.status == .available && core.canInstallPackage($0, includeAlternates: false)
+        }
+        guard !candidates.isEmpty else { return }
+        if candidates.count == 1, let candidate = candidates.first {
+            core.installPackage(candidate)
+            return
+        }
+        installSelectionRow = packageRow
+        selectedInstallManagerId = PackageConsolidationPolicy.preferredManagerId(
+            managerIds: candidates.map(\.managerId),
+            preferredManagerId: core.preferredManagerId(for: packageRow.package)
+        ) ?? candidates.first?.managerId
+        let preferredPackageId = packageRow.containsPackageId(context.selectedPackageId)
+            ? context.selectedPackageId
+            : nil
+        let selectedManagerMembers = installSelectionMembersForManager(selectedInstallManagerId)
+        selectedInstallPackageId = selectedManagerMembers.first(where: { $0.id == preferredPackageId })?.id
+            ?? selectedManagerMembers.first?.id
+        showInstallSelectionSheet = true
+    }
+
+    private func dismissInstallSelectionSheet() {
+        showInstallSelectionSheet = false
+        installSelectionRow = nil
+        selectedInstallManagerId = nil
+        selectedInstallPackageId = nil
+    }
+
+    private func installSelectionMembersForManager(_ managerId: String?) -> [PackageItem] {
+        let trimmedManagerId = managerId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return installSelectionRow?.memberPackages.filter {
+            guard $0.status == .available else { return false }
+            guard core.canInstallPackage($0, includeAlternates: false) else { return false }
+            guard let trimmedManagerId, !trimmedManagerId.isEmpty else { return true }
+            return $0.managerId == trimmedManagerId
+        } ?? []
+    }
+
+    private func installSelectionLabel(for candidate: PackageItem) -> String {
+        let normalizedVersion = candidate.version.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !normalizedVersion.isEmpty {
+            return normalizedVersion
+        }
+        return candidate.displayName
     }
 
     private func managerBadge(_ text: String) -> some View {

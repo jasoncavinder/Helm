@@ -551,48 +551,48 @@ extension HelmCore {
             DispatchQueue.main.async {
                 var preferences: [String: String] = [:]
                 for entry in entries {
-                    let packageName = self.normalizedPackagePreferenceKey(entry.packageName)
+                    let packageFamilyKey = self.normalizedPackageFamilyKey(entry.packageFamilyKey)
                     let managerId = entry.managerId.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !packageName.isEmpty, !managerId.isEmpty else { continue }
-                    preferences[packageName] = managerId
+                    guard !packageFamilyKey.isEmpty, !managerId.isEmpty else { continue }
+                    preferences[packageFamilyKey] = managerId
                 }
-                self.packageManagerPreferencesByName = preferences
+                self.packageManagerPreferencesByFamilyKey = preferences
             }
         }
     }
 
-    func preferredManagerId(forPackageName packageName: String) -> String? {
-        let key = normalizedPackagePreferenceKey(packageName)
+    func preferredManagerId(forPackageFamilyKey packageFamilyKey: String) -> String? {
+        let key = normalizedPackageFamilyKey(packageFamilyKey)
         guard !key.isEmpty else { return nil }
-        return packageManagerPreferencesByName[key]
+        return packageManagerPreferencesByFamilyKey[key]
     }
 
     func preferredManagerId(for package: PackageItem) -> String? {
-        let identityKey = normalizedPackagePreferenceKey(
+        let identityKey = normalizedPackageFamilyKey(
             PackageIdentity.normalizedIdentityKey(
                 name: package.name,
                 version: package.version
             )
         )
-        if !identityKey.isEmpty, let preferred = packageManagerPreferencesByName[identityKey] {
+        if !identityKey.isEmpty, let preferred = packageManagerPreferencesByFamilyKey[identityKey] {
             return preferred
         }
-        let fallbackNameKey = normalizedPackagePreferenceKey(package.name)
+        let fallbackNameKey = normalizedPackageFamilyKey(package.name)
         if fallbackNameKey != identityKey {
-            return packageManagerPreferencesByName[fallbackNameKey]
+            return packageManagerPreferencesByFamilyKey[fallbackNameKey]
         }
         return nil
     }
 
     func setPreferredManagerId(
         _ managerId: String?,
-        forPackageName packageName: String,
+        forPackageFamilyKey packageFamilyKey: String,
         completion: ((Bool) -> Void)? = nil
     ) {
-        let normalizedPackageName = normalizedPackagePreferenceKey(packageName)
+        let normalizedFamilyKey = normalizedPackageFamilyKey(packageFamilyKey)
         setPreferredManagerId(
             managerId,
-            forPreferenceKey: normalizedPackageName,
+            forNormalizedPackageFamilyKey: normalizedFamilyKey,
             completion: completion
         )
     }
@@ -602,7 +602,7 @@ extension HelmCore {
         for package: PackageItem,
         completion: ((Bool) -> Void)? = nil
     ) {
-        let normalizedIdentityKey = normalizedPackagePreferenceKey(
+        let normalizedIdentityKey = normalizedPackageFamilyKey(
             PackageIdentity.normalizedIdentityKey(
                 name: package.name,
                 version: package.version
@@ -610,17 +610,17 @@ extension HelmCore {
         )
         setPreferredManagerId(
             managerId,
-            forPreferenceKey: normalizedIdentityKey,
+            forNormalizedPackageFamilyKey: normalizedIdentityKey,
             completion: completion
         )
     }
 
     private func setPreferredManagerId(
         _ managerId: String?,
-        forPreferenceKey normalizedPackageName: String,
+        forNormalizedPackageFamilyKey normalizedPackageFamilyKey: String,
         completion: ((Bool) -> Void)?
     ) {
-        guard !normalizedPackageName.isEmpty else {
+        guard !normalizedPackageFamilyKey.isEmpty else {
             completion?(false)
             return
         }
@@ -642,7 +642,7 @@ extension HelmCore {
         }
 
         service.setPackageManagerPreference(
-            packageName: normalizedPackageName,
+            packageFamilyKey: normalizedPackageFamilyKey,
             managerId: normalizedManagerId
         ) { [weak self] success in
             DispatchQueue.main.async {
@@ -652,16 +652,16 @@ extension HelmCore {
                 }
 
                 if success {
-                    var updatedPreferences = self.packageManagerPreferencesByName
+                    var updatedPreferences = self.packageManagerPreferencesByFamilyKey
                     if let normalizedManagerId {
-                        updatedPreferences[normalizedPackageName] = normalizedManagerId
+                        updatedPreferences[normalizedPackageFamilyKey] = normalizedManagerId
                     } else {
-                        updatedPreferences.removeValue(forKey: normalizedPackageName)
+                        updatedPreferences.removeValue(forKey: normalizedPackageFamilyKey)
                     }
-                    self.packageManagerPreferencesByName = updatedPreferences
+                    self.packageManagerPreferencesByFamilyKey = updatedPreferences
                 } else {
                     logger.error(
-                        "setPackageManagerPreference(\(normalizedPackageName), \(normalizedManagerId ?? "nil")) failed"
+                        "setPackageManagerPreference(\(normalizedPackageFamilyKey), \(normalizedManagerId ?? "nil")) failed"
                     )
                     self.recordLastError(
                         source: "core.settings",
@@ -675,7 +675,7 @@ extension HelmCore {
         }
     }
 
-    private func normalizedPackagePreferenceKey(_ value: String) -> String {
+    private func normalizedPackageFamilyKey(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 

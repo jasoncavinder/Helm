@@ -119,6 +119,7 @@
   "app.packages.label.restart_required": "Neustart erforderlich",
   "app.packages.label.pinned": "Gepinnt",
   "app.packages.label.homebrew_keg_policy": "Homebrew-Keg-Richtlinie",
+  "app.packages.label.version_count": "{count} versions",
   "app.packages.detail.version.current": "Aktuell",
   "app.packages.detail.version.latest": "Neueste",
   "app.packages.detail.version.pinned": "Gepinnt",

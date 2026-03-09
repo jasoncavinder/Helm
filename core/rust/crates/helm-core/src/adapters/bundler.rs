@@ -657,7 +657,10 @@ mod tests {
         });
 
         let response = adapter
-            .execute(AdapterRequest::Upgrade(UpgradeRequest { package: None }))
+            .execute(AdapterRequest::Upgrade(UpgradeRequest {
+                package: None,
+                version: None,
+            }))
             .expect("upgrade response");
 
         match response {
@@ -675,7 +678,10 @@ mod tests {
         let adapter = BundlerAdapter::new(FakeBundlerSource::default());
 
         let error = adapter
-            .execute(AdapterRequest::Upgrade(UpgradeRequest { package: None }))
+            .execute(AdapterRequest::Upgrade(UpgradeRequest {
+                package: None,
+                version: None,
+            }))
             .expect_err("upgrade should fail when bundler remains outdated");
 
         assert_eq!(error.kind, CoreErrorKind::ProcessFailure);
@@ -692,6 +698,7 @@ mod tests {
                     manager: ManagerId::Bundler,
                     name: "bundler".to_string(),
                 },
+                version: None,
             }))
             .expect("uninstall response");
 

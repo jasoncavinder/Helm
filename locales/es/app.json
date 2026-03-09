@@ -119,6 +119,7 @@
   "app.packages.label.restart_required": "Se requiere reinicio",
   "app.packages.label.pinned": "Fijado",
   "app.packages.label.homebrew_keg_policy": "Política de kegs de Homebrew",
+  "app.packages.label.version_count": "{count} versions",
   "app.packages.detail.version.current": "Actual",
   "app.packages.detail.version.latest": "Última",
   "app.packages.detail.version.pinned": "Fijada",
