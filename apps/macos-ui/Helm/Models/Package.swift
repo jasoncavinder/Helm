@@ -94,7 +94,7 @@ struct PackageItem: Identifiable {
                 return qualifiedDisplayName
             }
         }
-        guard (normalizedManagerId == "asdf" || normalizedManagerId == "mise"),
+        guard normalizedManagerId == "asdf" || normalizedManagerId == "mise",
               PackageIdentity.hasKnownVersion(version) else {
             return trimmedName
         }
