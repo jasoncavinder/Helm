@@ -1,8 +1,10 @@
 use std::collections::{BTreeMap, HashMap};
 use std::env;
+#[cfg(target_vendor = "apple")]
 use std::ffi::CString;
 use std::fs::{self, OpenOptions};
 use std::io::{IsTerminal, Read, Write};
+#[cfg(target_vendor = "apple")]
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
