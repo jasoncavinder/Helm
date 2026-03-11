@@ -15,6 +15,7 @@ Helm is in:
 ```
 
 Focus:
+- finish `v0.17.9` stable patch release prep on `dev` while keeping public stable-line copy accurate until publication
 - keep `main`/`dev`/`docs`/`web` publication docs and version markers aligned for `v0.17.8`
 - maintain release-process hardening guardrails now that phases 1-5 are complete (preflight, publish verification, drift prevention)
 - execute doctor/repair subsystem foundation in core + FFI + service surfaces
@@ -28,6 +29,10 @@ Focus:
 Current checkpoint:
 - `v0.17.8` is the current stable release on `main`; pre-1.0 quality-audit remediation and release-gate hardening are now included in stable publication:
   - release artifacts, metadata publication PRs, and post-publish verification checks completed for `v0.17.8`.
+  - `v0.17.9` release prep is now in progress on `dev`:
+    - all current manager adapters are considered complete for Helm's intended scope
+    - intentionally narrower manager scopes remain explicit (`nix_darwin` detect/refresh-only; detection-only adapters such as `sparkle`, `setapp`, and `parallels_desktop`; guarded/status adapters such as `docker_desktop`, `podman`, `colima`, `rosetta2`, `firmware_updates`, and `xcode_command_line_tools`)
+    - no additional manager-adapter implementation gaps remain beyond those intentional product boundaries
   - post-`v0.17.7` doctor/repair foundation scaffold delivered on `dev`:
     - added `helm-core` doctor/repair modules with deterministic finding fingerprints, local health report model, and embedded repair knowledge-provider scaffolding
     - manager package-state issue generation now routes through doctor findings and includes fingerprint/severity/evidence plus repair-option metadata

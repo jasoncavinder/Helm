@@ -8,15 +8,16 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.17.8 stable publication complete** with post-release hardening follow-ups merged on `dev`.
+Current documentation baseline: **0.17.8 stable publication complete** with post-release hardening follow-ups merged on `dev` and `v0.17.9` release prep underway.
 
-Implementation baseline: **0.17.8 stable + post-release hardening follow-ups** with diagnostics/logging delivery, TUI + bundled-CLI parity closure, manager-selection/enablement and onboarding/detection hardening, release-process hardening phases 1-5, and post-`v0.17.5` refresh reliability/diagnostics hardening.
+Implementation baseline: **0.17.8 stable + post-release hardening follow-ups** with diagnostics/logging delivery, TUI + bundled-CLI parity closure, manager-selection/enablement and onboarding/detection hardening, release-process hardening phases 1-5, post-`v0.17.5` refresh reliability/diagnostics hardening, and complete current-scope manager adapter coverage on `dev`.
 
 See:
 - CHANGELOG.md
 
 Active milestone:
 - latest stable release currently published on `main`: **0.17.8** (pre-1.0 quality-audit remediation + release-gate hardening publication)
+- next stable patch target on `dev`: **0.17.9** (release prep in progress; public stable-line markers remain `0.17.8` until publication)
 - next integration target after stable publication: **0.18.x** (local security groundwork planning + delivery setup)
 - repository operations follow-up on `dev`: repository-local Codex operating model refined for lean context (`project_doc_max_bytes=131072`), policy-only root `AGENTS.md`, workflow Skills under `ops/codex/skills/`, slash-command templates under `.codex/commands/`, and structured local notify logging to `dev/logs/codex-runs.ndjson`.
 - stable publication cut completed for `v0.17.8`:
@@ -132,10 +133,14 @@ Third-party licensing compliance status:
 
 ## Implemented Managers
 
-Fully functional:
+Complete for Helm's intended scope:
 
-- Homebrew
+- Homebrew (formulae)
+- Homebrew (casks)
+- MacPorts
 - mise
+- asdf
+- rustup
 - npm (global)
 - pnpm (global)
 - yarn (global, Classic 1.x package surface)
@@ -146,9 +151,24 @@ Fully functional:
 - pipx
 - cargo
 - cargo-binstall
-- rustup
-- softwareupdate
 - mas
+- softwareupdate
+- Docker Desktop
+- podman
+- colima
+- Xcode Command Line Tools
+- Rosetta 2
+- Firmware updates
+- Sparkle updater
+- Setapp
+- Parallels Desktop
+- nix-darwin
+
+Scope notes:
+
+- Package managers above are considered complete relative to Helm's current feature model, even when the native manager exposes additional functionality Helm intentionally does not model.
+- Detection-only/status-only managers are complete within that narrower product scope and are not intended to expose full package-mutation surfaces.
+- `nix_darwin` is considered complete for Helm's current scope because Helm intentionally limits it to detect/refresh rather than misrepresent declarative nix-darwin state through `nix-env` compatibility mutations.
 
 ---
 
