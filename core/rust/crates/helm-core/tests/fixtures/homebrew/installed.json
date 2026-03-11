@@ -1,0 +1,39 @@
+{
+  "formulae": [
+    {
+      "name": "python@3.12",
+      "linked_keg": "3.12.3",
+      "installed": [
+        { "version": "3.12.3" }
+      ],
+      "pinned": false
+    },
+    {
+      "name": "openssl@3",
+      "linked_keg": "3.3.1",
+      "installed": [
+        { "version": "3.3.0" },
+        { "version": "3.3.1" }
+      ],
+      "pinned": true
+    },
+    {
+      "name": "node",
+      "linked_keg": "22.5.1",
+      "installed": [
+        { "version": "22.4.0" },
+        { "version": "22.5.1" }
+      ],
+      "pinned": false
+    },
+    {
+      "name": "ripgrep",
+      "linked_keg": null,
+      "installed": [
+        { "version": "14.1.0" }
+      ],
+      "pinned": false
+    }
+  ],
+  "casks": []
+}

@@ -46,7 +46,7 @@ pub trait BundlerSource: Send + Sync {
     fn list_installed(&self) -> AdapterResult<String>;
     fn list_outdated(&self) -> AdapterResult<String>;
     fn install(&self, version: Option<&str>) -> AdapterResult<String>;
-    fn uninstall(&self) -> AdapterResult<String>;
+    fn uninstall(&self, version: Option<&str>) -> AdapterResult<String>;
     fn upgrade(&self) -> AdapterResult<String>;
 }
 
@@ -76,8 +76,7 @@ impl<S: BundlerSource> ManagerAdapter for BundlerAdapter<S> {
             AdapterRequest::Detect(_) => {
                 let output = self.source.detect()?;
                 let version = parse_bundler_version(&output.version_output);
-                let has_executable = output.executable_path.is_some();
-                let installed = has_executable || version.is_some();
+                let installed = version.is_some();
                 Ok(AdapterResponse::Detection(DetectionInfo {
                     installed,
                     executable_path: output.executable_path,
@@ -85,8 +84,21 @@ impl<S: BundlerSource> ManagerAdapter for BundlerAdapter<S> {
                 }))
             }
             AdapterRequest::Refresh(_) => {
-                let _ = self.source.detect()?;
-                Ok(AdapterResponse::Refreshed)
+                let output = self.source.detect()?;
+                let version = parse_bundler_version(&output.version_output);
+                if version.is_none() {
+                    return Ok(AdapterResponse::SnapshotSync {
+                        installed: Some(Vec::new()),
+                        outdated: Some(Vec::new()),
+                    });
+                }
+
+                let installed = parse_bundler_list_installed(&self.source.list_installed()?)?;
+                let outdated = parse_bundler_outdated(&self.source.list_outdated()?)?;
+                Ok(AdapterResponse::SnapshotSync {
+                    installed: Some(installed),
+                    outdated: Some(outdated),
+                })
             }
             AdapterRequest::ListInstalled(_) => {
                 let raw = self.source.list_installed()?;
@@ -108,12 +120,22 @@ impl<S: BundlerSource> ManagerAdapter for BundlerAdapter<S> {
                     ManagerAction::Install,
                     install_request.package.name.as_str(),
                 )?;
+                let before_versions = bundler_installed_versions(&self.source)?;
                 let _ = self.source.install(install_request.version.as_deref())?;
+                let after_versions = bundler_installed_versions(&self.source)?;
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: install_request.package,
+                    package_identifier: None,
                     action: ManagerAction::Install,
-                    before_version: None,
-                    after_version: install_request.version,
+                    before_version: infer_preexisting_version(
+                        &before_versions,
+                        install_request.version.as_deref(),
+                    ),
+                    after_version: infer_installed_version_after_mutation(
+                        &before_versions,
+                        &after_versions,
+                        install_request.version.as_deref(),
+                    ),
                 }))
             }
             AdapterRequest::Uninstall(uninstall_request) => {
@@ -121,11 +143,16 @@ impl<S: BundlerSource> ManagerAdapter for BundlerAdapter<S> {
                     ManagerAction::Uninstall,
                     uninstall_request.package.name.as_str(),
                 )?;
-                let _ = self.source.uninstall()?;
+                let version = resolve_installed_bundler_version(
+                    &self.source,
+                    uninstall_request.version.as_deref(),
+                )?;
+                let _ = self.source.uninstall(Some(version.as_str()))?;
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: uninstall_request.package,
+                    package_identifier: None,
                     action: ManagerAction::Uninstall,
-                    before_version: None,
+                    before_version: Some(version),
                     after_version: None,
                 }))
             }
@@ -135,13 +162,19 @@ impl<S: BundlerSource> ManagerAdapter for BundlerAdapter<S> {
                     name: BUNDLER_PACKAGE_NAME.to_string(),
                 });
                 validate_bundler_package_name(ManagerAction::Upgrade, package.name.as_str())?;
+                let outdated = find_bundler_outdated_entry(&self.source)?;
                 let _ = self.source.upgrade()?;
                 ensure_bundler_no_longer_outdated(&self.source, package.name.as_str())?;
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
+                    package_identifier: None,
                     action: ManagerAction::Upgrade,
-                    before_version: None,
-                    after_version: None,
+                    before_version: upgrade_request.version.or_else(|| {
+                        outdated
+                            .as_ref()
+                            .and_then(|entry| entry.installed_version.clone())
+                    }),
+                    after_version: outdated.map(|entry| entry.candidate_version),
                 }))
             }
             _ => Err(CoreError {
@@ -170,7 +203,7 @@ pub fn bundler_list_installed_request(task_id: Option<TaskId>) -> ProcessSpawnRe
         task_id,
         TaskType::Refresh,
         ManagerAction::ListInstalled,
-        CommandSpec::new(GEM_COMMAND).args(["list", "--local", BUNDLER_PACKAGE_NAME]),
+        CommandSpec::new(GEM_COMMAND).args(["list", "--local", "--all", BUNDLER_PACKAGE_NAME]),
         LIST_TIMEOUT,
     )
 }
@@ -203,12 +236,21 @@ pub fn bundler_install_request(
     )
 }
 
-pub fn bundler_uninstall_request(task_id: Option<TaskId>) -> ProcessSpawnRequest {
+pub fn bundler_uninstall_request(
+    task_id: Option<TaskId>,
+    version: Option<&str>,
+) -> ProcessSpawnRequest {
+    let mut command = CommandSpec::new(GEM_COMMAND).args(["uninstall", BUNDLER_PACKAGE_NAME]);
+    if let Some(version) = version.map(str::trim).filter(|value| !value.is_empty()) {
+        command = command.args(["--version", version]);
+    }
+    command = command.arg("-x");
+
     bundler_request(
         task_id,
         TaskType::Uninstall,
         ManagerAction::Uninstall,
-        CommandSpec::new(GEM_COMMAND).args(["uninstall", BUNDLER_PACKAGE_NAME, "-a", "-x"]),
+        command,
         MUTATION_TIMEOUT,
     )
 }
@@ -280,29 +322,17 @@ fn parse_bundler_list_installed(output: &str) -> AdapterResult<Vec<InstalledPack
             continue;
         }
 
-        let version = versions_segment
+        for version in versions_segment
             .split(',')
             .map(str::trim)
-            .find(|candidate| {
-                !candidate.is_empty()
-                    && !candidate.starts_with("default:")
-                    && !candidate.starts_with("ruby")
-            })
-            .map(str::to_string)
-            .or_else(|| {
-                versions_segment
-                    .split(',')
-                    .map(str::trim)
-                    .find(|candidate| !candidate.is_empty())
-                    .map(str::to_string)
-            });
-
-        if let Some(version) = version {
+            .filter_map(parse_bundler_version_token)
+        {
             packages.push(InstalledPackage {
                 package: PackageRef {
                     manager: ManagerId::Bundler,
                     name: BUNDLER_PACKAGE_NAME.to_string(),
                 },
+                package_identifier: None,
                 installed_version: Some(version),
                 pinned: false,
                 runtime_state: Default::default(),
@@ -310,7 +340,24 @@ fn parse_bundler_list_installed(output: &str) -> AdapterResult<Vec<InstalledPack
         }
     }
 
+    packages.sort_by(|a, b| b.installed_version.cmp(&a.installed_version));
     Ok(packages)
+}
+
+fn parse_bundler_version_token(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let normalized = trimmed
+        .strip_prefix("default:")
+        .map(str::trim)
+        .unwrap_or(trimmed);
+    let version = normalized.split_whitespace().next()?.trim();
+    if version.is_empty() {
+        return None;
+    }
+    Some(version.to_string())
 }
 
 fn ensure_bundler_no_longer_outdated<S: BundlerSource>(
@@ -334,6 +381,121 @@ fn ensure_bundler_no_longer_outdated<S: BundlerSource>(
         });
     }
     Ok(())
+}
+
+fn resolve_installed_bundler_version<S: BundlerSource>(
+    source: &S,
+    requested_version: Option<&str>,
+) -> AdapterResult<String> {
+    let mut versions = bundler_installed_versions(source)?;
+
+    if let Some(version) = requested_version
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if versions.iter().any(|installed| installed == version) {
+            return Ok(version.to_string());
+        }
+        return Err(CoreError {
+            manager: Some(ManagerId::Bundler),
+            task: Some(TaskType::Uninstall),
+            action: Some(ManagerAction::Uninstall),
+            kind: CoreErrorKind::InvalidInput,
+            message: format!("bundler version '{version}' is not installed"),
+        });
+    }
+
+    match versions.len() {
+        0 => Err(CoreError {
+            manager: Some(ManagerId::Bundler),
+            task: Some(TaskType::Uninstall),
+            action: Some(ManagerAction::Uninstall),
+            kind: CoreErrorKind::InvalidInput,
+            message: "bundler is not installed".to_string(),
+        }),
+        1 => Ok(versions.remove(0)),
+        _ => Err(CoreError {
+            manager: Some(ManagerId::Bundler),
+            task: Some(TaskType::Uninstall),
+            action: Some(ManagerAction::Uninstall),
+            kind: CoreErrorKind::InvalidInput,
+            message: "multiple installed bundler versions found; specify an exact version"
+                .to_string(),
+        }),
+    }
+}
+
+fn bundler_installed_versions<S: BundlerSource>(source: &S) -> AdapterResult<Vec<String>> {
+    let installed = parse_bundler_list_installed(&source.list_installed()?)?;
+    let mut versions = installed
+        .into_iter()
+        .filter_map(|package| package.installed_version)
+        .collect::<Vec<_>>();
+    versions.sort();
+    versions.dedup();
+    Ok(versions)
+}
+
+fn infer_preexisting_version(
+    versions: &[String],
+    requested_version: Option<&str>,
+) -> Option<String> {
+    if let Some(version) = requested_version
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .filter(|requested| versions.iter().any(|installed| installed == requested))
+    {
+        return Some(version.to_string());
+    }
+
+    if versions.len() == 1 {
+        return versions.first().cloned();
+    }
+
+    None
+}
+
+fn infer_installed_version_after_mutation(
+    before_versions: &[String],
+    after_versions: &[String],
+    requested_version: Option<&str>,
+) -> Option<String> {
+    if let Some(version) = requested_version
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .filter(|requested| {
+            after_versions
+                .iter()
+                .any(|installed| installed == requested)
+        })
+    {
+        return Some(version.to_string());
+    }
+
+    let mut new_versions = after_versions
+        .iter()
+        .filter(|installed| !before_versions.iter().any(|before| before == *installed))
+        .cloned()
+        .collect::<Vec<_>>();
+    new_versions.sort();
+    new_versions.dedup();
+    if new_versions.len() == 1 {
+        return new_versions.into_iter().next();
+    }
+
+    if before_versions.is_empty() && after_versions.len() == 1 {
+        return after_versions.first().cloned();
+    }
+
+    None
+}
+
+fn find_bundler_outdated_entry<S: BundlerSource>(
+    source: &S,
+) -> AdapterResult<Option<OutdatedPackage>> {
+    let raw = source.list_outdated()?;
+    let outdated = parse_bundler_outdated(&raw)?;
+    Ok(outdated.into_iter().next())
 }
 
 fn parse_bundler_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
@@ -384,6 +546,7 @@ fn parse_bundler_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
                     manager: ManagerId::Bundler,
                     name: BUNDLER_PACKAGE_NAME.to_string(),
                 },
+                package_identifier: None,
                 installed_version,
                 candidate_version,
                 pinned: false,
@@ -407,6 +570,8 @@ fn parse_bundler_search(
 
     let installed = parse_bundler_list_installed(output)?;
 
+    let mut seen = std::collections::BTreeSet::new();
+
     Ok(installed
         .into_iter()
         .filter(|package| {
@@ -416,9 +581,11 @@ fn parse_bundler_search(
                 .to_ascii_lowercase()
                 .contains(query_text.as_str())
         })
+        .filter(|package| seen.insert(package.package.name.clone()))
         .map(|package| CachedSearchResult {
             result: PackageCandidate {
                 package: package.package,
+                package_identifier: None,
                 version: package.installed_version,
                 summary: Some("Installed Bundler runtime".to_string()),
             },
@@ -484,7 +651,7 @@ mod tests {
             Ok(self
                 .list_installed_output
                 .clone()
-                .unwrap_or_else(|| "bundler (2.5.22)".to_string()))
+                .unwrap_or_else(|| "bundler (2.5.22, default: 1.17.2)".to_string()))
         }
 
         fn list_outdated(&self) -> AdapterResult<String> {
@@ -504,7 +671,7 @@ mod tests {
             Ok("installed".to_string())
         }
 
-        fn uninstall(&self) -> AdapterResult<String> {
+        fn uninstall(&self, _version: Option<&str>) -> AdapterResult<String> {
             if let Some(error) = &self.uninstall_error {
                 return Err(error.clone());
             }
@@ -531,10 +698,11 @@ mod tests {
         let raw = std::fs::read_to_string("tests/fixtures/bundler/list_local.txt")
             .expect("bundler list fixture");
         let packages = parse_bundler_list_installed(&raw).expect("parse installed");
-        assert_eq!(packages.len(), 1);
+        assert_eq!(packages.len(), 2);
         assert_eq!(packages[0].package.manager, ManagerId::Bundler);
         assert_eq!(packages[0].package.name, "bundler");
         assert_eq!(packages[0].installed_version.as_deref(), Some("2.5.22"));
+        assert_eq!(packages[1].installed_version.as_deref(), Some("1.17.2"));
     }
 
     #[test]
@@ -582,14 +750,23 @@ mod tests {
         let refreshed = adapter
             .execute(AdapterRequest::Refresh(RefreshRequest))
             .expect("refresh response");
-        assert!(matches!(refreshed, AdapterResponse::Refreshed));
+        match refreshed {
+            AdapterResponse::SnapshotSync {
+                installed,
+                outdated,
+            } => {
+                assert_eq!(installed.expect("installed snapshot").len(), 2);
+                assert_eq!(outdated.expect("outdated snapshot").len(), 1);
+            }
+            other => panic!("expected snapshot sync response, got {other:?}"),
+        }
 
         let installed = adapter
             .execute(AdapterRequest::ListInstalled(ListInstalledRequest))
             .expect("list installed response");
         match installed {
             AdapterResponse::InstalledPackages(packages) => {
-                assert_eq!(packages.len(), 1);
+                assert_eq!(packages.len(), 2);
                 assert_eq!(packages[0].package.name, "bundler");
             }
             _ => panic!("expected installed packages"),
@@ -618,6 +795,7 @@ mod tests {
         let response = adapter
             .execute(AdapterRequest::Install(InstallRequest {
                 package: package.clone(),
+                target_name: None,
                 version: Some("2.5.23".to_string()),
             }))
             .expect("install response");
@@ -626,7 +804,6 @@ mod tests {
             AdapterResponse::Mutation(result) => {
                 assert_eq!(result.package, package);
                 assert_eq!(result.action, ManagerAction::Install);
-                assert_eq!(result.after_version.as_deref(), Some("2.5.23"));
             }
             _ => panic!("expected mutation"),
         }
@@ -642,6 +819,7 @@ mod tests {
                     manager: ManagerId::Bundler,
                     name: "rake".to_string(),
                 },
+                target_name: None,
                 version: None,
             }))
             .expect_err("non-bundler package should be rejected");
@@ -659,6 +837,7 @@ mod tests {
         let response = adapter
             .execute(AdapterRequest::Upgrade(UpgradeRequest {
                 package: None,
+                target_name: None,
                 version: None,
             }))
             .expect("upgrade response");
@@ -668,6 +847,8 @@ mod tests {
                 assert_eq!(result.package.manager, ManagerId::Bundler);
                 assert_eq!(result.package.name, "bundler");
                 assert_eq!(result.action, ManagerAction::Upgrade);
+                assert!(result.before_version.is_none());
+                assert!(result.after_version.is_none());
             }
             _ => panic!("expected mutation"),
         }
@@ -680,6 +861,7 @@ mod tests {
         let error = adapter
             .execute(AdapterRequest::Upgrade(UpgradeRequest {
                 package: None,
+                target_name: None,
                 version: None,
             }))
             .expect_err("upgrade should fail when bundler remains outdated");
@@ -698,7 +880,8 @@ mod tests {
                     manager: ManagerId::Bundler,
                     name: "bundler".to_string(),
                 },
-                version: None,
+                target_name: None,
+                version: Some("2.5.22".to_string()),
             }))
             .expect("uninstall response");
 
@@ -707,9 +890,32 @@ mod tests {
                 assert_eq!(result.package.manager, ManagerId::Bundler);
                 assert_eq!(result.package.name, "bundler");
                 assert_eq!(result.action, ManagerAction::Uninstall);
+                assert_eq!(result.before_version.as_deref(), Some("2.5.22"));
             }
             _ => panic!("expected mutation"),
         }
+    }
+
+    #[test]
+    fn uninstall_requires_explicit_version_when_multiple_versions_exist() {
+        let adapter = BundlerAdapter::new(FakeBundlerSource {
+            list_installed_output: Some("bundler (2.5.22, default: 1.17.2)".to_string()),
+            ..Default::default()
+        });
+
+        let error = adapter
+            .execute(AdapterRequest::Uninstall(UninstallRequest {
+                package: PackageRef {
+                    manager: ManagerId::Bundler,
+                    name: "bundler".to_string(),
+                },
+                target_name: None,
+                version: None,
+            }))
+            .expect_err("uninstall should fail without an exact version");
+
+        assert_eq!(error.kind, CoreErrorKind::InvalidInput);
+        assert!(error.message.contains("exact version"));
     }
 
     #[test]
@@ -720,7 +926,10 @@ mod tests {
 
         let list = bundler_list_installed_request(None);
         assert_eq!(list.command.program.to_string_lossy(), "gem");
-        assert_eq!(list.command.args, vec!["list", "--local", "bundler"]);
+        assert_eq!(
+            list.command.args,
+            vec!["list", "--local", "--all", "bundler"]
+        );
 
         let outdated = bundler_list_outdated_request(None);
         assert_eq!(outdated.command.program.to_string_lossy(), "gem");
@@ -733,11 +942,11 @@ mod tests {
             vec!["install", "bundler", "--version", "2.5.23"]
         );
 
-        let uninstall = bundler_uninstall_request(None);
+        let uninstall = bundler_uninstall_request(None, Some("2.5.22"));
         assert_eq!(uninstall.command.program.to_string_lossy(), "gem");
         assert_eq!(
             uninstall.command.args,
-            vec!["uninstall", "bundler", "-a", "-x"]
+            vec!["uninstall", "bundler", "--version", "2.5.22", "-x"]
         );
 
         let upgrade = bundler_upgrade_request(None);

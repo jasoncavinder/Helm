@@ -128,8 +128,7 @@ impl<S: RustupSource> ManagerAdapter for RustupAdapter<S> {
             AdapterRequest::Detect(_) => {
                 let output = self.source.detect()?;
                 let version = parse_rustup_version(&output.version_output);
-                let has_executable = output.executable_path.is_some();
-                let installed = has_executable || version.is_some();
+                let installed = version.is_some();
                 Ok(AdapterResponse::Detection(DetectionInfo {
                     installed,
                     executable_path: output.executable_path,
@@ -137,8 +136,15 @@ impl<S: RustupSource> ManagerAdapter for RustupAdapter<S> {
                 }))
             }
             AdapterRequest::Refresh(_) => {
-                let _ = self.source.detect()?;
-                Ok(AdapterResponse::Refreshed)
+                let output = self.source.detect()?;
+                let version = parse_rustup_version(&output.version_output);
+                if version.is_none() {
+                    return Ok(AdapterResponse::SnapshotSync {
+                        installed: Some(Vec::new()),
+                        outdated: Some(Vec::new()),
+                    });
+                }
+                sync_package_state_after_configuration(&self.source)
             }
             AdapterRequest::Search(search_request) => {
                 let default_host = resolve_rustup_search_default_host(&self.source);
@@ -174,6 +180,7 @@ impl<S: RustupSource> ManagerAdapter for RustupAdapter<S> {
                 }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: install_request.package,
+                    package_identifier: None,
                     action: ManagerAction::Install,
                     before_version: None,
                     after_version: None,
@@ -228,6 +235,7 @@ impl<S: RustupSource> ManagerAdapter for RustupAdapter<S> {
                 }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: uninstall_request.package,
+                    package_identifier: None,
                     action: ManagerAction::Uninstall,
                     before_version: None,
                     after_version: None,
@@ -245,6 +253,7 @@ impl<S: RustupSource> ManagerAdapter for RustupAdapter<S> {
                 }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
+                    package_identifier: None,
                     action: ManagerAction::Upgrade,
                     before_version: None,
                     after_version: None,
@@ -1430,6 +1439,7 @@ fn parse_toolchain_list(output: &str) -> AdapterResult<Vec<InstalledPackage>> {
                 manager: ManagerId::Rustup,
                 name: name.to_owned(),
             },
+            package_identifier: None,
             installed_version: derive_toolchain_version_from_name(name),
             pinned: false,
             runtime_state,
@@ -1576,6 +1586,7 @@ fn build_rustup_search_results(
                     manager: ManagerId::Rustup,
                     name: canonical_name,
                 },
+                package_identifier: None,
                 version: selector.candidate_version(),
                 summary: Some(summary),
             },
@@ -1637,6 +1648,7 @@ fn parse_rustup_check(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
                 manager: ManagerId::Rustup,
                 name: toolchain.to_owned(),
             },
+            package_identifier: None,
             installed_version: if old_version.is_empty() {
                 None
             } else {
@@ -2060,6 +2072,7 @@ wasm32-unknown-unknown\n";
                     manager: ManagerId::Rustup,
                     name: "__self__".to_string(),
                 },
+                target_name: None,
                 version: None,
             }))
             .unwrap();
@@ -2079,6 +2092,7 @@ wasm32-unknown-unknown\n";
                     manager: ManagerId::Rustup,
                     name: "__self__".to_string(),
                 },
+                target_name: None,
                 version: Some("existingBinaryPath:/tmp/rustup-init".to_string()),
             }))
             .unwrap();
@@ -2099,6 +2113,7 @@ wasm32-unknown-unknown\n";
                     manager: ManagerId::Rustup,
                     name: "stable-x86_64-apple-darwin".to_string(),
                 },
+                target_name: None,
                 version: None,
             }))
             .unwrap();
@@ -2121,6 +2136,7 @@ wasm32-unknown-unknown\n";
                     manager: ManagerId::Rustup,
                     name: "stable-x86_64-apple-darwin".to_string(),
                 },
+                target_name: None,
                 version: Some("1.93.0".to_string()),
             }))
             .expect_err("toolchain install with --version should fail");
@@ -2140,6 +2156,7 @@ wasm32-unknown-unknown\n";
                         manager: ManagerId::Rustup,
                         name: "__self__".to_string(),
                     },
+                    target_name: None,
                     version: None,
                 },
             ))
@@ -2162,6 +2179,7 @@ wasm32-unknown-unknown\n";
                         manager: ManagerId::Rustup,
                         name: "stable-x86_64-apple-darwin".to_string(),
                     },
+                    target_name: None,
                     version: None,
                 },
             ))
@@ -2185,6 +2203,7 @@ wasm32-unknown-unknown\n";
                     manager: ManagerId::Rustup,
                     name: "__self__".to_string(),
                 }),
+                target_name: None,
                 version: None,
             }))
             .unwrap();
@@ -2202,6 +2221,7 @@ wasm32-unknown-unknown\n";
                     manager: ManagerId::Rustup,
                     name: "stable-x86_64-apple-darwin".to_string(),
                 }),
+                target_name: None,
                 version: None,
             }))
             .unwrap();

@@ -3,18 +3,19 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use helm_core::adapters::{
-    AdapterRequest, AdapterResponse, DetectRequest, HomebrewAdapter, ListInstalledRequest,
-    ListOutdatedRequest, ManagerAdapter, ProcessHomebrewSource, SearchRequest,
+    AdapterRequest, AdapterResponse, DetectRequest, HomebrewAdapter, InstallRequest,
+    ListInstalledRequest, ListOutdatedRequest, ManagerAdapter, ProcessHomebrewSource,
+    SearchRequest, UninstallRequest, UpgradeRequest,
 };
 use helm_core::execution::{
     ExecutionResult, ProcessExecutor, ProcessExitStatus, ProcessOutput, ProcessSpawnRequest,
     ProcessTerminationMode, ProcessWaitFuture, RunningProcess,
 };
-use helm_core::models::{CoreErrorKind, ManagerId, SearchQuery, TaskStatus};
+use helm_core::models::{CoreErrorKind, ManagerId, PackageRef, SearchQuery, TaskStatus};
 use helm_core::orchestration::{AdapterRuntime, AdapterTaskTerminalState};
 
-const INSTALLED_FIXTURE: &str = include_str!("fixtures/homebrew/list_installed_versions.txt");
-const OUTDATED_FIXTURE: &str = include_str!("fixtures/homebrew/list_outdated_verbose.txt");
+const INSTALLED_FIXTURE: &str = include_str!("fixtures/homebrew/installed.json");
+const OUTDATED_FIXTURE: &str = include_str!("fixtures/homebrew/outdated.json");
 const SEARCH_FIXTURE: &str = include_str!("fixtures/homebrew/search_local.txt");
 
 struct RoutingFakeExecutor {
@@ -74,7 +75,7 @@ impl ProcessExecutor for RoutingFakeExecutor {
         } else if program == "brew" || program.ends_with("/brew") {
             match args.first().map(String::as_str) {
                 Some("--version") => b"Homebrew 4.2.21\n".to_vec(),
-                Some("list") => INSTALLED_FIXTURE.as_bytes().to_vec(),
+                Some("info") => INSTALLED_FIXTURE.as_bytes().to_vec(),
                 Some("outdated") => OUTDATED_FIXTURE.as_bytes().to_vec(),
                 Some("search") => SEARCH_FIXTURE.as_bytes().to_vec(),
                 _ => Vec::new(),
@@ -157,8 +158,8 @@ async fn list_installed_through_full_orchestration_path() {
     match snapshot.terminal_state {
         Some(AdapterTaskTerminalState::Succeeded(AdapterResponse::InstalledPackages(packages))) => {
             assert_eq!(packages.len(), 4);
-            assert_eq!(packages[0].package.name, "python@3.12");
-            assert_eq!(packages[0].installed_version.as_deref(), Some("3.12.3"));
+            assert_eq!(packages[0].package.name, "node");
+            assert_eq!(packages[0].installed_version.as_deref(), Some("22.5.1"));
         }
         other => panic!("expected InstalledPackages response, got {other:?}"),
     }
@@ -229,6 +230,90 @@ async fn search_through_full_orchestration_path() {
         }
         other => panic!("expected SearchResults response, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn install_uninstall_and_upgrade_homebrew_formula_through_full_orchestration_path() {
+    let executor = Arc::new(RoutingFakeExecutor::normal());
+    let runtime = build_runtime(executor);
+
+    let install_task = runtime
+        .submit(
+            ManagerId::HomebrewFormula,
+            AdapterRequest::Install(InstallRequest {
+                package: PackageRef {
+                    manager: ManagerId::HomebrewFormula,
+                    name: "ripgrep".to_string(),
+                },
+                target_name: None,
+                version: None,
+            }),
+        )
+        .await
+        .unwrap();
+    let install_snapshot = runtime
+        .wait_for_terminal(install_task, Some(Duration::from_secs(5)))
+        .await
+        .unwrap();
+    assert_eq!(install_snapshot.runtime.status, TaskStatus::Completed);
+    assert!(matches!(
+        install_snapshot.terminal_state,
+        Some(AdapterTaskTerminalState::Succeeded(
+            AdapterResponse::Mutation(_)
+        ))
+    ));
+
+    let uninstall_task = runtime
+        .submit(
+            ManagerId::HomebrewFormula,
+            AdapterRequest::Uninstall(UninstallRequest {
+                package: PackageRef {
+                    manager: ManagerId::HomebrewFormula,
+                    name: "ripgrep".to_string(),
+                },
+                target_name: None,
+                version: None,
+            }),
+        )
+        .await
+        .unwrap();
+    let uninstall_snapshot = runtime
+        .wait_for_terminal(uninstall_task, Some(Duration::from_secs(5)))
+        .await
+        .unwrap();
+    assert_eq!(uninstall_snapshot.runtime.status, TaskStatus::Completed);
+    assert!(matches!(
+        uninstall_snapshot.terminal_state,
+        Some(AdapterTaskTerminalState::Succeeded(
+            AdapterResponse::Mutation(_)
+        ))
+    ));
+
+    let upgrade_task = runtime
+        .submit(
+            ManagerId::HomebrewFormula,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::HomebrewFormula,
+                    name: "openssl@3".to_string(),
+                }),
+                target_name: None,
+                version: None,
+            }),
+        )
+        .await
+        .unwrap();
+    let upgrade_snapshot = runtime
+        .wait_for_terminal(upgrade_task, Some(Duration::from_secs(5)))
+        .await
+        .unwrap();
+    assert_eq!(upgrade_snapshot.runtime.status, TaskStatus::Completed);
+    assert!(matches!(
+        upgrade_snapshot.terminal_state,
+        Some(AdapterTaskTerminalState::Succeeded(
+            AdapterResponse::Mutation(_)
+        ))
+    ));
 }
 
 #[tokio::test]

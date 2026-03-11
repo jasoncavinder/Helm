@@ -18,6 +18,12 @@ pub trait MigrationStore: Send + Sync {
 pub trait PackageStore: Send + Sync {
     fn upsert_installed(&self, packages: &[InstalledPackage]) -> PersistenceResult<()>;
 
+    fn replace_installed_snapshot(
+        &self,
+        manager: ManagerId,
+        packages: &[InstalledPackage],
+    ) -> PersistenceResult<()>;
+
     fn upsert_outdated(&self, packages: &[OutdatedPackage]) -> PersistenceResult<()>;
 
     fn replace_outdated_snapshot(
@@ -40,18 +46,21 @@ pub trait PackageStore: Send + Sync {
     fn apply_install_result(
         &self,
         package: &PackageRef,
+        package_identifier: Option<&str>,
         installed_version: Option<&str>,
     ) -> PersistenceResult<()>;
 
     fn apply_uninstall_result(
         &self,
         package: &PackageRef,
+        package_identifier: Option<&str>,
         removed_version: Option<&str>,
     ) -> PersistenceResult<()>;
 
     fn apply_upgrade_result(
         &self,
         package: &PackageRef,
+        package_identifier: Option<&str>,
         before_version: Option<&str>,
         after_version: Option<&str>,
     ) -> PersistenceResult<()>;

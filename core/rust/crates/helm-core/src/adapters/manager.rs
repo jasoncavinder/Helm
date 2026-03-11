@@ -26,18 +26,21 @@ pub struct SearchRequest {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstallRequest {
     pub package: PackageRef,
+    pub target_name: Option<String>,
     pub version: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UninstallRequest {
     pub package: PackageRef,
+    pub target_name: Option<String>,
     pub version: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UpgradeRequest {
     pub package: Option<PackageRef>,
+    pub target_name: Option<String>,
     pub version: Option<String>,
 }
 
@@ -151,6 +154,7 @@ pub fn ensure_request_supported(
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MutationResult {
     pub package: PackageRef,
+    pub package_identifier: Option<String>,
     pub action: ManagerAction,
     pub before_version: Option<String>,
     pub after_version: Option<String>,

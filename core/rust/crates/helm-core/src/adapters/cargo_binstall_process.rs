@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use crate::adapters::cargo::{parse_cargo_installed, parse_cargo_search_version};
@@ -7,20 +8,25 @@ use crate::adapters::cargo_binstall::{
     cargo_binstall_search_request, cargo_binstall_search_single_request,
     cargo_binstall_uninstall_request, cargo_binstall_upgrade_request,
 };
-use crate::adapters::cargo_outdated::synthesize_outdated_payload;
+use crate::adapters::cargo_outdated::synthesize_outdated_payload_for_packages;
 use crate::adapters::detect_utils::which_executable;
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::process_utils::{run_and_collect_stdout, run_and_collect_version_output};
 use crate::execution::{ProcessExecutor, ProcessSpawnRequest};
 use crate::models::{ManagerId, SearchQuery};
+use crate::persistence::PackageStore;
 
 pub struct ProcessCargoBinstallSource {
     executor: Arc<dyn ProcessExecutor>,
+    package_store: Arc<dyn PackageStore>,
 }
 
 impl ProcessCargoBinstallSource {
-    pub fn new(executor: Arc<dyn ProcessExecutor>) -> Self {
-        Self { executor }
+    pub fn new(executor: Arc<dyn ProcessExecutor>, package_store: Arc<dyn PackageStore>) -> Self {
+        Self {
+            executor,
+            package_store,
+        }
     }
 
     fn configure_request(&self, mut request: ProcessSpawnRequest) -> ProcessSpawnRequest {
@@ -78,19 +84,43 @@ impl CargoBinstallSource for ProcessCargoBinstallSource {
         })
     }
 
+    fn tracked_package_names(&self) -> AdapterResult<BTreeSet<String>> {
+        Ok(self
+            .package_store
+            .list_installed()?
+            .into_iter()
+            .filter(|package| package.package.manager == ManagerId::CargoBinstall)
+            .map(|package| package.package.name)
+            .collect())
+    }
+
     fn list_installed(&self) -> AdapterResult<String> {
         let request = self.configure_request(cargo_binstall_list_installed_request(None));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 
     fn list_outdated(&self) -> AdapterResult<String> {
+        let tracked = self.tracked_package_names()?;
+        if tracked.is_empty() {
+            return Ok("[]".to_string());
+        }
+
         let installed_raw = self.list_installed()?;
-        synthesize_outdated_payload(ManagerId::CargoBinstall, &installed_raw, |crate_name| {
-            let request =
-                self.configure_request(cargo_binstall_search_single_request(None, crate_name));
-            let search_output = run_and_collect_stdout(self.executor.as_ref(), request)?;
-            Ok(parse_cargo_search_version(&search_output, crate_name))
-        })
+        let installed = parse_cargo_installed(&installed_raw)?
+            .into_iter()
+            .filter(|package| tracked.contains(&package.package.name))
+            .collect();
+
+        synthesize_outdated_payload_for_packages(
+            ManagerId::CargoBinstall,
+            installed,
+            |crate_name| {
+                let request =
+                    self.configure_request(cargo_binstall_search_single_request(None, crate_name));
+                let search_output = run_and_collect_stdout(self.executor.as_ref(), request)?;
+                Ok(parse_cargo_search_version(&search_output, crate_name))
+            },
+        )
     }
 
     fn search(&self, query: &str) -> AdapterResult<String> {
@@ -118,9 +148,13 @@ impl CargoBinstallSource for ProcessCargoBinstallSource {
             return run_and_collect_stdout(self.executor.as_ref(), request);
         }
 
-        let installed_raw = self.list_installed()?;
-        let installed = parse_cargo_installed(&installed_raw)?;
-        for package in installed {
+        let outdated_raw = self.list_outdated()?;
+        let outdated =
+            crate::adapters::cargo::parse_cargo_outdated(&outdated_raw).map_err(|mut error| {
+                error.manager = Some(ManagerId::CargoBinstall);
+                error
+            })?;
+        for package in outdated {
             let request =
                 self.configure_request(cargo_binstall_upgrade_request(None, &package.package.name));
             let _ = run_and_collect_stdout(self.executor.as_ref(), request)?;

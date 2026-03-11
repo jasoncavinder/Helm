@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use crate::adapters::firmware_updates::{
     FirmwareUpdatesDetectOutput, FirmwareUpdatesSource, firmware_updates_history_request,
+    firmware_updates_list_request,
 };
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::process_utils::run_and_collect_stdout;
@@ -39,6 +40,11 @@ impl FirmwareUpdatesSource for ProcessFirmwareUpdatesSource {
 
     fn history(&self) -> AdapterResult<String> {
         let request = firmware_updates_history_request(None);
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn list_available(&self) -> AdapterResult<String> {
+        let request = firmware_updates_list_request(None);
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 }

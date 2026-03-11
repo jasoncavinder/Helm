@@ -1,0 +1,33 @@
+{
+  "formulae": [
+    {
+      "name": "bat",
+      "installed_versions": ["0.26.1"],
+      "current_version": "0.26.1",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "git",
+      "installed_versions": ["2.44.0"],
+      "current_version": "2.45.1",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "libzip",
+      "installed_versions": ["1.11.4"],
+      "current_version": "1.11.4_1",
+      "pinned": true,
+      "pinned_version": "1.11.4"
+    },
+    {
+      "name": "python@3.12",
+      "installed_versions": ["3.12.3"],
+      "current_version": "3.12.4",
+      "pinned": false,
+      "pinned_version": null
+    }
+  ],
+  "casks": []
+}

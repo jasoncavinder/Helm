@@ -1,0 +1,9 @@
+Software Update Tool
+
+Finding available software
+
+Software Update found the following new or updated software:
+* Label: EFIFirmwareUpdate-2069.0.0.0.1
+	Title: EFI Firmware Update, Version: 2069.0.0.0.1, Size: 51200KiB, Recommended: YES, Action: restart,
+* Label: Safari 18.3.1-18.3.1
+	Title: Safari, Version: 18.3.1, Size: 198524KiB, Recommended: YES,

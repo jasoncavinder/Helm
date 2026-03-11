@@ -46,7 +46,7 @@ pub trait RubyGemsSource: Send + Sync {
     fn list_outdated(&self) -> AdapterResult<String>;
     fn search(&self, query: &str) -> AdapterResult<String>;
     fn install(&self, name: &str, version: Option<&str>) -> AdapterResult<String>;
-    fn uninstall(&self, name: &str) -> AdapterResult<String>;
+    fn uninstall(&self, name: &str, version: Option<&str>) -> AdapterResult<String>;
     fn upgrade(&self, name: Option<&str>) -> AdapterResult<String>;
 }
 
@@ -76,8 +76,7 @@ impl<S: RubyGemsSource> ManagerAdapter for RubyGemsAdapter<S> {
             AdapterRequest::Detect(_) => {
                 let output = self.source.detect()?;
                 let version = parse_rubygems_version(&output.version_output);
-                let has_executable = output.executable_path.is_some();
-                let installed = has_executable || version.is_some();
+                let installed = version.is_some();
                 Ok(AdapterResponse::Detection(DetectionInfo {
                     installed,
                     executable_path: output.executable_path,
@@ -85,8 +84,21 @@ impl<S: RubyGemsSource> ManagerAdapter for RubyGemsAdapter<S> {
                 }))
             }
             AdapterRequest::Refresh(_) => {
-                let _ = self.source.detect()?;
-                Ok(AdapterResponse::Refreshed)
+                let output = self.source.detect()?;
+                let version = parse_rubygems_version(&output.version_output);
+                if version.is_none() {
+                    return Ok(AdapterResponse::SnapshotSync {
+                        installed: Some(Vec::new()),
+                        outdated: Some(Vec::new()),
+                    });
+                }
+
+                let installed = parse_rubygems_list_installed(&self.source.list_installed()?)?;
+                let outdated = parse_rubygems_outdated(&self.source.list_outdated()?)?;
+                Ok(AdapterResponse::SnapshotSync {
+                    installed: Some(installed),
+                    outdated: Some(outdated),
+                })
             }
             AdapterRequest::ListInstalled(_) => {
                 let raw = self.source.list_installed()?;
@@ -104,35 +116,66 @@ impl<S: RubyGemsSource> ManagerAdapter for RubyGemsAdapter<S> {
                 Ok(AdapterResponse::SearchResults(results))
             }
             AdapterRequest::Install(install_request) => {
+                let target_name = install_request
+                    .target_name
+                    .as_deref()
+                    .unwrap_or(install_request.package.name.as_str());
                 crate::adapters::validate_package_identifier(
                     ManagerId::RubyGems,
                     ManagerAction::Install,
-                    install_request.package.name.as_str(),
+                    target_name,
                 )?;
-                let _ = self.source.install(
-                    install_request.package.name.as_str(),
-                    install_request.version.as_deref(),
-                )?;
+                let before_versions = rubygems_installed_versions(&self.source, target_name)?;
+                let _ = self
+                    .source
+                    .install(target_name, install_request.version.as_deref())?;
+                let after_versions = rubygems_installed_versions(&self.source, target_name)?;
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
-                    package: install_request.package,
+                    package: PackageRef {
+                        manager: install_request.package.manager,
+                        name: target_name.to_string(),
+                    },
+                    package_identifier: install_request
+                        .target_name
+                        .filter(|target| target != &install_request.package.name),
                     action: ManagerAction::Install,
-                    before_version: None,
-                    after_version: install_request.version,
+                    before_version: infer_preexisting_version(
+                        &before_versions,
+                        install_request.version.as_deref(),
+                    ),
+                    after_version: infer_installed_version_after_mutation(
+                        &before_versions,
+                        &after_versions,
+                        install_request.version.as_deref(),
+                    ),
                 }))
             }
             AdapterRequest::Uninstall(uninstall_request) => {
+                let target_name = uninstall_request
+                    .target_name
+                    .as_deref()
+                    .unwrap_or(uninstall_request.package.name.as_str());
                 crate::adapters::validate_package_identifier(
                     ManagerId::RubyGems,
                     ManagerAction::Uninstall,
-                    uninstall_request.package.name.as_str(),
+                    target_name,
                 )?;
-                let _ = self
-                    .source
-                    .uninstall(uninstall_request.package.name.as_str())?;
+                let version = resolve_installed_rubygems_version(
+                    &self.source,
+                    target_name,
+                    uninstall_request.version.as_deref(),
+                )?;
+                let _ = self.source.uninstall(target_name, Some(version.as_str()))?;
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
-                    package: uninstall_request.package,
+                    package: PackageRef {
+                        manager: uninstall_request.package.manager,
+                        name: target_name.to_string(),
+                    },
+                    package_identifier: uninstall_request
+                        .target_name
+                        .filter(|target| target != &uninstall_request.package.name),
                     action: ManagerAction::Uninstall,
-                    before_version: None,
+                    before_version: Some(version),
                     after_version: None,
                 }))
             }
@@ -144,22 +187,38 @@ impl<S: RubyGemsSource> ManagerAdapter for RubyGemsAdapter<S> {
                 let target_name = if package.name == "__all__" {
                     None
                 } else {
+                    let requested_target = upgrade_request
+                        .target_name
+                        .as_deref()
+                        .unwrap_or(package.name.as_str());
                     crate::adapters::validate_package_identifier(
                         ManagerId::RubyGems,
                         ManagerAction::Upgrade,
-                        package.name.as_str(),
+                        requested_target,
                     )?;
-                    Some(package.name.as_str())
+                    Some(requested_target)
                 };
+                let targeted_outdated = target_name
+                    .map(|name| find_rubygems_outdated_entry(&self.source, name))
+                    .transpose()?
+                    .flatten();
                 let _ = self.source.upgrade(target_name)?;
                 if let Some(name) = target_name {
                     ensure_gem_no_longer_outdated(&self.source, name)?;
                 }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
-                    package,
+                    package: PackageRef {
+                        manager: package.manager,
+                        name: target_name.unwrap_or(package.name.as_str()).to_string(),
+                    },
+                    package_identifier: None,
                     action: ManagerAction::Upgrade,
-                    before_version: None,
-                    after_version: None,
+                    before_version: upgrade_request.version.or_else(|| {
+                        targeted_outdated
+                            .as_ref()
+                            .and_then(|entry| entry.installed_version.clone())
+                    }),
+                    after_version: targeted_outdated.map(|entry| entry.candidate_version),
                 }))
             }
             _ => Err(CoreError {
@@ -188,7 +247,7 @@ pub fn rubygems_list_installed_request(task_id: Option<TaskId>) -> ProcessSpawnR
         task_id,
         TaskType::Refresh,
         ManagerAction::ListInstalled,
-        CommandSpec::new(RUBYGEMS_COMMAND).args(["list", "--local"]),
+        CommandSpec::new(RUBYGEMS_COMMAND).args(["list", "--local", "--all"]),
         LIST_TIMEOUT,
     )
 }
@@ -238,12 +297,22 @@ pub fn rubygems_install_request(
     )
 }
 
-pub fn rubygems_uninstall_request(task_id: Option<TaskId>, name: &str) -> ProcessSpawnRequest {
+pub fn rubygems_uninstall_request(
+    task_id: Option<TaskId>,
+    name: &str,
+    version: Option<&str>,
+) -> ProcessSpawnRequest {
+    let mut command = CommandSpec::new(RUBYGEMS_COMMAND).args(["uninstall", name]);
+    if let Some(version) = version.map(str::trim).filter(|value| !value.is_empty()) {
+        command = command.args(["--version", version]);
+    }
+    command = command.arg("-x");
+
     rubygems_request(
         task_id,
         TaskType::Uninstall,
         ManagerAction::Uninstall,
-        CommandSpec::new(RUBYGEMS_COMMAND).args(["uninstall", name, "-a", "-x"]),
+        command,
         MUTATION_TIMEOUT,
     )
 }
@@ -301,6 +370,129 @@ fn ensure_gem_no_longer_outdated<S: RubyGemsSource>(
     Ok(())
 }
 
+fn resolve_installed_rubygems_version<S: RubyGemsSource>(
+    source: &S,
+    gem_name: &str,
+    requested_version: Option<&str>,
+) -> AdapterResult<String> {
+    let mut versions = rubygems_installed_versions(source, gem_name)?;
+
+    if let Some(version) = requested_version
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if versions.iter().any(|installed| installed == version) {
+            return Ok(version.to_string());
+        }
+        return Err(CoreError {
+            manager: Some(ManagerId::RubyGems),
+            task: Some(TaskType::Uninstall),
+            action: Some(ManagerAction::Uninstall),
+            kind: CoreErrorKind::InvalidInput,
+            message: format!("gem '{gem_name}' is not installed at version '{version}'"),
+        });
+    }
+
+    match versions.len() {
+        0 => Err(CoreError {
+            manager: Some(ManagerId::RubyGems),
+            task: Some(TaskType::Uninstall),
+            action: Some(ManagerAction::Uninstall),
+            kind: CoreErrorKind::InvalidInput,
+            message: format!("gem '{gem_name}' is not installed"),
+        }),
+        1 => Ok(versions.remove(0)),
+        _ => Err(CoreError {
+            manager: Some(ManagerId::RubyGems),
+            task: Some(TaskType::Uninstall),
+            action: Some(ManagerAction::Uninstall),
+            kind: CoreErrorKind::InvalidInput,
+            message: format!(
+                "gem '{gem_name}' has multiple installed versions; specify an exact version"
+            ),
+        }),
+    }
+}
+
+fn rubygems_installed_versions<S: RubyGemsSource>(
+    source: &S,
+    gem_name: &str,
+) -> AdapterResult<Vec<String>> {
+    let installed = parse_rubygems_list_installed(&source.list_installed()?)?;
+    let mut versions: Vec<String> = installed
+        .into_iter()
+        .filter(|package| package.package.name == gem_name)
+        .filter_map(|package| package.installed_version)
+        .collect();
+    versions.sort();
+    versions.dedup();
+    Ok(versions)
+}
+
+fn infer_preexisting_version(
+    versions: &[String],
+    requested_version: Option<&str>,
+) -> Option<String> {
+    if let Some(version) = requested_version
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .filter(|requested| versions.iter().any(|installed| installed == requested))
+    {
+        return Some(version.to_string());
+    }
+
+    if versions.len() == 1 {
+        return versions.first().cloned();
+    }
+
+    None
+}
+
+fn infer_installed_version_after_mutation(
+    before_versions: &[String],
+    after_versions: &[String],
+    requested_version: Option<&str>,
+) -> Option<String> {
+    if let Some(version) = requested_version
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .filter(|requested| {
+            after_versions
+                .iter()
+                .any(|installed| installed == requested)
+        })
+    {
+        return Some(version.to_string());
+    }
+
+    let mut new_versions = after_versions
+        .iter()
+        .filter(|installed| !before_versions.iter().any(|before| before == *installed))
+        .cloned()
+        .collect::<Vec<_>>();
+    new_versions.sort();
+    new_versions.dedup();
+    if new_versions.len() == 1 {
+        return new_versions.into_iter().next();
+    }
+
+    if before_versions.is_empty() && after_versions.len() == 1 {
+        return after_versions.first().cloned();
+    }
+
+    None
+}
+
+fn find_rubygems_outdated_entry<S: RubyGemsSource>(
+    source: &S,
+    gem_name: &str,
+) -> AdapterResult<Option<OutdatedPackage>> {
+    let outdated = parse_rubygems_outdated(&source.list_outdated()?)?;
+    Ok(outdated
+        .into_iter()
+        .find(|item| item.package.name == gem_name))
+}
+
 fn parse_rubygems_version(output: &str) -> Option<String> {
     let line = output
         .lines()
@@ -311,6 +503,28 @@ fn parse_rubygems_version(output: &str) -> Option<String> {
         return None;
     }
     Some(version.to_string())
+}
+
+fn parse_rubygems_version_token(token: &str) -> Option<String> {
+    let token = token.trim();
+    if token.is_empty() {
+        return None;
+    }
+    if let Some(rest) = token.strip_prefix("default:") {
+        return parse_rubygems_version_token(rest);
+    }
+    if let Some(rest) = token.strip_prefix("default ") {
+        return parse_rubygems_version_token(rest);
+    }
+    token
+        .split_whitespace()
+        .find(|part| {
+            part.chars()
+                .next()
+                .map(|ch| ch.is_ascii_digit())
+                .unwrap_or(false)
+        })
+        .map(str::to_string)
 }
 
 fn parse_rubygems_list_installed(output: &str) -> AdapterResult<Vec<InstalledPackage>> {
@@ -328,29 +542,30 @@ fn parse_rubygems_list_installed(output: &str) -> AdapterResult<Vec<InstalledPac
             continue;
         };
         let versions = versions_raw.trim_end_matches(')').trim();
-        let installed_version = versions
-            .split(',')
-            .next()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string);
-
-        packages.push(InstalledPackage {
-            package: PackageRef {
-                manager: ManagerId::RubyGems,
-                name: name.trim().to_string(),
-            },
-            installed_version,
-            pinned: false,
-            runtime_state: Default::default(),
-        });
+        for installed_version in versions.split(',').filter_map(parse_rubygems_version_token) {
+            packages.push(InstalledPackage {
+                package: PackageRef {
+                    manager: ManagerId::RubyGems,
+                    name: name.trim().to_string(),
+                },
+                package_identifier: None,
+                installed_version: Some(installed_version),
+                pinned: false,
+                runtime_state: Default::default(),
+            });
+        }
     }
 
     if packages.is_empty() && !output.trim().is_empty() {
         return Err(parse_error("invalid rubygems list output"));
     }
 
-    packages.sort_by(|a, b| a.package.name.cmp(&b.package.name));
+    packages.sort_by(|a, b| {
+        a.package
+            .name
+            .cmp(&b.package.name)
+            .then_with(|| b.installed_version.cmp(&a.installed_version))
+    });
     Ok(packages)
 }
 
@@ -368,28 +583,31 @@ fn parse_rubygems_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> 
         let payload = payload_raw.trim_end_matches(')').trim();
 
         let (installed, candidate) = if let Some((current, latest)) = payload.split_once('<') {
-            (current.trim(), latest.trim())
+            (
+                parse_rubygems_version_token(current),
+                parse_rubygems_version_token(latest),
+            )
         } else if let Some((current, latest)) = payload.split_once(',') {
-            (current.trim(), latest.trim())
+            (
+                parse_rubygems_version_token(current),
+                parse_rubygems_version_token(latest),
+            )
         } else {
             continue;
         };
 
-        if candidate.is_empty() {
+        let Some(candidate) = candidate else {
             continue;
-        }
+        };
 
         packages.push(OutdatedPackage {
             package: PackageRef {
                 manager: ManagerId::RubyGems,
                 name: name.trim().to_string(),
             },
-            installed_version: if installed.is_empty() {
-                None
-            } else {
-                Some(installed.to_string())
-            },
-            candidate_version: candidate.to_string(),
+            package_identifier: None,
+            installed_version: installed,
+            candidate_version: candidate,
             pinned: false,
             restart_required: false,
             runtime_state: Default::default(),
@@ -409,37 +627,56 @@ fn parse_rubygems_search(
     query: &SearchQuery,
 ) -> AdapterResult<Vec<CachedSearchResult>> {
     let mut results = Vec::new();
+    let mut current: Option<CachedSearchResult> = None;
 
-    for line in output
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-    {
-        if line.starts_with("***") || line.starts_with('"') {
+    for raw_line in output.lines() {
+        let line = raw_line.trim_end();
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
             continue;
         }
-        let Some((name, versions_raw)) = line.split_once(" (") else {
+        if trimmed.starts_with("***") || trimmed.starts_with('"') {
+            continue;
+        }
+        if raw_line
+            .chars()
+            .next()
+            .map(|ch| ch.is_whitespace())
+            .unwrap_or(false)
+        {
+            if let Some(result) = current.as_mut()
+                && result.result.summary.is_none()
+            {
+                result.result.summary = Some(trimmed.to_string());
+            }
+            continue;
+        }
+
+        if let Some(previous) = current.take() {
+            results.push(previous);
+        }
+
+        let Some((name, versions_raw)) = trimmed.split_once(" (") else {
             continue;
         };
         let version = versions_raw
             .trim_end_matches(')')
             .split(',')
             .next()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string);
+            .and_then(parse_rubygems_version_token);
 
         let normalized_name = name.trim().to_string();
         if normalized_name.is_empty() {
             continue;
         }
 
-        results.push(CachedSearchResult {
+        current = Some(CachedSearchResult {
             result: PackageCandidate {
                 package: PackageRef {
                     manager: ManagerId::RubyGems,
                     name: normalized_name,
                 },
+                package_identifier: None,
                 version,
                 summary: None,
             },
@@ -447,6 +684,10 @@ fn parse_rubygems_search(
             originating_query: query.text.clone(),
             cached_at: query.issued_at,
         });
+    }
+
+    if let Some(previous) = current.take() {
+        results.push(previous);
     }
 
     if results.is_empty() && !output.trim().is_empty() {
@@ -483,9 +724,9 @@ mod tests {
     use super::{
         RubyGemsAdapter, RubyGemsDetectOutput, RubyGemsSource, parse_rubygems_list_installed,
         parse_rubygems_outdated, parse_rubygems_search, parse_rubygems_version,
-        rubygems_detect_request, rubygems_install_request, rubygems_list_installed_request,
-        rubygems_list_outdated_request, rubygems_search_request, rubygems_uninstall_request,
-        rubygems_upgrade_request,
+        parse_rubygems_version_token, rubygems_detect_request, rubygems_install_request,
+        rubygems_list_installed_request, rubygems_list_outdated_request, rubygems_search_request,
+        rubygems_uninstall_request, rubygems_upgrade_request,
     };
 
     const VERSION_FIXTURE: &str = include_str!("../../tests/fixtures/rubygems/version.txt");
@@ -506,6 +747,15 @@ mod tests {
         assert_eq!(packages[0].package.name, "bundler");
         assert_eq!(packages[1].package.name, "rake");
         assert_eq!(packages[2].package.name, "rubocop");
+    }
+
+    #[test]
+    fn parses_all_installed_versions_from_single_gem_row() {
+        let packages = parse_rubygems_list_installed("rake (13.2.1, 13.1.0)\n").unwrap();
+        assert_eq!(packages.len(), 2);
+        assert_eq!(packages[0].package.name, "rake");
+        assert_eq!(packages[0].installed_version.as_deref(), Some("13.2.1"));
+        assert_eq!(packages[1].installed_version.as_deref(), Some("13.1.0"));
     }
 
     #[test]
@@ -530,6 +780,33 @@ mod tests {
     }
 
     #[test]
+    fn parses_search_details_summary_lines() {
+        let query = SearchQuery {
+            text: "rake".to_string(),
+            issued_at: std::time::SystemTime::now(),
+        };
+        let output = "*** REMOTE GEMS ***\n\nrake (13.2.1)\n    Ruby based make-like utility.\nrake-compiler (1.2.9)\n    Compile helpers.\n";
+        let results = parse_rubygems_search(output, &query).unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(
+            results[0].result.summary.as_deref(),
+            Some("Ruby based make-like utility.")
+        );
+        assert_eq!(
+            results[1].result.summary.as_deref(),
+            Some("Compile helpers.")
+        );
+    }
+
+    #[test]
+    fn parses_default_gem_version_tokens() {
+        assert_eq!(
+            parse_rubygems_version_token("default: 2.7.2").as_deref(),
+            Some("2.7.2")
+        );
+    }
+
+    #[test]
     fn request_builders_use_expected_commands() {
         let detect = rubygems_detect_request(Some(TaskId(11)));
         assert_eq!(detect.manager, ManagerId::RubyGems);
@@ -539,7 +816,7 @@ mod tests {
         assert_eq!(detect.command.args, vec!["--version"]);
 
         let list = rubygems_list_installed_request(None);
-        assert_eq!(list.command.args, vec!["list", "--local"]);
+        assert_eq!(list.command.args, vec!["list", "--local", "--all"]);
 
         let outdated = rubygems_list_outdated_request(None);
         assert_eq!(outdated.command.args, vec!["outdated"]);
@@ -562,10 +839,10 @@ mod tests {
             vec!["install", "rubocop", "--version", "1.72.0"]
         );
 
-        let uninstall = rubygems_uninstall_request(None, "rubocop");
+        let uninstall = rubygems_uninstall_request(None, "rubocop", Some("1.72.0"));
         assert_eq!(
             uninstall.command.args,
-            vec!["uninstall", "rubocop", "-a", "-x"]
+            vec!["uninstall", "rubocop", "--version", "1.72.0", "-x"]
         );
 
         let upgrade_one = rubygems_upgrade_request(None, Some("rubocop"));
@@ -575,13 +852,17 @@ mod tests {
         assert_eq!(upgrade_all.command.args, vec!["update"]);
     }
 
+    type ObservedUninstalls = Arc<std::sync::Mutex<Vec<(String, Option<String>)>>>;
+
     #[derive(Clone)]
     struct StubRubyGemsSource {
         detect_calls: Arc<AtomicUsize>,
         detect_result: AdapterResult<RubyGemsDetectOutput>,
         list_installed_result: AdapterResult<String>,
         list_outdated_result: AdapterResult<String>,
+        list_outdated_sequence: Arc<std::sync::Mutex<Vec<AdapterResult<String>>>>,
         search_result: AdapterResult<String>,
+        observed_uninstalls: ObservedUninstalls,
     }
 
     impl StubRubyGemsSource {
@@ -594,7 +875,9 @@ mod tests {
                 }),
                 list_installed_result: Ok(LIST_FIXTURE.to_string()),
                 list_outdated_result: Ok(OUTDATED_FIXTURE.to_string()),
+                list_outdated_sequence: Arc::new(std::sync::Mutex::new(Vec::new())),
                 search_result: Ok(SEARCH_FIXTURE.to_string()),
+                observed_uninstalls: Arc::new(std::sync::Mutex::new(Vec::new())),
             }
         }
     }
@@ -610,6 +893,11 @@ mod tests {
         }
 
         fn list_outdated(&self) -> AdapterResult<String> {
+            let mut sequence = self.list_outdated_sequence.lock().unwrap();
+            if !sequence.is_empty() {
+                let result = sequence.remove(0);
+                return result;
+            }
             self.list_outdated_result.clone()
         }
 
@@ -621,7 +909,11 @@ mod tests {
             Ok(String::new())
         }
 
-        fn uninstall(&self, _name: &str) -> AdapterResult<String> {
+        fn uninstall(&self, name: &str, version: Option<&str>) -> AdapterResult<String> {
+            self.observed_uninstalls
+                .lock()
+                .unwrap()
+                .push((name.to_string(), version.map(str::to_string)));
             Ok(String::new())
         }
 
@@ -699,6 +991,7 @@ mod tests {
                     manager: ManagerId::RubyGems,
                     name: "rubocop".to_string(),
                 },
+                target_name: None,
                 version: Some("1.72.0".to_string()),
             }))
             .expect("install should succeed");
@@ -707,10 +1000,65 @@ mod tests {
             AdapterResponse::Mutation(mutation) => {
                 assert_eq!(mutation.action, ManagerAction::Install);
                 assert_eq!(mutation.package.manager, ManagerId::RubyGems);
-                assert_eq!(mutation.after_version.as_deref(), Some("1.72.0"));
             }
             other => panic!("unexpected response: {other:?}"),
         }
+    }
+
+    #[test]
+    fn uninstall_requires_explicit_version_when_multiple_versions_exist() {
+        let mut source = StubRubyGemsSource::success();
+        source.list_installed_result = Ok("rake (13.2.1, 13.1.0)\n".to_string());
+        let adapter = RubyGemsAdapter::new(source);
+
+        let error = adapter
+            .execute(AdapterRequest::Uninstall(
+                crate::adapters::UninstallRequest {
+                    package: PackageRef {
+                        manager: ManagerId::RubyGems,
+                        name: "rake".to_string(),
+                    },
+                    target_name: None,
+                    version: None,
+                },
+            ))
+            .expect_err("expected ambiguous uninstall to fail");
+
+        assert_eq!(error.kind, CoreErrorKind::InvalidInput);
+        assert!(error.message.contains("multiple installed versions"));
+    }
+
+    #[test]
+    fn uninstall_uses_requested_version_for_exact_target() {
+        let source = StubRubyGemsSource::success();
+        let observed = source.observed_uninstalls.clone();
+        let adapter = RubyGemsAdapter::new(source);
+
+        let response = adapter
+            .execute(AdapterRequest::Uninstall(
+                crate::adapters::UninstallRequest {
+                    package: PackageRef {
+                        manager: ManagerId::RubyGems,
+                        name: "rubocop".to_string(),
+                    },
+                    target_name: None,
+                    version: Some("1.72.0".to_string()),
+                },
+            ))
+            .expect("exact uninstall should succeed");
+
+        match response {
+            AdapterResponse::Mutation(mutation) => {
+                assert_eq!(mutation.before_version.as_deref(), Some("1.72.0"));
+            }
+            other => panic!("unexpected response: {other:?}"),
+        }
+
+        let observed = observed.lock().unwrap();
+        assert_eq!(
+            observed.as_slice(),
+            &[("rubocop".to_string(), Some("1.72.0".to_string()))]
+        );
     }
 
     #[test]
@@ -723,6 +1071,7 @@ mod tests {
                     manager: ManagerId::RubyGems,
                     name: "--source=http://malicious".to_string(),
                 },
+                target_name: None,
                 version: None,
             }))
             .expect_err("expected invalid input");
@@ -739,7 +1088,10 @@ mod tests {
     #[test]
     fn upgrade_single_gem_succeeds_when_no_longer_outdated() {
         let mut source = StubRubyGemsSource::success();
-        source.list_outdated_result = Ok(String::new());
+        source.list_outdated_sequence = Arc::new(std::sync::Mutex::new(vec![
+            Ok(OUTDATED_FIXTURE.to_string()),
+            Ok(String::new()),
+        ]));
         let adapter = RubyGemsAdapter::new(source);
 
         let response = adapter
@@ -748,6 +1100,7 @@ mod tests {
                     manager: ManagerId::RubyGems,
                     name: "rake".to_string(),
                 }),
+                target_name: None,
                 version: None,
             }))
             .expect("upgrade should succeed when gem is no longer outdated");
@@ -756,6 +1109,8 @@ mod tests {
             AdapterResponse::Mutation(mutation) => {
                 assert_eq!(mutation.action, ManagerAction::Upgrade);
                 assert_eq!(mutation.package.name, "rake");
+                assert_eq!(mutation.before_version.as_deref(), Some("13.1.0"));
+                assert_eq!(mutation.after_version.as_deref(), Some("13.2.1"));
             }
             other => panic!("unexpected response: {other:?}"),
         }
@@ -772,6 +1127,7 @@ mod tests {
                     manager: ManagerId::RubyGems,
                     name: "rake".to_string(),
                 }),
+                target_name: None,
                 version: None,
             }))
             .expect_err("upgrade should fail when gem remains outdated");
@@ -788,6 +1144,7 @@ mod tests {
         let response = adapter
             .execute(AdapterRequest::Upgrade(crate::adapters::UpgradeRequest {
                 package: None,
+                target_name: None,
                 version: None,
             }))
             .expect("upgrade all should succeed without post-validation");

@@ -1419,7 +1419,7 @@ private struct InspectorPackageDetailView: View {
             if managerGroups.count <= 1,
                let activeManagerGroup,
                activeManagerGroup.packages.count <= 1 {
-                Text(activePackage.id)
+                Text(displayedPackageIdentifier(for: activePackage))
                     .font(.caption.monospacedDigit())
                     .foregroundColor(.secondary)
             } else {
@@ -1430,7 +1430,7 @@ private struct InspectorPackageDetailView: View {
                                 Text(packageIdLabel(for: candidate, within: group))
                                     .font(.caption)
                                     .foregroundColor(.secondary)
-                                Text(candidate.id)
+                                Text(displayedPackageIdentifier(for: candidate))
                                     .font(.caption.monospacedDigit())
                                     .foregroundColor(.secondary)
                             }
@@ -1794,6 +1794,14 @@ private struct InspectorPackageDetailView: View {
             return managerName
         }
         return managerName + " " + versionText
+    }
+
+    private func displayedPackageIdentifier(for package: PackageItem) -> String {
+        let trimmedIdentifier = package.packageIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !trimmedIdentifier.isEmpty {
+            return trimmedIdentifier
+        }
+        return package.id
     }
 }
 

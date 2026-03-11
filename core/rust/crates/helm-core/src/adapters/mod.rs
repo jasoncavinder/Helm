@@ -99,13 +99,15 @@ pub use firmware_updates::{
 };
 pub use firmware_updates_process::ProcessFirmwareUpdatesSource;
 pub use homebrew::{
-    HomebrewAdapter, HomebrewSource, homebrew_detect_request, homebrew_list_installed_request,
-    homebrew_list_outdated_request, homebrew_pin_request, homebrew_search_local_request,
-    homebrew_unpin_request,
+    HomebrewAdapter, HomebrewSource, homebrew_catalog_formulae_request, homebrew_detect_request,
+    homebrew_list_installed_request, homebrew_list_outdated_request, homebrew_pin_request,
+    homebrew_search_formulae_request, homebrew_search_local_request, homebrew_unpin_request,
 };
 pub use homebrew_cask::{
-    HomebrewCaskAdapter, HomebrewCaskSource, homebrew_cask_detect_request,
+    HomebrewCaskAdapter, HomebrewCaskSource, homebrew_cask_catalog_request,
+    homebrew_cask_detect_request, homebrew_cask_install_request,
     homebrew_cask_list_installed_request, homebrew_cask_list_outdated_request,
+    homebrew_cask_search_request, homebrew_cask_uninstall_request, homebrew_cask_upgrade_request,
 };
 pub use homebrew_cask_process::ProcessHomebrewCaskSource;
 pub use homebrew_process::ProcessHomebrewSource;
@@ -122,8 +124,9 @@ pub use manager::{
     ensure_action_supported, ensure_request_supported, execute_with_capability_check,
 };
 pub use mas::{
-    MasAdapter, MasSource, mas_detect_request, mas_list_installed_request,
-    mas_list_outdated_request,
+    MasAdapter, MasSource, mas_detect_request, mas_get_request, mas_install_request,
+    mas_list_installed_request, mas_list_outdated_request, mas_search_request,
+    mas_uninstall_request, mas_upgrade_request,
 };
 pub use mas_process::ProcessMasSource;
 pub use mise::{

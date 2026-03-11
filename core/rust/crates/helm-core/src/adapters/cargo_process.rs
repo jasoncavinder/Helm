@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::adapters::cargo::{
     CargoDetectOutput, CargoSource, cargo_detect_request, cargo_install_request,
     cargo_list_installed_request, cargo_search_request, cargo_search_single_request,
-    cargo_uninstall_request, cargo_upgrade_request, parse_cargo_installed,
+    cargo_uninstall_request, cargo_upgrade_request, parse_cargo_outdated,
     parse_cargo_search_version,
 };
 use crate::adapters::cargo_outdated::synthesize_outdated_payload;
@@ -106,9 +106,9 @@ impl CargoSource for ProcessCargoSource {
             return run_and_collect_stdout(self.executor.as_ref(), request);
         }
 
-        let installed_raw = self.list_installed()?;
-        let installed = parse_cargo_installed(&installed_raw)?;
-        for package in installed {
+        let outdated_raw = self.list_outdated()?;
+        let outdated = parse_cargo_outdated(&outdated_raw)?;
+        for package in outdated {
             let request =
                 self.configure_request(cargo_upgrade_request(None, &package.package.name));
             let _ = run_and_collect_stdout(self.executor.as_ref(), request)?;

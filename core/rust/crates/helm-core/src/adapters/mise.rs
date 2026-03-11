@@ -221,8 +221,7 @@ impl<S: MiseSource> ManagerAdapter for MiseAdapter<S> {
             AdapterRequest::Detect(_) => {
                 let output = self.source.detect()?;
                 let version = parse_mise_version(&output.version_output);
-                let has_executable = output.executable_path.is_some();
-                let installed = has_executable || version.is_some();
+                let installed = version.is_some();
                 Ok(AdapterResponse::Detection(DetectionInfo {
                     installed,
                     executable_path: output.executable_path,
@@ -230,8 +229,23 @@ impl<S: MiseSource> ManagerAdapter for MiseAdapter<S> {
                 }))
             }
             AdapterRequest::Refresh(_) => {
-                let _ = self.source.detect()?;
-                Ok(AdapterResponse::Refreshed)
+                let output = self.source.detect()?;
+                let version = parse_mise_version(&output.version_output);
+                if version.is_none() {
+                    return Ok(AdapterResponse::SnapshotSync {
+                        installed: Some(Vec::new()),
+                        outdated: Some(Vec::new()),
+                    });
+                }
+
+                let installed = self.load_installed_packages()?;
+                let raw = self.source.list_outdated()?;
+                let mut outdated = parse_mise_outdated(&raw)?;
+                hydrate_mise_outdated_runtime_state(&mut outdated, installed.as_slice());
+                Ok(AdapterResponse::SnapshotSync {
+                    installed: Some(installed),
+                    outdated: Some(outdated),
+                })
             }
             AdapterRequest::ListInstalled(_) => {
                 let raw = self.source.list_installed()?;
@@ -259,6 +273,7 @@ impl<S: MiseSource> ManagerAdapter for MiseAdapter<S> {
                     let _ = self.source.install_self(source)?;
                     return Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                         package: install_request.package,
+                        package_identifier: None,
                         action: ManagerAction::Install,
                         before_version: None,
                         after_version: None,
@@ -283,6 +298,7 @@ impl<S: MiseSource> ManagerAdapter for MiseAdapter<S> {
                         manager: ManagerId::Mise,
                         name: tool_name,
                     },
+                    package_identifier: None,
                     action: ManagerAction::Install,
                     before_version: None,
                     after_version: requested_version,
@@ -326,6 +342,7 @@ impl<S: MiseSource> ManagerAdapter for MiseAdapter<S> {
                     }
                     return Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                         package: uninstall_request.package,
+                        package_identifier: None,
                         action: ManagerAction::Uninstall,
                         before_version: None,
                         after_version: None,
@@ -364,6 +381,7 @@ impl<S: MiseSource> ManagerAdapter for MiseAdapter<S> {
                         manager: ManagerId::Mise,
                         name: target.tool_name,
                     },
+                    package_identifier: None,
                     action: ManagerAction::Uninstall,
                     before_version: Some(target.version),
                     after_version: None,
@@ -391,6 +409,7 @@ impl<S: MiseSource> ManagerAdapter for MiseAdapter<S> {
                         manager: package.manager,
                         name: tool_name,
                     },
+                    package_identifier: None,
                     action: ManagerAction::Upgrade,
                     before_version: None,
                     after_version: None,
@@ -758,6 +777,7 @@ fn parse_mise_installed_with_home(
                     manager: ManagerId::Mise,
                     name: tool_name.clone(),
                 },
+                package_identifier: None,
                 installed_version: Some(entry.version.clone()),
                 pinned: false,
                 runtime_state: classify_mise_runtime_state(
@@ -854,6 +874,7 @@ fn parse_mise_outdated(json: &str) -> AdapterResult<Vec<OutdatedPackage>> {
                 manager: ManagerId::Mise,
                 name: tool_name,
             },
+            package_identifier: None,
             installed_version: Some(entry.current),
             candidate_version: entry.latest,
             pinned: false,
@@ -1233,6 +1254,7 @@ fn filter_mise_remote_packages(
                     manager: ManagerId::Mise,
                     name: package.name.clone(),
                 },
+                package_identifier: None,
                 version: package.latest_version.clone(),
                 summary: package.summary.clone(),
             },
@@ -1706,6 +1728,7 @@ mod tests {
                     manager: ManagerId::Mise,
                     name: "__self__".to_string(),
                 },
+                target_name: None,
                 version: Some("scriptInstaller:officialDownload".to_string()),
             }))
             .unwrap();
@@ -1733,6 +1756,7 @@ mod tests {
                     manager: ManagerId::Mise,
                     name: "java@zulu-jre-javafx".to_string(),
                 },
+                target_name: None,
                 version: None,
             }))
             .unwrap();
@@ -1777,6 +1801,7 @@ mod tests {
                         manager: ManagerId::Mise,
                         name: "__self__".to_string(),
                     },
+                    target_name: None,
                     version: None,
                 },
             ))
@@ -1796,6 +1821,7 @@ mod tests {
                         manager: ManagerId::Mise,
                         name: "python@3.12.3".to_string(),
                     },
+                    target_name: None,
                     version: None,
                 },
             ))
@@ -1832,6 +1858,7 @@ mod tests {
                     manager: ManagerId::Mise,
                     name: "node".to_string(),
                 }),
+                target_name: None,
                 version: None,
             }))
             .unwrap();

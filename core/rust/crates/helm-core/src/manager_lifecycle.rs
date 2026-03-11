@@ -378,6 +378,7 @@ pub fn plan_manager_uninstall_route_with_options(
                         manager: ManagerId::HomebrewFormula,
                         name: "mise".to_string(),
                     },
+                    target_name: None,
                     version: None,
                 }),
             ),
@@ -388,6 +389,7 @@ pub fn plan_manager_uninstall_route_with_options(
                         manager: ManagerId::MacPorts,
                         name: "mise".to_string(),
                     },
+                    target_name: None,
                     version: None,
                 }),
             ),
@@ -401,6 +403,7 @@ pub fn plan_manager_uninstall_route_with_options(
                             manager: ManagerId::Mise,
                             name: package_name,
                         },
+                        target_name: None,
                         version: None,
                     }),
                 )
@@ -428,6 +431,7 @@ pub fn plan_manager_uninstall_route_with_options(
                             manager: ManagerId::HomebrewFormula,
                             name: package_name,
                         },
+                        target_name: None,
                         version: None,
                     }),
                     strategy: resolution.strategy,
@@ -482,6 +486,7 @@ pub fn plan_manager_uninstall_route_with_options(
                                 remove_shell_setup_requested(options),
                             ),
                         },
+                        target_name: None,
                         version: None,
                     }),
                 )
@@ -497,6 +502,7 @@ pub fn plan_manager_uninstall_route_with_options(
                             "__self__".to_string()
                         },
                     },
+                    target_name: None,
                     version: None,
                 }),
             ),
@@ -543,6 +549,7 @@ pub fn plan_manager_uninstall_route_with_options(
                             remove_shell_setup_requested(options),
                         ),
                     },
+                    target_name: None,
                     version: None,
                 }),
             ),
@@ -557,6 +564,7 @@ pub fn plan_manager_uninstall_route_with_options(
                             "__self__".to_string()
                         },
                     },
+                    target_name: None,
                     version: None,
                 }),
             ),
@@ -615,6 +623,7 @@ pub fn plan_manager_uninstall_route_with_options(
                         remove_shell_setup_requested(options),
                     ),
                 },
+                target_name: None,
                 version: None,
             }),
             strategy: resolution.strategy,
@@ -654,6 +663,7 @@ pub fn plan_manager_uninstall_route_with_options(
                         remove_shell_setup_requested(options),
                     ),
                 },
+                target_name: None,
                 version: None,
             }),
             strategy: resolution.strategy,
@@ -677,6 +687,7 @@ fn read_only_uninstall_route_plan(
                 manager,
                 name: "__self__".to_string(),
             },
+            target_name: None,
             version: None,
         }),
         strategy: StrategyKind::ReadOnly,
@@ -693,6 +704,7 @@ fn homebrew_manager_install_plan(formula_name: &'static str) -> ManagerInstallPl
                 manager: ManagerId::HomebrewFormula,
                 name: formula_name.to_string(),
             },
+            target_name: None,
             version: None,
         }),
         label_key: "service.task.label.install.homebrew_formula",
@@ -711,6 +723,7 @@ fn package_manager_install_plan(
                 manager: target_manager,
                 name: package_name.to_string(),
             },
+            target_name: None,
             version: None,
         }),
         label_key: "service.task.label.install.package",
@@ -732,6 +745,7 @@ fn mise_manager_install_plan(
                 manager: ManagerId::Mise,
                 name: "__self__".to_string(),
             },
+            target_name: None,
             version,
         }),
         label_key: "service.task.label.install.package",
@@ -753,6 +767,7 @@ fn rustup_manager_install_plan(
                 manager: ManagerId::Rustup,
                 name: "__self__".to_string(),
             },
+            target_name: None,
             version,
         }),
         label_key: "service.task.label.install.package",
@@ -771,6 +786,7 @@ fn asdf_manager_install_plan() -> ManagerInstallPlan {
                 manager: ManagerId::Asdf,
                 name: "__self__".to_string(),
             },
+            target_name: None,
             version: Some("scriptInstaller:officialDownload".to_string()),
         }),
         label_key: "service.task.label.install.package",
@@ -1056,6 +1072,7 @@ pub fn build_update_request(
                     manager: ManagerId::HomebrewFormula,
                     name: "__self__".to_string(),
                 }),
+                target_name: None,
                 version: None,
             }))
         }
@@ -1065,6 +1082,7 @@ pub fn build_update_request(
                     manager: ManagerId::Rustup,
                     name: "__self__".to_string(),
                 }),
+                target_name: None,
                 version: None,
             }))
         }
@@ -1074,6 +1092,7 @@ pub fn build_update_request(
                     manager: ManagerId::Mise,
                     name: "__self__".to_string(),
                 }),
+                target_name: None,
                 version: None,
             }))
         }
@@ -1084,6 +1103,7 @@ pub fn build_update_request(
                         manager: ManagerId::HomebrewFormula,
                         name: package_name,
                     }),
+                    target_name: None,
                     version: None,
                 })
             })

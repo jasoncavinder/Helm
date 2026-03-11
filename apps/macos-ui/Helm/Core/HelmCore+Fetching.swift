@@ -31,9 +31,11 @@ extension HelmCore {
                         id: self.availablePackageId(
                             managerId: pkg.package.manager,
                             packageName: pkg.package.name,
+                            packageIdentifier: pkg.packageIdentifier,
                             version: pkg.installedVersion
                         ),
                         name: pkg.package.name,
+                        packageIdentifier: pkg.packageIdentifier,
                         version: pkg.installedVersion ?? L10n.Common.unknown.localized,
                         managerId: pkg.package.manager,
                         manager: self.normalizedManagerName(pkg.package.manager),
@@ -73,9 +75,11 @@ extension HelmCore {
                         id: self.availablePackageId(
                             managerId: pkg.package.manager,
                             packageName: pkg.package.name,
+                            packageIdentifier: pkg.packageIdentifier,
                             version: pkg.installedVersion
                         ),
                         name: pkg.package.name,
+                        packageIdentifier: pkg.packageIdentifier,
                         version: pkg.installedVersion ?? L10n.Common.unknown.localized,
                         latestVersion: pkg.candidateVersion,
                         managerId: pkg.package.manager,
@@ -368,6 +372,7 @@ extension HelmCore {
                     let identityId = self.packageIdentityId(
                         managerId: package.managerId,
                         packageName: package.name,
+                        packageIdentifier: package.packageIdentifier,
                         version: package.version
                     )
                     if installedOrOutdatedRepresentativeIdsByIdentity[identityId] == nil {
@@ -392,6 +397,7 @@ extension HelmCore {
                         let identityId = self.packageIdentityId(
                             managerId: result.sourceManager,
                             packageName: result.name,
+                            packageIdentifier: result.packageIdentifier,
                             version: result.version
                         )
                         if let representativeId = installedOrOutdatedRepresentativeIdsByIdentity[identityId] {
@@ -409,6 +415,7 @@ extension HelmCore {
                         return self.availablePackageId(
                             managerId: result.sourceManager,
                             packageName: result.name,
+                            packageIdentifier: result.packageIdentifier,
                             version: result.version
                         )
                     }
@@ -418,6 +425,7 @@ extension HelmCore {
                     let identityId = self.packageIdentityId(
                         managerId: result.sourceManager,
                         packageName: result.name,
+                        packageIdentifier: result.packageIdentifier,
                         version: result.version
                     )
                     let packageId = installedOrOutdatedRepresentativeIdsByIdentity[identityId]
@@ -434,11 +442,13 @@ extension HelmCore {
                         ?? self.availablePackageId(
                             managerId: result.sourceManager,
                             packageName: result.name,
+                            packageIdentifier: result.packageIdentifier,
                             version: result.version
                         )
                     return PackageItem(
                         id: packageId,
                         name: result.name,
+                        packageIdentifier: result.packageIdentifier,
                         version: result.version ?? "",
                         managerId: result.sourceManager,
                         manager: self.normalizedManagerName(result.sourceManager),
@@ -474,6 +484,7 @@ extension HelmCore {
                         self.packageIdentityId(
                             managerId: package.managerId,
                             packageName: package.name,
+                            packageIdentifier: package.packageIdentifier,
                             version: package.version
                         )
                     }
@@ -483,6 +494,7 @@ extension HelmCore {
                         self.packageIdentityId(
                             managerId: package.managerId,
                             packageName: package.name,
+                            packageIdentifier: package.packageIdentifier,
                             version: package.version
                         )
                     }
@@ -503,6 +515,7 @@ extension HelmCore {
                     let identityId = self.packageIdentityId(
                         managerId: result.sourceManager,
                         packageName: result.name,
+                        packageIdentifier: result.packageIdentifier,
                         version: result.version
                     )
                     guard !excludedIdentityIds.contains(identityId) else { continue }
@@ -519,11 +532,13 @@ extension HelmCore {
                     let id = self.availablePackageId(
                         managerId: result.sourceManager,
                         packageName: result.name,
+                        packageIdentifier: result.packageIdentifier,
                         version: result.version
                     )
                     let candidate = PackageItem(
                         id: id,
                         name: result.name,
+                        packageIdentifier: result.packageIdentifier,
                         version: result.version ?? "",
                         managerId: result.sourceManager,
                         manager: self.normalizedManagerName(result.sourceManager),
@@ -797,18 +812,31 @@ extension HelmCore {
         return "rustup|\(normalizedName)"
     }
 
-    private func stablePackageId(managerId: String, packageName: String) -> String {
-        "\(managerId):\(packageName)"
+    private func stablePackageId(
+        managerId: String,
+        packageName: String,
+        packageIdentifier: String? = nil
+    ) -> String {
+        let trimmedIdentifier = packageIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !trimmedIdentifier.isEmpty {
+            return "\(managerId):\(packageName)#\(trimmedIdentifier)"
+        }
+        return "\(managerId):\(packageName)"
     }
 
     private func packageIdentityId(
         managerId: String,
         packageName: String,
+        packageIdentifier: String? = nil,
         version: String?
     ) -> String {
         let identityKey = PackageIdentity.normalizedIdentityKey(name: packageName, version: version)
         guard !identityKey.isEmpty else {
-            return stablePackageId(managerId: managerId, packageName: packageName)
+            return stablePackageId(
+                managerId: managerId,
+                packageName: packageName,
+                packageIdentifier: packageIdentifier
+            )
         }
         return "\(managerId):\(identityKey)"
     }
@@ -816,9 +844,14 @@ extension HelmCore {
     private func availablePackageId(
         managerId: String,
         packageName: String,
+        packageIdentifier: String? = nil,
         version: String?
     ) -> String {
-        let stableId = stablePackageId(managerId: managerId, packageName: packageName)
+        let stableId = stablePackageId(
+            managerId: managerId,
+            packageName: packageName,
+            packageIdentifier: packageIdentifier
+        )
         guard let version else { return stableId }
         let normalizedVersion = version.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedVersion.isEmpty else { return stableId }

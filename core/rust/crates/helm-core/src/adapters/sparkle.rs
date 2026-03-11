@@ -57,8 +57,7 @@ impl<S: SparkleSource> ManagerAdapter for SparkleAdapter<S> {
             AdapterRequest::Detect(_) => {
                 let output = self.source.detect()?;
                 let version = parse_sparkle_version(&output.version_output);
-                let has_executable = output.executable_path.is_some();
-                let installed = has_executable || version.is_some();
+                let installed = version.is_some();
                 Ok(AdapterResponse::Detection(DetectionInfo {
                     installed,
                     executable_path: output.executable_path,

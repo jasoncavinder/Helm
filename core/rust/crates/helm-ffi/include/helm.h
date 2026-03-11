@@ -249,7 +249,10 @@ bool helm_upgrade_all(bool include_pinned, bool allow_os_updates);
  * `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
  * strings.
  */
-int64_t helm_upgrade_package(const char *manager_id, const char *package_name, const char *version);
+int64_t helm_upgrade_package(const char *manager_id,
+                             const char *package_name,
+                             const char *package_target_name,
+                             const char *version);
 
 /**
  * Queue an install task for a single package. Returns the task ID, or -1 on error.
@@ -259,7 +262,10 @@ int64_t helm_upgrade_package(const char *manager_id, const char *package_name, c
  * `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
  * strings.
  */
-int64_t helm_install_package(const char *manager_id, const char *package_name, const char *version);
+int64_t helm_install_package(const char *manager_id,
+                             const char *package_name,
+                             const char *package_target_name,
+                             const char *version);
 
 /**
  * Queue an uninstall task for a single package. Returns the task ID, or -1 on error.
@@ -271,6 +277,7 @@ int64_t helm_install_package(const char *manager_id, const char *package_name, c
  */
 int64_t helm_uninstall_package(const char *manager_id,
                                const char *package_name,
+                               const char *package_target_name,
                                const char *version);
 
 /**
