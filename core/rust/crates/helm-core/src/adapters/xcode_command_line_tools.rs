@@ -71,8 +71,7 @@ impl<S: XcodeCommandLineToolsSource> ManagerAdapter for XcodeCommandLineToolsAda
             AdapterRequest::Detect(_) => {
                 let output = self.source.detect()?;
                 let version = parse_xcode_clt_version(&output.version_output);
-                let has_executable = output.executable_path.is_some();
-                let installed = has_executable || version.is_some();
+                let installed = version.is_some();
                 Ok(AdapterResponse::Detection(DetectionInfo {
                     installed,
                     executable_path: output.executable_path,
@@ -80,21 +79,44 @@ impl<S: XcodeCommandLineToolsSource> ManagerAdapter for XcodeCommandLineToolsAda
                 }))
             }
             AdapterRequest::Refresh(_) => {
-                let _ = self.source.detect()?;
-                Ok(AdapterResponse::Refreshed)
+                let output = self.source.detect()?;
+                let version = parse_xcode_clt_version(&output.version_output);
+                if version.is_none() {
+                    return Ok(AdapterResponse::SnapshotSync {
+                        installed: Some(Vec::new()),
+                        outdated: Some(Vec::new()),
+                    });
+                }
+
+                let outdated = parse_xcode_clt_outdated(&self.source.list_outdated()?)?;
+                Ok(AdapterResponse::SnapshotSync {
+                    installed: Some(vec![InstalledPackage {
+                        package: PackageRef {
+                            manager: ManagerId::XcodeCommandLineTools,
+                            name: XCODE_CLT_DISPLAY_NAME.to_string(),
+                        },
+                        package_identifier: None,
+                        installed_version: version,
+                        pinned: false,
+                        runtime_state: Default::default(),
+                    }]),
+                    outdated: Some(outdated),
+                })
             }
             AdapterRequest::ListInstalled(_) => {
                 let output = self.source.detect()?;
                 let version = parse_xcode_clt_version(&output.version_output);
-                let installed = output.executable_path.is_some() || version.is_some();
+                let installed = version.is_some();
                 let packages = if installed {
                     vec![InstalledPackage {
                         package: PackageRef {
                             manager: ManagerId::XcodeCommandLineTools,
                             name: XCODE_CLT_DISPLAY_NAME.to_string(),
                         },
+                        package_identifier: None,
                         installed_version: version,
                         pinned: false,
+                        runtime_state: Default::default(),
                     }]
                 } else {
                     Vec::new()
@@ -128,12 +150,19 @@ impl<S: XcodeCommandLineToolsSource> ManagerAdapter for XcodeCommandLineToolsAda
                     });
                 }
 
+                let targeted_outdated = find_xcode_clt_outdated_entry(&self.source, target_label)?;
                 let _ = self.source.upgrade(target_label)?;
+                ensure_xcode_clt_label_no_longer_outdated(&self.source, target_label)?;
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
+                    package_identifier: None,
                     action: ManagerAction::Upgrade,
-                    before_version: None,
-                    after_version: None,
+                    before_version: upgrade_request.version.or_else(|| {
+                        targeted_outdated
+                            .as_ref()
+                            .and_then(|item| item.installed_version.clone())
+                    }),
+                    after_version: targeted_outdated.map(|item| item.candidate_version),
                 }))
             }
             _ => Err(CoreError {
@@ -291,11 +320,44 @@ fn flush_xcode_clt_update(
             manager: ManagerId::XcodeCommandLineTools,
             name: label,
         },
+        package_identifier: None,
         installed_version: None,
         candidate_version,
         pinned: false,
         restart_required: false,
+        runtime_state: Default::default(),
     });
+}
+
+fn find_xcode_clt_outdated_entry<S: XcodeCommandLineToolsSource>(
+    source: &S,
+    label: &str,
+) -> AdapterResult<Option<OutdatedPackage>> {
+    Ok(parse_xcode_clt_outdated(&source.list_outdated()?)?
+        .into_iter()
+        .find(|package| package.package.name == label))
+}
+
+fn ensure_xcode_clt_label_no_longer_outdated<S: XcodeCommandLineToolsSource>(
+    source: &S,
+    label: &str,
+) -> AdapterResult<()> {
+    if parse_xcode_clt_outdated(&source.list_outdated()?)?
+        .into_iter()
+        .any(|package| package.package.name == label)
+    {
+        return Err(CoreError {
+            manager: Some(ManagerId::XcodeCommandLineTools),
+            task: Some(TaskType::Upgrade),
+            action: Some(ManagerAction::Upgrade),
+            kind: CoreErrorKind::ProcessFailure,
+            message: format!(
+                "xcode command line tools upgrade reported success but '{label}' remains outdated"
+            ),
+        });
+    }
+
+    Ok(())
 }
 
 fn extract_version_from_text(text: &str) -> Option<String> {

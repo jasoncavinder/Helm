@@ -51,6 +51,7 @@ impl ManagerAdapter for SlowSearchAdapter {
                     manager: ManagerId::Npm,
                     name: "slow-package".to_string(),
                 },
+                package_identifier: None,
                 version: Some("1.0.0".to_string()),
                 summary: Some("A slow package".to_string()),
             },

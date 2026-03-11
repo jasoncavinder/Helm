@@ -68,8 +68,7 @@ impl<S: SoftwareUpdateSource> ManagerAdapter for SoftwareUpdateAdapter<S> {
             AdapterRequest::Detect(_) => {
                 let output = self.source.detect()?;
                 let version = parse_softwareupdate_version(&output.version_output);
-                let has_executable = output.executable_path.is_some();
-                let installed = has_executable || version.is_some();
+                let installed = version.is_some();
                 Ok(AdapterResponse::Detection(DetectionInfo {
                     installed,
                     executable_path: output.executable_path,
@@ -77,8 +76,20 @@ impl<S: SoftwareUpdateSource> ManagerAdapter for SoftwareUpdateAdapter<S> {
                 }))
             }
             AdapterRequest::Refresh(_) => {
-                let _ = self.source.detect()?;
-                Ok(AdapterResponse::Refreshed)
+                let output = self.source.detect()?;
+                let version = parse_softwareupdate_version(&output.version_output);
+                if version.is_none() {
+                    return Ok(AdapterResponse::SnapshotSync {
+                        installed: None,
+                        outdated: Some(Vec::new()),
+                    });
+                }
+
+                let outdated = parse_softwareupdate_list(&self.source.list_available()?)?;
+                Ok(AdapterResponse::SnapshotSync {
+                    installed: None,
+                    outdated: Some(outdated),
+                })
             }
             AdapterRequest::ListOutdated(_) => {
                 let raw = self.source.list_available()?;
@@ -103,6 +114,7 @@ impl<S: SoftwareUpdateSource> ManagerAdapter for SoftwareUpdateAdapter<S> {
                 let _ = self.source.install_all_updates()?;
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
+                    package_identifier: None,
                     action: ManagerAction::Upgrade,
                     before_version: None,
                     after_version: None,
@@ -185,9 +197,13 @@ fn parse_softwareupdate_version(output: &str) -> Option<String> {
 }
 
 fn parse_softwareupdate_list(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
+    let trimmed = output.trim();
+    if trimmed.is_empty() || trimmed.contains("No new software available.") {
+        return Ok(Vec::new());
+    }
+
     let mut packages = Vec::new();
     let mut current_label: Option<String> = None;
-    let mut current_title: Option<String> = None;
     let mut current_version: Option<String> = None;
     let mut current_restart_required = false;
 
@@ -197,16 +213,13 @@ fn parse_softwareupdate_list(output: &str) -> AdapterResult<Vec<OutdatedPackage>
         // New update block: "* Label: macOS Sequoia 15.3.2-15.3.2"
         if let Some(rest) = trimmed.strip_prefix("* Label:") {
             // Flush previous block
-            if let (Some(label), Some(version)) = (current_label.take(), current_version.take()) {
-                let _title = current_title.take();
-                packages.push(build_outdated_package(
-                    &label,
-                    &version,
-                    current_restart_required,
-                ));
-            }
+            flush_softwareupdate_block(
+                &mut packages,
+                current_label.take(),
+                current_version.take(),
+                current_restart_required,
+            )?;
             current_label = Some(rest.trim().to_owned());
-            current_title = None;
             current_version = None;
             current_restart_required = false;
             continue;
@@ -222,7 +235,6 @@ fn parse_softwareupdate_list(output: &str) -> AdapterResult<Vec<OutdatedPackage>
                     let key = key.trim();
                     let value = value.trim();
                     match key {
-                        "Title" => current_title = Some(value.to_owned()),
                         "Version" => current_version = Some(value.to_owned()),
                         "Action" if value.eq_ignore_ascii_case("restart") => {
                             current_restart_required = true;
@@ -235,16 +247,34 @@ fn parse_softwareupdate_list(output: &str) -> AdapterResult<Vec<OutdatedPackage>
     }
 
     // Flush final block
-    if let (Some(label), Some(version)) = (current_label.take(), current_version.take()) {
-        let _title = current_title.take();
-        packages.push(build_outdated_package(
-            &label,
-            &version,
-            current_restart_required,
-        ));
-    }
+    flush_softwareupdate_block(
+        &mut packages,
+        current_label.take(),
+        current_version.take(),
+        current_restart_required,
+    )?;
 
     Ok(packages)
+}
+
+fn flush_softwareupdate_block(
+    packages: &mut Vec<OutdatedPackage>,
+    label: Option<String>,
+    version: Option<String>,
+    restart_required: bool,
+) -> AdapterResult<()> {
+    let Some(label) = label else {
+        return Ok(());
+    };
+
+    let Some(version) = version else {
+        return Err(parse_error(&format!(
+            "softwareupdate block '{label}' is missing a version field"
+        )));
+    };
+
+    packages.push(build_outdated_package(&label, &version, restart_required));
+    Ok(())
 }
 
 fn build_outdated_package(
@@ -257,14 +287,16 @@ fn build_outdated_package(
             manager: ManagerId::SoftwareUpdate,
             name: label.to_owned(),
         },
+        package_identifier: None,
         installed_version: None,
         candidate_version: candidate_version.to_owned(),
         pinned: false,
         restart_required,
+        runtime_state: Default::default(),
     }
 }
 
-fn _parse_error(message: &str) -> CoreError {
+fn parse_error(message: &str) -> CoreError {
     CoreError {
         manager: Some(ManagerId::SoftwareUpdate),
         task: None,
@@ -377,6 +409,8 @@ mod tests {
                     manager: ManagerId::SoftwareUpdate,
                     name: "__all__".to_string(),
                 }),
+                target_name: None,
+                version: None,
             }))
             .unwrap_err();
         assert_eq!(error.kind, CoreErrorKind::InvalidInput);
@@ -393,6 +427,8 @@ mod tests {
                     manager: ManagerId::SoftwareUpdate,
                     name: "__confirm_os_updates__".to_string(),
                 }),
+                target_name: None,
+                version: None,
             }))
             .unwrap();
         assert!(matches!(result, AdapterResponse::Mutation(_)));
@@ -420,6 +456,7 @@ mod tests {
                     manager: ManagerId::SoftwareUpdate,
                     name: "macOS Sequoia".to_string(),
                 },
+                target_name: None,
                 version: None,
             }))
             .unwrap_err();

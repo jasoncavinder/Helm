@@ -1,7 +1,8 @@
 use crate::models::{
     ActionSafety, CachedSearchResult, CoreError, CoreErrorKind, DetectionInfo, InstalledPackage,
-    ManagerAction, ManagerDescriptor, OutdatedPackage, PackageRef, SearchQuery,
+    ManagerAction, ManagerDescriptor, ManagerId, OutdatedPackage, PackageRef, SearchQuery,
 };
+use std::path::PathBuf;
 
 pub type AdapterResult<T> = Result<T, CoreError>;
 
@@ -25,17 +26,22 @@ pub struct SearchRequest {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstallRequest {
     pub package: PackageRef,
+    pub target_name: Option<String>,
     pub version: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UninstallRequest {
     pub package: PackageRef,
+    pub target_name: Option<String>,
+    pub version: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UpgradeRequest {
     pub package: Option<PackageRef>,
+    pub target_name: Option<String>,
+    pub version: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -50,6 +56,41 @@ pub struct UnpinRequest {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PackageDetailChildKind {
+    Component,
+    Target,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PackageDetailOperation {
+    AddChild {
+        kind: PackageDetailChildKind,
+        value: String,
+    },
+    RemoveChild {
+        kind: PackageDetailChildKind,
+        value: String,
+    },
+    SetDefault,
+    SetPathOverride {
+        path: PathBuf,
+    },
+    ClearPathOverride {
+        path: PathBuf,
+    },
+    SetProfile {
+        profile: String,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PackageDetailRequest {
+    pub manager: ManagerId,
+    pub package: Option<PackageRef>,
+    pub operation: PackageDetailOperation,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum AdapterRequest {
     Detect(DetectRequest),
     Refresh(RefreshRequest),
@@ -59,6 +100,7 @@ pub enum AdapterRequest {
     Install(InstallRequest),
     Uninstall(UninstallRequest),
     Upgrade(UpgradeRequest),
+    ConfigurePackageDetail(PackageDetailRequest),
     Pin(PinRequest),
     Unpin(UnpinRequest),
 }
@@ -74,6 +116,7 @@ impl AdapterRequest {
             Self::Install(_) => ManagerAction::Install,
             Self::Uninstall(_) => ManagerAction::Uninstall,
             Self::Upgrade(_) => ManagerAction::Upgrade,
+            Self::ConfigurePackageDetail(_) => ManagerAction::Configure,
             Self::Pin(_) => ManagerAction::Pin,
             Self::Unpin(_) => ManagerAction::Unpin,
         }
@@ -111,6 +154,7 @@ pub fn ensure_request_supported(
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MutationResult {
     pub package: PackageRef,
+    pub package_identifier: Option<String>,
     pub action: ManagerAction,
     pub before_version: Option<String>,
     pub after_version: Option<String>,
@@ -122,6 +166,10 @@ pub enum AdapterResponse {
     Refreshed,
     InstalledPackages(Vec<InstalledPackage>),
     OutdatedPackages(Vec<OutdatedPackage>),
+    SnapshotSync {
+        installed: Option<Vec<InstalledPackage>>,
+        outdated: Option<Vec<OutdatedPackage>>,
+    },
     SearchResults(Vec<CachedSearchResult>),
     Mutation(MutationResult),
 }

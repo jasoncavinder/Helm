@@ -5,7 +5,7 @@ use crate::models::{
     PinRecord, TaskId, TaskLogRecord, TaskRecord,
 };
 
-pub use detection_store::{DetectionStore, ManagerPreference};
+pub use detection_store::{DetectionStore, ManagerPreference, PackageManagerPreference};
 
 pub type PersistenceResult<T> = Result<T, CoreError>;
 
@@ -17,6 +17,12 @@ pub trait MigrationStore: Send + Sync {
 
 pub trait PackageStore: Send + Sync {
     fn upsert_installed(&self, packages: &[InstalledPackage]) -> PersistenceResult<()>;
+
+    fn replace_installed_snapshot(
+        &self,
+        manager: ManagerId,
+        packages: &[InstalledPackage],
+    ) -> PersistenceResult<()>;
 
     fn upsert_outdated(&self, packages: &[OutdatedPackage]) -> PersistenceResult<()>;
 
@@ -30,23 +36,44 @@ pub trait PackageStore: Send + Sync {
 
     fn list_outdated(&self) -> PersistenceResult<Vec<OutdatedPackage>>;
 
-    fn set_snapshot_pinned(&self, package: &PackageRef, pinned: bool) -> PersistenceResult<()>;
+    fn set_snapshot_pinned(
+        &self,
+        package: &PackageRef,
+        version: Option<&str>,
+        pinned: bool,
+    ) -> PersistenceResult<()>;
 
     fn apply_install_result(
         &self,
         package: &PackageRef,
+        package_identifier: Option<&str>,
         installed_version: Option<&str>,
     ) -> PersistenceResult<()>;
 
-    fn apply_uninstall_result(&self, package: &PackageRef) -> PersistenceResult<()>;
+    fn apply_uninstall_result(
+        &self,
+        package: &PackageRef,
+        package_identifier: Option<&str>,
+        removed_version: Option<&str>,
+    ) -> PersistenceResult<()>;
 
-    fn apply_upgrade_result(&self, package: &PackageRef) -> PersistenceResult<()>;
+    fn apply_upgrade_result(
+        &self,
+        package: &PackageRef,
+        package_identifier: Option<&str>,
+        before_version: Option<&str>,
+        after_version: Option<&str>,
+    ) -> PersistenceResult<()>;
 }
 
 pub trait PinStore: Send + Sync {
     fn upsert_pin(&self, pin: &PinRecord) -> PersistenceResult<()>;
 
-    fn remove_pin(&self, package_key: &str) -> PersistenceResult<()>;
+    fn remove_pin(
+        &self,
+        package: &PackageRef,
+        pinned_version: Option<&str>,
+    ) -> PersistenceResult<()>;
 
     fn list_pins(&self) -> PersistenceResult<Vec<PinRecord>>;
 }

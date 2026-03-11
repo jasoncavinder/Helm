@@ -77,8 +77,7 @@ impl<S: PipSource> ManagerAdapter for PipAdapter<S> {
             AdapterRequest::Detect(_) => {
                 let output = self.source.detect()?;
                 let version = parse_pip_version(&output.version_output);
-                let has_executable = output.executable_path.is_some();
-                let installed = has_executable || version.is_some();
+                let installed = version.is_some();
                 Ok(AdapterResponse::Detection(DetectionInfo {
                     installed,
                     executable_path: output.executable_path,
@@ -86,8 +85,21 @@ impl<S: PipSource> ManagerAdapter for PipAdapter<S> {
                 }))
             }
             AdapterRequest::Refresh(_) => {
-                let _ = self.source.detect()?;
-                Ok(AdapterResponse::Refreshed)
+                let output = self.source.detect()?;
+                let version = parse_pip_version(&output.version_output);
+                if version.is_none() {
+                    return Ok(AdapterResponse::SnapshotSync {
+                        installed: Some(Vec::new()),
+                        outdated: Some(Vec::new()),
+                    });
+                }
+
+                let installed = parse_pip_list(&self.source.list_installed()?)?;
+                let outdated = parse_pip_outdated(&self.source.list_outdated()?)?;
+                Ok(AdapterResponse::SnapshotSync {
+                    installed: Some(installed),
+                    outdated: Some(outdated),
+                })
             }
             AdapterRequest::ListInstalled(_) => {
                 let raw = self.source.list_installed()?;
@@ -112,15 +124,28 @@ impl<S: PipSource> ManagerAdapter for PipAdapter<S> {
                     ManagerAction::Install,
                     install_request.package.name.as_str(),
                 )?;
+                let before_version = resolve_installed_pip_version(
+                    &self.source,
+                    install_request.package.name.as_str(),
+                )?;
                 let _ = self.source.install(
                     &install_request.package.name,
                     install_request.version.as_deref(),
                 )?;
+                let after_version = install_request.version.clone().or_else(|| {
+                    resolve_installed_pip_version(
+                        &self.source,
+                        install_request.package.name.as_str(),
+                    )
+                    .ok()
+                    .flatten()
+                });
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: install_request.package,
+                    package_identifier: None,
                     action: ManagerAction::Install,
-                    before_version: None,
-                    after_version: install_request.version,
+                    before_version,
+                    after_version,
                 }))
             }
             AdapterRequest::Uninstall(uninstall_request) => {
@@ -129,11 +154,16 @@ impl<S: PipSource> ManagerAdapter for PipAdapter<S> {
                     ManagerAction::Uninstall,
                     uninstall_request.package.name.as_str(),
                 )?;
+                let before_version = require_installed_pip_version(
+                    &self.source,
+                    uninstall_request.package.name.as_str(),
+                )?;
                 let _ = self.source.uninstall(&uninstall_request.package.name)?;
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: uninstall_request.package,
+                    package_identifier: None,
                     action: ManagerAction::Uninstall,
-                    before_version: None,
+                    before_version: Some(before_version),
                     after_version: None,
                 }))
             }
@@ -153,6 +183,10 @@ impl<S: PipSource> ManagerAdapter for PipAdapter<S> {
                     )?;
                     Some(package.name.as_str())
                 };
+                let targeted_outdated = target_name
+                    .map(|name| find_pip_outdated_entry(&self.source, name))
+                    .transpose()?
+                    .flatten();
                 let _ = self.source.upgrade(target_name)?;
                 if let Some(name) = target_name {
                     ensure_pip_no_longer_outdated(&self.source, name)?;
@@ -160,9 +194,14 @@ impl<S: PipSource> ManagerAdapter for PipAdapter<S> {
 
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
+                    package_identifier: None,
                     action: ManagerAction::Upgrade,
-                    before_version: None,
-                    after_version: None,
+                    before_version: upgrade_request.version.or_else(|| {
+                        targeted_outdated
+                            .as_ref()
+                            .and_then(|entry| entry.installed_version.clone())
+                    }),
+                    after_version: targeted_outdated.map(|entry| entry.candidate_version),
                 }))
             }
             _ => Err(CoreError {
@@ -366,12 +405,14 @@ fn parse_pip_list(output: &str) -> AdapterResult<Vec<InstalledPackage>> {
                     manager: ManagerId::Pip,
                     name,
                 },
+                package_identifier: None,
                 installed_version: if version.is_empty() {
                     None
                 } else {
                     Some(version)
                 },
                 pinned: false,
+                runtime_state: Default::default(),
             })
         })
         .collect();
@@ -403,6 +444,38 @@ fn ensure_pip_no_longer_outdated<S: PipSource>(
     Ok(())
 }
 
+fn resolve_installed_pip_version<S: PipSource>(
+    source: &S,
+    package_name: &str,
+) -> AdapterResult<Option<String>> {
+    Ok(parse_pip_list(&source.list_installed()?)?
+        .into_iter()
+        .find(|package| package.package.name == package_name)
+        .and_then(|package| package.installed_version))
+}
+
+fn require_installed_pip_version<S: PipSource>(
+    source: &S,
+    package_name: &str,
+) -> AdapterResult<String> {
+    resolve_installed_pip_version(source, package_name)?.ok_or_else(|| CoreError {
+        manager: Some(ManagerId::Pip),
+        task: Some(TaskType::Uninstall),
+        action: Some(ManagerAction::Uninstall),
+        kind: CoreErrorKind::InvalidInput,
+        message: format!("pip package '{package_name}' is not installed"),
+    })
+}
+
+fn find_pip_outdated_entry<S: PipSource>(
+    source: &S,
+    package_name: &str,
+) -> AdapterResult<Option<OutdatedPackage>> {
+    Ok(parse_pip_outdated(&source.list_outdated()?)?
+        .into_iter()
+        .find(|package| package.package.name == package_name))
+}
+
 fn parse_pip_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
     let entries: Vec<PipOutdatedEntry> = serde_json::from_str(output)
         .map_err(|e| parse_error(&format!("invalid pip outdated JSON: {e}")))?;
@@ -421,6 +494,7 @@ fn parse_pip_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
                     manager: ManagerId::Pip,
                     name,
                 },
+                package_identifier: None,
                 installed_version: if installed.is_empty() {
                     None
                 } else {
@@ -429,6 +503,7 @@ fn parse_pip_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
                 candidate_version: latest,
                 pinned: false,
                 restart_required: false,
+                runtime_state: Default::default(),
             })
         })
         .collect();
@@ -464,6 +539,7 @@ fn parse_pip_local_search(
                         manager: ManagerId::Pip,
                         name,
                     },
+                    package_identifier: None,
                     version: if version.is_empty() {
                         None
                     } else {
@@ -742,6 +818,7 @@ mod tests {
                     manager: ManagerId::Pip,
                     name: "black".to_string(),
                 },
+                target_name: None,
                 version: Some("24.10.0".to_string()),
             }))
             .unwrap()
@@ -764,6 +841,7 @@ mod tests {
                     manager: ManagerId::Pip,
                     name: "--index-url=https://invalid".to_string(),
                 },
+                target_name: None,
                 version: None,
             }))
             .expect_err("expected invalid input");

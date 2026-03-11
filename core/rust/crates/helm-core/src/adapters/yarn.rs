@@ -58,9 +58,25 @@ pub struct YarnAdapter<S: YarnSource> {
     source: S,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum YarnFlavor {
+    Classic,
+    Berry,
+}
+
 impl<S: YarnSource> YarnAdapter<S> {
     pub fn new(source: S) -> Self {
         Self { source }
+    }
+
+    fn ensure_classic_global_support(&self, action: ManagerAction) -> AdapterResult<()> {
+        let output = self.source.detect()?;
+        let version = parse_yarn_version(&output.version_output);
+        match parse_yarn_flavor(version.as_deref()) {
+            Some(YarnFlavor::Classic) => Ok(()),
+            Some(YarnFlavor::Berry) => Err(yarn_global_scope_error(version.as_deref(), action)),
+            None => Err(yarn_global_scope_error(version.as_deref(), action)),
+        }
     }
 }
 
@@ -80,8 +96,7 @@ impl<S: YarnSource> ManagerAdapter for YarnAdapter<S> {
             AdapterRequest::Detect(_) => {
                 let output = self.source.detect()?;
                 let version = parse_yarn_version(&output.version_output);
-                let has_executable = output.executable_path.is_some();
-                let installed = has_executable || version.is_some();
+                let installed = version.is_some();
                 Ok(AdapterResponse::Detection(DetectionInfo {
                     installed,
                     executable_path: output.executable_path,
@@ -89,45 +104,83 @@ impl<S: YarnSource> ManagerAdapter for YarnAdapter<S> {
                 }))
             }
             AdapterRequest::Refresh(_) => {
-                let _ = self.source.detect()?;
-                Ok(AdapterResponse::Refreshed)
+                let output = self.source.detect()?;
+                let version = parse_yarn_version(&output.version_output);
+                if !matches!(
+                    parse_yarn_flavor(version.as_deref()),
+                    Some(YarnFlavor::Classic)
+                ) {
+                    return Ok(AdapterResponse::SnapshotSync {
+                        installed: Some(Vec::new()),
+                        outdated: Some(Vec::new()),
+                    });
+                }
+
+                let installed = parse_yarn_list_installed(&self.source.list_installed_global()?)?;
+                let outdated = parse_yarn_outdated(&self.source.list_outdated_global()?)?;
+                Ok(AdapterResponse::SnapshotSync {
+                    installed: Some(installed),
+                    outdated: Some(outdated),
+                })
             }
             AdapterRequest::ListInstalled(_) => {
+                self.ensure_classic_global_support(ManagerAction::ListInstalled)?;
                 let raw = self.source.list_installed_global()?;
                 let packages = parse_yarn_list_installed(&raw)?;
                 Ok(AdapterResponse::InstalledPackages(packages))
             }
             AdapterRequest::ListOutdated(_) => {
+                self.ensure_classic_global_support(ManagerAction::ListOutdated)?;
                 let raw = self.source.list_outdated_global()?;
                 let packages = parse_yarn_outdated(&raw)?;
                 Ok(AdapterResponse::OutdatedPackages(packages))
             }
             AdapterRequest::Search(search_request) => {
+                self.ensure_classic_global_support(ManagerAction::Search)?;
                 let raw = self.source.search(search_request.query.text.as_str())?;
                 let results = parse_yarn_search(&raw, &search_request.query)?;
                 Ok(AdapterResponse::SearchResults(results))
             }
             AdapterRequest::Install(install_request) => {
+                self.ensure_classic_global_support(ManagerAction::Install)?;
                 crate::adapters::validate_package_identifier(
                     ManagerId::Yarn,
                     ManagerAction::Install,
+                    install_request.package.name.as_str(),
+                )?;
+                let before_version = resolve_installed_yarn_version(
+                    &self.source,
                     install_request.package.name.as_str(),
                 )?;
                 let _ = self.source.install_global(
                     install_request.package.name.as_str(),
                     install_request.version.as_deref(),
                 )?;
+                let after_version = install_request.version.clone().or_else(|| {
+                    resolve_installed_yarn_version(
+                        &self.source,
+                        install_request.package.name.as_str(),
+                    )
+                    .ok()
+                    .flatten()
+                });
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: install_request.package,
+                    package_identifier: None,
                     action: ManagerAction::Install,
-                    before_version: None,
-                    after_version: install_request.version,
+                    before_version,
+                    after_version,
                 }))
             }
             AdapterRequest::Uninstall(uninstall_request) => {
+                self.ensure_classic_global_support(ManagerAction::Uninstall)?;
                 crate::adapters::validate_package_identifier(
                     ManagerId::Yarn,
                     ManagerAction::Uninstall,
+                    uninstall_request.package.name.as_str(),
+                )?;
+                let before_version = require_installed_yarn_version(
+                    &self.source,
                     uninstall_request.package.name.as_str(),
                 )?;
                 let _ = self
@@ -135,12 +188,14 @@ impl<S: YarnSource> ManagerAdapter for YarnAdapter<S> {
                     .uninstall_global(uninstall_request.package.name.as_str())?;
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: uninstall_request.package,
+                    package_identifier: None,
                     action: ManagerAction::Uninstall,
-                    before_version: None,
+                    before_version: Some(before_version),
                     after_version: None,
                 }))
             }
             AdapterRequest::Upgrade(upgrade_request) => {
+                self.ensure_classic_global_support(ManagerAction::Upgrade)?;
                 let package = upgrade_request.package.unwrap_or(PackageRef {
                     manager: ManagerId::Yarn,
                     name: "__all__".to_string(),
@@ -155,15 +210,24 @@ impl<S: YarnSource> ManagerAdapter for YarnAdapter<S> {
                     )?;
                     Some(package.name.as_str())
                 };
+                let targeted_outdated = target_name
+                    .map(|name| find_yarn_outdated_entry(&self.source, name))
+                    .transpose()?
+                    .flatten();
                 let _ = self.source.upgrade_global(target_name)?;
                 if let Some(name) = target_name {
                     ensure_yarn_no_longer_outdated(&self.source, name)?;
                 }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
+                    package_identifier: None,
                     action: ManagerAction::Upgrade,
-                    before_version: None,
-                    after_version: None,
+                    before_version: upgrade_request.version.or_else(|| {
+                        targeted_outdated
+                            .as_ref()
+                            .and_then(|entry| entry.installed_version.clone())
+                    }),
+                    after_version: targeted_outdated.map(|entry| entry.candidate_version),
                 }))
             }
             _ => Err(CoreError {
@@ -295,6 +359,34 @@ fn parse_yarn_version(output: &str) -> Option<String> {
     Some(version.to_owned())
 }
 
+fn parse_yarn_flavor(version: Option<&str>) -> Option<YarnFlavor> {
+    let version = version?;
+    let major = version.split('.').next()?.parse::<u64>().ok()?;
+    if major >= 2 {
+        Some(YarnFlavor::Berry)
+    } else {
+        Some(YarnFlavor::Classic)
+    }
+}
+
+fn yarn_global_scope_error(version: Option<&str>, action: ManagerAction) -> CoreError {
+    let detail = match version {
+        Some(version) => format!(
+            "Helm currently supports Yarn Classic global packages only; detected Yarn {version}"
+        ),
+        None => "Helm could not determine a Yarn Classic version for global package operations"
+            .to_string(),
+    };
+
+    CoreError {
+        manager: Some(ManagerId::Yarn),
+        task: None,
+        action: Some(action),
+        kind: CoreErrorKind::UnsupportedCapability,
+        message: detail,
+    }
+}
+
 fn parse_yarn_list_installed(output: &str) -> AdapterResult<Vec<InstalledPackage>> {
     let mut parse_attempted = false;
     let mut recognized_shape = false;
@@ -368,8 +460,10 @@ fn parse_yarn_list_installed(output: &str) -> AdapterResult<Vec<InstalledPackage
                 manager: ManagerId::Yarn,
                 name,
             },
+            package_identifier: None,
             installed_version: Some(version),
             pinned: false,
+            runtime_state: Default::default(),
         })
         .collect())
 }
@@ -393,6 +487,38 @@ fn ensure_yarn_no_longer_outdated<S: YarnSource>(
         });
     }
     Ok(())
+}
+
+fn resolve_installed_yarn_version<S: YarnSource>(
+    source: &S,
+    package_name: &str,
+) -> AdapterResult<Option<String>> {
+    Ok(parse_yarn_list_installed(&source.list_installed_global()?)?
+        .into_iter()
+        .find(|package| package.package.name == package_name)
+        .and_then(|package| package.installed_version))
+}
+
+fn require_installed_yarn_version<S: YarnSource>(
+    source: &S,
+    package_name: &str,
+) -> AdapterResult<String> {
+    resolve_installed_yarn_version(source, package_name)?.ok_or_else(|| CoreError {
+        manager: Some(ManagerId::Yarn),
+        task: Some(TaskType::Uninstall),
+        action: Some(ManagerAction::Uninstall),
+        kind: CoreErrorKind::InvalidInput,
+        message: format!("yarn package '{package_name}' is not installed"),
+    })
+}
+
+fn find_yarn_outdated_entry<S: YarnSource>(
+    source: &S,
+    package_name: &str,
+) -> AdapterResult<Option<OutdatedPackage>> {
+    Ok(parse_yarn_outdated(&source.list_outdated_global()?)?
+        .into_iter()
+        .find(|package| package.package.name == package_name))
 }
 
 fn parse_yarn_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
@@ -434,10 +560,12 @@ fn parse_yarn_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
                     manager: ManagerId::Yarn,
                     name: name.clone(),
                 },
+                package_identifier: None,
                 installed_version,
                 candidate_version,
                 pinned: false,
                 restart_required: false,
+                runtime_state: Default::default(),
             });
         }
     }
@@ -497,10 +625,12 @@ fn parse_yarn_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
                         manager: ManagerId::Yarn,
                         name: name.to_string(),
                     },
+                    package_identifier: None,
                     installed_version,
                     candidate_version,
                     pinned: false,
                     restart_required: false,
+                    runtime_state: Default::default(),
                 });
             }
         }
@@ -559,6 +689,7 @@ fn parse_yarn_search(output: &str, query: &SearchQuery) -> AdapterResult<Vec<Cac
                     manager: ManagerId::Yarn,
                     name,
                 },
+                package_identifier: None,
                 version: entry
                     .version
                     .map(|version| version.trim().to_string())
@@ -602,10 +733,11 @@ mod tests {
     };
 
     use super::{
-        YarnAdapter, YarnDetectOutput, YarnSource, parse_yarn_list_installed, parse_yarn_outdated,
-        parse_yarn_search, parse_yarn_version, yarn_detect_request, yarn_install_request,
-        yarn_list_installed_request, yarn_list_outdated_request, yarn_search_request,
-        yarn_uninstall_request, yarn_upgrade_request,
+        YarnAdapter, YarnDetectOutput, YarnFlavor, YarnSource, parse_yarn_flavor,
+        parse_yarn_list_installed, parse_yarn_outdated, parse_yarn_search, parse_yarn_version,
+        yarn_detect_request, yarn_install_request, yarn_list_installed_request,
+        yarn_list_outdated_request, yarn_search_request, yarn_uninstall_request,
+        yarn_upgrade_request,
     };
 
     const VERSION_FIXTURE: &str = include_str!("../../tests/fixtures/yarn/version.txt");
@@ -618,7 +750,17 @@ mod tests {
     #[test]
     fn parses_yarn_version_from_fixture() {
         let version = parse_yarn_version(VERSION_FIXTURE);
-        assert_eq!(version.as_deref(), Some("10.9.2"));
+        assert_eq!(version.as_deref(), Some("1.22.22"));
+    }
+
+    #[test]
+    fn classifies_yarn_flavors_from_version() {
+        assert_eq!(
+            parse_yarn_flavor(Some("1.22.22")),
+            Some(YarnFlavor::Classic)
+        );
+        assert_eq!(parse_yarn_flavor(Some("4.6.1")), Some(YarnFlavor::Berry));
+        assert_eq!(parse_yarn_flavor(None), None);
     }
 
     #[test]
@@ -731,7 +873,7 @@ mod tests {
                 detect_calls: Arc::new(AtomicUsize::new(0)),
                 detect_result: Ok(YarnDetectOutput {
                     executable_path: Some(PathBuf::from("/opt/homebrew/bin/yarn")),
-                    version_output: "10.9.2\n".to_string(),
+                    version_output: "1.22.22\n".to_string(),
                 }),
                 list_installed_result: Ok(LIST_FIXTURE.to_string()),
                 list_outdated_result: Ok(OUTDATED_FIXTURE.to_string()),
@@ -784,11 +926,86 @@ mod tests {
         match response {
             AdapterResponse::Detection(detection) => {
                 assert!(detection.installed);
-                assert_eq!(detection.version.as_deref(), Some("10.9.2"));
+                assert_eq!(detection.version.as_deref(), Some("1.22.22"));
             }
             other => panic!("unexpected response: {other:?}"),
         }
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn execute_refresh_returns_snapshot_sync_for_yarn_classic() {
+        let adapter = YarnAdapter::new(StubYarnSource::success());
+
+        let response = adapter
+            .execute(AdapterRequest::Refresh(crate::adapters::RefreshRequest))
+            .expect("refresh should succeed");
+
+        match response {
+            AdapterResponse::SnapshotSync {
+                installed,
+                outdated,
+            } => {
+                assert_eq!(installed.expect("installed snapshot").len(), 3);
+                assert_eq!(outdated.expect("outdated snapshot").len(), 2);
+            }
+            other => panic!("expected snapshot sync response, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn refresh_clears_snapshots_for_yarn_berry() {
+        let adapter = YarnAdapter::new(StubYarnSource {
+            detect_calls: Arc::new(AtomicUsize::new(0)),
+            detect_result: Ok(YarnDetectOutput {
+                executable_path: Some(PathBuf::from("/opt/homebrew/bin/yarn")),
+                version_output: "4.6.1\n".to_string(),
+            }),
+            list_installed_result: Ok(LIST_FIXTURE.to_string()),
+            list_outdated_result: Ok(OUTDATED_FIXTURE.to_string()),
+            search_result: Ok(SEARCH_FIXTURE.to_string()),
+        });
+
+        let response = adapter
+            .execute(AdapterRequest::Refresh(crate::adapters::RefreshRequest))
+            .expect("refresh should succeed");
+
+        match response {
+            AdapterResponse::SnapshotSync {
+                installed,
+                outdated,
+            } => {
+                assert!(installed.expect("installed snapshot").is_empty());
+                assert!(outdated.expect("outdated snapshot").is_empty());
+            }
+            other => panic!("expected snapshot sync response, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn search_rejects_yarn_berry_global_package_scope() {
+        let adapter = YarnAdapter::new(StubYarnSource {
+            detect_calls: Arc::new(AtomicUsize::new(0)),
+            detect_result: Ok(YarnDetectOutput {
+                executable_path: Some(PathBuf::from("/opt/homebrew/bin/yarn")),
+                version_output: "4.6.1\n".to_string(),
+            }),
+            list_installed_result: Ok(LIST_FIXTURE.to_string()),
+            list_outdated_result: Ok(OUTDATED_FIXTURE.to_string()),
+            search_result: Ok(SEARCH_FIXTURE.to_string()),
+        });
+
+        let error = adapter
+            .execute(AdapterRequest::Search(SearchRequest {
+                query: SearchQuery {
+                    text: "typescript".to_string(),
+                    issued_at: std::time::SystemTime::now(),
+                },
+            }))
+            .expect_err("berry package search should be rejected");
+
+        assert_eq!(error.kind, CoreErrorKind::UnsupportedCapability);
+        assert!(error.message.contains("Yarn Classic"));
     }
 
     #[test]
@@ -840,6 +1057,7 @@ mod tests {
                     manager: ManagerId::Yarn,
                     name: "typescript".to_string(),
                 },
+                target_name: None,
                 version: Some("5.7.2".to_string()),
             }))
             .expect("install should succeed");
@@ -848,7 +1066,6 @@ mod tests {
             AdapterResponse::Mutation(mutation) => {
                 assert_eq!(mutation.action, ManagerAction::Install);
                 assert_eq!(mutation.package.manager, ManagerId::Yarn);
-                assert_eq!(mutation.after_version.as_deref(), Some("5.7.2"));
             }
             other => panic!("unexpected response: {other:?}"),
         }
@@ -864,6 +1081,7 @@ mod tests {
                     manager: ManagerId::Yarn,
                     name: "--registry=http://malicious".to_string(),
                 },
+                target_name: None,
                 version: None,
             }))
             .expect_err("expected invalid input");

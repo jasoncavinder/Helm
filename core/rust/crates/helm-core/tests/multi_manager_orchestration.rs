@@ -15,8 +15,8 @@ use helm_core::execution::{
 use helm_core::models::{ManagerId, TaskStatus};
 use helm_core::orchestration::{AdapterRuntime, AdapterTaskTerminalState};
 
-const HOMEBREW_INSTALLED: &str = include_str!("fixtures/homebrew/list_installed_versions.txt");
-const HOMEBREW_OUTDATED: &str = include_str!("fixtures/homebrew/list_outdated_verbose.txt");
+const HOMEBREW_INSTALLED: &str = include_str!("fixtures/homebrew/installed.json");
+const HOMEBREW_OUTDATED: &str = include_str!("fixtures/homebrew/outdated.json");
 const MISE_INSTALLED: &str = include_str!("fixtures/mise/ls_json.txt");
 const MISE_OUTDATED: &str = include_str!("fixtures/mise/outdated_json.txt");
 const RUSTUP_TOOLCHAINS: &str = include_str!("fixtures/rustup/toolchain_list.txt");
@@ -61,7 +61,7 @@ impl ProcessExecutor for MultiManagerFakeExecutor {
         } else if program == "brew" || program.ends_with("/brew") {
             match args.first().map(String::as_str) {
                 Some("--version") => b"Homebrew 4.2.21\n".to_vec(),
-                Some("list") => HOMEBREW_INSTALLED.as_bytes().to_vec(),
+                Some("info") => HOMEBREW_INSTALLED.as_bytes().to_vec(),
                 Some("outdated") => HOMEBREW_OUTDATED.as_bytes().to_vec(),
                 _ => Vec::new(),
             }

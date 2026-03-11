@@ -4,14 +4,14 @@ use std::time::{Duration, SystemTime};
 use helm_core::adapters::rustup::RustupAdapter;
 use helm_core::adapters::rustup_process::ProcessRustupSource;
 use helm_core::adapters::{
-    AdapterRequest, AdapterResponse, DetectRequest, ListInstalledRequest, ListOutdatedRequest,
-    ManagerAdapter,
+    AdapterRequest, AdapterResponse, DetectRequest, InstallRequest, ListInstalledRequest,
+    ListOutdatedRequest, ManagerAdapter, SearchRequest, UninstallRequest,
 };
 use helm_core::execution::{
     ExecutionResult, ProcessExecutor, ProcessExitStatus, ProcessOutput, ProcessSpawnRequest,
     ProcessTerminationMode, ProcessWaitFuture, RunningProcess,
 };
-use helm_core::models::{CoreErrorKind, ManagerId, TaskStatus};
+use helm_core::models::{CoreErrorKind, ManagerId, PackageRef, SearchQuery, TaskStatus};
 use helm_core::orchestration::{AdapterRuntime, AdapterTaskTerminalState};
 
 const TOOLCHAIN_LIST_FIXTURE: &str = include_str!("fixtures/rustup/toolchain_list.txt");
@@ -74,10 +74,43 @@ impl ProcessExecutor for RustupFakeExecutor {
         let stdout: Vec<u8> = if program.ends_with("which") {
             b"/Users/dev/.cargo/bin/rustup".to_vec()
         } else if program == "rustup" || program.ends_with("/rustup") {
-            match args.first().map(String::as_str) {
-                Some("--version") => b"rustup 1.28.2 (54dd3d00f 2024-04-24)\n".to_vec(),
-                Some("toolchain") => TOOLCHAIN_LIST_FIXTURE.as_bytes().to_vec(),
-                Some("check") => CHECK_FIXTURE.as_bytes().to_vec(),
+            match args.as_slice() {
+                [command] if command == "--version" => {
+                    b"rustup 1.28.2 (54dd3d00f 2024-04-24)\n".to_vec()
+                }
+                [command] if command == "show" => {
+                    b"Default host: x86_64-apple-darwin\nrustup home: /Users/dev/.rustup\n".to_vec()
+                }
+                [command, subcommand] if command == "toolchain" && subcommand == "list" => {
+                    TOOLCHAIN_LIST_FIXTURE.as_bytes().to_vec()
+                }
+                [command, subcommand, toolchain]
+                    if command == "toolchain" && subcommand == "install" =>
+                {
+                    format!("installed {toolchain}\n").into_bytes()
+                }
+                [command, subcommand, toolchain]
+                    if command == "toolchain" && subcommand == "uninstall" =>
+                {
+                    format!("uninstalled {toolchain}\n").into_bytes()
+                }
+                [command, toolchain, binary, flag]
+                    if command == "run" && binary == "rustc" && flag == "--version" =>
+                {
+                    match toolchain.as_str() {
+                        "stable-x86_64-apple-darwin" => {
+                            b"rustc 1.82.0 (abc123 2025-01-01)\n".to_vec()
+                        }
+                        "nightly-x86_64-apple-darwin" => {
+                            b"rustc 1.86.0-nightly (abc1234 2025-01-15)\n".to_vec()
+                        }
+                        "1.75.0-x86_64-apple-darwin" => {
+                            b"rustc 1.75.0 (def456 2024-01-01)\n".to_vec()
+                        }
+                        _ => Vec::new(),
+                    }
+                }
+                [command] if command == "check" => CHECK_FIXTURE.as_bytes().to_vec(),
                 _ => Vec::new(),
             }
         } else {
@@ -157,6 +190,17 @@ async fn list_installed_toolchains_through_full_orchestration_path() {
                     .all(|p| p.package.manager == ManagerId::Rustup)
             );
             assert_eq!(packages[0].package.name, "stable-x86_64-apple-darwin");
+            assert_eq!(packages[0].installed_version.as_deref(), Some("1.82.0"));
+            assert!(packages[0].runtime_state.is_active);
+            assert!(packages[0].runtime_state.is_default);
+            assert!(!packages[0].runtime_state.has_override);
+            assert_eq!(
+                packages[1].installed_version.as_deref(),
+                Some("1.86.0-nightly")
+            );
+            assert!(packages[1].runtime_state.is_empty());
+            assert_eq!(packages[2].installed_version.as_deref(), Some("1.75.0"));
+            assert!(packages[2].runtime_state.is_empty());
         }
         other => panic!("expected InstalledPackages response, got {other:?}"),
     }
@@ -188,9 +232,102 @@ async fn list_outdated_toolchains_through_full_orchestration_path() {
             assert_eq!(packages[0].package.name, "stable-x86_64-apple-darwin");
             assert_eq!(packages[0].installed_version.as_deref(), Some("1.82.0"));
             assert_eq!(packages[0].candidate_version, "1.93.0");
+            assert!(packages[0].runtime_state.is_active);
+            assert!(packages[0].runtime_state.is_default);
+            assert!(!packages[0].runtime_state.has_override);
         }
         other => panic!("expected OutdatedPackages response, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn search_toolchains_through_full_orchestration_path() {
+    let executor = Arc::new(RustupFakeExecutor::normal());
+    let runtime = build_runtime(executor);
+
+    let task_id = runtime
+        .submit(
+            ManagerId::Rustup,
+            AdapterRequest::Search(SearchRequest {
+                query: SearchQuery {
+                    text: "1.92.0".to_string(),
+                    issued_at: SystemTime::now(),
+                },
+            }),
+        )
+        .await
+        .unwrap();
+
+    let snapshot = runtime
+        .wait_for_terminal(task_id, Some(Duration::from_secs(5)))
+        .await
+        .unwrap();
+
+    assert_eq!(snapshot.runtime.status, TaskStatus::Completed);
+
+    match snapshot.terminal_state {
+        Some(AdapterTaskTerminalState::Succeeded(AdapterResponse::SearchResults(results))) => {
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].result.package.name, "1.92.0-x86_64-apple-darwin");
+        }
+        other => panic!("expected SearchResults response, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn install_toolchain_through_full_orchestration_path() {
+    let executor = Arc::new(RustupFakeExecutor::normal());
+    let runtime = build_runtime(executor);
+
+    let task_id = runtime
+        .submit(
+            ManagerId::Rustup,
+            AdapterRequest::Install(InstallRequest {
+                package: PackageRef {
+                    manager: ManagerId::Rustup,
+                    name: "stable-x86_64-apple-darwin".to_string(),
+                },
+                target_name: None,
+                version: None,
+            }),
+        )
+        .await
+        .unwrap();
+
+    let snapshot = runtime
+        .wait_for_terminal(task_id, Some(Duration::from_secs(5)))
+        .await
+        .unwrap();
+
+    assert_eq!(snapshot.runtime.status, TaskStatus::Completed);
+}
+
+#[tokio::test]
+async fn uninstall_toolchain_through_full_orchestration_path() {
+    let executor = Arc::new(RustupFakeExecutor::normal());
+    let runtime = build_runtime(executor);
+
+    let task_id = runtime
+        .submit(
+            ManagerId::Rustup,
+            AdapterRequest::Uninstall(UninstallRequest {
+                package: PackageRef {
+                    manager: ManagerId::Rustup,
+                    name: "stable-x86_64-apple-darwin".to_string(),
+                },
+                target_name: None,
+                version: None,
+            }),
+        )
+        .await
+        .unwrap();
+
+    let snapshot = runtime
+        .wait_for_terminal(task_id, Some(Duration::from_secs(5)))
+        .await
+        .unwrap();
+
+    assert_eq!(snapshot.runtime.status, TaskStatus::Completed);
 }
 
 #[tokio::test]
@@ -260,11 +397,9 @@ async fn rustup_timeout_sensitive_orchestration_soak_budget() {
         }
     }
 
-    assert!(
-        failures <= TIMEOUT_SENSITIVE_SOAK_FAILURE_BUDGET,
+    assert_eq!(
+        failures, TIMEOUT_SENSITIVE_SOAK_FAILURE_BUDGET,
         "rustup soak exceeded failure budget: failures={} budget={} iterations={}",
-        failures,
-        TIMEOUT_SENSITIVE_SOAK_FAILURE_BUDGET,
-        TIMEOUT_SENSITIVE_SOAK_ITERATIONS
+        failures, TIMEOUT_SENSITIVE_SOAK_FAILURE_BUDGET, TIMEOUT_SENSITIVE_SOAK_ITERATIONS
     );
 }

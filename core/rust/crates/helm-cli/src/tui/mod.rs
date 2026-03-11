@@ -9,7 +9,8 @@ use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
-use helm_core::persistence::{DetectionStore, TaskStore};
+use helm_core::persistence::{DetectionStore, PackageStore, PinStore, TaskStore};
+use helm_core::versioning::package_family_preference_key;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
@@ -20,11 +21,11 @@ use serde_json::json;
 
 use super::provenance::{InstallChannel, UpdatePolicy};
 use super::{
-    CachedSearchResult, CliDiagnosticsSummary, CliManagerInstallInstance, CliManagerStatus,
-    CliTaskLogRecord, CliTaskRecord, CoordinatorSubmitRequest, CoordinatorWorkflowRequest,
-    ExecutionMode, InstalledPackage, ManagerId, OutdatedPackage, PackageRef,
-    SELF_UPDATE_ALLOW_ROOT_ENV, SqliteStore, TASK_FETCH_LIMIT, TaskId,
-    acknowledge_manager_multi_instance_state, adapter_request_to_coordinator_submit,
+    CachedSearchResult, Capability, CliDiagnosticsSummary, CliManagerInstallInstance,
+    CliManagerStatus, CliTaskLogRecord, CliTaskRecord, CoordinatorSubmitRequest,
+    CoordinatorWorkflowRequest, ExecutionMode, InstalledPackage, ManagerId, OutdatedPackage,
+    PackageRef, PinKind, PinRecord, SELF_UPDATE_ALLOW_ROOT_ENV, SqliteStore, TASK_FETCH_LIMIT,
+    TaskId, acknowledge_manager_multi_instance_state, adapter_request_to_coordinator_submit,
     build_diagnostics_summary, build_manager_mutation_request,
     build_manager_uninstall_plan_with_options, build_package_uninstall_preview_for_package,
     cancel_inflight_tasks_for_manager, channel_managed_check_status,
@@ -35,12 +36,13 @@ use super::{
     list_manager_install_instances, list_managers, list_outdated_for_enabled,
     list_tasks_for_enabled, manager_enabled_map, manager_enablement_eligibility_for_store,
     manager_executable_status, manager_install_methods_status, manager_priority_entries,
-    provenance_can_self_update, provenance_recommended_action,
+    provenance_can_self_update, provenance_recommended_action, registry,
     resolve_install_method_override_for_tui, search_local_for_enabled,
     set_manager_active_install_instance, set_manager_priority_rank, task_log_to_cli_record,
     task_to_cli_task, write_setting,
 };
 use helm_core::models::HomebrewKegPolicy;
+use helm_core::models::PackageRuntimeState;
 
 const SPLASH_AUTO_DISMISS_MS: Option<u64> = Some(900);
 const DATA_REFRESH_INTERVAL_MS: u64 = 1200;
@@ -48,6 +50,31 @@ const REMOTE_SEARCH_DEBOUNCE_MS: u64 = 350;
 
 const SPLASH_LARGE: &str = include_str!("assets/splash_large.txt");
 const SPLASH_COMPACT: &str = include_str!("assets/splash_compact.txt");
+
+fn package_manager_preference_key(package_name: &str, version: Option<&str>) -> String {
+    package_family_preference_key(package_name, version)
+}
+
+fn preferred_manager_for_package(
+    package_manager_preferences: &HashMap<String, ManagerId>,
+    package_name: &str,
+    version: Option<&str>,
+) -> Option<ManagerId> {
+    let preference_key = package_manager_preference_key(package_name, version);
+    if !preference_key.is_empty()
+        && let Some(preferred) = package_manager_preferences.get(preference_key.as_str())
+    {
+        return Some(*preferred);
+    }
+
+    let fallback_key = package_family_preference_key(package_name, None);
+    if fallback_key.is_empty() || fallback_key == preference_key {
+        return None;
+    }
+    package_manager_preferences
+        .get(fallback_key.as_str())
+        .copied()
+}
 
 fn mise_uninstall_options_label(
     options: &helm_core::manager_lifecycle::ManagerUninstallOptions,
@@ -196,19 +223,23 @@ enum ConfirmAction {
     InstallPackage {
         manager: ManagerId,
         package_name: String,
+        package_version: Option<String>,
     },
     UpgradePackage {
         manager: ManagerId,
         package_name: String,
+        package_version: Option<String>,
     },
     UninstallPackage {
         manager: ManagerId,
         package_name: String,
+        package_version: Option<String>,
         uninstall_preview_summary: Option<String>,
     },
     TogglePin {
         manager: ManagerId,
         package_name: String,
+        version: Option<String>,
         pinned: bool,
     },
     SetPackageKegPolicy {
@@ -237,6 +268,11 @@ enum ConfirmAction {
     SelfUpdate {
         force: bool,
     },
+    RustupToolchainMutation {
+        request: CoordinatorSubmitRequest,
+        prompt: String,
+        success_message: String,
+    },
 }
 
 impl ConfirmAction {
@@ -245,25 +281,32 @@ impl ConfirmAction {
             Self::InstallPackage {
                 manager,
                 package_name,
+                package_version,
             } => format!(
                 "Install '{}@{}'? [Enter confirm / Esc cancel]",
-                package_name,
+                render_package_target(package_name, package_version.as_deref()),
                 manager.as_str()
             ),
             Self::UpgradePackage {
                 manager,
                 package_name,
+                package_version,
             } => format!(
                 "Upgrade '{}@{}'? [Enter confirm / Esc cancel]",
-                package_name,
+                render_package_target(package_name, package_version.as_deref()),
                 manager.as_str()
             ),
             Self::UninstallPackage {
                 manager,
                 package_name,
+                package_version,
                 uninstall_preview_summary,
             } => {
-                let mut prompt = format!("Uninstall '{}@{}'?", package_name, manager.as_str());
+                let mut prompt = format!(
+                    "Uninstall '{}@{}'?",
+                    render_package_target(package_name, package_version.as_deref()),
+                    manager.as_str()
+                );
                 if let Some(summary) = uninstall_preview_summary.as_deref() {
                     prompt.push(' ');
                     prompt.push_str(summary);
@@ -274,13 +317,18 @@ impl ConfirmAction {
             Self::TogglePin {
                 manager,
                 package_name,
+                version,
                 pinned,
             } => {
                 let action = if *pinned { "Unpin" } else { "Pin" };
+                let package_target = version
+                    .as_deref()
+                    .map(|value| format!("{package_name}@{value}"))
+                    .unwrap_or_else(|| package_name.clone());
                 format!(
                     "{} '{}@{}'? [Enter confirm / Esc cancel]",
                     action,
-                    package_name,
+                    package_target,
                     manager.as_str()
                 )
             }
@@ -361,6 +409,7 @@ impl ConfirmAction {
                     "Apply Helm CLI self-update now? [Enter confirm / Esc cancel]".to_string()
                 }
             }
+            Self::RustupToolchainMutation { prompt, .. } => prompt.clone(),
         }
     }
 }
@@ -376,11 +425,33 @@ struct PackageRow {
     kind: PackageRowKind,
     manager: ManagerId,
     package_name: String,
+    action_package_name: String,
+    action_package_version: Option<String>,
     installed_version: Option<String>,
     candidate_version: Option<String>,
     pinned: bool,
     summary: Option<String>,
     homebrew_keg_policy: Option<String>,
+    preferred_manager: Option<ManagerId>,
+    runtime_state: PackageRuntimeState,
+}
+
+fn render_package_runtime_state(state: &PackageRuntimeState) -> String {
+    let mut parts = Vec::new();
+    if state.is_active {
+        parts.push("active");
+    }
+    if state.is_default {
+        parts.push("default");
+    }
+    if state.has_override {
+        parts.push("override");
+    }
+    if parts.is_empty() {
+        "-".to_string()
+    } else {
+        parts.join(", ")
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -522,6 +593,10 @@ struct AppState {
     selected_manager_install_methods: Vec<String>,
     selected_manager_install_instances: Vec<CliManagerInstallInstance>,
     selected_manager_priority_label: Option<String>,
+    selected_rustup_toolchain_key: Option<String>,
+    selected_rustup_toolchain_detail: Option<helm_core::adapters::rustup::RustupToolchainDetail>,
+    rustup_component_cursor: usize,
+    rustup_target_cursor: usize,
     task_logs: Vec<CliTaskLogRecord>,
     pending_remote_search_query: Option<String>,
     pending_remote_search_at: Option<Instant>,
@@ -593,6 +668,10 @@ impl AppState {
             selected_manager_install_methods: Vec::new(),
             selected_manager_install_instances: Vec::new(),
             selected_manager_priority_label: None,
+            selected_rustup_toolchain_key: None,
+            selected_rustup_toolchain_detail: None,
+            rustup_component_cursor: 0,
+            rustup_target_cursor: 0,
             task_logs: Vec::new(),
             pending_remote_search_query: None,
             pending_remote_search_at: None,
@@ -653,6 +732,7 @@ impl AppState {
             build_package_rows(store, &self.packages, &self.package_search_results)?;
         self.tasks = list_tasks_for_enabled(store, &enabled_map)?;
         self.managers = list_managers(store)?;
+        self.refresh_selected_rustup_toolchain_detail(false);
         if let Some(scope) = self.updates_manager_scope {
             let has_scope = self
                 .managers
@@ -972,6 +1052,26 @@ impl AppState {
         self.package_rows.get(*selected)
     }
 
+    fn selected_rustup_component(
+        &self,
+    ) -> Option<&helm_core::adapters::rustup::RustupToolchainDetailEntry> {
+        let detail = self.selected_rustup_toolchain_detail.as_ref()?;
+        let index = self
+            .rustup_component_cursor
+            .min(detail.components.len().saturating_sub(1));
+        detail.components.get(index)
+    }
+
+    fn selected_rustup_target(
+        &self,
+    ) -> Option<&helm_core::adapters::rustup::RustupToolchainDetailEntry> {
+        let detail = self.selected_rustup_toolchain_detail.as_ref()?;
+        let index = self
+            .rustup_target_cursor
+            .min(detail.targets.len().saturating_sub(1));
+        detail.targets.get(index)
+    }
+
     fn selected_task(&self) -> Option<&CliTaskRecord> {
         let indices = self.visible_task_indices();
         let selected = indices.get(self.tasks_cursor.min(indices.len().saturating_sub(1)))?;
@@ -1000,6 +1100,68 @@ impl AppState {
         self.managers_cursor =
             clamp_cursor(self.managers_cursor, self.visible_manager_indices().len());
         self.settings_cursor = clamp_cursor(self.settings_cursor, self.settings_entries().len());
+    }
+
+    fn refresh_selected_rustup_toolchain_detail(&mut self, force: bool) {
+        let (toolchain, detail_key) = match self.selected_package() {
+            Some(package)
+                if package.manager == ManagerId::Rustup
+                    && package.kind != PackageRowKind::Available =>
+            {
+                let toolchain = package.package_name.clone();
+                let key = format!("rustup|{}", toolchain.to_lowercase());
+                (toolchain, key)
+            }
+            _ => {
+                self.selected_rustup_toolchain_key = None;
+                self.selected_rustup_toolchain_detail = None;
+                self.rustup_component_cursor = 0;
+                self.rustup_target_cursor = 0;
+                return;
+            }
+        };
+
+        if !force
+            && self.selected_rustup_toolchain_key.as_deref() == Some(detail_key.as_str())
+            && self.selected_rustup_toolchain_detail.is_some()
+        {
+            return;
+        }
+
+        self.selected_rustup_toolchain_detail =
+            super::load_rustup_toolchain_detail_for_cli(toolchain.as_str(), "tui rustup detail");
+        self.selected_rustup_toolchain_key = Some(detail_key);
+
+        let component_len = self
+            .selected_rustup_toolchain_detail
+            .as_ref()
+            .map(|detail| detail.components.len())
+            .unwrap_or(0);
+        let target_len = self
+            .selected_rustup_toolchain_detail
+            .as_ref()
+            .map(|detail| detail.targets.len())
+            .unwrap_or(0);
+        self.rustup_component_cursor = clamp_cursor(self.rustup_component_cursor, component_len);
+        self.rustup_target_cursor = clamp_cursor(self.rustup_target_cursor, target_len);
+    }
+
+    fn move_rustup_component_cursor(&mut self, delta: i32) {
+        let len = self
+            .selected_rustup_toolchain_detail
+            .as_ref()
+            .map(|detail| detail.components.len())
+            .unwrap_or(0);
+        self.rustup_component_cursor = wrap_cursor(self.rustup_component_cursor, len, delta);
+    }
+
+    fn move_rustup_target_cursor(&mut self, delta: i32) {
+        let len = self
+            .selected_rustup_toolchain_detail
+            .as_ref()
+            .map(|detail| detail.targets.len())
+            .unwrap_or(0);
+        self.rustup_target_cursor = wrap_cursor(self.rustup_target_cursor, len, delta);
     }
 
     fn list_len_for_section(&self, section: Section) -> usize {
@@ -1218,6 +1380,18 @@ pub(crate) fn run(store: Arc<SqliteStore>, no_color: bool, _quiet: bool) -> Resu
     Ok(())
 }
 
+fn refresh_selected_section_context(app: &mut AppState, store: &SqliteStore) {
+    if app.section == Section::Tasks {
+        let _ = app.refresh_task_logs(store);
+    }
+    if app.section == Section::Managers {
+        let _ = app.refresh_selected_manager_controls(store);
+    }
+    if app.section == Section::Packages {
+        app.refresh_selected_rustup_toolchain_detail(false);
+    }
+}
+
 fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> Result<(), String> {
     if app.show_help {
         if matches!(
@@ -1252,6 +1426,8 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
         match key.code {
             KeyCode::Esc => app.confirm_action = None,
             KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
+                let should_force_rustup_detail_refresh =
+                    matches!(action, ConfirmAction::RustupToolchainMutation { .. });
                 app.confirm_action = None;
                 match execute_confirmed_action(store, action) {
                     Ok(message) => {
@@ -1263,6 +1439,9 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                     Err(error) => app.note_error(error),
                 }
                 app.reload(store)?;
+                if should_force_rustup_detail_refresh {
+                    app.refresh_selected_rustup_toolchain_detail(true);
+                }
             }
             KeyCode::Char('n') | KeyCode::Char('N') => app.confirm_action = None,
             _ => {}
@@ -1304,12 +1483,7 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
         KeyCode::Tab => {
             let next = (app.section.index() + 1) % Section::ALL.len();
             app.switch_section(Section::ALL[next]);
-            if app.section == Section::Tasks {
-                let _ = app.refresh_task_logs(store);
-            }
-            if app.section == Section::Managers {
-                let _ = app.refresh_selected_manager_controls(store);
-            }
+            refresh_selected_section_context(app, store);
         }
         KeyCode::BackTab => {
             let current = app.section.index();
@@ -1319,18 +1493,16 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                 current - 1
             };
             app.switch_section(Section::ALL[previous]);
-            if app.section == Section::Tasks {
-                let _ = app.refresh_task_logs(store);
-            }
-            if app.section == Section::Managers {
-                let _ = app.refresh_selected_manager_controls(store);
-            }
+            refresh_selected_section_context(app, store);
         }
         KeyCode::Char('/') => {
             app.input_mode = InputMode::Search;
         }
         KeyCode::Char('1') => app.switch_section(Section::Updates),
-        KeyCode::Char('2') => app.switch_section(Section::Packages),
+        KeyCode::Char('2') => {
+            app.switch_section(Section::Packages);
+            refresh_selected_section_context(app, store);
+        }
         KeyCode::Char('3') => {
             app.switch_section(Section::Tasks);
             let _ = app.refresh_task_logs(store);
@@ -1343,75 +1515,88 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
         KeyCode::Char('6') => app.switch_section(Section::Diagnostics),
         KeyCode::Down | KeyCode::Char('j') => {
             app.move_cursor(1);
-            if app.section == Section::Tasks {
-                let _ = app.refresh_task_logs(store);
-            }
-            if app.section == Section::Managers {
-                let _ = app.refresh_selected_manager_controls(store);
-            }
+            refresh_selected_section_context(app, store);
         }
         KeyCode::Up | KeyCode::Char('k') => {
             app.move_cursor(-1);
-            if app.section == Section::Tasks {
-                let _ = app.refresh_task_logs(store);
-            }
-            if app.section == Section::Managers {
-                let _ = app.refresh_selected_manager_controls(store);
-            }
+            refresh_selected_section_context(app, store);
         }
         KeyCode::PageDown => {
             app.move_cursor(10);
-            if app.section == Section::Tasks {
-                let _ = app.refresh_task_logs(store);
-            }
-            if app.section == Section::Managers {
-                let _ = app.refresh_selected_manager_controls(store);
-            }
+            refresh_selected_section_context(app, store);
         }
         KeyCode::PageUp => {
             app.move_cursor(-10);
-            if app.section == Section::Tasks {
-                let _ = app.refresh_task_logs(store);
-            }
-            if app.section == Section::Managers {
-                let _ = app.refresh_selected_manager_controls(store);
-            }
+            refresh_selected_section_context(app, store);
         }
         KeyCode::Char('g') => {
-            app.move_cursor(-(usize::MAX as i32 / 2));
-            if app.section == Section::Tasks {
-                let _ = app.refresh_task_logs(store);
-            }
-            if app.section == Section::Managers {
-                let _ = app.refresh_selected_manager_controls(store);
+            if app.section == Section::Packages
+                && let Some(package) = app.selected_package()
+            {
+                let preference_key = package_manager_preference_key(
+                    package.package_name.as_str(),
+                    package
+                        .installed_version
+                        .as_deref()
+                        .or(package.candidate_version.as_deref()),
+                );
+                match store
+                    .set_package_manager_preference(preference_key.as_str(), Some(package.manager))
+                {
+                    Ok(()) => {
+                        app.note_success(format!(
+                            "Preferred manager for '{}' set to {}.",
+                            package.package_name,
+                            package.manager.as_str()
+                        ));
+                        app.reload(store)?;
+                    }
+                    Err(error) => app.note_error(format!(
+                        "failed to set preferred manager for '{}': {}",
+                        package.package_name, error
+                    )),
+                }
+            } else {
+                app.move_cursor(-(usize::MAX as i32 / 2));
+                refresh_selected_section_context(app, store);
             }
         }
         KeyCode::Char('G') => {
-            app.move_cursor(i32::MAX / 2);
-            if app.section == Section::Tasks {
-                let _ = app.refresh_task_logs(store);
-            }
-            if app.section == Section::Managers {
-                let _ = app.refresh_selected_manager_controls(store);
+            if app.section == Section::Packages
+                && let Some(package) = app.selected_package()
+            {
+                let preference_key = package_manager_preference_key(
+                    package.package_name.as_str(),
+                    package
+                        .installed_version
+                        .as_deref()
+                        .or(package.candidate_version.as_deref()),
+                );
+                match store.set_package_manager_preference(preference_key.as_str(), None) {
+                    Ok(()) => {
+                        app.note_success(format!(
+                            "Preferred manager for '{}' cleared.",
+                            package.package_name
+                        ));
+                        app.reload(store)?;
+                    }
+                    Err(error) => app.note_error(format!(
+                        "failed to clear preferred manager for '{}': {}",
+                        package.package_name, error
+                    )),
+                }
+            } else {
+                app.move_cursor(i32::MAX / 2);
+                refresh_selected_section_context(app, store);
             }
         }
         KeyCode::Home => {
             app.move_cursor(-(usize::MAX as i32 / 2));
-            if app.section == Section::Tasks {
-                let _ = app.refresh_task_logs(store);
-            }
-            if app.section == Section::Managers {
-                let _ = app.refresh_selected_manager_controls(store);
-            }
+            refresh_selected_section_context(app, store);
         }
         KeyCode::End => {
             app.move_cursor(i32::MAX / 2);
-            if app.section == Section::Tasks {
-                let _ = app.refresh_task_logs(store);
-            }
-            if app.section == Section::Managers {
-                let _ = app.refresh_selected_manager_controls(store);
-            }
+            refresh_selected_section_context(app, store);
         }
         KeyCode::Char('r') => {
             match coordinator_start_workflow(
@@ -1452,7 +1637,15 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                 if let Some(update) = app.selected_update() {
                     app.confirm_action = Some(ConfirmAction::UpgradePackage {
                         manager: update.package.manager,
-                        package_name: update.package.name.clone(),
+                        package_name: package_row_action_package_name(
+                            update.package.manager,
+                            update.package.name.as_str(),
+                            update.installed_version.as_deref(),
+                        ),
+                        package_version: package_row_action_version(
+                            update.package.manager,
+                            update.installed_version.as_deref(),
+                        ),
                     });
                 }
             }
@@ -1462,7 +1655,8 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                 {
                     app.confirm_action = Some(ConfirmAction::UpgradePackage {
                         manager: package.manager,
-                        package_name: package.package_name.clone(),
+                        package_name: package.action_package_name.clone(),
+                        package_version: package.action_package_version.clone(),
                     });
                 }
             }
@@ -1493,7 +1687,8 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                     match prepare_package_uninstall_confirm_action(
                         store,
                         package.manager,
-                        package.package_name.clone(),
+                        package.action_package_name.clone(),
+                        package.action_package_version.clone(),
                     ) {
                         Ok(action) => app.confirm_action = Some(action),
                         Err(error) => app.note_error(error),
@@ -1593,6 +1788,7 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                 app.confirm_action = Some(ConfirmAction::TogglePin {
                     manager: package.manager,
                     package_name: package.package_name.clone(),
+                    version: package.installed_version.clone(),
                     pinned: package.pinned,
                 });
             }
@@ -1602,6 +1798,133 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                 && let Some(task) = app.selected_task()
             {
                 app.confirm_action = Some(ConfirmAction::CancelTask { task_id: task.id });
+            } else if app.section == Section::Packages
+                && let Some(package) = app.selected_package()
+                && package.manager == ManagerId::Rustup
+                && package.kind != PackageRowKind::Available
+            {
+                app.move_rustup_component_cursor(1);
+            }
+        }
+        KeyCode::Char('C') => {
+            if app.section == Section::Packages
+                && let Some(package) = app.selected_package()
+                && package.manager == ManagerId::Rustup
+                && package.kind != PackageRowKind::Available
+            {
+                app.move_rustup_component_cursor(-1);
+            }
+        }
+        KeyCode::Char('t') => {
+            if app.section == Section::Packages
+                && let Some(package) = app.selected_package()
+                && package.manager == ManagerId::Rustup
+                && package.kind != PackageRowKind::Available
+            {
+                app.move_rustup_target_cursor(1);
+            }
+        }
+        KeyCode::Char('T') => {
+            if app.section == Section::Packages
+                && let Some(package) = app.selected_package()
+                && package.manager == ManagerId::Rustup
+                && package.kind != PackageRowKind::Available
+            {
+                app.move_rustup_target_cursor(-1);
+            }
+        }
+        KeyCode::Char('b') => {
+            if app.section == Section::Packages
+                && let Some(package) = app.selected_package()
+                && package.manager == ManagerId::Rustup
+                && package.kind != PackageRowKind::Available
+                && let Some(component) = app.selected_rustup_component()
+            {
+                let toolchain = package.package_name.clone();
+                let component_name = component.name.clone();
+                let (request, prompt, success_message) = if component.installed {
+                    (
+                        CoordinatorSubmitRequest::RustupRemoveComponent {
+                            toolchain: toolchain.clone(),
+                            component: component_name.clone(),
+                        },
+                        format!(
+                            "Remove rustup component '{}' from '{}' ? [Enter confirm / Esc cancel]",
+                            component_name, toolchain
+                        ),
+                        format!(
+                            "Rustup component '{}' removal requested for '{}'",
+                            component_name, toolchain
+                        ),
+                    )
+                } else {
+                    (
+                        CoordinatorSubmitRequest::RustupAddComponent {
+                            toolchain: toolchain.clone(),
+                            component: component_name.clone(),
+                        },
+                        format!(
+                            "Add rustup component '{}' to '{}' ? [Enter confirm / Esc cancel]",
+                            component_name, toolchain
+                        ),
+                        format!(
+                            "Rustup component '{}' add requested for '{}'",
+                            component_name, toolchain
+                        ),
+                    )
+                };
+                app.confirm_action = Some(ConfirmAction::RustupToolchainMutation {
+                    request,
+                    prompt,
+                    success_message,
+                });
+            }
+        }
+        KeyCode::Char('B') => {
+            if app.section == Section::Packages
+                && let Some(package) = app.selected_package()
+                && package.manager == ManagerId::Rustup
+                && package.kind != PackageRowKind::Available
+                && let Some(target) = app.selected_rustup_target()
+            {
+                let toolchain = package.package_name.clone();
+                let target_name = target.name.clone();
+                let (request, prompt, success_message) = if target.installed {
+                    (
+                        CoordinatorSubmitRequest::RustupRemoveTarget {
+                            toolchain: toolchain.clone(),
+                            target: target_name.clone(),
+                        },
+                        format!(
+                            "Remove rustup target '{}' from '{}' ? [Enter confirm / Esc cancel]",
+                            target_name, toolchain
+                        ),
+                        format!(
+                            "Rustup target '{}' removal requested for '{}'",
+                            target_name, toolchain
+                        ),
+                    )
+                } else {
+                    (
+                        CoordinatorSubmitRequest::RustupAddTarget {
+                            toolchain: toolchain.clone(),
+                            target: target_name.clone(),
+                        },
+                        format!(
+                            "Add rustup target '{}' to '{}' ? [Enter confirm / Esc cancel]",
+                            target_name, toolchain
+                        ),
+                        format!(
+                            "Rustup target '{}' add requested for '{}'",
+                            target_name, toolchain
+                        ),
+                    )
+                };
+                app.confirm_action = Some(ConfirmAction::RustupToolchainMutation {
+                    request,
+                    prompt,
+                    success_message,
+                });
             }
         }
         KeyCode::Char('e') => match app.section {
@@ -1641,7 +1964,8 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
             {
                 app.confirm_action = Some(ConfirmAction::InstallPackage {
                     manager: package.manager,
-                    package_name: package.package_name.clone(),
+                    package_name: package.action_package_name.clone(),
+                    package_version: package.action_package_version.clone(),
                 });
             } else if app.section == Section::Managers
                 && let Some(manager) = app.selected_manager()
@@ -1859,6 +2183,141 @@ fn handle_key_event(app: &mut AppState, store: &SqliteStore, key: KeyEvent) -> R
                 ));
             }
         }
+        KeyCode::Char('s') => {
+            if app.section == Section::Packages
+                && let Some(package) = app.selected_package()
+                && package.manager == ManagerId::Rustup
+                && package.kind != PackageRowKind::Available
+                && !package.runtime_state.is_default
+            {
+                let toolchain = package.package_name.clone();
+                app.confirm_action = Some(ConfirmAction::RustupToolchainMutation {
+                    request: CoordinatorSubmitRequest::RustupSetDefaultToolchain {
+                        toolchain: toolchain.clone(),
+                    },
+                    prompt: format!(
+                        "Set '{}' as the rustup default toolchain? [Enter confirm / Esc cancel]",
+                        toolchain
+                    ),
+                    success_message: format!(
+                        "Rustup default toolchain change requested for '{}'",
+                        toolchain
+                    ),
+                });
+            }
+        }
+        KeyCode::Char('w') => {
+            if app.section == Section::Packages
+                && let Some(package) = app.selected_package()
+                && package.manager == ManagerId::Rustup
+                && package.kind != PackageRowKind::Available
+            {
+                match std::env::current_dir() {
+                    Ok(path) => {
+                        let rendered_path = path.to_string_lossy().to_string();
+                        let toolchain = package.package_name.clone();
+                        app.confirm_action = Some(ConfirmAction::RustupToolchainMutation {
+                            request: CoordinatorSubmitRequest::RustupSetOverride {
+                                toolchain: toolchain.clone(),
+                                path: rendered_path.clone(),
+                            },
+                            prompt: format!(
+                                "Set rustup override at '{}' to '{}' ? [Enter confirm / Esc cancel]",
+                                rendered_path, toolchain
+                            ),
+                            success_message: format!(
+                                "Rustup override set requested for '{}' at '{}'",
+                                toolchain, rendered_path
+                            ),
+                        });
+                    }
+                    Err(error) => app.note_error(format!(
+                        "failed to resolve current working directory: {}",
+                        error
+                    )),
+                }
+            }
+        }
+        KeyCode::Char('W') => {
+            if app.section == Section::Packages
+                && let Some(package) = app.selected_package()
+                && package.manager == ManagerId::Rustup
+                && package.kind != PackageRowKind::Available
+            {
+                match std::env::current_dir() {
+                    Ok(path) => {
+                        let rendered_path = path.to_string_lossy().to_string();
+                        let has_override = app
+                            .selected_rustup_toolchain_detail
+                            .as_ref()
+                            .is_some_and(|detail| {
+                                detail
+                                    .override_paths
+                                    .iter()
+                                    .any(|entry| entry == &rendered_path)
+                            });
+                        if has_override {
+                            let toolchain = package.package_name.clone();
+                            app.confirm_action = Some(ConfirmAction::RustupToolchainMutation {
+                                request: CoordinatorSubmitRequest::RustupUnsetOverride {
+                                    toolchain: toolchain.clone(),
+                                    path: rendered_path.clone(),
+                                },
+                                prompt: format!(
+                                    "Clear rustup override at '{}' for '{}' ? [Enter confirm / Esc cancel]",
+                                    rendered_path, toolchain
+                                ),
+                                success_message: format!(
+                                    "Rustup override clear requested for '{}' at '{}'",
+                                    toolchain, rendered_path
+                                ),
+                            });
+                        } else {
+                            app.note_error(format!(
+                                "no rustup override for the current directory ('{}')",
+                                rendered_path
+                            ));
+                        }
+                    }
+                    Err(error) => app.note_error(format!(
+                        "failed to resolve current working directory: {}",
+                        error
+                    )),
+                }
+            }
+        }
+        KeyCode::Char('P') => {
+            if app.section == Section::Packages
+                && let Some(package) = app.selected_package()
+                && package.manager == ManagerId::Rustup
+                && package.kind != PackageRowKind::Available
+            {
+                let current_profile = app
+                    .selected_rustup_toolchain_detail
+                    .as_ref()
+                    .and_then(|detail| detail.current_profile.clone())
+                    .unwrap_or_else(|| "default".to_string());
+                let profiles = ["minimal", "default", "complete"];
+                let current_index = profiles
+                    .iter()
+                    .position(|candidate| candidate.eq_ignore_ascii_case(current_profile.as_str()))
+                    .unwrap_or(1);
+                let next_profile = profiles[(current_index + 1) % profiles.len()].to_string();
+                app.confirm_action = Some(ConfirmAction::RustupToolchainMutation {
+                    request: CoordinatorSubmitRequest::RustupSetProfile {
+                        profile: next_profile.clone(),
+                    },
+                    prompt: format!(
+                        "Set rustup profile to '{}' ? [Enter confirm / Esc cancel]",
+                        next_profile
+                    ),
+                    success_message: format!(
+                        "Rustup profile change requested to '{}'",
+                        next_profile
+                    ),
+                });
+            }
+        }
         KeyCode::Char('E') => {
             if app.section == Section::Diagnostics {
                 match export_diagnostics_snapshot(store) {
@@ -1948,19 +2407,21 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
         ConfirmAction::InstallPackage {
             manager,
             package_name,
+            package_version,
         } => {
             let response = coordinator_submit_request(
                 store,
                 manager,
                 CoordinatorSubmitRequest::Install {
                     package_name: package_name.clone(),
-                    version: None,
+                    target_name: None,
+                    version: package_version.clone(),
                 },
                 ExecutionMode::Wait,
             )?;
             Ok(format!(
                 "Install requested for '{}@{}' (task #{}).",
-                package_name,
+                render_package_target(package_name.as_str(), package_version.as_deref()),
                 manager.as_str(),
                 response.task_id.unwrap_or(0)
             ))
@@ -1968,18 +2429,21 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
         ConfirmAction::UpgradePackage {
             manager,
             package_name,
+            package_version,
         } => {
             let response = coordinator_submit_request(
                 store,
                 manager,
                 CoordinatorSubmitRequest::Upgrade {
                     package_name: Some(package_name.clone()),
+                    target_name: None,
+                    version: package_version.clone(),
                 },
                 ExecutionMode::Wait,
             )?;
             Ok(format!(
                 "Upgrade requested for '{}@{}' (task #{}).",
-                package_name,
+                render_package_target(package_name.as_str(), package_version.as_deref()),
                 manager.as_str(),
                 response.task_id.unwrap_or(0)
             ))
@@ -1987,6 +2451,7 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
         ConfirmAction::UninstallPackage {
             manager,
             package_name,
+            package_version,
             uninstall_preview_summary: _,
         } => {
             let response = coordinator_submit_request(
@@ -1994,12 +2459,14 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
                 manager,
                 CoordinatorSubmitRequest::Uninstall {
                     package_name: package_name.clone(),
+                    target_name: None,
+                    version: package_version.clone(),
                 },
                 ExecutionMode::Wait,
             )?;
             Ok(format!(
                 "Uninstall requested for '{}@{}' (task #{}).",
-                package_name,
+                render_package_target(package_name.as_str(), package_version.as_deref()),
                 manager.as_str(),
                 response.task_id.unwrap_or(0)
             ))
@@ -2007,36 +2474,92 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
         ConfirmAction::TogglePin {
             manager,
             package_name,
+            version,
             pinned,
         } => {
-            let response = if pinned {
-                coordinator_submit_request(
-                    store,
-                    manager,
-                    CoordinatorSubmitRequest::Unpin {
-                        package_name: package_name.clone(),
-                    },
-                    ExecutionMode::Wait,
-                )?
-            } else {
-                coordinator_submit_request(
+            let supports_native_pin = registry::manager(manager)
+                .map(|descriptor| descriptor.capabilities.contains(&Capability::Pin))
+                .unwrap_or(false);
+            let supports_native_unpin = registry::manager(manager)
+                .map(|descriptor| descriptor.capabilities.contains(&Capability::Unpin))
+                .unwrap_or(false);
+
+            if pinned {
+                if supports_native_unpin {
+                    let response = coordinator_submit_request(
+                        store,
+                        manager,
+                        CoordinatorSubmitRequest::Unpin {
+                            package_name: package_name.clone(),
+                            version: version.clone(),
+                        },
+                        ExecutionMode::Wait,
+                    )?;
+                    Ok(format!(
+                        "Unpin requested for '{}@{}' (task #{}).",
+                        package_name,
+                        manager.as_str(),
+                        response.task_id.unwrap_or(0)
+                    ))
+                } else {
+                    let package = PackageRef {
+                        manager,
+                        name: package_name.clone(),
+                    };
+                    store
+                        .remove_pin(&package, version.as_deref())
+                        .map_err(|error| format!("failed to remove pin record: {error}"))?;
+                    store
+                        .set_snapshot_pinned(&package, version.as_deref(), false)
+                        .map_err(|error| {
+                            format!("failed to unmark package pinned in snapshot: {error}")
+                        })?;
+                    Ok(format!(
+                        "Virtual unpin applied for '{}@{}'.",
+                        package_name,
+                        manager.as_str()
+                    ))
+                }
+            } else if supports_native_pin {
+                let response = coordinator_submit_request(
                     store,
                     manager,
                     CoordinatorSubmitRequest::Pin {
                         package_name: package_name.clone(),
-                        version: None,
+                        version: version.clone(),
                     },
                     ExecutionMode::Wait,
-                )?
-            };
-            let action_name = if pinned { "Unpin" } else { "Pin" };
-            Ok(format!(
-                "{} requested for '{}@{}' (task #{}).",
-                action_name,
-                package_name,
-                manager.as_str(),
-                response.task_id.unwrap_or(0)
-            ))
+                )?;
+                Ok(format!(
+                    "Pin requested for '{}@{}' (task #{}).",
+                    package_name,
+                    manager.as_str(),
+                    response.task_id.unwrap_or(0)
+                ))
+            } else {
+                let package = PackageRef {
+                    manager,
+                    name: package_name.clone(),
+                };
+                store
+                    .upsert_pin(&PinRecord {
+                        package: package.clone(),
+                        kind: PinKind::Virtual,
+                        pinned_version: version.clone(),
+                        created_at: SystemTime::now(),
+                    })
+                    .map_err(|error| format!("failed to persist pin record: {error}"))?;
+                store
+                    .set_snapshot_pinned(&package, version.as_deref(), true)
+                    .map_err(|error| {
+                        format!("failed to mark package pinned in snapshot: {error}")
+                    })?;
+                Ok(format!(
+                    "Virtual pin applied for '{}@{}'.",
+                    package_name,
+                    manager.as_str()
+                ))
+            }
         }
         ConfirmAction::SetPackageKegPolicy {
             package_name,
@@ -2183,6 +2706,19 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
                 .map(|job| format!("Upgrade workflow submitted (job {}).", job))
                 .unwrap_or_else(|| "Upgrade workflow submitted.".to_string()))
         }
+        ConfirmAction::RustupToolchainMutation {
+            request,
+            success_message,
+            ..
+        } => {
+            let response =
+                coordinator_submit_request(store, ManagerId::Rustup, request, ExecutionMode::Wait)?;
+            Ok(format!(
+                "{} (task #{}).",
+                success_message,
+                response.task_id.unwrap_or(0)
+            ))
+        }
         ConfirmAction::SelfUpdate { force } => apply_self_update(force),
     }
 }
@@ -2223,12 +2759,14 @@ fn prepare_package_uninstall_confirm_action(
     store: &SqliteStore,
     manager: ManagerId,
     package_name: String,
+    package_version: Option<String>,
 ) -> Result<ConfirmAction, String> {
     let package = PackageRef {
         manager,
         name: package_name.clone(),
     };
-    let preview = build_package_uninstall_preview_for_package(store, &package)?;
+    let preview =
+        build_package_uninstall_preview_for_package(store, &package, package_version.as_deref())?;
 
     if preview.manager_automation_level.as_deref() == Some("read_only") {
         return Err(format!(
@@ -2247,6 +2785,7 @@ fn prepare_package_uninstall_confirm_action(
     Ok(ConfirmAction::UninstallPackage {
         manager,
         package_name,
+        package_version,
         uninstall_preview_summary: Some(summary),
     })
 }
@@ -2814,20 +3353,34 @@ fn render_list_pane(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState) 
                 .map(|row| match row.kind {
                     PackageRowKind::Installed => {
                         let pinned = if row.pinned { " [pinned]" } else { "" };
+                        let preferred = if row.preferred_manager == Some(row.manager) {
+                            " [preferred]"
+                        } else {
+                            ""
+                        };
                         ListItem::new(format!(
-                            "{}@{}  {}{}",
+                            "{}@{}  {}{}{}",
                             row.package_name,
                             row.manager.as_str(),
                             row.installed_version.as_deref().unwrap_or("-"),
-                            pinned
+                            pinned,
+                            preferred
                         ))
                     }
-                    PackageRowKind::Available => ListItem::new(format!(
-                        "{}@{}  available {}",
-                        row.package_name,
-                        row.manager.as_str(),
-                        row.candidate_version.as_deref().unwrap_or("-")
-                    )),
+                    PackageRowKind::Available => {
+                        let preferred = if row.preferred_manager == Some(row.manager) {
+                            " [preferred]"
+                        } else {
+                            ""
+                        };
+                        ListItem::new(format!(
+                            "{}@{}  available {}{}",
+                            row.package_name,
+                            row.manager.as_str(),
+                            row.candidate_version.as_deref().unwrap_or("-"),
+                            preferred
+                        ))
+                    }
                 })
                 .collect::<Vec<_>>();
             render_list(
@@ -3010,8 +3563,72 @@ fn render_detail_pane(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState
                     package.candidate_version.as_deref().unwrap_or("-")
                 )));
                 lines.push(Line::from(format!("Pinned: {}", package.pinned)));
+                if !package.runtime_state.is_empty() {
+                    lines.push(Line::from(format!(
+                        "Runtime state: {}",
+                        render_package_runtime_state(&package.runtime_state)
+                    )));
+                }
                 if let Some(summary) = package.summary.as_deref() {
                     lines.push(Line::from(format!("Summary: {}", summary)));
+                }
+                if package.manager == ManagerId::Rustup
+                    && let Some(detail) = app.selected_rustup_toolchain_detail.as_ref()
+                {
+                    lines.push(Line::from(format!(
+                        "Rustup profile: {}",
+                        detail.current_profile.as_deref().unwrap_or("-")
+                    )));
+                    lines.push(Line::from(format!(
+                        "Rustup overrides: {}",
+                        if detail.override_paths.is_empty() {
+                            "none".to_string()
+                        } else {
+                            detail.override_paths.join(", ")
+                        }
+                    )));
+                    let installed_components = detail
+                        .components
+                        .iter()
+                        .filter(|entry| entry.installed)
+                        .count();
+                    let installed_targets = detail
+                        .targets
+                        .iter()
+                        .filter(|entry| entry.installed)
+                        .count();
+                    lines.push(Line::from(format!(
+                        "Components: {} installed of {} available",
+                        installed_components,
+                        detail.components.len()
+                    )));
+                    if let Some(component) = app.selected_rustup_component() {
+                        lines.push(Line::from(format!(
+                            "Selected component: {} [{}]",
+                            component.name,
+                            if component.installed {
+                                "installed"
+                            } else {
+                                "available"
+                            }
+                        )));
+                    }
+                    lines.push(Line::from(format!(
+                        "Targets: {} installed of {} available",
+                        installed_targets,
+                        detail.targets.len()
+                    )));
+                    if let Some(target) = app.selected_rustup_target() {
+                        lines.push(Line::from(format!(
+                            "Selected target: {} [{}]",
+                            target.name,
+                            if target.installed {
+                                "installed"
+                            } else {
+                                "available"
+                            }
+                        )));
+                    }
                 }
                 lines.push(Line::from(format!(
                     "State: {}",
@@ -3020,6 +3637,16 @@ fn render_detail_pane(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState
                         PackageRowKind::Available => "available",
                     }
                 )));
+                if let Some(preferred_manager) = package.preferred_manager {
+                    lines.push(Line::from(format!(
+                        "Preferred manager: {}",
+                        preferred_manager.as_str()
+                    )));
+                    lines.push(Line::from(format!(
+                        "Selected manager preferred: {}",
+                        package.manager == preferred_manager
+                    )));
+                }
                 if let Some(policy) = package.homebrew_keg_policy.as_deref() {
                     lines.push(Line::from(format!("Homebrew keg policy: {}", policy)));
                 }
@@ -3034,9 +3661,22 @@ fn render_detail_pane(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState
                         lines.push(Line::from("Actions: [i] install"));
                     }
                 }
+                lines.push(Line::from(
+                    "         [g] set preferred manager  [G] clear preferred manager",
+                ));
                 if package.manager == ManagerId::HomebrewFormula {
                     lines.push(Line::from(
                         "         [K] cycle Homebrew keg policy (default/cleanup/keep)",
+                    ));
+                }
+                if package.manager == ManagerId::Rustup && package.kind != PackageRowKind::Available
+                {
+                    lines.push(Line::from(
+                        "         [c/C] cycle component  [b] toggle component",
+                    ));
+                    lines.push(Line::from("         [t/T] cycle target  [B] toggle target"));
+                    lines.push(Line::from(
+                        "         [s] make default  [w] set cwd override  [W] clear cwd override  [P] cycle profile",
                     ));
                 }
             } else {
@@ -3407,7 +4047,9 @@ fn render_footer(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState) {
         Section::Updates => {
             "u upgrade selected | a upgrade all | I include pinned | S allow OS updates | m/M manager scope"
         }
-        Section::Packages => "i install | u upgrade | x uninstall | p pin/unpin | K keg policy",
+        Section::Packages => {
+            "i install | u upgrade | x uninstall | p pin/unpin | K keg policy | c/C+b rustup components | t/T+B rustup targets | s/w/W/P rustup toolchain"
+        }
         Section::Tasks => "c cancel task",
         Section::Managers => {
             "e toggle | i/u/x/X lifecycle | z/Z full-cleanup | D detect | o/O exec | m/M method | v/V active | a/A ack"
@@ -3519,7 +4161,12 @@ fn render_help_overlay(frame: &mut ratatui::Frame<'_>, app: &AppState) {
         Line::from("  Packages:  i install selected available package"),
         Line::from("             u upgrade selected installed package"),
         Line::from("             x uninstall selected installed package, p pin/unpin"),
+        Line::from("             g set preferred manager, G clear preferred manager"),
         Line::from("             K cycle Homebrew keg policy override"),
+        Line::from("             c/C cycle rustup component, b toggle selected component"),
+        Line::from("             t/T cycle rustup target, B toggle selected target"),
+        Line::from("             s set rustup default, w/W set or clear cwd rustup override"),
+        Line::from("             P cycle rustup profile"),
         Line::from("  Tasks:     c cancel task"),
         Line::from("  Managers:  e enable/disable, i install, u update, x uninstall"),
         Line::from("             X uninstall with unknown-provenance override"),
@@ -3740,9 +4387,20 @@ fn build_package_rows(
         .filter(|entry| entry.package.manager == ManagerId::HomebrewFormula)
         .map(|entry| (entry.package.name, entry.policy))
         .collect();
+    let package_manager_preferences: HashMap<String, ManagerId> = store
+        .list_package_manager_preferences()
+        .map_err(|error| format!("failed to list package manager preferences: {error}"))?
+        .into_iter()
+        .map(|entry| (entry.package_family_key, entry.manager))
+        .collect();
 
     let mut rows_by_key: HashMap<(ManagerId, String), PackageRow> = HashMap::new();
     for package in installed {
+        let preferred_manager = preferred_manager_for_package(
+            &package_manager_preferences,
+            package.package.name.as_str(),
+            package.installed_version.as_deref(),
+        );
         let homebrew_keg_policy = if package.package.manager == ManagerId::HomebrewFormula {
             let policy = homebrew_overrides
                 .get(package.package.name.as_str())
@@ -3757,19 +4415,34 @@ fn build_package_rows(
         } else {
             None
         };
-        rows_by_key.insert(
-            (package.package.manager, package.package.name.clone()),
-            PackageRow {
-                kind: PackageRowKind::Installed,
-                manager: package.package.manager,
-                package_name: package.package.name.clone(),
-                installed_version: package.installed_version.clone(),
-                candidate_version: None,
-                pinned: package.pinned,
-                summary: None,
-                homebrew_keg_policy,
-            },
-        );
+        let key = (package.package.manager, package.package.name.clone());
+        let next_row = PackageRow {
+            kind: PackageRowKind::Installed,
+            manager: package.package.manager,
+            package_name: package.package.name.clone(),
+            action_package_name: package_row_action_package_name(
+                package.package.manager,
+                package.package.name.as_str(),
+                package.installed_version.as_deref(),
+            ),
+            action_package_version: package_row_action_version(
+                package.package.manager,
+                package.installed_version.as_deref(),
+            ),
+            installed_version: package.installed_version.clone(),
+            candidate_version: None,
+            pinned: package.pinned,
+            summary: None,
+            homebrew_keg_policy,
+            preferred_manager,
+            runtime_state: package.runtime_state.clone(),
+        };
+        match rows_by_key.get(&key) {
+            Some(existing) if !should_replace_installed_row(existing, package) => {}
+            _ => {
+                rows_by_key.insert(key, next_row);
+            }
+        }
     }
 
     for result in search_results {
@@ -3786,6 +4459,11 @@ fn build_package_rows(
             continue;
         }
 
+        let preferred_manager = preferred_manager_for_package(
+            &package_manager_preferences,
+            package_name.as_str(),
+            result.result.version.as_deref(),
+        );
         let homebrew_keg_policy = if manager == ManagerId::HomebrewFormula {
             let policy = homebrew_overrides
                 .get(package_name.as_str())
@@ -3807,11 +4485,22 @@ fn build_package_rows(
                 kind: PackageRowKind::Available,
                 manager,
                 package_name,
+                action_package_name: package_row_action_package_name(
+                    manager,
+                    result.result.package.name.as_str(),
+                    result.result.version.as_deref(),
+                ),
+                action_package_version: package_row_action_version(
+                    manager,
+                    result.result.version.as_deref(),
+                ),
                 installed_version: None,
                 candidate_version: result.result.version.clone(),
                 pinned: false,
                 summary: result.result.summary.clone(),
                 homebrew_keg_policy,
+                preferred_manager,
+                runtime_state: PackageRuntimeState::default(),
             },
         );
     }
@@ -3834,9 +4523,66 @@ fn build_package_rows(
         if name_cmp != std::cmp::Ordering::Equal {
             return name_cmp;
         }
+        if let Some(preferred_manager) = left.preferred_manager.or(right.preferred_manager) {
+            let left_is_preferred = left.manager == preferred_manager;
+            let right_is_preferred = right.manager == preferred_manager;
+            if left_is_preferred != right_is_preferred {
+                return if left_is_preferred {
+                    std::cmp::Ordering::Less
+                } else {
+                    std::cmp::Ordering::Greater
+                };
+            }
+        }
         left.manager.as_str().cmp(right.manager.as_str())
     });
     Ok(rows)
+}
+
+fn package_row_action_package_name(
+    _manager: ManagerId,
+    package_name: &str,
+    _version: Option<&str>,
+) -> String {
+    let trimmed_name = package_name.trim();
+    if trimmed_name.is_empty() {
+        return package_name.to_string();
+    }
+    trimmed_name.to_string()
+}
+
+fn package_row_action_version(manager: ManagerId, version: Option<&str>) -> Option<String> {
+    if !matches!(manager, ManagerId::Asdf | ManagerId::Mise) {
+        return None;
+    }
+    version
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "unknown")
+        .map(str::to_string)
+}
+
+fn render_package_target(package_name: &str, version: Option<&str>) -> String {
+    match version.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(version) => format!("{package_name}@{version}"),
+        None => package_name.to_string(),
+    }
+}
+
+fn should_replace_installed_row(existing: &PackageRow, candidate: &InstalledPackage) -> bool {
+    let existing_active_rank = (
+        existing.runtime_state.is_active,
+        existing.runtime_state.is_default,
+        !existing.runtime_state.has_override,
+    );
+    let candidate_active_rank = (
+        candidate.runtime_state.is_active,
+        candidate.runtime_state.is_default,
+        !candidate.runtime_state.has_override,
+    );
+    if candidate_active_rank != existing_active_rank {
+        return candidate_active_rank > existing_active_rank;
+    }
+    candidate.installed_version > existing.installed_version
 }
 
 fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
@@ -3862,6 +4608,19 @@ fn clamp_cursor(cursor: usize, len: usize) -> usize {
     }
 }
 
+fn wrap_cursor(cursor: usize, len: usize, delta: i32) -> usize {
+    if len == 0 {
+        return 0;
+    }
+    if delta == 0 {
+        return clamp_cursor(cursor, len);
+    }
+    let len = len as i32;
+    let current = clamp_cursor(cursor, len as usize) as i32;
+    let next = (current + delta).rem_euclid(len);
+    next as usize
+}
+
 fn matches_query(query: &str, fields: &[&str]) -> bool {
     let trimmed = query.trim();
     if trimmed.is_empty() {
@@ -3874,7 +4633,7 @@ fn matches_query(query: &str, fields: &[&str]) -> bool {
 }
 
 fn manager_participates_in_package_search(manager: ManagerId) -> bool {
-    manager != ManagerId::Rustup
+    helm_core::registry::manager_participates_in_package_search(manager)
 }
 
 fn apply_filter_backspace(app: &mut AppState) {
@@ -3892,10 +4651,24 @@ fn apply_filter_backspace(app: &mut AppState) {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppState, ConfirmAction, InputMode, apply_filter_backspace,
+        AppState, ConfirmAction, InputMode, apply_filter_backspace, execute_confirmed_action,
         manager_participates_in_package_search, next_choice_index, normalized_nonempty,
     };
-    use crate::ManagerId;
+    use crate::{ManagerId, PackageRef, PinKind, SqliteStore};
+    use helm_core::models::InstalledPackage;
+    use helm_core::persistence::{PackageStore, PinStore};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn test_store_path(test_name: &str) -> std::path::PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|value| value.as_nanos())
+            .unwrap_or_default();
+        std::env::temp_dir().join(format!(
+            "helm-cli-tui-{test_name}-{}-{nanos}.db",
+            std::process::id()
+        ))
+    }
 
     #[test]
     fn next_choice_index_wraps_forward() {
@@ -4018,6 +4791,7 @@ mod tests {
         let prompt = ConfirmAction::UninstallPackage {
             manager: ManagerId::Rustup,
             package_name: "stable".to_string(),
+            package_version: None,
             uninstall_preview_summary: Some(
                 "[manager_strategy=rustup_self manager_provenance=rustup_init blast_radius=5 requires_confirmation=true]"
                     .to_string(),
@@ -4030,10 +4804,102 @@ mod tests {
     }
 
     #[test]
-    fn package_search_excludes_rustup_manager() {
-        assert!(!manager_participates_in_package_search(ManagerId::Rustup));
+    fn package_search_policy_matches_shared_registry() {
+        assert!(manager_participates_in_package_search(ManagerId::Rustup));
         assert!(manager_participates_in_package_search(
             ManagerId::HomebrewFormula
         ));
+        assert!(manager_participates_in_package_search(ManagerId::Pipx));
+        assert!(manager_participates_in_package_search(ManagerId::Pip));
+        assert!(manager_participates_in_package_search(ManagerId::Poetry));
+        assert!(manager_participates_in_package_search(ManagerId::Bundler));
+        assert!(!manager_participates_in_package_search(
+            ManagerId::SoftwareUpdate
+        ));
+        assert!(!manager_participates_in_package_search(ManagerId::Sparkle));
+    }
+
+    #[test]
+    fn toggle_pin_for_virtual_manager_persists_pin_record_and_snapshot_state() {
+        let db_path = test_store_path("toggle-pin-virtual");
+        let store = SqliteStore::new(db_path.clone());
+        store
+            .migrate_to_latest()
+            .expect("failed to migrate test sqlite store");
+
+        let package = PackageRef {
+            manager: ManagerId::Pip,
+            name: "certifi".to_string(),
+        };
+        store
+            .upsert_installed(&[InstalledPackage {
+                package: package.clone(),
+                package_identifier: None,
+                installed_version: Some("2026.1.4".to_string()),
+                pinned: false,
+                runtime_state: Default::default(),
+            }])
+            .expect("failed to seed installed package");
+
+        let pin_message = execute_confirmed_action(
+            &store,
+            ConfirmAction::TogglePin {
+                manager: ManagerId::Pip,
+                package_name: "certifi".to_string(),
+                version: Some("2026.1.4".to_string()),
+                pinned: false,
+            },
+        )
+        .expect("virtual pin action should succeed");
+        assert!(pin_message.contains("Virtual pin applied"));
+
+        let pins = store
+            .list_pins()
+            .expect("failed to list pins after virtual pin");
+        assert_eq!(pins.len(), 1);
+        assert_eq!(pins[0].package.manager, ManagerId::Pip);
+        assert_eq!(pins[0].package.name, "certifi");
+        assert_eq!(pins[0].kind, PinKind::Virtual);
+
+        let installed_after_pin = store
+            .list_installed()
+            .expect("failed to list installed packages after virtual pin");
+        let certifi_after_pin = installed_after_pin
+            .iter()
+            .find(|entry| {
+                entry.package.manager == ManagerId::Pip && entry.package.name == "certifi"
+            })
+            .expect("expected pip certifi after virtual pin");
+        assert!(certifi_after_pin.pinned);
+
+        let unpin_message = execute_confirmed_action(
+            &store,
+            ConfirmAction::TogglePin {
+                manager: ManagerId::Pip,
+                package_name: "certifi".to_string(),
+                version: Some("2026.1.4".to_string()),
+                pinned: true,
+            },
+        )
+        .expect("virtual unpin action should succeed");
+        assert!(unpin_message.contains("Virtual unpin applied"));
+
+        let pins_after_unpin = store
+            .list_pins()
+            .expect("failed to list pins after virtual unpin");
+        assert!(pins_after_unpin.is_empty());
+
+        let installed_after_unpin = store
+            .list_installed()
+            .expect("failed to list installed packages after virtual unpin");
+        let certifi_after_unpin = installed_after_unpin
+            .iter()
+            .find(|entry| {
+                entry.package.manager == ManagerId::Pip && entry.package.name == "certifi"
+            })
+            .expect("expected pip certifi after virtual unpin");
+        assert!(!certifi_after_unpin.pinned);
+
+        let _ = std::fs::remove_file(db_path);
     }
 }

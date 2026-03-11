@@ -6,6 +6,20 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+Patch `0.17.9` prepares the next stable cut with full current-scope manager adapter completion, scope-contract documentation updates, and release-prep metadata alignment.
+
+### Added
+- End-to-end orchestration coverage for the remaining manager adapters, including Homebrew casks, MacPorts, the remaining language managers, and the guarded/status system adapters.
+
+### Changed
+- Manager adapter scope is now explicitly documented so detection-only, status-only, and intentionally limited managers are considered complete relative to Helm's product model.
+- Homebrew formulae and casks are now treated as fully implemented first-class manager adapters for Helm package workflows.
+
+### Fixed
+- Shared package-search participation policy is now consistent across core, CLI, TUI, and FFI surfaces.
+- Homebrew-backed outdated detection for `colima`, `podman`, and `docker-desktop` is now provenance-aware instead of assuming Homebrew ownership for non-Homebrew installs.
+- Cargo-binstall end-to-end tracking coverage now waits deterministically for persisted mutation state, eliminating the observed CI race in tracked-package assertions.
+
 ## [0.17.8] - 2026-03-03
 
 Patch `0.17.8` finalizes manager lifecycle parity expansion and hardens managed CLI shim installation behavior.

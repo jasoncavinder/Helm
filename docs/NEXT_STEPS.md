@@ -15,6 +15,7 @@ Helm is in:
 ```
 
 Focus:
+- finish `v0.17.9` stable patch release prep on `dev` while keeping public stable-line copy accurate until publication
 - keep `main`/`dev`/`docs`/`web` publication docs and version markers aligned for `v0.17.8`
 - maintain release-process hardening guardrails now that phases 1-5 are complete (preflight, publish verification, drift prevention)
 - execute doctor/repair subsystem foundation in core + FFI + service surfaces
@@ -28,6 +29,10 @@ Focus:
 Current checkpoint:
 - `v0.17.8` is the current stable release on `main`; pre-1.0 quality-audit remediation and release-gate hardening are now included in stable publication:
   - release artifacts, metadata publication PRs, and post-publish verification checks completed for `v0.17.8`.
+  - `v0.17.9` release prep is now in progress on `dev`:
+    - all current manager adapters are considered complete for Helm's intended scope
+    - intentionally narrower manager scopes remain explicit (`nix_darwin` detect/refresh-only; detection-only adapters such as `sparkle`, `setapp`, and `parallels_desktop`; guarded/status adapters such as `docker_desktop`, `podman`, `colima`, `rosetta2`, `firmware_updates`, and `xcode_command_line_tools`)
+    - no additional manager-adapter implementation gaps remain beyond those intentional product boundaries
   - post-`v0.17.7` doctor/repair foundation scaffold delivered on `dev`:
     - added `helm-core` doctor/repair modules with deterministic finding fingerprints, local health report model, and embedded repair knowledge-provider scaffolding
     - manager package-state issue generation now routes through doctor findings and includes fingerprint/severity/evidence plus repair-option metadata
@@ -1055,9 +1060,9 @@ Delivered:
   - `asdf` process source now resolves executable path via structured `which` lookup with absolute-path fallback
   - `asdf` outdated scan now degrades gracefully when individual latest-version probes fail
 - ✅ Implemented adapter capabilities for this slice:
-  - `asdf`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade (compatibility mode)
+  - `asdf`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade, with plugin bootstrap, version-aware mutation targeting, and active/default/override runtime-state tracking
   - `macports`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade
-  - `nix_darwin`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade (compatibility mode via `nix-env`)
+  - `nix_darwin`: detect and refresh only; declarative nix-darwin package/config management remains future work, and Helm intentionally does not expose `nix-env` compatibility mutations under the `nix_darwin` manager
 - ✅ Added adapter tests + fixtures for:
   - version parsing
   - installed/outdated/search parsing
@@ -1085,17 +1090,29 @@ Delivered:
   - `homebrew_cask`
 - ✅ Added process source with constrained PATH handling and Homebrew environment guardrails for XPC runtime contexts
 - ✅ Implemented adapter capabilities for this slice:
-  - `homebrew_cask`: detect, refresh, list_installed, list_outdated
+  - `homebrew_cask`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade
 - ✅ Implemented JSON-backed parsing for installed/outdated state via Homebrew `--json=v2` output
+- ✅ Added Homebrew-native catalog/search for casks:
+  - empty query: `brew casks`
+  - filtered query: `brew search --cask --desc`
+- ✅ Added cask mutation flows and targeted-upgrade verification
 - ✅ Added adapter tests + fixtures for:
   - request-shape assertions
-  - parse behavior for installed/outdated payloads
-  - read-only execution flow + mutating-action rejection
+  - parse behavior for installed/outdated/search payloads
+  - read/write execution flow
+  - end-to-end orchestration coverage
 - ✅ Registered adapter in FFI initialization and marked `homebrew_cask` as implemented in manager status export
 - ✅ Swift fallback metadata updated so `homebrew_cask` reflects implemented state when runtime status is unavailable
 - ✅ Validation run:
   - `cargo test -p helm-core --manifest-path core/rust/Cargo.toml`
   - `cargo test -p helm-ffi --manifest-path core/rust/Cargo.toml`
+
+### Subsequent Hardening
+
+- ✅ Homebrew formula installed/outdated parsing moved to structured JSON (`brew info --formula --json=v2 --installed`, `brew outdated --formula --json=v2`)
+- ✅ Homebrew formula catalog/search now uses `brew formulae` and `brew search --formula --desc`
+- ✅ Native Homebrew formula pin/unpin remains supported and rejects separate version arguments
+- ✅ Helm now disables Homebrew automatic install cleanup and applies explicit cleanup only when Helm’s Homebrew keg cleanup policy requests it
   - `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' -derivedDataPath /tmp/helmtests-deriveddata CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -only-testing:HelmTests test`
 
 ### Next Up (Post-Alpha.5)
@@ -1146,7 +1163,7 @@ Delivered:
 ### Priority 2 — Extended Managers (Completed)
 
 - pnpm (global) ✅
-- yarn (global) ✅
+- yarn (global, Classic 1.x package surface) ✅
 - RubyGems ✅
 - Poetry (self/plugins) ✅
 - Bundler ✅

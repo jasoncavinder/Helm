@@ -12,10 +12,11 @@ use crate::models::{
     TaskStatus, TaskType,
 };
 use crate::persistence::{
-    DetectionStore, ManagerPreference, MigrationStore, PackageStore, PersistenceResult, PinStore,
-    SearchCacheStore, TaskStore,
+    DetectionStore, ManagerPreference, MigrationStore, PackageManagerPreference, PackageStore,
+    PersistenceResult, PinStore, SearchCacheStore, TaskStore,
 };
 use crate::sqlite::migrations::{SqliteMigration, current_schema_version, migration, migrations};
+use crate::versioning::normalize_package_family_key;
 
 const MIGRATIONS_TABLE: &str = "helm_schema_migrations";
 
@@ -53,6 +54,20 @@ impl SqliteStore {
         let mut connection = open_connection(&self.database_path)
             .map_err(|error| storage_error(operation_name, error))?;
         operation(&mut connection).map_err(|error| storage_error(operation_name, error))
+    }
+
+    pub fn latest_search_cached_at_unix(
+        &self,
+        manager: ManagerId,
+    ) -> PersistenceResult<Option<i64>> {
+        self.with_connection("latest_search_cached_at_unix", |connection| {
+            ensure_schema_ready(connection)?;
+            connection.query_row(
+                "SELECT MAX(cached_at_unix) FROM search_cache WHERE manager_id = ?1 AND COALESCE(originating_query, '') = ''",
+                [manager.as_str()],
+                |row| row.get::<_, Option<i64>>(0),
+            )
+        })
     }
 }
 
@@ -123,25 +138,82 @@ impl PackageStore for SqliteStore {
             {
                 let mut statement = transaction.prepare(
                     "
-INSERT INTO installed_packages (
-    manager_id, package_name, installed_version, pinned, updated_at_unix
-) VALUES (?1, ?2, ?3, ?4, strftime('%s', 'now'))
-ON CONFLICT(manager_id, package_name) DO UPDATE SET
+INSERT INTO installed_package_versions (
+    manager_id, package_name, package_identifier, installed_version, pinned, is_active, is_default, has_override, updated_at_unix
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, strftime('%s', 'now'))
+ON CONFLICT(manager_id, package_name, package_identifier, installed_version) DO UPDATE SET
     installed_version = excluded.installed_version,
     pinned = excluded.pinned,
+    is_active = excluded.is_active,
+    is_default = excluded.is_default,
+    has_override = excluded.has_override,
     updated_at_unix = excluded.updated_at_unix
 ",
                 )?;
 
                 for package in packages {
+                    let installed_version =
+                        to_installed_version_token(package.installed_version.as_deref());
+                    let package_identifier =
+                        package.package_identifier.as_deref().unwrap_or_default();
                     statement.execute((
                         package.package.manager.as_str(),
                         package.package.name.as_str(),
-                        package.installed_version.as_deref(),
+                        package_identifier,
+                        installed_version.as_str(),
                         bool_to_sqlite(package.pinned),
+                        bool_to_sqlite(package.runtime_state.is_active),
+                        bool_to_sqlite(package.runtime_state.is_default),
+                        bool_to_sqlite(package.runtime_state.has_override),
                     ))?;
                 }
             }
+            transaction.commit()?;
+            Ok(())
+        })
+    }
+
+    fn replace_installed_snapshot(
+        &self,
+        manager: ManagerId,
+        packages: &[InstalledPackage],
+    ) -> PersistenceResult<()> {
+        self.with_connection("replace_installed_snapshot", |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction = connection.transaction()?;
+
+            transaction.execute(
+                "DELETE FROM installed_package_versions WHERE manager_id = ?1",
+                [manager.as_str()],
+            )?;
+
+            {
+                let mut statement = transaction.prepare(
+                    "
+INSERT INTO installed_package_versions (
+    manager_id, package_name, package_identifier, installed_version, pinned, is_active, is_default, has_override, updated_at_unix
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, strftime('%s', 'now'))
+",
+                )?;
+
+                for package in packages {
+                    let installed_version =
+                        to_installed_version_token(package.installed_version.as_deref());
+                    let package_identifier =
+                        package.package_identifier.as_deref().unwrap_or_default();
+                    statement.execute((
+                        package.package.manager.as_str(),
+                        package.package.name.as_str(),
+                        package_identifier,
+                        installed_version.as_str(),
+                        bool_to_sqlite(package.pinned),
+                        bool_to_sqlite(package.runtime_state.is_active),
+                        bool_to_sqlite(package.runtime_state.is_default),
+                        bool_to_sqlite(package.runtime_state.has_override),
+                    ))?;
+                }
+            }
+
             transaction.commit()?;
             Ok(())
         })
@@ -155,25 +227,34 @@ ON CONFLICT(manager_id, package_name) DO UPDATE SET
                 let mut statement = transaction.prepare(
                     "
 INSERT INTO outdated_packages (
-    manager_id, package_name, installed_version, candidate_version, pinned, restart_required, updated_at_unix
-) VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%s', 'now'))
-ON CONFLICT(manager_id, package_name) DO UPDATE SET
+    manager_id, package_name, package_identifier, installed_version, candidate_version, pinned, restart_required, is_active, is_default, has_override, updated_at_unix
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, strftime('%s', 'now'))
+ON CONFLICT(manager_id, package_name, package_identifier) DO UPDATE SET
     installed_version = excluded.installed_version,
     candidate_version = excluded.candidate_version,
     pinned = excluded.pinned,
     restart_required = excluded.restart_required,
+    is_active = excluded.is_active,
+    is_default = excluded.is_default,
+    has_override = excluded.has_override,
     updated_at_unix = excluded.updated_at_unix
 ",
                 )?;
 
                 for package in packages {
+                    let package_identifier =
+                        package.package_identifier.as_deref().unwrap_or_default();
                     statement.execute((
                         package.package.manager.as_str(),
                         package.package.name.as_str(),
+                        package_identifier,
                         package.installed_version.as_deref(),
                         package.candidate_version.as_str(),
                         bool_to_sqlite(package.pinned),
                         bool_to_sqlite(package.restart_required),
+                        bool_to_sqlite(package.runtime_state.is_active),
+                        bool_to_sqlite(package.runtime_state.is_default),
+                        bool_to_sqlite(package.runtime_state.has_override),
                     ))?;
                 }
             }
@@ -200,19 +281,25 @@ ON CONFLICT(manager_id, package_name) DO UPDATE SET
                 let mut statement = transaction.prepare(
                     "
 INSERT INTO outdated_packages (
-    manager_id, package_name, installed_version, candidate_version, pinned, restart_required, updated_at_unix
-) VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%s', 'now'))
+    manager_id, package_name, package_identifier, installed_version, candidate_version, pinned, restart_required, is_active, is_default, has_override, updated_at_unix
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, strftime('%s', 'now'))
 ",
                 )?;
 
                 for package in packages {
+                    let package_identifier =
+                        package.package_identifier.as_deref().unwrap_or_default();
                     statement.execute((
                         package.package.manager.as_str(),
                         package.package.name.as_str(),
+                        package_identifier,
                         package.installed_version.as_deref(),
                         package.candidate_version.as_str(),
                         bool_to_sqlite(package.pinned),
                         bool_to_sqlite(package.restart_required),
+                        bool_to_sqlite(package.runtime_state.is_active),
+                        bool_to_sqlite(package.runtime_state.is_default),
+                        bool_to_sqlite(package.runtime_state.has_override),
                     ))?;
                 }
             }
@@ -228,26 +315,37 @@ INSERT INTO outdated_packages (
             let mut statement = connection.prepare(
                 "
 SELECT
-    ip.manager_id,
-    ip.package_name,
-    ip.installed_version,
+    ipv.manager_id,
+    ipv.package_name,
+    ipv.package_identifier,
+    ipv.installed_version,
     CASE
-        WHEN pr.manager_id IS NOT NULL THEN 1
-        ELSE ip.pinned
-    END AS pinned
-FROM installed_packages ip
-LEFT JOIN pin_records pr
-    ON pr.manager_id = ip.manager_id
-   AND pr.package_name = ip.package_name
-ORDER BY ip.manager_id, ip.package_name
+        WHEN EXISTS (
+            SELECT 1
+            FROM pin_records pr
+            WHERE pr.manager_id = ipv.manager_id
+              AND pr.package_name = ipv.package_name
+              AND (pr.pinned_version = '' OR pr.pinned_version = ipv.installed_version)
+        ) THEN 1
+        ELSE ipv.pinned
+    END AS pinned,
+    ipv.is_active,
+    ipv.is_default,
+    ipv.has_override
+FROM installed_package_versions ipv
+ORDER BY ipv.manager_id, ipv.package_name, ipv.package_identifier, ipv.installed_version
 ",
             )?;
 
             let rows = statement.query_map([], |row| {
                 let manager_id: String = row.get(0)?;
                 let package_name: String = row.get(1)?;
-                let installed_version: Option<String> = row.get(2)?;
-                let pinned_int: i64 = row.get(3)?;
+                let package_identifier_raw: String = row.get(2)?;
+                let installed_version_raw: String = row.get(3)?;
+                let pinned_int: i64 = row.get(4)?;
+                let is_active_int: i64 = row.get(5)?;
+                let is_default_int: i64 = row.get(6)?;
+                let has_override_int: i64 = row.get(7)?;
 
                 let manager = parse_manager_id(&manager_id)?;
                 Ok(InstalledPackage {
@@ -255,8 +353,14 @@ ORDER BY ip.manager_id, ip.package_name
                         manager,
                         name: package_name,
                     },
-                    installed_version,
+                    package_identifier: from_installed_version_token(package_identifier_raw),
+                    installed_version: from_installed_version_token(installed_version_raw),
                     pinned: sqlite_to_bool(pinned_int),
+                    runtime_state: crate::models::PackageRuntimeState {
+                        is_active: sqlite_to_bool(is_active_int),
+                        is_default: sqlite_to_bool(is_default_int),
+                        has_override: sqlite_to_bool(has_override_int),
+                    },
                 })
             })?;
 
@@ -272,28 +376,42 @@ ORDER BY ip.manager_id, ip.package_name
 SELECT
     op.manager_id,
     op.package_name,
+    op.package_identifier,
     op.installed_version,
     op.candidate_version,
     CASE
-        WHEN pr.manager_id IS NOT NULL THEN 1
+        WHEN EXISTS (
+            SELECT 1
+            FROM pin_records pr
+            WHERE pr.manager_id = op.manager_id
+              AND pr.package_name = op.package_name
+              AND (
+                    pr.pinned_version = ''
+                    OR pr.pinned_version = COALESCE(op.installed_version, '')
+              )
+        ) THEN 1
         ELSE op.pinned
     END AS pinned,
-    op.restart_required
+    op.restart_required,
+    op.is_active,
+    op.is_default,
+    op.has_override
 FROM outdated_packages op
-LEFT JOIN pin_records pr
-    ON pr.manager_id = op.manager_id
-   AND pr.package_name = op.package_name
-ORDER BY op.manager_id, op.package_name
+ORDER BY op.manager_id, op.package_name, op.package_identifier
 ",
             )?;
 
             let rows = statement.query_map([], |row| {
                 let manager_id: String = row.get(0)?;
                 let package_name: String = row.get(1)?;
-                let installed_version: Option<String> = row.get(2)?;
-                let candidate_version: String = row.get(3)?;
-                let pinned_int: i64 = row.get(4)?;
-                let restart_required_int: i64 = row.get(5)?;
+                let package_identifier_raw: String = row.get(2)?;
+                let installed_version: Option<String> = row.get(3)?;
+                let candidate_version: String = row.get(4)?;
+                let pinned_int: i64 = row.get(5)?;
+                let restart_required_int: i64 = row.get(6)?;
+                let is_active_int: i64 = row.get(7)?;
+                let is_default_int: i64 = row.get(8)?;
+                let has_override_int: i64 = row.get(9)?;
 
                 let manager = parse_manager_id(&manager_id)?;
                 Ok(OutdatedPackage {
@@ -301,10 +419,16 @@ ORDER BY op.manager_id, op.package_name
                         manager,
                         name: package_name,
                     },
+                    package_identifier: from_installed_version_token(package_identifier_raw),
                     installed_version,
                     candidate_version,
                     pinned: sqlite_to_bool(pinned_int),
                     restart_required: sqlite_to_bool(restart_required_int),
+                    runtime_state: crate::models::PackageRuntimeState {
+                        is_active: sqlite_to_bool(is_active_int),
+                        is_default: sqlite_to_bool(is_default_int),
+                        has_override: sqlite_to_bool(has_override_int),
+                    },
                 })
             })?;
 
@@ -312,21 +436,30 @@ ORDER BY op.manager_id, op.package_name
         })
     }
 
-    fn set_snapshot_pinned(&self, package: &PackageRef, pinned: bool) -> PersistenceResult<()> {
+    fn set_snapshot_pinned(
+        &self,
+        package: &PackageRef,
+        version: Option<&str>,
+        pinned: bool,
+    ) -> PersistenceResult<()> {
         self.with_connection("set_snapshot_pinned", |connection| {
             ensure_schema_ready(connection)?;
             let transaction = connection.transaction()?;
+            let version_token = to_installed_version_token(version);
 
             transaction.execute(
                 "
-UPDATE installed_packages
+UPDATE installed_package_versions
 SET pinned = ?3, updated_at_unix = strftime('%s', 'now')
-WHERE manager_id = ?1 AND package_name = ?2
+WHERE manager_id = ?1
+  AND package_name = ?2
+  AND (?4 = '' OR installed_version = ?4)
 ",
                 params![
                     package.manager.as_str(),
                     package.name.as_str(),
                     bool_to_sqlite(pinned),
+                    version_token.as_str(),
                 ],
             )?;
 
@@ -334,12 +467,15 @@ WHERE manager_id = ?1 AND package_name = ?2
                 "
 UPDATE outdated_packages
 SET pinned = ?3, updated_at_unix = strftime('%s', 'now')
-WHERE manager_id = ?1 AND package_name = ?2
+WHERE manager_id = ?1
+  AND package_name = ?2
+  AND (?4 = '' OR COALESCE(installed_version, '') = ?4)
 ",
                 params![
                     package.manager.as_str(),
                     package.name.as_str(),
                     bool_to_sqlite(pinned),
+                    version_token.as_str(),
                 ],
             )?;
 
@@ -351,60 +487,127 @@ WHERE manager_id = ?1 AND package_name = ?2
     fn apply_install_result(
         &self,
         package: &PackageRef,
+        package_identifier: Option<&str>,
         installed_version: Option<&str>,
     ) -> PersistenceResult<()> {
         self.with_connection("apply_install_result", |connection| {
             ensure_schema_ready(connection)?;
             let transaction = connection.transaction()?;
 
+            let installed_version_token = to_installed_version_token(installed_version);
+            let package_identifier_token = package_identifier.unwrap_or_default();
             transaction.execute(
                 "
-INSERT INTO installed_packages (
-    manager_id, package_name, installed_version, pinned, updated_at_unix
-) VALUES (?1, ?2, ?3, 0, strftime('%s', 'now'))
-ON CONFLICT(manager_id, package_name) DO UPDATE SET
-    installed_version = COALESCE(excluded.installed_version, installed_packages.installed_version),
+INSERT INTO installed_package_versions (
+    manager_id, package_name, package_identifier, installed_version, pinned, is_active, is_default, has_override, updated_at_unix
+) VALUES (?1, ?2, ?3, ?4, 0, 0, 0, 0, strftime('%s', 'now'))
+ON CONFLICT(manager_id, package_name, package_identifier, installed_version) DO UPDATE SET
+    installed_version = excluded.installed_version,
+    is_active = excluded.is_active,
+    is_default = excluded.is_default,
+    has_override = excluded.has_override,
     updated_at_unix = excluded.updated_at_unix
 ",
                 params![
                     package.manager.as_str(),
                     package.name.as_str(),
-                    installed_version
+                    package_identifier_token,
+                    installed_version_token.as_str()
                 ],
             )?;
 
-            transaction.execute(
-                "
+            if package.manager != ManagerId::Asdf {
+                transaction.execute(
+                    "
 DELETE FROM outdated_packages
-WHERE manager_id = ?1 AND package_name = ?2
+WHERE manager_id = ?1
+  AND package_name = ?2
+  AND package_identifier = ?3
 ",
-                params![package.manager.as_str(), package.name.as_str()],
-            )?;
+                    params![
+                        package.manager.as_str(),
+                        package.name.as_str(),
+                        package_identifier_token,
+                    ],
+                )?;
+            }
 
             transaction.commit()?;
             Ok(())
         })
     }
 
-    fn apply_uninstall_result(&self, package: &PackageRef) -> PersistenceResult<()> {
+    fn apply_uninstall_result(
+        &self,
+        package: &PackageRef,
+        package_identifier: Option<&str>,
+        removed_version: Option<&str>,
+    ) -> PersistenceResult<()> {
         self.with_connection("apply_uninstall_result", |connection| {
             ensure_schema_ready(connection)?;
             let transaction = connection.transaction()?;
+            let package_identifier_token = package_identifier.unwrap_or_default();
 
-            transaction.execute(
-                "
-DELETE FROM installed_packages
-WHERE manager_id = ?1 AND package_name = ?2
+            if let Some(removed_version) = removed_version {
+                let removed_version_token = to_installed_version_token(Some(removed_version));
+                let removed_rows = transaction.execute(
+                    "
+DELETE FROM installed_package_versions
+WHERE manager_id = ?1
+  AND package_name = ?2
+  AND package_identifier = ?3
+  AND installed_version = ?4
 ",
-                params![package.manager.as_str(), package.name.as_str()],
-            )?;
+                    params![
+                        package.manager.as_str(),
+                        package.name.as_str(),
+                        package_identifier_token,
+                        removed_version_token.as_str(),
+                    ],
+                )?;
+                if removed_rows == 0 && single_version_snapshot_manager(package.manager) {
+                    transaction.execute(
+                        "
+DELETE FROM installed_package_versions
+WHERE manager_id = ?1
+  AND package_name = ?2
+  AND package_identifier = ?3
+",
+                        params![
+                            package.manager.as_str(),
+                            package.name.as_str(),
+                            package_identifier_token,
+                        ],
+                    )?;
+                }
+            } else {
+                transaction.execute(
+                    "
+DELETE FROM installed_package_versions
+WHERE manager_id = ?1
+  AND package_name = ?2
+  AND package_identifier = ?3
+",
+                    params![
+                        package.manager.as_str(),
+                        package.name.as_str(),
+                        package_identifier_token,
+                    ],
+                )?;
+            }
 
             transaction.execute(
                 "
 DELETE FROM outdated_packages
-WHERE manager_id = ?1 AND package_name = ?2
+WHERE manager_id = ?1
+  AND package_name = ?2
+  AND package_identifier = ?3
 ",
-                params![package.manager.as_str(), package.name.as_str()],
+                params![
+                    package.manager.as_str(),
+                    package.name.as_str(),
+                    package_identifier_token,
+                ],
             )?;
 
             transaction.commit()?;
@@ -412,54 +615,122 @@ WHERE manager_id = ?1 AND package_name = ?2
         })
     }
 
-    fn apply_upgrade_result(&self, package: &PackageRef) -> PersistenceResult<()> {
+    fn apply_upgrade_result(
+        &self,
+        package: &PackageRef,
+        package_identifier: Option<&str>,
+        before_version: Option<&str>,
+        after_version: Option<&str>,
+    ) -> PersistenceResult<()> {
         self.with_connection("apply_upgrade_result", |connection| {
             ensure_schema_ready(connection)?;
             let transaction = connection.transaction()?;
+            let package_identifier_token = package_identifier.unwrap_or_default();
 
-            transaction.execute(
-                "
-INSERT INTO installed_packages (
-    manager_id, package_name, installed_version, pinned, updated_at_unix
-)
-SELECT
-    op.manager_id, op.package_name, op.candidate_version, op.pinned, strftime('%s', 'now')
-FROM outdated_packages op
-WHERE op.manager_id = ?1
-  AND op.package_name = ?2
-  AND NOT EXISTS (
-      SELECT 1 FROM installed_packages ip
-      WHERE ip.manager_id = op.manager_id
-        AND ip.package_name = op.package_name
-  )
+            let outdated_entry: Option<(Option<String>, String, i64, i64, i64, i64)> = transaction
+                .query_row(
+                    "
+SELECT installed_version, candidate_version, pinned, is_active, is_default, has_override
+FROM outdated_packages
+WHERE manager_id = ?1
+  AND package_name = ?2
+  AND package_identifier = ?3
 ",
-                params![package.manager.as_str(), package.name.as_str()],
-            )?;
+                    params![
+                        package.manager.as_str(),
+                        package.name.as_str(),
+                        package_identifier_token,
+                    ],
+                    |row| {
+                        Ok((
+                            row.get(0)?,
+                            row.get(1)?,
+                            row.get(2)?,
+                            row.get(3)?,
+                            row.get(4)?,
+                            row.get(5)?,
+                        ))
+                    },
+                )
+                .optional()?;
 
-            transaction.execute(
-                "
-UPDATE installed_packages
-SET installed_version = COALESCE(
-        (
-            SELECT candidate_version
-            FROM outdated_packages
-            WHERE manager_id = ?1 AND package_name = ?2
-        ),
-        installed_version
-    ),
-    updated_at_unix = strftime('%s', 'now')
-WHERE manager_id = ?1 AND package_name = ?2
+            let mut clear_outdated = package.manager != ManagerId::Asdf;
+            if let Some((
+                installed_version,
+                candidate_version,
+                pinned,
+                is_active,
+                is_default,
+                has_override,
+            )) = outdated_entry
+            {
+                let promoted_version = after_version.unwrap_or(candidate_version.as_str());
+                let promoted_version_token =
+                    to_installed_version_token(Some(promoted_version));
+                transaction.execute(
+                    "
+INSERT INTO installed_package_versions (
+    manager_id, package_name, package_identifier, installed_version, pinned, is_active, is_default, has_override, updated_at_unix
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, strftime('%s', 'now'))
+ON CONFLICT(manager_id, package_name, package_identifier, installed_version) DO UPDATE SET
+    pinned = excluded.pinned,
+    is_active = excluded.is_active,
+    is_default = excluded.is_default,
+    has_override = excluded.has_override,
+    updated_at_unix = excluded.updated_at_unix
 ",
-                params![package.manager.as_str(), package.name.as_str()],
-            )?;
+                    params![
+                        package.manager.as_str(),
+                        package.name.as_str(),
+                        package_identifier_token,
+                        promoted_version_token.as_str(),
+                        pinned,
+                        is_active,
+                        is_default,
+                        has_override,
+                    ],
+                )?;
 
-            transaction.execute(
-                "
+                let prior_version_token = to_installed_version_token(
+                    before_version.or(installed_version.as_deref()),
+                );
+                if prior_version_token != promoted_version_token {
+                    transaction.execute(
+                        "
+DELETE FROM installed_package_versions
+WHERE manager_id = ?1
+  AND package_name = ?2
+  AND package_identifier = ?3
+  AND installed_version = ?4
+",
+                        params![
+                            package.manager.as_str(),
+                            package.name.as_str(),
+                            package_identifier_token,
+                            prior_version_token.as_str(),
+                        ],
+                    )?;
+                }
+                if package.manager == ManagerId::Asdf {
+                    clear_outdated = is_active != 0 && is_default != 0 && has_override == 0;
+                }
+            }
+
+            if clear_outdated {
+                transaction.execute(
+                    "
 DELETE FROM outdated_packages
-WHERE manager_id = ?1 AND package_name = ?2
+WHERE manager_id = ?1
+  AND package_name = ?2
+  AND package_identifier = ?3
 ",
-                params![package.manager.as_str(), package.name.as_str()],
-            )?;
+                    params![
+                        package.manager.as_str(),
+                        package.name.as_str(),
+                        package_identifier_token,
+                    ],
+                )?;
+            }
 
             transaction.commit()?;
             Ok(())
@@ -476,16 +747,15 @@ impl PinStore for SqliteStore {
 INSERT INTO pin_records (
     manager_id, package_name, pin_kind, pinned_version, created_at_unix
 ) VALUES (?1, ?2, ?3, ?4, ?5)
-ON CONFLICT(manager_id, package_name) DO UPDATE SET
+ON CONFLICT(manager_id, package_name, pinned_version) DO UPDATE SET
     pin_kind = excluded.pin_kind,
-    pinned_version = excluded.pinned_version,
     created_at_unix = excluded.created_at_unix
 ",
                 params![
                     pin.package.manager.as_str(),
                     pin.package.name.as_str(),
                     pin_kind_to_str(pin.kind),
-                    pin.pinned_version.as_deref(),
+                    to_installed_version_token(pin.pinned_version.as_deref()),
                     to_unix_seconds(pin.created_at)?,
                 ],
             )?;
@@ -493,13 +763,26 @@ ON CONFLICT(manager_id, package_name) DO UPDATE SET
         })
     }
 
-    fn remove_pin(&self, package_key: &str) -> PersistenceResult<()> {
+    fn remove_pin(
+        &self,
+        package: &PackageRef,
+        pinned_version: Option<&str>,
+    ) -> PersistenceResult<()> {
         self.with_connection("remove_pin", |connection| {
             ensure_schema_ready(connection)?;
-            let (manager, package_name) = parse_package_key(package_key)?;
+            let version_token = to_installed_version_token(pinned_version);
             connection.execute(
-                "DELETE FROM pin_records WHERE manager_id = ?1 AND package_name = ?2",
-                params![manager.as_str(), package_name],
+                "
+DELETE FROM pin_records
+WHERE manager_id = ?1
+  AND package_name = ?2
+  AND pinned_version = ?3
+",
+                params![
+                    package.manager.as_str(),
+                    package.name.as_str(),
+                    version_token.as_str(),
+                ],
             )?;
             Ok(())
         })
@@ -512,14 +795,14 @@ ON CONFLICT(manager_id, package_name) DO UPDATE SET
                 "
 SELECT manager_id, package_name, pin_kind, pinned_version, created_at_unix
 FROM pin_records
-ORDER BY manager_id, package_name
+ORDER BY manager_id, package_name, pinned_version
 ",
             )?;
             let rows = statement.query_map([], |row| {
                 let manager_raw: String = row.get(0)?;
                 let package_name: String = row.get(1)?;
                 let pin_kind_raw: String = row.get(2)?;
-                let pinned_version: Option<String> = row.get(3)?;
+                let pinned_version_raw: String = row.get(3)?;
                 let created_at_unix: i64 = row.get(4)?;
 
                 Ok(PinRecord {
@@ -528,7 +811,7 @@ ORDER BY manager_id, package_name
                         name: package_name,
                     },
                     kind: parse_pin_kind(&pin_kind_raw)?,
-                    pinned_version,
+                    pinned_version: from_installed_version_token(pinned_version_raw),
                     created_at: from_unix_seconds(created_at_unix)?,
                 })
             })?;
@@ -550,6 +833,8 @@ SELECT version, summary
 FROM search_cache
 WHERE manager_id = ?1
   AND package_name = ?2
+  AND package_identifier = ?3
+  AND COALESCE(version, '') = COALESCE(?4, '')
 ORDER BY cached_at_unix DESC
 LIMIT 1
 ",
@@ -559,29 +844,40 @@ LIMIT 1
 DELETE FROM search_cache
 WHERE manager_id = ?1
   AND package_name = ?2
+  AND package_identifier = ?3
+  AND COALESCE(version, '') = COALESCE(?4, '')
 ",
                 )?;
                 let mut insert_statement = transaction.prepare(
                     "
 INSERT INTO search_cache (
-    manager_id, package_name, version, summary, originating_query, cached_at_unix
-) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+    manager_id, package_name, package_identifier, version, summary, originating_query, cached_at_unix
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
 ",
                 )?;
 
                 for result in results {
+                    let incoming_version = normalize_optional_text(result.result.version.clone());
+                    let package_identifier = result
+                        .result
+                        .package_identifier
+                        .as_deref()
+                        .unwrap_or_default();
                     let existing_entry: Option<(Option<String>, Option<String>)> = select_statement
                         .query_row(
                             params![
                                 result.source_manager.as_str(),
                                 result.result.package.name.as_str(),
+                                package_identifier,
+                                incoming_version.as_deref(),
                             ],
                             |row| Ok((row.get(0)?, row.get(1)?)),
                         )
                         .optional()?;
                     let (existing_version, existing_summary) =
                         existing_entry.unwrap_or((None, None));
-                    let merged_version = normalize_optional_text(result.result.version.clone())
+                    let merged_version = incoming_version
+                        .clone()
                         .or_else(|| normalize_optional_text(existing_version));
                     let merged_summary = normalize_optional_text(result.result.summary.clone())
                         .or_else(|| normalize_optional_text(existing_summary));
@@ -589,11 +885,14 @@ INSERT INTO search_cache (
                     delete_statement.execute(params![
                         result.source_manager.as_str(),
                         result.result.package.name.as_str(),
+                        package_identifier,
+                        merged_version.as_deref(),
                     ])?;
 
                     insert_statement.execute(params![
                         result.source_manager.as_str(),
                         result.result.package.name.as_str(),
+                        package_identifier,
                         merged_version.as_deref(),
                         merged_summary.as_deref(),
                         result.originating_query.as_str(),
@@ -615,9 +914,9 @@ INSERT INTO search_cache (
             ensure_schema_ready(connection)?;
             let mut statement = connection.prepare(
                 "
-SELECT manager_id, package_name, version, summary, originating_query, cached_at_unix
+SELECT manager_id, package_name, package_identifier, version, summary, originating_query, cached_at_unix
 FROM search_cache
-WHERE (?1 = '' OR package_name LIKE ?2 OR COALESCE(summary, '') LIKE ?2)
+WHERE (?1 = '' OR package_name LIKE ?2 OR package_identifier LIKE ?2 OR COALESCE(summary, '') LIKE ?2)
 ORDER BY cached_at_unix DESC, package_name ASC
 LIMIT ?3
 ",
@@ -628,10 +927,11 @@ LIMIT ?3
                 statement.query_map(params![query.trim(), pattern, to_i64(limit)?], |row| {
                     let manager_raw: String = row.get(0)?;
                     let package_name: String = row.get(1)?;
-                    let version: Option<String> = row.get(2)?;
-                    let summary: Option<String> = row.get(3)?;
-                    let originating_query: String = row.get(4)?;
-                    let cached_at_unix: i64 = row.get(5)?;
+                    let package_identifier_raw: String = row.get(2)?;
+                    let version: Option<String> = row.get(3)?;
+                    let summary: Option<String> = row.get(4)?;
+                    let originating_query: String = row.get(5)?;
+                    let cached_at_unix: i64 = row.get(6)?;
 
                     let manager = parse_manager_id(&manager_raw)?;
                     Ok(CachedSearchResult {
@@ -640,6 +940,9 @@ LIMIT ?3
                                 manager,
                                 name: package_name,
                             },
+                            package_identifier: from_installed_version_token(
+                                package_identifier_raw,
+                            ),
                             version,
                             summary,
                         },
@@ -1774,6 +2077,96 @@ ORDER BY manager_id, package_name
             rows.collect()
         })
     }
+
+    fn set_package_manager_preference(
+        &self,
+        package_family_key: &str,
+        manager: Option<ManagerId>,
+    ) -> PersistenceResult<()> {
+        self.with_connection("set_package_manager_preference", |connection| {
+            ensure_schema_ready(connection)?;
+            let Some(normalized_package_family_key) =
+                normalize_package_family_key(package_family_key)
+            else {
+                return Err(storage_error_sqlite("package_family_key cannot be empty"));
+            };
+
+            match manager {
+                Some(manager) => {
+                    connection.execute(
+                        "
+INSERT INTO package_manager_preferences (package_name, manager_id, updated_at_unix)
+VALUES (?1, ?2, strftime('%s', 'now'))
+ON CONFLICT(package_name) DO UPDATE SET
+    manager_id = excluded.manager_id,
+    updated_at_unix = excluded.updated_at_unix
+",
+                        params![normalized_package_family_key, manager.as_str()],
+                    )?;
+                }
+                None => {
+                    connection.execute(
+                        "DELETE FROM package_manager_preferences WHERE package_name = ?1",
+                        params![normalized_package_family_key],
+                    )?;
+                }
+            }
+
+            Ok(())
+        })
+    }
+
+    fn package_manager_preference(
+        &self,
+        package_family_key: &str,
+    ) -> PersistenceResult<Option<ManagerId>> {
+        self.with_connection("package_manager_preference", |connection| {
+            ensure_schema_ready(connection)?;
+            let Some(normalized_package_family_key) =
+                normalize_package_family_key(package_family_key)
+            else {
+                return Ok(None);
+            };
+
+            let mut statement = connection.prepare(
+                "
+SELECT manager_id
+FROM package_manager_preferences
+WHERE package_name = ?1
+",
+            )?;
+            let mut rows = statement.query(params![normalized_package_family_key])?;
+            let Some(row) = rows.next()? else {
+                return Ok(None);
+            };
+            let manager_raw: String = row.get(0)?;
+            Ok(Some(parse_manager_id(manager_raw.as_str())?))
+        })
+    }
+
+    fn list_package_manager_preferences(&self) -> PersistenceResult<Vec<PackageManagerPreference>> {
+        self.with_connection("list_package_manager_preferences", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut statement = connection.prepare(
+                "
+SELECT package_name, manager_id
+FROM package_manager_preferences
+ORDER BY package_name
+",
+            )?;
+            let rows = statement.query_map([], |row| {
+                let package_family_key: String = row.get(0)?;
+                let manager_raw: String = row.get(1)?;
+                let manager = parse_manager_id(manager_raw.as_str())?;
+                Ok(PackageManagerPreference {
+                    package_family_key,
+                    manager,
+                })
+            })?;
+
+            rows.collect()
+        })
+    }
 }
 
 fn open_connection(database_path: &Path) -> rusqlite::Result<Connection> {
@@ -1931,18 +2324,6 @@ fn parse_strategy_kind(raw: &str) -> rusqlite::Result<StrategyKind> {
     })
 }
 
-fn parse_package_key(package_key: &str) -> rusqlite::Result<(ManagerId, &str)> {
-    let (manager_raw, package_name) = package_key.split_once(':').ok_or_else(|| {
-        storage_error_sqlite("package_key must use '<manager_id>:<package_name>' format")
-    })?;
-    if package_name.trim().is_empty() {
-        return Err(storage_error_sqlite(
-            "package_key must include a non-empty package_name",
-        ));
-    }
-    Ok((parse_manager_id(manager_raw)?, package_name))
-}
-
 fn pin_kind_to_str(kind: PinKind) -> &'static str {
     match kind {
         PinKind::Native => "native",
@@ -1965,9 +2346,11 @@ fn task_type_to_str(value: TaskType) -> &'static str {
         TaskType::Detection => "detection",
         TaskType::Refresh => "refresh",
         TaskType::Search => "search",
+        TaskType::CatalogSync => "catalog_sync",
         TaskType::Install => "install",
         TaskType::Uninstall => "uninstall",
         TaskType::Upgrade => "upgrade",
+        TaskType::Configure => "configure",
         TaskType::Pin => "pin",
         TaskType::Unpin => "unpin",
     }
@@ -1978,9 +2361,11 @@ fn parse_task_type(raw: &str) -> rusqlite::Result<TaskType> {
         "detection" => Ok(TaskType::Detection),
         "refresh" => Ok(TaskType::Refresh),
         "search" => Ok(TaskType::Search),
+        "catalog_sync" => Ok(TaskType::CatalogSync),
         "install" => Ok(TaskType::Install),
         "uninstall" => Ok(TaskType::Uninstall),
         "upgrade" => Ok(TaskType::Upgrade),
+        "configure" => Ok(TaskType::Configure),
         "pin" => Ok(TaskType::Pin),
         "unpin" => Ok(TaskType::Unpin),
         _ => Err(storage_error_sqlite(&format!(
@@ -2048,6 +2433,35 @@ fn normalize_optional_text(value: Option<String>) -> Option<String> {
             Some(trimmed.to_string())
         }
     })
+}
+
+fn to_installed_version_token(value: Option<&str>) -> String {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_default()
+        .to_string()
+}
+
+fn from_installed_version_token(value: String) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn single_version_snapshot_manager(manager: ManagerId) -> bool {
+    !matches!(
+        manager,
+        ManagerId::Asdf
+            | ManagerId::Mise
+            | ManagerId::Rustup
+            | ManagerId::RubyGems
+            | ManagerId::Bundler
+            | ManagerId::MacPorts
+    )
 }
 
 fn to_unix_seconds(value: SystemTime) -> rusqlite::Result<i64> {

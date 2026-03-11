@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 use helm_core::adapters::asdf::{AsdfDetectOutput, AsdfInstallSource};
 use helm_core::adapters::homebrew::HomebrewDetectOutput;
@@ -8,7 +9,9 @@ use helm_core::adapters::{
     HomebrewSource, InstallRequest, ManagerAdapter, NpmAdapter, NpmSource, PinRequest,
     UninstallRequest, UnpinRequest, UpgradeRequest,
 };
-use helm_core::models::{CoreError, CoreErrorKind, ManagerAction, ManagerId, PackageRef};
+use helm_core::models::{
+    CoreError, CoreErrorKind, ManagerAction, ManagerId, PackageRef, SearchQuery,
+};
 
 fn package(manager: ManagerId, name: &str) -> PackageRef {
     PackageRef {
@@ -38,19 +41,27 @@ impl AsdfSource for AsdfLifecycleSource {
     }
 
     fn list_current(&self) -> AdapterResult<String> {
-        Ok("nodejs 20.12.2\n".to_string())
+        Ok("nodejs 20.12.2 /Users/dev/.tool-versions\n".to_string())
     }
 
     fn list_plugins(&self) -> AdapterResult<String> {
-        Ok(String::new())
+        Ok("nodejs\n".to_string())
     }
 
-    fn list_all_plugins(&self) -> AdapterResult<String> {
+    fn list_installed_versions(&self, _plugin: &str) -> AdapterResult<String> {
+        Ok("20.12.2\n".to_string())
+    }
+
+    fn search_plugins(&self, _query: &SearchQuery) -> AdapterResult<String> {
         Ok(String::new())
     }
 
     fn latest_version(&self, _plugin: &str) -> AdapterResult<String> {
-        Ok(String::new())
+        Ok("20.12.3\n".to_string())
+    }
+
+    fn add_plugin(&self, _plugin: &str) -> AdapterResult<String> {
+        Ok("added".to_string())
     }
 
     fn install_plugin(&self, _plugin: &str, _version: Option<&str>) -> AdapterResult<String> {
@@ -61,8 +72,8 @@ impl AsdfSource for AsdfLifecycleSource {
         Ok("uninstalled".to_string())
     }
 
-    fn upgrade_plugins(&self, _plugin: Option<&str>) -> AdapterResult<String> {
-        Ok("upgraded".to_string())
+    fn set_home_version(&self, _plugin: &str, _version: &str) -> AdapterResult<String> {
+        Ok("set".to_string())
     }
 
     fn install_self(&self, _source: AsdfInstallSource) -> AdapterResult<String> {
@@ -78,7 +89,17 @@ impl AsdfSource for AsdfLifecycleSource {
     }
 }
 
-struct NpmLifecycleSource;
+struct NpmLifecycleSource {
+    installed_version: Mutex<Option<String>>,
+}
+
+impl NpmLifecycleSource {
+    fn new() -> Self {
+        Self {
+            installed_version: Mutex::new(None),
+        }
+    }
+}
 
 impl NpmSource for NpmLifecycleSource {
     fn detect(&self) -> AdapterResult<NpmDetectOutput> {
@@ -89,7 +110,17 @@ impl NpmSource for NpmLifecycleSource {
     }
 
     fn list_installed_global(&self) -> AdapterResult<String> {
-        Ok("{\"dependencies\":{}}".to_string())
+        let installed_version = self
+            .installed_version
+            .lock()
+            .expect("npm lifecycle installed-version lock")
+            .clone();
+        let json = if let Some(version) = installed_version {
+            format!("{{\"dependencies\":{{\"eslint\":{{\"version\":\"{version}\"}}}}}}")
+        } else {
+            "{\"dependencies\":{}}".to_string()
+        };
+        Ok(json)
     }
 
     fn list_outdated_global(&self) -> AdapterResult<String> {
@@ -101,10 +132,20 @@ impl NpmSource for NpmLifecycleSource {
     }
 
     fn install_global(&self, _name: &str, _version: Option<&str>) -> AdapterResult<String> {
+        *self
+            .installed_version
+            .lock()
+            .expect("npm lifecycle installed-version lock") = _version
+            .map(str::to_string)
+            .or_else(|| Some("latest".to_string()));
         Ok("installed".to_string())
     }
 
     fn uninstall_global(&self, _name: &str) -> AdapterResult<String> {
+        *self
+            .installed_version
+            .lock()
+            .expect("npm lifecycle installed-version lock") = None;
         Ok("removed".to_string())
     }
 
@@ -131,7 +172,7 @@ impl HomebrewSource for HomebrewIdempotentSource {
         Ok(String::new())
     }
 
-    fn search_local_formulae(&self, _query: &str) -> AdapterResult<String> {
+    fn search_formulae(&self, _query: &helm_core::models::SearchQuery) -> AdapterResult<String> {
         Ok(String::new())
     }
 
@@ -175,6 +216,7 @@ fn authoritative_asdf_lifecycle_mutations_are_emitted() {
     let install = adapter
         .execute(AdapterRequest::Install(InstallRequest {
             package: package(ManagerId::Asdf, "nodejs"),
+            target_name: None,
             version: Some("20.12.2".to_string()),
         }))
         .expect("authoritative install should succeed");
@@ -191,6 +233,8 @@ fn authoritative_asdf_lifecycle_mutations_are_emitted() {
     let upgrade = adapter
         .execute(AdapterRequest::Upgrade(UpgradeRequest {
             package: Some(package(ManagerId::Asdf, "nodejs")),
+            target_name: None,
+            version: None,
         }))
         .expect("authoritative upgrade should succeed");
     match upgrade {
@@ -204,6 +248,8 @@ fn authoritative_asdf_lifecycle_mutations_are_emitted() {
     let uninstall = adapter
         .execute(AdapterRequest::Uninstall(UninstallRequest {
             package: package(ManagerId::Asdf, "nodejs"),
+            target_name: None,
+            version: None,
         }))
         .expect("authoritative uninstall should succeed");
     match uninstall {
@@ -219,11 +265,12 @@ fn authoritative_asdf_lifecycle_mutations_are_emitted() {
 
 #[test]
 fn standard_npm_lifecycle_mutations_are_emitted() {
-    let adapter = NpmAdapter::new(NpmLifecycleSource);
+    let adapter = NpmAdapter::new(NpmLifecycleSource::new());
 
     let install = adapter
         .execute(AdapterRequest::Install(InstallRequest {
             package: package(ManagerId::Npm, "eslint"),
+            target_name: None,
             version: Some("9.0.0".to_string()),
         }))
         .expect("standard install should succeed");
@@ -240,6 +287,8 @@ fn standard_npm_lifecycle_mutations_are_emitted() {
     let upgrade = adapter
         .execute(AdapterRequest::Upgrade(UpgradeRequest {
             package: Some(package(ManagerId::Npm, "eslint")),
+            target_name: None,
+            version: None,
         }))
         .expect("standard upgrade should succeed");
     match upgrade {
@@ -253,6 +302,8 @@ fn standard_npm_lifecycle_mutations_are_emitted() {
     let uninstall = adapter
         .execute(AdapterRequest::Uninstall(UninstallRequest {
             package: package(ManagerId::Npm, "eslint"),
+            target_name: None,
+            version: None,
         }))
         .expect("standard uninstall should succeed");
     match uninstall {
@@ -272,6 +323,7 @@ fn guarded_homebrew_lifecycle_is_idempotent_for_already_installed_or_absent_form
     let install = adapter
         .execute(AdapterRequest::Install(InstallRequest {
             package: package(ManagerId::HomebrewFormula, "ripgrep"),
+            target_name: None,
             version: None,
         }))
         .expect("guarded install should be idempotent for already-installed formula");
@@ -286,6 +338,8 @@ fn guarded_homebrew_lifecycle_is_idempotent_for_already_installed_or_absent_form
     let uninstall = adapter
         .execute(AdapterRequest::Uninstall(UninstallRequest {
             package: package(ManagerId::HomebrewFormula, "ripgrep"),
+            target_name: None,
+            version: None,
         }))
         .expect("guarded uninstall should be idempotent for already-absent formula");
     match uninstall {
@@ -299,6 +353,8 @@ fn guarded_homebrew_lifecycle_is_idempotent_for_already_installed_or_absent_form
     let upgrade = adapter
         .execute(AdapterRequest::Upgrade(UpgradeRequest {
             package: Some(package(ManagerId::HomebrewFormula, "ripgrep")),
+            target_name: None,
+            version: None,
         }))
         .expect("guarded upgrade should succeed");
     match upgrade {

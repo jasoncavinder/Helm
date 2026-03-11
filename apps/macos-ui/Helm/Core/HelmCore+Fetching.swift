@@ -28,12 +28,19 @@ extension HelmCore {
             DispatchQueue.main.async {
                 self.installedPackages = corePackages.map { pkg in
                     PackageItem(
-                        id: "\(pkg.package.manager):\(pkg.package.name)",
+                        id: self.availablePackageId(
+                            managerId: pkg.package.manager,
+                            packageName: pkg.package.name,
+                            packageIdentifier: pkg.packageIdentifier,
+                            version: pkg.installedVersion
+                        ),
                         name: pkg.package.name,
+                        packageIdentifier: pkg.packageIdentifier,
                         version: pkg.installedVersion ?? L10n.Common.unknown.localized,
                         managerId: pkg.package.manager,
                         manager: self.normalizedManagerName(pkg.package.manager),
-                        pinned: pkg.pinned
+                        pinned: pkg.pinned,
+                        runtimeState: pkg.runtimeState ?? PackageRuntimeState()
                     )
                 }
             }
@@ -65,14 +72,21 @@ extension HelmCore {
             DispatchQueue.main.async {
                 self.outdatedPackages = corePackages.map { pkg in
                     PackageItem(
-                        id: "\(pkg.package.manager):\(pkg.package.name)",
+                        id: self.availablePackageId(
+                            managerId: pkg.package.manager,
+                            packageName: pkg.package.name,
+                            packageIdentifier: pkg.packageIdentifier,
+                            version: pkg.installedVersion
+                        ),
                         name: pkg.package.name,
+                        packageIdentifier: pkg.packageIdentifier,
                         version: pkg.installedVersion ?? L10n.Common.unknown.localized,
                         latestVersion: pkg.candidateVersion,
                         managerId: pkg.package.manager,
                         manager: self.normalizedManagerName(pkg.package.manager),
                         pinned: pkg.pinned,
-                        restartRequired: pkg.restartRequired
+                        restartRequired: pkg.restartRequired,
+                        runtimeState: pkg.runtimeState ?? PackageRuntimeState()
                     )
                 }
                 if !self.upgradePlanSteps.isEmpty {
@@ -136,9 +150,11 @@ extension HelmCore {
                     )
                 }
                 self.syncManagerOperations(from: coreTasks)
+                self.syncManagerPostInstallSetupTasks(from: coreTasks)
                 self.syncUpgradeActions(from: coreTasks)
                 self.syncInstallActions(from: coreTasks)
                 self.syncUninstallActions(from: coreTasks)
+                self.syncRustupToolchainActions(from: coreTasks)
                 self.syncUpgradePlanProjection(from: coreTasks)
                 self.syncPackageDescriptionLookups(from: coreTasks)
                 self.activeTasks = (
@@ -316,14 +332,19 @@ extension HelmCore {
     }
 
     func fetchSearchResults(query: String) {
-        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else {
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        localSearchRequestGeneration &+= 1
+        let requestGeneration = localSearchRequestGeneration
+
+        guard !normalizedQuery.isEmpty else {
             DispatchQueue.main.async {
+                guard self.localSearchRequestGeneration == requestGeneration else { return }
                 self.searchResults = []
             }
             return
         }
 
-        service()?.searchLocal(query: query) { [weak self] jsonString in
+        service()?.searchLocal(query: normalizedQuery) { [weak self] jsonString in
             guard let self = self,
                   let jsonString = jsonString,
                   let data = jsonString.data(using: .utf8),
@@ -335,26 +356,99 @@ extension HelmCore {
                     action: "searchLocal.decode",
                     taskType: "search"
                   ) else {
-                DispatchQueue.main.async { self?.searchResults = [] }
+                DispatchQueue.main.async {
+                    guard let self, self.localSearchRequestGeneration == requestGeneration else { return }
+                    self.searchResults = []
+                }
                 return
             }
 
             DispatchQueue.main.async {
-                let filteredResults = results.filter { $0.sourceManager != "rustup" }
+                guard self.localSearchRequestGeneration == requestGeneration else { return }
+                self.mergePackageDescriptionSummaryIndex(from: results)
+                var installedOrOutdatedRepresentativeIdsByIdentity: [String: String] = [:]
+                var installedOrOutdatedRepresentativeIdsByStableKey: [String: String] = [:]
+                for package in (self.outdatedPackages + self.installedPackages) {
+                    let identityId = self.packageIdentityId(
+                        managerId: package.managerId,
+                        packageName: package.name,
+                        packageIdentifier: package.packageIdentifier,
+                        version: package.version
+                    )
+                    if installedOrOutdatedRepresentativeIdsByIdentity[identityId] == nil {
+                        installedOrOutdatedRepresentativeIdsByIdentity[identityId] = package.id
+                    }
+                    if package.managerId == "asdf" {
+                        let stableKey = self.packageStableLookupKey(
+                            managerId: package.managerId,
+                            packageName: package.name
+                        )
+                        if installedOrOutdatedRepresentativeIdsByStableKey[stableKey] == nil {
+                            installedOrOutdatedRepresentativeIdsByStableKey[stableKey] = package.id
+                        }
+                    }
+                }
                 let resolvedSummaryIds = Set(
-                    filteredResults.compactMap { result -> String? in
+                    results.compactMap { result -> String? in
                         guard let summary = result.summary?.trimmingCharacters(in: .whitespacesAndNewlines),
                               !summary.isEmpty else {
                             return nil
                         }
-                        return "\(result.sourceManager):\(result.name)"
+                        let identityId = self.packageIdentityId(
+                            managerId: result.sourceManager,
+                            packageName: result.name,
+                            packageIdentifier: result.packageIdentifier,
+                            version: result.version
+                        )
+                        if let representativeId = installedOrOutdatedRepresentativeIdsByIdentity[identityId] {
+                            return representativeId
+                        }
+                        if result.sourceManager == "asdf",
+                           let representativeId = installedOrOutdatedRepresentativeIdsByStableKey[
+                            self.packageStableLookupKey(
+                                managerId: result.sourceManager,
+                                packageName: result.name
+                            )
+                           ] {
+                            return representativeId
+                        }
+                        return self.availablePackageId(
+                            managerId: result.sourceManager,
+                            packageName: result.name,
+                            packageIdentifier: result.packageIdentifier,
+                            version: result.version
+                        )
                     }
                 )
 
-                self.searchResults = filteredResults.map { result in
-                    PackageItem(
-                        id: "\(result.sourceManager):\(result.name)",
+                self.searchResults = results.map { result in
+                    let identityId = self.packageIdentityId(
+                        managerId: result.sourceManager,
+                        packageName: result.name,
+                        packageIdentifier: result.packageIdentifier,
+                        version: result.version
+                    )
+                    let packageId = installedOrOutdatedRepresentativeIdsByIdentity[identityId]
+                        ?? (
+                            result.sourceManager == "asdf"
+                                ? installedOrOutdatedRepresentativeIdsByStableKey[
+                                    self.packageStableLookupKey(
+                                        managerId: result.sourceManager,
+                                        packageName: result.name
+                                    )
+                                  ]
+                                : nil
+                        )
+                        ?? self.availablePackageId(
+                            managerId: result.sourceManager,
+                            packageName: result.name,
+                            packageIdentifier: result.packageIdentifier,
+                            version: result.version
+                        )
+                    return PackageItem(
+                        id: packageId,
                         name: result.name,
+                        packageIdentifier: result.packageIdentifier,
                         version: result.version ?? "",
                         managerId: result.sourceManager,
                         manager: self.normalizedManagerName(result.sourceManager),
@@ -364,6 +458,7 @@ extension HelmCore {
                 }
                 self.packageDescriptionUnavailableIds.subtract(resolvedSummaryIds)
                 self.packageDescriptionLoadingIds.subtract(resolvedSummaryIds)
+                self.reconcilePackageDescriptionLookupState()
             }
         }
     }
@@ -383,16 +478,67 @@ extension HelmCore {
                   ) else { return }
 
             DispatchQueue.main.async {
-                let excludedIds = Set(self.installedPackages.map(\.id))
-                    .union(self.outdatedPackages.map(\.id))
+                self.rebuildPackageDescriptionSummaryIndex(from: results)
+                let excludedIdentityIds = Set(
+                    self.installedPackages.map { package in
+                        self.packageIdentityId(
+                            managerId: package.managerId,
+                            packageName: package.name,
+                            packageIdentifier: package.packageIdentifier,
+                            version: package.version
+                        )
+                    }
+                )
+                .union(
+                    self.outdatedPackages.map { package in
+                        self.packageIdentityId(
+                            managerId: package.managerId,
+                            packageName: package.name,
+                            packageIdentifier: package.packageIdentifier,
+                            version: package.version
+                        )
+                    }
+                )
+                let excludedAsdfStableKeys = Set(
+                    (self.installedPackages + self.outdatedPackages)
+                        .filter { $0.managerId == "asdf" }
+                        .map { package in
+                            self.packageStableLookupKey(
+                                managerId: package.managerId,
+                                packageName: package.name
+                            )
+                        }
+                )
                 var dedupedById: [String: PackageItem] = [:]
 
-                for result in results where result.sourceManager != "rustup" {
-                    let id = "\(result.sourceManager):\(result.name)"
-                    guard !excludedIds.contains(id) else { continue }
+                for result in results {
+                    let identityId = self.packageIdentityId(
+                        managerId: result.sourceManager,
+                        packageName: result.name,
+                        packageIdentifier: result.packageIdentifier,
+                        version: result.version
+                    )
+                    guard !excludedIdentityIds.contains(identityId) else { continue }
+                    if result.sourceManager == "asdf",
+                       excludedAsdfStableKeys.contains(
+                        self.packageStableLookupKey(
+                            managerId: result.sourceManager,
+                            packageName: result.name
+                        )
+                       ) {
+                        continue
+                    }
+
+                    let id = self.availablePackageId(
+                        managerId: result.sourceManager,
+                        packageName: result.name,
+                        packageIdentifier: result.packageIdentifier,
+                        version: result.version
+                    )
                     let candidate = PackageItem(
                         id: id,
                         name: result.name,
+                        packageIdentifier: result.packageIdentifier,
                         version: result.version ?? "",
                         managerId: result.sourceManager,
                         manager: self.normalizedManagerName(result.sourceManager),
@@ -414,7 +560,7 @@ extension HelmCore {
                 }
 
                 self.cachedAvailablePackages = dedupedById.values.sorted { lhs, rhs in
-                    lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                    lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
                 }
                 let resolvedSummaryIds = Set(
                     self.cachedAvailablePackages.compactMap { package -> String? in
@@ -427,8 +573,289 @@ extension HelmCore {
                 )
                 self.packageDescriptionUnavailableIds.subtract(resolvedSummaryIds)
                 self.packageDescriptionLoadingIds.subtract(resolvedSummaryIds)
+                self.reconcilePackageDescriptionLookupState()
             }
         }
+    }
+
+    private func rebuildPackageDescriptionSummaryIndex(from results: [CoreSearchResult]) {
+        var next: [String: String] = [:]
+        for result in results {
+            guard let summary = normalizedDescriptionSummary(result.summary) else { continue }
+            let sourceKey = packageDescriptionLookupKey(
+                managerId: result.sourceManager,
+                packageName: result.name,
+                version: result.version
+            )
+            next[sourceKey] = summary
+
+            if result.manager != result.sourceManager {
+                let managerKey = packageDescriptionLookupKey(
+                    managerId: result.manager,
+                    packageName: result.name,
+                    version: result.version
+                )
+                next[managerKey] = summary
+            }
+        }
+        packageDescriptionSummaryByKey = next
+    }
+
+    private func mergePackageDescriptionSummaryIndex(from results: [CoreSearchResult]) {
+        var merged = packageDescriptionSummaryByKey
+        var changed = false
+        for result in results {
+            guard let summary = normalizedDescriptionSummary(result.summary) else { continue }
+            let sourceKey = packageDescriptionLookupKey(
+                managerId: result.sourceManager,
+                packageName: result.name,
+                version: result.version
+            )
+            if merged[sourceKey] != summary {
+                merged[sourceKey] = summary
+                changed = true
+            }
+
+            if result.manager != result.sourceManager {
+                let managerKey = packageDescriptionLookupKey(
+                    managerId: result.manager,
+                    packageName: result.name,
+                    version: result.version
+                )
+                if merged[managerKey] != summary {
+                    merged[managerKey] = summary
+                    changed = true
+                }
+            }
+        }
+        if changed {
+            packageDescriptionSummaryByKey = merged
+        }
+    }
+
+    private func normalizedDescriptionSummary(_ summary: String?) -> String? {
+        guard let summary else { return nil }
+        let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return trimmed
+    }
+
+    private func reconcilePackageDescriptionLookupState() {
+        let trackedPackageIds = Set(descriptionLookupPackageById.keys)
+            .union(packageDescriptionLoadingIds)
+            .union(packageDescriptionUnavailableIds)
+        for packageId in trackedPackageIds {
+            if hasPackageDescriptionSummary(packageId: packageId) {
+                packageDescriptionUnavailableIds.remove(packageId)
+                if descriptionLookupTaskIdsByPackage[packageId]?.isEmpty != false {
+                    packageDescriptionLoadingIds.remove(packageId)
+                    descriptionLookupStartedAtByPackage.removeValue(forKey: packageId)
+                }
+            }
+        }
+    }
+
+    func refreshPackageDescriptionSummaryFromLocalCache(
+        for package: PackageItem,
+        clearTracking: Bool = true
+    ) {
+        guard let service = service() else {
+            if hasPackageDescriptionSummary(packageId: package.id) {
+                packageDescriptionUnavailableIds.remove(package.id)
+                packageDescriptionLoadingIds.remove(package.id)
+            } else if clearTracking {
+                packageDescriptionUnavailableIds.insert(package.id)
+                packageDescriptionLoadingIds.remove(package.id)
+            } else {
+                packageDescriptionUnavailableIds.remove(package.id)
+                packageDescriptionLoadingIds.insert(package.id)
+            }
+            if clearTracking || hasPackageDescriptionSummary(packageId: package.id) {
+                descriptionLookupTaskIdsByPackage.removeValue(forKey: package.id)
+                descriptionLookupStartedAtByPackage.removeValue(forKey: package.id)
+                descriptionLookupPackageById.removeValue(forKey: package.id)
+            }
+            return
+        }
+
+        service.searchLocal(query: package.name) { [weak self] jsonString in
+            guard let self = self else { return }
+
+            guard let jsonString,
+                  let data = jsonString.data(using: .utf8),
+                  let results: [CoreSearchResult] = self.decodeCorePayload(
+                    [CoreSearchResult].self,
+                    from: data,
+                    decodeContext: "refreshPackageDescriptionSummaryFromLocalCache",
+                    source: "core.fetching",
+                    action: "refreshPackageDescriptionSummaryFromLocalCache.decode",
+                    taskType: "search"
+                  ) else {
+                DispatchQueue.main.async {
+                    if self.hasPackageDescriptionSummary(packageId: package.id) {
+                        self.packageDescriptionUnavailableIds.remove(package.id)
+                        self.packageDescriptionLoadingIds.remove(package.id)
+                    } else if clearTracking {
+                        self.packageDescriptionUnavailableIds.insert(package.id)
+                        self.packageDescriptionLoadingIds.remove(package.id)
+                    } else {
+                        self.packageDescriptionUnavailableIds.remove(package.id)
+                        self.packageDescriptionLoadingIds.insert(package.id)
+                    }
+                    if clearTracking || self.hasPackageDescriptionSummary(packageId: package.id) {
+                        self.descriptionLookupTaskIdsByPackage.removeValue(forKey: package.id)
+                        self.descriptionLookupStartedAtByPackage.removeValue(forKey: package.id)
+                        self.descriptionLookupPackageById.removeValue(forKey: package.id)
+                    }
+                }
+                return
+            }
+
+            DispatchQueue.main.async {
+                self.mergePackageDescriptionSummaryIndex(from: results)
+                if self.hasPackageDescriptionSummary(packageId: package.id) {
+                    self.packageDescriptionUnavailableIds.remove(package.id)
+                    self.packageDescriptionLoadingIds.remove(package.id)
+                    self.descriptionLookupTaskIdsByPackage.removeValue(forKey: package.id)
+                    self.descriptionLookupStartedAtByPackage.removeValue(forKey: package.id)
+                    self.descriptionLookupPackageById.removeValue(forKey: package.id)
+                } else if clearTracking {
+                    self.packageDescriptionUnavailableIds.insert(package.id)
+                    self.packageDescriptionLoadingIds.remove(package.id)
+                    self.descriptionLookupTaskIdsByPackage.removeValue(forKey: package.id)
+                    self.descriptionLookupStartedAtByPackage.removeValue(forKey: package.id)
+                    self.descriptionLookupPackageById.removeValue(forKey: package.id)
+                } else {
+                    self.packageDescriptionUnavailableIds.remove(package.id)
+                    self.packageDescriptionLoadingIds.insert(package.id)
+                }
+            }
+        }
+    }
+
+    func rustupToolchainDetail(for package: PackageItem) -> CoreRustupToolchainDetail? {
+        guard let key = rustupToolchainDetailKey(for: package) else { return nil }
+        return rustupToolchainDetailsByKey[key]
+    }
+
+    func isRustupToolchainDetailLoading(for package: PackageItem) -> Bool {
+        guard let key = rustupToolchainDetailKey(for: package) else { return false }
+        return rustupToolchainDetailLoadingKeys.contains(key)
+    }
+
+    func isRustupToolchainDetailUnavailable(for package: PackageItem) -> Bool {
+        guard let key = rustupToolchainDetailKey(for: package) else { return false }
+        return rustupToolchainDetailUnavailableKeys.contains(key)
+    }
+
+    func ensureRustupToolchainDetail(for package: PackageItem, force: Bool = false) {
+        guard let key = rustupToolchainDetailKey(for: package) else { return }
+        guard force
+            || (
+                rustupToolchainDetailsByKey[key] == nil
+                    && !rustupToolchainDetailLoadingKeys.contains(key)
+            ) else {
+            return
+        }
+        guard let service = service() else {
+            rustupToolchainDetailLoadingKeys.remove(key)
+            rustupToolchainDetailUnavailableKeys.insert(key)
+            return
+        }
+
+        rustupToolchainDetailUnavailableKeys.remove(key)
+        rustupToolchainDetailLoadingKeys.insert(key)
+        withTimeout(
+            30,
+            source: "core.fetching",
+            action: "getRustupToolchainDetail",
+            managerId: "rustup",
+            taskType: "refresh",
+            operation: { completion in
+                service.getRustupToolchainDetail(toolchain: package.name) { completion($0) }
+            }
+        ) { [weak self] jsonString in
+            guard let self = self else { return }
+
+            guard let jsonString,
+                  let data = jsonString.data(using: .utf8),
+                  let detail: CoreRustupToolchainDetail = self.decodeCorePayload(
+                    CoreRustupToolchainDetail.self,
+                    from: data,
+                    decodeContext: "ensureRustupToolchainDetail",
+                    source: "core.fetching",
+                    action: "getRustupToolchainDetail.decode",
+                    managerId: "rustup",
+                    taskType: "refresh"
+                  ) else {
+                DispatchQueue.main.async {
+                    self.rustupToolchainDetailLoadingKeys.remove(key)
+                    self.rustupToolchainDetailUnavailableKeys.insert(key)
+                }
+                return
+            }
+
+            DispatchQueue.main.async {
+                self.rustupToolchainDetailsByKey[key] = detail
+                self.rustupToolchainDetailLoadingKeys.remove(key)
+                self.rustupToolchainDetailUnavailableKeys.remove(key)
+            }
+        }
+    }
+
+    private func rustupToolchainDetailKey(for package: PackageItem) -> String? {
+        guard package.managerId == "rustup", package.status != .available else { return nil }
+        let normalizedName = package.name
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !normalizedName.isEmpty else { return nil }
+        return "rustup|\(normalizedName)"
+    }
+
+    private func stablePackageId(
+        managerId: String,
+        packageName: String,
+        packageIdentifier: String? = nil
+    ) -> String {
+        let trimmedIdentifier = packageIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !trimmedIdentifier.isEmpty {
+            return "\(managerId):\(packageName)#\(trimmedIdentifier)"
+        }
+        return "\(managerId):\(packageName)"
+    }
+
+    private func packageIdentityId(
+        managerId: String,
+        packageName: String,
+        packageIdentifier: String? = nil,
+        version: String?
+    ) -> String {
+        let identityKey = PackageIdentity.normalizedIdentityKey(name: packageName, version: version)
+        guard !identityKey.isEmpty else {
+            return stablePackageId(
+                managerId: managerId,
+                packageName: packageName,
+                packageIdentifier: packageIdentifier
+            )
+        }
+        return "\(managerId):\(identityKey)"
+    }
+
+    private func availablePackageId(
+        managerId: String,
+        packageName: String,
+        packageIdentifier: String? = nil,
+        version: String?
+    ) -> String {
+        let stableId = stablePackageId(
+            managerId: managerId,
+            packageName: packageName,
+            packageIdentifier: packageIdentifier
+        )
+        guard let version else { return stableId }
+        let normalizedVersion = version.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedVersion.isEmpty else { return stableId }
+        return "\(stableId)::\(normalizedVersion)"
     }
 
     // MARK: - Manager Status

@@ -14,7 +14,7 @@ struct ControlCenterInspectorView: View {
 
     private var selectedPackage: PackageItem? {
         guard let packageId = context.selectedPackageId else { return nil }
-        return core.allKnownPackages.first { $0.id == packageId }
+        return core.knownPackage(withId: packageId)
     }
 
     private var selectedUpgradePlanTask: TaskItem? {
@@ -50,7 +50,14 @@ struct ControlCenterInspectorView: View {
                 if let task = selectedTask ?? selectedUpgradePlanTask {
                     InspectorTaskDetailView(task: task)
                 } else if let package = selectedPackage {
+                    let runtimeStateToken = [
+                        package.runtimeState.isActive ? "1" : "0",
+                        package.runtimeState.isDefault ? "1" : "0",
+                        package.runtimeState.hasOverride ? "1" : "0",
+                    ].joined()
+                    let packageInspectorToken = "\(package.id)|\(package.pinned ? 1 : 0)|\(package.version)|\(package.latestVersion ?? "")|\(runtimeStateToken)"
                     InspectorPackageDetailView(package: package)
+                        .id(packageInspectorToken)
                 } else if let manager = selectedManager {
                     InspectorManagerDetailView(
                         manager: manager,
@@ -666,96 +673,270 @@ private func copyTextToClipboard(_ text: String) {
 private struct InspectorPackageDetailView: View {
     @ObservedObject private var core = HelmCore.shared
     @EnvironmentObject private var context: ControlCenterContext
-    @State private var renderedPackageDescription: PackageDescriptionRenderer.RenderedDescription?
     @State private var loadingPackageUninstallPreview = false
-    @State private var confirmPackageUninstall: ConfirmPackageUninstallAction?
+    @State private var inspectorAlert: InspectorPackageAlert?
     let package: PackageItem
 
-    private enum ConfirmPackageUninstallAction: Identifiable {
-        case uninstall(preview: PackageUninstallPreview)
-        case uninstallFallback
+    private static let unknownVersionTokens: Set<String> = {
+        var tokens: Set<String> = ["unknown"]
+        let localizedUnknown = L10n.Common.unknown.localized
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if !localizedUnknown.isEmpty {
+            tokens.insert(localizedUnknown)
+        }
+        return tokens
+    }()
+
+    private struct ManagerSwitchAlertContext: Identifiable {
+        let packageName: String
+        let selectedManagerId: String
+        let title: String
+        let message: String
+
+        var id: String {
+            "\(packageName.lowercased())-\(selectedManagerId)"
+        }
+    }
+
+    private enum InspectorPackageAlert: Identifiable {
+        case uninstall(package: PackageItem, preview: PackageUninstallPreview)
+        case uninstallFallback(package: PackageItem)
+        case switchManager(ManagerSwitchAlertContext)
 
         var id: String {
             switch self {
-            case let .uninstall(preview):
-                return "uninstall-\(preview.packageName)-\(preview.blastRadiusScore)"
-            case .uninstallFallback:
-                return "uninstall-fallback"
+            case let .uninstall(package, preview):
+                return "uninstall-\(package.id)-\(preview.blastRadiusScore)"
+            case let .uninstallFallback(package):
+                return "uninstall-fallback-\(package.id)"
+            case let .switchManager(context):
+                return "switch-manager-\(context.id)"
             }
         }
     }
 
+    private struct ManagerPackageGroup: Identifiable {
+        let managerId: String
+        let packages: [PackageItem]
+
+        var id: String { managerId }
+
+        var representativePackage: PackageItem? {
+            packages.first
+        }
+    }
+
+    private var livePackage: PackageItem {
+        core.knownPackage(withId: package.id) ?? package
+    }
+
+    private var managerGroups: [ManagerPackageGroup] {
+        let grouped = Dictionary(grouping: packageFamilyMembers(for: livePackage), by: \.managerId)
+        return grouped.compactMap { managerId, candidates in
+            let sortedCandidates = candidates.sorted(by: memberCandidateOrdering)
+            guard !sortedCandidates.isEmpty else { return nil }
+            return ManagerPackageGroup(managerId: managerId, packages: sortedCandidates)
+        }
+        .sorted { lhs, rhs in
+            guard let lhsRepresentative = lhs.representativePackage,
+                  let rhsRepresentative = rhs.representativePackage else {
+                return lhs.managerId < rhs.managerId
+            }
+            return managerCandidateOrdering(lhsRepresentative, rhsRepresentative)
+        }
+    }
+
+    private var managerCandidates: [PackageItem] {
+        managerGroups.compactMap(\.representativePackage)
+    }
+
+    private var installedManagerCandidates: [PackageItem] {
+        managerCandidates.filter { $0.status != .available }
+    }
+
+    private var installedProvenanceManagerPackage: PackageItem? {
+        installedManagerCandidates.first
+    }
+
+    private var recommendedManagerPackage: PackageItem {
+        if let preferredInstalled = installedProvenanceManagerPackage {
+            return preferredInstalled
+        }
+        if let preferredAvailable = managerCandidates.first(where: { $0.status == .available }) {
+            return preferredAvailable
+        }
+        return managerCandidates.first ?? livePackage
+    }
+
+    private var selectedManagerId: String {
+        if let preferredManagerId = core.preferredManagerId(for: livePackage),
+           managerCandidates.contains(where: { $0.managerId == preferredManagerId }) {
+            return preferredManagerId
+        }
+        return recommendedManagerPackage.managerId
+    }
+
+    private var activeManagerGroup: ManagerPackageGroup? {
+        managerGroups.first(where: { $0.managerId == selectedManagerId })
+    }
+
+    private var activePackage: PackageItem {
+        if let activeManagerGroup,
+           let selectedPackageId = context.selectedPackageId,
+           let selectedPackage = activeManagerGroup.packages.first(where: { $0.id == selectedPackageId }) {
+            return selectedPackage
+        }
+        return activeManagerGroup?.representativePackage ?? recommendedManagerPackage
+    }
+
     private var supportsKegPolicyOverride: Bool {
-        package.managerId == "homebrew_formula" && package.status != .available
+        activePackage.managerId == "homebrew_formula" && activePackage.status != .available
     }
 
     private var kegPolicySelection: KegPolicySelection {
-        core.kegPolicySelection(for: package)
+        core.kegPolicySelection(for: activePackage)
+    }
+
+    private var currentVersionText: String {
+        normalizedVersionText(activePackage.version) ?? L10n.Common.unknown.localized
+    }
+
+    private struct RuntimeStateBadge: Identifiable {
+        let id: String
+        let title: String
+        let color: Color
+    }
+
+    private var runtimeStateBadges: [RuntimeStateBadge] {
+        var badges: [RuntimeStateBadge] = []
+        if activePackage.runtimeState.isActive {
+            badges.append(
+                RuntimeStateBadge(
+                    id: "active",
+                    title: L10n.App.Inspector.packageRuntimeStateActive.localized,
+                    color: .green
+                )
+            )
+        }
+        if activePackage.runtimeState.isDefault {
+            badges.append(
+                RuntimeStateBadge(
+                    id: "default",
+                    title: L10n.App.Inspector.packageRuntimeStateDefault.localized,
+                    color: .blue
+                )
+            )
+        }
+        if activePackage.runtimeState.hasOverride {
+            badges.append(
+                RuntimeStateBadge(
+                    id: "override",
+                    title: L10n.App.Inspector.packageRuntimeStateOverride.localized,
+                    color: .orange
+                )
+            )
+        }
+        return badges
+    }
+
+    private var latestVersionText: String? {
+        guard activePackage.status == .upgradable else { return nil }
+        return normalizedVersionText(activePackage.latestVersion)
+    }
+
+    private var resolvedPackageSummary: String? {
+        core.packageDescriptionSummary(for: activePackage)
+    }
+
+    private var shouldShowRustupToolchainDetail: Bool {
+        activePackage.managerId == "rustup" && activePackage.status != .available
+    }
+
+    private var shouldShowManagerSpecificPackageSection: Bool {
+        shouldShowRustupToolchainDetail
+    }
+
+    private var rustupToolchainDetail: CoreRustupToolchainDetail? {
+        core.rustupToolchainDetail(for: activePackage)
+    }
+
+    private var rustupToolchainActionInFlight: Bool {
+        core.isRustupToolchainActionInFlight(for: activePackage)
+    }
+
+    private var renderedPackageDescription: PackageDescriptionRenderer.RenderedDescription? {
+        core.renderedPackageDescription(for: activePackage, summaryOverride: resolvedPackageSummary)
+    }
+
+    private var descriptionLoadingView: some View {
+        HStack(spacing: 6) {
+            ProgressView()
+                .controlSize(.small)
+                .scaleEffect(0.8)
+            Text(L10n.App.Inspector.descriptionLoading.localized)
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private var rustupToolchainDetailLoadingView: some View {
+        HStack(spacing: 6) {
+            ProgressView()
+                .controlSize(.small)
+                .scaleEffect(0.8)
+            Text(L10n.App.Inspector.rustupDetailLoading.localized)
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private var rustupToolchainMutationLoadingView: some View {
+        HStack(spacing: 6) {
+            ProgressView()
+                .controlSize(.small)
+                .scaleEffect(0.8)
+            Text(L10n.App.Inspector.rustupConfiguring.localized)
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(package.name)
-                .font(.title3.weight(.semibold))
-
-            InspectorField(label: L10n.App.Inspector.manager.localized) {
-                Text(localizedManagerDisplayName(package.managerId))
-                    .font(.callout)
-            }
-
-            // Status badge
-            HStack(spacing: 6) {
-                Image(systemName: package.status.iconName)
-                    .foregroundColor(package.status.iconColor)
-                Text(package.status.displayName)
-                    .font(.callout.weight(.medium))
-                    .foregroundColor(package.status.iconColor)
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(L10n.App.Inspector.packageStatus.localized)
-            .accessibilityValue(package.status.displayName)
-
-            InspectorField(label: L10n.App.Inspector.installed.localized) {
-                Text(package.version)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(activePackage.displayName)
+                    .font(.title3.weight(.semibold))
+                Text(currentVersionText)
                     .font(.caption.monospacedDigit())
+                    .foregroundColor(.secondary)
+                if !runtimeStateBadges.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(runtimeStateBadges) { badge in
+                            Text(badge.title)
+                                .font(.caption2.weight(.medium))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(
+                                    Capsule(style: .continuous)
+                                        .fill(badge.color.opacity(0.14))
+                                )
+                                .foregroundColor(badge.color)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(L10n.App.Inspector.packageRuntimeState.localized)
+                }
             }
 
-            if let latest = package.latestVersion {
+            if let latestVersionText {
                 InspectorField(label: L10n.App.Inspector.latest.localized) {
-                    Text(latest)
+                    Text(latestVersionText)
                         .font(.caption.monospacedDigit())
                 }
             }
 
-            if supportsKegPolicyOverride {
-                kegPolicyMenuField
-            }
-
-            if package.pinned {
-                HStack(spacing: 6) {
-                    Image(systemName: "pin.fill")
-                        .foregroundColor(.orange)
-                        .font(.caption)
-                    Text(L10n.App.Inspector.pinned.localized)
-                        .font(.callout)
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(L10n.App.Inspector.pinned.localized)
-            }
-
-            if package.restartRequired {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange)
-                        .font(.caption)
-                    Text(L10n.App.Inspector.restartRequired.localized)
-                        .font(.callout)
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(L10n.App.Inspector.restartRequired.localized)
-            }
-
-            InspectorField(label: L10n.App.Inspector.description.localized) {
+            Group {
                 if let renderedPackageDescription {
                     switch renderedPackageDescription {
                     case .plain(let text):
@@ -765,46 +946,71 @@ private struct InspectorPackageDetailView: View {
                         InspectorAttributedText(attributedText: attributed)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                } else if core.packageDescriptionLoadingIds.contains(package.id) {
-                    Text(L10n.App.Inspector.descriptionLoading.localized)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                } else if core.packageDescriptionUnavailableIds.contains(package.id) {
+                } else if core.packageDescriptionLoadingIds.contains(activePackage.id) {
+                    descriptionLoadingView
+                } else if core.packageDescriptionUnavailableIds.contains(activePackage.id) {
                     Text(L10n.App.Inspector.descriptionUnavailable.localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 } else {
-                    Text(L10n.App.Inspector.descriptionLoading.localized)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    descriptionLoadingView
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             packageActionRow
 
+            if supportsKegPolicyOverride {
+                kegPolicyMenuField
+            }
+
+            managerSelectionField
+
+            if shouldShowManagerSpecificPackageSection {
+                Divider()
+                    .padding(.vertical, 4)
+            }
+
+            if shouldShowRustupToolchainDetail {
+                rustupToolchainDetailSection
+            }
+
+            packageIdField
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear {
-            core.ensurePackageDescription(for: package)
-            refreshRenderedPackageDescription()
+            ensurePersistedManagerSelection()
+            ensureSelectedPackageMember()
+            core.ensurePackageDescription(for: activePackage)
+            core.ensureRustupToolchainDetail(for: activePackage)
         }
         .onChange(of: package.id) { _ in
-            core.ensurePackageDescription(for: package)
-            refreshRenderedPackageDescription()
+            ensurePersistedManagerSelection()
+            ensureSelectedPackageMember()
+            core.ensurePackageDescription(for: activePackage)
+            core.ensureRustupToolchainDetail(for: activePackage)
+        }
+        .onChange(of: core.managerStatuses.mapValues(\.enabled)) { _ in
+            ensurePersistedManagerSelection()
+            ensureSelectedPackageMember()
         }
         .onChange(of: package.summary) { _ in
-            core.ensurePackageDescription(for: package)
-            refreshRenderedPackageDescription()
+            core.ensurePackageDescription(for: activePackage)
         }
-        .alert(item: $confirmPackageUninstall) { action in
+        .onChange(of: selectedManagerId) { _ in
+            ensureSelectedPackageMember()
+            core.ensurePackageDescription(for: activePackage)
+            core.ensureRustupToolchainDetail(for: activePackage)
+        }
+        .alert(item: $inspectorAlert) { action in
             switch action {
-            case let .uninstall(preview):
-                let message = packageUninstallAlertMessage(preview)
+            case let .uninstall(targetPackage, preview):
+                let message = packageUninstallAlertMessage(preview, package: targetPackage)
                 if preview.managerAutomationLevel == "read_only" {
                     return Alert(
                         title: Text(
                             L10n.App.Packages.Alert.uninstallTitle.localized(
-                                with: ["package": package.name]
+                                with: ["package": targetPackage.displayName]
                             )
                         ),
                         message: Text(message),
@@ -812,34 +1018,43 @@ private struct InspectorPackageDetailView: View {
                     )
                 }
                 return Alert(
-                    title: Text(
-                        L10n.App.Packages.Alert.uninstallTitle.localized(
-                            with: ["package": package.name]
-                        )
-                    ),
-                    message: Text(message),
-                    primaryButton: .destructive(Text(L10n.Common.uninstall.localized)) {
-                        core.uninstallPackage(package)
-                    },
-                    secondaryButton: .cancel()
-                )
-            case .uninstallFallback:
+                        title: Text(
+                            L10n.App.Packages.Alert.uninstallTitle.localized(
+                                with: ["package": targetPackage.displayName]
+                            )
+                        ),
+                        message: Text(message),
+                        primaryButton: .destructive(Text(L10n.Common.uninstall.localized)) {
+                            core.uninstallPackage(targetPackage)
+                        },
+                        secondaryButton: .cancel()
+                    )
+            case let .uninstallFallback(targetPackage):
                 return Alert(
                     title: Text(
                         L10n.App.Packages.Alert.uninstallTitle.localized(
-                            with: ["package": package.name]
+                            with: ["package": targetPackage.displayName]
                         )
                     ),
                     message: Text(
                         L10n.App.Packages.Alert.uninstallMessage.localized(
                             with: [
-                                "package": package.name,
-                                "manager": localizedManagerDisplayName(package.managerId),
+                                "package": targetPackage.displayName,
+                                "manager": localizedManagerDisplayName(targetPackage.managerId),
                             ]
                         )
                     ),
                     primaryButton: .destructive(Text(L10n.Common.uninstall.localized)) {
-                        core.uninstallPackage(package)
+                        core.uninstallPackage(targetPackage)
+                    },
+                    secondaryButton: .cancel()
+                )
+            case let .switchManager(switchContext):
+                return Alert(
+                    title: Text(switchContext.title),
+                    message: Text(switchContext.message),
+                    primaryButton: .default(Text(L10n.Common.continue.localized)) {
+                        persistManagerSelection(switchContext.selectedManagerId)
                     },
                     secondaryButton: .cancel()
                 )
@@ -847,15 +1062,261 @@ private struct InspectorPackageDetailView: View {
         }
     }
 
-    private func refreshRenderedPackageDescription() {
-        renderedPackageDescription = core.renderedPackageDescription(for: package)
+    @ViewBuilder
+    private var rustupToolchainDetailSection: some View {
+        if let detail = rustupToolchainDetail {
+            if rustupToolchainActionInFlight {
+                rustupToolchainMutationLoadingView
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            rustupProfileField(detail)
+            rustupOverridesField(detail)
+            rustupToolchainEntryField(
+                label: L10n.App.Inspector.rustupComponents.localized,
+                entries: detail.components,
+                addLabel: L10n.App.Inspector.rustupAddComponent.localized,
+                removeLabel: L10n.App.Inspector.rustupRemoveComponent.localized,
+                onAdd: { component in
+                    core.addRustupComponent(component, to: activePackage)
+                },
+                onRemove: { component in
+                    core.removeRustupComponent(component, from: activePackage)
+                }
+            )
+            rustupToolchainEntryField(
+                label: L10n.App.Inspector.rustupTargets.localized,
+                entries: detail.targets,
+                addLabel: L10n.App.Inspector.rustupAddTarget.localized,
+                removeLabel: L10n.App.Inspector.rustupRemoveTarget.localized,
+                onAdd: { target in
+                    core.addRustupTarget(target, to: activePackage)
+                },
+                onRemove: { target in
+                    core.removeRustupTarget(target, from: activePackage)
+                }
+            )
+        } else if core.isRustupToolchainDetailLoading(for: activePackage) {
+            rustupToolchainDetailLoadingView
+        } else if core.isRustupToolchainDetailUnavailable(for: activePackage) {
+            Text(L10n.App.Inspector.rustupDetailUnavailable.localized)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            rustupToolchainDetailLoadingView
+        }
+    }
+
+    private func rustupToolchainEntryField(
+        label: String,
+        entries: [CoreRustupToolchainDetailEntry],
+        addLabel: String,
+        removeLabel: String,
+        onAdd: @escaping (String) -> Void,
+        onRemove: @escaping (String) -> Void
+    ) -> some View {
+        let installedEntries = entries.filter(\.installed)
+        let availableEntries = entries.filter { !$0.installed }
+        return InspectorField(label: label) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .center, spacing: 8) {
+                    Text(
+                        L10n.App.Inspector.rustupInstalledOfAvailable.localized(
+                            with: [
+                                "installed": "\(installedEntries.count)",
+                                "available": "\(entries.count)",
+                            ]
+                        )
+                    )
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                    Spacer(minLength: 0)
+
+                    if !availableEntries.isEmpty {
+                        Menu {
+                            ForEach(availableEntries) { entry in
+                                Button(entry.name) {
+                                    onAdd(entry.name)
+                                }
+                            }
+                        } label: {
+                            rustupToolchainMenuLabel(addLabel)
+                        }
+                        .buttonStyle(HelmSecondaryButtonStyle(cornerRadius: 8, horizontalPadding: 8, verticalPadding: 4))
+                        .disabled(rustupToolchainActionInFlight)
+                    }
+
+                    if !installedEntries.isEmpty {
+                        Menu {
+                            ForEach(installedEntries) { entry in
+                                Button(entry.name) {
+                                    onRemove(entry.name)
+                                }
+                            }
+                        } label: {
+                            rustupToolchainMenuLabel(removeLabel)
+                        }
+                        .buttonStyle(HelmSecondaryButtonStyle(cornerRadius: 8, horizontalPadding: 8, verticalPadding: 4))
+                        .disabled(rustupToolchainActionInFlight)
+                    }
+                }
+
+                if installedEntries.isEmpty {
+                    Text(L10n.App.Inspector.rustupNoneInstalled.localized)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } else {
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 118), spacing: 6)],
+                        alignment: .leading,
+                        spacing: 6
+                    ) {
+                        ForEach(installedEntries) { entry in
+                            rustupToolchainEntryBadge(entry.name)
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func rustupProfileField(_ detail: CoreRustupToolchainDetail) -> some View {
+        let currentProfile = detail.currentProfile?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedCurrentProfile = currentProfile?.lowercased()
+        let profiles = ["minimal", "default", "complete"]
+        return InspectorField(label: L10n.App.Inspector.rustupProfile.localized) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Text(currentProfile?.isEmpty == false ? currentProfile! : "-")
+                        .font(.callout)
+                    Spacer(minLength: 0)
+
+                    Menu {
+                        ForEach(profiles, id: \.self) { profile in
+                            Button {
+                                core.setRustupProfile(profile, for: activePackage)
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Text(profile)
+                                    if normalizedCurrentProfile == profile {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        rustupToolchainMenuLabel(L10n.App.Inspector.rustupSetProfile.localized)
+                    }
+                    .buttonStyle(HelmSecondaryButtonStyle(cornerRadius: 8, horizontalPadding: 8, verticalPadding: 4))
+                    .disabled(rustupToolchainActionInFlight)
+
+                    Button(L10n.App.Inspector.rustupSetDefault.localized) {
+                        core.setRustupDefaultToolchain(activePackage)
+                    }
+                    .buttonStyle(HelmSecondaryButtonStyle(cornerRadius: 8, horizontalPadding: 8, verticalPadding: 4))
+                    .disabled(rustupToolchainActionInFlight || activePackage.runtimeState.isDefault)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func rustupOverridesField(_ detail: CoreRustupToolchainDetail) -> some View {
+        InspectorField(label: L10n.App.Inspector.rustupOverrides.localized) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Text(
+                        detail.overridePaths.isEmpty
+                            ? L10n.App.Inspector.rustupNoOverrides.localized
+                            : L10n.App.Inspector.rustupOverridesConfigured.localized(
+                                with: ["count": "\(detail.overridePaths.count)"]
+                            )
+                    )
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                    Spacer(minLength: 0)
+
+                    Button(L10n.App.Inspector.rustupSetOverride.localized) {
+                        pickRustupOverrideDirectory(for: activePackage)
+                    }
+                    .buttonStyle(HelmSecondaryButtonStyle(cornerRadius: 8, horizontalPadding: 8, verticalPadding: 4))
+                    .disabled(rustupToolchainActionInFlight)
+                }
+
+                if detail.overridePaths.isEmpty {
+                    Text(L10n.App.Inspector.rustupNoOverrides.localized)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } else {
+                    ForEach(detail.overridePaths, id: \.self) { path in
+                        HStack(alignment: .top, spacing: 8) {
+                            Text(path)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Button {
+                                core.unsetRustupOverride(activePackage, path: path)
+                            } label: {
+                                Image(systemName: "xmark.circle")
+                            }
+                            .buttonStyle(HelmIconButtonStyle())
+                            .help(L10n.App.Inspector.rustupClearOverride.localized)
+                            .disabled(rustupToolchainActionInFlight)
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func rustupToolchainEntryBadge(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(HelmTheme.surfaceElevated)
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .strokeBorder(HelmTheme.borderSubtle.opacity(0.9), lineWidth: 0.8)
+                    )
+            )
+            .foregroundColor(HelmTheme.textSecondary)
+    }
+
+    private func rustupToolchainMenuLabel(_ title: String) -> some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(.caption)
+            Image(systemName: "chevron.down")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private func pickRustupOverrideDirectory(for package: PackageItem) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.resolvesAliases = true
+        panel.prompt = L10n.Common.ok.localized
+        if panel.runModal() == .OK, let url = panel.url {
+            core.setRustupOverride(package, path: url.path)
+        }
     }
 
     private var kegPolicyMenuField: some View {
         InspectorField(label: L10n.App.Packages.Label.homebrewKegPolicy.localized) {
             Menu {
                 Button {
-                    core.setKegPolicySelection(for: package, selection: .useGlobal)
+                    core.setKegPolicySelection(for: activePackage, selection: .useGlobal)
                 } label: {
                     HStack(spacing: 8) {
                         Text(L10n.App.Packages.KegPolicy.useGlobal.localized)
@@ -866,7 +1327,7 @@ private struct InspectorPackageDetailView: View {
                 }
 
                 Button {
-                    core.setKegPolicySelection(for: package, selection: .keep)
+                    core.setKegPolicySelection(for: activePackage, selection: .keep)
                 } label: {
                     HStack(spacing: 8) {
                         Text(L10n.App.Packages.KegPolicy.keepOld.localized)
@@ -877,7 +1338,7 @@ private struct InspectorPackageDetailView: View {
                 }
 
                 Button {
-                    core.setKegPolicySelection(for: package, selection: .cleanup)
+                    core.setKegPolicySelection(for: activePackage, selection: .cleanup)
                 } label: {
                     HStack(spacing: 8) {
                         Text(L10n.App.Packages.KegPolicy.cleanupOld.localized)
@@ -900,83 +1361,154 @@ private struct InspectorPackageDetailView: View {
         }
     }
 
-    private var packageActionRow: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                if core.canInstallPackage(package) {
-                    packageActionButton(
-                        symbol: "arrow.down.circle",
-                        tooltip: L10n.App.Packages.Action.install.localized,
-                        enabled: !core.installActionPackageIds.contains(package.id)
-                    ) {
-                        core.installPackage(package)
+    private var managerSelectionField: some View {
+        InspectorField(label: L10n.App.Inspector.manager.localized) {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(managerCandidates, id: \.managerId) { candidate in
+                    let isActive = candidate.managerId == selectedManagerId
+                    Button {
+                        requestManagerSwitch(to: candidate)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: isActive ? "checkmark.circle.fill" : "circle")
+                                .foregroundColor(isActive ? HelmTheme.proAccent : HelmTheme.textSecondary)
+                                .font(.caption)
+                            Text(localizedManagerDisplayName(candidate.managerId))
+                                .font(.callout)
+                                .foregroundColor(.primary)
+                            Spacer(minLength: 0)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .buttonStyle(.plain)
+                    .disabled(isActive)
+                    .helmPointer(enabled: !isActive)
                 }
 
-                if core.canUninstallPackage(package) {
-                    packageActionButton(
-                        symbol: "trash",
-                        tooltip: L10n.App.Packages.Action.uninstall.localized,
-                        enabled: !core.uninstallActionPackageIds.contains(package.id)
-                            && !loadingPackageUninstallPreview
-                    ) {
-                        requestPackageUninstallConfirmation()
+                if let activeManagerGroup, activeManagerGroup.packages.count > 1 {
+                    Divider()
+                        .padding(.vertical, 2)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(L10n.App.Inspector.version.localized)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        Picker(
+                            L10n.App.Inspector.version.localized,
+                            selection: Binding(
+                                get: { activePackage.id },
+                                set: { selectPackageMember(withId: $0) }
+                            )
+                        ) {
+                            ForEach(activeManagerGroup.packages, id: \.id) { candidate in
+                                Text(versionSelectionLabel(for: candidate))
+                                    .tag(candidate.id)
+                            }
+                        }
+                        .pickerStyle(.radioGroup)
                     }
                 }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
 
-                if core.canUpgradeIndividually(package) {
-                    packageActionButton(
-                        symbol: "arrow.up.circle",
-                        tooltip: L10n.Common.update.localized,
-                        enabled: !core.upgradeActionPackageIds.contains(package.id)
-                    ) {
-                        core.upgradePackage(package)
-                    }
-                }
-
-                if core.canPinPackage(package) {
-                    packageActionButton(
-                        symbol: package.pinned ? "pin.slash" : "pin",
-                        tooltip: package.pinned
-                            ? L10n.App.Packages.Action.unpin.localized
-                            : L10n.App.Packages.Action.pin.localized,
-                        enabled: !core.pinActionPackageIds.contains(package.id)
-                    ) {
-                        if package.pinned {
-                            core.unpinPackage(package)
-                        } else {
-                            core.pinPackage(package)
+    private var packageIdField: some View {
+        InspectorField(label: L10n.App.Inspector.packageId.localized) {
+            if managerGroups.count <= 1,
+               let activeManagerGroup,
+               activeManagerGroup.packages.count <= 1 {
+                Text(displayedPackageIdentifier(for: activePackage))
+                    .font(.caption.monospacedDigit())
+                    .foregroundColor(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(managerGroups) { group in
+                        ForEach(group.packages, id: \.id) { candidate in
+                            HStack(spacing: 6) {
+                                Text(packageIdLabel(for: candidate, within: group))
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                Text(displayedPackageIdentifier(for: candidate))
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundColor(.secondary)
+                            }
                         }
                     }
                 }
+            }
+        }
+    }
 
+    private var packageActionRow: some View {
+        HStack(spacing: 6) {
+            if activePackage.status == .available {
                 packageActionButton(
-                    symbol: "slider.horizontal.3",
-                    tooltip: L10n.App.Inspector.viewManager.localized,
-                    enabled: true
+                    symbol: "arrow.down.circle",
+                    tooltip: L10n.App.Packages.Action.install.localized,
+                    enabled: core.canInstallPackage(activePackage, includeAlternates: false)
+                        && !core.installActionPackageIds.contains(activePackage.id)
                 ) {
-                    context.selectedManagerId = package.managerId
-                    context.selectedPackageId = nil
-                    context.selectedTaskId = nil
-                    context.selectedUpgradePlanStepId = nil
-                    context.selectedSection = .managers
+                    core.installPackage(activePackage, includeAlternates: false)
                 }
-
-                Spacer(minLength: 0)
             }
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(L10n.App.Inspector.packageId.localized)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Text(package.id)
-                    .font(.caption.monospacedDigit())
-                    .foregroundColor(.secondary)
+            if core.canUninstallPackage(activePackage) {
+                packageActionButton(
+                    symbol: "trash",
+                    tooltip: L10n.App.Packages.Action.uninstall.localized,
+                    enabled: !core.uninstallActionPackageIds.contains(activePackage.id)
+                        && !loadingPackageUninstallPreview
+                ) {
+                    requestPackageUninstallConfirmation(for: activePackage)
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(L10n.App.Inspector.packageId.localized)
-            .accessibilityValue(package.id)
+
+            if activePackage.status == .upgradable {
+                packageActionButton(
+                    symbol: "arrow.up.circle",
+                    tooltip: L10n.App.Packages.Action.update.localized,
+                    enabled: core.canUpgradeIndividually(activePackage)
+                        && !core.upgradeActionPackageIds.contains(activePackage.id)
+                ) {
+                    core.upgradePackage(activePackage)
+                }
+            }
+
+            if core.canPinPackage(activePackage) {
+                if activePackage.pinned {
+                    packageActionButton(
+                        symbol: "pin.slash",
+                        tooltip: L10n.App.Packages.Action.unpin.localized,
+                        enabled: !core.pinActionPackageIds.contains(activePackage.id)
+                    ) {
+                        core.unpinPackage(activePackage)
+                    }
+                } else {
+                    packageActionButton(
+                        symbol: "pin",
+                        tooltip: L10n.App.Packages.Action.pin.localized,
+                        enabled: !core.pinActionPackageIds.contains(activePackage.id)
+                    ) {
+                        core.pinPackage(activePackage)
+                    }
+                }
+            }
+
+            packageActionButton(
+                symbol: "slider.horizontal.3",
+                tooltip: L10n.App.Inspector.viewManager.localized,
+                enabled: true
+            ) {
+                context.selectedManagerId = activePackage.managerId
+                context.selectedPackageId = nil
+                context.selectedTaskId = nil
+                context.selectedUpgradePlanStepId = nil
+                context.selectedSection = .managers
+            }
+
+            Spacer(minLength: 0)
         }
     }
 
@@ -1007,24 +1539,24 @@ private struct InspectorPackageDetailView: View {
         .helmPointer(enabled: enabled)
     }
 
-    private func requestPackageUninstallConfirmation() {
+    private func requestPackageUninstallConfirmation(for targetPackage: PackageItem) {
         loadingPackageUninstallPreview = true
-        core.previewPackageUninstall(package) { preview in
+        core.previewPackageUninstall(targetPackage) { preview in
             loadingPackageUninstallPreview = false
             if let preview {
-                confirmPackageUninstall = .uninstall(preview: preview)
+                inspectorAlert = .uninstall(package: targetPackage, preview: preview)
                 return
             }
-            confirmPackageUninstall = .uninstallFallback
+            inspectorAlert = .uninstallFallback(package: targetPackage)
         }
     }
 
-    private func packageUninstallAlertMessage(_ preview: PackageUninstallPreview) -> String {
+    private func packageUninstallAlertMessage(_ preview: PackageUninstallPreview, package targetPackage: PackageItem) -> String {
         var sections = [
             L10n.App.Packages.Alert.uninstallMessage.localized(
                 with: [
-                    "package": package.name,
-                    "manager": localizedManagerDisplayName(package.managerId),
+                    "package": targetPackage.displayName,
+                    "manager": localizedManagerDisplayName(targetPackage.managerId),
                 ]
             )
         ]
@@ -1039,6 +1571,237 @@ private struct InspectorPackageDetailView: View {
         }
 
         return sections.joined(separator: "\n\n")
+    }
+
+    private func requestManagerSwitch(to candidate: PackageItem) {
+        let currentPackage = activePackage
+        guard candidate.managerId != currentPackage.managerId else { return }
+
+        let packageName = currentPackage.displayName
+        let currentManagerName = localizedManagerDisplayName(currentPackage.managerId)
+        let selectedManagerName = localizedManagerDisplayName(candidate.managerId)
+        let recommendedManagerName = localizedManagerDisplayName(recommendedManagerPackage.managerId)
+
+        var warnings = [
+            "app.packages.alert.switch_manager.use_selected".localized(with: [
+                "selected_manager": selectedManagerName,
+                "current_manager": currentManagerName,
+                "package": packageName,
+            ])
+        ]
+
+        if candidate.managerId != recommendedManagerPackage.managerId {
+            warnings.append(
+                "app.packages.alert.switch_manager.recommended".localized(with: [
+                    "recommended_manager": recommendedManagerName,
+                ])
+            )
+        }
+
+        if let provenancePackage = installedProvenanceManagerPackage {
+            if installedManagerCandidates.count == 1,
+               provenancePackage.managerId != candidate.managerId {
+                let provenanceManagerName = localizedManagerDisplayName(provenancePackage.managerId)
+                warnings.append(
+                    "app.packages.alert.switch_manager.installed_conflict".localized(with: [
+                        "package": packageName,
+                        "provenance_manager": provenanceManagerName,
+                        "selected_manager": selectedManagerName,
+                    ])
+                )
+            } else if installedManagerCandidates.count > 1, candidate.status == .available {
+                let installedManagers = installedManagerCandidates
+                    .map { localizedManagerDisplayName($0.managerId) }
+                    .joined(separator: ", ")
+                warnings.append(
+                    "app.packages.alert.switch_manager.multi_installed_conflict".localized(with: [
+                        "package": packageName,
+                        "installed_managers": installedManagers,
+                        "selected_manager": selectedManagerName,
+                    ])
+                )
+            }
+        }
+
+        if candidate.status == .available,
+           !core.canInstallPackage(candidate, includeAlternates: false) {
+            warnings.append(
+                "app.packages.alert.switch_manager.unavailable_install".localized(with: [
+                    "selected_manager": selectedManagerName,
+                ])
+            )
+        }
+
+        inspectorAlert = .switchManager(
+            ManagerSwitchAlertContext(
+                packageName: packageName,
+                selectedManagerId: candidate.managerId,
+                title: "app.packages.alert.switch_manager.title".localized,
+                message: warnings.joined(separator: "\n\n")
+            )
+        )
+    }
+
+    private func persistManagerSelection(_ managerId: String) {
+        context.selectedManagerId = managerId
+        if let preferredPackage = preferredPackage(forManagerId: managerId) {
+            context.selectedPackageId = preferredPackage.id
+        }
+        core.setPreferredManagerId(managerId, for: livePackage)
+    }
+
+    private func ensurePersistedManagerSelection() {
+        if let preferredManagerId = core.preferredManagerId(for: livePackage),
+           managerCandidates.contains(where: { $0.managerId == preferredManagerId }) {
+            return
+        }
+        persistManagerSelection(recommendedManagerPackage.managerId)
+    }
+
+    private func ensureSelectedPackageMember() {
+        if let activeManagerGroup,
+           let selectedPackageId = context.selectedPackageId,
+           activeManagerGroup.packages.contains(where: { $0.id == selectedPackageId }) {
+            return
+        }
+        if let preferredPackage = preferredPackage(forManagerId: selectedManagerId) {
+            context.selectedPackageId = preferredPackage.id
+        }
+    }
+
+    private func selectPackageMember(withId packageId: String) {
+        guard let activeManagerGroup,
+              activeManagerGroup.packages.contains(where: { $0.id == packageId }) else {
+            return
+        }
+        context.selectedManagerId = selectedManagerId
+        context.selectedPackageId = packageId
+    }
+
+    private func preferredPackage(forManagerId managerId: String) -> PackageItem? {
+        activePackageGroup(forManagerId: managerId)?.representativePackage
+    }
+
+    private func activePackageGroup(forManagerId managerId: String) -> ManagerPackageGroup? {
+        managerGroups.first(where: { $0.managerId == managerId })
+    }
+
+    private func packageFamilyMembers(for package: PackageItem) -> [PackageItem] {
+        core.packageFamilyCandidates(for: package)
+            .filter { core.isManagerEnabled($0.managerId) }
+            .sorted { lhs, rhs in
+            if lhs.managerId == rhs.managerId {
+                return memberCandidateOrdering(lhs, rhs)
+            }
+            return managerCandidateOrdering(lhs, rhs)
+        }
+    }
+
+    private func preferredCandidate(_ lhs: PackageItem, _ rhs: PackageItem) -> PackageItem {
+        let lhsRank = packageStatusSortRank(lhs.status)
+        let rhsRank = packageStatusSortRank(rhs.status)
+        if lhsRank != rhsRank {
+            return lhsRank < rhsRank ? lhs : rhs
+        }
+
+        let lhsVersionKnown = normalizedVersionText(lhs.version) != nil
+        let rhsVersionKnown = normalizedVersionText(rhs.version) != nil
+        if lhsVersionKnown != rhsVersionKnown {
+            return lhsVersionKnown ? lhs : rhs
+        }
+
+        let lhsVersion = normalizedVersionText(lhs.version)
+        let rhsVersion = normalizedVersionText(rhs.version)
+        if let lhsVersion, let rhsVersion {
+            let order = lhsVersion.compare(rhsVersion, options: [.numeric, .caseInsensitive])
+            if order != .orderedSame {
+                return order == .orderedDescending ? lhs : rhs
+            }
+        }
+
+        let lhsSummary = lhs.summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let rhsSummary = rhs.summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if lhsSummary.isEmpty != rhsSummary.isEmpty {
+            return lhsSummary.isEmpty ? rhs : lhs
+        }
+
+        let lhsId = lhs.id.lowercased()
+        let rhsId = rhs.id.lowercased()
+        if lhsId != rhsId {
+            return lhsId < rhsId ? lhs : rhs
+        }
+
+        return lhs
+    }
+
+    private func memberCandidateOrdering(_ lhs: PackageItem, _ rhs: PackageItem) -> Bool {
+        preferredCandidate(lhs, rhs).id == lhs.id
+    }
+
+    private func managerCandidateOrdering(_ lhs: PackageItem, _ rhs: PackageItem) -> Bool {
+        let lhsPriority = core.managerPriorityRank(for: lhs.managerId)
+        let rhsPriority = core.managerPriorityRank(for: rhs.managerId)
+        if lhsPriority != rhsPriority {
+            return lhsPriority < rhsPriority
+        }
+        return localizedManagerDisplayName(lhs.managerId)
+            .localizedCaseInsensitiveCompare(localizedManagerDisplayName(rhs.managerId)) == .orderedAscending
+    }
+
+    private func packageStatusSortRank(_ status: PackageStatus) -> Int {
+        switch status {
+        case .upgradable:
+            return 0
+        case .installed:
+            return 1
+        case .available:
+            return 2
+        }
+    }
+
+    private func normalizedVersionText(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return nil }
+        if Self.unknownVersionTokens.contains(normalized.lowercased()) {
+            return nil
+        }
+        return normalized
+    }
+
+    private func versionSelectionLabel(for package: PackageItem) -> String {
+        let versionText = normalizedVersionText(package.version) ?? package.displayName
+        var flags: [String] = []
+        if package.runtimeState.isActive {
+            flags.append(L10n.App.Inspector.packageRuntimeStateActive.localized)
+        }
+        if package.runtimeState.isDefault {
+            flags.append(L10n.App.Inspector.packageRuntimeStateDefault.localized)
+        }
+        if package.runtimeState.hasOverride {
+            flags.append(L10n.App.Inspector.packageRuntimeStateOverride.localized)
+        }
+        if package.status == .upgradable, let latestVersion = normalizedVersionText(package.latestVersion) {
+            flags.append(L10n.App.Inspector.latest.localized + " " + latestVersion)
+        }
+        guard !flags.isEmpty else { return versionText }
+        return versionText + " (" + flags.joined(separator: ", ") + ")"
+    }
+
+    private func packageIdLabel(for package: PackageItem, within group: ManagerPackageGroup) -> String {
+        let managerName = localizedManagerDisplayName(group.managerId)
+        guard group.packages.count > 1, let versionText = normalizedVersionText(package.version) else {
+            return managerName
+        }
+        return managerName + " " + versionText
+    }
+
+    private func displayedPackageIdentifier(for package: PackageItem) -> String {
+        let trimmedIdentifier = package.packageIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !trimmedIdentifier.isEmpty {
+            return trimmedIdentifier
+        }
+        return package.id
     }
 }
 
@@ -1569,9 +2332,18 @@ private struct InspectorManagerDetailView: View {
     }
 
     private var postInstallSetupIssue: ManagerPackageStateIssue? {
-        (status?.packageStateIssues ?? []).first(where: { issue in
+        guard !postInstallSetupTaskInFlight else { return nil }
+        return (status?.packageStateIssues ?? []).first(where: { issue in
             issue.issueCode == "post_install_setup_required"
         })
+    }
+
+    private var postInstallSetupTaskInFlight: Bool {
+        core.activeTasks.contains { task in
+            task.managerId == manager.id
+                && task.labelKey == "service.task.label.setup.manager"
+                && task.isRunning
+        }
     }
 
     private var supportsPostInstallSetupAutomation: Bool {

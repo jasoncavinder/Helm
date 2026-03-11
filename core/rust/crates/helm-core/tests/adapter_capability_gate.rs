@@ -55,6 +55,7 @@ fn ensure_request_supported_returns_structured_error_for_missing_capability() {
             manager: ManagerId::Npm,
             name: "ripgrep".to_string(),
         },
+        target_name: None,
         version: None,
     });
 

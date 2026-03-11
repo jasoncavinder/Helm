@@ -11,6 +11,7 @@ use helm_core::persistence::{
     DetectionStore, MigrationStore, PackageStore, PinStore, SearchCacheStore, TaskStore,
 };
 use helm_core::sqlite::{SqliteStore, current_schema_version};
+use rusqlite::params;
 
 fn test_db_path(test_name: &str) -> PathBuf {
     let nanos = SystemTime::now()
@@ -90,6 +91,36 @@ fn package_operations_require_migrations() {
 }
 
 #[test]
+fn migration_to_installed_package_versions_preserves_existing_rows() {
+    let path = test_db_path("migrate-installed-package-versions");
+    let store = SqliteStore::new(&path);
+    store.apply_migration(12).unwrap();
+
+    let connection = rusqlite::Connection::open(&path).unwrap();
+    connection
+        .execute(
+            "
+INSERT INTO installed_packages (
+    manager_id, package_name, installed_version, pinned, updated_at_unix
+) VALUES (?1, ?2, ?3, ?4, ?5)
+",
+            params!["mise", "python", "3.12.3", 0, 123_i64],
+        )
+        .unwrap();
+    drop(connection);
+
+    store.apply_migration(current_schema_version()).unwrap();
+
+    let installed = store.list_installed().unwrap();
+    assert_eq!(installed.len(), 1);
+    assert_eq!(installed[0].package.manager, ManagerId::Mise);
+    assert_eq!(installed[0].package.name, "python");
+    assert_eq!(installed[0].installed_version.as_deref(), Some("3.12.3"));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn upsert_and_list_installed_roundtrip() {
     let path = test_db_path("installed-roundtrip");
     let store = SqliteStore::new(&path);
@@ -101,16 +132,20 @@ fn upsert_and_list_installed_roundtrip() {
                 manager: ManagerId::HomebrewFormula,
                 name: "git".to_string(),
             },
+            package_identifier: None,
             installed_version: Some("2.45.1".to_string()),
             pinned: false,
+            runtime_state: Default::default(),
         },
         InstalledPackage {
             package: PackageRef {
                 manager: ManagerId::Pnpm,
                 name: "typescript".to_string(),
             },
+            package_identifier: None,
             installed_version: Some("5.5.2".to_string()),
             pinned: true,
+            runtime_state: Default::default(),
         },
     ];
 
@@ -127,6 +162,85 @@ fn upsert_and_list_installed_roundtrip() {
 }
 
 #[test]
+fn upsert_and_list_installed_preserves_multiple_versions_per_package() {
+    let path = test_db_path("installed-multi-version-roundtrip");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    store
+        .upsert_installed(&[
+            InstalledPackage {
+                package: PackageRef {
+                    manager: ManagerId::Mise,
+                    name: "python".to_string(),
+                },
+                package_identifier: None,
+                installed_version: Some("3.11.9".to_string()),
+                pinned: false,
+                runtime_state: Default::default(),
+            },
+            InstalledPackage {
+                package: PackageRef {
+                    manager: ManagerId::Mise,
+                    name: "python".to_string(),
+                },
+                package_identifier: None,
+                installed_version: Some("3.12.3".to_string()),
+                pinned: false,
+                runtime_state: Default::default(),
+            },
+        ])
+        .unwrap();
+
+    let persisted = store.list_installed().unwrap();
+    let versions: Vec<String> = persisted
+        .iter()
+        .filter(|entry| {
+            entry.package.manager == ManagerId::Mise && entry.package.name.as_str() == "python"
+        })
+        .filter_map(|entry| entry.installed_version.clone())
+        .collect();
+
+    assert_eq!(versions, vec!["3.11.9".to_string(), "3.12.3".to_string()]);
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn replace_installed_snapshot_clears_stale_rows_for_manager() {
+    let path = test_db_path("installed-replace-snapshot");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    store
+        .upsert_installed(&[InstalledPackage {
+            package: PackageRef {
+                manager: ManagerId::Npm,
+                name: "typescript".to_string(),
+            },
+            package_identifier: None,
+            installed_version: Some("5.8.3".to_string()),
+            pinned: false,
+            runtime_state: Default::default(),
+        }])
+        .unwrap();
+
+    store
+        .replace_installed_snapshot(ManagerId::Npm, &[])
+        .unwrap();
+
+    assert!(
+        store
+            .list_installed()
+            .unwrap()
+            .into_iter()
+            .all(|package| package.package.manager != ManagerId::Npm)
+    );
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn upsert_and_list_outdated_roundtrip() {
     let path = test_db_path("outdated-roundtrip");
     let store = SqliteStore::new(&path);
@@ -137,10 +251,12 @@ fn upsert_and_list_outdated_roundtrip() {
             manager: ManagerId::HomebrewFormula,
             name: "openssl@3".to_string(),
         },
+        package_identifier: None,
         installed_version: Some("3.3.1".to_string()),
         candidate_version: "3.3.2".to_string(),
         pinned: false,
         restart_required: false,
+        runtime_state: Default::default(),
     }];
 
     store.upsert_outdated(&packages).unwrap();
@@ -165,10 +281,12 @@ fn replace_outdated_snapshot_clears_stale_rows_for_manager() {
                 manager: ManagerId::HomebrewFormula,
                 name: "sevenzip".to_string(),
             },
+            package_identifier: None,
             installed_version: Some("25.01".to_string()),
             candidate_version: "26.00".to_string(),
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         }])
         .unwrap();
 
@@ -203,22 +321,48 @@ fn upsert_and_remove_pins_roundtrip() {
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].package.name, "git");
     assert_eq!(listed[0].kind, PinKind::Native);
+    assert_eq!(listed[0].pinned_version.as_deref(), Some("2.45.1"));
 
-    store.remove_pin("homebrew_formula:git").unwrap();
+    store
+        .remove_pin(
+            &PackageRef {
+                manager: ManagerId::HomebrewFormula,
+                name: "git".to_string(),
+            },
+            Some("2.45.1"),
+        )
+        .unwrap();
     assert!(store.list_pins().unwrap().is_empty());
 
     let _ = std::fs::remove_file(path);
 }
 
 #[test]
-fn remove_pin_requires_structured_package_key() {
-    let path = test_db_path("pin-key-format");
+fn remove_pin_is_version_scoped() {
+    let path = test_db_path("pin-version-scope");
     let store = SqliteStore::new(&path);
     store.migrate_to_latest().unwrap();
 
-    let error = store.remove_pin("git").unwrap_err();
-    assert_eq!(error.kind, CoreErrorKind::StorageFailure);
-    assert!(error.message.contains("package_key"));
+    let package = PackageRef {
+        manager: ManagerId::Mise,
+        name: "python".to_string(),
+    };
+    for version in ["3.12.3", "3.13.0"] {
+        store
+            .upsert_pin(&PinRecord {
+                package: package.clone(),
+                kind: PinKind::Virtual,
+                pinned_version: Some(version.to_string()),
+                created_at: UNIX_EPOCH + Duration::from_secs(123),
+            })
+            .unwrap();
+    }
+
+    store.remove_pin(&package, Some("3.12.3")).unwrap();
+
+    let listed = store.list_pins().unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].pinned_version.as_deref(), Some("3.13.0"));
 
     let _ = std::fs::remove_file(path);
 }
@@ -358,6 +502,69 @@ fn package_keg_policy_roundtrip_and_clear() {
 }
 
 #[test]
+fn package_manager_preference_roundtrip_and_clear() {
+    let path = test_db_path("package-manager-preference-roundtrip");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    assert_eq!(store.package_manager_preference("certifi").unwrap(), None);
+
+    store
+        .set_package_manager_preference(" certifi ", Some(ManagerId::Pip))
+        .unwrap();
+    assert_eq!(
+        store.package_manager_preference("CERTIFI").unwrap(),
+        Some(ManagerId::Pip)
+    );
+
+    store
+        .set_package_manager_preference("CERTIFI", Some(ManagerId::HomebrewFormula))
+        .unwrap();
+    assert_eq!(
+        store.package_manager_preference("certifi").unwrap(),
+        Some(ManagerId::HomebrewFormula)
+    );
+
+    let listed = store.list_package_manager_preferences().unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].package_family_key, "certifi");
+    assert_eq!(listed[0].manager, ManagerId::HomebrewFormula);
+
+    store
+        .set_package_manager_preference("certifi", None)
+        .unwrap();
+    assert_eq!(store.package_manager_preference("certifi").unwrap(), None);
+    assert!(store.list_package_manager_preferences().unwrap().is_empty());
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn package_manager_preference_preserves_variant_family_key() {
+    let path = test_db_path("package-manager-preference-variant-family");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    store
+        .set_package_manager_preference(" python@mambaforge ", Some(ManagerId::Mise))
+        .unwrap();
+
+    assert_eq!(
+        store
+            .package_manager_preference("PYTHON@MAMBAFORGE")
+            .unwrap(),
+        Some(ManagerId::Mise)
+    );
+
+    let listed = store.list_package_manager_preferences().unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].package_family_key, "python@mambaforge");
+    assert_eq!(listed[0].manager, ManagerId::Mise);
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn list_installed_marks_package_pinned_when_pin_record_exists() {
     let path = test_db_path("installed-pin-overlay");
     let store = SqliteStore::new(&path);
@@ -369,8 +576,10 @@ fn list_installed_marks_package_pinned_when_pin_record_exists() {
                 manager: ManagerId::HomebrewFormula,
                 name: "git".to_string(),
             },
+            package_identifier: None,
             installed_version: Some("2.45.1".to_string()),
             pinned: false,
+            runtime_state: Default::default(),
         }])
         .unwrap();
 
@@ -405,10 +614,12 @@ fn list_outdated_marks_package_pinned_when_pin_record_exists() {
                 manager: ManagerId::Mas,
                 name: "Xcode".to_string(),
             },
+            package_identifier: None,
             installed_version: Some("16.1".to_string()),
             candidate_version: "16.2".to_string(),
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         }])
         .unwrap();
 
@@ -432,6 +643,55 @@ fn list_outdated_marks_package_pinned_when_pin_record_exists() {
 }
 
 #[test]
+fn list_installed_marks_only_matching_version_pinned() {
+    let path = test_db_path("installed-version-pin-overlay");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let package = PackageRef {
+        manager: ManagerId::Mise,
+        name: "python".to_string(),
+    };
+    store
+        .upsert_installed(&[
+            InstalledPackage {
+                package: package.clone(),
+                package_identifier: None,
+                installed_version: Some("3.12.3".to_string()),
+                pinned: false,
+                runtime_state: Default::default(),
+            },
+            InstalledPackage {
+                package: package.clone(),
+                package_identifier: None,
+                installed_version: Some("3.13.0".to_string()),
+                pinned: false,
+                runtime_state: Default::default(),
+            },
+        ])
+        .unwrap();
+    store
+        .upsert_pin(&PinRecord {
+            package,
+            kind: PinKind::Virtual,
+            pinned_version: Some("3.12.3".to_string()),
+            created_at: UNIX_EPOCH + Duration::from_secs(777),
+        })
+        .unwrap();
+
+    let installed = store.list_installed().unwrap();
+    assert_eq!(installed.len(), 2);
+    let pinned_versions = installed
+        .into_iter()
+        .filter(|entry| entry.pinned)
+        .filter_map(|entry| entry.installed_version)
+        .collect::<Vec<_>>();
+    assert_eq!(pinned_versions, vec!["3.12.3".to_string()]);
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn set_snapshot_pinned_updates_cached_rows_immediately() {
     let path = test_db_path("set-snapshot-pinned");
     let store = SqliteStore::new(&path);
@@ -445,21 +705,27 @@ fn set_snapshot_pinned_updates_cached_rows_immediately() {
     store
         .upsert_installed(&[InstalledPackage {
             package: package.clone(),
+            package_identifier: None,
             installed_version: Some("1.11.4".to_string()),
             pinned: true,
+            runtime_state: Default::default(),
         }])
         .unwrap();
     store
         .upsert_outdated(&[OutdatedPackage {
             package: package.clone(),
+            package_identifier: None,
             installed_version: Some("1.11.4".to_string()),
             candidate_version: "1.11.4_1".to_string(),
             pinned: true,
             restart_required: false,
+            runtime_state: Default::default(),
         }])
         .unwrap();
 
-    store.set_snapshot_pinned(&package, false).unwrap();
+    store
+        .set_snapshot_pinned(&package, Some("1.11.4"), false)
+        .unwrap();
 
     let installed = store.list_installed().unwrap();
     let outdated = store.list_outdated().unwrap();
@@ -467,6 +733,50 @@ fn set_snapshot_pinned_updates_cached_rows_immediately() {
     assert_eq!(outdated.len(), 1);
     assert!(!installed[0].pinned);
     assert!(!outdated[0].pinned);
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn set_snapshot_pinned_only_updates_matching_version() {
+    let path = test_db_path("set-snapshot-pinned-version-scope");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let package = PackageRef {
+        manager: ManagerId::Asdf,
+        name: "python".to_string(),
+    };
+    store
+        .upsert_installed(&[
+            InstalledPackage {
+                package: package.clone(),
+                package_identifier: None,
+                installed_version: Some("3.12.3".to_string()),
+                pinned: false,
+                runtime_state: Default::default(),
+            },
+            InstalledPackage {
+                package: package.clone(),
+                package_identifier: None,
+                installed_version: Some("3.13.0".to_string()),
+                pinned: false,
+                runtime_state: Default::default(),
+            },
+        ])
+        .unwrap();
+
+    store
+        .set_snapshot_pinned(&package, Some("3.12.3"), true)
+        .unwrap();
+
+    let installed = store.list_installed().unwrap();
+    let pinned_versions = installed
+        .into_iter()
+        .filter(|entry| entry.pinned)
+        .filter_map(|entry| entry.installed_version)
+        .collect::<Vec<_>>();
+    assert_eq!(pinned_versions, vec!["3.12.3".to_string()]);
 
     let _ = std::fs::remove_file(path);
 }
@@ -485,15 +795,17 @@ fn apply_install_result_updates_installed_snapshot_and_clears_outdated_entry() {
     store
         .upsert_outdated(&[OutdatedPackage {
             package: package.clone(),
+            package_identifier: None,
             installed_version: Some("9.24.0".to_string()),
             candidate_version: "9.25.0".to_string(),
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         }])
         .unwrap();
 
     store
-        .apply_install_result(&package, Some("9.25.0"))
+        .apply_install_result(&package, None, Some("9.25.0"))
         .unwrap();
 
     let installed = store.list_installed().unwrap();
@@ -523,26 +835,61 @@ fn apply_uninstall_result_removes_package_from_cached_snapshots() {
     store
         .upsert_installed(&[InstalledPackage {
             package: package.clone(),
+            package_identifier: None,
             installed_version: Some("5.8.3".to_string()),
             pinned: false,
+            runtime_state: Default::default(),
         }])
         .unwrap();
     store
         .upsert_outdated(&[OutdatedPackage {
             package: package.clone(),
+            package_identifier: None,
             installed_version: Some("5.8.3".to_string()),
             candidate_version: "5.9.0".to_string(),
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         }])
         .unwrap();
 
-    store.apply_uninstall_result(&package).unwrap();
+    store.apply_uninstall_result(&package, None, None).unwrap();
 
     let installed = store.list_installed().unwrap();
     let outdated = store.list_outdated().unwrap();
     assert!(installed.iter().all(|entry| entry.package != package));
     assert!(outdated.iter().all(|entry| entry.package != package));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn apply_uninstall_result_falls_back_to_package_wide_delete_for_single_version_managers() {
+    let path = test_db_path("apply-uninstall-result-single-version-fallback");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let package = PackageRef {
+        manager: ManagerId::CargoBinstall,
+        name: "bat".to_string(),
+    };
+
+    store
+        .upsert_installed(&[InstalledPackage {
+            package: package.clone(),
+            package_identifier: None,
+            installed_version: Some("0.24.0".to_string()),
+            pinned: false,
+            runtime_state: Default::default(),
+        }])
+        .unwrap();
+
+    store
+        .apply_uninstall_result(&package, None, Some("0.25.0"))
+        .unwrap();
+
+    let installed = store.list_installed().unwrap();
+    assert!(installed.iter().all(|entry| entry.package != package));
 
     let _ = std::fs::remove_file(path);
 }
@@ -561,21 +908,27 @@ fn apply_upgrade_result_promotes_package_to_installed_snapshot() {
     store
         .upsert_installed(&[InstalledPackage {
             package: package.clone(),
+            package_identifier: None,
             installed_version: Some("20250127.0".to_string()),
             pinned: false,
+            runtime_state: Default::default(),
         }])
         .unwrap();
     store
         .upsert_outdated(&[OutdatedPackage {
             package: package.clone(),
+            package_identifier: None,
             installed_version: Some("20250127.0".to_string()),
             candidate_version: "20250814.0".to_string(),
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         }])
         .unwrap();
 
-    store.apply_upgrade_result(&package).unwrap();
+    store
+        .apply_upgrade_result(&package, None, Some("20250127.0"), Some("20250814.0"))
+        .unwrap();
 
     let installed = store.list_installed().unwrap();
     let outdated = store.list_outdated().unwrap();
@@ -586,6 +939,65 @@ fn apply_upgrade_result_promotes_package_to_installed_snapshot() {
         .expect("upgraded package should remain installed");
     assert_eq!(upgraded.installed_version.as_deref(), Some("20250814.0"));
     assert!(outdated.iter().all(|entry| entry.package != package));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn apply_upgrade_result_replaces_only_matching_installed_version() {
+    let path = test_db_path("apply-upgrade-result-multi-version");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let package = PackageRef {
+        manager: ManagerId::Mise,
+        name: "python".to_string(),
+    };
+
+    store
+        .upsert_installed(&[
+            InstalledPackage {
+                package: package.clone(),
+                package_identifier: None,
+                installed_version: Some("3.11.9".to_string()),
+                pinned: false,
+                runtime_state: Default::default(),
+            },
+            InstalledPackage {
+                package: package.clone(),
+                package_identifier: None,
+                installed_version: Some("3.12.3".to_string()),
+                pinned: false,
+                runtime_state: Default::default(),
+            },
+        ])
+        .unwrap();
+    store
+        .upsert_outdated(&[OutdatedPackage {
+            package: package.clone(),
+            package_identifier: None,
+            installed_version: Some("3.12.3".to_string()),
+            candidate_version: "3.12.8".to_string(),
+            pinned: false,
+            restart_required: false,
+            runtime_state: Default::default(),
+        }])
+        .unwrap();
+
+    store
+        .apply_upgrade_result(&package, None, Some("3.12.3"), Some("3.12.8"))
+        .unwrap();
+
+    let installed = store.list_installed().unwrap();
+    let versions: Vec<String> = installed
+        .iter()
+        .filter(|entry| {
+            entry.package.manager == ManagerId::Mise && entry.package.name.as_str() == "python"
+        })
+        .filter_map(|entry| entry.installed_version.clone())
+        .collect();
+
+    assert_eq!(versions, vec!["3.11.9".to_string(), "3.12.8".to_string()]);
 
     let _ = std::fs::remove_file(path);
 }
@@ -930,6 +1342,7 @@ fn upsert_and_query_search_cache_roundtrip() {
                     manager: ManagerId::HomebrewFormula,
                     name: "ripgrep".to_string(),
                 },
+                package_identifier: None,
                 version: Some("14.1.0".to_string()),
                 summary: Some("line-oriented search tool".to_string()),
             },
@@ -943,6 +1356,7 @@ fn upsert_and_query_search_cache_roundtrip() {
                     manager: ManagerId::Pnpm,
                     name: "typescript".to_string(),
                 },
+                package_identifier: None,
                 version: Some("5.5.2".to_string()),
                 summary: Some("language for application-scale JS".to_string()),
             },
@@ -965,7 +1379,7 @@ fn upsert_and_query_search_cache_roundtrip() {
 }
 
 #[test]
-fn search_cache_keeps_single_package_entry_and_preserves_summary() {
+fn search_cache_deduplicates_same_version_and_preserves_summary() {
     let path = test_db_path("search-preserve-summary");
     let store = SqliteStore::new(&path);
     store.migrate_to_latest().unwrap();
@@ -977,6 +1391,7 @@ fn search_cache_keeps_single_package_entry_and_preserves_summary() {
                 manager: ManagerId::HomebrewFormula,
                 name: "ripgrep".to_string(),
             },
+            package_identifier: None,
             version: Some("14.1.0".to_string()),
             summary: Some("line-oriented search tool".to_string()),
         },
@@ -992,7 +1407,8 @@ fn search_cache_keeps_single_package_entry_and_preserves_summary() {
                 manager: ManagerId::HomebrewFormula,
                 name: "ripgrep".to_string(),
             },
-            version: None,
+            package_identifier: None,
+            version: Some("14.1.0".to_string()),
             summary: None,
         },
         source_manager: ManagerId::HomebrewFormula,
@@ -1005,7 +1421,7 @@ fn search_cache_keeps_single_package_entry_and_preserves_summary() {
     assert_eq!(
         all.len(),
         1,
-        "package cache should deduplicate by manager/name"
+        "package cache should deduplicate by manager/name/version"
     );
     assert_eq!(all[0].result.package.name, "ripgrep");
     assert_eq!(all[0].result.version.as_deref(), Some("14.1.0"));
@@ -1015,6 +1431,59 @@ fn search_cache_keeps_single_package_entry_and_preserves_summary() {
         "summary should be preserved when newer response omits it"
     );
     assert_eq!(all[0].originating_query, "rg");
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn search_cache_retains_distinct_versions_for_same_package() {
+    let path = test_db_path("search-keep-distinct-versions");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let now = SystemTime::now();
+    let first = CachedSearchResult {
+        result: PackageCandidate {
+            package: PackageRef {
+                manager: ManagerId::HomebrewFormula,
+                name: "ripgrep".to_string(),
+            },
+            package_identifier: None,
+            version: Some("14.1.0".to_string()),
+            summary: Some("line-oriented search tool".to_string()),
+        },
+        source_manager: ManagerId::HomebrewFormula,
+        originating_query: "rip".to_string(),
+        cached_at: now,
+    };
+    let second = CachedSearchResult {
+        result: PackageCandidate {
+            package: PackageRef {
+                manager: ManagerId::HomebrewFormula,
+                name: "ripgrep".to_string(),
+            },
+            package_identifier: None,
+            version: Some("14.2.0".to_string()),
+            summary: Some("line-oriented search tool".to_string()),
+        },
+        source_manager: ManagerId::HomebrewFormula,
+        originating_query: "rip".to_string(),
+        cached_at: now + Duration::from_secs(1),
+    };
+
+    store.upsert_search_results(&[first, second]).unwrap();
+
+    let all = store.query_local("ripgrep", 10).unwrap();
+    assert_eq!(all.len(), 2, "distinct versions should both be retained");
+
+    let versions: std::collections::HashSet<String> = all
+        .iter()
+        .filter_map(|entry| entry.result.version.clone())
+        .collect();
+    assert_eq!(
+        versions,
+        std::collections::HashSet::from(["14.1.0".to_string(), "14.2.0".to_string()])
+    );
 
     let _ = std::fs::remove_file(path);
 }

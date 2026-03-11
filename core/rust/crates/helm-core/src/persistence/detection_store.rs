@@ -14,6 +14,12 @@ pub struct ManagerPreference {
     pub timeout_idle_seconds: Option<u64>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PackageManagerPreference {
+    pub package_family_key: String,
+    pub manager: ManagerId,
+}
+
 pub trait DetectionStore: Send + Sync {
     fn upsert_detection(&self, manager: ManagerId, info: &DetectionInfo) -> PersistenceResult<()>;
 
@@ -119,4 +125,17 @@ pub trait DetectionStore: Send + Sync {
     ) -> PersistenceResult<Option<HomebrewKegPolicy>>;
 
     fn list_package_keg_policies(&self) -> PersistenceResult<Vec<PackageKegPolicy>>;
+
+    fn set_package_manager_preference(
+        &self,
+        package_family_key: &str,
+        manager: Option<ManagerId>,
+    ) -> PersistenceResult<()>;
+
+    fn package_manager_preference(
+        &self,
+        package_family_key: &str,
+    ) -> PersistenceResult<Option<ManagerId>>;
+
+    fn list_package_manager_preferences(&self) -> PersistenceResult<Vec<PackageManagerPreference>>;
 }

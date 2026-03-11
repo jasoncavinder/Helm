@@ -1,12 +1,17 @@
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use crate::adapters::detect_utils::which_executable;
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::mise::{
-    MiseDetectOutput, MiseInstallSource, MiseSource, MiseUninstallMode, mise_detect_request,
-    mise_download_install_script_request, mise_implode_request, mise_list_installed_request,
-    mise_list_outdated_request, mise_run_downloaded_install_script_request, mise_upgrade_request,
+    MiseDetectOutput, MiseInstallSource, MiseRegistryPackage, MiseRemotePackage, MiseSource,
+    MiseUninstallMode, mise_detect_request, mise_download_install_script_request,
+    mise_implode_request, mise_install_tool_request, mise_list_installed_request,
+    mise_list_outdated_request, mise_list_remote_request, mise_registry_request,
+    mise_run_downloaded_install_script_request, mise_uninstall_tool_request, mise_upgrade_request,
+    parse_mise_registry_catalog, parse_mise_remote_catalog,
 };
 use crate::adapters::process_utils::{run_and_collect_stdout, run_and_collect_version_output};
 use crate::execution::{ProcessExecutor, ProcessSpawnRequest};
@@ -14,6 +19,29 @@ use crate::models::{CoreError, CoreErrorKind, ManagerAction, ManagerId, TaskType
 
 pub struct ProcessMiseSource {
     executor: Arc<dyn ProcessExecutor>,
+    remote_catalog_cache: Mutex<Option<MiseRemoteCatalogCache>>,
+}
+
+#[derive(Clone, Debug)]
+struct MiseRemoteCatalogCache {
+    packages: Vec<MiseRemotePackage>,
+    fetched_at: Instant,
+}
+
+const REMOTE_CATALOG_CACHE_TTL: Duration = Duration::from_secs(15 * 60);
+
+fn mise_registry_summary_key(name: &str) -> String {
+    let normalized = name.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return String::new();
+    }
+    let base = normalized
+        .split_once('@')
+        .map(|(lhs, _)| lhs)
+        .unwrap_or(normalized.as_str())
+        .trim()
+        .to_string();
+    if base.is_empty() { normalized } else { base }
 }
 
 fn home_local_bin_root(home: Option<&str>) -> Option<String> {
@@ -59,7 +87,10 @@ fn core_error(
 
 impl ProcessMiseSource {
     pub fn new(executor: Arc<dyn ProcessExecutor>) -> Self {
-        Self { executor }
+        Self {
+            executor,
+            remote_catalog_cache: Mutex::new(None),
+        }
     }
 
     fn configure_request(&self, mut request: ProcessSpawnRequest) -> ProcessSpawnRequest {
@@ -243,6 +274,30 @@ impl ProcessMiseSource {
         let request = self.configure_request(mise_implode_request(None, remove_config));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
+
+    fn get_cached_remote_packages(&self) -> Option<Vec<MiseRemotePackage>> {
+        let cache = self.remote_catalog_cache.lock().ok()?;
+        let entry = cache.as_ref()?;
+        if entry.fetched_at.elapsed() > REMOTE_CATALOG_CACHE_TTL {
+            return None;
+        }
+        Some(entry.packages.clone())
+    }
+
+    fn set_cached_remote_packages(&self, packages: &[MiseRemotePackage]) {
+        if let Ok(mut cache) = self.remote_catalog_cache.lock() {
+            *cache = Some(MiseRemoteCatalogCache {
+                packages: packages.to_vec(),
+                fetched_at: Instant::now(),
+            });
+        }
+    }
+
+    fn load_registry_packages(&self) -> AdapterResult<Vec<MiseRegistryPackage>> {
+        let request = self.configure_request(mise_registry_request(None));
+        let raw = run_and_collect_stdout(self.executor.as_ref(), request)?;
+        parse_mise_registry_catalog(raw.as_str())
+    }
 }
 
 impl MiseSource for ProcessMiseSource {
@@ -285,6 +340,131 @@ impl MiseSource for ProcessMiseSource {
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 
+    fn list_remote_packages(&self) -> AdapterResult<Vec<MiseRemotePackage>> {
+        if let Some(cached) = self.get_cached_remote_packages() {
+            return Ok(cached);
+        }
+
+        let mut retrieval_errors: Vec<CoreError> = Vec::new();
+        let registry_packages = match self.load_registry_packages() {
+            Ok(packages) => packages,
+            Err(error) => {
+                crate::execution::record_task_log_note(
+                    format!(
+                        "[helm] mise catalog registry source failed; continuing with ls-remote only: {}",
+                        error.message
+                    )
+                    .as_str(),
+                );
+                retrieval_errors.push(error);
+                Vec::new()
+            }
+        };
+        let mut registry_summary_by_name: HashMap<String, String> = HashMap::new();
+        for package in &registry_packages {
+            if let Some(summary) = package.summary.as_ref() {
+                let name_key = mise_registry_summary_key(package.name.as_str());
+                if !name_key.is_empty() {
+                    registry_summary_by_name
+                        .entry(name_key)
+                        .or_insert_with(|| summary.clone());
+                }
+            }
+        }
+
+        let request = self.configure_request(mise_list_remote_request(None));
+        let mut packages = match run_and_collect_stdout(self.executor.as_ref(), request) {
+            Ok(raw) => {
+                let trimmed = raw.trim();
+                if trimmed.is_empty() {
+                    let error = core_error(
+                        CoreErrorKind::ParseFailure,
+                        TaskType::Search,
+                        ManagerAction::Search,
+                        "mise ls-remote returned empty stdout",
+                    );
+                    crate::execution::record_task_log_note(
+                        "[helm] mise catalog ls-remote source returned empty stdout; continuing with registry fallback",
+                    );
+                    retrieval_errors.push(error);
+                    Vec::new()
+                } else {
+                    match parse_mise_remote_catalog(raw.as_str()) {
+                        Ok(parsed) => parsed,
+                        Err(error) => {
+                            crate::execution::record_task_log_note(
+                                format!(
+                                    "[helm] mise catalog ls-remote source parse failed; continuing with registry fallback: {}",
+                                    error.message
+                                )
+                                .as_str(),
+                            );
+                            retrieval_errors.push(error);
+                            Vec::new()
+                        }
+                    }
+                }
+            }
+            Err(error) => {
+                crate::execution::record_task_log_note(
+                    format!(
+                        "[helm] mise catalog ls-remote source failed; continuing with registry fallback: {}",
+                        error.message
+                    )
+                    .as_str(),
+                );
+                retrieval_errors.push(error);
+                Vec::new()
+            }
+        };
+        for package in &mut packages {
+            if package.summary.is_none() {
+                let name_key = mise_registry_summary_key(package.name.as_str());
+                if let Some(summary) = registry_summary_by_name.get(name_key.as_str()) {
+                    package.summary = Some(summary.clone());
+                }
+            }
+        }
+
+        let mut seen_registry_names: HashSet<String> = packages
+            .iter()
+            .map(|package| package.name.trim().to_ascii_lowercase())
+            .filter(|name| !name.is_empty())
+            .collect();
+        for registry_package in &registry_packages {
+            let name_key = registry_package.name.trim().to_ascii_lowercase();
+            if name_key.is_empty() || !seen_registry_names.insert(name_key) {
+                continue;
+            }
+            packages.push(MiseRemotePackage {
+                name: registry_package.name.clone(),
+                latest_version: None,
+                summary: registry_package.summary.clone(),
+            });
+        }
+
+        if packages.is_empty() && !registry_packages.is_empty() {
+            crate::execution::record_task_log_note(
+                "[helm] mise catalog loaded from registry-only fallback (ls-remote data unavailable)",
+            );
+        }
+        if packages.is_empty()
+            && registry_packages.is_empty()
+            && let Some(error) = retrieval_errors.into_iter().next()
+        {
+            return Err(error);
+        }
+
+        packages.sort_by(|left, right| {
+            left.name
+                .to_ascii_lowercase()
+                .cmp(&right.name.to_ascii_lowercase())
+                .then_with(|| left.latest_version.cmp(&right.latest_version))
+        });
+        self.set_cached_remote_packages(&packages);
+        Ok(packages)
+    }
+
     fn install_self(&self, source: MiseInstallSource) -> AdapterResult<String> {
         match source {
             MiseInstallSource::OfficialDownload => self.install_self_via_official_download(),
@@ -292,6 +472,16 @@ impl MiseSource for ProcessMiseSource {
                 self.install_self_from_existing_binary(path.as_path())
             }
         }
+    }
+
+    fn install_tool(&self, name: &str, version: Option<&str>) -> AdapterResult<String> {
+        let request = self.configure_request(mise_install_tool_request(None, name, version));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn uninstall_tool(&self, name: &str, version: Option<&str>) -> AdapterResult<String> {
+        let request = self.configure_request(mise_uninstall_tool_request(None, name, version));
+        run_and_collect_stdout(self.executor.as_ref(), request)
     }
 
     fn self_uninstall(&self, mode: MiseUninstallMode) -> AdapterResult<String> {
@@ -302,8 +492,12 @@ impl MiseSource for ProcessMiseSource {
         }
     }
 
-    fn upgrade_tool(&self, name: &str) -> AdapterResult<String> {
-        let request = self.configure_request(mise_upgrade_request(None, name));
+    fn upgrade_tool(&self, name: &str, version: Option<&str>) -> AdapterResult<String> {
+        let target = match version.map(str::trim).filter(|value| !value.is_empty()) {
+            Some(version) if name != "__all__" => format!("{name}@{version}"),
+            _ => name.to_string(),
+        };
+        let request = self.configure_request(mise_upgrade_request(None, target.as_str()));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 }
@@ -311,6 +505,206 @@ impl MiseSource for ProcessMiseSource {
 #[cfg(test)]
 mod tests {
     use std::path::Path;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::SystemTime;
+
+    use crate::adapters::mise::MiseSource;
+    use crate::execution::{
+        ExecutionResult, ProcessExecutor, ProcessExitStatus, ProcessOutput, ProcessSpawnRequest,
+        ProcessTerminationMode, ProcessWaitFuture, RunningProcess,
+    };
+
+    const REMOTE_FIXTURE: &str = include_str!("../../tests/fixtures/mise/ls_remote_all_json.txt");
+    const REGISTRY_FIXTURE: &str = r#"
+[
+  {"short":"python","description":"python language","aliases":["python3"]},
+  {"short":"java","description":"jdk java"},
+  {"short":"jq","description":"JSON processor"}
+]
+"#;
+
+    struct FakeProcess {
+        output: ProcessOutput,
+    }
+
+    impl RunningProcess for FakeProcess {
+        fn pid(&self) -> Option<u32> {
+            Some(4242)
+        }
+
+        fn terminate(&self, _mode: ProcessTerminationMode) -> ExecutionResult<()> {
+            Ok(())
+        }
+
+        fn wait(self: Box<Self>) -> ProcessWaitFuture {
+            let output = self.output;
+            Box::pin(async move { Ok(output) })
+        }
+    }
+
+    #[derive(Default)]
+    struct FakeExecutor {
+        remote_calls: AtomicUsize,
+    }
+
+    impl FakeExecutor {
+        fn remote_calls(&self) -> usize {
+            self.remote_calls.load(Ordering::SeqCst)
+        }
+    }
+
+    impl ProcessExecutor for FakeExecutor {
+        fn spawn(&self, request: ProcessSpawnRequest) -> ExecutionResult<Box<dyn RunningProcess>> {
+            let now = SystemTime::now();
+            let program = request.command.program.to_string_lossy().to_string();
+            let args = request.command.args;
+
+            let stdout = if program.ends_with("which") {
+                b"/Users/test/.local/bin/mise".to_vec()
+            } else if (program == "mise" || program.ends_with("/mise"))
+                && args
+                    .first()
+                    .is_some_and(|value| value.as_str() == "ls-remote")
+            {
+                self.remote_calls.fetch_add(1, Ordering::SeqCst);
+                REMOTE_FIXTURE.as_bytes().to_vec()
+            } else if (program == "mise" || program.ends_with("/mise"))
+                && args
+                    .first()
+                    .is_some_and(|value| value.as_str() == "registry")
+            {
+                REGISTRY_FIXTURE.as_bytes().to_vec()
+            } else {
+                Vec::new()
+            };
+
+            Ok(Box::new(FakeProcess {
+                output: ProcessOutput {
+                    status: ProcessExitStatus::ExitCode(0),
+                    stdout,
+                    stderr: Vec::new(),
+                    started_at: now,
+                    finished_at: now,
+                },
+            }))
+        }
+    }
+
+    struct RegistryOnlyExecutor;
+
+    impl ProcessExecutor for RegistryOnlyExecutor {
+        fn spawn(&self, request: ProcessSpawnRequest) -> ExecutionResult<Box<dyn RunningProcess>> {
+            let now = SystemTime::now();
+            let program = request.command.program.to_string_lossy().to_string();
+            let args = request.command.args;
+
+            let stdout = if program.ends_with("which") {
+                b"/Users/test/.local/bin/mise".to_vec()
+            } else if (program == "mise" || program.ends_with("/mise"))
+                && args
+                    .first()
+                    .is_some_and(|value| value.as_str() == "ls-remote")
+            {
+                Vec::new()
+            } else if (program == "mise" || program.ends_with("/mise"))
+                && args
+                    .first()
+                    .is_some_and(|value| value.as_str() == "registry")
+            {
+                REGISTRY_FIXTURE.as_bytes().to_vec()
+            } else {
+                Vec::new()
+            };
+
+            Ok(Box::new(FakeProcess {
+                output: ProcessOutput {
+                    status: ProcessExitStatus::ExitCode(0),
+                    stdout,
+                    stderr: Vec::new(),
+                    started_at: now,
+                    finished_at: now,
+                },
+            }))
+        }
+    }
+
+    struct InvalidRemoteJsonExecutor;
+
+    impl ProcessExecutor for InvalidRemoteJsonExecutor {
+        fn spawn(&self, request: ProcessSpawnRequest) -> ExecutionResult<Box<dyn RunningProcess>> {
+            let now = SystemTime::now();
+            let program = request.command.program.to_string_lossy().to_string();
+            let args = request.command.args;
+
+            let stdout = if program.ends_with("which") {
+                b"/Users/test/.local/bin/mise".to_vec()
+            } else if (program == "mise" || program.ends_with("/mise"))
+                && args
+                    .first()
+                    .is_some_and(|value| value.as_str() == "ls-remote")
+            {
+                b"{not valid json".to_vec()
+            } else if (program == "mise" || program.ends_with("/mise"))
+                && args
+                    .first()
+                    .is_some_and(|value| value.as_str() == "registry")
+            {
+                REGISTRY_FIXTURE.as_bytes().to_vec()
+            } else {
+                Vec::new()
+            };
+
+            Ok(Box::new(FakeProcess {
+                output: ProcessOutput {
+                    status: ProcessExitStatus::ExitCode(0),
+                    stdout,
+                    stderr: Vec::new(),
+                    started_at: now,
+                    finished_at: now,
+                },
+            }))
+        }
+    }
+
+    struct VariantQualifiedRemoteExecutor;
+
+    impl ProcessExecutor for VariantQualifiedRemoteExecutor {
+        fn spawn(&self, request: ProcessSpawnRequest) -> ExecutionResult<Box<dyn RunningProcess>> {
+            let now = SystemTime::now();
+            let program = request.command.program.to_string_lossy().to_string();
+            let args = request.command.args;
+
+            let stdout = if program.ends_with("which") {
+                b"/Users/test/.local/bin/mise".to_vec()
+            } else if (program == "mise" || program.ends_with("/mise"))
+                && args
+                    .first()
+                    .is_some_and(|value| value.as_str() == "ls-remote")
+            {
+                br#"[{"tool":"python@mambaforge","version":"24.11.0-1","created_at":"2024-11-01T00:00:00Z"}]"#
+                    .to_vec()
+            } else if (program == "mise" || program.ends_with("/mise"))
+                && args
+                    .first()
+                    .is_some_and(|value| value.as_str() == "registry")
+            {
+                REGISTRY_FIXTURE.as_bytes().to_vec()
+            } else {
+                Vec::new()
+            };
+
+            Ok(Box::new(FakeProcess {
+                output: ProcessOutput {
+                    status: ProcessExitStatus::ExitCode(0),
+                    stdout,
+                    stderr: Vec::new(),
+                    started_at: now,
+                    finished_at: now,
+                },
+            }))
+        }
+    }
 
     use super::{home_local_bin_root, path_with_home_local_bin, safe_manager_only_uninstall_path};
 
@@ -360,5 +754,115 @@ mod tests {
             Path::new("/opt/homebrew/bin/mise"),
             Some("/Users/jason")
         ));
+    }
+
+    #[test]
+    fn remote_catalog_is_cached_between_calls() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime should build");
+        let _guard = runtime.enter();
+
+        let executor = Arc::new(FakeExecutor::default());
+        let source = super::ProcessMiseSource::new(executor.clone());
+
+        let first = source
+            .list_remote_packages()
+            .expect("initial remote catalog load should succeed");
+        let second = source
+            .list_remote_packages()
+            .expect("cached remote catalog load should succeed");
+
+        assert!(!first.is_empty());
+        assert_eq!(first, second);
+        assert_eq!(executor.remote_calls(), 1);
+    }
+
+    #[test]
+    fn remote_catalog_merges_registry_summaries_and_registry_only_names() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime should build");
+        let _guard = runtime.enter();
+
+        let executor = Arc::new(FakeExecutor::default());
+        let source = super::ProcessMiseSource::new(executor);
+        let packages = source
+            .list_remote_packages()
+            .expect("remote catalog load should succeed");
+
+        let python = packages
+            .iter()
+            .find(|package| package.name == "python")
+            .expect("python should exist");
+        assert_eq!(python.summary.as_deref(), Some("python language"));
+
+        let python_alias = packages
+            .iter()
+            .find(|package| package.name == "python3")
+            .expect("python3 alias should be included from registry");
+        assert!(python_alias.latest_version.is_none());
+        assert_eq!(python_alias.summary.as_deref(), Some("python language"));
+    }
+
+    #[test]
+    fn remote_catalog_uses_registry_fallback_when_ls_remote_is_empty() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime should build");
+        let _guard = runtime.enter();
+
+        let executor = Arc::new(RegistryOnlyExecutor);
+        let source = super::ProcessMiseSource::new(executor);
+        let packages = source
+            .list_remote_packages()
+            .expect("registry fallback load should succeed");
+
+        assert!(!packages.is_empty());
+        assert!(packages.iter().any(|package| package.name == "java"));
+        assert!(packages.iter().any(|package| package.name == "python3"));
+    }
+
+    #[test]
+    fn remote_catalog_uses_registry_fallback_when_ls_remote_json_is_invalid() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime should build");
+        let _guard = runtime.enter();
+
+        let executor = Arc::new(InvalidRemoteJsonExecutor);
+        let source = super::ProcessMiseSource::new(executor);
+        let packages = source
+            .list_remote_packages()
+            .expect("registry fallback should succeed even with invalid ls-remote JSON");
+
+        assert!(!packages.is_empty());
+        assert!(packages.iter().any(|package| package.name == "java"));
+        assert!(packages.iter().any(|package| package.name == "python3"));
+    }
+
+    #[test]
+    fn remote_catalog_enriches_variant_qualified_tools_from_registry_summary() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime should build");
+        let _guard = runtime.enter();
+
+        let executor = Arc::new(VariantQualifiedRemoteExecutor);
+        let source = super::ProcessMiseSource::new(executor);
+        let packages = source
+            .list_remote_packages()
+            .expect("variant-qualified remote package load should succeed");
+
+        let qualified_python = packages
+            .iter()
+            .find(|package| package.name == "python@mambaforge")
+            .expect("qualified python tool should exist");
+        assert_eq!(qualified_python.summary.as_deref(), Some("python language"));
     }
 }

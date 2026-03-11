@@ -6,8 +6,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use helm_core::adapters::{
-    AdapterRequest, AdapterResponse, AdapterResult, InstallRequest, ManagerAdapter, MutationResult,
-    RefreshRequest, SearchRequest, UninstallRequest,
+    AdapterRequest, AdapterResponse, AdapterResult, InstallRequest, ListInstalledRequest,
+    ManagerAdapter, MutationResult, RefreshRequest, SearchRequest, UninstallRequest,
 };
 use helm_core::models::{
     ActionSafety, Capability, CoreError, CoreErrorKind, DetectionInfo, ManagerAction,
@@ -652,22 +652,24 @@ async fn refresh_all_ordered_recomputes_enablement_after_preference_update() {
     let store = Arc::new(SqliteStore::new(&path));
     store.migrate_to_latest().unwrap();
     store.set_manager_enabled(ManagerId::Npm, true).unwrap();
+    store
+        .upsert_detection(
+            ManagerId::Npm,
+            &DetectionInfo {
+                installed: true,
+                executable_path: Some(PathBuf::from("/opt/homebrew/bin/npm")),
+                version: Some("10.9.0".to_string()),
+            },
+        )
+        .unwrap();
 
     let call_count = Arc::new(AtomicUsize::new(0));
     let adapter: Arc<dyn ManagerAdapter> = Arc::new(SequencedAdapter::with_capabilities(
         ManagerId::Npm,
-        &[Capability::Detect],
+        &[Capability::ListInstalled],
         vec![
-            Ok(AdapterResponse::Detection(DetectionInfo {
-                installed: true,
-                executable_path: Some(PathBuf::from("/opt/homebrew/bin/npm")),
-                version: Some("10.9.0".to_string()),
-            })),
-            Ok(AdapterResponse::Detection(DetectionInfo {
-                installed: true,
-                executable_path: Some(PathBuf::from("/opt/homebrew/bin/npm")),
-                version: Some("10.9.0".to_string()),
-            })),
+            Ok(AdapterResponse::InstalledPackages(vec![])),
+            Ok(AdapterResponse::InstalledPackages(vec![])),
         ],
         call_count.clone(),
     ));
@@ -773,10 +775,12 @@ async fn install_mutation_updates_cached_snapshots_without_manual_refresh() {
     store
         .upsert_outdated(&[OutdatedPackage {
             package: package.clone(),
+            package_identifier: None,
             installed_version: Some("9.24.0".to_string()),
             candidate_version: "9.25.0".to_string(),
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         }])
         .unwrap();
 
@@ -785,6 +789,7 @@ async fn install_mutation_updates_cached_snapshots_without_manual_refresh() {
         MUTATION_CAPABILITIES,
         AdapterBehavior::Succeeds(AdapterResponse::Mutation(MutationResult {
             package: package.clone(),
+            package_identifier: None,
             action: ManagerAction::Install,
             before_version: Some("9.24.0".to_string()),
             after_version: Some("9.25.0".to_string()),
@@ -804,6 +809,7 @@ async fn install_mutation_updates_cached_snapshots_without_manual_refresh() {
             ManagerId::Npm,
             AdapterRequest::Install(InstallRequest {
                 package: package.clone(),
+                target_name: None,
                 version: Some("9.25.0".to_string()),
             }),
         )
@@ -843,17 +849,21 @@ async fn uninstall_mutation_removes_cached_snapshots_without_manual_refresh() {
     store
         .upsert_installed(&[helm_core::models::InstalledPackage {
             package: package.clone(),
+            package_identifier: None,
             installed_version: Some("5.8.3".to_string()),
             pinned: false,
+            runtime_state: Default::default(),
         }])
         .unwrap();
     store
         .upsert_outdated(&[OutdatedPackage {
             package: package.clone(),
+            package_identifier: None,
             installed_version: Some("5.8.3".to_string()),
             candidate_version: "5.9.0".to_string(),
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         }])
         .unwrap();
 
@@ -862,6 +872,7 @@ async fn uninstall_mutation_removes_cached_snapshots_without_manual_refresh() {
         MUTATION_CAPABILITIES,
         AdapterBehavior::Succeeds(AdapterResponse::Mutation(MutationResult {
             package: package.clone(),
+            package_identifier: None,
             action: ManagerAction::Uninstall,
             before_version: Some("5.8.3".to_string()),
             after_version: None,
@@ -881,6 +892,8 @@ async fn uninstall_mutation_removes_cached_snapshots_without_manual_refresh() {
             ManagerId::Pnpm,
             AdapterRequest::Uninstall(UninstallRequest {
                 package: package.clone(),
+                target_name: None,
+                version: None,
             }),
         )
         .await
@@ -902,5 +915,65 @@ async fn uninstall_mutation_removes_cached_snapshots_without_manual_refresh() {
     assert!(
         persisted,
         "expected uninstall mutation to remove package from cached installed/outdated snapshots"
+    );
+}
+
+#[tokio::test]
+async fn installed_snapshot_refresh_replaces_stale_rows_for_manager() {
+    let path = test_db_path("orchestration-runtime-installed-snapshot-replace");
+    let store = Arc::new(SqliteStore::new(&path));
+    store.migrate_to_latest().unwrap();
+
+    store
+        .upsert_installed(&[helm_core::models::InstalledPackage {
+            package: PackageRef {
+                manager: ManagerId::Npm,
+                name: "typescript".to_string(),
+            },
+            package_identifier: None,
+            installed_version: Some("5.8.3".to_string()),
+            pinned: false,
+            runtime_state: Default::default(),
+        }])
+        .unwrap();
+
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(TestAdapter::with_capabilities(
+        ManagerId::Npm,
+        &[Capability::ListInstalled],
+        AdapterBehavior::Succeeds(AdapterResponse::InstalledPackages(vec![])),
+    ));
+    let runtime = AdapterRuntime::with_all_stores(
+        [adapter],
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+    )
+    .unwrap();
+
+    runtime
+        .submit_refresh_request_response(
+            ManagerId::Npm,
+            AdapterRequest::ListInstalled(ListInstalledRequest),
+        )
+        .await
+        .unwrap();
+
+    let mut cleared = false;
+    for _ in 0..20 {
+        let installed = store.list_installed().unwrap();
+        if installed
+            .iter()
+            .all(|entry| entry.package.manager != ManagerId::Npm)
+        {
+            cleared = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    assert!(
+        cleared,
+        "expected list-installed refresh to replace stale installed rows for manager"
     );
 }

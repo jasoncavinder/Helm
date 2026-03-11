@@ -4,13 +4,14 @@ use crate::adapters::detect_utils::which_executable;
 use crate::adapters::homebrew::parse_homebrew_version;
 use crate::adapters::homebrew_cask::{
     HomebrewCaskDetectOutput, HomebrewCaskSource, homebrew_cask_config_request,
-    homebrew_cask_detect_request, homebrew_cask_list_installed_request,
-    homebrew_cask_list_outdated_request,
+    homebrew_cask_detect_request, homebrew_cask_install_request,
+    homebrew_cask_list_installed_request, homebrew_cask_list_outdated_request,
+    homebrew_cask_search_request, homebrew_cask_uninstall_request, homebrew_cask_upgrade_request,
 };
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::process_utils::{run_and_collect_stdout, run_and_collect_version_output};
 use crate::execution::{ProcessExecutor, ProcessSpawnRequest};
-use crate::models::ManagerId;
+use crate::models::{ManagerId, SearchQuery};
 
 pub struct ProcessHomebrewCaskSource {
     executor: Arc<dyn ProcessExecutor>,
@@ -30,6 +31,7 @@ impl ProcessHomebrewCaskSource {
             .command
             .env("PATH", new_path)
             .env("HOMEBREW_NO_AUTO_UPDATE", "1")
+            .env("HOMEBREW_NO_INSTALL_CLEANUP", "1")
             .env("HOMEBREW_NO_ENV_HINTS", "1");
         request
     }
@@ -80,6 +82,26 @@ impl HomebrewCaskSource for ProcessHomebrewCaskSource {
 
     fn list_outdated_casks(&self) -> AdapterResult<String> {
         let request = self.configure_request(homebrew_cask_list_outdated_request(None));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn search_casks(&self, query: &SearchQuery) -> AdapterResult<String> {
+        let request = self.configure_request(homebrew_cask_search_request(None, query));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn install_cask(&self, name: &str) -> AdapterResult<String> {
+        let request = self.configure_request(homebrew_cask_install_request(None, name));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn uninstall_cask(&self, name: &str) -> AdapterResult<String> {
+        let request = self.configure_request(homebrew_cask_uninstall_request(None, name));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn upgrade_cask(&self, name: Option<&str>) -> AdapterResult<String> {
+        let request = self.configure_request(homebrew_cask_upgrade_request(None, name));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 }

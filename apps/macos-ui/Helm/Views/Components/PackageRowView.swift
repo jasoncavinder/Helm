@@ -3,15 +3,12 @@ import SwiftUI
 struct PackageRowView: View {
     let package: PackageItem
     var managerDisplayNames: [String]?
+    var detailBadges: [String] = []
     var isSelected: Bool = false
-    var isUpgradeActionInFlight: Bool = false
-    var isInstallActionInFlight: Bool = false
-    var onUpgrade: (() -> Void)?
-    var onInstall: (() -> Void)?
 
     private var accessibilityDescription: String {
         let managerList = displayedManagerNames.joined(separator: ", ")
-        var parts = [package.name, package.status.displayName]
+        var parts = [package.displayName, package.status.displayName]
         parts.append(package.version)
         if let latest = package.latestVersion {
             parts.append(L10n.App.Packages.Action.upgradePackage.localized + " " + latest)
@@ -21,6 +18,9 @@ struct PackageRowView: View {
         }
         if package.restartRequired {
             parts.append(L10n.App.Packages.Label.restartRequired.localized)
+        }
+        if !detailBadges.isEmpty {
+            parts.append(detailBadges.joined(separator: ", "))
         }
         parts.append(managerList)
         return parts.joined(separator: ", ")
@@ -36,41 +36,15 @@ struct PackageRowView: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            if let onUpgrade, package.status == .upgradable {
-                Button(action: onUpgrade) {
-                    Image(systemName: package.status.iconName)
-                        .foregroundColor(package.status.iconColor)
-                        .font(.body)
-                        .frame(width: 20)
-                }
-                .buttonStyle(.borderless)
-                .disabled(isUpgradeActionInFlight)
-                .help(L10n.App.Packages.Action.upgradePackage.localized)
-                .helmPointer(enabled: !isUpgradeActionInFlight)
+            Image(systemName: package.status.iconName)
+                .foregroundColor(package.status.iconColor)
+                .font(.body)
+                .frame(width: 20)
                 .accessibilityHidden(true)
-            } else if let onInstall, package.status == .available {
-                Button(action: onInstall) {
-                    Image(systemName: package.status.iconName)
-                        .foregroundColor(package.status.iconColor)
-                        .font(.body)
-                        .frame(width: 20)
-                }
-                .buttonStyle(.borderless)
-                .disabled(isInstallActionInFlight)
-                .help(L10n.App.Packages.Action.install.localized)
-                .helmPointer(enabled: !isInstallActionInFlight)
-                .accessibilityHidden(true)
-            } else {
-                Image(systemName: package.status.iconName)
-                    .foregroundColor(package.status.iconColor)
-                    .font(.body)
-                    .frame(width: 20)
-                    .accessibilityHidden(true)
-            }
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
-                    Text(package.name)
+                    Text(package.displayName)
                         .font(.body)
                         .lineLimit(1)
                     if package.pinned {
@@ -81,52 +55,23 @@ struct PackageRowView: View {
                             .accessibilityHidden(true)
                     }
                 }
-
-                if displayedManagerNames.count == 1 {
-                    Text(displayedManagerNames[0])
-                        .font(.caption2)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(HelmTheme.surfaceElevated)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                        .strokeBorder(HelmTheme.borderSubtle.opacity(0.9), lineWidth: 0.8)
-                                )
-                        )
-                        .foregroundColor(HelmTheme.textSecondary)
-                } else {
-                    Text(displayedManagerNames.joined(separator: ", "))
-                        .font(.caption2)
-                        .foregroundColor(HelmTheme.textSecondary)
-                        .lineLimit(2)
+                HStack(spacing: 4) {
+                    ForEach(Array(displayedManagerNames.enumerated()), id: \.offset) { _, managerName in
+                        self.managerBadge(managerName)
+                    }
+                }
+                if !detailBadges.isEmpty {
+                    HStack(spacing: 4) {
+                        ForEach(Array(detailBadges.enumerated()), id: \.offset) { _, badge in
+                            self.detailBadge(badge)
+                        }
+                    }
                 }
             }
 
             Spacer()
 
             VStack(alignment: .trailing, spacing: 2) {
-                HStack(spacing: 6) {
-                    if let onUpgrade {
-                        if isUpgradeActionInFlight {
-                            ProgressView()
-                                .controlSize(.mini)
-                                .scaleEffect(0.75)
-                                .frame(width: 16, height: 16)
-                        } else {
-                            Button(action: onUpgrade) {
-                                Image(systemName: "arrow.up.circle")
-                                    .font(.caption)
-                                    .foregroundColor(HelmTheme.stateAttention)
-                            }
-                            .buttonStyle(.borderless)
-                            .help(L10n.App.Packages.Action.upgradePackage.localized)
-                            .helmPointer()
-                        }
-                    }
-                }
-
                 if let latest = package.latestVersion {
                     HStack(spacing: 4) {
                         Text(latest)
@@ -149,17 +94,53 @@ struct PackageRowView: View {
                 }
             }
         }
-        .padding(.vertical, 4)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isSelected ? HelmTheme.selectionFill : Color.clear)
+                .fill(isSelected ? HelmTheme.selectionFill : HelmTheme.surfaceElevated)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(isSelected ? HelmTheme.selectionStroke : Color.clear, lineWidth: 1)
+                .stroke(
+                    isSelected ? HelmTheme.selectionStroke : HelmTheme.borderSubtle.opacity(0.9),
+                    lineWidth: 0.8
+                )
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
+    }
+
+    private func managerBadge(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(HelmTheme.surfaceElevated)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .strokeBorder(HelmTheme.borderSubtle.opacity(0.9), lineWidth: 0.8)
+                    )
+            )
+            .foregroundColor(HelmTheme.textSecondary)
+    }
+
+    private func detailBadge(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(HelmTheme.surfaceElevated)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .strokeBorder(HelmTheme.borderSubtle.opacity(0.9), lineWidth: 0.8)
+                    )
+            )
+            .foregroundColor(HelmTheme.textSecondary)
     }
 }

@@ -15,7 +15,9 @@ pub use manager::{
     ManagerId, ManagerInstallInstance, ManagerUninstallPreview, PackageUninstallPreview,
     StrategyKind, UninstallImpactPath,
 };
-pub use package::{InstalledPackage, OutdatedPackage, PackageCandidate, PackageRef};
+pub use package::{
+    InstalledPackage, OutdatedPackage, PackageCandidate, PackageRef, PackageRuntimeState,
+};
 pub use pin::{PinKind, PinRecord};
 pub use search::{CachedSearchResult, SearchQuery};
 pub use task::{TaskId, TaskRecord, TaskStatus, TaskType};

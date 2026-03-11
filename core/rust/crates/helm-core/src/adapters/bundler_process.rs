@@ -24,6 +24,12 @@ impl ProcessBundlerSource {
         let path = std::env::var("PATH").unwrap_or_default();
         let new_path = format!("/opt/homebrew/bin:/usr/local/bin:/usr/bin:{path}");
         request.command = request.command.env("PATH", new_path);
+        let spec_cache_dir = std::env::temp_dir().join("helm-rubygems-spec-cache");
+        let _ = std::fs::create_dir_all(&spec_cache_dir);
+        request.command = request.command.env(
+            "GEM_SPEC_CACHE",
+            spec_cache_dir.to_string_lossy().to_string(),
+        );
 
         let replacement = match request.command.program.to_str() {
             Some("bundle") => Some(which_executable(
@@ -84,8 +90,8 @@ impl BundlerSource for ProcessBundlerSource {
         self.run_stdout(bundler_install_request(None, version))
     }
 
-    fn uninstall(&self) -> AdapterResult<String> {
-        self.run_stdout(bundler_uninstall_request(None))
+    fn uninstall(&self, version: Option<&str>) -> AdapterResult<String> {
+        self.run_stdout(bundler_uninstall_request(None, version))
     }
 
     fn upgrade(&self) -> AdapterResult<String> {

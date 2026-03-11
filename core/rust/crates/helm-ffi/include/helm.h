@@ -19,6 +19,15 @@ char *helm_list_installed_packages(void);
 
 char *helm_list_outdated_packages(void);
 
+/**
+ * Return rustup toolchain-scoped component and target detail as JSON.
+ *
+ * # Safety
+ *
+ * `toolchain` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ */
+char *helm_get_rustup_toolchain_detail(const char *toolchain);
+
 char *helm_list_tasks(void);
 
 /**
@@ -53,7 +62,7 @@ bool helm_trigger_refresh(void);
 bool helm_trigger_detection(void);
 
 /**
- * Trigger detection/refresh for a single manager.
+ * Trigger detection for a single manager.
  *
  * # Safety
  *
@@ -167,6 +176,11 @@ bool helm_set_homebrew_keg_auto_cleanup(bool enabled);
 char *helm_list_package_keg_policies(void);
 
 /**
+ * List per-package manager preferences as JSON.
+ */
+char *helm_list_package_manager_preferences(void);
+
+/**
  * Set per-package Homebrew keg policy override.
  *
  * `policy_mode` values:
@@ -182,6 +196,18 @@ char *helm_list_package_keg_policies(void);
 bool helm_set_package_keg_policy(const char *manager_id,
                                  const char *package_name,
                                  int32_t policy_mode);
+
+/**
+ * Set or clear per-package manager preference.
+ *
+ * Pass null for `manager_id` to clear preference.
+ *
+ * # Safety
+ *
+ * `package_family_key` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ * `manager_id` may be null; when non-null it must point to a NUL-terminated UTF-8 C string.
+ */
+bool helm_set_package_manager_preference(const char *package_family_key, const char *manager_id);
 
 /**
  * Build an ordered upgrade execution plan from cached outdated snapshot as JSON.
@@ -223,7 +249,10 @@ bool helm_upgrade_all(bool include_pinned, bool allow_os_updates);
  * `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
  * strings.
  */
-int64_t helm_upgrade_package(const char *manager_id, const char *package_name);
+int64_t helm_upgrade_package(const char *manager_id,
+                             const char *package_name,
+                             const char *package_target_name,
+                             const char *version);
 
 /**
  * Queue an install task for a single package. Returns the task ID, or -1 on error.
@@ -233,7 +262,10 @@ int64_t helm_upgrade_package(const char *manager_id, const char *package_name);
  * `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
  * strings.
  */
-int64_t helm_install_package(const char *manager_id, const char *package_name);
+int64_t helm_install_package(const char *manager_id,
+                             const char *package_name,
+                             const char *package_target_name,
+                             const char *version);
 
 /**
  * Queue an uninstall task for a single package. Returns the task ID, or -1 on error.
@@ -243,7 +275,84 @@ int64_t helm_install_package(const char *manager_id, const char *package_name);
  * `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
  * strings.
  */
-int64_t helm_uninstall_package(const char *manager_id, const char *package_name);
+int64_t helm_uninstall_package(const char *manager_id,
+                               const char *package_name,
+                               const char *package_target_name,
+                               const char *version);
+
+/**
+ * Queue a rustup component-add task. Returns the task ID, or -1 on error.
+ *
+ * # Safety
+ *
+ * `toolchain` and `component` must be valid, non-null pointers to NUL-terminated UTF-8 C
+ * strings.
+ */
+int64_t helm_rustup_add_component(const char *toolchain, const char *component);
+
+/**
+ * Queue a rustup component-remove task. Returns the task ID, or -1 on error.
+ *
+ * # Safety
+ *
+ * `toolchain` and `component` must be valid, non-null pointers to NUL-terminated UTF-8 C
+ * strings.
+ */
+int64_t helm_rustup_remove_component(const char *toolchain, const char *component);
+
+/**
+ * Queue a rustup target-add task. Returns the task ID, or -1 on error.
+ *
+ * # Safety
+ *
+ * `toolchain` and `target` must be valid, non-null pointers to NUL-terminated UTF-8 C strings.
+ */
+int64_t helm_rustup_add_target(const char *toolchain, const char *target);
+
+/**
+ * Queue a rustup target-remove task. Returns the task ID, or -1 on error.
+ *
+ * # Safety
+ *
+ * `toolchain` and `target` must be valid, non-null pointers to NUL-terminated UTF-8 C strings.
+ */
+int64_t helm_rustup_remove_target(const char *toolchain, const char *target);
+
+/**
+ * Queue a rustup set-default-toolchain task. Returns the task ID, or -1 on error.
+ *
+ * # Safety
+ *
+ * `toolchain` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ */
+int64_t helm_rustup_set_default_toolchain(const char *toolchain);
+
+/**
+ * Queue a rustup directory-override task. Returns the task ID, or -1 on error.
+ *
+ * # Safety
+ *
+ * `toolchain` and `path` must be valid, non-null pointers to NUL-terminated UTF-8 C strings.
+ */
+int64_t helm_rustup_set_override(const char *toolchain, const char *path);
+
+/**
+ * Queue a rustup directory-override clear task. Returns the task ID, or -1 on error.
+ *
+ * # Safety
+ *
+ * `toolchain` and `path` must be valid, non-null pointers to NUL-terminated UTF-8 C strings.
+ */
+int64_t helm_rustup_unset_override(const char *toolchain, const char *path);
+
+/**
+ * Queue a rustup profile-change task. Returns the task ID, or -1 on error.
+ *
+ * # Safety
+ *
+ * `profile` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
+ */
+int64_t helm_rustup_set_profile(const char *profile);
 
 /**
  * Preview package uninstall blast radius as JSON.
@@ -253,7 +362,9 @@ int64_t helm_uninstall_package(const char *manager_id, const char *package_name)
  * `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
  * strings.
  */
-char *helm_preview_package_uninstall(const char *manager_id, const char *package_name);
+char *helm_preview_package_uninstall(const char *manager_id,
+                                     const char *package_name,
+                                     const char *version);
 
 /**
  * List pin records as JSON.
@@ -276,9 +387,11 @@ bool helm_pin_package(const char *manager_id, const char *package_name, const ch
  * # Safety
  *
  * `manager_id` and `package_name` must be valid, non-null pointers to NUL-terminated UTF-8 C
- * strings.
+ * strings. `pinned_version` may be null.
  */
-bool helm_unpin_package(const char *manager_id, const char *package_name);
+bool helm_unpin_package(const char *manager_id,
+                        const char *package_name,
+                        const char *pinned_version);
 
 /**
  * Set a manager as enabled or disabled.

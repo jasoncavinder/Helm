@@ -359,7 +359,414 @@ DROP TABLE IF EXISTS manager_multi_instance_ack;
 "#,
 };
 
-const MIGRATIONS: [SqliteMigration; 11] = [
+const MIGRATION_0012: SqliteMigration = SqliteMigration {
+    version: 12,
+    name: "add_package_manager_preferences",
+    up_sql: r#"
+CREATE TABLE IF NOT EXISTS package_manager_preferences (
+    package_name TEXT PRIMARY KEY,
+    manager_id TEXT NOT NULL,
+    updated_at_unix INTEGER NOT NULL
+);
+"#,
+    down_sql: r#"
+DROP TABLE IF EXISTS package_manager_preferences;
+"#,
+};
+
+const MIGRATION_0013: SqliteMigration = SqliteMigration {
+    version: 13,
+    name: "add_installed_package_versions",
+    up_sql: r#"
+CREATE TABLE IF NOT EXISTS installed_package_versions (
+    manager_id TEXT NOT NULL,
+    package_name TEXT NOT NULL,
+    installed_version TEXT NOT NULL DEFAULT '',
+    pinned INTEGER NOT NULL DEFAULT 0,
+    updated_at_unix INTEGER NOT NULL,
+    PRIMARY KEY (manager_id, package_name, installed_version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_installed_package_versions_manager_package
+    ON installed_package_versions (manager_id, package_name);
+
+INSERT OR REPLACE INTO installed_package_versions (
+    manager_id,
+    package_name,
+    installed_version,
+    pinned,
+    updated_at_unix
+)
+SELECT
+    manager_id,
+    package_name,
+    COALESCE(installed_version, ''),
+    pinned,
+    updated_at_unix
+FROM installed_packages;
+"#,
+    down_sql: r#"
+DROP INDEX IF EXISTS idx_installed_package_versions_manager_package;
+DROP TABLE IF EXISTS installed_package_versions;
+"#,
+};
+
+const MIGRATION_0014: SqliteMigration = SqliteMigration {
+    version: 14,
+    name: "add_package_runtime_state_flags",
+    up_sql: r#"
+ALTER TABLE installed_package_versions ADD COLUMN is_active INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE installed_package_versions ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE installed_package_versions ADD COLUMN has_override INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE outdated_packages ADD COLUMN is_active INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE outdated_packages ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE outdated_packages ADD COLUMN has_override INTEGER NOT NULL DEFAULT 0;
+"#,
+    down_sql: r#"
+CREATE TABLE installed_package_versions_backup (
+    manager_id TEXT NOT NULL,
+    package_name TEXT NOT NULL,
+    installed_version TEXT NOT NULL DEFAULT '',
+    pinned INTEGER NOT NULL DEFAULT 0,
+    updated_at_unix INTEGER NOT NULL,
+    PRIMARY KEY (manager_id, package_name, installed_version)
+);
+
+INSERT INTO installed_package_versions_backup (
+    manager_id,
+    package_name,
+    installed_version,
+    pinned,
+    updated_at_unix
+)
+SELECT
+    manager_id,
+    package_name,
+    installed_version,
+    pinned,
+    updated_at_unix
+FROM installed_package_versions;
+
+DROP TABLE installed_package_versions;
+ALTER TABLE installed_package_versions_backup RENAME TO installed_package_versions;
+
+CREATE INDEX IF NOT EXISTS idx_installed_package_versions_manager_package
+    ON installed_package_versions (manager_id, package_name);
+
+CREATE TABLE outdated_packages_backup (
+    manager_id TEXT NOT NULL,
+    package_name TEXT NOT NULL,
+    installed_version TEXT,
+    candidate_version TEXT NOT NULL,
+    pinned INTEGER NOT NULL DEFAULT 0,
+    restart_required INTEGER NOT NULL DEFAULT 0,
+    updated_at_unix INTEGER NOT NULL,
+    PRIMARY KEY (manager_id, package_name)
+);
+
+INSERT INTO outdated_packages_backup (
+    manager_id,
+    package_name,
+    installed_version,
+    candidate_version,
+    pinned,
+    restart_required,
+    updated_at_unix
+)
+SELECT
+    manager_id,
+    package_name,
+    installed_version,
+    candidate_version,
+    pinned,
+    restart_required,
+    updated_at_unix
+FROM outdated_packages;
+
+DROP TABLE outdated_packages;
+ALTER TABLE outdated_packages_backup RENAME TO outdated_packages;
+"#,
+};
+
+const MIGRATION_0015: SqliteMigration = SqliteMigration {
+    version: 15,
+    name: "make_pin_records_version_scoped",
+    up_sql: r#"
+CREATE TABLE pin_records_version_scoped (
+    manager_id TEXT NOT NULL,
+    package_name TEXT NOT NULL,
+    pin_kind TEXT NOT NULL,
+    pinned_version TEXT NOT NULL DEFAULT '',
+    created_at_unix INTEGER NOT NULL,
+    PRIMARY KEY (manager_id, package_name, pinned_version)
+);
+
+INSERT INTO pin_records_version_scoped (
+    manager_id,
+    package_name,
+    pin_kind,
+    pinned_version,
+    created_at_unix
+)
+SELECT
+    manager_id,
+    package_name,
+    pin_kind,
+    CASE
+        WHEN manager_id = 'homebrew_formula' AND pin_kind = 'native' THEN ''
+        ELSE COALESCE(pinned_version, '')
+    END,
+    created_at_unix
+FROM pin_records;
+
+DROP TABLE pin_records;
+ALTER TABLE pin_records_version_scoped RENAME TO pin_records;
+"#,
+    down_sql: r#"
+CREATE TABLE pin_records_legacy (
+    manager_id TEXT NOT NULL,
+    package_name TEXT NOT NULL,
+    pin_kind TEXT NOT NULL,
+    pinned_version TEXT,
+    created_at_unix INTEGER NOT NULL,
+    PRIMARY KEY (manager_id, package_name)
+);
+
+INSERT OR REPLACE INTO pin_records_legacy (
+    manager_id,
+    package_name,
+    pin_kind,
+    pinned_version,
+    created_at_unix
+)
+SELECT
+    manager_id,
+    package_name,
+    pin_kind,
+    NULLIF(pinned_version, ''),
+    created_at_unix
+FROM pin_records
+ORDER BY created_at_unix DESC;
+
+DROP TABLE pin_records;
+ALTER TABLE pin_records_legacy RENAME TO pin_records;
+"#,
+};
+
+const MIGRATION_0016: SqliteMigration = SqliteMigration {
+    version: 16,
+    name: "add_package_external_identifiers",
+    up_sql: r#"
+CREATE TABLE installed_package_versions_with_identifiers (
+    manager_id TEXT NOT NULL,
+    package_name TEXT NOT NULL,
+    package_identifier TEXT NOT NULL DEFAULT '',
+    installed_version TEXT NOT NULL DEFAULT '',
+    pinned INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 0,
+    is_default INTEGER NOT NULL DEFAULT 0,
+    has_override INTEGER NOT NULL DEFAULT 0,
+    updated_at_unix INTEGER NOT NULL,
+    PRIMARY KEY (manager_id, package_name, package_identifier, installed_version)
+);
+
+INSERT INTO installed_package_versions_with_identifiers (
+    manager_id,
+    package_name,
+    package_identifier,
+    installed_version,
+    pinned,
+    is_active,
+    is_default,
+    has_override,
+    updated_at_unix
+)
+SELECT
+    manager_id,
+    package_name,
+    '',
+    installed_version,
+    pinned,
+    is_active,
+    is_default,
+    has_override,
+    updated_at_unix
+FROM installed_package_versions;
+
+DROP INDEX IF EXISTS idx_installed_package_versions_manager_package;
+DROP TABLE installed_package_versions;
+ALTER TABLE installed_package_versions_with_identifiers RENAME TO installed_package_versions;
+
+CREATE INDEX IF NOT EXISTS idx_installed_package_versions_manager_package
+    ON installed_package_versions (manager_id, package_name, package_identifier);
+
+CREATE TABLE outdated_packages_with_identifiers (
+    manager_id TEXT NOT NULL,
+    package_name TEXT NOT NULL,
+    package_identifier TEXT NOT NULL DEFAULT '',
+    installed_version TEXT,
+    candidate_version TEXT NOT NULL,
+    pinned INTEGER NOT NULL DEFAULT 0,
+    restart_required INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 0,
+    is_default INTEGER NOT NULL DEFAULT 0,
+    has_override INTEGER NOT NULL DEFAULT 0,
+    updated_at_unix INTEGER NOT NULL,
+    PRIMARY KEY (manager_id, package_name, package_identifier)
+);
+
+INSERT INTO outdated_packages_with_identifiers (
+    manager_id,
+    package_name,
+    package_identifier,
+    installed_version,
+    candidate_version,
+    pinned,
+    restart_required,
+    is_active,
+    is_default,
+    has_override,
+    updated_at_unix
+)
+SELECT
+    manager_id,
+    package_name,
+    '',
+    installed_version,
+    candidate_version,
+    pinned,
+    restart_required,
+    is_active,
+    is_default,
+    has_override,
+    updated_at_unix
+FROM outdated_packages;
+
+DROP TABLE outdated_packages;
+ALTER TABLE outdated_packages_with_identifiers RENAME TO outdated_packages;
+
+ALTER TABLE search_cache ADD COLUMN package_identifier TEXT NOT NULL DEFAULT '';
+"#,
+    down_sql: r#"
+CREATE TABLE installed_package_versions_legacy (
+    manager_id TEXT NOT NULL,
+    package_name TEXT NOT NULL,
+    installed_version TEXT NOT NULL DEFAULT '',
+    pinned INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 0,
+    is_default INTEGER NOT NULL DEFAULT 0,
+    has_override INTEGER NOT NULL DEFAULT 0,
+    updated_at_unix INTEGER NOT NULL,
+    PRIMARY KEY (manager_id, package_name, installed_version)
+);
+
+INSERT INTO installed_package_versions_legacy (
+    manager_id,
+    package_name,
+    installed_version,
+    pinned,
+    is_active,
+    is_default,
+    has_override,
+    updated_at_unix
+)
+SELECT
+    manager_id,
+    package_name,
+    installed_version,
+    pinned,
+    is_active,
+    is_default,
+    has_override,
+    updated_at_unix
+FROM installed_package_versions;
+
+DROP INDEX IF EXISTS idx_installed_package_versions_manager_package;
+DROP TABLE installed_package_versions;
+ALTER TABLE installed_package_versions_legacy RENAME TO installed_package_versions;
+
+CREATE INDEX IF NOT EXISTS idx_installed_package_versions_manager_package
+    ON installed_package_versions (manager_id, package_name);
+
+CREATE TABLE outdated_packages_legacy (
+    manager_id TEXT NOT NULL,
+    package_name TEXT NOT NULL,
+    installed_version TEXT,
+    candidate_version TEXT NOT NULL,
+    pinned INTEGER NOT NULL DEFAULT 0,
+    restart_required INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 0,
+    is_default INTEGER NOT NULL DEFAULT 0,
+    has_override INTEGER NOT NULL DEFAULT 0,
+    updated_at_unix INTEGER NOT NULL,
+    PRIMARY KEY (manager_id, package_name)
+);
+
+INSERT INTO outdated_packages_legacy (
+    manager_id,
+    package_name,
+    installed_version,
+    candidate_version,
+    pinned,
+    restart_required,
+    is_active,
+    is_default,
+    has_override,
+    updated_at_unix
+)
+SELECT
+    manager_id,
+    package_name,
+    installed_version,
+    candidate_version,
+    pinned,
+    restart_required,
+    is_active,
+    is_default,
+    has_override,
+    updated_at_unix
+FROM outdated_packages;
+
+DROP TABLE outdated_packages;
+ALTER TABLE outdated_packages_legacy RENAME TO outdated_packages;
+
+CREATE TABLE search_cache_legacy (
+    manager_id TEXT NOT NULL,
+    package_name TEXT NOT NULL,
+    version TEXT,
+    summary TEXT,
+    originating_query TEXT NOT NULL,
+    cached_at_unix INTEGER NOT NULL
+);
+
+INSERT INTO search_cache_legacy (
+    manager_id,
+    package_name,
+    version,
+    summary,
+    originating_query,
+    cached_at_unix
+)
+SELECT
+    manager_id,
+    package_name,
+    version,
+    summary,
+    originating_query,
+    cached_at_unix
+FROM search_cache;
+
+DROP INDEX IF EXISTS idx_search_cache_query_time;
+DROP TABLE search_cache;
+ALTER TABLE search_cache_legacy RENAME TO search_cache;
+
+CREATE INDEX IF NOT EXISTS idx_search_cache_query_time
+    ON search_cache (originating_query, cached_at_unix DESC);
+"#,
+};
+
+const MIGRATIONS: [SqliteMigration; 16] = [
     MIGRATION_0001,
     MIGRATION_0002,
     MIGRATION_0003,
@@ -371,6 +778,11 @@ const MIGRATIONS: [SqliteMigration; 11] = [
     MIGRATION_0009,
     MIGRATION_0010,
     MIGRATION_0011,
+    MIGRATION_0012,
+    MIGRATION_0013,
+    MIGRATION_0014,
+    MIGRATION_0015,
+    MIGRATION_0016,
 ];
 
 pub fn migrations() -> &'static [SqliteMigration] {

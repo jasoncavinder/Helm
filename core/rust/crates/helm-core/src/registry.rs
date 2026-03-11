@@ -66,6 +66,7 @@ const fn method_spec(
 }
 
 const DETECT_ONLY_CAPABILITIES: &[Capability] = &[Capability::Detect];
+const REFRESH_ONLY_CAPABILITIES: &[Capability] = &[Capability::Detect, Capability::Refresh];
 const STATUS_CAPABILITIES: &[Capability] = &[
     Capability::Detect,
     Capability::Refresh,
@@ -94,6 +95,16 @@ const HOMEBREW_FORMULA_CAPABILITIES: &[Capability] = &[
     Capability::Pin,
     Capability::Unpin,
 ];
+const HOMEBREW_CASK_CAPABILITIES: &[Capability] = &[
+    Capability::Detect,
+    Capability::Refresh,
+    Capability::Search,
+    Capability::ListInstalled,
+    Capability::ListOutdated,
+    Capability::Install,
+    Capability::Uninstall,
+    Capability::Upgrade,
+];
 const SYSTEM_CAPABILITIES: &[Capability] = &[
     Capability::Detect,
     Capability::Refresh,
@@ -113,8 +124,12 @@ const FIRMWARE_CAPABILITIES: &[Capability] = &[Capability::Detect, Capability::R
 const MAS_CAPABILITIES: &[Capability] = &[
     Capability::Detect,
     Capability::Refresh,
+    Capability::Search,
     Capability::ListInstalled,
     Capability::ListOutdated,
+    Capability::Install,
+    Capability::Uninstall,
+    Capability::Upgrade,
 ];
 
 const ALL_MANAGERS: [ManagerDescriptor; 28] = [
@@ -165,7 +180,7 @@ const ALL_MANAGERS: [ManagerDescriptor; 28] = [
         display_name: "nix-darwin",
         category: ManagerCategory::SystemOs,
         authority: ManagerAuthority::Guarded,
-        capabilities: SEARCHABLE_PACKAGE_CAPABILITIES,
+        capabilities: REFRESH_ONLY_CAPABILITIES,
     },
     ManagerDescriptor {
         id: ManagerId::Pnpm,
@@ -263,7 +278,7 @@ const ALL_MANAGERS: [ManagerDescriptor; 28] = [
         display_name: "Homebrew (casks)",
         category: ManagerCategory::GuiApp,
         authority: ManagerAuthority::Standard,
-        capabilities: STATUS_CAPABILITIES,
+        capabilities: HOMEBREW_CASK_CAPABILITIES,
     },
     ManagerDescriptor {
         id: ManagerId::DockerDesktop,
@@ -817,7 +832,7 @@ const ASDF_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetada
 const RUSTUP_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: RUSTUP_INSTALL_METHOD_IDS,
     install_methods: RUSTUP_INSTALL_METHODS,
-    participates_in_package_search: false,
+    participates_in_package_search: true,
 };
 const HOMEBREW_FORMULA_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: HOMEBREW_FORMULA_INSTALL_METHOD_IDS,
@@ -827,7 +842,7 @@ const HOMEBREW_FORMULA_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLif
 const SOFTWAREUPDATE_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: SOFTWAREUPDATE_INSTALL_METHOD_IDS,
     install_methods: SOFTWAREUPDATE_INSTALL_METHODS,
-    participates_in_package_search: true,
+    participates_in_package_search: false,
 };
 const MACPORTS_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: MACPORTS_INSTALL_METHOD_IDS,
@@ -837,7 +852,7 @@ const MACPORTS_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMe
 const NIX_DARWIN_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: NIX_DARWIN_INSTALL_METHOD_IDS,
     install_methods: NIX_DARWIN_INSTALL_METHODS,
-    participates_in_package_search: true,
+    participates_in_package_search: false,
 };
 const NPM_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: NPM_INSTALL_METHOD_IDS,
@@ -897,12 +912,12 @@ const MAS_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadat
 const SPARKLE_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: SPARKLE_INSTALL_METHOD_IDS,
     install_methods: SPARKLE_INSTALL_METHODS,
-    participates_in_package_search: true,
+    participates_in_package_search: false,
 };
 const SETAPP_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: SETAPP_INSTALL_METHOD_IDS,
     install_methods: SETAPP_INSTALL_METHODS,
-    participates_in_package_search: true,
+    participates_in_package_search: false,
 };
 const HOMEBREW_CASK_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: HOMEBREW_CASK_INSTALL_METHOD_IDS,
@@ -912,37 +927,37 @@ const HOMEBREW_CASK_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecy
 const DOCKER_DESKTOP_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: DOCKER_DESKTOP_INSTALL_METHOD_IDS,
     install_methods: DOCKER_DESKTOP_INSTALL_METHODS,
-    participates_in_package_search: true,
+    participates_in_package_search: false,
 };
 const PODMAN_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: PODMAN_INSTALL_METHOD_IDS,
     install_methods: PODMAN_INSTALL_METHODS,
-    participates_in_package_search: true,
+    participates_in_package_search: false,
 };
 const COLIMA_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: COLIMA_INSTALL_METHOD_IDS,
     install_methods: COLIMA_INSTALL_METHODS,
-    participates_in_package_search: true,
+    participates_in_package_search: false,
 };
 const PARALLELS_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: PARALLELS_INSTALL_METHOD_IDS,
     install_methods: PARALLELS_INSTALL_METHODS,
-    participates_in_package_search: true,
+    participates_in_package_search: false,
 };
 const XCODE_CLT_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: XCODE_CLT_INSTALL_METHOD_IDS,
     install_methods: XCODE_CLT_INSTALL_METHODS,
-    participates_in_package_search: true,
+    participates_in_package_search: false,
 };
 const ROSETTA_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: ROSETTA_INSTALL_METHOD_IDS,
     install_methods: ROSETTA_INSTALL_METHODS,
-    participates_in_package_search: true,
+    participates_in_package_search: false,
 };
 const FIRMWARE_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: FIRMWARE_INSTALL_METHOD_IDS,
     install_methods: FIRMWARE_INSTALL_METHODS,
-    participates_in_package_search: true,
+    participates_in_package_search: false,
 };
 pub fn managers() -> &'static [ManagerDescriptor] {
     &ALL_MANAGERS
@@ -1003,16 +1018,17 @@ pub fn manager_install_method_spec(
 }
 
 pub fn manager_participates_in_package_search(id: ManagerId) -> bool {
-    manager_lifecycle_metadata(id).participates_in_package_search
+    manager(id).is_some_and(|descriptor| descriptor.supports(Capability::Search))
+        && manager_lifecycle_metadata(id).participates_in_package_search
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        InstallMethodRecommendationReason, manager_install_method_candidates,
+        InstallMethodRecommendationReason, manager, manager_install_method_candidates,
         manager_install_method_specs, manager_participates_in_package_search,
     };
-    use crate::models::ManagerId;
+    use crate::models::{Capability, ManagerId};
 
     #[test]
     fn rustup_install_methods_include_rustup_installer_and_homebrew() {
@@ -1036,10 +1052,33 @@ mod tests {
     }
 
     #[test]
-    fn rustup_is_excluded_from_package_search_policy() {
-        assert!(!manager_participates_in_package_search(ManagerId::Rustup));
+    fn rustup_participates_in_package_search_policy() {
+        assert!(manager_participates_in_package_search(ManagerId::Rustup));
         assert!(manager_participates_in_package_search(
             ManagerId::HomebrewFormula
         ));
+        assert!(manager_participates_in_package_search(ManagerId::Pipx));
+        assert!(manager_participates_in_package_search(ManagerId::Pip));
+        assert!(manager_participates_in_package_search(ManagerId::Poetry));
+        assert!(manager_participates_in_package_search(ManagerId::Bundler));
+        assert!(!manager_participates_in_package_search(
+            ManagerId::SoftwareUpdate
+        ));
+        assert!(!manager_participates_in_package_search(ManagerId::Sparkle));
+        assert!(!manager_participates_in_package_search(ManagerId::Setapp));
+    }
+
+    #[test]
+    fn package_search_policy_never_admits_non_search_manager() {
+        for id in ManagerId::ALL {
+            if manager_participates_in_package_search(id) {
+                assert!(
+                    manager(id)
+                        .expect("manager descriptor should exist")
+                        .supports(Capability::Search),
+                    "{id:?} participates in package search without Search capability"
+                );
+            }
+        }
     }
 }

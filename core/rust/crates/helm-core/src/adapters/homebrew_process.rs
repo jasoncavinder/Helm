@@ -4,7 +4,7 @@ use crate::adapters::detect_utils::which_executable;
 use crate::adapters::homebrew::{
     HomebrewDetectOutput, HomebrewSource, homebrew_cleanup_request, homebrew_config_request,
     homebrew_detect_request, homebrew_install_request, homebrew_list_installed_request,
-    homebrew_list_outdated_request, homebrew_pin_request, homebrew_search_local_request,
+    homebrew_list_outdated_request, homebrew_pin_request, homebrew_search_formulae_request,
     homebrew_uninstall_request, homebrew_unpin_request, homebrew_upgrade_request,
     parse_homebrew_version,
 };
@@ -71,12 +71,8 @@ impl HomebrewSource for ProcessHomebrewSource {
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 
-    fn search_local_formulae(&self, query: &str) -> AdapterResult<String> {
-        let search_query = SearchQuery {
-            text: query.to_string(),
-            issued_at: std::time::SystemTime::now(),
-        };
-        let request = self.configure_request(homebrew_search_local_request(None, &search_query));
+    fn search_formulae(&self, query: &SearchQuery) -> AdapterResult<String> {
+        let request = self.configure_request(homebrew_search_formulae_request(None, query));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 
@@ -122,6 +118,7 @@ impl ProcessHomebrewSource {
             .command
             .env("PATH", new_path)
             .env("HOMEBREW_NO_AUTO_UPDATE", "1")
+            .env("HOMEBREW_NO_INSTALL_CLEANUP", "1")
             .env("HOMEBREW_NO_ENV_HINTS", "1");
         request
     }

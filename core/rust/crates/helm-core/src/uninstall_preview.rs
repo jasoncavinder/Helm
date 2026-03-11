@@ -5,7 +5,7 @@ use crate::manager_lifecycle::{
 };
 use crate::models::{
     AutomationLevel, InstallProvenance, ManagerId, ManagerInstallInstance, ManagerUninstallPreview,
-    PackageRef, PackageUninstallPreview, StrategyKind, UninstallImpactPath,
+    PackageRef, PackageRuntimeState, PackageUninstallPreview, StrategyKind, UninstallImpactPath,
 };
 use crate::persistence::PackageStore;
 use crate::sqlite::SqliteStore;
@@ -30,6 +30,8 @@ pub struct ManagerUninstallPreviewContext<'a> {
 pub struct PackageUninstallPreviewContext<'a> {
     pub package: &'a PackageRef,
     pub active_instance: Option<&'a ManagerInstallInstance>,
+    pub package_runtime_state: Option<&'a PackageRuntimeState>,
+    pub rustup_override_paths: &'a [String],
 }
 
 struct UninstallSummaryContext<'a> {
@@ -51,6 +53,8 @@ struct PackageUninstallSummaryContext<'a> {
     files_count: usize,
     directories_count: usize,
     secondary_effect_count: usize,
+    package_runtime_state: Option<&'a PackageRuntimeState>,
+    rustup_override_count: usize,
 }
 
 pub fn build_manager_uninstall_preview(
@@ -271,6 +275,87 @@ pub fn build_package_uninstall_preview(
             "Rustup toolchain '{}' will be removed.",
             context.package.name
         ));
+        if context
+            .package_runtime_state
+            .is_some_and(|state| state.is_active)
+        {
+            secondary_effects.push(format!(
+                "Rustup toolchain '{}' is currently active for at least one shell context.",
+                context.package.name
+            ));
+        }
+        if context
+            .package_runtime_state
+            .is_some_and(|state| state.is_default)
+        {
+            secondary_effects.push(format!(
+                "Rustup toolchain '{}' is configured as the default toolchain.",
+                context.package.name
+            ));
+        }
+        if !context.rustup_override_paths.is_empty() {
+            let sample = context
+                .rustup_override_paths
+                .iter()
+                .take(3)
+                .cloned()
+                .collect::<Vec<_>>();
+            let remaining = context
+                .rustup_override_paths
+                .len()
+                .saturating_sub(sample.len());
+            let suffix = if remaining == 0 {
+                String::new()
+            } else {
+                format!(" (+{} more)", remaining)
+            };
+            secondary_effects.push(format!(
+                "{} directory override(s) currently select this toolchain: {}{}",
+                context.rustup_override_paths.len(),
+                sample.join(", "),
+                suffix
+            ));
+        } else if context
+            .package_runtime_state
+            .is_some_and(|state| state.has_override)
+        {
+            secondary_effects.push(format!(
+                "One or more directory overrides currently select rustup toolchain '{}'.",
+                context.package.name
+            ));
+        }
+    } else if context.package.manager == ManagerId::Asdf {
+        secondary_effects.push(format!(
+            "asdf package '{}' will be removed.",
+            context.package.name
+        ));
+        if context
+            .package_runtime_state
+            .is_some_and(|state| state.is_active)
+        {
+            secondary_effects.push(format!(
+                "asdf package '{}' is currently active for at least one shell context.",
+                context.package.name
+            ));
+        }
+        if context
+            .package_runtime_state
+            .is_some_and(|state| state.is_default)
+        {
+            secondary_effects.push(format!(
+                "asdf package '{}' is configured through your default home selection.",
+                context.package.name
+            ));
+        }
+        if context
+            .package_runtime_state
+            .is_some_and(|state| state.has_override)
+        {
+            secondary_effects.push(format!(
+                "A local or environment-specific asdf override may still reference '{}'.",
+                context.package.name
+            ));
+        }
     } else if context.package.manager == ManagerId::HomebrewFormula {
         secondary_effects.push(format!(
             "Homebrew formula '{}' will be uninstalled.",
@@ -286,7 +371,18 @@ pub fn build_package_uninstall_preview(
         ));
     }
 
-    let confidence_requires_confirmation = false;
+    let confidence_requires_confirmation = match context.package.manager {
+        ManagerId::Rustup => {
+            context
+                .package_runtime_state
+                .is_some_and(|state| state.is_active || state.is_default || state.has_override)
+                || !context.rustup_override_paths.is_empty()
+        }
+        ManagerId::Asdf => context
+            .package_runtime_state
+            .is_some_and(|state| state.is_active || state.is_default || state.has_override),
+        _ => false,
+    };
     let blast_radius_score = compute_uninstall_blast_radius_score_with_base_risk(
         files_removed.len(),
         directories_removed.len(),
@@ -296,13 +392,16 @@ pub fn build_package_uninstall_preview(
         false,
         package_uninstall_base_risk(context.package.manager),
     );
-    let requires_yes = blast_radius_score >= safe_blast_radius_threshold;
+    let requires_yes =
+        blast_radius_score >= safe_blast_radius_threshold || confidence_requires_confirmation;
     let summary_lines = build_package_uninstall_summary_lines(PackageUninstallSummaryContext {
         package: context.package,
         blast_radius_score,
         files_count: files_removed.len(),
         directories_count: directories_removed.len(),
         secondary_effect_count: secondary_effects.len(),
+        package_runtime_state: context.package_runtime_state,
+        rustup_override_count: context.rustup_override_paths.len(),
     });
 
     PackageUninstallPreview {
@@ -797,7 +896,40 @@ fn build_package_uninstall_summary_lines(
         "Impacts: {} files, {} directories, {} secondary effects",
         context.files_count, context.directories_count, context.secondary_effect_count
     ));
+    if let Some(state) = context
+        .package_runtime_state
+        .filter(|state| !state.is_empty())
+    {
+        lines.push(format!(
+            "Runtime state: {}",
+            render_package_runtime_state(state)
+        ));
+    }
+    if context.rustup_override_count > 0 {
+        lines.push(format!(
+            "Directory overrides: {}",
+            context.rustup_override_count
+        ));
+    }
     lines
+}
+
+fn render_package_runtime_state(state: &PackageRuntimeState) -> String {
+    let mut parts = Vec::new();
+    if state.is_active {
+        parts.push("active");
+    }
+    if state.is_default {
+        parts.push("default");
+    }
+    if state.has_override {
+        parts.push("override");
+    }
+    if parts.is_empty() {
+        "-".to_string()
+    } else {
+        parts.join(", ")
+    }
 }
 
 fn normalize_nonempty(value: Option<String>) -> Option<String> {
@@ -852,6 +984,8 @@ mod tests {
             PackageUninstallPreviewContext {
                 package: &package,
                 active_instance: Some(&sample_instance()),
+                package_runtime_state: None,
+                rustup_override_paths: &[],
             },
             DEFAULT_MANAGER_UNINSTALL_SAFE_BLAST_RADIUS_THRESHOLD,
         );
@@ -876,6 +1010,8 @@ mod tests {
             PackageUninstallPreviewContext {
                 package: &package,
                 active_instance: None,
+                package_runtime_state: None,
+                rustup_override_paths: &[],
             },
             DEFAULT_MANAGER_UNINSTALL_SAFE_BLAST_RADIUS_THRESHOLD,
         );
@@ -884,5 +1020,64 @@ mod tests {
         assert_eq!(preview.manager_provenance, None);
         assert_eq!(preview.files_removed.len(), 0);
         assert_eq!(preview.directories_removed.len(), 0);
+    }
+
+    #[test]
+    fn package_uninstall_preview_warns_for_active_default_rustup_toolchain() {
+        let package = PackageRef {
+            manager: ManagerId::Rustup,
+            name: "stable-aarch64-apple-darwin".to_string(),
+        };
+        let runtime_state = PackageRuntimeState {
+            is_active: true,
+            is_default: true,
+            has_override: true,
+        };
+        let override_paths = vec![
+            "/Users/test/project-a".to_string(),
+            "/Users/test/project-b".to_string(),
+        ];
+        let preview = build_package_uninstall_preview(
+            PackageUninstallPreviewContext {
+                package: &package,
+                active_instance: None,
+                package_runtime_state: Some(&runtime_state),
+                rustup_override_paths: override_paths.as_slice(),
+            },
+            DEFAULT_MANAGER_UNINSTALL_SAFE_BLAST_RADIUS_THRESHOLD,
+        );
+
+        assert!(preview.requires_yes);
+        assert!(preview.confidence_requires_confirmation);
+        assert!(
+            preview
+                .summary_lines
+                .iter()
+                .any(|line| line.contains("Runtime state: active, default, override"))
+        );
+        assert!(
+            preview
+                .summary_lines
+                .iter()
+                .any(|line| line.contains("Directory overrides: 2"))
+        );
+        assert!(
+            preview
+                .secondary_effects
+                .iter()
+                .any(|line| line.contains("currently active"))
+        );
+        assert!(
+            preview
+                .secondary_effects
+                .iter()
+                .any(|line| line.contains("default toolchain"))
+        );
+        assert!(
+            preview
+                .secondary_effects
+                .iter()
+                .any(|line| line.contains("directory override"))
+        );
     }
 }

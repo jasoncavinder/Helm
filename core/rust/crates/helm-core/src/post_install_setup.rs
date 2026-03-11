@@ -293,16 +293,9 @@ fn report_for_manager(
 
 fn apply_recommended_post_install_setup_with_context(
     manager: ManagerId,
-    manager_install_instances: Option<&[ManagerInstallInstance]>,
+    _manager_install_instances: Option<&[ManagerInstallInstance]>,
     ctx: &ShellSetupContext,
 ) -> Result<PostInstallAutomationResult, String> {
-    let report = report_for_manager(manager, manager_install_instances, ctx).ok_or_else(|| {
-        format!(
-            "manager '{}' does not expose automated post-install setup",
-            manager.as_str()
-        )
-    })?;
-
     let block = setup_block_for_manager(manager, ctx.shell_name.as_str()).ok_or_else(|| {
         format!(
             "manager '{}' does not expose automated post-install setup",
@@ -310,7 +303,7 @@ fn apply_recommended_post_install_setup_with_context(
         )
     })?;
 
-    let rc_file = report
+    let rc_file = ctx
         .rc_files
         .first()
         .cloned()
@@ -562,6 +555,19 @@ mod tests {
         )
         .expect("second setup should succeed");
         assert!(!second.changed);
+    }
+
+    #[test]
+    fn apply_setup_succeeds_without_install_instances() {
+        let home = temp_root("apply-no-instances");
+        let ctx = context_with_shell(home.as_path(), "zsh");
+        let result = apply_recommended_post_install_setup_with_context(ManagerId::Asdf, None, &ctx)
+            .expect("supported manager setup should not require persisted instances");
+        assert!(result.changed);
+
+        let rc = home.join(".zshrc");
+        let content = std::fs::read_to_string(rc).expect("zshrc should be readable");
+        assert!(content.contains("Helm managed asdf setup"));
     }
 
     #[test]
