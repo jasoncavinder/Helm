@@ -6,19 +6,25 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
-Patch `0.17.9` prepares the next stable cut with full current-scope manager adapter completion, scope-contract documentation updates, and release-prep metadata alignment.
+## [0.17.9] - 2026-03-11
+
+Patch `0.17.9` completes current-scope manager adapter coverage and package workflow hardening ahead of the `0.18.x` doctor/repair and local-security cycle.
 
 ### Added
+- Rustup package workflows are now first-class in Helm, including toolchain search/install/uninstall/upgrade and rustup toolchain detail controls for components, targets, profile, default toolchain, and directory overrides.
 - End-to-end orchestration coverage for the remaining manager adapters, including Homebrew casks, MacPorts, the remaining language managers, and the guarded/status system adapters.
 
 ### Changed
-- Manager adapter scope is now explicitly documented so detection-only, status-only, and intentionally limited managers are considered complete relative to Helm's product model.
-- Homebrew formulae and casks are now treated as fully implemented first-class manager adapters for Helm package workflows.
+- Manager adapter scope is now explicitly documented so package, status, and detection-only managers are considered complete relative to Helm's product model.
+- Package-family workflows now keep the main package surfaces collapsed while moving exact version/member targeting into inspector and install flows.
+- Homebrew formulae and casks, asdf, mise, and rustup are now treated as complete first-class package workflows within Helm's intended scope.
 
 ### Fixed
+- Version-scoped virtual pinning now applies coherently across GUI, CLI, and TUI for multi-version managers.
 - Shared package-search participation policy is now consistent across core, CLI, TUI, and FFI surfaces.
 - Homebrew-backed outdated detection for `colima`, `podman`, and `docker-desktop` is now provenance-aware instead of assuming Homebrew ownership for non-Homebrew installs.
 - Cargo-binstall end-to-end tracking coverage now waits deterministically for persisted mutation state, eliminating the observed CI race in tracked-package assertions.
+- Managed Helm CLI shim installation now routes through the service helper path and validates the final shim state so sandboxed app builds install a non-quarantined shim correctly.
 
 ## [0.17.8] - 2026-03-03
 

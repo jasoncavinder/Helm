@@ -58,7 +58,7 @@ This checklist is required before creating a release tag on `main`.
 
 ### Scope and Documentation
 - [ ] `CHANGELOG.md` includes finalized `0.17.9` patch notes for current-scope manager adapter completion and release-prep follow-through.
-- [ ] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect `v0.17.9` prep status on `dev` and `v0.17.8` as the currently published stable release on `main`.
+- [ ] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect `v0.17.9` as the current stable release on `main` and resumed `0.18.x` planning on `dev`.
 - [ ] Website changelog and current-version surfaces reflect `v0.17.9`.
 - [ ] README current stable version markers reflect `v0.17.9`.
 - [ ] Canonical release-line contract check passes: `scripts/release/check_release_line_copy.sh`.
