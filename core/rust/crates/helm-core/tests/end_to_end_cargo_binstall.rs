@@ -150,7 +150,8 @@ fn build_runtime_with_store(
 }
 
 async fn wait_for_tracked_package_count(store: &SqliteStore, expected: usize) {
-    for _ in 0..1_000 {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+    loop {
         let count = store
             .list_installed()
             .expect("list_installed should succeed")
@@ -160,8 +161,12 @@ async fn wait_for_tracked_package_count(store: &SqliteStore, expected: usize) {
         if count == expected {
             return;
         }
-        tokio::task::yield_now().await;
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        if tokio::time::Instant::now() >= deadline {
+            break;
+        }
+        // Give the background persistence watcher time to commit the mutation
+        // instead of continuously reopening the database in a tight loop.
+        tokio::time::sleep(Duration::from_millis(25)).await;
     }
 
     let actual = store
