@@ -128,6 +128,7 @@ impl<S: AsdfSource> AsdfAdapter<S> {
                         manager: ManagerId::Asdf,
                         name: plugin.clone(),
                     },
+                    package_identifier: None,
                     installed_version: Some(version),
                     pinned: false,
                     runtime_state,
@@ -145,6 +146,66 @@ impl<S: AsdfSource> AsdfAdapter<S> {
             versionish_cmp(lhs_version, rhs_version)
         });
         Ok(packages)
+    }
+
+    fn load_outdated_packages(&self) -> AdapterResult<Vec<OutdatedPackage>> {
+        let installed = self.load_installed_packages()?;
+        let mut by_plugin = HashMap::<String, Vec<InstalledPackage>>::new();
+        for package in installed {
+            by_plugin
+                .entry(package.package.name.clone())
+                .or_default()
+                .push(package);
+        }
+
+        let mut outdated = Vec::new();
+        for (plugin, packages) in by_plugin {
+            let Some(representative) = representative_installed_package(&packages) else {
+                continue;
+            };
+            let Some(installed_version) = representative.installed_version.clone() else {
+                continue;
+            };
+            let latest_raw = match self.source.latest_version(plugin.as_str()) {
+                Ok(output) => output,
+                Err(error) => {
+                    let message = format!(
+                        "skipped asdf latest-version probe for '{}': {}",
+                        plugin, error.message
+                    );
+                    crate::execution::record_task_log_note(message.as_str());
+                    continue;
+                }
+            };
+            let Some(latest_version) = parse_asdf_latest_version(&latest_raw) else {
+                let message = format!(
+                    "skipped asdf latest-version probe for '{}': unsupported output '{}'",
+                    plugin,
+                    latest_raw.trim()
+                );
+                crate::execution::record_task_log_note(message.as_str());
+                continue;
+            };
+            if latest_version == installed_version {
+                continue;
+            }
+
+            outdated.push(OutdatedPackage {
+                package: PackageRef {
+                    manager: ManagerId::Asdf,
+                    name: plugin,
+                },
+                package_identifier: None,
+                installed_version: Some(installed_version),
+                candidate_version: latest_version,
+                pinned: false,
+                restart_required: false,
+                runtime_state: representative.runtime_state.clone(),
+            });
+        }
+
+        outdated.sort_by(|lhs, rhs| lhs.package.name.cmp(&rhs.package.name));
+        Ok(outdated)
     }
 
     fn resolve_installed_target(
@@ -311,6 +372,7 @@ impl<S: AsdfSource> AsdfAdapter<S> {
                 manager: ManagerId::Asdf,
                 name: target.plugin,
             },
+            package_identifier: None,
             action: ManagerAction::Upgrade,
             before_version: Some(target.version),
             after_version: Some(latest_version),
@@ -376,6 +438,7 @@ impl<S: AsdfSource> AsdfAdapter<S> {
                 manager: ManagerId::Asdf,
                 name: "__all__".to_string(),
             },
+            package_identifier: None,
             action: ManagerAction::Upgrade,
             before_version: None,
             after_version: None,
@@ -399,8 +462,7 @@ impl<S: AsdfSource> ManagerAdapter for AsdfAdapter<S> {
             AdapterRequest::Detect(_) => {
                 let output = self.source.detect()?;
                 let version = parse_asdf_version(&output.version_output);
-                let has_executable = output.executable_path.is_some();
-                let installed = has_executable || version.is_some();
+                let installed = version.is_some();
                 Ok(AdapterResponse::Detection(DetectionInfo {
                     installed,
                     executable_path: output.executable_path,
@@ -408,70 +470,28 @@ impl<S: AsdfSource> ManagerAdapter for AsdfAdapter<S> {
                 }))
             }
             AdapterRequest::Refresh(_) => {
-                let _ = self.source.detect()?;
-                let _ = self.source.list_plugins()?;
-                Ok(AdapterResponse::Refreshed)
+                let output = self.source.detect()?;
+                let version = parse_asdf_version(&output.version_output);
+                if version.is_none() {
+                    return Ok(AdapterResponse::SnapshotSync {
+                        installed: Some(Vec::new()),
+                        outdated: Some(Vec::new()),
+                    });
+                }
+
+                let installed = self.load_installed_packages()?;
+                let outdated = self.load_outdated_packages()?;
+                Ok(AdapterResponse::SnapshotSync {
+                    installed: Some(installed),
+                    outdated: Some(outdated),
+                })
             }
             AdapterRequest::ListInstalled(_) => {
                 let packages = self.load_installed_packages()?;
                 Ok(AdapterResponse::InstalledPackages(packages))
             }
             AdapterRequest::ListOutdated(_) => {
-                let installed = self.load_installed_packages()?;
-                let mut by_plugin = HashMap::<String, Vec<InstalledPackage>>::new();
-                for package in installed {
-                    by_plugin
-                        .entry(package.package.name.clone())
-                        .or_default()
-                        .push(package);
-                }
-
-                let mut outdated = Vec::new();
-                for (plugin, packages) in by_plugin {
-                    let Some(representative) = representative_installed_package(&packages) else {
-                        continue;
-                    };
-                    let Some(installed_version) = representative.installed_version.clone() else {
-                        continue;
-                    };
-                    let latest_raw = match self.source.latest_version(plugin.as_str()) {
-                        Ok(output) => output,
-                        Err(error) => {
-                            let message = format!(
-                                "skipped asdf latest-version probe for '{}': {}",
-                                plugin, error.message
-                            );
-                            crate::execution::record_task_log_note(message.as_str());
-                            continue;
-                        }
-                    };
-                    let Some(latest_version) = parse_asdf_latest_version(&latest_raw) else {
-                        let message = format!(
-                            "skipped asdf latest-version probe for '{}': unsupported output '{}'",
-                            plugin,
-                            latest_raw.trim()
-                        );
-                        crate::execution::record_task_log_note(message.as_str());
-                        continue;
-                    };
-                    if latest_version == installed_version {
-                        continue;
-                    }
-
-                    outdated.push(OutdatedPackage {
-                        package: PackageRef {
-                            manager: ManagerId::Asdf,
-                            name: plugin,
-                        },
-                        installed_version: Some(installed_version),
-                        candidate_version: latest_version,
-                        pinned: false,
-                        restart_required: false,
-                        runtime_state: representative.runtime_state.clone(),
-                    });
-                }
-
-                outdated.sort_by(|lhs, rhs| lhs.package.name.cmp(&rhs.package.name));
+                let outdated = self.load_outdated_packages()?;
                 Ok(AdapterResponse::OutdatedPackages(outdated))
             }
             AdapterRequest::Search(search_request) => {
@@ -485,6 +505,7 @@ impl<S: AsdfSource> ManagerAdapter for AsdfAdapter<S> {
                     let _ = self.source.install_self(install_source)?;
                     return Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                         package: install_request.package,
+                        package_identifier: None,
                         action: ManagerAction::Install,
                         before_version: None,
                         after_version: None,
@@ -537,6 +558,7 @@ impl<S: AsdfSource> ManagerAdapter for AsdfAdapter<S> {
                         manager: ManagerId::Asdf,
                         name: target.plugin,
                     },
+                    package_identifier: None,
                     action: ManagerAction::Install,
                     before_version: None,
                     after_version,
@@ -571,6 +593,7 @@ impl<S: AsdfSource> ManagerAdapter for AsdfAdapter<S> {
                     }
                     return Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                         package: uninstall_request.package,
+                        package_identifier: None,
                         action: ManagerAction::Uninstall,
                         before_version: None,
                         after_version: None,
@@ -598,6 +621,7 @@ impl<S: AsdfSource> ManagerAdapter for AsdfAdapter<S> {
                         manager: ManagerId::Asdf,
                         name: target.plugin,
                     },
+                    package_identifier: None,
                     action: ManagerAction::Uninstall,
                     before_version: Some(target.version),
                     after_version: None,
@@ -613,6 +637,7 @@ impl<S: AsdfSource> ManagerAdapter for AsdfAdapter<S> {
                     let _ = self.source.self_update()?;
                     return Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                         package,
+                        package_identifier: None,
                         action: ManagerAction::Upgrade,
                         before_version: None,
                         after_version: None,
@@ -1100,6 +1125,7 @@ fn parse_asdf_search(output: &str, query: &SearchQuery) -> Vec<CachedSearchResul
                     manager: ManagerId::Asdf,
                     name,
                 },
+                package_identifier: None,
                 version: None,
                 summary: Some("asdf plugin".to_string()),
             },
@@ -1543,6 +1569,7 @@ python 3.11.9 /Users/test/.tool-versions
                     manager: ManagerId::Asdf,
                     name: "python".to_string(),
                 },
+                target_name: None,
                 version: Some("3.12.2".to_string()),
             }))
             .unwrap();
@@ -1574,6 +1601,7 @@ python 3.11.9 /Users/test/.tool-versions
                     manager: ManagerId::Asdf,
                     name: "python@3.11.9".to_string(),
                 },
+                target_name: None,
                 version: None,
             }))
             .unwrap();
@@ -1604,6 +1632,7 @@ python 3.11.9 /Users/test/.tool-versions
                     manager: ManagerId::Asdf,
                     name: "python".to_string(),
                 },
+                target_name: None,
                 version: None,
             }))
             .expect_err("ambiguous uninstall should fail");
@@ -1626,6 +1655,7 @@ python 3.11.9 /Users/test/.tool-versions
                     manager: ManagerId::Asdf,
                     name: "python".to_string(),
                 }),
+                target_name: None,
                 version: None,
             }))
             .unwrap();
@@ -1684,6 +1714,7 @@ python 3.11.9 /Users/test/.tool-versions
                     manager: ManagerId::Asdf,
                     name: "__self__".to_string(),
                 },
+                target_name: None,
                 version: Some("scriptInstaller:officialDownload".to_string()),
             }))
             .expect("manager install should succeed");
@@ -1695,6 +1726,7 @@ python 3.11.9 /Users/test/.tool-versions
                     manager: ManagerId::Asdf,
                     name: "__self__".to_string(),
                 },
+                target_name: None,
                 version: None,
             }))
             .expect("manager uninstall should succeed");
@@ -1706,11 +1738,14 @@ python 3.11.9 /Users/test/.tool-versions
                     manager: ManagerId::Asdf,
                     name: "__self__".to_string(),
                 }),
+                target_name: None,
                 version: None,
             }))
             .expect("manager update should succeed");
         assert!(matches!(upgrade_response, AdapterResponse::Mutation(_)));
     }
+
+    type PluginInstallLog = std::sync::Arc<Mutex<Vec<(String, Option<String>)>>>;
 
     #[derive(Clone)]
     struct FixtureSource {
@@ -1721,7 +1756,7 @@ python 3.11.9 /Users/test/.tool-versions
         latest_by_plugin: HashMap<String, String>,
         search_catalog: String,
         added_plugins_log: std::sync::Arc<Mutex<Vec<String>>>,
-        install_log: std::sync::Arc<Mutex<Vec<(String, Option<String>)>>>,
+        install_log: PluginInstallLog,
         uninstall_log: std::sync::Arc<Mutex<Vec<(String, String)>>>,
         set_home_log: std::sync::Arc<Mutex<Vec<(String, String)>>>,
     }

@@ -43,6 +43,7 @@ enum PackageStatus: String, CaseIterable {
 struct PackageItem: Identifiable {
     let id: String
     let name: String
+    let packageIdentifier: String?
     let version: String
     var latestVersion: String?
     let managerId: String
@@ -58,9 +59,15 @@ struct PackageItem: Identifiable {
         return latestVersion != nil ? .upgradable : .installed
     }
 
-    init(id: String, name: String, version: String, latestVersion: String? = nil, managerId: String? = nil, manager: String, summary: String? = nil, pinned: Bool = false, restartRequired: Bool = false, runtimeState: PackageRuntimeState = PackageRuntimeState(), status: PackageStatus? = nil) {
+    init(id: String, name: String, packageIdentifier: String? = nil, version: String, latestVersion: String? = nil, managerId: String? = nil, manager: String, summary: String? = nil, pinned: Bool = false, restartRequired: Bool = false, runtimeState: PackageRuntimeState = PackageRuntimeState(), status: PackageStatus? = nil) {
         self.id = id
         self.name = name
+        if let packageIdentifier {
+            let trimmedIdentifier = packageIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
+            self.packageIdentifier = trimmedIdentifier.isEmpty ? nil : trimmedIdentifier
+        } else {
+            self.packageIdentifier = nil
+        }
         self.version = version
         self.latestVersion = latestVersion
         self.managerId = managerId ?? manager
@@ -85,8 +92,20 @@ struct PackageItem: Identifiable {
     }
 
     var mutationPackageName: String {
+        if managerId.lowercased() == "mas",
+           let packageIdentifier,
+           !packageIdentifier.isEmpty {
+            return packageIdentifier
+        }
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmedName.isEmpty ? name : trimmedName
+    }
+
+    var mutationTargetPackageName: String? {
+        let displayName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let targetName = mutationPackageName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !targetName.isEmpty else { return nil }
+        return targetName == displayName ? nil : targetName
     }
 
     var mutationVersion: String? {

@@ -313,6 +313,7 @@ async fn install_mise_tool_through_full_orchestration_path() {
                     manager: ManagerId::Mise,
                     name: "java@zulu-jre-javafx".to_string(),
                 },
+                target_name: None,
                 version: None,
             }),
         )
@@ -340,6 +341,7 @@ async fn uninstall_mise_tool_through_full_orchestration_path() {
                     manager: ManagerId::Mise,
                     name: "python@3.12.3".to_string(),
                 },
+                target_name: None,
                 version: None,
             }),
         )
@@ -367,6 +369,7 @@ async fn upgrade_mise_tool_through_full_orchestration_path() {
                     manager: ManagerId::Mise,
                     name: "python@3.12.3".to_string(),
                 }),
+                target_name: None,
                 version: None,
             }),
         )
@@ -448,11 +451,9 @@ async fn mise_timeout_sensitive_orchestration_soak_budget() {
         }
     }
 
-    assert!(
-        failures <= TIMEOUT_SENSITIVE_SOAK_FAILURE_BUDGET,
+    assert_eq!(
+        failures, TIMEOUT_SENSITIVE_SOAK_FAILURE_BUDGET,
         "mise soak exceeded failure budget: failures={} budget={} iterations={}",
-        failures,
-        TIMEOUT_SENSITIVE_SOAK_FAILURE_BUDGET,
-        TIMEOUT_SENSITIVE_SOAK_ITERATIONS
+        failures, TIMEOUT_SENSITIVE_SOAK_FAILURE_BUDGET, TIMEOUT_SENSITIVE_SOAK_ITERATIONS
     );
 }

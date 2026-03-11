@@ -2414,6 +2414,7 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
                 manager,
                 CoordinatorSubmitRequest::Install {
                     package_name: package_name.clone(),
+                    target_name: None,
                     version: package_version.clone(),
                 },
                 ExecutionMode::Wait,
@@ -2435,6 +2436,7 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
                 manager,
                 CoordinatorSubmitRequest::Upgrade {
                     package_name: Some(package_name.clone()),
+                    target_name: None,
                     version: package_version.clone(),
                 },
                 ExecutionMode::Wait,
@@ -2457,6 +2459,7 @@ fn execute_confirmed_action(store: &SqliteStore, action: ConfirmAction) -> Resul
                 manager,
                 CoordinatorSubmitRequest::Uninstall {
                     package_name: package_name.clone(),
+                    target_name: None,
                     version: package_version.clone(),
                 },
                 ExecutionMode::Wait,
@@ -4801,11 +4804,19 @@ mod tests {
     }
 
     #[test]
-    fn package_search_includes_rustup_manager() {
+    fn package_search_policy_matches_shared_registry() {
         assert!(manager_participates_in_package_search(ManagerId::Rustup));
         assert!(manager_participates_in_package_search(
             ManagerId::HomebrewFormula
         ));
+        assert!(manager_participates_in_package_search(ManagerId::Pipx));
+        assert!(manager_participates_in_package_search(ManagerId::Pip));
+        assert!(manager_participates_in_package_search(ManagerId::Poetry));
+        assert!(manager_participates_in_package_search(ManagerId::Bundler));
+        assert!(!manager_participates_in_package_search(
+            ManagerId::SoftwareUpdate
+        ));
+        assert!(!manager_participates_in_package_search(ManagerId::Sparkle));
     }
 
     #[test]
@@ -4823,6 +4834,7 @@ mod tests {
         store
             .upsert_installed(&[InstalledPackage {
                 package: package.clone(),
+                package_identifier: None,
                 installed_version: Some("2026.1.4".to_string()),
                 pinned: false,
                 runtime_state: Default::default(),

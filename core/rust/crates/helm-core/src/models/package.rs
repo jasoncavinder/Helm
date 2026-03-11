@@ -35,6 +35,8 @@ impl PackageRuntimeState {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct InstalledPackage {
     pub package: PackageRef,
+    #[serde(default)]
+    pub package_identifier: Option<String>,
     pub installed_version: Option<String>,
     pub pinned: bool,
     #[serde(default)]
@@ -44,6 +46,8 @@ pub struct InstalledPackage {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct OutdatedPackage {
     pub package: PackageRef,
+    #[serde(default)]
+    pub package_identifier: Option<String>,
     pub installed_version: Option<String>,
     pub candidate_version: String,
     pub pinned: bool,
@@ -55,6 +59,8 @@ pub struct OutdatedPackage {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PackageCandidate {
     pub package: PackageRef,
+    #[serde(default)]
+    pub package_identifier: Option<String>,
     pub version: Option<String>,
     pub summary: Option<String>,
 }

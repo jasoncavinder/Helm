@@ -41,6 +41,7 @@ pub struct PodmanDetectOutput {
 
 pub trait PodmanSource: Send + Sync {
     fn detect(&self) -> AdapterResult<PodmanDetectOutput>;
+    fn homebrew_info(&self) -> AdapterResult<String>;
     fn list_outdated(&self) -> AdapterResult<String>;
 }
 
@@ -70,8 +71,7 @@ impl<S: PodmanSource> ManagerAdapter for PodmanAdapter<S> {
             AdapterRequest::Detect(_) => {
                 let output = self.source.detect()?;
                 let version = parse_podman_version(&output.version_output);
-                let has_executable = output.executable_path.is_some();
-                let installed = has_executable || version.is_some();
+                let installed = version.is_some();
                 Ok(AdapterResponse::Detection(DetectionInfo {
                     installed,
                     executable_path: output.executable_path,
@@ -79,19 +79,45 @@ impl<S: PodmanSource> ManagerAdapter for PodmanAdapter<S> {
                 }))
             }
             AdapterRequest::Refresh(_) => {
-                let _ = self.source.detect()?;
-                Ok(AdapterResponse::Refreshed)
+                let output = self.source.detect()?;
+                let version = parse_podman_version(&output.version_output);
+                if version.is_none() {
+                    return Ok(AdapterResponse::SnapshotSync {
+                        installed: Some(Vec::new()),
+                        outdated: Some(Vec::new()),
+                    });
+                }
+
+                let outdated = if parse_homebrew_formula_installed(&self.source.homebrew_info()?)? {
+                    parse_podman_outdated(&self.source.list_outdated()?)?
+                } else {
+                    Vec::new()
+                };
+                Ok(AdapterResponse::SnapshotSync {
+                    installed: Some(vec![InstalledPackage {
+                        package: PackageRef {
+                            manager: ManagerId::Podman,
+                            name: PODMAN_PACKAGE_LABEL.to_string(),
+                        },
+                        package_identifier: None,
+                        installed_version: version,
+                        pinned: false,
+                        runtime_state: Default::default(),
+                    }]),
+                    outdated: Some(outdated),
+                })
             }
             AdapterRequest::ListInstalled(_) => {
                 let output = self.source.detect()?;
                 let version = parse_podman_version(&output.version_output);
-                let installed = output.executable_path.is_some() || version.is_some();
+                let installed = version.is_some();
                 let packages = if installed {
                     vec![InstalledPackage {
                         package: PackageRef {
                             manager: ManagerId::Podman,
                             name: PODMAN_PACKAGE_LABEL.to_string(),
                         },
+                        package_identifier: None,
                         installed_version: version,
                         pinned: false,
                         runtime_state: Default::default(),
@@ -102,8 +128,17 @@ impl<S: PodmanSource> ManagerAdapter for PodmanAdapter<S> {
                 Ok(AdapterResponse::InstalledPackages(packages))
             }
             AdapterRequest::ListOutdated(_) => {
-                let raw = self.source.list_outdated()?;
-                let packages = parse_podman_outdated(&raw)?;
+                let output = self.source.detect()?;
+                if parse_podman_version(&output.version_output).is_none() {
+                    return Ok(AdapterResponse::OutdatedPackages(Vec::new()));
+                }
+
+                let packages = if parse_homebrew_formula_installed(&self.source.homebrew_info()?)? {
+                    let raw = self.source.list_outdated()?;
+                    parse_podman_outdated(&raw)?
+                } else {
+                    Vec::new()
+                };
                 Ok(AdapterResponse::OutdatedPackages(packages))
             }
             _ => Err(CoreError {
@@ -136,6 +171,21 @@ pub fn podman_list_outdated_request(task_id: Option<TaskId>) -> ProcessSpawnRequ
             "outdated",
             "--json=v2",
             "--formula",
+            PODMAN_BREW_FORMULA,
+        ]),
+        LIST_TIMEOUT,
+    )
+}
+
+pub fn podman_homebrew_info_request(task_id: Option<TaskId>) -> ProcessSpawnRequest {
+    podman_request(
+        task_id,
+        TaskType::Refresh,
+        ManagerAction::ListInstalled,
+        CommandSpec::new(HOMEBREW_COMMAND).args([
+            "info",
+            "--formula",
+            "--json=v2",
             PODMAN_BREW_FORMULA,
         ]),
         LIST_TIMEOUT,
@@ -234,6 +284,7 @@ fn parse_podman_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
                     manager: ManagerId::Podman,
                     name: PODMAN_PACKAGE_LABEL.to_string(),
                 },
+                package_identifier: None,
                 installed_version: parse_brew_installed_version(entry),
                 candidate_version,
                 pinned: entry
@@ -247,6 +298,31 @@ fn parse_podman_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
     }
 
     Ok(packages)
+}
+
+fn parse_homebrew_formula_installed(output: &str) -> AdapterResult<bool> {
+    let trimmed = output.trim();
+    if trimmed.is_empty() {
+        return Ok(false);
+    }
+
+    let json: Value = serde_json::from_str(trimmed)
+        .map_err(|error| parse_error(&format!("invalid brew info JSON: {error}")))?;
+
+    Ok(json
+        .get("formulae")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .any(homebrew_formula_entry_is_installed))
+}
+
+fn homebrew_formula_entry_is_installed(entry: &Value) -> bool {
+    entry.get("name").and_then(Value::as_str) == Some(PODMAN_BREW_FORMULA)
+        && entry
+            .get("installed")
+            .and_then(Value::as_array)
+            .is_some_and(|installed| !installed.is_empty())
 }
 
 fn parse_brew_current_version(entry: &Value) -> Option<String> {
@@ -305,11 +381,22 @@ mod tests {
     use crate::adapters::podman::{
         PODMAN_PACKAGE_LABEL, PodmanAdapter, PodmanDetectOutput, PodmanSource,
         parse_podman_outdated, parse_podman_version, podman_detect_request,
-        podman_list_outdated_request,
+        podman_homebrew_info_request, podman_list_outdated_request,
     };
     use crate::models::{ManagerAction, ManagerId, TaskType};
 
     const OUTDATED_FIXTURE: &str = include_str!("../../tests/fixtures/podman/outdated_brew.json");
+    const INSTALLED_FIXTURE: &str = r#"{
+  "formulae": [
+    {
+      "name": "podman",
+      "installed": [
+        { "version": "5.4.0" }
+      ]
+    }
+  ],
+  "casks": []
+}"#;
 
     #[test]
     fn parses_podman_version_from_standard_output() {
@@ -351,12 +438,26 @@ mod tests {
     }
 
     #[test]
+    fn homebrew_info_request_has_expected_shape() {
+        let request = podman_homebrew_info_request(None);
+        assert_eq!(request.manager, ManagerId::Podman);
+        assert_eq!(request.task_type, TaskType::Refresh);
+        assert_eq!(request.action, ManagerAction::ListInstalled);
+        assert_eq!(request.command.program.to_str(), Some("brew"));
+        assert_eq!(
+            request.command.args,
+            vec!["info", "--formula", "--json=v2", "podman"]
+        );
+    }
+
+    #[test]
     fn adapter_list_installed_returns_single_status_package_when_detected() {
         let source = FixtureSource {
             detect_result: Ok(PodmanDetectOutput {
                 executable_path: Some(PathBuf::from("/opt/homebrew/bin/podman")),
                 version_output: "podman version 5.4.0".to_string(),
             }),
+            homebrew_info_result: Ok(INSTALLED_FIXTURE.to_string()),
             list_outdated_result: Ok(String::new()),
         };
         let adapter = PodmanAdapter::new(source);
@@ -381,6 +482,7 @@ mod tests {
                 executable_path: Some(PathBuf::from("/opt/homebrew/bin/podman")),
                 version_output: "podman version 5.4.0".to_string(),
             }),
+            homebrew_info_result: Ok(INSTALLED_FIXTURE.to_string()),
             list_outdated_result: Ok(OUTDATED_FIXTURE.to_string()),
         };
         let adapter = PodmanAdapter::new(source);
@@ -397,12 +499,35 @@ mod tests {
     }
 
     #[test]
+    fn adapter_list_outdated_skips_non_homebrew_installations() {
+        let source = FixtureSource {
+            detect_result: Ok(PodmanDetectOutput {
+                executable_path: Some(PathBuf::from("/usr/local/bin/podman")),
+                version_output: "podman version 5.4.0".to_string(),
+            }),
+            homebrew_info_result: Ok(r#"{"formulae":[],"casks":[]}"#.to_string()),
+            list_outdated_result: Ok(OUTDATED_FIXTURE.to_string()),
+        };
+        let adapter = PodmanAdapter::new(source);
+        let response = adapter
+            .execute(AdapterRequest::ListOutdated(ListOutdatedRequest))
+            .unwrap();
+
+        let AdapterResponse::OutdatedPackages(packages) = response else {
+            panic!("expected outdated packages response");
+        };
+
+        assert!(packages.is_empty());
+    }
+
+    #[test]
     fn adapter_detect_marks_not_installed_when_source_reports_nothing() {
         let source = FixtureSource {
             detect_result: Ok(PodmanDetectOutput {
                 executable_path: None,
                 version_output: String::new(),
             }),
+            homebrew_info_result: Ok(String::new()),
             list_outdated_result: Ok(String::new()),
         };
         let adapter = PodmanAdapter::new(source);
@@ -418,12 +543,17 @@ mod tests {
 
     struct FixtureSource {
         detect_result: AdapterResult<PodmanDetectOutput>,
+        homebrew_info_result: AdapterResult<String>,
         list_outdated_result: AdapterResult<String>,
     }
 
     impl PodmanSource for FixtureSource {
         fn detect(&self) -> AdapterResult<PodmanDetectOutput> {
             self.detect_result.clone()
+        }
+
+        fn homebrew_info(&self) -> AdapterResult<String> {
+            self.homebrew_info_result.clone()
         }
 
         fn list_outdated(&self) -> AdapterResult<String> {

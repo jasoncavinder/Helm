@@ -798,14 +798,17 @@ enum CoordinatorSubmitRequest {
     Detect,
     Install {
         package_name: String,
+        target_name: Option<String>,
         version: Option<String>,
     },
     Uninstall {
         package_name: String,
+        target_name: Option<String>,
         version: Option<String>,
     },
     Upgrade {
         package_name: Option<String>,
+        target_name: Option<String>,
         version: Option<String>,
     },
     Pin {
@@ -2652,7 +2655,9 @@ fn manager_allows_individual_package_install(manager: ManagerId) -> bool {
         manager,
         ManagerId::Asdf
             | ManagerId::HomebrewFormula
+            | ManagerId::HomebrewCask
             | ManagerId::MacPorts
+            | ManagerId::Mas
             | ManagerId::Mise
             | ManagerId::Npm
             | ManagerId::Pnpm
@@ -2683,6 +2688,8 @@ fn manager_allows_individual_package_uninstall(manager: ManagerId) -> bool {
         manager,
         ManagerId::Asdf
             | ManagerId::HomebrewFormula
+            | ManagerId::HomebrewCask
+            | ManagerId::Mas
             | ManagerId::Mise
             | ManagerId::Npm
             | ManagerId::Pnpm
@@ -2709,6 +2716,8 @@ fn supports_individual_package_upgrade(runtime: &AdapterRuntime, manager: Manage
         manager,
         ManagerId::Asdf
             | ManagerId::HomebrewFormula
+            | ManagerId::HomebrewCask
+            | ManagerId::Mas
             | ManagerId::Mise
             | ManagerId::Npm
             | ManagerId::Pip
@@ -2818,6 +2827,8 @@ fn parse_homebrew_config_version(output: &str) -> Option<String> {
 struct UpgradeAllTargets {
     asdf: Vec<String>,
     homebrew: Vec<String>,
+    homebrew_cask: Vec<String>,
+    mas: Vec<String>,
     mise: Vec<String>,
     npm: Vec<String>,
     pnpm: Vec<String>,
@@ -2876,6 +2887,10 @@ fn upgrade_reason_label_for(
                 )
             }
         }
+        ManagerId::HomebrewCask => (
+            "service.task.label.upgrade.homebrew_cask",
+            vec![("package", package_name.to_string())],
+        ),
         ManagerId::Mise => (
             "service.task.label.upgrade.mise",
             vec![("package", package_name.to_string())],
@@ -2945,6 +2960,8 @@ fn collect_upgrade_all_targets(
     let mut targets = UpgradeAllTargets::default();
     let mut seen_asdf = std::collections::HashSet::new();
     let mut seen_homebrew = std::collections::HashSet::new();
+    let mut seen_homebrew_cask = std::collections::HashSet::new();
+    let mut seen_mas = std::collections::HashSet::new();
     let mut seen_mise = std::collections::HashSet::new();
     let mut seen_npm = std::collections::HashSet::new();
     let mut seen_pnpm = std::collections::HashSet::new();
@@ -2972,6 +2989,16 @@ fn collect_upgrade_all_targets(
             ManagerId::HomebrewFormula => {
                 if seen_homebrew.insert(package.package.name.clone()) {
                     targets.homebrew.push(package.package.name.clone());
+                }
+            }
+            ManagerId::HomebrewCask => {
+                if seen_homebrew_cask.insert(package.package.name.clone()) {
+                    targets.homebrew_cask.push(package.package.name.clone());
+                }
+            }
+            ManagerId::Mas => {
+                if seen_mas.insert(package.package.name.clone()) {
+                    targets.mas.push(package.package.name.clone());
                 }
             }
             ManagerId::Mise => {
@@ -3282,6 +3309,7 @@ fn build_manager_uninstall_request_legacy(
                     manager: ManagerId::HomebrewFormula,
                     name: "mise".to_string(),
                 },
+                target_name: None,
                 version: None,
             }),
             "service.task.label.uninstall.homebrew_formula",
@@ -3294,6 +3322,7 @@ fn build_manager_uninstall_request_legacy(
                     manager: ManagerId::HomebrewFormula,
                     name: "mas".to_string(),
                 },
+                target_name: None,
                 version: None,
             }),
             "service.task.label.uninstall.homebrew_formula",
@@ -3306,6 +3335,7 @@ fn build_manager_uninstall_request_legacy(
                     manager: ManagerId::Rustup,
                     name: "__self__".to_string(),
                 },
+                target_name: None,
                 version: None,
             }),
             "service.task.label.uninstall.rustup_self",
@@ -4362,6 +4392,7 @@ fn run_updates_workflow(
                     manager: ManagerId::Asdf,
                     name: package_name,
                 }),
+                target_name: None,
                 version: None,
             });
             let _ = submit_request_wait(runtime, rt_handle, ManagerId::Asdf, request)?;
@@ -4378,9 +4409,38 @@ fn run_updates_workflow(
                     manager: ManagerId::HomebrewFormula,
                     name: target_name,
                 }),
+                target_name: None,
                 version: None,
             });
             let _ = submit_request_wait(runtime, rt_handle, ManagerId::HomebrewFormula, request)?;
+        }
+    }
+
+    if runtime.is_manager_enabled(ManagerId::HomebrewCask) {
+        for package_name in targets.homebrew_cask {
+            let request = AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::HomebrewCask,
+                    name: package_name,
+                }),
+                target_name: None,
+                version: None,
+            });
+            let _ = submit_request_wait(runtime, rt_handle, ManagerId::HomebrewCask, request)?;
+        }
+    }
+
+    if runtime.is_manager_enabled(ManagerId::Mas) {
+        for package_name in targets.mas {
+            let request = AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Mas,
+                    name: package_name,
+                }),
+                target_name: None,
+                version: None,
+            });
+            let _ = submit_request_wait(runtime, rt_handle, ManagerId::Mas, request)?;
         }
     }
 
@@ -4407,6 +4467,7 @@ fn run_updates_workflow(
                     manager,
                     name: package_name,
                 }),
+                target_name: None,
                 version: None,
             });
             let _ = submit_request_wait(runtime, rt_handle, manager, request)?;
@@ -4423,6 +4484,7 @@ fn run_updates_workflow(
                 manager: ManagerId::SoftwareUpdate,
                 name: "__confirm_os_updates__".to_string(),
             }),
+            target_name: None,
             version: None,
         });
         let _ = submit_request_wait(runtime, rt_handle, ManagerId::SoftwareUpdate, request)?;
@@ -4478,29 +4540,35 @@ fn coordinator_submit_to_adapter(
         }
         CoordinatorSubmitRequest::Install {
             package_name,
+            target_name,
             version,
         } => AdapterRequest::Install(InstallRequest {
             package: PackageRef {
                 manager,
                 name: package_name,
             },
+            target_name,
             version,
         }),
         CoordinatorSubmitRequest::Uninstall {
             package_name,
+            target_name,
             version,
         } => AdapterRequest::Uninstall(UninstallRequest {
             package: PackageRef {
                 manager,
                 name: package_name,
             },
+            target_name,
             version,
         }),
         CoordinatorSubmitRequest::Upgrade {
             package_name,
+            target_name,
             version,
         } => AdapterRequest::Upgrade(UpgradeRequest {
             package: package_name.map(|name| PackageRef { manager, name }),
+            target_name,
             version,
         }),
         CoordinatorSubmitRequest::Pin {
@@ -4627,14 +4695,17 @@ fn adapter_request_to_coordinator_submit(
         AdapterRequest::Detect(_) => Ok(CoordinatorSubmitRequest::Detect),
         AdapterRequest::Install(install) => Ok(CoordinatorSubmitRequest::Install {
             package_name: install.package.name,
+            target_name: install.target_name,
             version: install.version,
         }),
         AdapterRequest::Uninstall(uninstall) => Ok(CoordinatorSubmitRequest::Uninstall {
             package_name: uninstall.package.name,
+            target_name: uninstall.target_name,
             version: uninstall.version,
         }),
         AdapterRequest::Upgrade(upgrade) => Ok(CoordinatorSubmitRequest::Upgrade {
             package_name: upgrade.package.map(|package| package.name),
+            target_name: upgrade.target_name,
             version: upgrade.version,
         }),
         AdapterRequest::Pin(pin) => Ok(CoordinatorSubmitRequest::Pin {
@@ -4825,7 +4896,7 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
     let yarn_adapter = Arc::new(YarnAdapter::new(ProcessYarnSource::new(executor.clone())));
     let cargo_adapter = Arc::new(CargoAdapter::new(ProcessCargoSource::new(executor.clone())));
     let cargo_binstall_adapter = Arc::new(CargoBinstallAdapter::new(
-        ProcessCargoBinstallSource::new(executor.clone()),
+        ProcessCargoBinstallSource::new(executor.clone(), store.clone()),
     ));
     let pip_adapter = Arc::new(PipAdapter::new(ProcessPipSource::new(executor.clone())));
     let pipx_adapter = Arc::new(PipxAdapter::new(ProcessPipxSource::new(executor.clone())));
@@ -5755,6 +5826,7 @@ pub unsafe extern "C" fn helm_search_local(query: *const c_char) -> *mut c_char 
     struct FfiSearchResult {
         manager: String,
         name: String,
+        package_identifier: Option<String>,
         version: Option<String>,
         summary: Option<String>,
         source_manager: String,
@@ -5765,6 +5837,7 @@ pub unsafe extern "C" fn helm_search_local(query: *const c_char) -> *mut c_char 
         .map(|r| FfiSearchResult {
             manager: r.result.package.manager.as_str().to_string(),
             name: r.result.package.name,
+            package_identifier: r.result.package_identifier,
             version: r.result.version,
             summary: r.result.summary,
             source_manager: r.source_manager.as_str().to_string(),
@@ -6515,6 +6588,30 @@ pub extern "C" fn helm_preview_upgrade_plan(
         }
     }
 
+    if state.runtime.is_manager_enabled(ManagerId::HomebrewCask) {
+        for package_name in targets.homebrew_cask {
+            push_upgrade_plan_step(
+                &mut steps,
+                ManagerId::HomebrewCask,
+                package_name,
+                false,
+                &mut order_index,
+            );
+        }
+    }
+
+    if state.runtime.is_manager_enabled(ManagerId::Mas) {
+        for package_name in targets.mas {
+            push_upgrade_plan_step(
+                &mut steps,
+                ManagerId::Mas,
+                package_name,
+                false,
+                &mut order_index,
+            );
+        }
+    }
+
     if state.runtime.is_manager_enabled(ManagerId::Mise) {
         for package_name in targets.mise {
             push_upgrade_plan_step(
@@ -6732,6 +6829,7 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                         manager: ManagerId::Asdf,
                         name: package_name.clone(),
                     }),
+                    target_name: None,
                     version: None,
                 });
                 match runtime.submit(ManagerId::Asdf, request).await {
@@ -6757,6 +6855,7 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                         manager: ManagerId::HomebrewFormula,
                         name: target_name,
                     }),
+                    target_name: None,
                     version: None,
                 });
                 match runtime.submit(ManagerId::HomebrewFormula, request).await {
@@ -6775,6 +6874,54 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
             }
         }
 
+        if runtime.is_manager_enabled(ManagerId::HomebrewCask) {
+            for package_name in targets.homebrew_cask {
+                let request = AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::HomebrewCask,
+                        name: package_name.clone(),
+                    }),
+                    target_name: None,
+                    version: None,
+                });
+                match runtime.submit(ManagerId::HomebrewCask, request).await {
+                    Ok(task_id) => {
+                        let (label_key, label_args) =
+                            upgrade_task_label_for(ManagerId::HomebrewCask, &package_name, false);
+                        set_task_label(task_id, label_key, &label_args);
+                    }
+                    Err(error) => {
+                        eprintln!(
+                            "upgrade_all: failed to queue homebrew cask upgrade task: {error}"
+                        );
+                    }
+                }
+            }
+        }
+
+        if runtime.is_manager_enabled(ManagerId::Mas) {
+            for package_name in targets.mas {
+                let request = AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::Mas,
+                        name: package_name.clone(),
+                    }),
+                    target_name: None,
+                    version: None,
+                });
+                match runtime.submit(ManagerId::Mas, request).await {
+                    Ok(task_id) => {
+                        let (label_key, label_args) =
+                            upgrade_task_label_for(ManagerId::Mas, &package_name, false);
+                        set_task_label(task_id, label_key, &label_args);
+                    }
+                    Err(error) => {
+                        eprintln!("upgrade_all: failed to queue mas upgrade task: {error}");
+                    }
+                }
+            }
+        }
+
         if runtime.is_manager_enabled(ManagerId::Mise) {
             for package_name in targets.mise {
                 let request = AdapterRequest::Upgrade(UpgradeRequest {
@@ -6782,6 +6929,7 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                         manager: ManagerId::Mise,
                         name: package_name.clone(),
                     }),
+                    target_name: None,
                     version: None,
                 });
                 match runtime.submit(ManagerId::Mise, request).await {
@@ -6804,6 +6952,7 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                         manager: ManagerId::Npm,
                         name: package_name.clone(),
                     }),
+                    target_name: None,
                     version: None,
                 });
                 match runtime.submit(ManagerId::Npm, request).await {
@@ -6826,6 +6975,7 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                         manager: ManagerId::Pnpm,
                         name: package_name.clone(),
                     }),
+                    target_name: None,
                     version: None,
                 });
                 match runtime.submit(ManagerId::Pnpm, request).await {
@@ -6848,6 +6998,7 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                         manager: ManagerId::Yarn,
                         name: package_name.clone(),
                     }),
+                    target_name: None,
                     version: None,
                 });
                 match runtime.submit(ManagerId::Yarn, request).await {
@@ -6870,6 +7021,7 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                         manager: ManagerId::Cargo,
                         name: package_name.clone(),
                     }),
+                    target_name: None,
                     version: None,
                 });
                 match runtime.submit(ManagerId::Cargo, request).await {
@@ -6892,6 +7044,7 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                         manager: ManagerId::CargoBinstall,
                         name: package_name.clone(),
                     }),
+                    target_name: None,
                     version: None,
                 });
                 match runtime.submit(ManagerId::CargoBinstall, request).await {
@@ -6916,6 +7069,7 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                         manager: ManagerId::Pip,
                         name: package_name.clone(),
                     }),
+                    target_name: None,
                     version: None,
                 });
                 match runtime.submit(ManagerId::Pip, request).await {
@@ -6938,6 +7092,7 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                         manager: ManagerId::Pipx,
                         name: package_name.clone(),
                     }),
+                    target_name: None,
                     version: None,
                 });
                 match runtime.submit(ManagerId::Pipx, request).await {
@@ -6960,6 +7115,7 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                         manager: ManagerId::Poetry,
                         name: package_name.clone(),
                     }),
+                    target_name: None,
                     version: None,
                 });
                 match runtime.submit(ManagerId::Poetry, request).await {
@@ -6982,6 +7138,7 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                         manager: ManagerId::RubyGems,
                         name: package_name.clone(),
                     }),
+                    target_name: None,
                     version: None,
                 });
                 match runtime.submit(ManagerId::RubyGems, request).await {
@@ -7004,6 +7161,7 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                         manager: ManagerId::Bundler,
                         name: package_name.clone(),
                     }),
+                    target_name: None,
                     version: None,
                 });
                 match runtime.submit(ManagerId::Bundler, request).await {
@@ -7026,6 +7184,7 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                         manager: ManagerId::Rustup,
                         name: toolchain.clone(),
                     }),
+                    target_name: None,
                     version: None,
                 });
                 match runtime.submit(ManagerId::Rustup, request).await {
@@ -7055,6 +7214,7 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
                         manager: ManagerId::SoftwareUpdate,
                         name: "__confirm_os_updates__".to_string(),
                     }),
+                    target_name: None,
                     version: None,
                 });
                 match runtime.submit(ManagerId::SoftwareUpdate, request).await {
@@ -7101,6 +7261,7 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
 pub unsafe extern "C" fn helm_upgrade_package(
     manager_id: *const c_char,
     package_name: *const c_char,
+    package_target_name: *const c_char,
     version: *const c_char,
 ) -> i64 {
     clear_last_error_key();
@@ -7124,6 +7285,10 @@ pub unsafe extern "C" fn helm_upgrade_package(
         _ => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
     };
     let version = match parse_optional_nonempty_string_arg(version) {
+        Ok(value) => value,
+        Err(error_key) => return return_error_i64(error_key),
+    };
+    let package_target_name = match parse_optional_nonempty_string_arg(package_target_name) {
         Ok(value) => value,
         Err(error_key) => return return_error_i64(error_key),
     };
@@ -7151,8 +7316,9 @@ pub unsafe extern "C" fn helm_upgrade_package(
                 AdapterRequest::Upgrade(UpgradeRequest {
                     package: Some(PackageRef {
                         manager: ManagerId::HomebrewFormula,
-                        name: target_name,
+                        name: package_name.clone(),
                     }),
+                    target_name: Some(target_name),
                     version: None,
                 }),
                 Some(if cleanup_old_kegs {
@@ -7163,6 +7329,19 @@ pub unsafe extern "C" fn helm_upgrade_package(
                 vec![("package", package_label_target.clone())],
             )
         }
+        ManagerId::HomebrewCask => (
+            ManagerId::HomebrewCask,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::HomebrewCask,
+                    name: package_name.clone(),
+                }),
+                target_name: package_target_name.clone(),
+                version: None,
+            }),
+            Some("service.task.label.upgrade.homebrew_cask"),
+            vec![("package", package_label_target.clone())],
+        ),
         ManagerId::Mise => (
             ManagerId::Mise,
             AdapterRequest::Upgrade(UpgradeRequest {
@@ -7170,6 +7349,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
                     manager: ManagerId::Mise,
                     name: package_name.clone(),
                 }),
+                target_name: package_target_name.clone(),
                 version: version.clone(),
             }),
             Some("service.task.label.upgrade.mise"),
@@ -7182,6 +7362,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
                     manager: ManagerId::Npm,
                     name: package_name.clone(),
                 }),
+                target_name: package_target_name.clone(),
                 version: None,
             }),
             Some("service.task.label.upgrade.package"),
@@ -7197,6 +7378,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
                     manager: ManagerId::Pnpm,
                     name: package_name.clone(),
                 }),
+                target_name: package_target_name.clone(),
                 version: None,
             }),
             Some("service.task.label.upgrade.package"),
@@ -7212,6 +7394,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
                     manager: ManagerId::Yarn,
                     name: package_name.clone(),
                 }),
+                target_name: package_target_name.clone(),
                 version: None,
             }),
             Some("service.task.label.upgrade.package"),
@@ -7227,6 +7410,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
                     manager: ManagerId::Cargo,
                     name: package_name.clone(),
                 }),
+                target_name: package_target_name.clone(),
                 version: None,
             }),
             Some("service.task.label.upgrade.package"),
@@ -7245,6 +7429,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
                     manager: ManagerId::CargoBinstall,
                     name: package_name.clone(),
                 }),
+                target_name: package_target_name.clone(),
                 version: None,
             }),
             Some("service.task.label.upgrade.package"),
@@ -7263,6 +7448,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
                     manager: ManagerId::Pip,
                     name: package_name.clone(),
                 }),
+                target_name: package_target_name.clone(),
                 version: None,
             }),
             Some("service.task.label.upgrade.package"),
@@ -7278,6 +7464,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
                     manager: ManagerId::Pipx,
                     name: package_name.clone(),
                 }),
+                target_name: package_target_name.clone(),
                 version: None,
             }),
             Some("service.task.label.upgrade.package"),
@@ -7293,6 +7480,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
                     manager: ManagerId::Poetry,
                     name: package_name.clone(),
                 }),
+                target_name: package_target_name.clone(),
                 version: None,
             }),
             Some("service.task.label.upgrade.package"),
@@ -7311,6 +7499,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
                     manager: ManagerId::RubyGems,
                     name: package_name.clone(),
                 }),
+                target_name: package_target_name.clone(),
                 version: None,
             }),
             Some("service.task.label.upgrade.package"),
@@ -7329,6 +7518,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
                     manager: ManagerId::Bundler,
                     name: package_name.clone(),
                 }),
+                target_name: package_target_name.clone(),
                 version: None,
             }),
             Some("service.task.label.upgrade.package"),
@@ -7338,6 +7528,22 @@ pub unsafe extern "C" fn helm_upgrade_package(
                     "manager",
                     manager_display_name(ManagerId::Bundler).to_string(),
                 ),
+            ],
+        ),
+        ManagerId::Mas => (
+            ManagerId::Mas,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Mas,
+                    name: package_name.clone(),
+                }),
+                target_name: package_target_name.clone(),
+                version: None,
+            }),
+            Some("service.task.label.upgrade.package"),
+            vec![
+                ("package", package_label_target.clone()),
+                ("manager", manager_display_name(ManagerId::Mas).to_string()),
             ],
         ),
         ManagerId::Rustup => {
@@ -7353,6 +7559,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
                         manager: ManagerId::Rustup,
                         name: package_name.clone(),
                     }),
+                    target_name: package_target_name.clone(),
                     version: None,
                 }),
                 Some(label_key),
@@ -7374,6 +7581,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
                         manager: ManagerId::SoftwareUpdate,
                         name: "__confirm_os_updates__".to_string(),
                     }),
+                    target_name: None,
                     version: None,
                 }),
                 Some("service.task.label.upgrade.softwareupdate_all"),
@@ -7568,6 +7776,7 @@ fn queue_rustup_config_task(
 pub unsafe extern "C" fn helm_install_package(
     manager_id: *const c_char,
     package_name: *const c_char,
+    package_target_name: *const c_char,
     version: *const c_char,
 ) -> i64 {
     clear_last_error_key();
@@ -7594,20 +7803,28 @@ pub unsafe extern "C" fn helm_install_package(
         Ok(value) => value,
         Err(error_key) => return return_error_i64(error_key),
     };
+    let package_target_name = match parse_optional_nonempty_string_arg(package_target_name) {
+        Ok(value) => value,
+        Err(error_key) => return return_error_i64(error_key),
+    };
     let package_label_target = format_package_task_label_target(&package_name, version.as_deref());
 
-    let label_key = if manager == ManagerId::HomebrewFormula {
-        "service.task.label.install.homebrew_formula"
-    } else {
-        "service.task.label.install.package"
-    };
-    let label_args = if manager == ManagerId::HomebrewFormula {
-        vec![("package", package_label_target.clone())]
-    } else {
-        vec![
-            ("package", package_label_target.clone()),
-            ("manager", manager_display_name(manager).to_string()),
-        ]
+    let (label_key, label_args) = match manager {
+        ManagerId::HomebrewFormula => (
+            "service.task.label.install.homebrew_formula",
+            vec![("package", package_label_target.clone())],
+        ),
+        ManagerId::HomebrewCask => (
+            "service.task.label.install.homebrew_cask",
+            vec![("package", package_label_target.clone())],
+        ),
+        _ => (
+            "service.task.label.install.package",
+            vec![
+                ("package", package_label_target.clone()),
+                ("manager", manager_display_name(manager).to_string()),
+            ],
+        ),
     };
 
     let request = AdapterRequest::Install(InstallRequest {
@@ -7615,6 +7832,7 @@ pub unsafe extern "C" fn helm_install_package(
             manager,
             name: package_name,
         },
+        target_name: package_target_name,
         version,
     });
 
@@ -7683,6 +7901,7 @@ pub unsafe extern "C" fn helm_install_package(
 pub unsafe extern "C" fn helm_uninstall_package(
     manager_id: *const c_char,
     package_name: *const c_char,
+    package_target_name: *const c_char,
     version: *const c_char,
 ) -> i64 {
     clear_last_error_key();
@@ -7709,20 +7928,28 @@ pub unsafe extern "C" fn helm_uninstall_package(
         Ok(value) => value,
         Err(error_key) => return return_error_i64(error_key),
     };
+    let package_target_name = match parse_optional_nonempty_string_arg(package_target_name) {
+        Ok(value) => value,
+        Err(error_key) => return return_error_i64(error_key),
+    };
     let package_label_target = format_package_task_label_target(&package_name, version.as_deref());
 
-    let label_key = if manager == ManagerId::HomebrewFormula {
-        "service.task.label.uninstall.homebrew_formula"
-    } else {
-        "service.task.label.uninstall.package"
-    };
-    let label_args = if manager == ManagerId::HomebrewFormula {
-        vec![("package", package_label_target.clone())]
-    } else {
-        vec![
-            ("package", package_label_target.clone()),
-            ("manager", manager_display_name(manager).to_string()),
-        ]
+    let (label_key, label_args) = match manager {
+        ManagerId::HomebrewFormula => (
+            "service.task.label.uninstall.homebrew_formula",
+            vec![("package", package_label_target.clone())],
+        ),
+        ManagerId::HomebrewCask => (
+            "service.task.label.uninstall.homebrew_cask",
+            vec![("package", package_label_target.clone())],
+        ),
+        _ => (
+            "service.task.label.uninstall.package",
+            vec![
+                ("package", package_label_target.clone()),
+                ("manager", manager_display_name(manager).to_string()),
+            ],
+        ),
     };
 
     let request = AdapterRequest::Uninstall(UninstallRequest {
@@ -7730,6 +7957,7 @@ pub unsafe extern "C" fn helm_uninstall_package(
             manager,
             name: package_name,
         },
+        target_name: package_target_name,
         version,
     });
 
@@ -9253,7 +9481,12 @@ pub unsafe extern "C" fn helm_apply_manager_package_state_issue_repair(
                 Err(_) => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
             };
             unsafe {
-                helm_uninstall_package(source_c.as_ptr(), package_c.as_ptr(), std::ptr::null())
+                helm_uninstall_package(
+                    source_c.as_ptr(),
+                    package_c.as_ptr(),
+                    std::ptr::null(),
+                    std::ptr::null(),
+                )
             }
         }
         helm_core::repair::RepairAction::ApplyPostInstallSetupDefaults => {
@@ -10032,6 +10265,7 @@ mod tests {
                 manager,
                 name: name.to_string(),
             },
+            package_identifier: None,
             installed_version: installed_version.map(str::to_string),
             pinned: false,
             runtime_state: Default::default(),
@@ -10048,11 +10282,19 @@ mod tests {
     }
 
     #[test]
-    fn package_search_includes_rustup_manager() {
+    fn package_search_policy_matches_shared_registry() {
         assert!(manager_participates_in_package_search(ManagerId::Rustup));
         assert!(manager_participates_in_package_search(
             ManagerId::HomebrewFormula
         ));
+        assert!(manager_participates_in_package_search(ManagerId::Pipx));
+        assert!(manager_participates_in_package_search(ManagerId::Pip));
+        assert!(manager_participates_in_package_search(ManagerId::Poetry));
+        assert!(manager_participates_in_package_search(ManagerId::Bundler));
+        assert!(!manager_participates_in_package_search(
+            ManagerId::SoftwareUpdate
+        ));
+        assert!(!manager_participates_in_package_search(ManagerId::Sparkle));
     }
 
     #[test]
@@ -10067,6 +10309,7 @@ mod tests {
                 manager: ManagerId::HomebrewFormula,
                 name: encoded,
             },
+            target_name: None,
             version: None,
         });
 
@@ -10774,6 +11017,7 @@ mod tests {
                 manager: ManagerId::Rustup,
                 name: "__self__".to_string(),
             },
+            target_name: None,
             version: None,
         });
         let preview = build_manager_uninstall_preview(
@@ -10828,6 +11072,7 @@ mod tests {
         let outdated = vec![
             outdated_pkg(ManagerId::Asdf, "python", false),
             outdated_pkg(ManagerId::HomebrewFormula, "git", false),
+            outdated_pkg(ManagerId::Mas, "Keynote", false),
             outdated_pkg(ManagerId::Mise, "node", false),
             outdated_pkg(ManagerId::Rustup, "stable-x86_64-apple-darwin", false),
             outdated_pkg(ManagerId::SoftwareUpdate, "macos", false),
@@ -10835,6 +11080,7 @@ mod tests {
         let targets = collect_upgrade_all_targets(&outdated, true);
         assert_eq!(targets.asdf, vec!["python".to_string()]);
         assert_eq!(targets.homebrew, vec!["git".to_string()]);
+        assert_eq!(targets.mas, vec!["Keynote".to_string()]);
         assert_eq!(targets.mise, vec!["node".to_string()]);
         assert_eq!(
             targets.rustup,
@@ -10850,12 +11096,14 @@ mod tests {
             outdated_pkg(ManagerId::Asdf, "python", true),
             outdated_pkg(ManagerId::HomebrewFormula, "git", false),
             outdated_pkg(ManagerId::HomebrewFormula, "git", false),
+            outdated_pkg(ManagerId::Mas, "Keynote", true),
             outdated_pkg(ManagerId::Mise, "node", true),
             outdated_pkg(ManagerId::Rustup, "stable-x86_64-apple-darwin", true),
         ];
         let targets = collect_upgrade_all_targets(&outdated, false);
         assert!(targets.asdf.is_empty());
         assert_eq!(targets.homebrew, vec!["git".to_string()]);
+        assert!(targets.mas.is_empty());
         assert!(targets.mise.is_empty());
         assert!(targets.rustup.is_empty());
         assert!(!targets.softwareupdate_outdated);
@@ -10867,6 +11115,14 @@ mod tests {
             upgrade_reason_label_for(ManagerId::HomebrewFormula, "git", true);
         assert_eq!(homebrew_key, "service.task.label.upgrade.homebrew_cleanup");
         assert_eq!(homebrew_args, vec![("package", "git".to_string())]);
+
+        let (homebrew_cask_key, homebrew_cask_args) =
+            upgrade_reason_label_for(ManagerId::HomebrewCask, "iterm2", false);
+        assert_eq!(
+            homebrew_cask_key,
+            "service.task.label.upgrade.homebrew_cask"
+        );
+        assert_eq!(homebrew_cask_args, vec![("package", "iterm2".to_string())]);
 
         let (rustup_key, rustup_args) =
             upgrade_reason_label_for(ManagerId::Rustup, "stable", false);
@@ -11899,7 +12155,7 @@ mod tests {
         assert!(manager_allows_individual_package_install(
             ManagerId::HomebrewFormula
         ));
-        assert!(!manager_allows_individual_package_install(ManagerId::Mas));
+        assert!(manager_allows_individual_package_install(ManagerId::Mas));
         assert!(!manager_allows_individual_package_install(
             ManagerId::SoftwareUpdate
         ));
@@ -11912,7 +12168,7 @@ mod tests {
         ));
         assert!(manager_allows_individual_package_uninstall(ManagerId::Mise));
         assert!(manager_allows_individual_package_uninstall(ManagerId::Pip));
-        assert!(!manager_allows_individual_package_uninstall(ManagerId::Mas));
+        assert!(manager_allows_individual_package_uninstall(ManagerId::Mas));
         assert!(!manager_allows_individual_package_uninstall(
             ManagerId::SoftwareUpdate
         ));
@@ -11934,6 +12190,7 @@ mod tests {
                 manager,
                 name: name.to_string(),
             },
+            package_identifier: None,
             installed_version: Some("1.0.0".to_string()),
             candidate_version: "1.1.0".to_string(),
             pinned,

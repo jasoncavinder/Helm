@@ -24,6 +24,12 @@ impl ProcessRubyGemsSource {
         let path = std::env::var("PATH").unwrap_or_default();
         let new_path = format!("/opt/homebrew/bin:/usr/local/bin:{path}");
         request.command = request.command.env("PATH", new_path);
+        let spec_cache_dir = std::env::temp_dir().join("helm-rubygems-spec-cache");
+        let _ = std::fs::create_dir_all(&spec_cache_dir);
+        request.command = request.command.env(
+            "GEM_SPEC_CACHE",
+            spec_cache_dir.to_string_lossy().to_string(),
+        );
 
         if request.command.program.to_str() == Some("gem")
             && let Some(exe) = which_executable(
@@ -83,8 +89,8 @@ impl RubyGemsSource for ProcessRubyGemsSource {
         self.run_stdout(rubygems_install_request(None, name, version))
     }
 
-    fn uninstall(&self, name: &str) -> AdapterResult<String> {
-        self.run_stdout(rubygems_uninstall_request(None, name))
+    fn uninstall(&self, name: &str, version: Option<&str>) -> AdapterResult<String> {
+        self.run_stdout(rubygems_uninstall_request(None, name, version))
     }
 
     fn upgrade(&self, name: Option<&str>) -> AdapterResult<String> {

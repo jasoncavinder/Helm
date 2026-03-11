@@ -287,6 +287,7 @@ async fn install_toolchain_through_full_orchestration_path() {
                     manager: ManagerId::Rustup,
                     name: "stable-x86_64-apple-darwin".to_string(),
                 },
+                target_name: None,
                 version: None,
             }),
         )
@@ -314,6 +315,7 @@ async fn uninstall_toolchain_through_full_orchestration_path() {
                     manager: ManagerId::Rustup,
                     name: "stable-x86_64-apple-darwin".to_string(),
                 },
+                target_name: None,
                 version: None,
             }),
         )
@@ -395,11 +397,9 @@ async fn rustup_timeout_sensitive_orchestration_soak_budget() {
         }
     }
 
-    assert!(
-        failures <= TIMEOUT_SENSITIVE_SOAK_FAILURE_BUDGET,
+    assert_eq!(
+        failures, TIMEOUT_SENSITIVE_SOAK_FAILURE_BUDGET,
         "rustup soak exceeded failure budget: failures={} budget={} iterations={}",
-        failures,
-        TIMEOUT_SENSITIVE_SOAK_FAILURE_BUDGET,
-        TIMEOUT_SENSITIVE_SOAK_ITERATIONS
+        failures, TIMEOUT_SENSITIVE_SOAK_FAILURE_BUDGET, TIMEOUT_SENSITIVE_SOAK_ITERATIONS
     );
 }

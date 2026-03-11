@@ -11,7 +11,7 @@ use crate::adapters::process_utils::{run_and_collect_stdout, run_and_collect_ver
 use crate::execution::{
     ProcessExecutor, ProcessExitStatus, ProcessOutput, ProcessSpawnRequest, spawn_validated,
 };
-use crate::models::{CoreError, CoreErrorKind, ManagerId, SearchQuery};
+use crate::models::{CoreError, CoreErrorKind, ManagerAction, ManagerId, SearchQuery, TaskType};
 
 pub struct ProcessNpmSource {
     executor: Arc<dyn ProcessExecutor>,
@@ -51,6 +51,7 @@ impl ProcessNpmSource {
         &self,
         request: ProcessSpawnRequest,
         allowed_exit_codes: &[i32],
+        allow_empty_stdout_without_stderr: bool,
     ) -> AdapterResult<String> {
         let manager = request.manager;
         let task_type = request.task_type;
@@ -65,13 +66,22 @@ impl ProcessNpmSource {
             ProcessExitStatus::ExitCode(code)
                 if code == 0 || allowed_exit_codes.contains(&code) =>
             {
-                String::from_utf8(output.stdout).map_err(|error| CoreError {
+                let stdout = String::from_utf8(output.stdout).map_err(|error| CoreError {
                     manager: Some(manager),
                     task: Some(task_type),
                     action: Some(action),
                     kind: CoreErrorKind::ParseFailure,
                     message: format!("process stdout is not valid UTF-8: {error}"),
-                })
+                })?;
+                interpret_allowed_exit_output(
+                    manager,
+                    task_type,
+                    action,
+                    code,
+                    stdout,
+                    output.stderr,
+                    allow_empty_stdout_without_stderr,
+                )
             }
             ProcessExitStatus::ExitCode(code) => {
                 let stderr = String::from_utf8_lossy(&output.stderr);
@@ -92,6 +102,37 @@ impl ProcessNpmSource {
             }),
         }
     }
+}
+
+fn interpret_allowed_exit_output(
+    manager: ManagerId,
+    task_type: TaskType,
+    action: ManagerAction,
+    code: i32,
+    stdout: String,
+    stderr_bytes: Vec<u8>,
+    allow_empty_stdout_without_stderr: bool,
+) -> AdapterResult<String> {
+    if !stdout.trim().is_empty() {
+        return Ok(stdout);
+    }
+
+    let stderr = String::from_utf8_lossy(&stderr_bytes).trim().to_string();
+    if allow_empty_stdout_without_stderr && stderr.is_empty() {
+        return Ok(String::new());
+    }
+
+    Err(CoreError {
+        manager: Some(manager),
+        task: Some(task_type),
+        action: Some(action),
+        kind: CoreErrorKind::ProcessFailure,
+        message: if stderr.is_empty() {
+            format!("process exited with code {code} without usable output")
+        } else {
+            format!("process exited with code {code}: {stderr}")
+        },
+    })
 }
 
 impl NpmSource for ProcessNpmSource {
@@ -120,7 +161,7 @@ impl NpmSource for ProcessNpmSource {
     fn list_outdated_global(&self) -> AdapterResult<String> {
         // npm uses exit code 1 to indicate outdated packages were found.
         let request = self.configure_request(npm_list_outdated_request(None));
-        self.run_and_collect_stdout_accepting(request, &[1])
+        self.run_and_collect_stdout_accepting(request, &[1], false)
     }
 
     fn search(&self, query: &str) -> AdapterResult<String> {
@@ -130,7 +171,7 @@ impl NpmSource for ProcessNpmSource {
         };
         let request = self.configure_request(npm_search_request(None, &search_query));
         // npm may return exit code 1 for no matches while still writing JSON/JSONL output.
-        self.run_and_collect_stdout_accepting(request, &[1])
+        self.run_and_collect_stdout_accepting(request, &[1], true)
     }
 
     fn install_global(&self, name: &str, version: Option<&str>) -> AdapterResult<String> {
@@ -146,5 +187,45 @@ impl NpmSource for ProcessNpmSource {
     fn upgrade_global(&self, name: Option<&str>) -> AdapterResult<String> {
         let request = self.configure_request(npm_upgrade_request(None, name));
         run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::models::{CoreErrorKind, ManagerAction, ManagerId, TaskType};
+
+    use super::interpret_allowed_exit_output;
+
+    #[test]
+    fn allowed_exit_accepts_empty_search_output_without_stderr() {
+        let stdout = interpret_allowed_exit_output(
+            ManagerId::Npm,
+            TaskType::Search,
+            ManagerAction::Search,
+            1,
+            String::new(),
+            Vec::new(),
+            true,
+        )
+        .expect("empty search output should be treated as no matches");
+
+        assert!(stdout.is_empty());
+    }
+
+    #[test]
+    fn allowed_exit_rejects_empty_outdated_output_with_stderr() {
+        let error = interpret_allowed_exit_output(
+            ManagerId::Npm,
+            TaskType::Refresh,
+            ManagerAction::ListOutdated,
+            1,
+            String::new(),
+            b"npm ERR! unexpected failure\n".to_vec(),
+            false,
+        )
+        .expect_err("stderr-bearing exit 1 should remain an error");
+
+        assert_eq!(error.kind, CoreErrorKind::ProcessFailure);
+        assert!(error.message.contains("unexpected failure"));
     }
 }

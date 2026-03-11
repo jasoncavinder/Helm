@@ -131,7 +131,8 @@ extension HelmCore {
             operation: { completion in
             service.upgradePackage(
                 managerId: package.managerId,
-                packageName: package.mutationPackageName,
+                packageName: package.name,
+                packageTargetName: package.mutationTargetPackageName,
                 version: package.mutationVersion
             ) { completion($0) }
         }, fallback: Int64(-1)) { [weak self] taskId in
@@ -401,7 +402,12 @@ extension HelmCore {
             managerId: step.managerId,
             taskType: "upgrade",
             operation: { completion in
-            service.upgradePackage(managerId: step.managerId, packageName: step.packageName, version: nil) { completion($0) }
+            service.upgradePackage(
+                managerId: step.managerId,
+                packageName: step.packageName,
+                packageTargetName: nil,
+                version: nil
+            ) { completion($0) }
         }, fallback: Int64(-1)) { [weak self] taskId in
             DispatchQueue.main.async {
                 guard let self = self, let taskId = taskId else {
@@ -490,7 +496,8 @@ extension HelmCore {
             operation: { completion in
             service.installPackage(
                 managerId: targetPackage.managerId,
-                packageName: targetPackage.mutationPackageName,
+                packageName: targetPackage.name,
+                packageTargetName: targetPackage.mutationTargetPackageName,
                 version: targetPackage.mutationVersion
             ) { completion($0) }
         }, fallback: Int64(-1)) { [weak self] taskId in
@@ -546,7 +553,8 @@ extension HelmCore {
             operation: { completion in
             service.uninstallPackage(
                 managerId: package.managerId,
-                packageName: package.mutationPackageName,
+                packageName: package.name,
+                packageTargetName: package.mutationTargetPackageName,
                 version: package.mutationVersion
             ) { completion($0) }
         }, fallback: Int64(-1)) { [weak self] taskId in
@@ -1569,7 +1577,7 @@ extension HelmCore {
             operation: { timeoutCompletion in
                 svc.previewPackageUninstall(
                     managerId: package.managerId,
-                    packageName: package.mutationPackageName,
+                    packageName: package.name,
                     version: package.mutationVersion
                 ) { timeoutCompletion($0) }
             },

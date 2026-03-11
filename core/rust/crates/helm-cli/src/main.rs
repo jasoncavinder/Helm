@@ -601,14 +601,17 @@ enum CoordinatorSubmitRequest {
     },
     Install {
         package_name: String,
+        target_name: Option<String>,
         version: Option<String>,
     },
     Uninstall {
         package_name: String,
+        target_name: Option<String>,
         version: Option<String>,
     },
     Upgrade {
         package_name: Option<String>,
+        target_name: Option<String>,
         version: Option<String>,
     },
     Pin {
@@ -2800,14 +2803,17 @@ fn cmd_packages_mutation(
     let coordinator_request = match subcommand {
         "install" => Some(CoordinatorSubmitRequest::Install {
             package_name: parsed.package_name.clone(),
+            target_name: None,
             version: parsed.version.clone(),
         }),
         "uninstall" => Some(CoordinatorSubmitRequest::Uninstall {
             package_name: parsed.package_name.clone(),
+            target_name: None,
             version: parsed.version.clone(),
         }),
         "upgrade" => Some(CoordinatorSubmitRequest::Upgrade {
             package_name: Some(parsed.package_name.clone()),
+            target_name: None,
             version: parsed.version.clone(),
         }),
         "pin" if supports_native_pin => Some(CoordinatorSubmitRequest::Pin {
@@ -3544,6 +3550,7 @@ fn cmd_updates_run(
                 manager: step.manager,
                 name: upgrade_request_name(step),
             }),
+            target_name: None,
             version: None,
         });
         let response = tokio_runtime.block_on(submit_request_wait(&runtime, step.manager, request));
@@ -9185,6 +9192,7 @@ fn run_coordinator_workflow(
                         manager: step.manager,
                         name: upgrade_request_name(step),
                     }),
+                    target_name: None,
                     version: None,
                 });
                 tokio_runtime
@@ -9314,29 +9322,35 @@ fn coordinator_submit_request_to_adapter(
         }
         CoordinatorSubmitRequest::Install {
             package_name,
+            target_name,
             version,
         } => AdapterRequest::Install(InstallRequest {
             package: PackageRef {
                 manager,
                 name: package_name,
             },
+            target_name,
             version,
         }),
         CoordinatorSubmitRequest::Uninstall {
             package_name,
+            target_name,
             version,
         } => AdapterRequest::Uninstall(UninstallRequest {
             package: PackageRef {
                 manager,
                 name: package_name,
             },
+            target_name,
             version,
         }),
         CoordinatorSubmitRequest::Upgrade {
             package_name,
+            target_name,
             version,
         } => AdapterRequest::Upgrade(UpgradeRequest {
             package: package_name.map(|name| PackageRef { manager, name }),
+            target_name,
             version,
         }),
         CoordinatorSubmitRequest::Pin {
@@ -9442,14 +9456,17 @@ fn adapter_request_to_coordinator_submit(
         },
         AdapterRequest::Install(install) => Ok(CoordinatorSubmitRequest::Install {
             package_name: install.package.name,
+            target_name: install.target_name,
             version: install.version,
         }),
         AdapterRequest::Uninstall(uninstall) => Ok(CoordinatorSubmitRequest::Uninstall {
             package_name: uninstall.package.name,
+            target_name: uninstall.target_name,
             version: uninstall.version,
         }),
         AdapterRequest::Upgrade(upgrade) => Ok(CoordinatorSubmitRequest::Upgrade {
             package_name: upgrade.package.map(|package| package.name),
+            target_name: upgrade.target_name,
             version: upgrade.version,
         }),
         AdapterRequest::Pin(pin) => Ok(CoordinatorSubmitRequest::Pin {
@@ -10927,6 +10944,7 @@ fn build_adapter_runtime(store: Arc<SqliteStore>) -> Result<AdapterRuntime, Stri
         Arc::new(CargoAdapter::new(ProcessCargoSource::new(executor.clone()))),
         Arc::new(CargoBinstallAdapter::new(ProcessCargoBinstallSource::new(
             executor.clone(),
+            store.clone(),
         ))),
         Arc::new(PipAdapter::new(ProcessPipSource::new(executor.clone()))),
         Arc::new(PipxAdapter::new(ProcessPipxSource::new(executor.clone()))),
@@ -13074,6 +13092,7 @@ fn build_manager_mutation_request_with_options(
                         manager: ManagerId::Rustup,
                         name: "__self__".to_string(),
                     },
+                    target_name: None,
                     version: None,
                 }),
             ),
@@ -13086,6 +13105,7 @@ fn build_manager_mutation_request_with_options(
                                 manager: ManagerId::HomebrewFormula,
                                 name: formula_name.to_string(),
                             },
+                            target_name: None,
                             version: None,
                         }),
                     )
@@ -16432,12 +16452,30 @@ mod tests {
     }
 
     #[test]
-    fn package_search_includes_rustup_manager() {
+    fn package_search_policy_matches_shared_registry() {
         assert!(super::manager_participates_in_package_search(
             ManagerId::Rustup
         ));
         assert!(super::manager_participates_in_package_search(
             ManagerId::HomebrewFormula
+        ));
+        assert!(super::manager_participates_in_package_search(
+            ManagerId::Pipx
+        ));
+        assert!(super::manager_participates_in_package_search(
+            ManagerId::Pip
+        ));
+        assert!(super::manager_participates_in_package_search(
+            ManagerId::Poetry
+        ));
+        assert!(super::manager_participates_in_package_search(
+            ManagerId::Bundler
+        ));
+        assert!(!super::manager_participates_in_package_search(
+            ManagerId::SoftwareUpdate
+        ));
+        assert!(!super::manager_participates_in_package_search(
+            ManagerId::Sparkle
         ));
     }
 

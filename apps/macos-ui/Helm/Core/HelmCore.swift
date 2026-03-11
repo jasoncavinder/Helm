@@ -204,6 +204,7 @@ struct CorePackageRef: Codable {
 
 struct CoreInstalledPackage: Codable {
     let package: CorePackageRef
+    let packageIdentifier: String?
     let installedVersion: String?
     let pinned: Bool
     let runtimeState: PackageRuntimeState?
@@ -211,6 +212,7 @@ struct CoreInstalledPackage: Codable {
 
 struct CoreOutdatedPackage: Codable {
     let package: CorePackageRef
+    let packageIdentifier: String?
     let installedVersion: String?
     let candidateVersion: String
     let pinned: Bool
@@ -302,6 +304,7 @@ struct CoreErrorAttribution: Codable {
 struct CoreSearchResult: Codable {
     let manager: String
     let name: String
+    let packageIdentifier: String?
     let version: String?
     let summary: String?
     let sourceManager: String

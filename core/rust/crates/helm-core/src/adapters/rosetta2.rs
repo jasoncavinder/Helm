@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::adapters::manager::{AdapterRequest, AdapterResponse, AdapterResult, ManagerAdapter};
+use crate::adapters::rosetta2_process::host_is_apple_silicon;
 use crate::execution::{CommandSpec, ProcessSpawnRequest};
 use crate::models::{
     ActionSafety, Capability, CoreError, CoreErrorKind, DetectionInfo, ManagerAction,
@@ -62,8 +63,7 @@ impl<S: Rosetta2Source> ManagerAdapter for Rosetta2Adapter<S> {
             AdapterRequest::Detect(_) => {
                 let output = self.source.detect()?;
                 let version = parse_rosetta2_version(&output.version_output);
-                let has_executable = output.executable_path.is_some();
-                let installed = has_executable || version.is_some();
+                let installed = version.is_some();
                 Ok(AdapterResponse::Detection(DetectionInfo {
                     installed,
                     executable_path: output.executable_path,
@@ -75,12 +75,38 @@ impl<S: Rosetta2Source> ManagerAdapter for Rosetta2Adapter<S> {
                 Ok(AdapterResponse::Refreshed)
             }
             AdapterRequest::Install(install_request) => {
+                if !host_is_apple_silicon() {
+                    return Err(CoreError {
+                        manager: Some(ManagerId::Rosetta2),
+                        task: Some(TaskType::Install),
+                        action: Some(ManagerAction::Install),
+                        kind: CoreErrorKind::UnsupportedCapability,
+                        message: "Rosetta 2 installation is only supported on Apple Silicon hosts"
+                            .to_string(),
+                    });
+                }
+
+                let before_version = parse_rosetta2_version(&self.source.detect()?.version_output);
                 let _ = self.source.install()?;
+                let after_detection = self.source.detect()?;
+                let after_version = parse_rosetta2_version(&after_detection.version_output);
+                if after_version.is_none() {
+                    return Err(CoreError {
+                        manager: Some(ManagerId::Rosetta2),
+                        task: Some(TaskType::Install),
+                        action: Some(ManagerAction::Install),
+                        kind: CoreErrorKind::ProcessFailure,
+                        message:
+                            "Rosetta 2 install reported success but the receipt is still missing"
+                                .to_string(),
+                    });
+                }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: install_request.package,
+                    package_identifier: None,
                     action: ManagerAction::Install,
-                    before_version: None,
-                    after_version: None,
+                    before_version,
+                    after_version,
                 }))
             }
             _ => Err(CoreError {
@@ -152,6 +178,7 @@ mod tests {
         Rosetta2Adapter, Rosetta2DetectOutput, Rosetta2Source, parse_rosetta2_version,
         rosetta2_detect_request, rosetta2_install_request,
     };
+    use crate::adapters::rosetta2_process::host_is_apple_silicon;
     use crate::models::{ManagerAction, ManagerId, PackageRef, TaskType};
 
     const VERSION_FIXTURE: &str = include_str!("../../tests/fixtures/rosetta2/pkgutil_info.txt");
@@ -222,20 +249,28 @@ mod tests {
             }),
         };
         let adapter = Rosetta2Adapter::new(source);
-        let response = adapter
-            .execute(AdapterRequest::Install(InstallRequest {
-                package: PackageRef {
-                    manager: ManagerId::Rosetta2,
-                    name: "rosetta2".to_string(),
-                },
-                version: None,
-            }))
-            .unwrap();
+        let response = adapter.execute(AdapterRequest::Install(InstallRequest {
+            package: PackageRef {
+                manager: ManagerId::Rosetta2,
+                name: "rosetta2".to_string(),
+            },
+            target_name: None,
+            version: None,
+        }));
 
-        let AdapterResponse::Mutation(result) = response else {
-            panic!("expected mutation response");
-        };
-        assert_eq!(result.action, ManagerAction::Install);
+        if host_is_apple_silicon() {
+            let response = response.unwrap();
+            let AdapterResponse::Mutation(result) = response else {
+                panic!("expected mutation response");
+            };
+            assert_eq!(result.action, ManagerAction::Install);
+        } else {
+            let error = response.expect_err("expected unsupported capability on non-Apple Silicon");
+            assert_eq!(
+                error.kind,
+                crate::models::CoreErrorKind::UnsupportedCapability
+            );
+        }
     }
 
     struct FixtureSource {

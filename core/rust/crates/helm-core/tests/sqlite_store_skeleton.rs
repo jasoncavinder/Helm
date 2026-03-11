@@ -132,6 +132,7 @@ fn upsert_and_list_installed_roundtrip() {
                 manager: ManagerId::HomebrewFormula,
                 name: "git".to_string(),
             },
+            package_identifier: None,
             installed_version: Some("2.45.1".to_string()),
             pinned: false,
             runtime_state: Default::default(),
@@ -141,6 +142,7 @@ fn upsert_and_list_installed_roundtrip() {
                 manager: ManagerId::Pnpm,
                 name: "typescript".to_string(),
             },
+            package_identifier: None,
             installed_version: Some("5.5.2".to_string()),
             pinned: true,
             runtime_state: Default::default(),
@@ -172,6 +174,7 @@ fn upsert_and_list_installed_preserves_multiple_versions_per_package() {
                     manager: ManagerId::Mise,
                     name: "python".to_string(),
                 },
+                package_identifier: None,
                 installed_version: Some("3.11.9".to_string()),
                 pinned: false,
                 runtime_state: Default::default(),
@@ -181,6 +184,7 @@ fn upsert_and_list_installed_preserves_multiple_versions_per_package() {
                     manager: ManagerId::Mise,
                     name: "python".to_string(),
                 },
+                package_identifier: None,
                 installed_version: Some("3.12.3".to_string()),
                 pinned: false,
                 runtime_state: Default::default(),
@@ -203,6 +207,40 @@ fn upsert_and_list_installed_preserves_multiple_versions_per_package() {
 }
 
 #[test]
+fn replace_installed_snapshot_clears_stale_rows_for_manager() {
+    let path = test_db_path("installed-replace-snapshot");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    store
+        .upsert_installed(&[InstalledPackage {
+            package: PackageRef {
+                manager: ManagerId::Npm,
+                name: "typescript".to_string(),
+            },
+            package_identifier: None,
+            installed_version: Some("5.8.3".to_string()),
+            pinned: false,
+            runtime_state: Default::default(),
+        }])
+        .unwrap();
+
+    store
+        .replace_installed_snapshot(ManagerId::Npm, &[])
+        .unwrap();
+
+    assert!(
+        store
+            .list_installed()
+            .unwrap()
+            .into_iter()
+            .all(|package| package.package.manager != ManagerId::Npm)
+    );
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn upsert_and_list_outdated_roundtrip() {
     let path = test_db_path("outdated-roundtrip");
     let store = SqliteStore::new(&path);
@@ -213,6 +251,7 @@ fn upsert_and_list_outdated_roundtrip() {
             manager: ManagerId::HomebrewFormula,
             name: "openssl@3".to_string(),
         },
+        package_identifier: None,
         installed_version: Some("3.3.1".to_string()),
         candidate_version: "3.3.2".to_string(),
         pinned: false,
@@ -242,6 +281,7 @@ fn replace_outdated_snapshot_clears_stale_rows_for_manager() {
                 manager: ManagerId::HomebrewFormula,
                 name: "sevenzip".to_string(),
             },
+            package_identifier: None,
             installed_version: Some("25.01".to_string()),
             candidate_version: "26.00".to_string(),
             pinned: false,
@@ -536,6 +576,7 @@ fn list_installed_marks_package_pinned_when_pin_record_exists() {
                 manager: ManagerId::HomebrewFormula,
                 name: "git".to_string(),
             },
+            package_identifier: None,
             installed_version: Some("2.45.1".to_string()),
             pinned: false,
             runtime_state: Default::default(),
@@ -573,6 +614,7 @@ fn list_outdated_marks_package_pinned_when_pin_record_exists() {
                 manager: ManagerId::Mas,
                 name: "Xcode".to_string(),
             },
+            package_identifier: None,
             installed_version: Some("16.1".to_string()),
             candidate_version: "16.2".to_string(),
             pinned: false,
@@ -614,12 +656,14 @@ fn list_installed_marks_only_matching_version_pinned() {
         .upsert_installed(&[
             InstalledPackage {
                 package: package.clone(),
+                package_identifier: None,
                 installed_version: Some("3.12.3".to_string()),
                 pinned: false,
                 runtime_state: Default::default(),
             },
             InstalledPackage {
                 package: package.clone(),
+                package_identifier: None,
                 installed_version: Some("3.13.0".to_string()),
                 pinned: false,
                 runtime_state: Default::default(),
@@ -661,6 +705,7 @@ fn set_snapshot_pinned_updates_cached_rows_immediately() {
     store
         .upsert_installed(&[InstalledPackage {
             package: package.clone(),
+            package_identifier: None,
             installed_version: Some("1.11.4".to_string()),
             pinned: true,
             runtime_state: Default::default(),
@@ -669,6 +714,7 @@ fn set_snapshot_pinned_updates_cached_rows_immediately() {
     store
         .upsert_outdated(&[OutdatedPackage {
             package: package.clone(),
+            package_identifier: None,
             installed_version: Some("1.11.4".to_string()),
             candidate_version: "1.11.4_1".to_string(),
             pinned: true,
@@ -705,12 +751,14 @@ fn set_snapshot_pinned_only_updates_matching_version() {
         .upsert_installed(&[
             InstalledPackage {
                 package: package.clone(),
+                package_identifier: None,
                 installed_version: Some("3.12.3".to_string()),
                 pinned: false,
                 runtime_state: Default::default(),
             },
             InstalledPackage {
                 package: package.clone(),
+                package_identifier: None,
                 installed_version: Some("3.13.0".to_string()),
                 pinned: false,
                 runtime_state: Default::default(),
@@ -747,6 +795,7 @@ fn apply_install_result_updates_installed_snapshot_and_clears_outdated_entry() {
     store
         .upsert_outdated(&[OutdatedPackage {
             package: package.clone(),
+            package_identifier: None,
             installed_version: Some("9.24.0".to_string()),
             candidate_version: "9.25.0".to_string(),
             pinned: false,
@@ -756,7 +805,7 @@ fn apply_install_result_updates_installed_snapshot_and_clears_outdated_entry() {
         .unwrap();
 
     store
-        .apply_install_result(&package, Some("9.25.0"))
+        .apply_install_result(&package, None, Some("9.25.0"))
         .unwrap();
 
     let installed = store.list_installed().unwrap();
@@ -786,6 +835,7 @@ fn apply_uninstall_result_removes_package_from_cached_snapshots() {
     store
         .upsert_installed(&[InstalledPackage {
             package: package.clone(),
+            package_identifier: None,
             installed_version: Some("5.8.3".to_string()),
             pinned: false,
             runtime_state: Default::default(),
@@ -794,6 +844,7 @@ fn apply_uninstall_result_removes_package_from_cached_snapshots() {
     store
         .upsert_outdated(&[OutdatedPackage {
             package: package.clone(),
+            package_identifier: None,
             installed_version: Some("5.8.3".to_string()),
             candidate_version: "5.9.0".to_string(),
             pinned: false,
@@ -802,12 +853,43 @@ fn apply_uninstall_result_removes_package_from_cached_snapshots() {
         }])
         .unwrap();
 
-    store.apply_uninstall_result(&package, None).unwrap();
+    store.apply_uninstall_result(&package, None, None).unwrap();
 
     let installed = store.list_installed().unwrap();
     let outdated = store.list_outdated().unwrap();
     assert!(installed.iter().all(|entry| entry.package != package));
     assert!(outdated.iter().all(|entry| entry.package != package));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn apply_uninstall_result_falls_back_to_package_wide_delete_for_single_version_managers() {
+    let path = test_db_path("apply-uninstall-result-single-version-fallback");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let package = PackageRef {
+        manager: ManagerId::CargoBinstall,
+        name: "bat".to_string(),
+    };
+
+    store
+        .upsert_installed(&[InstalledPackage {
+            package: package.clone(),
+            package_identifier: None,
+            installed_version: Some("0.24.0".to_string()),
+            pinned: false,
+            runtime_state: Default::default(),
+        }])
+        .unwrap();
+
+    store
+        .apply_uninstall_result(&package, None, Some("0.25.0"))
+        .unwrap();
+
+    let installed = store.list_installed().unwrap();
+    assert!(installed.iter().all(|entry| entry.package != package));
 
     let _ = std::fs::remove_file(path);
 }
@@ -826,6 +908,7 @@ fn apply_upgrade_result_promotes_package_to_installed_snapshot() {
     store
         .upsert_installed(&[InstalledPackage {
             package: package.clone(),
+            package_identifier: None,
             installed_version: Some("20250127.0".to_string()),
             pinned: false,
             runtime_state: Default::default(),
@@ -834,6 +917,7 @@ fn apply_upgrade_result_promotes_package_to_installed_snapshot() {
     store
         .upsert_outdated(&[OutdatedPackage {
             package: package.clone(),
+            package_identifier: None,
             installed_version: Some("20250127.0".to_string()),
             candidate_version: "20250814.0".to_string(),
             pinned: false,
@@ -843,7 +927,7 @@ fn apply_upgrade_result_promotes_package_to_installed_snapshot() {
         .unwrap();
 
     store
-        .apply_upgrade_result(&package, Some("20250127.0"), Some("20250814.0"))
+        .apply_upgrade_result(&package, None, Some("20250127.0"), Some("20250814.0"))
         .unwrap();
 
     let installed = store.list_installed().unwrap();
@@ -874,12 +958,14 @@ fn apply_upgrade_result_replaces_only_matching_installed_version() {
         .upsert_installed(&[
             InstalledPackage {
                 package: package.clone(),
+                package_identifier: None,
                 installed_version: Some("3.11.9".to_string()),
                 pinned: false,
                 runtime_state: Default::default(),
             },
             InstalledPackage {
                 package: package.clone(),
+                package_identifier: None,
                 installed_version: Some("3.12.3".to_string()),
                 pinned: false,
                 runtime_state: Default::default(),
@@ -889,6 +975,7 @@ fn apply_upgrade_result_replaces_only_matching_installed_version() {
     store
         .upsert_outdated(&[OutdatedPackage {
             package: package.clone(),
+            package_identifier: None,
             installed_version: Some("3.12.3".to_string()),
             candidate_version: "3.12.8".to_string(),
             pinned: false,
@@ -898,7 +985,7 @@ fn apply_upgrade_result_replaces_only_matching_installed_version() {
         .unwrap();
 
     store
-        .apply_upgrade_result(&package, Some("3.12.3"), Some("3.12.8"))
+        .apply_upgrade_result(&package, None, Some("3.12.3"), Some("3.12.8"))
         .unwrap();
 
     let installed = store.list_installed().unwrap();
@@ -1255,6 +1342,7 @@ fn upsert_and_query_search_cache_roundtrip() {
                     manager: ManagerId::HomebrewFormula,
                     name: "ripgrep".to_string(),
                 },
+                package_identifier: None,
                 version: Some("14.1.0".to_string()),
                 summary: Some("line-oriented search tool".to_string()),
             },
@@ -1268,6 +1356,7 @@ fn upsert_and_query_search_cache_roundtrip() {
                     manager: ManagerId::Pnpm,
                     name: "typescript".to_string(),
                 },
+                package_identifier: None,
                 version: Some("5.5.2".to_string()),
                 summary: Some("language for application-scale JS".to_string()),
             },
@@ -1302,6 +1391,7 @@ fn search_cache_deduplicates_same_version_and_preserves_summary() {
                 manager: ManagerId::HomebrewFormula,
                 name: "ripgrep".to_string(),
             },
+            package_identifier: None,
             version: Some("14.1.0".to_string()),
             summary: Some("line-oriented search tool".to_string()),
         },
@@ -1317,6 +1407,7 @@ fn search_cache_deduplicates_same_version_and_preserves_summary() {
                 manager: ManagerId::HomebrewFormula,
                 name: "ripgrep".to_string(),
             },
+            package_identifier: None,
             version: Some("14.1.0".to_string()),
             summary: None,
         },
@@ -1357,6 +1448,7 @@ fn search_cache_retains_distinct_versions_for_same_package() {
                 manager: ManagerId::HomebrewFormula,
                 name: "ripgrep".to_string(),
             },
+            package_identifier: None,
             version: Some("14.1.0".to_string()),
             summary: Some("line-oriented search tool".to_string()),
         },
@@ -1370,6 +1462,7 @@ fn search_cache_retains_distinct_versions_for_same_package() {
                 manager: ManagerId::HomebrewFormula,
                 name: "ripgrep".to_string(),
             },
+            package_identifier: None,
             version: Some("14.2.0".to_string()),
             summary: Some("line-oriented search tool".to_string()),
         },

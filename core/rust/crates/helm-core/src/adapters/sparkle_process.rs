@@ -41,6 +41,7 @@ fn locate_sparkle_host_app() -> Option<PathBuf> {
         roots.push(PathBuf::from(home).join("Applications"));
     }
 
+    let mut candidates = Vec::new();
     for root in roots {
         let Ok(entries) = std::fs::read_dir(root) else {
             continue;
@@ -53,12 +54,13 @@ fn locate_sparkle_host_app() -> Option<PathBuf> {
             }
 
             if app_uses_sparkle(&app_path) {
-                return Some(app_path);
+                candidates.push(app_path);
             }
         }
     }
 
-    None
+    candidates.sort();
+    candidates.into_iter().next()
 }
 
 fn is_app_bundle(path: &Path) -> bool {

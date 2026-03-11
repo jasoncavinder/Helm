@@ -1079,11 +1079,21 @@ extension HelmCore {
     }
 
     private func commandForHomebrewCask(taskType: String, packageArg: String?) -> String? {
-        guard taskType == "upgrade" else { return nil }
-        if let packageArg {
-            return "brew upgrade --cask \(packageArg)"
+        switch taskType {
+        case "install":
+            guard let packageArg else { return nil }
+            return "brew install --cask \(packageArg)"
+        case "uninstall":
+            guard let packageArg else { return nil }
+            return "brew uninstall --cask \(packageArg)"
+        case "upgrade":
+            if let packageArg {
+                return "brew upgrade --cask \(packageArg)"
+            }
+            return "brew upgrade --cask"
+        default:
+            return nil
         }
-        return "brew upgrade --cask"
     }
 
     private func commandForPip(taskType: String, packageArg: String?) -> String? {

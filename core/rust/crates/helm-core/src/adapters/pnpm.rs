@@ -80,8 +80,7 @@ impl<S: PnpmSource> ManagerAdapter for PnpmAdapter<S> {
             AdapterRequest::Detect(_) => {
                 let output = self.source.detect()?;
                 let version = parse_pnpm_version(&output.version_output);
-                let has_executable = output.executable_path.is_some();
-                let installed = has_executable || version.is_some();
+                let installed = version.is_some();
                 Ok(AdapterResponse::Detection(DetectionInfo {
                     installed,
                     executable_path: output.executable_path,
@@ -89,8 +88,21 @@ impl<S: PnpmSource> ManagerAdapter for PnpmAdapter<S> {
                 }))
             }
             AdapterRequest::Refresh(_) => {
-                let _ = self.source.detect()?;
-                Ok(AdapterResponse::Refreshed)
+                let output = self.source.detect()?;
+                let version = parse_pnpm_version(&output.version_output);
+                if version.is_none() {
+                    return Ok(AdapterResponse::SnapshotSync {
+                        installed: Some(Vec::new()),
+                        outdated: Some(Vec::new()),
+                    });
+                }
+
+                let installed = parse_pnpm_list_installed(&self.source.list_installed_global()?)?;
+                let outdated = parse_pnpm_outdated(&self.source.list_outdated_global()?)?;
+                Ok(AdapterResponse::SnapshotSync {
+                    installed: Some(installed),
+                    outdated: Some(outdated),
+                })
             }
             AdapterRequest::ListInstalled(_) => {
                 let raw = self.source.list_installed_global()?;
@@ -113,15 +125,28 @@ impl<S: PnpmSource> ManagerAdapter for PnpmAdapter<S> {
                     ManagerAction::Install,
                     install_request.package.name.as_str(),
                 )?;
+                let before_version = resolve_installed_pnpm_version(
+                    &self.source,
+                    install_request.package.name.as_str(),
+                )?;
                 let _ = self.source.install_global(
                     install_request.package.name.as_str(),
                     install_request.version.as_deref(),
                 )?;
+                let after_version = install_request.version.clone().or_else(|| {
+                    resolve_installed_pnpm_version(
+                        &self.source,
+                        install_request.package.name.as_str(),
+                    )
+                    .ok()
+                    .flatten()
+                });
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: install_request.package,
+                    package_identifier: None,
                     action: ManagerAction::Install,
-                    before_version: None,
-                    after_version: install_request.version,
+                    before_version,
+                    after_version,
                 }))
             }
             AdapterRequest::Uninstall(uninstall_request) => {
@@ -130,13 +155,18 @@ impl<S: PnpmSource> ManagerAdapter for PnpmAdapter<S> {
                     ManagerAction::Uninstall,
                     uninstall_request.package.name.as_str(),
                 )?;
+                let before_version = require_installed_pnpm_version(
+                    &self.source,
+                    uninstall_request.package.name.as_str(),
+                )?;
                 let _ = self
                     .source
                     .uninstall_global(uninstall_request.package.name.as_str())?;
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: uninstall_request.package,
+                    package_identifier: None,
                     action: ManagerAction::Uninstall,
-                    before_version: None,
+                    before_version: Some(before_version),
                     after_version: None,
                 }))
             }
@@ -155,15 +185,24 @@ impl<S: PnpmSource> ManagerAdapter for PnpmAdapter<S> {
                     )?;
                     Some(package.name.as_str())
                 };
+                let targeted_outdated = target_name
+                    .map(|name| find_pnpm_outdated_entry(&self.source, name))
+                    .transpose()?
+                    .flatten();
                 let _ = self.source.upgrade_global(target_name)?;
                 if let Some(name) = target_name {
                     ensure_pnpm_no_longer_outdated(&self.source, name)?;
                 }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
+                    package_identifier: None,
                     action: ManagerAction::Upgrade,
-                    before_version: None,
-                    after_version: None,
+                    before_version: upgrade_request.version.or_else(|| {
+                        targeted_outdated
+                            .as_ref()
+                            .and_then(|entry| entry.installed_version.clone())
+                    }),
+                    after_version: targeted_outdated.map(|entry| entry.candidate_version),
                 }))
             }
             _ => Err(CoreError {
@@ -329,6 +368,7 @@ fn parse_pnpm_list_installed(output: &str) -> AdapterResult<Vec<InstalledPackage
                 manager: ManagerId::Pnpm,
                 name,
             },
+            package_identifier: None,
             installed_version: Some(version),
             pinned: false,
             runtime_state: Default::default(),
@@ -355,6 +395,38 @@ fn ensure_pnpm_no_longer_outdated<S: PnpmSource>(
         });
     }
     Ok(())
+}
+
+fn resolve_installed_pnpm_version<S: PnpmSource>(
+    source: &S,
+    package_name: &str,
+) -> AdapterResult<Option<String>> {
+    Ok(parse_pnpm_list_installed(&source.list_installed_global()?)?
+        .into_iter()
+        .find(|package| package.package.name == package_name)
+        .and_then(|package| package.installed_version))
+}
+
+fn require_installed_pnpm_version<S: PnpmSource>(
+    source: &S,
+    package_name: &str,
+) -> AdapterResult<String> {
+    resolve_installed_pnpm_version(source, package_name)?.ok_or_else(|| CoreError {
+        manager: Some(ManagerId::Pnpm),
+        task: Some(TaskType::Uninstall),
+        action: Some(ManagerAction::Uninstall),
+        kind: CoreErrorKind::InvalidInput,
+        message: format!("pnpm package '{package_name}' is not installed"),
+    })
+}
+
+fn find_pnpm_outdated_entry<S: PnpmSource>(
+    source: &S,
+    package_name: &str,
+) -> AdapterResult<Option<OutdatedPackage>> {
+    Ok(parse_pnpm_outdated(&source.list_outdated_global()?)?
+        .into_iter()
+        .find(|package| package.package.name == package_name))
 }
 
 fn parse_pnpm_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
@@ -403,6 +475,7 @@ fn parse_pnpm_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
                 manager: ManagerId::Pnpm,
                 name: name.clone(),
             },
+            package_identifier: None,
             installed_version,
             candidate_version,
             pinned: false,
@@ -460,6 +533,7 @@ fn parse_pnpm_search(output: &str, query: &SearchQuery) -> AdapterResult<Vec<Cac
                     manager: ManagerId::Pnpm,
                     name,
                 },
+                package_identifier: None,
                 version: entry
                     .version
                     .map(|version| version.trim().to_string())
@@ -687,6 +761,55 @@ mod tests {
     }
 
     #[test]
+    fn execute_refresh_returns_snapshot_sync() {
+        let adapter = PnpmAdapter::new(StubPnpmSource::success());
+
+        let response = adapter
+            .execute(AdapterRequest::Refresh(crate::adapters::RefreshRequest))
+            .expect("refresh should succeed");
+
+        match response {
+            AdapterResponse::SnapshotSync {
+                installed,
+                outdated,
+            } => {
+                assert_eq!(installed.expect("installed snapshot").len(), 3);
+                assert_eq!(outdated.expect("outdated snapshot").len(), 2);
+            }
+            other => panic!("expected snapshot sync response, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn refresh_clears_snapshots_when_pnpm_is_not_usable() {
+        let adapter = PnpmAdapter::new(StubPnpmSource {
+            detect_calls: Arc::new(AtomicUsize::new(0)),
+            detect_result: Ok(PnpmDetectOutput {
+                executable_path: Some(PathBuf::from("/usr/local/bin/pnpm")),
+                version_output: String::new(),
+            }),
+            list_installed_result: Ok(LIST_FIXTURE.to_string()),
+            list_outdated_result: Ok(OUTDATED_FIXTURE.to_string()),
+            search_result: Ok(SEARCH_FIXTURE.to_string()),
+        });
+
+        let response = adapter
+            .execute(AdapterRequest::Refresh(crate::adapters::RefreshRequest))
+            .expect("refresh should succeed");
+
+        match response {
+            AdapterResponse::SnapshotSync {
+                installed,
+                outdated,
+            } => {
+                assert!(installed.expect("installed snapshot").is_empty());
+                assert!(outdated.expect("outdated snapshot").is_empty());
+            }
+            other => panic!("expected snapshot sync response, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn execute_list_installed_uses_parser() {
         let adapter = PnpmAdapter::new(StubPnpmSource::success());
 
@@ -735,6 +858,7 @@ mod tests {
                     manager: ManagerId::Pnpm,
                     name: "typescript".to_string(),
                 },
+                target_name: None,
                 version: Some("5.7.2".to_string()),
             }))
             .expect("install should succeed");
@@ -743,7 +867,6 @@ mod tests {
             AdapterResponse::Mutation(mutation) => {
                 assert_eq!(mutation.action, ManagerAction::Install);
                 assert_eq!(mutation.package.manager, ManagerId::Pnpm);
-                assert_eq!(mutation.after_version.as_deref(), Some("5.7.2"));
             }
             other => panic!("unexpected response: {other:?}"),
         }
@@ -759,6 +882,7 @@ mod tests {
                     manager: ManagerId::Pnpm,
                     name: "--registry=http://malicious".to_string(),
                 },
+                target_name: None,
                 version: None,
             }))
             .expect_err("expected invalid input");

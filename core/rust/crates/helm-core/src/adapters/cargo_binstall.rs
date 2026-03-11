@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -46,6 +47,7 @@ pub struct CargoBinstallDetectOutput {
 
 pub trait CargoBinstallSource: Send + Sync {
     fn detect(&self) -> AdapterResult<CargoBinstallDetectOutput>;
+    fn tracked_package_names(&self) -> AdapterResult<BTreeSet<String>>;
     fn list_installed(&self) -> AdapterResult<String>;
     fn list_outdated(&self) -> AdapterResult<String>;
     fn search(&self, query: &str) -> AdapterResult<String>;
@@ -80,8 +82,7 @@ impl<S: CargoBinstallSource> ManagerAdapter for CargoBinstallAdapter<S> {
             AdapterRequest::Detect(_) => {
                 let output = self.source.detect()?;
                 let version = parse_cargo_binstall_version(&output.version_output);
-                let has_executable = output.executable_path.is_some();
-                let installed = has_executable || version.is_some();
+                let installed = version.is_some();
                 Ok(AdapterResponse::Detection(DetectionInfo {
                     installed,
                     executable_path: output.executable_path,
@@ -89,26 +90,31 @@ impl<S: CargoBinstallSource> ManagerAdapter for CargoBinstallAdapter<S> {
                 }))
             }
             AdapterRequest::Refresh(_) => {
-                let _ = self.source.detect()?;
-                Ok(AdapterResponse::Refreshed)
+                let output = self.source.detect()?;
+                let version = parse_cargo_binstall_version(&output.version_output);
+                if version.is_none() {
+                    return Ok(AdapterResponse::SnapshotSync {
+                        installed: Some(Vec::new()),
+                        outdated: Some(Vec::new()),
+                    });
+                }
+
+                let tracked = self.source.tracked_package_names()?;
+                let installed = tracked_cargo_binstall_installed_packages(&self.source, &tracked)?;
+                let outdated = tracked_cargo_binstall_outdated_packages(&self.source, &tracked)?;
+                Ok(AdapterResponse::SnapshotSync {
+                    installed: Some(installed),
+                    outdated: Some(outdated),
+                })
             }
             AdapterRequest::ListInstalled(_) => {
-                let raw = self.source.list_installed()?;
-                let mut packages = parse_cargo_installed(&raw)?;
-                for package in &mut packages {
-                    package.package.manager = ManagerId::CargoBinstall;
-                }
+                let tracked = self.source.tracked_package_names()?;
+                let packages = tracked_cargo_binstall_installed_packages(&self.source, &tracked)?;
                 Ok(AdapterResponse::InstalledPackages(packages))
             }
             AdapterRequest::ListOutdated(_) => {
-                let raw = self.source.list_outdated()?;
-                let mut packages = parse_cargo_outdated(&raw).map_err(|mut error| {
-                    error.manager = Some(ManagerId::CargoBinstall);
-                    error
-                })?;
-                for package in &mut packages {
-                    package.package.manager = ManagerId::CargoBinstall;
-                }
+                let tracked = self.source.tracked_package_names()?;
+                let packages = tracked_cargo_binstall_outdated_packages(&self.source, &tracked)?;
                 Ok(AdapterResponse::OutdatedPackages(packages))
             }
             AdapterRequest::Search(search_request) => {
@@ -126,15 +132,30 @@ impl<S: CargoBinstallSource> ManagerAdapter for CargoBinstallAdapter<S> {
                     ManagerAction::Install,
                     install_request.package.name.as_str(),
                 )?;
+                let before_version = resolve_cargo_binstall_installed_version(
+                    &self.source,
+                    &install_request.package.name,
+                    false,
+                )?;
                 let _ = self.source.install(
                     &install_request.package.name,
                     install_request.version.as_deref(),
                 )?;
+                let after_version = install_request.version.clone().or_else(|| {
+                    resolve_cargo_binstall_installed_version(
+                        &self.source,
+                        &install_request.package.name,
+                        false,
+                    )
+                    .ok()
+                    .flatten()
+                });
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: install_request.package,
+                    package_identifier: None,
                     action: ManagerAction::Install,
-                    before_version: None,
-                    after_version: install_request.version,
+                    before_version,
+                    after_version,
                 }))
             }
             AdapterRequest::Uninstall(uninstall_request) => {
@@ -143,11 +164,16 @@ impl<S: CargoBinstallSource> ManagerAdapter for CargoBinstallAdapter<S> {
                     ManagerAction::Uninstall,
                     uninstall_request.package.name.as_str(),
                 )?;
+                let before_version = require_cargo_binstall_installed_version(
+                    &self.source,
+                    &uninstall_request.package.name,
+                )?;
                 let _ = self.source.uninstall(&uninstall_request.package.name)?;
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: uninstall_request.package,
+                    package_identifier: None,
                     action: ManagerAction::Uninstall,
-                    before_version: None,
+                    before_version: Some(before_version),
                     after_version: None,
                 }))
             }
@@ -167,6 +193,10 @@ impl<S: CargoBinstallSource> ManagerAdapter for CargoBinstallAdapter<S> {
                     )?;
                     Some(package.name.as_str())
                 };
+                let targeted_outdated = target_name
+                    .map(|name| find_cargo_binstall_outdated_entry(&self.source, name))
+                    .transpose()?
+                    .flatten();
                 let _ = self.source.upgrade(target_name)?;
                 if let Some(name) = target_name {
                     ensure_cargo_binstall_no_longer_outdated(&self.source, name)?;
@@ -174,9 +204,12 @@ impl<S: CargoBinstallSource> ManagerAdapter for CargoBinstallAdapter<S> {
 
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
+                    package_identifier: None,
                     action: ManagerAction::Upgrade,
-                    before_version: None,
-                    after_version: None,
+                    before_version: targeted_outdated
+                        .as_ref()
+                        .and_then(|entry| entry.installed_version.clone()),
+                    after_version: targeted_outdated.map(|entry| entry.candidate_version),
                 }))
             }
             _ => Err(CoreError {
@@ -195,11 +228,8 @@ fn ensure_cargo_binstall_no_longer_outdated<S: CargoBinstallSource>(
     source: &S,
     package_name: &str,
 ) -> AdapterResult<()> {
-    let raw = source.list_outdated()?;
-    let outdated = parse_cargo_outdated(&raw).map_err(|mut error| {
-        error.manager = Some(ManagerId::CargoBinstall);
-        error
-    })?;
+    let tracked = source.tracked_package_names()?;
+    let outdated = tracked_cargo_binstall_outdated_packages(source, &tracked)?;
     if outdated
         .iter()
         .any(|item| item.package.name == package_name)
@@ -215,6 +245,89 @@ fn ensure_cargo_binstall_no_longer_outdated<S: CargoBinstallSource>(
         });
     }
     Ok(())
+}
+
+fn tracked_cargo_binstall_installed_packages<S: CargoBinstallSource>(
+    source: &S,
+    tracked: &BTreeSet<String>,
+) -> AdapterResult<Vec<crate::models::InstalledPackage>> {
+    if tracked.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let raw = source.list_installed()?;
+    let mut packages = parse_cargo_installed(&raw)?;
+    packages.retain(|package| tracked.contains(&package.package.name));
+    for package in &mut packages {
+        package.package.manager = ManagerId::CargoBinstall;
+    }
+    Ok(packages)
+}
+
+fn tracked_cargo_binstall_outdated_packages<S: CargoBinstallSource>(
+    source: &S,
+    tracked: &BTreeSet<String>,
+) -> AdapterResult<Vec<crate::models::OutdatedPackage>> {
+    if tracked.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let raw = source.list_outdated()?;
+    let mut packages = parse_cargo_outdated(&raw).map_err(|mut error| {
+        error.manager = Some(ManagerId::CargoBinstall);
+        error
+    })?;
+    packages.retain(|package| tracked.contains(&package.package.name));
+    for package in &mut packages {
+        package.package.manager = ManagerId::CargoBinstall;
+    }
+    Ok(packages)
+}
+
+fn resolve_cargo_binstall_installed_version<S: CargoBinstallSource>(
+    source: &S,
+    package_name: &str,
+    require_tracked: bool,
+) -> AdapterResult<Option<String>> {
+    if require_tracked && !source.tracked_package_names()?.contains(package_name) {
+        return Ok(None);
+    }
+
+    let raw = source.list_installed()?;
+    let installed = parse_cargo_installed(&raw).map_err(|mut error| {
+        error.manager = Some(ManagerId::CargoBinstall);
+        error
+    })?;
+    Ok(installed
+        .into_iter()
+        .find(|item| item.package.name == package_name)
+        .and_then(|item| item.installed_version))
+}
+
+fn require_cargo_binstall_installed_version<S: CargoBinstallSource>(
+    source: &S,
+    package_name: &str,
+) -> AdapterResult<String> {
+    resolve_cargo_binstall_installed_version(source, package_name, true)?.ok_or_else(|| CoreError {
+        manager: Some(ManagerId::CargoBinstall),
+        task: Some(TaskType::Uninstall),
+        action: Some(ManagerAction::Uninstall),
+        kind: CoreErrorKind::NotInstalled,
+        message: format!(
+            "cargo-binstall package '{package_name}' is not tracked as cargo-binstall-managed"
+        ),
+    })
+}
+
+fn find_cargo_binstall_outdated_entry<S: CargoBinstallSource>(
+    source: &S,
+    package_name: &str,
+) -> AdapterResult<Option<crate::models::OutdatedPackage>> {
+    let tracked = source.tracked_package_names()?;
+    let outdated = tracked_cargo_binstall_outdated_packages(source, &tracked)?;
+    Ok(outdated
+        .into_iter()
+        .find(|item| item.package.name == package_name))
 }
 
 pub fn cargo_binstall_detect_request(task_id: Option<TaskId>) -> ProcessSpawnRequest {
@@ -348,6 +461,7 @@ pub(crate) fn parse_cargo_binstall_version(output: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
     use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -449,6 +563,16 @@ mod tests {
             self.detect_result.clone()
         }
 
+        fn tracked_package_names(&self) -> AdapterResult<BTreeSet<String>> {
+            Ok([
+                "bat".to_string(),
+                "ripgrep".to_string(),
+                "zellij".to_string(),
+            ]
+            .into_iter()
+            .collect())
+        }
+
         fn list_installed(&self) -> AdapterResult<String> {
             self.installed_result.clone()
         }
@@ -519,6 +643,7 @@ mod tests {
                     manager: ManagerId::CargoBinstall,
                     name: "ripgrep".to_string(),
                 },
+                target_name: None,
                 version: Some("14.1.1".to_string()),
             }))
             .unwrap()

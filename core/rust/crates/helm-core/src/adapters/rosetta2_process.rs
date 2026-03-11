@@ -50,6 +50,6 @@ impl Rosetta2Source for ProcessRosetta2Source {
     }
 }
 
-fn host_is_apple_silicon() -> bool {
+pub(crate) fn host_is_apple_silicon() -> bool {
     matches!(std::env::consts::ARCH, "aarch64" | "arm64")
 }

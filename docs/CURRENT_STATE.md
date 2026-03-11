@@ -138,7 +138,7 @@ Fully functional:
 - mise
 - npm (global)
 - pnpm (global)
-- yarn (global)
+- yarn (global, Classic 1.x package surface)
 - RubyGems (non-system installations manageable; base-system `/usr/bin/gem` is detected but policy-blocked from enablement/actions)
 - Poetry (self/plugins)
 - Bundler
@@ -803,15 +803,31 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
   - `homebrew_cask`
 - Added process-backed source with XPC-safe PATH handling and Homebrew environment guards
 - Implemented adapter capabilities for this slice:
-  - `homebrew_cask`: detect, refresh, list_installed, list_outdated
+  - `homebrew_cask`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade
 - Added JSON-backed parsing for installed/outdated casks using structured Homebrew output (`--json=v2`)
+- Added Homebrew catalog/search support:
+  - empty query: `brew casks`
+  - filtered query: `brew search --cask --desc`
+- Added mutation flows with post-upgrade verification so targeted cask upgrades fail if Homebrew still reports the cask as outdated
 - Added fixtures + adapter tests for:
   - request-shape assertions
-  - installed/outdated parsing behavior
-  - read-only execute flow + unsupported mutating action rejection
+  - installed/outdated/search parsing behavior
+  - read/write execute flow
+  - end-to-end orchestration for install, uninstall, and upgrade
 - Wired adapter into FFI runtime initialization and manager status export:
   - `isImplemented=true` now includes `homebrew_cask`
 - Swift fallback metadata updated so `homebrew_cask` reflects implemented state when runtime status is unavailable
+
+### Homebrew Formula Adapter Hardening
+- Formula installed/outdated inventory now uses structured Homebrew JSON instead of line-oriented parsing:
+  - installed: `brew info --formula --json=v2 --installed`
+  - outdated: `brew outdated --formula --json=v2`
+- Formula search/catalog now uses Homebrew-native catalog/description sources:
+  - empty query: `brew formulae`
+  - filtered query: `brew search --formula --desc`
+- Native Homebrew pin/unpin remains supported for formulae and rejects separate version arguments; versioned formulae must be addressed by token (for example `python@3.12`)
+- Homebrew keg cleanup policy is now enforced by disabling Homebrew automatic install cleanup (`HOMEBREW_NO_INSTALL_CLEANUP=1`) and running explicit cleanup only when Helm’s cleanup policy requests it
+- Targeted formula upgrades now verify that Homebrew no longer reports the formula as outdated after upgrade
 
 ### Validation
 - `cargo test -p helm-core --manifest-path core/rust/Cargo.toml`
@@ -898,7 +914,7 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
   - Implemented: npm (global), pip (`python3 -m pip`, global), pipx, cargo, cargo-binstall
   - Pending: none
 - Priority 2 extended language-manager expansion is complete at this checkpoint:
-  - Implemented: pnpm (global), yarn (global), RubyGems, Poetry (self/plugins), Bundler
+  - Implemented: pnpm (global), yarn (global, Classic 1.x package surface), RubyGems, Poetry (self/plugins), Bundler
   - Pending: none
 - Redesign integration is functional with layered popover UX + control-center search; accessibility labels and semantic grouping implemented; onboarding walkthrough delivered; UI layer purity cleanup completed
 - Keyboard-only traversal: Tab navigation does not work in macOS SwiftUI (`.focusable()` does not participate in AppKit key view loop); requires NSViewRepresentable bridging approach
@@ -912,7 +928,7 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
 - 0.14 manager inventory is scaffolded in metadata; alpha.2/alpha.3/alpha.4 delivered container/VM, detection-only, security/firmware, and optional-manager slices
 - Optional-manager compatibility caveats:
   - `asdf` now bootstraps missing plugins, inventories installed versions independently of `asdf current`, and tracks active/default/override state from current selection metadata; explicit `asdf` selection-management actions and plugin removal remain future work
-  - `nix_darwin` support currently operates through `nix-env` compatibility flows and does not edit declarative nix-darwin configuration files
+  - `nix_darwin` is currently detection/refresh-only in Helm. Declarative nix-darwin package/config management is not implemented, and Helm intentionally does not route `nix-env` package mutation flows through the `nix_darwin` manager because that would misrepresent system configuration state.
 - Self-update is intentionally limited to eligible direct Developer ID installs; package-manager-managed installs remain blocked by policy.
 - Diagnostics UI is available in the Inspector (`diagnostics`/`stderr`/`stdout`), including the v0.17 task-log viewer (`logs` tab with level/status filters and pagination).
 - CLI companion implementation is in progress on `dev`: draft spec published at `docs/architecture/HELM_CLI_SPEC.ms` and Rust `helm` binary exists (`core/rust/crates/helm-cli`) with read-only snapshot commands plus runtime-backed orchestration commands (`refresh`, `managers detect`) and `--wait`/`--detach` flag parsing.

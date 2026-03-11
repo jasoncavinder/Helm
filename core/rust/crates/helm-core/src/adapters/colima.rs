@@ -41,6 +41,7 @@ pub struct ColimaDetectOutput {
 
 pub trait ColimaSource: Send + Sync {
     fn detect(&self) -> AdapterResult<ColimaDetectOutput>;
+    fn homebrew_info(&self) -> AdapterResult<String>;
     fn list_outdated(&self) -> AdapterResult<String>;
 }
 
@@ -70,8 +71,7 @@ impl<S: ColimaSource> ManagerAdapter for ColimaAdapter<S> {
             AdapterRequest::Detect(_) => {
                 let output = self.source.detect()?;
                 let version = parse_colima_version(&output.version_output);
-                let has_executable = output.executable_path.is_some();
-                let installed = has_executable || version.is_some();
+                let installed = version.is_some();
                 Ok(AdapterResponse::Detection(DetectionInfo {
                     installed,
                     executable_path: output.executable_path,
@@ -79,19 +79,45 @@ impl<S: ColimaSource> ManagerAdapter for ColimaAdapter<S> {
                 }))
             }
             AdapterRequest::Refresh(_) => {
-                let _ = self.source.detect()?;
-                Ok(AdapterResponse::Refreshed)
+                let output = self.source.detect()?;
+                let version = parse_colima_version(&output.version_output);
+                if version.is_none() {
+                    return Ok(AdapterResponse::SnapshotSync {
+                        installed: Some(Vec::new()),
+                        outdated: Some(Vec::new()),
+                    });
+                }
+
+                let outdated = if parse_homebrew_formula_installed(&self.source.homebrew_info()?)? {
+                    parse_colima_outdated(&self.source.list_outdated()?)?
+                } else {
+                    Vec::new()
+                };
+                Ok(AdapterResponse::SnapshotSync {
+                    installed: Some(vec![InstalledPackage {
+                        package: PackageRef {
+                            manager: ManagerId::Colima,
+                            name: COLIMA_PACKAGE_LABEL.to_string(),
+                        },
+                        package_identifier: None,
+                        installed_version: version,
+                        pinned: false,
+                        runtime_state: Default::default(),
+                    }]),
+                    outdated: Some(outdated),
+                })
             }
             AdapterRequest::ListInstalled(_) => {
                 let output = self.source.detect()?;
                 let version = parse_colima_version(&output.version_output);
-                let installed = output.executable_path.is_some() || version.is_some();
+                let installed = version.is_some();
                 let packages = if installed {
                     vec![InstalledPackage {
                         package: PackageRef {
                             manager: ManagerId::Colima,
                             name: COLIMA_PACKAGE_LABEL.to_string(),
                         },
+                        package_identifier: None,
                         installed_version: version,
                         pinned: false,
                         runtime_state: Default::default(),
@@ -102,8 +128,17 @@ impl<S: ColimaSource> ManagerAdapter for ColimaAdapter<S> {
                 Ok(AdapterResponse::InstalledPackages(packages))
             }
             AdapterRequest::ListOutdated(_) => {
-                let raw = self.source.list_outdated()?;
-                let packages = parse_colima_outdated(&raw)?;
+                let output = self.source.detect()?;
+                if parse_colima_version(&output.version_output).is_none() {
+                    return Ok(AdapterResponse::OutdatedPackages(Vec::new()));
+                }
+
+                let packages = if parse_homebrew_formula_installed(&self.source.homebrew_info()?)? {
+                    let raw = self.source.list_outdated()?;
+                    parse_colima_outdated(&raw)?
+                } else {
+                    Vec::new()
+                };
                 Ok(AdapterResponse::OutdatedPackages(packages))
             }
             _ => Err(CoreError {
@@ -136,6 +171,21 @@ pub fn colima_list_outdated_request(task_id: Option<TaskId>) -> ProcessSpawnRequ
             "outdated",
             "--json=v2",
             "--formula",
+            COLIMA_BREW_FORMULA,
+        ]),
+        LIST_TIMEOUT,
+    )
+}
+
+pub fn colima_homebrew_info_request(task_id: Option<TaskId>) -> ProcessSpawnRequest {
+    colima_request(
+        task_id,
+        TaskType::Refresh,
+        ManagerAction::ListInstalled,
+        CommandSpec::new(HOMEBREW_COMMAND).args([
+            "info",
+            "--formula",
+            "--json=v2",
             COLIMA_BREW_FORMULA,
         ]),
         LIST_TIMEOUT,
@@ -234,6 +284,7 @@ fn parse_colima_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
                     manager: ManagerId::Colima,
                     name: COLIMA_PACKAGE_LABEL.to_string(),
                 },
+                package_identifier: None,
                 installed_version: parse_brew_installed_version(entry),
                 candidate_version,
                 pinned: entry
@@ -247,6 +298,31 @@ fn parse_colima_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
     }
 
     Ok(packages)
+}
+
+fn parse_homebrew_formula_installed(output: &str) -> AdapterResult<bool> {
+    let trimmed = output.trim();
+    if trimmed.is_empty() {
+        return Ok(false);
+    }
+
+    let json: Value = serde_json::from_str(trimmed)
+        .map_err(|error| parse_error(&format!("invalid brew info JSON: {error}")))?;
+
+    Ok(json
+        .get("formulae")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .any(homebrew_formula_entry_is_installed))
+}
+
+fn homebrew_formula_entry_is_installed(entry: &Value) -> bool {
+    entry.get("name").and_then(Value::as_str) == Some(COLIMA_BREW_FORMULA)
+        && entry
+            .get("installed")
+            .and_then(Value::as_array)
+            .is_some_and(|installed| !installed.is_empty())
 }
 
 fn parse_brew_current_version(entry: &Value) -> Option<String> {
@@ -300,8 +376,8 @@ mod tests {
 
     use crate::adapters::colima::{
         COLIMA_PACKAGE_LABEL, ColimaAdapter, ColimaDetectOutput, ColimaSource,
-        colima_detect_request, colima_list_outdated_request, parse_colima_outdated,
-        parse_colima_version,
+        colima_detect_request, colima_homebrew_info_request, colima_list_outdated_request,
+        parse_colima_outdated, parse_colima_version,
     };
     use crate::adapters::manager::{
         AdapterRequest, AdapterResponse, AdapterResult, DetectRequest, ListInstalledRequest,
@@ -310,6 +386,17 @@ mod tests {
     use crate::models::{ManagerAction, ManagerId, TaskType};
 
     const OUTDATED_FIXTURE: &str = include_str!("../../tests/fixtures/colima/outdated_brew.json");
+    const INSTALLED_FIXTURE: &str = r#"{
+  "formulae": [
+    {
+      "name": "colima",
+      "installed": [
+        { "version": "0.8.0" }
+      ]
+    }
+  ],
+  "casks": []
+}"#;
 
     #[test]
     fn parses_colima_version_from_standard_output() {
@@ -351,12 +438,26 @@ mod tests {
     }
 
     #[test]
+    fn homebrew_info_request_has_expected_shape() {
+        let request = colima_homebrew_info_request(None);
+        assert_eq!(request.manager, ManagerId::Colima);
+        assert_eq!(request.task_type, TaskType::Refresh);
+        assert_eq!(request.action, ManagerAction::ListInstalled);
+        assert_eq!(request.command.program.to_str(), Some("brew"));
+        assert_eq!(
+            request.command.args,
+            vec!["info", "--formula", "--json=v2", "colima"]
+        );
+    }
+
+    #[test]
     fn adapter_list_installed_returns_single_status_package_when_detected() {
         let source = FixtureSource {
             detect_result: Ok(ColimaDetectOutput {
                 executable_path: Some(PathBuf::from("/opt/homebrew/bin/colima")),
                 version_output: "colima version 0.8.1".to_string(),
             }),
+            homebrew_info_result: Ok(INSTALLED_FIXTURE.to_string()),
             list_outdated_result: Ok(String::new()),
         };
         let adapter = ColimaAdapter::new(source);
@@ -381,6 +482,7 @@ mod tests {
                 executable_path: Some(PathBuf::from("/opt/homebrew/bin/colima")),
                 version_output: "colima version 0.8.1".to_string(),
             }),
+            homebrew_info_result: Ok(INSTALLED_FIXTURE.to_string()),
             list_outdated_result: Ok(OUTDATED_FIXTURE.to_string()),
         };
         let adapter = ColimaAdapter::new(source);
@@ -397,12 +499,35 @@ mod tests {
     }
 
     #[test]
+    fn adapter_list_outdated_skips_non_homebrew_installations() {
+        let source = FixtureSource {
+            detect_result: Ok(ColimaDetectOutput {
+                executable_path: Some(PathBuf::from("/usr/local/bin/colima")),
+                version_output: "colima version 0.8.1".to_string(),
+            }),
+            homebrew_info_result: Ok(r#"{"formulae":[],"casks":[]}"#.to_string()),
+            list_outdated_result: Ok(OUTDATED_FIXTURE.to_string()),
+        };
+        let adapter = ColimaAdapter::new(source);
+        let response = adapter
+            .execute(AdapterRequest::ListOutdated(ListOutdatedRequest))
+            .unwrap();
+
+        let AdapterResponse::OutdatedPackages(packages) = response else {
+            panic!("expected outdated packages response");
+        };
+
+        assert!(packages.is_empty());
+    }
+
+    #[test]
     fn adapter_detect_marks_not_installed_when_source_reports_nothing() {
         let source = FixtureSource {
             detect_result: Ok(ColimaDetectOutput {
                 executable_path: None,
                 version_output: String::new(),
             }),
+            homebrew_info_result: Ok(String::new()),
             list_outdated_result: Ok(String::new()),
         };
         let adapter = ColimaAdapter::new(source);
@@ -418,12 +543,17 @@ mod tests {
 
     struct FixtureSource {
         detect_result: AdapterResult<ColimaDetectOutput>,
+        homebrew_info_result: AdapterResult<String>,
         list_outdated_result: AdapterResult<String>,
     }
 
     impl ColimaSource for FixtureSource {
         fn detect(&self) -> AdapterResult<ColimaDetectOutput> {
             self.detect_result.clone()
+        }
+
+        fn homebrew_info(&self) -> AdapterResult<String> {
+            self.homebrew_info_result.clone()
         }
 
         fn list_outdated(&self) -> AdapterResult<String> {

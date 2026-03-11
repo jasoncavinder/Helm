@@ -1138,7 +1138,7 @@ async fn persist_adapter_response(
     tokio::task::spawn_blocking(move || {
         match response {
             AdapterResponse::InstalledPackages(packages) => {
-                package_store.upsert_installed(&packages)
+                package_store.replace_installed_snapshot(manager, &packages)
             }
             AdapterResponse::OutdatedPackages(packages) => {
                 package_store.replace_outdated_snapshot(manager, &packages)
@@ -1148,7 +1148,7 @@ async fn persist_adapter_response(
                 outdated,
             } => {
                 if let Some(packages) = installed.as_ref() {
-                    package_store.upsert_installed(packages)?;
+                    package_store.replace_installed_snapshot(manager, packages)?;
                 }
                 if let Some(packages) = outdated.as_ref() {
                     package_store.replace_outdated_snapshot(manager, packages)?;
@@ -1166,12 +1166,19 @@ async fn persist_adapter_response(
                     mutation.before_version.as_deref(),
                     false,
                 ),
-                ManagerAction::Install => package_store
-                    .apply_install_result(&mutation.package, mutation.after_version.as_deref()),
-                ManagerAction::Uninstall => package_store
-                    .apply_uninstall_result(&mutation.package, mutation.before_version.as_deref()),
+                ManagerAction::Install => package_store.apply_install_result(
+                    &mutation.package,
+                    mutation.package_identifier.as_deref(),
+                    mutation.after_version.as_deref(),
+                ),
+                ManagerAction::Uninstall => package_store.apply_uninstall_result(
+                    &mutation.package,
+                    mutation.package_identifier.as_deref(),
+                    mutation.before_version.as_deref(),
+                ),
                 ManagerAction::Upgrade => package_store.apply_upgrade_result(
                     &mutation.package,
+                    mutation.package_identifier.as_deref(),
                     mutation.before_version.as_deref(),
                     mutation.after_version.as_deref(),
                 ),
@@ -2551,8 +2558,8 @@ mod tests {
             update,
             SelectedExecutablePathUpdate::Set("/Users/test/.cargo/bin/rustup".to_string())
         );
-        assert_eq!(instances[1].is_active, true);
-        assert_eq!(instances[0].is_active, false);
+        assert!(instances[1].is_active);
+        assert!(!instances[0].is_active);
     }
 
     #[test]
@@ -2617,6 +2624,7 @@ mod tests {
                 manager: ManagerId::Asdf,
                 name: "__self__:removeShellSetup".to_string(),
             },
+            package_identifier: None,
             action: ManagerAction::Uninstall,
             before_version: None,
             after_version: None,
@@ -2666,6 +2674,7 @@ mod tests {
                         true,
                     ),
                 },
+                package_identifier: None,
                 action: ManagerAction::Uninstall,
                 before_version: None,
                 after_version: None,
