@@ -26,7 +26,7 @@ const DOCKER_DESKTOP_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
     capabilities: DOCKER_DESKTOP_CAPABILITIES,
 };
 
-const DOCKER_COMMAND: &str = "docker";
+const DEFAULTS_COMMAND: &str = "/usr/bin/defaults";
 const HOMEBREW_COMMAND: &str = "brew";
 const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
 const LIST_TIMEOUT: Duration = Duration::from_secs(60);
@@ -41,6 +41,7 @@ pub struct DockerDesktopDetectOutput {
 
 pub trait DockerDesktopSource: Send + Sync {
     fn detect(&self) -> AdapterResult<DockerDesktopDetectOutput>;
+    fn homebrew_info(&self) -> AdapterResult<String>;
     fn list_outdated(&self) -> AdapterResult<String>;
 }
 
@@ -70,8 +71,7 @@ impl<S: DockerDesktopSource> ManagerAdapter for DockerDesktopAdapter<S> {
             AdapterRequest::Detect(_) => {
                 let output = self.source.detect()?;
                 let version = parse_docker_desktop_version(&output.version_output);
-                let has_executable = output.executable_path.is_some();
-                let installed = has_executable || version.is_some();
+                let installed = version.is_some();
                 Ok(AdapterResponse::Detection(DetectionInfo {
                     installed,
                     executable_path: output.executable_path,
@@ -79,21 +79,48 @@ impl<S: DockerDesktopSource> ManagerAdapter for DockerDesktopAdapter<S> {
                 }))
             }
             AdapterRequest::Refresh(_) => {
-                let _ = self.source.detect()?;
-                Ok(AdapterResponse::Refreshed)
+                let output = self.source.detect()?;
+                let version = parse_docker_desktop_version(&output.version_output);
+                if version.is_none() {
+                    return Ok(AdapterResponse::SnapshotSync {
+                        installed: Some(Vec::new()),
+                        outdated: Some(Vec::new()),
+                    });
+                }
+
+                let outdated = if parse_homebrew_cask_installed(&self.source.homebrew_info()?)? {
+                    parse_docker_desktop_outdated(&self.source.list_outdated()?)?
+                } else {
+                    Vec::new()
+                };
+                Ok(AdapterResponse::SnapshotSync {
+                    installed: Some(vec![InstalledPackage {
+                        package: PackageRef {
+                            manager: ManagerId::DockerDesktop,
+                            name: DOCKER_DESKTOP_PACKAGE_LABEL.to_string(),
+                        },
+                        package_identifier: None,
+                        installed_version: version,
+                        pinned: false,
+                        runtime_state: Default::default(),
+                    }]),
+                    outdated: Some(outdated),
+                })
             }
             AdapterRequest::ListInstalled(_) => {
                 let output = self.source.detect()?;
                 let version = parse_docker_desktop_version(&output.version_output);
-                let installed = output.executable_path.is_some() || version.is_some();
+                let installed = version.is_some();
                 let packages = if installed {
                     vec![InstalledPackage {
                         package: PackageRef {
                             manager: ManagerId::DockerDesktop,
                             name: DOCKER_DESKTOP_PACKAGE_LABEL.to_string(),
                         },
+                        package_identifier: None,
                         installed_version: version,
                         pinned: false,
+                        runtime_state: Default::default(),
                     }]
                 } else {
                     Vec::new()
@@ -101,8 +128,17 @@ impl<S: DockerDesktopSource> ManagerAdapter for DockerDesktopAdapter<S> {
                 Ok(AdapterResponse::InstalledPackages(packages))
             }
             AdapterRequest::ListOutdated(_) => {
-                let raw = self.source.list_outdated()?;
-                let packages = parse_docker_desktop_outdated(&raw)?;
+                let output = self.source.detect()?;
+                if parse_docker_desktop_version(&output.version_output).is_none() {
+                    return Ok(AdapterResponse::OutdatedPackages(Vec::new()));
+                }
+
+                let packages = if parse_homebrew_cask_installed(&self.source.homebrew_info()?)? {
+                    let raw = self.source.list_outdated()?;
+                    parse_docker_desktop_outdated(&raw)?
+                } else {
+                    Vec::new()
+                };
                 Ok(AdapterResponse::OutdatedPackages(packages))
             }
             _ => Err(CoreError {
@@ -118,11 +154,22 @@ impl<S: DockerDesktopSource> ManagerAdapter for DockerDesktopAdapter<S> {
 }
 
 pub fn docker_desktop_detect_request(task_id: Option<TaskId>) -> ProcessSpawnRequest {
+    docker_desktop_detect_request_for_plist(task_id, "/Applications/Docker.app/Contents/Info.plist")
+}
+
+pub fn docker_desktop_detect_request_for_plist(
+    task_id: Option<TaskId>,
+    info_plist_path: &str,
+) -> ProcessSpawnRequest {
     docker_desktop_request(
         task_id,
         TaskType::Detection,
         ManagerAction::Detect,
-        CommandSpec::new(DOCKER_COMMAND).arg("--version"),
+        CommandSpec::new(DEFAULTS_COMMAND).args([
+            "read",
+            info_plist_path,
+            "CFBundleShortVersionString",
+        ]),
         DETECT_TIMEOUT,
     )
 }
@@ -136,6 +183,21 @@ pub fn docker_desktop_list_outdated_request(task_id: Option<TaskId>) -> ProcessS
             "outdated",
             "--json=v2",
             "--cask",
+            DOCKER_DESKTOP_BREW_CASK,
+        ]),
+        LIST_TIMEOUT,
+    )
+}
+
+pub fn docker_desktop_homebrew_info_request(task_id: Option<TaskId>) -> ProcessSpawnRequest {
+    docker_desktop_request(
+        task_id,
+        TaskType::Refresh,
+        ManagerAction::ListInstalled,
+        CommandSpec::new(HOMEBREW_COMMAND).args([
+            "info",
+            "--cask",
+            "--json=v2",
             DOCKER_DESKTOP_BREW_CASK,
         ]),
         LIST_TIMEOUT,
@@ -235,15 +297,42 @@ fn parse_docker_desktop_outdated(output: &str) -> AdapterResult<Vec<OutdatedPack
                     manager: ManagerId::DockerDesktop,
                     name: DOCKER_DESKTOP_PACKAGE_LABEL.to_string(),
                 },
+                package_identifier: None,
                 installed_version: parse_brew_installed_version(entry),
                 candidate_version,
                 pinned: false,
                 restart_required: false,
+                runtime_state: Default::default(),
             });
         }
     }
 
     Ok(packages)
+}
+
+fn parse_homebrew_cask_installed(output: &str) -> AdapterResult<bool> {
+    let trimmed = output.trim();
+    if trimmed.is_empty() {
+        return Ok(false);
+    }
+
+    let json: Value = serde_json::from_str(trimmed)
+        .map_err(|error| parse_error(&format!("invalid brew info JSON: {error}")))?;
+
+    Ok(json
+        .get("casks")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .any(homebrew_cask_entry_is_installed))
+}
+
+fn homebrew_cask_entry_is_installed(entry: &Value) -> bool {
+    entry.get("name").and_then(Value::as_str) == Some(DOCKER_DESKTOP_BREW_CASK)
+        && entry
+            .get("installed")
+            .and_then(Value::as_array)
+            .is_some_and(|installed| !installed.is_empty())
 }
 
 fn parse_brew_current_version(entry: &Value) -> Option<String> {
@@ -297,8 +386,9 @@ mod tests {
 
     use crate::adapters::docker_desktop::{
         DOCKER_DESKTOP_PACKAGE_LABEL, DockerDesktopAdapter, DockerDesktopDetectOutput,
-        DockerDesktopSource, docker_desktop_detect_request, docker_desktop_list_outdated_request,
-        parse_docker_desktop_outdated, parse_docker_desktop_version,
+        DockerDesktopSource, docker_desktop_detect_request, docker_desktop_homebrew_info_request,
+        docker_desktop_list_outdated_request, parse_docker_desktop_outdated,
+        parse_docker_desktop_version,
     };
     use crate::adapters::manager::{
         AdapterRequest, AdapterResponse, AdapterResult, DetectRequest, ListInstalledRequest,
@@ -308,6 +398,17 @@ mod tests {
 
     const OUTDATED_FIXTURE: &str =
         include_str!("../../tests/fixtures/docker_desktop/outdated_brew.json");
+    const INSTALLED_CASK_FIXTURE: &str = r#"{
+  "formulae": [],
+  "casks": [
+    {
+      "name": "docker-desktop",
+      "installed": [
+        { "version": "4.39.0" }
+      ]
+    }
+  ]
+}"#;
 
     #[test]
     fn parses_docker_desktop_version_from_standard_output() {
@@ -337,8 +438,15 @@ mod tests {
         assert_eq!(request.manager, ManagerId::DockerDesktop);
         assert_eq!(request.task_type, TaskType::Detection);
         assert_eq!(request.action, ManagerAction::Detect);
-        assert_eq!(request.command.program.to_str(), Some("docker"));
-        assert_eq!(request.command.args, vec!["--version"]);
+        assert_eq!(request.command.program.to_str(), Some("/usr/bin/defaults"));
+        assert_eq!(
+            request.command.args,
+            vec![
+                "read",
+                "/Applications/Docker.app/Contents/Info.plist",
+                "CFBundleShortVersionString"
+            ]
+        );
     }
 
     #[test]
@@ -355,12 +463,26 @@ mod tests {
     }
 
     #[test]
+    fn homebrew_info_request_has_expected_shape() {
+        let request = docker_desktop_homebrew_info_request(None);
+        assert_eq!(request.manager, ManagerId::DockerDesktop);
+        assert_eq!(request.task_type, TaskType::Refresh);
+        assert_eq!(request.action, ManagerAction::ListInstalled);
+        assert_eq!(request.command.program.to_str(), Some("brew"));
+        assert_eq!(
+            request.command.args,
+            vec!["info", "--cask", "--json=v2", "docker-desktop"]
+        );
+    }
+
+    #[test]
     fn adapter_list_installed_returns_single_status_package_when_detected() {
         let source = FixtureSource {
             detect_result: Ok(DockerDesktopDetectOutput {
                 executable_path: Some(PathBuf::from("/usr/local/bin/docker")),
                 version_output: "Docker version 27.5.1, build 9f9e405".to_string(),
             }),
+            homebrew_info_result: Ok(INSTALLED_CASK_FIXTURE.to_string()),
             list_outdated_result: Ok(String::new()),
         };
         let adapter = DockerDesktopAdapter::new(source);
@@ -385,6 +507,7 @@ mod tests {
                 executable_path: Some(PathBuf::from("/usr/local/bin/docker")),
                 version_output: "Docker version 27.5.1".to_string(),
             }),
+            homebrew_info_result: Ok(INSTALLED_CASK_FIXTURE.to_string()),
             list_outdated_result: Ok(OUTDATED_FIXTURE.to_string()),
         };
         let adapter = DockerDesktopAdapter::new(source);
@@ -401,12 +524,35 @@ mod tests {
     }
 
     #[test]
+    fn adapter_list_outdated_skips_non_homebrew_installations() {
+        let source = FixtureSource {
+            detect_result: Ok(DockerDesktopDetectOutput {
+                executable_path: Some(PathBuf::from("/Applications/Docker.app")),
+                version_output: "4.39.0".to_string(),
+            }),
+            homebrew_info_result: Ok(r#"{"formulae":[],"casks":[]}"#.to_string()),
+            list_outdated_result: Ok(OUTDATED_FIXTURE.to_string()),
+        };
+        let adapter = DockerDesktopAdapter::new(source);
+        let response = adapter
+            .execute(AdapterRequest::ListOutdated(ListOutdatedRequest))
+            .unwrap();
+
+        let AdapterResponse::OutdatedPackages(packages) = response else {
+            panic!("expected outdated packages response");
+        };
+
+        assert!(packages.is_empty());
+    }
+
+    #[test]
     fn adapter_detect_marks_not_installed_when_source_reports_nothing() {
         let source = FixtureSource {
             detect_result: Ok(DockerDesktopDetectOutput {
                 executable_path: None,
                 version_output: String::new(),
             }),
+            homebrew_info_result: Ok(String::new()),
             list_outdated_result: Ok(String::new()),
         };
         let adapter = DockerDesktopAdapter::new(source);
@@ -422,12 +568,17 @@ mod tests {
 
     struct FixtureSource {
         detect_result: AdapterResult<DockerDesktopDetectOutput>,
+        homebrew_info_result: AdapterResult<String>,
         list_outdated_result: AdapterResult<String>,
     }
 
     impl DockerDesktopSource for FixtureSource {
         fn detect(&self) -> AdapterResult<DockerDesktopDetectOutput> {
             self.detect_result.clone()
+        }
+
+        fn homebrew_info(&self) -> AdapterResult<String> {
+            self.homebrew_info_result.clone()
         }
 
         fn list_outdated(&self) -> AdapterResult<String> {

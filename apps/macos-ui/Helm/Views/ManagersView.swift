@@ -73,6 +73,14 @@ struct ManagersSectionView: View {
                                         context.managerFilterId = manager.id
                                         context.selectedSection = .packages
                                     },
+                                    onDetectManager: {
+                                        context.selectedManagerId = manager.id
+                                        context.selectedPackageId = nil
+                                        context.selectedTaskId = nil
+                                        context.selectedUpgradePlanStepId = nil
+                                        context.selectedSection = .managers
+                                        core.triggerDetection(for: manager.id)
+                                    },
                                     onInstallManager: {
                                         context.selectedManagerId = manager.id
                                         context.selectedPackageId = nil
@@ -225,6 +233,7 @@ private struct ManagerSectionRow: View {
     let isSelected: Bool
     let onSelect: () -> Void
     let onViewPackages: () -> Void
+    let onDetectManager: () -> Void
     let onInstallManager: () -> Void
     let onToggleEnabled: (Bool) -> Void
 
@@ -261,10 +270,6 @@ private struct ManagerSectionRow: View {
 
     private var packageActionEnabled: Bool {
         packageCount > 0 && enabled && !isManagerUninstalling
-    }
-
-    private var installActionEnabled: Bool {
-        manager.canInstall && !isManagerUninstalling
     }
 
     private var metadataMismatchIssueSummary: String? {
@@ -363,9 +368,17 @@ private struct ManagerSectionRow: View {
                     managerCardActionButton(
                         symbol: "arrow.down.circle",
                         tooltip: L10n.Common.install.localized,
-                        enabled: installActionEnabled
+                        enabled: !isManagerUninstalling
                     ) {
                         onInstallManager()
+                    }
+                } else {
+                    managerCardActionButton(
+                        symbol: "scope",
+                        tooltip: L10n.Common.detect.localized,
+                        enabled: !isManagerUninstalling
+                    ) {
+                        onDetectManager()
                     }
                 }
             }

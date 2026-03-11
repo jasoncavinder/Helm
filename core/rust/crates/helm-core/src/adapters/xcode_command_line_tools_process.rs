@@ -41,7 +41,7 @@ impl XcodeCommandLineToolsSource for ProcessXcodeCommandLineToolsSource {
 
     fn list_outdated(&self) -> AdapterResult<String> {
         let request = xcode_command_line_tools_list_outdated_request(None);
-        Ok(run_and_collect_stdout(self.executor.as_ref(), request).unwrap_or_default())
+        run_and_collect_stdout(self.executor.as_ref(), request)
     }
 
     fn upgrade(&self, label: &str) -> AdapterResult<String> {

@@ -2,6 +2,8 @@
 # Leading slash scopes this to the repo root; prevents accidentally matching
 # any other rust/target that may appear elsewhere in the tree.
 /core/rust/target/
+.cargo-target/
+target/
 
 # ─── Xcode / Swift ────────────────────────────────────────────────────────────
 # Custom build root used by the CI pipeline and local builds.

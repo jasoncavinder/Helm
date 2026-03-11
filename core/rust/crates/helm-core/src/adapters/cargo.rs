@@ -78,8 +78,7 @@ impl<S: CargoSource> ManagerAdapter for CargoAdapter<S> {
             AdapterRequest::Detect(_) => {
                 let output = self.source.detect()?;
                 let version = parse_cargo_version(&output.version_output);
-                let has_executable = output.executable_path.is_some();
-                let installed = has_executable || version.is_some();
+                let installed = version.is_some();
                 Ok(AdapterResponse::Detection(DetectionInfo {
                     installed,
                     executable_path: output.executable_path,
@@ -87,8 +86,21 @@ impl<S: CargoSource> ManagerAdapter for CargoAdapter<S> {
                 }))
             }
             AdapterRequest::Refresh(_) => {
-                let _ = self.source.detect()?;
-                Ok(AdapterResponse::Refreshed)
+                let output = self.source.detect()?;
+                let version = parse_cargo_version(&output.version_output);
+                if version.is_none() {
+                    return Ok(AdapterResponse::SnapshotSync {
+                        installed: Some(Vec::new()),
+                        outdated: Some(Vec::new()),
+                    });
+                }
+
+                let installed = parse_cargo_installed(&self.source.list_installed()?)?;
+                let outdated = parse_cargo_outdated(&self.source.list_outdated()?)?;
+                Ok(AdapterResponse::SnapshotSync {
+                    installed: Some(installed),
+                    outdated: Some(outdated),
+                })
             }
             AdapterRequest::ListInstalled(_) => {
                 let raw = self.source.list_installed()?;
@@ -111,15 +123,23 @@ impl<S: CargoSource> ManagerAdapter for CargoAdapter<S> {
                     ManagerAction::Install,
                     install_request.package.name.as_str(),
                 )?;
+                let before_version =
+                    resolve_installed_cargo_version(&self.source, &install_request.package.name)?;
                 let _ = self.source.install(
                     &install_request.package.name,
                     install_request.version.as_deref(),
                 )?;
+                let after_version = install_request.version.clone().or_else(|| {
+                    resolve_installed_cargo_version(&self.source, &install_request.package.name)
+                        .ok()
+                        .flatten()
+                });
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: install_request.package,
+                    package_identifier: None,
                     action: ManagerAction::Install,
-                    before_version: None,
-                    after_version: install_request.version,
+                    before_version,
+                    after_version,
                 }))
             }
             AdapterRequest::Uninstall(uninstall_request) => {
@@ -128,11 +148,14 @@ impl<S: CargoSource> ManagerAdapter for CargoAdapter<S> {
                     ManagerAction::Uninstall,
                     uninstall_request.package.name.as_str(),
                 )?;
+                let before_version =
+                    require_installed_cargo_version(&self.source, &uninstall_request.package.name)?;
                 let _ = self.source.uninstall(&uninstall_request.package.name)?;
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: uninstall_request.package,
+                    package_identifier: None,
                     action: ManagerAction::Uninstall,
-                    before_version: None,
+                    before_version: Some(before_version),
                     after_version: None,
                 }))
             }
@@ -152,6 +175,10 @@ impl<S: CargoSource> ManagerAdapter for CargoAdapter<S> {
                     )?;
                     Some(package.name.as_str())
                 };
+                let targeted_outdated = target_name
+                    .map(|name| find_cargo_outdated_entry(&self.source, name))
+                    .transpose()?
+                    .flatten();
                 let _ = self.source.upgrade(target_name)?;
                 if let Some(name) = target_name {
                     ensure_cargo_no_longer_outdated(&self.source, name)?;
@@ -159,9 +186,12 @@ impl<S: CargoSource> ManagerAdapter for CargoAdapter<S> {
 
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
+                    package_identifier: None,
                     action: ManagerAction::Upgrade,
-                    before_version: None,
-                    after_version: None,
+                    before_version: targeted_outdated
+                        .as_ref()
+                        .and_then(|entry| entry.installed_version.clone()),
+                    after_version: targeted_outdated.map(|entry| entry.candidate_version),
                 }))
             }
             _ => Err(CoreError {
@@ -325,8 +355,10 @@ pub(crate) fn parse_cargo_installed(output: &str) -> AdapterResult<Vec<Installed
                 manager: ManagerId::Cargo,
                 name: crate_name.to_string(),
             },
+            package_identifier: None,
             installed_version: Some(version.to_string()),
             pinned: false,
+            runtime_state: Default::default(),
         });
     }
 
@@ -421,6 +453,7 @@ pub(crate) fn parse_cargo_search(
                     manager: ManagerId::Cargo,
                     name: name.to_string(),
                 },
+                package_identifier: None,
                 version: if version.is_empty() {
                     None
                 } else {
@@ -460,6 +493,42 @@ fn ensure_cargo_no_longer_outdated<S: CargoSource>(
     Ok(())
 }
 
+fn resolve_installed_cargo_version<S: CargoSource>(
+    source: &S,
+    package_name: &str,
+) -> AdapterResult<Option<String>> {
+    let raw = source.list_installed()?;
+    let installed = parse_cargo_installed(&raw)?;
+    Ok(installed
+        .into_iter()
+        .find(|item| item.package.name == package_name)
+        .and_then(|item| item.installed_version))
+}
+
+fn require_installed_cargo_version<S: CargoSource>(
+    source: &S,
+    package_name: &str,
+) -> AdapterResult<String> {
+    resolve_installed_cargo_version(source, package_name)?.ok_or_else(|| CoreError {
+        manager: Some(ManagerId::Cargo),
+        task: Some(TaskType::Uninstall),
+        action: Some(ManagerAction::Uninstall),
+        kind: CoreErrorKind::NotInstalled,
+        message: format!("cargo package '{package_name}' is not installed"),
+    })
+}
+
+fn find_cargo_outdated_entry<S: CargoSource>(
+    source: &S,
+    package_name: &str,
+) -> AdapterResult<Option<OutdatedPackage>> {
+    let raw = source.list_outdated()?;
+    let outdated = parse_cargo_outdated(&raw)?;
+    Ok(outdated
+        .into_iter()
+        .find(|item| item.package.name == package_name))
+}
+
 pub(crate) fn parse_cargo_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
     if output.trim().is_empty() {
         return Ok(Vec::new());
@@ -485,10 +554,12 @@ pub(crate) fn parse_cargo_outdated(output: &str) -> AdapterResult<Vec<OutdatedPa
                 manager: ManagerId::Cargo,
                 name: name.to_string(),
             },
+            package_identifier: None,
             installed_version: Some(installed.to_string()),
             candidate_version: candidate.to_string(),
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         });
     }
 
@@ -708,6 +779,7 @@ mod tests {
                     manager: ManagerId::Cargo,
                     name: "ripgrep".to_string(),
                 },
+                target_name: None,
                 version: Some("14.1.1".to_string()),
             }))
             .unwrap()

@@ -3,19 +3,63 @@ import os.log
 
 private let taskSyncLogger = Logger(subsystem: "com.jasoncavinder.Helm", category: "core.tasks")
 
+struct PackageDescriptionLookupCandidate {
+    let managerId: String
+    let packageName: String
+    let version: String?
+    let lookupKey: String
+}
+
 extension HelmCore {
     static let managerActionTaskMissingGraceSeconds: TimeInterval = 12
+    static let packageDescriptionLookupTaskStaleSeconds: TimeInterval = 20
     static let localManagerActionTaskIdPrefix = "local-manager-action-"
     static let localManagerActionTaskRetentionSeconds: TimeInterval = 180
     static let managerVerificationTimeoutSeconds: TimeInterval = 120
 
     var allKnownPackages: [PackageItem] {
+        if let cached = cachedAllKnownPackagesSorted {
+            return cached
+        }
+
+        let sorted = sortedPackagesByDisplayName(allKnownPackagesUnsorted)
+        cachedAllKnownPackagesSorted = sorted
+        if cachedKnownPackageById.isEmpty {
+            cachedKnownPackageById = Dictionary(uniqueKeysWithValues: sorted.map { ($0.id, $0) })
+        }
+        return sorted
+    }
+
+    private var allKnownPackagesUnsorted: [PackageItem] {
+        if let cached = cachedAllKnownPackagesUnsorted {
+            return cached
+        }
         let enabledOutdated = outdatedPackages.filter { isManagerEnabled($0.managerId) }
-        let outdatedIds = Set(enabledOutdated.map(\.id))
+        let outdatedStableIds = Set(
+            enabledOutdated.map { package in
+                packageDescriptionLookupKey(
+                    managerId: package.managerId,
+                    packageName: package.name,
+                    version: nil
+                )
+            }
+        )
         let installedOnly = installedPackages.filter {
-            isManagerEnabled($0.managerId) && !outdatedIds.contains($0.id)
+            isManagerEnabled($0.managerId)
+                && !outdatedStableIds.contains(
+                    packageDescriptionLookupKey(
+                        managerId: $0.managerId,
+                        packageName: $0.name,
+                        version: nil
+                    )
+                )
         }
         var combined = enabledOutdated + installedOnly
+        let shadowedAsdfStableKeys = Set(
+            combined
+                .filter { $0.managerId == "asdf" }
+                .map { packageStableLookupKey(managerId: $0.managerId, packageName: $0.name) }
+        )
 
         let cachedById = cachedAvailablePackages
             .filter { isManagerEnabled($0.managerId) }
@@ -27,20 +71,101 @@ extension HelmCore {
                 partial[package.id] = package
             }
         }
+        let cachedAsdfByStableKey = cachedById.values.reduce(into: [String: PackageItem]()) { partial, package in
+            guard package.managerId == "asdf" else { return }
+            let stableKey = packageStableLookupKey(managerId: package.managerId, packageName: package.name)
+            if var existing = partial[stableKey] {
+                mergeSummary(into: &existing, from: package.summary)
+                partial[stableKey] = existing
+            } else {
+                partial[stableKey] = package
+            }
+        }
 
         for index in combined.indices {
             if let cached = cachedById[combined[index].id] {
+                mergeSummary(into: &combined[index], from: cached.summary)
+            } else if combined[index].managerId == "asdf",
+                      let cached = cachedAsdfByStableKey[
+                        packageStableLookupKey(
+                            managerId: combined[index].managerId,
+                            packageName: combined[index].name
+                        )
+                      ] {
                 mergeSummary(into: &combined[index], from: cached.summary)
             }
         }
 
         let existing = Set(combined.map(\.id))
-        combined.append(contentsOf: cachedById.values.filter { !existing.contains($0.id) })
+        combined.append(contentsOf: cachedById.values.filter { package in
+            guard !existing.contains(package.id) else { return false }
+            guard package.managerId == "asdf" else { return true }
+            return !shadowedAsdfStableKeys.contains(
+                packageStableLookupKey(managerId: package.managerId, packageName: package.name)
+            )
+        })
 
+        cachedAllKnownPackagesUnsorted = combined
+        cachedKnownPackageById = Dictionary(uniqueKeysWithValues: combined.map { ($0.id, $0) })
         return combined
-            .sorted { lhs, rhs in
-                lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+    }
+
+    func knownPackage(withId packageId: String) -> PackageItem? {
+        if let package = cachedKnownPackageById[packageId] {
+            return package
+        }
+        _ = allKnownPackagesUnsorted
+        if let package = cachedKnownPackageById[packageId] {
+            return package
+        }
+        return searchResults.first(where: { $0.id == packageId })
+    }
+
+    func packageFamilyCandidates(for package: PackageItem) -> [PackageItem] {
+        let normalizedIdentityKey = package.normalizedIdentityKey
+        guard !normalizedIdentityKey.isEmpty else { return [package] }
+
+        var candidatesById: [String: PackageItem] = [:]
+        for candidate in packageCandidateSources() {
+            guard candidate.normalizedIdentityKey == normalizedIdentityKey else { continue }
+            if var existing = candidatesById[candidate.id] {
+                mergeSummary(into: &existing, from: candidate.summary)
+                if existing.latestVersion == nil {
+                    existing.latestVersion = candidate.latestVersion
+                }
+                existing.restartRequired = existing.restartRequired || candidate.restartRequired
+                candidatesById[candidate.id] = existing
+            } else {
+                candidatesById[candidate.id] = candidate
             }
+        }
+
+        if candidatesById[package.id] == nil {
+            candidatesById[package.id] = package
+        }
+
+        return sortedPackagesByDisplayName(Array(candidatesById.values))
+    }
+
+    private func sortedPackagesByDisplayName(_ packages: [PackageItem]) -> [PackageItem] {
+        let keyed = packages.enumerated().map { index, package in
+            (
+                index: index,
+                package: package,
+                sortKey: package.displayName.folding(
+                    options: [.caseInsensitive, .diacriticInsensitive],
+                    locale: .current
+                )
+            )
+        }
+        return keyed
+            .sorted { lhs, rhs in
+                if lhs.sortKey == rhs.sortKey {
+                    return lhs.index < rhs.index
+                }
+                return lhs.sortKey < rhs.sortKey
+            }
+            .map(\.package)
     }
 
     var visibleManagers: [ManagerInfo] {
@@ -59,22 +184,27 @@ extension HelmCore {
         overviewState.aggregateHealth
     }
 
-    /// Returns a filtered package list grouped by package name.
+    /// Returns a filtered package list grouped by package identity.
+    /// Identity is package name plus optional variant qualifier derived from version selector.
     /// Merges local matches with remote search results, then applies manager/status filters.
     func filteredPackages(
         query: String,
         managerId: String?,
         statusFilter: PackageStatus?,
-        pinnedOnly: Bool = false
+        pinnedOnly: Bool = false,
+        knownPackages: [PackageItem]? = nil
     ) -> [ConsolidatedPackageItem] {
-        consolidatePackages(
+        let sourcePackages = knownPackages ?? allKnownPackages
+        let consolidated = consolidatePackages(
             filteredPackagesRaw(
                 query: query,
                 managerId: managerId,
                 statusFilter: statusFilter,
-                pinnedOnly: pinnedOnly
+                pinnedOnly: pinnedOnly,
+                knownPackages: sourcePackages
             )
         )
+        return sortConsolidatedPackagesForQuery(consolidated, query: query)
     }
 
     /// Returns manager-scoped package rows used as canonical action targets.
@@ -82,22 +212,22 @@ extension HelmCore {
         query: String,
         managerId: String?,
         statusFilter: PackageStatus?,
-        pinnedOnly: Bool
+        pinnedOnly: Bool,
+        knownPackages: [PackageItem]? = nil
     ) -> [PackageItem] {
-        var base = allKnownPackages
+        var base = knownPackages ?? allKnownPackages
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
         if !trimmed.isEmpty {
             let localMatches = base.filter {
                 packageManagerParticipatesInSearch($0.managerId)
-                    && ($0.name.lowercased().contains(trimmed)
-                    || $0.manager.lowercased().contains(trimmed)
-                    || ($0.summary?.lowercased().contains(trimmed) ?? false))
+                    && packageMatchesQuery($0, queryToken: trimmed)
             }
             var mergedById = Dictionary(uniqueKeysWithValues: localMatches.map { ($0.id, $0) })
             for remote in searchResults
             where isManagerEnabled(remote.managerId)
-                && packageManagerParticipatesInSearch(remote.managerId) {
+                && packageManagerParticipatesInSearch(remote.managerId)
+                && packageMatchesQuery(remote, queryToken: trimmed) {
                 if var existing = mergedById[remote.id] {
                     mergeSummary(into: &existing, from: remote.summary)
                     if existing.latestVersion == nil {
@@ -109,9 +239,7 @@ extension HelmCore {
                 }
             }
 
-            base = mergedById.values.sorted { lhs, rhs in
-                lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
-            }
+            base = sortedPackagesByDisplayName(Array(mergedById.values))
         }
 
         if let managerId {
@@ -141,7 +269,24 @@ extension HelmCore {
     }
 
     private func packageManagerParticipatesInSearch(_ managerId: String) -> Bool {
-        managerId != "rustup"
+        managerStatuses[managerId]?.supportsRemoteSearch ?? true
+    }
+
+    private func packageMatchesQuery(_ package: PackageItem, queryToken: String) -> Bool {
+        guard !queryToken.isEmpty else { return true }
+        let normalizedQueryToken = PackageIdentity.normalizedExactQueryToken(queryToken)
+        if package.normalizedIdentityKey.contains(queryToken)
+            || (
+                !normalizedQueryToken.isEmpty
+                    && normalizedQueryToken != queryToken
+                    && package.normalizedIdentityKey.contains(normalizedQueryToken)
+            ) {
+            return true
+        }
+        if package.manager.lowercased().contains(queryToken) {
+            return true
+        }
+        return package.summary?.lowercased().contains(queryToken) ?? false
     }
 
     func outdatedCount(forManagerId managerId: String) -> Int {
@@ -207,11 +352,58 @@ extension HelmCore {
             && !isManagerUninstalling(package.managerId)
     }
 
-    func canInstallPackage(_ package: PackageItem) -> Bool {
-        package.status == .available
-            && (managerStatuses[package.managerId]?.supportsPackageInstall ?? false)
-            && isManagerEnabled(package.managerId)
-            && !isManagerUninstalling(package.managerId)
+    func canInstallPackage(_ package: PackageItem, includeAlternates: Bool = true) -> Bool {
+        if canInstallPackageDirect(package) {
+            return true
+        }
+        guard includeAlternates, package.status == .available else {
+            return false
+        }
+        return installCandidates(for: package).contains { canInstallPackage($0, includeAlternates: false) }
+    }
+
+    func installActionInFlightPackageNames(knownPackages: [PackageItem]? = nil) -> Set<String> {
+        let packageNameById = Dictionary(
+            uniqueKeysWithValues: (knownPackages ?? allKnownPackages).map {
+                (
+                    $0.id,
+                    PackageActionTracking.normalizedPackageIdentityKey(
+                        name: $0.name,
+                        version: $0.version
+                    )
+                )
+            }
+        )
+        return PackageActionTracking.inFlightInstallNames(
+            installActionPackageIds: installActionPackageIds,
+            packageNameById: packageNameById,
+            trackedNamesByPackageId: installActionNormalizedNameByPackageId
+        )
+    }
+
+    func isInstallActionInFlight(for package: PackageItem, knownPackages: [PackageItem]? = nil) -> Bool {
+        let normalizedPackageIdentity = PackageActionTracking.normalizedPackageIdentityKey(
+            name: package.name,
+            version: package.version
+        )
+        guard !normalizedPackageIdentity.isEmpty else {
+            return installActionPackageIds.contains(package.id)
+        }
+        return installActionInFlightPackageNames(knownPackages: knownPackages)
+            .contains(normalizedPackageIdentity)
+    }
+
+    func installCandidates(for package: PackageItem) -> [PackageItem] {
+        guard package.status == .available else { return [] }
+        return packageFamilyCandidates(for: package)
+            .filter { $0.status == .available }
+            .sorted(by: installCandidateOrdering)
+    }
+
+    func preferredInstallCandidate(for package: PackageItem) -> PackageItem? {
+        let candidates = installCandidates(for: package)
+        return candidates.first(where: { canInstallPackage($0, includeAlternates: false) })
+            ?? candidates.first
     }
 
     func canUninstallPackage(_ package: PackageItem) -> Bool {
@@ -223,7 +415,6 @@ extension HelmCore {
 
     func canPinPackage(_ package: PackageItem) -> Bool {
         package.status != .available
-            && package.managerId == "homebrew_formula"
             && isManagerEnabled(package.managerId)
             && !isManagerUninstalling(package.managerId)
     }
@@ -258,6 +449,98 @@ extension HelmCore {
             return status.detected
         }
         return detectedManagers.contains(managerId)
+    }
+
+    func packageDescriptionLookupKey(
+        managerId: String,
+        packageName: String,
+        version: String?
+    ) -> String {
+        let normalizedManagerId = managerId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedPackageName = packageName
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let normalizedVersion = normalizedDescriptionVersionToken(version) ?? ""
+        return "\(normalizedManagerId)|\(normalizedPackageName)|\(normalizedVersion)"
+    }
+
+    func packageDescriptionSummary(for package: PackageItem) -> String? {
+        for candidate in packageDescriptionLookupCandidates(for: package) {
+            if let summary = packageDescriptionSummaryByKey[candidate.lookupKey] {
+                let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    return trimmed
+                }
+            }
+            if candidate.version != nil {
+                let unversionedKey = packageDescriptionLookupKey(
+                    managerId: candidate.managerId,
+                    packageName: candidate.packageName,
+                    version: nil
+                )
+                if let summary = packageDescriptionSummaryByKey[unversionedKey] {
+                    let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        return trimmed
+                    }
+                }
+            }
+        }
+        let fallback = package.summary?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if fallback?.isEmpty == false {
+            return fallback
+        }
+        return nil
+    }
+
+    func hasPackageDescriptionSummary(packageId: String) -> Bool {
+        let package = descriptionLookupPackageById[packageId]
+            ?? knownPackage(withId: packageId)
+        guard let package else { return false }
+        return packageDescriptionSummary(for: package) != nil
+    }
+
+    func packageDescriptionLookupCandidates(for package: PackageItem) -> [PackageDescriptionLookupCandidate] {
+        let normalizedIdentityKey = package.normalizedIdentityKey
+        guard !normalizedIdentityKey.isEmpty else { return [] }
+
+        var preferredByManager: [String: PackageItem] = [:]
+        for candidate in allKnownPackagesUnsorted {
+            guard candidate.normalizedIdentityKey == normalizedIdentityKey else { continue }
+            if let existing = preferredByManager[candidate.managerId] {
+                preferredByManager[candidate.managerId] = preferredDescriptionLookupPackage(existing, candidate)
+            } else {
+                preferredByManager[candidate.managerId] = candidate
+            }
+        }
+
+        if preferredByManager[package.managerId] == nil {
+            preferredByManager[package.managerId] = package
+        }
+
+        return preferredByManager.values
+            .sorted { lhs, rhs in
+                let lhsPriority = managerPriorityRank(for: lhs.managerId)
+                let rhsPriority = managerPriorityRank(for: rhs.managerId)
+                if lhsPriority != rhsPriority {
+                    return lhsPriority < rhsPriority
+                }
+                return normalizedManagerName(lhs.managerId)
+                    .localizedCaseInsensitiveCompare(normalizedManagerName(rhs.managerId)) == .orderedAscending
+            }
+            .map { candidate in
+                let targetVersion = packageDescriptionTargetVersion(for: candidate)
+                return PackageDescriptionLookupCandidate(
+                    managerId: candidate.managerId,
+                    packageName: candidate.name,
+                    version: targetVersion,
+                    lookupKey: packageDescriptionLookupKey(
+                        managerId: candidate.managerId,
+                        packageName: candidate.name,
+                        version: targetVersion
+                    )
+                )
+            }
     }
 
     func syncManagerOperations(from coreTasks: [CoreTaskRecord]) {
@@ -336,6 +619,41 @@ extension HelmCore {
         }
 
         syncManagerVerificationState(from: coreTasks)
+    }
+
+    func syncManagerPostInstallSetupTasks(from coreTasks: [CoreTaskRecord]) {
+        let terminalStatuses = Set(["completed", "failed", "cancelled"])
+        let latestSetupTaskByManager = coreTasks.reduce(into: [String: CoreTaskRecord]()) { partial, task in
+            guard task.labelKey == "service.task.label.setup.manager",
+                  !task.manager.isEmpty else {
+                return
+            }
+            if let existing = partial[task.manager], existing.id > task.id {
+                return
+            }
+            partial[task.manager] = task
+        }
+
+        var refreshManagerStatus = false
+        var handledTaskIds = managerPostInstallSetupHandledTaskIds
+
+        for (managerId, task) in latestSetupTaskByManager {
+            let status = task.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard terminalStatuses.contains(status) else { continue }
+            if handledTaskIds[managerId] == task.id {
+                continue
+            }
+            handledTaskIds[managerId] = task.id
+            refreshManagerStatus = true
+        }
+
+        if handledTaskIds != managerPostInstallSetupHandledTaskIds {
+            managerPostInstallSetupHandledTaskIds = handledTaskIds
+        }
+
+        if refreshManagerStatus {
+            fetchManagerStatus()
+        }
     }
 
     private func startManagerVerification(managerId: String, coreTasks: [CoreTaskRecord]) {
@@ -508,15 +826,22 @@ extension HelmCore {
             guard let status = statusById[taskId] else {
                 installActionTaskByPackage.removeValue(forKey: packageId)
                 installActionPackageIds.remove(packageId)
+                installActionNormalizedNameByPackageId.removeValue(forKey: packageId)
+                installActionTargetPackageById.removeValue(forKey: packageId)
                 continue
             }
             if inFlightStates.contains(status) {
                 continue
             }
 
+            let targetPackage = installActionTargetPackageById.removeValue(forKey: packageId)
             installActionTaskByPackage.removeValue(forKey: packageId)
             installActionPackageIds.remove(packageId)
+            installActionNormalizedNameByPackageId.removeValue(forKey: packageId)
             if status == "completed" {
+                if let targetPackage {
+                    setPreferredManagerId(targetPackage.managerId, for: targetPackage)
+                }
                 shouldRefreshSnapshots = true
             }
         }
@@ -555,6 +880,53 @@ extension HelmCore {
             fetchPackages()
             fetchOutdatedPackages()
             refreshCachedAvailablePackages()
+        }
+    }
+
+    func syncRustupToolchainActions(from coreTasks: [CoreTaskRecord]) {
+        let statusById = Dictionary(uniqueKeysWithValues: coreTasks.map { ($0.id, $0.status.lowercased()) })
+        let inFlightStates = Set(["queued", "running"])
+        let now = Date()
+        var shouldRefreshSnapshots = false
+        var packagesNeedingDetailRefresh: [PackageItem] = []
+
+        for actionKey in Array(rustupToolchainActionTaskByKey.keys) {
+            guard let taskId = rustupToolchainActionTaskByKey[actionKey] else { continue }
+            guard let status = statusById[taskId] else {
+                let submittedAt = rustupToolchainActionSubmittedAtByKey[actionKey]
+                if taskId > lastObservedTaskId
+                    || submittedAt.map({ now.timeIntervalSince($0) < Self.managerActionTaskMissingGraceSeconds }) == true
+                {
+                    continue
+                }
+                clearRustupToolchainActionTracking(for: actionKey)
+                continue
+            }
+
+            if inFlightStates.contains(status) {
+                continue
+            }
+
+            if let package = rustupToolchainActionPackageByKey[actionKey] {
+                packagesNeedingDetailRefresh.append(package)
+            }
+            clearRustupToolchainActionTracking(for: actionKey)
+            if status == "completed" {
+                shouldRefreshSnapshots = true
+            }
+        }
+
+        if shouldRefreshSnapshots {
+            fetchPackages()
+            fetchOutdatedPackages()
+        }
+
+        let uniquePackages = Dictionary(
+            packagesNeedingDetailRefresh.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        ).values
+        for package in uniquePackages {
+            ensureRustupToolchainDetail(for: package, force: true)
         }
     }
 
@@ -612,10 +984,21 @@ extension HelmCore {
     func syncPackageDescriptionLookups(from coreTasks: [CoreTaskRecord]) {
         let statusById = Dictionary(uniqueKeysWithValues: coreTasks.map { ($0.id, $0.status.lowercased()) })
         let inFlightStates = Set(["queued", "running"])
+        let now = Date()
 
         for packageId in Array(descriptionLookupTaskIdsByPackage.keys) {
+            if hasPackageDescriptionSummary(packageId: packageId) {
+                packageDescriptionUnavailableIds.remove(packageId)
+                packageDescriptionLoadingIds.remove(packageId)
+                descriptionLookupTaskIdsByPackage.removeValue(forKey: packageId)
+                descriptionLookupStartedAtByPackage.removeValue(forKey: packageId)
+                descriptionLookupPackageById.removeValue(forKey: packageId)
+                continue
+            }
+
             guard let taskIds = descriptionLookupTaskIdsByPackage[packageId], !taskIds.isEmpty else {
                 descriptionLookupTaskIdsByPackage.removeValue(forKey: packageId)
+                descriptionLookupStartedAtByPackage.removeValue(forKey: packageId)
                 packageDescriptionLoadingIds.remove(packageId)
                 continue
             }
@@ -626,24 +1009,45 @@ extension HelmCore {
             }
 
             if !inFlightTaskIds.isEmpty {
+                let startedAt = descriptionLookupStartedAtByPackage[packageId] ?? now
+                if now.timeIntervalSince(startedAt) < Self.packageDescriptionLookupTaskStaleSeconds {
+                    descriptionLookupTaskIdsByPackage[packageId] = inFlightTaskIds
+                    packageDescriptionLoadingIds.insert(packageId)
+                    continue
+                }
+
+                let sortedTaskIds = inFlightTaskIds.sorted()
+                    .map(String.init)
+                    .joined(separator: ",")
+                taskSyncLogger.warning(
+                    "Description lookup tasks exceeded stale threshold; forcing local cache reconciliation (package_id=\(packageId), task_ids=\(sortedTaskIds), age_seconds=\(Int(now.timeIntervalSince(startedAt))))"
+                )
                 descriptionLookupTaskIdsByPackage[packageId] = inFlightTaskIds
+                descriptionLookupStartedAtByPackage[packageId] = now
+                packageDescriptionLoadingIds.insert(packageId)
+                guard let package = descriptionLookupPackageById[packageId] else {
+                    continue
+                }
+                refreshPackageDescriptionSummaryFromLocalCache(for: package, clearTracking: false)
                 continue
             }
 
             descriptionLookupTaskIdsByPackage.removeValue(forKey: packageId)
+            descriptionLookupStartedAtByPackage.removeValue(forKey: packageId)
             packageDescriptionLoadingIds.remove(packageId)
 
-            let summary = allKnownPackages
-                .first(where: { $0.id == packageId })?
-                .summary?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-
-            if summary?.isEmpty == false {
-                packageDescriptionUnavailableIds.remove(packageId)
-            } else {
+            guard let package = descriptionLookupPackageById[packageId] else {
                 packageDescriptionUnavailableIds.insert(packageId)
+                continue
             }
+
+            packageDescriptionLoadingIds.insert(packageId)
+            refreshPackageDescriptionSummaryFromLocalCache(for: package)
         }
+    }
+
+    func packageStableLookupKey(managerId: String, packageName: String) -> String {
+        packageDescriptionLookupKey(managerId: managerId, packageName: packageName, version: nil)
     }
 
     func updateOnboardingDetectionProgress(from coreTasks: [CoreTaskRecord]) {
@@ -725,6 +1129,195 @@ extension HelmCore {
         let trimmedCandidate = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedCandidate.isEmpty else { return }
         package.summary = trimmedCandidate
+    }
+
+    private func preferredDescriptionLookupPackage(_ lhs: PackageItem, _ rhs: PackageItem) -> PackageItem {
+        let lhsUpgradable = lhs.status == .upgradable && !lhs.pinned
+        let rhsUpgradable = rhs.status == .upgradable && !rhs.pinned
+        if lhsUpgradable != rhsUpgradable {
+            return lhsUpgradable ? lhs : rhs
+        }
+
+        let lhsAvailable = lhs.status == .available
+        let rhsAvailable = rhs.status == .available
+        if lhsAvailable != rhsAvailable {
+            return lhsAvailable ? lhs : rhs
+        }
+
+        let lhsVersion = normalizedDescriptionVersionToken(lhs.version)
+        let rhsVersion = normalizedDescriptionVersionToken(rhs.version)
+        if lhsVersion == nil, rhsVersion != nil {
+            return rhs
+        }
+        if lhsVersion != nil, rhsVersion == nil {
+            return lhs
+        }
+        if let lhsVersion, let rhsVersion {
+            let order = lhsVersion.compare(rhsVersion, options: [.numeric, .caseInsensitive])
+            if order != .orderedSame {
+                return order == .orderedDescending ? lhs : rhs
+            }
+        }
+
+        let lhsSummary = lhs.summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let rhsSummary = rhs.summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if lhsSummary.isEmpty != rhsSummary.isEmpty {
+            return lhsSummary.isEmpty ? rhs : lhs
+        }
+        return lhs
+    }
+
+    private func packageDescriptionTargetVersion(for package: PackageItem) -> String? {
+        if package.status == .upgradable && !package.pinned {
+            let latest = normalizedDescriptionVersionToken(package.latestVersion)
+            if let latest {
+                return latest
+            }
+        }
+        return normalizedDescriptionVersionToken(package.version)
+    }
+
+    private func normalizedDescriptionVersionToken(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return nil }
+        let unknownLabel = L10n.Common.unknown.localized.lowercased()
+        if normalized.lowercased() == unknownLabel {
+            return nil
+        }
+        return normalized
+    }
+
+    private func canInstallPackageDirect(_ package: PackageItem) -> Bool {
+        package.status == .available
+            && (managerStatuses[package.managerId]?.supportsPackageInstall ?? false)
+            && isManagerEnabled(package.managerId)
+            && !isManagerUninstalling(package.managerId)
+    }
+
+    private func preferredInstallCandidate(_ lhs: PackageItem, _ rhs: PackageItem) -> PackageItem {
+        let lhsVersion = normalizedDescriptionVersionToken(lhs.version)
+        let rhsVersion = normalizedDescriptionVersionToken(rhs.version)
+        if lhsVersion == nil, rhsVersion != nil {
+            return rhs
+        }
+        if lhsVersion != nil, rhsVersion == nil {
+            return lhs
+        }
+        if let lhsVersion, let rhsVersion {
+            let order = lhsVersion.compare(rhsVersion, options: [.numeric, .caseInsensitive])
+            if order != .orderedSame {
+                return order == .orderedDescending ? lhs : rhs
+            }
+        }
+
+        let lhsSummary = lhs.summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let rhsSummary = rhs.summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if lhsSummary.isEmpty != rhsSummary.isEmpty {
+            return lhsSummary.isEmpty ? rhs : lhs
+        }
+        return lhs
+    }
+
+    private func packageCandidateSources() -> [PackageItem] {
+        var mergedById = Dictionary(uniqueKeysWithValues: allKnownPackagesUnsorted.map { ($0.id, $0) })
+
+        for candidate in searchResults {
+            guard isManagerEnabled(candidate.managerId) else { continue }
+            if var existing = mergedById[candidate.id] {
+                mergeSummary(into: &existing, from: candidate.summary)
+                if existing.latestVersion == nil {
+                    existing.latestVersion = candidate.latestVersion
+                }
+                existing.restartRequired = existing.restartRequired || candidate.restartRequired
+                mergedById[candidate.id] = existing
+            } else {
+                mergedById[candidate.id] = candidate
+            }
+        }
+
+        return Array(mergedById.values)
+    }
+
+    private func installCandidateOrdering(_ lhs: PackageItem, _ rhs: PackageItem) -> Bool {
+        let lhsInstallable = canInstallPackage(lhs, includeAlternates: false)
+        let rhsInstallable = canInstallPackage(rhs, includeAlternates: false)
+        if lhsInstallable != rhsInstallable {
+            return lhsInstallable && !rhsInstallable
+        }
+
+        let lhsPriority = managerPriorityRank(for: lhs.managerId)
+        let rhsPriority = managerPriorityRank(for: rhs.managerId)
+        if lhsPriority != rhsPriority {
+            return lhsPriority < rhsPriority
+        }
+
+        let lhsVersion = normalizedDescriptionVersionToken(lhs.version)
+        let rhsVersion = normalizedDescriptionVersionToken(rhs.version)
+        if lhsVersion != rhsVersion {
+            if lhsVersion == nil {
+                return false
+            }
+            if rhsVersion == nil {
+                return true
+            }
+            if let lhsVersion, let rhsVersion {
+                let order = lhsVersion.compare(rhsVersion, options: [.numeric, .caseInsensitive])
+                if order != .orderedSame {
+                    return order == .orderedDescending
+                }
+            }
+        }
+
+        return normalizedManagerName(lhs.managerId)
+            .localizedCaseInsensitiveCompare(normalizedManagerName(rhs.managerId)) == .orderedAscending
+    }
+
+    private func sortConsolidatedPackagesForQuery(
+        _ packages: [ConsolidatedPackageItem],
+        query: String
+    ) -> [ConsolidatedPackageItem] {
+        let queryQualifiedToken = PackageIdentity.normalizedExactQueryToken(query)
+        let queryBaseToken = PackageIdentity.normalizedQueryBaseToken(query)
+        guard !queryBaseToken.isEmpty else { return packages }
+        let queryHasQualifier = queryQualifiedToken.contains("@")
+
+        let indexedPackages = Array(packages.enumerated())
+        return indexedPackages
+            .sorted { lhs, rhs in
+                let lhsRank = exactMatchRank(
+                    for: lhs.element.package,
+                    queryBaseToken: queryBaseToken,
+                    queryQualifiedToken: queryQualifiedToken,
+                    queryHasQualifier: queryHasQualifier
+                )
+                let rhsRank = exactMatchRank(
+                    for: rhs.element.package,
+                    queryBaseToken: queryBaseToken,
+                    queryQualifiedToken: queryQualifiedToken,
+                    queryHasQualifier: queryHasQualifier
+                )
+                if lhsRank != rhsRank {
+                    return lhsRank < rhsRank
+                }
+                return lhs.offset < rhs.offset
+            }
+            .map(\.element)
+    }
+
+    private func exactMatchRank(
+        for package: PackageItem,
+        queryBaseToken: String,
+        queryQualifiedToken: String,
+        queryHasQualifier: Bool
+    ) -> Int {
+        if queryHasQualifier, package.normalizedIdentityKey == queryQualifiedToken {
+            return 0
+        }
+        if package.normalizedBaseName == queryBaseToken {
+            return 1
+        }
+        return 2
     }
 
     private func consolidatePackages(_ packages: [PackageItem]) -> [ConsolidatedPackageItem] {

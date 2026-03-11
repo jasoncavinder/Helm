@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use helm_core::adapters::{
     AdapterRequest, AdapterResponse, AdapterResult, ListInstalledRequest, ManagerAdapter,
@@ -49,6 +49,7 @@ impl SearchAndRefreshAdapter {
                             manager: ManagerId::HomebrewFormula,
                             name: "wget".to_string(),
                         },
+                        package_identifier: None,
                         version: Some("1.24.5".to_string()),
                         summary: Some("Internet file retriever".to_string()),
                     },
@@ -62,6 +63,7 @@ impl SearchAndRefreshAdapter {
                             manager: ManagerId::HomebrewFormula,
                             name: "wgetpaste".to_string(),
                         },
+                        package_identifier: None,
                         version: Some("2.33".to_string()),
                         summary: Some("Automate pasting to pastebin services".to_string()),
                     },
@@ -76,6 +78,7 @@ impl SearchAndRefreshAdapter {
                         manager: ManagerId::HomebrewFormula,
                         name: "ripgrep".to_string(),
                     },
+                    package_identifier: None,
                     version: Some("14.1.0".to_string()),
                     summary: Some("Search tool like grep and The Silver Searcher".to_string()),
                 },
@@ -112,8 +115,10 @@ impl ManagerAdapter for SearchAndRefreshAdapter {
                         manager: ManagerId::HomebrewFormula,
                         name: "wget".to_string(),
                     },
+                    package_identifier: None,
                     installed_version: Some("1.24.5".to_string()),
                     pinned: false,
+                    runtime_state: Default::default(),
                 }]))
             }
             _ => Ok(AdapterResponse::Refreshed),
@@ -127,6 +132,26 @@ fn test_db_path(test_name: &str) -> PathBuf {
         .expect("system clock before unix epoch")
         .as_nanos();
     std::env::temp_dir().join(format!("helm-{test_name}-{nanos}.sqlite3"))
+}
+
+async fn wait_for_local_results<F>(
+    store: &SqliteStore,
+    query: &str,
+    limit: usize,
+    timeout: Duration,
+    predicate: F,
+) -> Vec<CachedSearchResult>
+where
+    F: Fn(&[CachedSearchResult]) -> bool,
+{
+    let deadline = Instant::now() + timeout;
+    loop {
+        let results = store.query_local(query, limit).unwrap();
+        if predicate(&results) || Instant::now() >= deadline {
+            return results;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
 }
 
 #[tokio::test]
@@ -165,14 +190,10 @@ async fn cache_enrichment_across_multiple_queries() {
         .unwrap();
 
     // Wait for persistence
-    let mut results = Vec::new();
-    for _ in 0..30 {
-        results = store.query_local("wget", 50).unwrap();
-        if results.len() >= 2 {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    let results = wait_for_local_results(&store, "wget", 50, Duration::from_secs(2), |results| {
+        results.len() >= 2
+    })
+    .await;
     assert_eq!(results.len(), 2, "expected 2 results after 'wget' search");
 
     // Second search: "rip" → 1 result
@@ -192,14 +213,11 @@ async fn cache_enrichment_across_multiple_queries() {
         .unwrap();
 
     // Wait for persistence
-    let mut rip_results = Vec::new();
-    for _ in 0..30 {
-        rip_results = store.query_local("rip", 50).unwrap();
-        if !rip_results.is_empty() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    let rip_results =
+        wait_for_local_results(&store, "rip", 50, Duration::from_secs(2), |results| {
+            !results.is_empty()
+        })
+        .await;
     assert_eq!(rip_results.len(), 1, "expected 1 result after 'rip' search");
     assert_eq!(rip_results[0].result.package.name, "ripgrep");
 

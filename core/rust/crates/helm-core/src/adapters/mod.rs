@@ -60,9 +60,10 @@ pub mod yarn;
 pub mod yarn_process;
 
 pub use asdf::{
-    AsdfAdapter, AsdfSource, asdf_detect_request, asdf_install_request, asdf_latest_request,
-    asdf_list_all_plugins_request, asdf_list_current_request, asdf_list_plugins_request,
-    asdf_uninstall_request, asdf_upgrade_request,
+    AsdfAdapter, AsdfSource, asdf_add_plugin_request, asdf_detect_request, asdf_install_request,
+    asdf_latest_request, asdf_list_current_request, asdf_list_installed_versions_request,
+    asdf_list_plugins_request, asdf_search_plugins_request, asdf_set_home_version_request,
+    asdf_uninstall_request,
 };
 pub use asdf_process::ProcessAsdfSource;
 pub use bundler::{
@@ -98,13 +99,15 @@ pub use firmware_updates::{
 };
 pub use firmware_updates_process::ProcessFirmwareUpdatesSource;
 pub use homebrew::{
-    HomebrewAdapter, HomebrewSource, homebrew_detect_request, homebrew_list_installed_request,
-    homebrew_list_outdated_request, homebrew_pin_request, homebrew_search_local_request,
-    homebrew_unpin_request,
+    HomebrewAdapter, HomebrewSource, homebrew_catalog_formulae_request, homebrew_detect_request,
+    homebrew_list_installed_request, homebrew_list_outdated_request, homebrew_pin_request,
+    homebrew_search_formulae_request, homebrew_search_local_request, homebrew_unpin_request,
 };
 pub use homebrew_cask::{
-    HomebrewCaskAdapter, HomebrewCaskSource, homebrew_cask_detect_request,
+    HomebrewCaskAdapter, HomebrewCaskSource, homebrew_cask_catalog_request,
+    homebrew_cask_detect_request, homebrew_cask_install_request,
     homebrew_cask_list_installed_request, homebrew_cask_list_outdated_request,
+    homebrew_cask_search_request, homebrew_cask_uninstall_request, homebrew_cask_upgrade_request,
 };
 pub use homebrew_cask_process::ProcessHomebrewCaskSource;
 pub use homebrew_process::ProcessHomebrewSource;
@@ -121,13 +124,14 @@ pub use manager::{
     ensure_action_supported, ensure_request_supported, execute_with_capability_check,
 };
 pub use mas::{
-    MasAdapter, MasSource, mas_detect_request, mas_list_installed_request,
-    mas_list_outdated_request,
+    MasAdapter, MasSource, mas_detect_request, mas_get_request, mas_install_request,
+    mas_list_installed_request, mas_list_outdated_request, mas_search_request,
+    mas_uninstall_request, mas_upgrade_request,
 };
 pub use mas_process::ProcessMasSource;
 pub use mise::{
     MiseAdapter, MiseSource, mise_detect_request, mise_list_installed_request,
-    mise_list_outdated_request,
+    mise_list_outdated_request, mise_list_remote_request,
 };
 pub use mise_process::ProcessMiseSource;
 pub use nix_darwin::{
@@ -185,7 +189,7 @@ pub use rustup::{
     RustupAdapter, RustupSource, rustup_check_request, rustup_detect_request,
     rustup_toolchain_list_request,
 };
-pub use rustup_process::ProcessRustupSource;
+pub use rustup_process::{ProcessRustupSource, load_rustup_toolchain_detail_with_runtime};
 pub use setapp::{SetappAdapter, SetappSource, setapp_detect_request};
 pub use setapp_process::ProcessSetappSource;
 pub use softwareupdate::{

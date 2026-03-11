@@ -2,7 +2,9 @@ use std::collections::BTreeSet;
 
 use crate::adapters::cargo::parse_cargo_installed;
 use crate::adapters::manager::AdapterResult;
-use crate::models::{CoreError, CoreErrorKind, ManagerAction, ManagerId, TaskType};
+use crate::models::{
+    CoreError, CoreErrorKind, InstalledPackage, ManagerAction, ManagerId, TaskType,
+};
 
 #[derive(serde::Serialize)]
 struct OutdatedEntry {
@@ -14,7 +16,7 @@ struct OutdatedEntry {
 pub(crate) fn synthesize_outdated_payload<F>(
     manager: ManagerId,
     installed_raw: &str,
-    mut resolve_latest: F,
+    resolve_latest: F,
 ) -> AdapterResult<String>
 where
     F: FnMut(&str) -> AdapterResult<Option<String>>,
@@ -24,6 +26,17 @@ where
         error
     })?;
 
+    synthesize_outdated_payload_for_packages(manager, installed, resolve_latest)
+}
+
+pub(crate) fn synthesize_outdated_payload_for_packages<F>(
+    manager: ManagerId,
+    installed: Vec<InstalledPackage>,
+    mut resolve_latest: F,
+) -> AdapterResult<String>
+where
+    F: FnMut(&str) -> AdapterResult<Option<String>>,
+{
     let mut seen = BTreeSet::new();
     let mut outdated = Vec::new();
 

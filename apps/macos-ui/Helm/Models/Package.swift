@@ -1,5 +1,15 @@
 import SwiftUI
 
+struct PackageRuntimeState: Codable, Hashable {
+    var isActive: Bool = false
+    var isDefault: Bool = false
+    var hasOverride: Bool = false
+
+    var isEmpty: Bool {
+        !isActive && !isDefault && !hasOverride
+    }
+}
+
 enum PackageStatus: String, CaseIterable {
     case installed
     case upgradable
@@ -33,6 +43,7 @@ enum PackageStatus: String, CaseIterable {
 struct PackageItem: Identifiable {
     let id: String
     let name: String
+    let packageIdentifier: String?
     let version: String
     var latestVersion: String?
     let managerId: String
@@ -40,6 +51,7 @@ struct PackageItem: Identifiable {
     var summary: String?
     var pinned: Bool = false
     var restartRequired: Bool = false
+    var runtimeState: PackageRuntimeState = PackageRuntimeState()
     private var statusOverride: PackageStatus?
 
     var status: PackageStatus {
@@ -47,9 +59,15 @@ struct PackageItem: Identifiable {
         return latestVersion != nil ? .upgradable : .installed
     }
 
-    init(id: String, name: String, version: String, latestVersion: String? = nil, managerId: String? = nil, manager: String, summary: String? = nil, pinned: Bool = false, restartRequired: Bool = false, status: PackageStatus? = nil) {
+    init(id: String, name: String, packageIdentifier: String? = nil, version: String, latestVersion: String? = nil, managerId: String? = nil, manager: String, summary: String? = nil, pinned: Bool = false, restartRequired: Bool = false, runtimeState: PackageRuntimeState = PackageRuntimeState(), status: PackageStatus? = nil) {
         self.id = id
         self.name = name
+        if let packageIdentifier {
+            let trimmedIdentifier = packageIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
+            self.packageIdentifier = trimmedIdentifier.isEmpty ? nil : trimmedIdentifier
+        } else {
+            self.packageIdentifier = nil
+        }
         self.version = version
         self.latestVersion = latestVersion
         self.managerId = managerId ?? manager
@@ -57,7 +75,175 @@ struct PackageItem: Identifiable {
         self.summary = summary
         self.pinned = pinned
         self.restartRequired = restartRequired
+        self.runtimeState = runtimeState
         self.statusOverride = status
+    }
+
+    var displayName: String {
+        PackageIdentity.displayName(name: name, version: version)
+    }
+
+    var normalizedIdentityKey: String {
+        PackageIdentity.normalizedIdentityKey(name: name, version: version)
+    }
+
+    var normalizedBaseName: String {
+        PackageIdentity.normalizedBaseName(name)
+    }
+
+    var mutationPackageName: String {
+        if managerId.lowercased() == "mas",
+           let packageIdentifier,
+           !packageIdentifier.isEmpty {
+            return packageIdentifier
+        }
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedName.isEmpty ? name : trimmedName
+    }
+
+    var mutationTargetPackageName: String? {
+        let displayName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let targetName = mutationPackageName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !targetName.isEmpty else { return nil }
+        return targetName == displayName ? nil : targetName
+    }
+
+    var mutationVersion: String? {
+        let normalizedManagerId = managerId.lowercased()
+        guard normalizedManagerId == "asdf" || normalizedManagerId == "mise",
+              PackageIdentity.hasKnownVersion(version) else {
+            return nil
+        }
+        let trimmedVersion = version.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedVersion.isEmpty ? nil : trimmedVersion
+    }
+}
+
+enum PackageIdentity {
+    private static let unknownVersionTokens: Set<String> = {
+        var tokens: Set<String> = ["unknown"]
+        let localizedUnknown = L10n.Common.unknown.localized
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if !localizedUnknown.isEmpty {
+            tokens.insert(localizedUnknown)
+        }
+        return tokens
+    }()
+
+    static func normalizedBaseName(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    static func hasKnownVersion(_ value: String?) -> Bool {
+        normalizedVersionSelectorInput(value) != nil
+    }
+
+    static func variantQualifier(fromVersion version: String?) -> String? {
+        normalizedVariantQualifier(fromVersion: version, lowercase: false)
+    }
+
+    static func normalizedVariantQualifier(fromVersion version: String?) -> String? {
+        normalizedVariantQualifier(fromVersion: version, lowercase: true)
+    }
+
+    static func displayName(name: String, version: String?) -> String {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return name }
+        guard let qualifier = variantQualifier(fromVersion: version) else { return trimmedName }
+        return "\(trimmedName)@\(qualifier)"
+    }
+
+    static func normalizedIdentityKey(name: String, version: String?) -> String {
+        let normalizedName = normalizedBaseName(name)
+        guard !normalizedName.isEmpty else { return "" }
+        guard let qualifier = normalizedVariantQualifier(fromVersion: version) else {
+            return normalizedName
+        }
+        return "\(normalizedName)@\(qualifier)"
+    }
+
+    static func normalizedExactQueryToken(_ value: String) -> String {
+        let normalized = value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !normalized.isEmpty else { return "" }
+        guard let atIndex = normalized.lastIndex(of: "@"),
+              atIndex != normalized.startIndex else {
+            return normalized
+        }
+        let base = String(normalized[..<atIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !base.isEmpty else { return normalized }
+        let selector = String(normalized[normalized.index(after: atIndex)...])
+        guard !selector.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return String(base)
+        }
+        if let qualifier = qualifierFromSelector(selector, lowercase: true) {
+            return "\(base)@\(qualifier)"
+        }
+        return String(base)
+    }
+
+    static func normalizedQueryBaseToken(_ value: String) -> String {
+        let normalized = value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !normalized.isEmpty else { return "" }
+        guard let atIndex = normalized.lastIndex(of: "@"),
+              atIndex != normalized.startIndex else {
+            return normalized
+        }
+        let base = String(normalized[..<atIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return base.isEmpty ? normalized : String(base)
+    }
+
+    private static func normalizedVariantQualifier(fromVersion version: String?, lowercase: Bool) -> String? {
+        guard let normalizedVersion = normalizedVersionSelectorInput(version) else { return nil }
+        return qualifierFromSelector(normalizedVersion, lowercase: lowercase)
+    }
+
+    private static func normalizedVersionSelectorInput(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return nil }
+        if unknownVersionTokens.contains(normalized.lowercased()) {
+            return nil
+        }
+        return normalized
+    }
+
+    private static func qualifierFromSelector(_ selector: String, lowercase: Bool) -> String? {
+        let atoms = selector
+            .split(separator: "-")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !atoms.isEmpty else { return nil }
+
+        let firstReleaseAtom = atoms.firstIndex(where: { atom in
+            isReleaseTokenAtom(atom)
+        })
+        let qualifierAtoms: ArraySlice<String> = {
+            guard let firstReleaseAtom else {
+                return atoms[atoms.startIndex..<atoms.endIndex]
+            }
+            guard firstReleaseAtom > 0 else { return [] }
+            return atoms[atoms.startIndex..<firstReleaseAtom]
+        }()
+        guard !qualifierAtoms.isEmpty else { return nil }
+        let qualifier = qualifierAtoms.joined(separator: "-")
+        return lowercase ? qualifier.lowercased() : qualifier
+    }
+
+    private static func isReleaseTokenAtom(_ atom: String) -> Bool {
+        guard let first = atom.first else { return false }
+        if first.isNumber {
+            return true
+        }
+        if first == "v" || first == "V" {
+            let next = atom.dropFirst().first
+            return next?.isNumber == true
+        }
+        return false
     }
 }
 
@@ -78,11 +264,35 @@ struct ConsolidatedPackageItem: Identifiable {
         return memberPackages.contains { $0.id == packageId }
     }
 
+    func packages(forManagerId managerId: String) -> [PackageItem] {
+        memberPackages.filter { $0.managerId == managerId }
+    }
+
+    func preferredPackage(forManagerId managerId: String, selectedPackageId: String? = nil) -> PackageItem? {
+        let managerPackages = packages(forManagerId: managerId)
+        guard !managerPackages.isEmpty else { return nil }
+        if let selectedPackageId,
+           let selectedPackage = managerPackages.first(where: { $0.id == selectedPackageId }) {
+            return selectedPackage
+        }
+        return managerPackages.first
+    }
+
+    func actionTarget(preferredManagerId: String?, selectedPackageId: String? = nil) -> PackageItem {
+        guard let managerId = PackageConsolidationPolicy.preferredManagerId(
+            managerIds: managerIds,
+            preferredManagerId: preferredManagerId
+        ) else {
+            return package
+        }
+        return preferredPackage(forManagerId: managerId, selectedPackageId: selectedPackageId) ?? package
+    }
+
     static func consolidate(
         _ packages: [PackageItem],
         localizedManagerName: (String) -> String
     ) -> [ConsolidatedPackageItem] {
-        let grouped = Dictionary(grouping: packages) { $0.name.lowercased() }
+        let grouped = Dictionary(grouping: packages) { $0.normalizedIdentityKey }
 
         return grouped.values.compactMap { members in
             let sortedMembers = members.sorted(by: preferredPackageOrdering)
@@ -111,7 +321,7 @@ struct ConsolidatedPackageItem: Identifiable {
             )
         }
         .sorted { lhs, rhs in
-            let nameOrder = lhs.package.name.localizedCaseInsensitiveCompare(rhs.package.name)
+            let nameOrder = lhs.package.displayName.localizedCaseInsensitiveCompare(rhs.package.displayName)
             if nameOrder != .orderedSame {
                 return nameOrder == .orderedAscending
             }
@@ -127,6 +337,18 @@ struct ConsolidatedPackageItem: Identifiable {
             rhsPinned: rhs.pinned,
             lhsRestartRequired: lhs.restartRequired,
             rhsRestartRequired: rhs.restartRequired,
+            lhsRuntimeState: PackageRuntimeStateProjection(
+                isActive: lhs.runtimeState.isActive,
+                isDefault: lhs.runtimeState.isDefault,
+                hasOverride: lhs.runtimeState.hasOverride
+            ),
+            rhsRuntimeState: PackageRuntimeStateProjection(
+                isActive: rhs.runtimeState.isActive,
+                isDefault: rhs.runtimeState.isDefault,
+                hasOverride: rhs.runtimeState.hasOverride
+            ),
+            lhsVersion: lhs.version,
+            rhsVersion: rhs.version,
             lhsManagerId: lhs.managerId,
             rhsManagerId: rhs.managerId,
             localizedManagerName: localizedManagerDisplayName,

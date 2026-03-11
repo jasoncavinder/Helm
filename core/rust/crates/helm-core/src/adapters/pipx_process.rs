@@ -4,11 +4,12 @@ use crate::adapters::detect_utils::which_executable;
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::pipx::{
     PipxDetectOutput, PipxSource, pipx_detect_request, pipx_install_request,
-    pipx_list_outdated_request, pipx_list_request, pipx_uninstall_request, pipx_upgrade_request,
+    pipx_list_outdated_request, pipx_list_request, pipx_search_request, pipx_uninstall_request,
+    pipx_upgrade_request,
 };
 use crate::adapters::process_utils::{run_and_collect_stdout, run_and_collect_version_output};
 use crate::execution::{ProcessExecutor, ProcessSpawnRequest};
-use crate::models::ManagerId;
+use crate::models::{ManagerId, SearchQuery};
 
 pub struct ProcessPipxSource {
     executor: Arc<dyn ProcessExecutor>,
@@ -71,6 +72,15 @@ impl PipxSource for ProcessPipxSource {
 
     fn list_outdated(&self) -> AdapterResult<String> {
         let request = self.configure_request(pipx_list_outdated_request(None));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn search(&self, query: &str) -> AdapterResult<String> {
+        let search_query = SearchQuery {
+            text: query.to_string(),
+            issued_at: std::time::SystemTime::now(),
+        };
+        let request = self.configure_request(pipx_search_request(None, &search_query));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 

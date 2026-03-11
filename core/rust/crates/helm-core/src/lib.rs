@@ -17,3 +17,4 @@ pub mod repair;
 pub mod sqlite;
 pub(crate) mod task_context;
 pub mod uninstall_preview;
+pub mod versioning;

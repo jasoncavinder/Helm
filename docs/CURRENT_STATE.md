@@ -8,20 +8,20 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.17.8 stable publication complete** with post-release hardening follow-ups merged on `dev`.
+Current documentation baseline: **0.17.9 stable publication ready on `main`** with `0.18.x` follow-up planning active on `dev`.
 
-Implementation baseline: **0.17.8 stable + post-release hardening follow-ups** with diagnostics/logging delivery, TUI + bundled-CLI parity closure, manager-selection/enablement and onboarding/detection hardening, release-process hardening phases 1-5, and post-`v0.17.5` refresh reliability/diagnostics hardening.
+Implementation baseline: **0.17.9 stable release candidate** with diagnostics/logging delivery, package workflow hardening, manager-selection/enablement and onboarding/detection hardening, release-process hardening phases 1-5, post-`v0.17.5` refresh reliability/diagnostics hardening, and complete current-scope manager adapter coverage.
 
 See:
 - CHANGELOG.md
 
 Active milestone:
-- latest stable release currently published on `main`: **0.17.8** (pre-1.0 quality-audit remediation + release-gate hardening publication)
-- next integration target after stable publication: **0.18.x** (local security groundwork planning + delivery setup)
+- latest stable release currently published on `main`: **0.17.9** (stable promotion candidate aligned for tag + publish execution on `main`)
+- next integration target on `dev`: **0.18.x** (doctor/repair foundation and local security groundwork sequencing)
 - repository operations follow-up on `dev`: repository-local Codex operating model refined for lean context (`project_doc_max_bytes=131072`), policy-only root `AGENTS.md`, workflow Skills under `ops/codex/skills/`, slash-command templates under `.codex/commands/`, and structured local notify logging to `dev/logs/codex-runs.ndjson`.
-- stable publication cut completed for `v0.17.8`:
-  - release artifacts, publish-metadata PRs, and post-publish verification checks are complete on `main`.
-  - release workflows continue to report fallback publish PR outcomes as follow-up-required (non-red) when publication PR merges are still pending.
+- stable publication cut prepared for `v0.17.9`:
+  - workspace, docs, and website release-line surfaces are aligned for the `0.17.9` stable promotion.
+  - tag, release publication, and publish-metadata follow-up remain governed by the `v0.17.9` release checklist on `main`.
 - 0.17.x — Diagnostics & Logging (**stable released on `main`**, RC lineage `v0.17.0-rc.1` through `v0.17.0-rc.5`)
   - delivered: `feat/v0.17-log-foundation` (SQLite-backed task lifecycle logs + retrieval plumbing)
   - delivered: `feat/v0.17-task-log-viewer` (inspector diagnostics logs tab with level/status filters + load-more pagination)
@@ -93,7 +93,7 @@ Active milestone:
   - delivered: manager lifecycle parity sweep follow-up (on `dev`): install planning now supports additional non-system managers through deterministic Homebrew routes (`npm`, `pnpm`, `yarn`, `pip`, `pipx`, `poetry`, `rubygems`, `bundler`, `cargo`, `cargo-binstall`, `podman`, `colima`); install-method surfaces in core/CLI/FFI now expose only planner-supported methods (policy-filtered per environment), and GUI manager capability gating now marks these managers automatable so install/update/uninstall controls stay aligned with executable lifecycle paths.
   - delivered: pre-`v0.17.7` release-gate closure follow-up (on `dev`): runtime queue terminal waits now avoid missed-notify timeout races and emit periodic heartbeat diagnostics while waiting; graceful cancellation now re-checks terminal state before forced abort; request/response orchestration now logs start timestamp, effective timeout (`min(policy_timeout, orchestration_cap)`), retry attempts, terminal status, and cancellation path; Homebrew adapter `clippy::collapsible_if` warnings were removed; process-timeout coverage now verifies timeout termination does not leave child process-group orphans; and rustup orchestration reliability was re-validated with repeated stress runs.
   - delivered: GitHub governance hardening follow-up (on `dev`): per-branch rulesets are now explicit for `main`/`dev`/`docs`/`web` with branch-specific required checks; new `Policy Gate` + `Docs Checks` + `Web Build` workflows enforce branch targeting/scope policy; repository merge settings keep auto-merge/update-branch enabled while delete-branch-on-merge stays off to protect primary branches; blocking ruleset `update` enforcement was removed after protected-ref merge-block diagnostics; CodeQL is now main-focused (push/schedule/manual) to avoid PR gate friction.
-  - `v0.17.8` stable release execution status: complete (validation green + stable tag + GitHub release published)
+  - `v0.17.9` stable release execution status: release promotion prepared on `main` (validation green + stable-line alignment complete ahead of tag/publish)
 
 Security rollout staging status:
 - Stage 0 (`<=0.16.x`): planning/docs only (active in `0.16.1`)
@@ -132,13 +132,17 @@ Third-party licensing compliance status:
 
 ## Implemented Managers
 
-Fully functional:
+Complete for Helm's intended scope:
 
-- Homebrew
+- Homebrew (formulae)
+- Homebrew (casks)
+- MacPorts
 - mise
+- asdf
+- rustup
 - npm (global)
 - pnpm (global)
-- yarn (global)
+- yarn (global, Classic 1.x package surface)
 - RubyGems (non-system installations manageable; base-system `/usr/bin/gem` is detected but policy-blocked from enablement/actions)
 - Poetry (self/plugins)
 - Bundler
@@ -146,9 +150,24 @@ Fully functional:
 - pipx
 - cargo
 - cargo-binstall
-- rustup
-- softwareupdate
 - mas
+- softwareupdate
+- Docker Desktop
+- podman
+- colima
+- Xcode Command Line Tools
+- Rosetta 2
+- Firmware updates
+- Sparkle updater
+- Setapp
+- Parallels Desktop
+- nix-darwin
+
+Scope notes:
+
+- Package managers above are considered complete relative to Helm's current feature model, even when the native manager exposes additional functionality Helm intentionally does not model.
+- Detection-only/status-only managers are complete within that narrower product scope and are not intended to expose full package-mutation surfaces.
+- `nix_darwin` is considered complete for Helm's current scope because Helm intentionally limits it to detect/refresh rather than misrepresent declarative nix-darwin state through `nix-env` compatibility mutations.
 
 ---
 
@@ -774,7 +793,7 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
   - `asdf` process source now resolves executable via structured `which` lookup with absolute-path fallback and rewrites request program paths
   - `asdf` outdated scan now tolerates per-tool latest-version probe failures (skips failing tool probes instead of failing the full scan)
 - Implemented adapter capabilities for this slice:
-  - `asdf`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade (compatibility mode)
+  - `asdf`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade, with plugin bootstrap, version-aware mutation targeting, and active/default/override runtime-state tracking
   - `macports`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade
   - `nix_darwin`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade (compatibility mode via `nix-env`)
 - Added fixtures + adapter tests for:
@@ -803,15 +822,31 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
   - `homebrew_cask`
 - Added process-backed source with XPC-safe PATH handling and Homebrew environment guards
 - Implemented adapter capabilities for this slice:
-  - `homebrew_cask`: detect, refresh, list_installed, list_outdated
+  - `homebrew_cask`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade
 - Added JSON-backed parsing for installed/outdated casks using structured Homebrew output (`--json=v2`)
+- Added Homebrew catalog/search support:
+  - empty query: `brew casks`
+  - filtered query: `brew search --cask --desc`
+- Added mutation flows with post-upgrade verification so targeted cask upgrades fail if Homebrew still reports the cask as outdated
 - Added fixtures + adapter tests for:
   - request-shape assertions
-  - installed/outdated parsing behavior
-  - read-only execute flow + unsupported mutating action rejection
+  - installed/outdated/search parsing behavior
+  - read/write execute flow
+  - end-to-end orchestration for install, uninstall, and upgrade
 - Wired adapter into FFI runtime initialization and manager status export:
   - `isImplemented=true` now includes `homebrew_cask`
 - Swift fallback metadata updated so `homebrew_cask` reflects implemented state when runtime status is unavailable
+
+### Homebrew Formula Adapter Hardening
+- Formula installed/outdated inventory now uses structured Homebrew JSON instead of line-oriented parsing:
+  - installed: `brew info --formula --json=v2 --installed`
+  - outdated: `brew outdated --formula --json=v2`
+- Formula search/catalog now uses Homebrew-native catalog/description sources:
+  - empty query: `brew formulae`
+  - filtered query: `brew search --formula --desc`
+- Native Homebrew pin/unpin remains supported for formulae and rejects separate version arguments; versioned formulae must be addressed by token (for example `python@3.12`)
+- Homebrew keg cleanup policy is now enforced by disabling Homebrew automatic install cleanup (`HOMEBREW_NO_INSTALL_CLEANUP=1`) and running explicit cleanup only when Helm’s cleanup policy requests it
+- Targeted formula upgrades now verify that Homebrew no longer reports the formula as outdated after upgrade
 
 ### Validation
 - `cargo test -p helm-core --manifest-path core/rust/Cargo.toml`
@@ -898,7 +933,7 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
   - Implemented: npm (global), pip (`python3 -m pip`, global), pipx, cargo, cargo-binstall
   - Pending: none
 - Priority 2 extended language-manager expansion is complete at this checkpoint:
-  - Implemented: pnpm (global), yarn (global), RubyGems, Poetry (self/plugins), Bundler
+  - Implemented: pnpm (global), yarn (global, Classic 1.x package surface), RubyGems, Poetry (self/plugins), Bundler
   - Pending: none
 - Redesign integration is functional with layered popover UX + control-center search; accessibility labels and semantic grouping implemented; onboarding walkthrough delivered; UI layer purity cleanup completed
 - Keyboard-only traversal: Tab navigation does not work in macOS SwiftUI (`.focusable()` does not participate in AppKit key view loop); requires NSViewRepresentable bridging approach
@@ -911,8 +946,8 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
 - Onboarding flow updated with friendlier tone; guided walkthrough (spotlight/coach marks) now implemented
 - 0.14 manager inventory is scaffolded in metadata; alpha.2/alpha.3/alpha.4 delivered container/VM, detection-only, security/firmware, and optional-manager slices
 - Optional-manager compatibility caveats:
-  - `asdf` support currently assumes plugin already exists; Helm currently manages install/uninstall/upgrade of tool versions, not plugin bootstrap/removal
-  - `nix_darwin` support currently operates through `nix-env` compatibility flows and does not edit declarative nix-darwin configuration files
+  - `asdf` now bootstraps missing plugins, inventories installed versions independently of `asdf current`, and tracks active/default/override state from current selection metadata; explicit `asdf` selection-management actions and plugin removal remain future work
+  - `nix_darwin` is currently detection/refresh-only in Helm. Declarative nix-darwin package/config management is not implemented, and Helm intentionally does not route `nix-env` package mutation flows through the `nix_darwin` manager because that would misrepresent system configuration state.
 - Self-update is intentionally limited to eligible direct Developer ID installs; package-manager-managed installs remain blocked by policy.
 - Diagnostics UI is available in the Inspector (`diagnostics`/`stderr`/`stdout`), including the v0.17 task-log viewer (`logs` tab with level/status filters and pagination).
 - CLI companion implementation is in progress on `dev`: draft spec published at `docs/architecture/HELM_CLI_SPEC.ms` and Rust `helm` binary exists (`core/rust/crates/helm-cli`) with read-only snapshot commands plus runtime-backed orchestration commands (`refresh`, `managers detect`) and `--wait`/`--detach` flag parsing.
@@ -976,4 +1011,4 @@ Helm is a **functional control plane for 28 implemented managers** with:
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-0.13.x through 0.17.8 stable checkpoints are complete on `main`; `v0.17.0-rc.1` through `v0.17.0-rc.5` served as the completed RC validation path into stable `0.17.0`, followed by stable patch releases `v0.17.1`, `v0.17.2`, `v0.17.3`, `v0.17.4`, `v0.17.5`, `v0.17.6`, `v0.17.7`, and `v0.17.8`.
+0.13.x through 0.17.9 stable checkpoints are complete on `main`; `v0.17.0-rc.1` through `v0.17.0-rc.5` served as the completed RC validation path into stable `0.17.0`, followed by stable patch releases `v0.17.1`, `v0.17.2`, `v0.17.3`, `v0.17.4`, `v0.17.5`, `v0.17.6`, `v0.17.7`, `v0.17.8`, and `v0.17.9`.

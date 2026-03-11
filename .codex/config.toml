@@ -1,4 +1,4 @@
-model = "gpt-5.3-codex"
+model = "gpt-5.4"
 project_doc_max_bytes = 131072
 model_reasoning_effort = "xhigh"
 
@@ -16,3 +16,16 @@ project_doc_max_bytes = 131072
 
 [projects."/Users/jasoncavinder/Projects/Helm".hooks]
 agent-turn-complete = ["ops/codex/scripts/notify-turn-complete.sh"]
+
+[sandbox_workspace_write]
+network_access = true
+writable_roots = ["/Users/jasoncavinder/.cache/sccache"]
+
+[shell_environment_policy]
+inherit = "all"
+
+[shell_environment_policy.set]
+RUSTC_WRAPPER = "sccache"
+SCCACHE_DIR = "/Users/jasoncavinder/.cache/sccache"
+SCCACHE_CACHE_SIZE = "20G"
+CARGO_TARGET_DIR = ".cargo-target"

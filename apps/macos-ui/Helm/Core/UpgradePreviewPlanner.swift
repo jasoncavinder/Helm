@@ -1,5 +1,15 @@
 import Foundation
 
+struct PackageRuntimeStateProjection: Codable, Hashable {
+    var isActive: Bool = false
+    var isDefault: Bool = false
+    var hasOverride: Bool = false
+
+    var isEmpty: Bool {
+        !isActive && !isDefault && !hasOverride
+    }
+}
+
 struct UpgradePreviewPlanner {
     struct Entry: Equatable {
         let manager: String
@@ -235,6 +245,17 @@ struct PackageConsolidationPolicy {
         }
     }
 
+    static func preferredManagerId(
+        managerIds: [String],
+        preferredManagerId: String?
+    ) -> String? {
+        guard !managerIds.isEmpty else { return nil }
+        if let preferredManagerId, managerIds.contains(preferredManagerId) {
+            return preferredManagerId
+        }
+        return managerIds[0]
+    }
+
     static func shouldPrefer(
         lhsStatus: String,
         rhsStatus: String,
@@ -242,6 +263,10 @@ struct PackageConsolidationPolicy {
         rhsPinned: Bool,
         lhsRestartRequired: Bool,
         rhsRestartRequired: Bool,
+        lhsRuntimeState: PackageRuntimeStateProjection = PackageRuntimeStateProjection(),
+        rhsRuntimeState: PackageRuntimeStateProjection = PackageRuntimeStateProjection(),
+        lhsVersion: String? = nil,
+        rhsVersion: String? = nil,
         lhsManagerId: String,
         rhsManagerId: String,
         localizedManagerName: (String) -> String,
@@ -258,6 +283,36 @@ struct PackageConsolidationPolicy {
         if lhsRestartRequired != rhsRestartRequired {
             return lhsRestartRequired
         }
+        if lhsRuntimeState.isActive != rhsRuntimeState.isActive {
+            return lhsRuntimeState.isActive
+        }
+        if lhsRuntimeState.isDefault != rhsRuntimeState.isDefault {
+            return lhsRuntimeState.isDefault
+        }
+        if lhsRuntimeState.hasOverride != rhsRuntimeState.hasOverride {
+            return !lhsRuntimeState.hasOverride
+        }
+
+        let lhsVersionToken = normalizedVersionToken(lhsVersion)
+        let rhsVersionToken = normalizedVersionToken(rhsVersion)
+        if lhsVersionToken != rhsVersionToken {
+            if lhsVersionToken == nil {
+                return false
+            }
+            if rhsVersionToken == nil {
+                return true
+            }
+            if let lhsVersionToken, let rhsVersionToken {
+                let order = lhsVersionToken.compare(
+                    rhsVersionToken,
+                    options: [.numeric, .caseInsensitive]
+                )
+                if order != .orderedSame {
+                    return order == .orderedDescending
+                }
+            }
+        }
+
         if let priorityRank {
             let lhsPriority = priorityRank(lhsManagerId)
             let rhsPriority = priorityRank(rhsManagerId)
@@ -267,5 +322,135 @@ struct PackageConsolidationPolicy {
         }
         return localizedManagerName(lhsManagerId)
             .localizedCaseInsensitiveCompare(localizedManagerName(rhsManagerId)) == .orderedAscending
+    }
+
+    private static func normalizedVersionToken(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let token = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return token.isEmpty ? nil : token
+    }
+}
+
+enum PackageActionTracking {
+    static func normalizedPackageName(_ value: String) -> String {
+        PackageActionIdentity.normalizedBaseName(value)
+    }
+
+    static func normalizedPackageIdentityKey(name: String, version: String?) -> String {
+        PackageActionIdentity.normalizedIdentityKey(name: name, version: version)
+    }
+
+    static func packageNameFromPackageId(_ packageId: String) -> String? {
+        let normalizedId = packageId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedId.isEmpty,
+              let managerSeparator = normalizedId.firstIndex(of: ":"),
+              managerSeparator < normalizedId.index(before: normalizedId.endIndex) else {
+            return nil
+        }
+
+        var versionSlice: Substring?
+        var packageSlice = normalizedId[normalizedId.index(after: managerSeparator)...]
+        if let versionSeparator = packageSlice.range(of: "::", options: .backwards) {
+            versionSlice = packageSlice[versionSeparator.upperBound...]
+            packageSlice = packageSlice[..<versionSeparator.lowerBound]
+        }
+
+        let packageName = String(packageSlice).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !packageName.isEmpty else { return nil }
+        let version = versionSlice.map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+        let normalizedPackageIdentity = normalizedPackageIdentityKey(
+            name: packageName,
+            version: version
+        )
+        return normalizedPackageIdentity.isEmpty ? nil : normalizedPackageIdentity
+    }
+
+    static func inFlightInstallNames(
+        installActionPackageIds: Set<String>,
+        packageNameById: [String: String],
+        trackedNamesByPackageId: [String: String]
+    ) -> Set<String> {
+        var names = Set<String>()
+
+        for packageId in installActionPackageIds {
+            if let tracked = trackedNamesByPackageId[packageId], !tracked.isEmpty {
+                names.insert(tracked)
+                continue
+            }
+            if let mapped = packageNameById[packageId], !mapped.isEmpty {
+                names.insert(mapped)
+                continue
+            }
+            if let parsed = packageNameFromPackageId(packageId) {
+                names.insert(parsed)
+            }
+        }
+
+        return names
+    }
+}
+
+private enum PackageActionIdentity {
+    private static let unknownVersionTokens: Set<String> = ["unknown"]
+
+    static func normalizedBaseName(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    static func normalizedIdentityKey(name: String, version: String?) -> String {
+        let normalizedName = normalizedBaseName(name)
+        guard !normalizedName.isEmpty else { return "" }
+        guard let qualifier = normalizedVariantQualifier(fromVersion: version) else {
+            return normalizedName
+        }
+        return "\(normalizedName)@\(qualifier)"
+    }
+
+    private static func normalizedVariantQualifier(fromVersion version: String?) -> String? {
+        guard let normalizedVersion = normalizedVersionSelectorInput(version) else { return nil }
+        return qualifierFromSelector(normalizedVersion)
+    }
+
+    private static func normalizedVersionSelectorInput(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return nil }
+        if unknownVersionTokens.contains(normalized.lowercased()) {
+            return nil
+        }
+        return normalized
+    }
+
+    private static func qualifierFromSelector(_ selector: String) -> String? {
+        let atoms = selector
+            .split(separator: "-")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !atoms.isEmpty else { return nil }
+
+        let firstReleaseAtom = atoms.firstIndex(where: { atom in
+            isReleaseTokenAtom(atom)
+        })
+        let qualifierAtoms: ArraySlice<String> = {
+            guard let firstReleaseAtom else {
+                return atoms[atoms.startIndex..<atoms.endIndex]
+            }
+            guard firstReleaseAtom > 0 else { return [] }
+            return atoms[atoms.startIndex..<firstReleaseAtom]
+        }()
+        guard !qualifierAtoms.isEmpty else { return nil }
+        return qualifierAtoms.joined(separator: "-").lowercased()
+    }
+
+    private static func isReleaseTokenAtom(_ atom: String) -> Bool {
+        guard let first = atom.first else { return false }
+        if first.isNumber {
+            return true
+        }
+        if first == "v" || first == "V" {
+            let next = atom.dropFirst().first
+            return next?.isNumber == true
+        }
+        return false
     }
 }

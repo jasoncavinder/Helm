@@ -3,7 +3,36 @@ import os.log
 
 private let logger = Logger(subsystem: "app.jasoncavinder.Helm.HelmService", category: "service")
 
+private func withOptionalCString<T>(_ value: String?, _ body: (UnsafePointer<CChar>?) -> T) -> T {
+    guard let value else {
+        return body(nil)
+    }
+    return value.withCString { body($0) }
+}
+
 class HelmService: NSObject, HelmServiceProtocol {
+    private struct HelmCliShimInstallResponse: Codable {
+        let accepted: Bool
+        let installed: Bool
+        let channel: String
+        let updatePolicy: String
+        let currentVersion: String?
+        let shimPath: String?
+        let markerPath: String?
+        let reason: String?
+
+        enum CodingKeys: String, CodingKey {
+            case accepted
+            case installed
+            case channel
+            case updatePolicy = "update_policy"
+            case currentVersion = "current_version"
+            case shimPath = "shim_path"
+            case markerPath = "marker_path"
+            case reason
+        }
+    }
+
     override init() {
         super.init()
 
@@ -38,6 +67,88 @@ class HelmService: NSObject, HelmServiceProtocol {
         }
         defer { helm_free_string(cString) }
         reply(String(cString: cString))
+    }
+
+    func getRustupToolchainDetail(toolchain: String, withReply reply: @escaping (String?) -> Void) {
+        guard let cString = toolchain.withCString({ helm_get_rustup_toolchain_detail($0) }) else {
+            logger.warning("helm_get_rustup_toolchain_detail(\(toolchain, privacy: .public)) returned nil")
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(cString) }
+        reply(String(cString: cString))
+    }
+
+    func addRustupComponent(toolchain: String, component: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = toolchain.withCString { toolchainPtr in
+            component.withCString { componentPtr in
+                helm_rustup_add_component(toolchainPtr, componentPtr)
+            }
+        }
+        logger.info("helm_rustup_add_component(\(toolchain, privacy: .public), \(component, privacy: .public)) result: \(taskId)")
+        reply(taskId)
+    }
+
+    func removeRustupComponent(toolchain: String, component: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = toolchain.withCString { toolchainPtr in
+            component.withCString { componentPtr in
+                helm_rustup_remove_component(toolchainPtr, componentPtr)
+            }
+        }
+        logger.info("helm_rustup_remove_component(\(toolchain, privacy: .public), \(component, privacy: .public)) result: \(taskId)")
+        reply(taskId)
+    }
+
+    func addRustupTarget(toolchain: String, target: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = toolchain.withCString { toolchainPtr in
+            target.withCString { targetPtr in
+                helm_rustup_add_target(toolchainPtr, targetPtr)
+            }
+        }
+        logger.info("helm_rustup_add_target(\(toolchain, privacy: .public), \(target, privacy: .public)) result: \(taskId)")
+        reply(taskId)
+    }
+
+    func removeRustupTarget(toolchain: String, target: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = toolchain.withCString { toolchainPtr in
+            target.withCString { targetPtr in
+                helm_rustup_remove_target(toolchainPtr, targetPtr)
+            }
+        }
+        logger.info("helm_rustup_remove_target(\(toolchain, privacy: .public), \(target, privacy: .public)) result: \(taskId)")
+        reply(taskId)
+    }
+
+    func setRustupDefaultToolchain(toolchain: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = toolchain.withCString { helm_rustup_set_default_toolchain($0) }
+        logger.info("helm_rustup_set_default_toolchain(\(toolchain, privacy: .public)) result: \(taskId)")
+        reply(taskId)
+    }
+
+    func setRustupOverride(toolchain: String, path: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = toolchain.withCString { toolchainPtr in
+            path.withCString { pathPtr in
+                helm_rustup_set_override(toolchainPtr, pathPtr)
+            }
+        }
+        logger.info("helm_rustup_set_override(\(toolchain, privacy: .public), \(path, privacy: .public)) result: \(taskId)")
+        reply(taskId)
+    }
+
+    func unsetRustupOverride(toolchain: String, path: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = toolchain.withCString { toolchainPtr in
+            path.withCString { pathPtr in
+                helm_rustup_unset_override(toolchainPtr, pathPtr)
+            }
+        }
+        logger.info("helm_rustup_unset_override(\(toolchain, privacy: .public), \(path, privacy: .public)) result: \(taskId)")
+        reply(taskId)
+    }
+
+    func setRustupProfile(profile: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = profile.withCString { helm_rustup_set_profile($0) }
+        logger.info("helm_rustup_set_profile(\(profile, privacy: .public)) result: \(taskId)")
+        reply(taskId)
     }
 
     func listTasks(withReply reply: @escaping (String?) -> Void) {
@@ -237,6 +348,131 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(result)
     }
 
+    func installHelmCliShim(
+        appBundlePath: String,
+        appBundleIdentifier: String,
+        withReply reply: @escaping (String?) -> Void
+    ) {
+        let appBundleURL = URL(fileURLWithPath: appBundlePath, isDirectory: true)
+        let cliURL = appBundleURL
+            .appendingPathComponent("Contents", isDirectory: true)
+            .appendingPathComponent("Resources", isDirectory: true)
+            .appendingPathComponent("helm-cli", isDirectory: false)
+
+        guard FileManager.default.isExecutableFile(atPath: cliURL.path) else {
+            logger.warning("installHelmCliShim missing bundled CLI at \(cliURL.path, privacy: .public)")
+            reply(encodeHelmCliShimInstallResponse(
+                HelmCliShimInstallResponse(
+                    accepted: false,
+                    installed: false,
+                    channel: "app-bundle-shim",
+                    updatePolicy: "channel",
+                    currentVersion: nil,
+                    shimPath: nil,
+                    markerPath: nil,
+                    reason: "Bundled Helm CLI binary is missing from the app bundle."
+                )
+            ))
+            return
+        }
+
+        let process = Process()
+        process.executableURL = cliURL
+        process.arguments = [
+            "--json",
+            "self",
+            "install-shim",
+            "--app-bundle-path",
+            appBundlePath,
+            "--app-bundle-id",
+            appBundleIdentifier,
+        ]
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            logger.error("installHelmCliShim failed to launch bundled CLI: \(error.localizedDescription, privacy: .public)")
+            reply(encodeHelmCliShimInstallResponse(
+                HelmCliShimInstallResponse(
+                    accepted: false,
+                    installed: false,
+                    channel: "app-bundle-shim",
+                    updatePolicy: "channel",
+                    currentVersion: nil,
+                    shimPath: nil,
+                    markerPath: nil,
+                    reason: error.localizedDescription
+                )
+            ))
+            return
+        }
+
+        let stdout = String(
+            data: stdoutPipe.fileHandleForReading.readDataToEndOfFile(),
+            encoding: .utf8
+        )?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let stderr = String(
+            data: stderrPipe.fileHandleForReading.readDataToEndOfFile(),
+            encoding: .utf8
+        )?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let stdout, !stdout.isEmpty {
+            logger.info("installHelmCliShim bundled CLI exited \(process.terminationStatus) with JSON payload")
+            reply(stdout)
+            return
+        }
+
+        let reason: String
+        if let stderr, !stderr.isEmpty {
+            reason = stderr
+        } else {
+            reason = "Bundled Helm CLI shim install failed without output."
+        }
+        logger.error("installHelmCliShim bundled CLI exited \(process.terminationStatus) without JSON payload: \(reason, privacy: .public)")
+        reply(encodeHelmCliShimInstallResponse(
+            HelmCliShimInstallResponse(
+                accepted: false,
+                installed: false,
+                channel: "app-bundle-shim",
+                updatePolicy: "channel",
+                currentVersion: nil,
+                shimPath: nil,
+                markerPath: nil,
+                reason: reason
+            )
+        ))
+    }
+
+    func listPackageManagerPreferences(withReply reply: @escaping (String?) -> Void) {
+        guard let cString = helm_list_package_manager_preferences() else {
+            logger.warning("helm_list_package_manager_preferences returned nil")
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(cString) }
+        reply(String(cString: cString))
+    }
+
+    func setPackageManagerPreference(packageFamilyKey: String, managerId: String?, withReply reply: @escaping (Bool) -> Void) {
+        let result = packageFamilyKey.withCString { package in
+            if let managerId {
+                return managerId.withCString { manager in
+                    helm_set_package_manager_preference(package, manager)
+                }
+            }
+            return helm_set_package_manager_preference(package, nil)
+        }
+        logger.info(
+            "helm_set_package_manager_preference(\(packageFamilyKey), \(managerId ?? "nil")) result: \(result)"
+        )
+        reply(result)
+    }
+
     func previewUpgradePlan(includePinned: Bool, allowOsUpdates: Bool, withReply reply: @escaping (String?) -> Void) {
         guard let cString = helm_preview_upgrade_plan(includePinned, allowOsUpdates) else {
             logger.warning("helm_preview_upgrade_plan returned nil")
@@ -253,43 +489,81 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(result)
     }
 
-    func upgradePackage(managerId: String, packageName: String, withReply reply: @escaping (Int64) -> Void) {
+    func upgradePackage(
+        managerId: String,
+        packageName: String,
+        packageTargetName: String?,
+        version: String?,
+        withReply reply: @escaping (Int64) -> Void
+    ) {
         let taskId = managerId.withCString { manager in
             packageName.withCString { package in
-                helm_upgrade_package(manager, package)
+                withOptionalCString(packageTargetName) { targetPtr in
+                    withOptionalCString(version) { versionPtr in
+                        helm_upgrade_package(manager, package, targetPtr, versionPtr)
+                    }
+                }
             }
         }
-        logger.info("helm_upgrade_package(\(managerId), \(packageName)) result: \(taskId)")
+        logger.info(
+            "helm_upgrade_package(\(managerId), \(packageName), target=\(packageTargetName ?? "-", privacy: .public), version=\(version ?? "-", privacy: .public)) result: \(taskId)"
+        )
         reply(taskId)
     }
 
-    func installPackage(managerId: String, packageName: String, withReply reply: @escaping (Int64) -> Void) {
+    func installPackage(
+        managerId: String,
+        packageName: String,
+        packageTargetName: String?,
+        version: String?,
+        withReply reply: @escaping (Int64) -> Void
+    ) {
         let taskId = managerId.withCString { manager in
             packageName.withCString { package in
-                helm_install_package(manager, package)
+                withOptionalCString(packageTargetName) { targetPtr in
+                    withOptionalCString(version) { versionPtr in
+                        helm_install_package(manager, package, targetPtr, versionPtr)
+                    }
+                }
             }
         }
-        logger.info("helm_install_package(\(managerId), \(packageName)) result: \(taskId)")
+        logger.info(
+            "helm_install_package(\(managerId), \(packageName), target=\(packageTargetName ?? "-", privacy: .public), version=\(version ?? "-", privacy: .public)) result: \(taskId)"
+        )
         reply(taskId)
     }
 
-    func uninstallPackage(managerId: String, packageName: String, withReply reply: @escaping (Int64) -> Void) {
+    func uninstallPackage(
+        managerId: String,
+        packageName: String,
+        packageTargetName: String?,
+        version: String?,
+        withReply reply: @escaping (Int64) -> Void
+    ) {
         let taskId = managerId.withCString { manager in
             packageName.withCString { package in
-                helm_uninstall_package(manager, package)
+                withOptionalCString(packageTargetName) { targetPtr in
+                    withOptionalCString(version) { versionPtr in
+                        helm_uninstall_package(manager, package, targetPtr, versionPtr)
+                    }
+                }
             }
         }
-        logger.info("helm_uninstall_package(\(managerId), \(packageName)) result: \(taskId)")
+        logger.info(
+            "helm_uninstall_package(\(managerId), \(packageName), target=\(packageTargetName ?? "-", privacy: .public), version=\(version ?? "-", privacy: .public)) result: \(taskId)"
+        )
         reply(taskId)
     }
 
-    func previewPackageUninstall(managerId: String, packageName: String, withReply reply: @escaping (String?) -> Void) {
+    func previewPackageUninstall(managerId: String, packageName: String, version: String?, withReply reply: @escaping (String?) -> Void) {
         guard let cString = managerId.withCString({ manager in
             packageName.withCString { package in
-                helm_preview_package_uninstall(manager, package)
+                withOptionalCString(version) { versionPtr in
+                    helm_preview_package_uninstall(manager, package, versionPtr)
+                }
             }
         }) else {
-            logger.warning("helm_preview_package_uninstall(\(managerId), \(packageName)) returned nil")
+            logger.warning("helm_preview_package_uninstall(\(managerId), \(packageName), version=\(version ?? "-", privacy: .public)) returned nil")
             reply(nil)
             return
         }
@@ -328,10 +602,21 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(result)
     }
 
-    func unpinPackage(managerId: String, packageName: String, withReply reply: @escaping (Bool) -> Void) {
-        let result = managerId.withCString { manager in
-            packageName.withCString { package in
-                helm_unpin_package(manager, package)
+    func unpinPackage(managerId: String, packageName: String, version: String?, withReply reply: @escaping (Bool) -> Void) {
+        let result: Bool
+        if let version {
+            result = managerId.withCString { manager in
+                packageName.withCString { package in
+                    version.withCString { versionPtr in
+                        helm_unpin_package(manager, package, versionPtr)
+                    }
+                }
+            }
+        } else {
+            result = managerId.withCString { manager in
+                packageName.withCString { package in
+                    helm_unpin_package(manager, package, nil)
+                }
             }
         }
         logger.info("helm_unpin_package(\(managerId), \(packageName)) result: \(result)")
@@ -589,5 +874,13 @@ class HelmService: NSObject, HelmServiceProtocol {
         }
         defer { helm_free_string(cString) }
         reply(String(cString: cString))
+    }
+
+    private func encodeHelmCliShimInstallResponse(_ response: HelmCliShimInstallResponse) -> String? {
+        let encoder = JSONEncoder()
+        guard let data = try? encoder.encode(response) else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
     }
 }

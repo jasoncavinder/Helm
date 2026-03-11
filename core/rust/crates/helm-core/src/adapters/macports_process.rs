@@ -127,18 +127,37 @@ impl MacPortsSource for ProcessMacPortsSource {
         self.run_and_collect_stdout_accepting(request, &[1])
     }
 
-    fn install(&self, port_name: &str) -> AdapterResult<String> {
-        let request = self.configure_request(macports_install_request(None, port_name));
+    fn install(
+        &self,
+        port_name: &str,
+        version: Option<&str>,
+        variants: &[String],
+    ) -> AdapterResult<String> {
+        let request =
+            self.configure_request(macports_install_request(None, port_name, version, variants));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 
-    fn uninstall(&self, port_name: &str) -> AdapterResult<String> {
-        let request = self.configure_request(macports_uninstall_request(None, port_name));
+    fn uninstall(
+        &self,
+        port_name: &str,
+        version: Option<&str>,
+        variants: &[String],
+    ) -> AdapterResult<String> {
+        let request = self.configure_request(macports_uninstall_request(
+            None, port_name, version, variants,
+        ));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 
-    fn upgrade(&self, port_name: Option<&str>) -> AdapterResult<String> {
-        let request = self.configure_request(macports_upgrade_request(None, port_name));
+    fn upgrade(
+        &self,
+        port_name: Option<&str>,
+        version: Option<&str>,
+        variants: &[String],
+    ) -> AdapterResult<String> {
+        let request =
+            self.configure_request(macports_upgrade_request(None, port_name, version, variants));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 }

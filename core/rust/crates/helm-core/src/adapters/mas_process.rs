@@ -3,12 +3,13 @@ use std::sync::Arc;
 use crate::adapters::detect_utils::which_executable;
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::mas::{
-    MasDetectOutput, MasSource, mas_detect_request, mas_list_installed_request,
-    mas_list_outdated_request,
+    MasDetectOutput, MasSource, mas_detect_request, mas_get_request, mas_install_request,
+    mas_list_installed_request, mas_list_outdated_request, mas_search_request,
+    mas_uninstall_request, mas_upgrade_request,
 };
-use crate::adapters::process_utils::run_and_collect_stdout;
+use crate::adapters::process_utils::{run_and_collect_stdout, run_and_collect_version_output};
 use crate::execution::{ProcessExecutor, ProcessSpawnRequest};
-use crate::models::ManagerId;
+use crate::models::{ManagerId, SearchQuery};
 
 pub struct ProcessMasSource {
     executor: Arc<dyn ProcessExecutor>,
@@ -41,7 +42,6 @@ impl ProcessMasSource {
 
 impl MasSource for ProcessMasSource {
     fn detect(&self) -> AdapterResult<MasDetectOutput> {
-        // Phase 1: instant filesystem check via which
         let executable_path = which_executable(
             self.executor.as_ref(),
             "mas",
@@ -49,10 +49,8 @@ impl MasSource for ProcessMasSource {
             ManagerId::Mas,
         );
 
-        // Phase 2: best-effort version (timeout is non-fatal)
         let request = self.configure_request(mas_detect_request(None));
-        let version_output =
-            run_and_collect_stdout(self.executor.as_ref(), request).unwrap_or_default();
+        let version_output = run_and_collect_version_output(self.executor.as_ref(), request);
 
         Ok(MasDetectOutput {
             executable_path,
@@ -67,6 +65,50 @@ impl MasSource for ProcessMasSource {
 
     fn list_outdated(&self) -> AdapterResult<String> {
         let request = self.configure_request(mas_list_outdated_request(None));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn search(&self, query: &str) -> AdapterResult<String> {
+        let request = self.configure_request(mas_search_request(
+            None,
+            &SearchQuery {
+                text: query.to_string(),
+                issued_at: std::time::SystemTime::now(),
+            },
+        ));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn install(&self, app_id: &str) -> AdapterResult<String> {
+        let install_request = self.configure_request(mas_install_request(None, app_id));
+        match run_and_collect_stdout(self.executor.as_ref(), install_request) {
+            Ok(output) => Ok(output),
+            Err(install_error) => {
+                let get_request = self.configure_request(mas_get_request(None, app_id));
+                match run_and_collect_stdout(self.executor.as_ref(), get_request) {
+                    Ok(output) => Ok(output),
+                    Err(get_error) => Err(crate::models::CoreError {
+                        manager: install_error.manager,
+                        task: install_error.task,
+                        action: install_error.action,
+                        kind: install_error.kind,
+                        message: format!(
+                            "{}; fallback 'mas get' also failed: {}",
+                            install_error.message, get_error.message
+                        ),
+                    }),
+                }
+            }
+        }
+    }
+
+    fn uninstall(&self, app_id: &str) -> AdapterResult<String> {
+        let request = self.configure_request(mas_uninstall_request(None, app_id));
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn upgrade(&self, app_id: Option<&str>) -> AdapterResult<String> {
+        let request = self.configure_request(mas_upgrade_request(None, app_id));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 }

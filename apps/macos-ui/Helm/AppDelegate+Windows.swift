@@ -1,6 +1,35 @@
 import Cocoa
 import SwiftUI
 
+private func handleStandardTextEditingKeyEquivalent(_ event: NSEvent, sender: AnyObject) -> Bool {
+    let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+    guard flags.contains(.command),
+          let key = event.charactersIgnoringModifiers?.lowercased() else {
+        return false
+    }
+
+    let action: Selector?
+    switch key {
+    case "a":
+        action = #selector(NSText.selectAll(_:))
+    case "c":
+        action = #selector(NSText.copy(_:))
+    case "x":
+        action = #selector(NSText.cut(_:))
+    case "v":
+        action = #selector(NSText.paste(_:))
+    case "z" where flags.contains(.shift):
+        action = Selector(("redo:"))
+    case "z":
+        action = Selector(("undo:"))
+    default:
+        action = nil
+    }
+
+    guard let action else { return false }
+    return NSApp.sendAction(action, to: nil, from: sender)
+}
+
 // MARK: - FloatingPanel
 
 final class FloatingPanel: NSPanel {
@@ -38,6 +67,10 @@ final class FloatingPanel: NSPanel {
             return true
         }
 
+        if handleStandardTextEditingKeyEquivalent(event, sender: self) {
+            return true
+        }
+
         if event.keyCode == 53 {
             onEscape?()
             return true
@@ -66,6 +99,10 @@ final class ControlCenterWindow: NSWindow {
 
         if flags.contains(.command), key == "f" {
             onCommandF?()
+            return true
+        }
+
+        if handleStandardTextEditingKeyEquivalent(event, sender: self) {
             return true
         }
 

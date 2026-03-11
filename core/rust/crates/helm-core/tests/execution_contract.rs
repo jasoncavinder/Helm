@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use helm_core::execution::{
     CommandSpec, ExecutionResult, ProcessExecutor, ProcessExitStatus, ProcessOutput,
@@ -137,6 +137,16 @@ async fn validated_spawn_uses_structured_args_and_supports_termination() {
         finished_at: now,
     };
     let executor = FakeExecutor::new(output.clone());
+    let fixture_dir = std::env::temp_dir().join(format!(
+        "helm-execution-contract-{}-{}",
+        std::process::id(),
+        now.duration_since(UNIX_EPOCH)
+            .expect("system clock before unix epoch")
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&fixture_dir).expect("fixture directory should be created");
+    let fake_python = fixture_dir.join("python3");
+    std::fs::write(&fake_python, b"#!/bin/sh\nexit 0\n").expect("fixture binary should exist");
 
     let request = ProcessSpawnRequest::new(
         ManagerId::Pip,
@@ -145,6 +155,7 @@ async fn validated_spawn_uses_structured_args_and_supports_termination() {
         CommandSpec::new("python3")
             .args(["-m", "pip", "list", "--outdated"])
             .env("PIP_DISABLE_PIP_VERSION_CHECK", "1")
+            .env("PATH", fixture_dir.display().to_string())
             .working_dir(PathBuf::from("/tmp")),
     )
     .requires_elevation(false)
@@ -165,7 +176,7 @@ async fn validated_spawn_uses_structured_args_and_supports_termination() {
     let captured = executor
         .captured_request()
         .expect("executor should capture spawn request");
-    assert_eq!(captured.command.program, PathBuf::from("python3"));
+    assert_eq!(captured.command.program, fake_python);
     assert_eq!(
         captured.command.args,
         vec!["-m", "pip", "list", "--outdated"]

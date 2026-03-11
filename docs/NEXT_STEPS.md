@@ -11,11 +11,11 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-0.18.x doctor/repair foundation execution (post-v0.17.8 stable)
+0.18.x doctor/repair foundation execution (post-v0.17.9 stable)
 ```
 
 Focus:
-- keep `main`/`dev`/`docs`/`web` publication docs and version markers aligned for `v0.17.8`
+- keep `main`/`dev`/`docs`/`web` publication docs and version markers aligned for `v0.17.9`
 - maintain release-process hardening guardrails now that phases 1-5 are complete (preflight, publish verification, drift prevention)
 - execute doctor/repair subsystem foundation in core + FFI + service surfaces
 - ship first repair path for Homebrew metadata-only manager installs via the new repair subsystem
@@ -26,8 +26,10 @@ Focus:
 - keep the repository-local Codex operating model current (lean `AGENTS`, `ops/codex/skills/`, `.codex/commands/`, notify logging, and `ops/codex/docs/` workflows) so recurring AI workflows remain deterministic and low-friction
 
 Current checkpoint:
-- `v0.17.8` is the current stable release on `main`; pre-1.0 quality-audit remediation and release-gate hardening are now included in stable publication:
-  - release artifacts, metadata publication PRs, and post-publish verification checks completed for `v0.17.8`.
+- `v0.17.9` is the current stable release on `main`; current-scope manager adapter completion and package workflow hardening are now aligned for stable publication:
+  - all current manager adapters are considered complete for Helm's intended scope
+  - intentionally narrower manager scopes remain explicit (`nix_darwin` detect/refresh-only; detection-only adapters such as `sparkle`, `setapp`, and `parallels_desktop`; guarded/status adapters such as `docker_desktop`, `podman`, `colima`, `rosetta2`, `firmware_updates`, and `xcode_command_line_tools`)
+  - no additional manager-adapter implementation gaps remain beyond those intentional product boundaries
   - post-`v0.17.7` doctor/repair foundation scaffold delivered on `dev`:
     - added `helm-core` doctor/repair modules with deterministic finding fingerprints, local health report model, and embedded repair knowledge-provider scaffolding
     - manager package-state issue generation now routes through doctor findings and includes fingerprint/severity/evidence plus repair-option metadata
@@ -351,7 +353,7 @@ Current checkpoint:
     - audit-remediation follow-up delivered: stable CLI update metadata now points to published `v0.17.2` CLI release assets with real checksums (no placeholder zeros), and auto-check last-checked timestamps now update only after eligible direct self-managed check attempts instead of policy-gated skips
     - audit-remediation follow-up delivered: distribution profile contract is now centralized in `docs/contracts/distribution-profiles.json` and consumed by shared build orchestration (`scripts/build.sh`, `scripts/release/build_unsigned_variant.sh`, matrix-based `release-all-variants.yml` auxiliary jobs); Swift update-authority mapping now has one source (`AppUpdateConfiguration`), targeted updater policy tests pass on macOS, and GUI checksum-publication symmetry is explicitly documented as deferred while Sparkle remains canonical GUI integrity authority
     - trust-chain future work is now explicitly tracked: detached signatures + signing-key rotation for CLI update artifacts (`docs/roadmap/CLI_DISTRIBUTION_CI_MILESTONES.md`, milestone M5)
-- latest stable release on `main`: `v0.17.8`
+- latest stable release on `main`: `v0.17.9`
 - validation gates are green through the stable cut (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke across `v0.17.0-rc.1` through `v0.17.0-rc.5`)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
@@ -1055,9 +1057,9 @@ Delivered:
   - `asdf` process source now resolves executable path via structured `which` lookup with absolute-path fallback
   - `asdf` outdated scan now degrades gracefully when individual latest-version probes fail
 - ✅ Implemented adapter capabilities for this slice:
-  - `asdf`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade (compatibility mode)
+  - `asdf`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade, with plugin bootstrap, version-aware mutation targeting, and active/default/override runtime-state tracking
   - `macports`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade
-  - `nix_darwin`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade (compatibility mode via `nix-env`)
+  - `nix_darwin`: detect and refresh only; declarative nix-darwin package/config management remains future work, and Helm intentionally does not expose `nix-env` compatibility mutations under the `nix_darwin` manager
 - ✅ Added adapter tests + fixtures for:
   - version parsing
   - installed/outdated/search parsing
@@ -1085,17 +1087,29 @@ Delivered:
   - `homebrew_cask`
 - ✅ Added process source with constrained PATH handling and Homebrew environment guardrails for XPC runtime contexts
 - ✅ Implemented adapter capabilities for this slice:
-  - `homebrew_cask`: detect, refresh, list_installed, list_outdated
+  - `homebrew_cask`: detect, refresh, search, list_installed, list_outdated, install, uninstall, upgrade
 - ✅ Implemented JSON-backed parsing for installed/outdated state via Homebrew `--json=v2` output
+- ✅ Added Homebrew-native catalog/search for casks:
+  - empty query: `brew casks`
+  - filtered query: `brew search --cask --desc`
+- ✅ Added cask mutation flows and targeted-upgrade verification
 - ✅ Added adapter tests + fixtures for:
   - request-shape assertions
-  - parse behavior for installed/outdated payloads
-  - read-only execution flow + mutating-action rejection
+  - parse behavior for installed/outdated/search payloads
+  - read/write execution flow
+  - end-to-end orchestration coverage
 - ✅ Registered adapter in FFI initialization and marked `homebrew_cask` as implemented in manager status export
 - ✅ Swift fallback metadata updated so `homebrew_cask` reflects implemented state when runtime status is unavailable
 - ✅ Validation run:
   - `cargo test -p helm-core --manifest-path core/rust/Cargo.toml`
   - `cargo test -p helm-ffi --manifest-path core/rust/Cargo.toml`
+
+### Subsequent Hardening
+
+- ✅ Homebrew formula installed/outdated parsing moved to structured JSON (`brew info --formula --json=v2 --installed`, `brew outdated --formula --json=v2`)
+- ✅ Homebrew formula catalog/search now uses `brew formulae` and `brew search --formula --desc`
+- ✅ Native Homebrew formula pin/unpin remains supported and rejects separate version arguments
+- ✅ Helm now disables Homebrew automatic install cleanup and applies explicit cleanup only when Helm’s Homebrew keg cleanup policy requests it
   - `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' -derivedDataPath /tmp/helmtests-deriveddata CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -only-testing:HelmTests test`
 
 ### Next Up (Post-Alpha.5)
@@ -1146,7 +1160,7 @@ Delivered:
 ### Priority 2 — Extended Managers (Completed)
 
 - pnpm (global) ✅
-- yarn (global) ✅
+- yarn (global, Classic 1.x package surface) ✅
 - RubyGems ✅
 - Poetry (self/plugins) ✅
 - Bundler ✅
@@ -1251,4 +1265,4 @@ Implement:
 - 0.14 stable release alignment for `v0.14.0` is complete (README/website + version artifacts).
 - Distribution/licensing future-state planning documentation is aligned for 0.14 release notes and roadmap planning (no implementation yet).
 - 0.14.x and 0.15.x release execution are complete on `main` (`v0.14.1` and `v0.15.0`).
-- 0.17.8 release execution is complete on `main`; 0.17.x diagnostics/logging delivery and post-`0.17.x` follow-up stabilization are now closed with stable lineage `v0.17.0`, `v0.17.1`, `v0.17.2`, `v0.17.3`, `v0.17.4`, `v0.17.5`, `v0.17.6`, `v0.17.7`, and `v0.17.8`.
+- 0.17.9 release execution is staged on `main`; 0.17.x diagnostics/logging delivery and post-`0.17.x` follow-up stabilization are now closed with stable lineage `v0.17.0`, `v0.17.1`, `v0.17.2`, `v0.17.3`, `v0.17.4`, `v0.17.5`, `v0.17.6`, `v0.17.7`, `v0.17.8`, and `v0.17.9`.

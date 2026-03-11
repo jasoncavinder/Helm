@@ -3,6 +3,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use serde::Deserialize;
+
 use crate::adapters::manager::{AdapterRequest, AdapterResponse, AdapterResult, ManagerAdapter};
 use crate::execution::{CommandSpec, ProcessSpawnRequest};
 use crate::manager_lifecycle::{
@@ -58,7 +60,7 @@ pub trait HomebrewSource: Send + Sync {
 
     fn list_outdated_formulae(&self) -> AdapterResult<String>;
 
-    fn search_local_formulae(&self, query: &str) -> AdapterResult<String>;
+    fn search_formulae(&self, query: &SearchQuery) -> AdapterResult<String>;
 
     fn install_formula(&self, name: &str) -> AdapterResult<String>;
 
@@ -103,8 +105,21 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                 )))
             }
             AdapterRequest::Refresh(_) => {
-                let _ = self.source.detect()?;
-                Ok(AdapterResponse::Refreshed)
+                let detect_output = self.source.detect()?;
+                let version = parse_homebrew_version(&detect_output.version_output);
+                if version.is_none() {
+                    return Ok(AdapterResponse::SnapshotSync {
+                        installed: Some(Vec::new()),
+                        outdated: Some(Vec::new()),
+                    });
+                }
+
+                let installed = parse_installed_formulae(&self.source.list_installed_formulae()?)?;
+                let outdated = parse_outdated_formulae(&self.source.list_outdated_formulae()?)?;
+                Ok(AdapterResponse::SnapshotSync {
+                    installed: Some(installed),
+                    outdated: Some(outdated),
+                })
             }
             AdapterRequest::ListInstalled(_) => {
                 let raw = self.source.list_installed_formulae()?;
@@ -117,26 +132,43 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                 Ok(AdapterResponse::OutdatedPackages(packages))
             }
             AdapterRequest::Search(search_request) => {
-                let raw = self
-                    .source
-                    .search_local_formulae(search_request.query.text.as_str())?;
+                let raw = self.source.search_formulae(&search_request.query)?;
                 let results = parse_search_formulae(&raw, &search_request.query)?;
                 Ok(AdapterResponse::SearchResults(results))
             }
             AdapterRequest::Install(install_request) => {
+                validate_homebrew_formula_target(
+                    install_request.package.name.as_str(),
+                    install_request.version.as_deref(),
+                    ManagerAction::Install,
+                )?;
+                let before_version = resolve_homebrew_formula_version(
+                    &self.source,
+                    install_request.package.name.as_str(),
+                )?;
                 if let Err(error) = self.source.install_formula(&install_request.package.name)
                     && !is_homebrew_already_installed_error(&error)
                 {
                     return Err(error);
                 }
+                let after_version = resolve_homebrew_formula_version(
+                    &self.source,
+                    install_request.package.name.as_str(),
+                )?;
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: install_request.package,
+                    package_identifier: None,
                     action: ManagerAction::Install,
-                    before_version: None,
-                    after_version: install_request.version,
+                    before_version,
+                    after_version,
                 }))
             }
             AdapterRequest::Uninstall(uninstall_request) => {
+                validate_homebrew_formula_target(
+                    uninstall_request.package.name.as_str(),
+                    uninstall_request.version.as_deref(),
+                    ManagerAction::Uninstall,
+                )?;
                 let parsed_uninstall = parse_homebrew_manager_uninstall_package_name(
                     uninstall_request.package.name.as_str(),
                 );
@@ -144,6 +176,7 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                     .as_ref()
                     .map(|spec| spec.formula_name.as_str())
                     .unwrap_or_else(|| uninstall_request.package.name.as_str());
+                let before_version = resolve_homebrew_formula_version(&self.source, formula_name)?;
                 let uninstall_output = self.source.uninstall_formula(formula_name);
                 if let Err(error) = uninstall_output.as_ref()
                     && !is_homebrew_already_absent_uninstall_error(error)
@@ -190,8 +223,9 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                 }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: uninstall_request.package,
+                    package_identifier: None,
                     action: ManagerAction::Uninstall,
-                    before_version: None,
+                    before_version,
                     after_version: None,
                 }))
             }
@@ -200,8 +234,17 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                     manager: ManagerId::HomebrewFormula,
                     name: "__all__".to_string(),
                 });
+                validate_homebrew_formula_upgrade_target(
+                    requested_package.name.as_str(),
+                    upgrade_request.version.as_deref(),
+                )?;
                 let (target_name, cleanup_after_upgrade) =
                     split_upgrade_target(requested_package.name.as_str());
+                let targeted_outdated = if target_name != "__all__" && target_name != "__self__" {
+                    find_outdated_homebrew_formula(&self.source, target_name)?
+                } else {
+                    None
+                };
                 let _ = self.source.upgrade_formula(Some(target_name))?;
                 if target_name != "__all__" && target_name != "__self__" {
                     ensure_formula_no_longer_outdated(&self.source, target_name)?;
@@ -215,29 +258,47 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                 };
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
+                    package_identifier: None,
                     action: ManagerAction::Upgrade,
+                    before_version: targeted_outdated
+                        .as_ref()
+                        .and_then(|item| item.installed_version.clone()),
+                    after_version: targeted_outdated.map(|item| item.candidate_version),
+                }))
+            }
+            AdapterRequest::Pin(pin_request) => {
+                validate_homebrew_formula_target(
+                    pin_request.package.name.as_str(),
+                    pin_request.version.as_deref(),
+                    ManagerAction::Pin,
+                )?;
+                let _ = self.source.pin_formula(&pin_request.package.name)?;
+                Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
+                    package: pin_request.package,
+                    package_identifier: None,
+                    action: ManagerAction::Pin,
                     before_version: None,
                     after_version: None,
                 }))
             }
-            AdapterRequest::Pin(pin_request) => {
-                let _ = self.source.pin_formula(&pin_request.package.name)?;
-                Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
-                    package: pin_request.package,
-                    action: ManagerAction::Pin,
-                    before_version: None,
-                    after_version: pin_request.version,
-                }))
-            }
             AdapterRequest::Unpin(unpin_request) => {
+                crate::adapters::validate_package_identifier(
+                    ManagerId::HomebrewFormula,
+                    ManagerAction::Unpin,
+                    unpin_request.package.name.as_str(),
+                )?;
                 let _ = self.source.unpin_formula(&unpin_request.package.name)?;
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: unpin_request.package,
+                    package_identifier: None,
                     action: ManagerAction::Unpin,
                     before_version: None,
                     after_version: None,
                 }))
             }
+            AdapterRequest::ConfigurePackageDetail(_) => unreachable!(
+                "unsupported package detail request should have been rejected by ensure_request_supported"
+            ),
         }
     }
 }
@@ -267,7 +328,7 @@ pub fn homebrew_list_installed_request(task_id: Option<TaskId>) -> ProcessSpawnR
         task_id,
         TaskType::Refresh,
         ManagerAction::ListInstalled,
-        CommandSpec::new(HOMEBREW_COMMAND).args(["list", "--formula", "--versions"]),
+        CommandSpec::new(HOMEBREW_COMMAND).args(["info", "--formula", "--json=v2", "--installed"]),
         LIST_TIMEOUT,
     )
 }
@@ -277,8 +338,37 @@ pub fn homebrew_list_outdated_request(task_id: Option<TaskId>) -> ProcessSpawnRe
         task_id,
         TaskType::Refresh,
         ManagerAction::ListOutdated,
-        CommandSpec::new(HOMEBREW_COMMAND).args(["outdated", "--formula", "--verbose"]),
+        CommandSpec::new(HOMEBREW_COMMAND).args(["outdated", "--formula", "--json=v2"]),
         LIST_TIMEOUT,
+    )
+}
+
+pub fn homebrew_catalog_formulae_request(task_id: Option<TaskId>) -> ProcessSpawnRequest {
+    homebrew_request(
+        task_id,
+        TaskType::CatalogSync,
+        ManagerAction::Search,
+        CommandSpec::new(HOMEBREW_COMMAND).arg("formulae"),
+        LIST_TIMEOUT,
+    )
+}
+
+pub fn homebrew_search_formulae_request(
+    task_id: Option<TaskId>,
+    query: &SearchQuery,
+) -> ProcessSpawnRequest {
+    if query.text.trim().is_empty() {
+        return homebrew_catalog_formulae_request(task_id);
+    }
+
+    homebrew_request(
+        task_id,
+        TaskType::Search,
+        ManagerAction::Search,
+        CommandSpec::new(HOMEBREW_COMMAND)
+            .args(["search", "--formula", "--desc"])
+            .arg(query.text.clone()),
+        SEARCH_TIMEOUT,
     )
 }
 
@@ -286,15 +376,7 @@ pub fn homebrew_search_local_request(
     task_id: Option<TaskId>,
     query: &SearchQuery,
 ) -> ProcessSpawnRequest {
-    homebrew_request(
-        task_id,
-        TaskType::Search,
-        ManagerAction::Search,
-        CommandSpec::new(HOMEBREW_COMMAND)
-            .args(["search", "--formula"])
-            .arg(query.text.clone()),
-        SEARCH_TIMEOUT,
-    )
+    homebrew_search_formulae_request(task_id, query)
 }
 
 pub fn homebrew_install_request(task_id: Option<TaskId>, name: &str) -> ProcessSpawnRequest {
@@ -356,6 +438,46 @@ fn split_upgrade_target(name: &str) -> (&str, bool) {
     }
 }
 
+fn validate_homebrew_formula_target(
+    package_name: &str,
+    version: Option<&str>,
+    action: ManagerAction,
+) -> AdapterResult<()> {
+    crate::adapters::validate_package_identifier(ManagerId::HomebrewFormula, action, package_name)?;
+    if version.is_some() {
+        return Err(CoreError {
+            manager: Some(ManagerId::HomebrewFormula),
+            task: None,
+            action: Some(action),
+            kind: CoreErrorKind::InvalidInput,
+            message:
+                "homebrew formula actions do not accept a separate version argument; use a versioned formula name like 'python@3.12'"
+                    .to_string(),
+        });
+    }
+    Ok(())
+}
+
+fn validate_homebrew_formula_upgrade_target(
+    package_name: &str,
+    version: Option<&str>,
+) -> AdapterResult<()> {
+    if package_name != "__all__" && package_name != "__self__" {
+        let (target_name, _) = split_upgrade_target(package_name);
+        validate_homebrew_formula_target(target_name, version, ManagerAction::Upgrade)?;
+    } else if version.is_some() {
+        return Err(CoreError {
+            manager: Some(ManagerId::HomebrewFormula),
+            task: None,
+            action: Some(ManagerAction::Upgrade),
+            kind: CoreErrorKind::InvalidInput,
+            message: "homebrew upgrade does not accept a separate version argument".to_string(),
+        });
+    }
+
+    Ok(())
+}
+
 fn is_homebrew_already_installed_error(error: &CoreError) -> bool {
     if error.kind != CoreErrorKind::ProcessFailure {
         return false;
@@ -397,6 +519,27 @@ fn ensure_formula_no_longer_outdated<S: HomebrewSource>(
     Ok(())
 }
 
+fn resolve_homebrew_formula_version<S: HomebrewSource>(
+    source: &S,
+    formula_name: &str,
+) -> AdapterResult<Option<String>> {
+    let installed = parse_installed_formulae(&source.list_installed_formulae()?)?;
+    Ok(installed
+        .into_iter()
+        .find(|item| item.package.name == formula_name)
+        .and_then(|item| item.installed_version))
+}
+
+fn find_outdated_homebrew_formula<S: HomebrewSource>(
+    source: &S,
+    formula_name: &str,
+) -> AdapterResult<Option<OutdatedPackage>> {
+    let outdated = parse_outdated_formulae(&source.list_outdated_formulae()?)?;
+    Ok(outdated
+        .into_iter()
+        .find(|item| item.package.name == formula_name))
+}
+
 pub fn homebrew_pin_request(task_id: Option<TaskId>, name: &str) -> ProcessSpawnRequest {
     homebrew_request(
         task_id,
@@ -436,8 +579,7 @@ fn homebrew_request(
 
 fn parse_detection_output(output: HomebrewDetectOutput) -> DetectionInfo {
     let parsed_version = parse_homebrew_version(&output.version_output);
-    let has_executable = output.executable_path.is_some();
-    let installed = has_executable || parsed_version.is_some();
+    let installed = parsed_version.is_some();
 
     DetectionInfo {
         installed,
@@ -523,185 +665,99 @@ fn is_homebrew_version_token(token: &str) -> bool {
 }
 
 fn parse_installed_formulae(output: &str) -> AdapterResult<Vec<InstalledPackage>> {
+    let trimmed = output.trim();
+    if trimmed.is_empty() || trimmed == "{}" {
+        return Ok(Vec::new());
+    }
+
+    let payload: HomebrewFormulaInstalledEnvelope =
+        serde_json::from_str(trimmed).map_err(|error| {
+            parse_error(&format!("invalid Homebrew formula installed JSON: {error}"))
+        })?;
+
     let mut parsed = Vec::new();
-    let mut malformed_lines = 0usize;
+    for formula in payload.formulae {
+        let Some(name) = normalize_optional_text(Some(formula.name)) else {
+            continue;
+        };
 
-    for line in output
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-    {
-        match parse_installed_line(line) {
-            Some((name, version)) => parsed.push(InstalledPackage {
-                package: PackageRef {
-                    manager: ManagerId::HomebrewFormula,
-                    name,
-                },
-                installed_version: version,
-                pinned: false,
-            }),
-            None => malformed_lines += 1,
-        }
+        let installed_version = formula
+            .linked_keg
+            .and_then(|value| normalize_optional_text(Some(value)))
+            .or_else(|| {
+                formula
+                    .installed
+                    .iter()
+                    .filter_map(|installed| installed.version.as_ref())
+                    .filter_map(|version| normalize_optional_text(Some(version.clone())))
+                    .next_back()
+            });
+
+        let Some(installed_version) = installed_version else {
+            continue;
+        };
+
+        parsed.push(InstalledPackage {
+            package: PackageRef {
+                manager: ManagerId::HomebrewFormula,
+                name,
+            },
+            package_identifier: None,
+            installed_version: Some(installed_version),
+            pinned: formula.pinned,
+            runtime_state: Default::default(),
+        });
     }
 
-    if parsed.is_empty() && malformed_lines > 0 {
-        return Err(parse_error(
-            "unable to parse any installed Homebrew formulae lines",
-        ));
-    }
-
+    parsed.sort_by(|a, b| a.package.name.cmp(&b.package.name));
     Ok(parsed)
-}
-
-fn parse_installed_line(line: &str) -> Option<(String, Option<String>)> {
-    let mut segments = line.split_whitespace();
-    let name = segments.next()?.trim();
-    if name.is_empty() {
-        return None;
-    }
-
-    // `brew list --formula --versions` may print multiple installed versions;
-    // normalize to the latest token as the active version.
-    let version = segments.last().map(str::to_owned);
-    Some((name.to_owned(), version))
 }
 
 fn parse_outdated_formulae(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
+    let trimmed = output.trim();
+    if trimmed.is_empty() || trimmed == "{}" {
+        return Ok(Vec::new());
+    }
+
+    let payload: HomebrewFormulaOutdatedEnvelope =
+        serde_json::from_str(trimmed).map_err(|error| {
+            parse_error(&format!("invalid Homebrew formula outdated JSON: {error}"))
+        })?;
+
     let mut parsed = Vec::new();
-    let mut malformed_lines = 0usize;
+    for formula in payload.formulae {
+        let Some(name) = normalize_optional_text(Some(formula.name)) else {
+            continue;
+        };
+        let installed_version = formula
+            .installed_versions
+            .iter()
+            .filter_map(|version| normalize_optional_text(Some(version.clone())))
+            .next_back();
+        let Some(candidate_version) = normalize_optional_text(formula.current_version) else {
+            continue;
+        };
 
-    for line in output
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-    {
-        match parse_outdated_line(line) {
-            Some((name, installed_version, candidate_version, pinned)) => {
-                parsed.push(OutdatedPackage {
-                    package: PackageRef {
-                        manager: ManagerId::HomebrewFormula,
-                        name,
-                    },
-                    installed_version,
-                    candidate_version,
-                    pinned,
-                    restart_required: false,
-                })
-            }
-            None => {
-                if !looks_like_outdated_line(line) {
-                    malformed_lines += 1;
-                }
-            }
+        if installed_version.as_deref() == Some(candidate_version.as_str()) {
+            continue;
         }
+
+        parsed.push(OutdatedPackage {
+            package: PackageRef {
+                manager: ManagerId::HomebrewFormula,
+                name,
+            },
+            package_identifier: None,
+            installed_version,
+            candidate_version,
+            pinned: formula.pinned,
+            restart_required: false,
+            runtime_state: Default::default(),
+        });
     }
 
-    if parsed.is_empty() && malformed_lines > 0 {
-        return Err(parse_error(
-            "unable to parse any outdated Homebrew formulae lines",
-        ));
-    }
-
+    parsed.sort_by(|a, b| a.package.name.cmp(&b.package.name));
     Ok(parsed)
-}
-
-fn looks_like_outdated_line(line: &str) -> bool {
-    line.contains(" < ") || line.contains(" != ") || line.contains(" -> ") || line.contains(" → ")
-}
-
-fn parse_outdated_line(line: &str) -> Option<(String, Option<String>, String, bool)> {
-    // Common formats:
-    // - "name (installed_version) < candidate_version"
-    // - "name (installed_version) != candidate_version"
-    // - "name installed_version -> candidate_version"
-    let separator = if line.contains(" < ") {
-        " < "
-    } else if line.contains(" != ") {
-        " != "
-    } else if line.contains(" -> ") {
-        " -> "
-    } else if line.contains(" → ") {
-        " → "
-    } else {
-        return None;
-    };
-
-    let (left, candidate_version) = line.split_once(separator)?;
-    let candidate_version = candidate_version.trim();
-    if candidate_version.is_empty() {
-        return None;
-    }
-
-    let (name, installed_version) = if let Some(paren_start) = left.find(" (") {
-        let name = left[..paren_start].trim();
-        let version_part = left[paren_start + 2..].trim_end_matches(')').trim();
-        (name, normalize_installed_version(version_part))
-    } else if let Some((name_part, version_part)) = left.rsplit_once(' ') {
-        let name = name_part.trim();
-        let version = version_part.trim();
-        if !name.is_empty()
-            && !version.is_empty()
-            && version
-                .chars()
-                .next()
-                .map(|ch| ch.is_ascii_digit())
-                .unwrap_or(false)
-        {
-            (name, Some(version.to_owned()))
-        } else {
-            (left.trim(), None)
-        }
-    } else {
-        (left.trim(), None)
-    };
-
-    if name.is_empty() {
-        return None;
-    }
-
-    let candidate_token = candidate_version
-        .split_whitespace()
-        .next()
-        .unwrap_or(candidate_version);
-    if candidate_token.is_empty() {
-        return None;
-    }
-
-    let pinned = line.to_ascii_lowercase().contains("[pinned");
-
-    if let Some(installed) = &installed_version
-        && installed
-            .split(',')
-            .map(str::trim)
-            .any(|version| version == candidate_token)
-    {
-        // Ignore stale-keg lines where the candidate version is already installed.
-        return None;
-    }
-
-    Some((
-        name.to_owned(),
-        installed_version,
-        candidate_token.to_owned(),
-        pinned,
-    ))
-}
-
-fn normalize_installed_version(version_part: &str) -> Option<String> {
-    let normalized = version_part.trim();
-    if normalized.is_empty() {
-        return None;
-    }
-
-    if normalized.contains(',') {
-        let latest = normalized
-            .split(',')
-            .map(str::trim)
-            .rfind(|token| !token.is_empty());
-        return latest.map(str::to_owned);
-    }
-
-    Some(normalized.to_owned())
 }
 
 fn parse_search_formulae(
@@ -717,6 +773,10 @@ fn parse_search_formulae(
         .map(str::trim)
         .filter(|line| !line.is_empty())
     {
+        if line.starts_with("Warning:") {
+            continue;
+        }
+
         if let Some(next) = parse_search_section_header(line) {
             section = next;
             continue;
@@ -730,30 +790,111 @@ fn parse_search_formulae(
             continue;
         }
 
-        for token in line.split_whitespace() {
-            if !is_formula_name_token(token) {
-                continue;
-            }
+        let candidate = if let Some((name, summary)) = parse_search_formulae_desc_line(line) {
+            Some((name, summary))
+        } else {
+            parse_search_formula_catalog_line(line).map(|name| (name, None))
+        };
 
-            if seen.insert(token.to_string()) {
-                parsed.push(CachedSearchResult {
-                    result: PackageCandidate {
-                        package: PackageRef {
-                            manager: ManagerId::HomebrewFormula,
-                            name: token.to_string(),
-                        },
-                        version: None,
-                        summary: None,
+        let Some((name, summary)) = candidate else {
+            continue;
+        };
+
+        if seen.insert(name.clone()) {
+            parsed.push(CachedSearchResult {
+                result: PackageCandidate {
+                    package: PackageRef {
+                        manager: ManagerId::HomebrewFormula,
+                        name,
                     },
-                    source_manager: ManagerId::HomebrewFormula,
-                    originating_query: query.text.clone(),
-                    cached_at: query.issued_at,
-                });
-            }
+                    package_identifier: None,
+                    version: None,
+                    summary,
+                },
+                source_manager: ManagerId::HomebrewFormula,
+                originating_query: query.text.clone(),
+                cached_at: query.issued_at,
+            });
         }
     }
 
     Ok(parsed)
+}
+
+fn parse_search_formulae_desc_line(line: &str) -> Option<(String, Option<String>)> {
+    let (name, summary) = line.split_once(':')?;
+    let name = name.trim();
+    if !is_formula_name_token(name) {
+        return None;
+    }
+
+    let summary = normalize_homebrew_search_summary(summary);
+    Some((name.to_string(), summary))
+}
+
+fn parse_search_formula_catalog_line(line: &str) -> Option<String> {
+    let token = line.trim();
+    if !is_formula_name_token(token) {
+        return None;
+    }
+    Some(token.to_string())
+}
+
+fn normalize_homebrew_search_summary(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty()
+        || trimmed.eq_ignore_ascii_case("[no description]")
+        || trimmed.eq_ignore_ascii_case("no description")
+    {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
+
+fn normalize_optional_text(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+#[derive(Debug, Deserialize)]
+struct HomebrewFormulaInstalledEnvelope {
+    #[serde(default)]
+    formulae: Vec<HomebrewFormulaInstalledEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct HomebrewFormulaInstalledEntry {
+    name: String,
+    #[serde(default)]
+    linked_keg: Option<String>,
+    #[serde(default)]
+    installed: Vec<HomebrewFormulaInstalledVersion>,
+    #[serde(default)]
+    pinned: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct HomebrewFormulaInstalledVersion {
+    #[serde(default)]
+    version: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct HomebrewFormulaOutdatedEnvelope {
+    #[serde(default)]
+    formulae: Vec<HomebrewFormulaOutdatedEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct HomebrewFormulaOutdatedEntry {
+    name: String,
+    #[serde(default)]
+    installed_versions: Vec<String>,
+    #[serde(default)]
+    current_version: Option<String>,
+    #[serde(default)]
+    pinned: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -953,19 +1094,19 @@ mod tests {
     use crate::models::{CoreError, CoreErrorKind, ManagerAction, SearchQuery, TaskId, TaskType};
 
     use super::{
-        HomebrewAdapter, HomebrewDetectOutput, HomebrewSource, homebrew_cleanup_request,
-        homebrew_detect_request, homebrew_install_request, homebrew_list_installed_request,
-        homebrew_list_outdated_request, homebrew_pin_request, homebrew_search_local_request,
+        HomebrewAdapter, HomebrewDetectOutput, HomebrewSource, homebrew_catalog_formulae_request,
+        homebrew_cleanup_request, homebrew_detect_request, homebrew_install_request,
+        homebrew_list_installed_request, homebrew_list_outdated_request, homebrew_pin_request,
+        homebrew_search_formulae_request, homebrew_search_local_request,
         homebrew_uninstall_request, homebrew_unpin_request, homebrew_upgrade_request,
         parse_homebrew_version, parse_installed_formulae, parse_outdated_formulae,
         parse_search_formulae,
     };
 
-    const INSTALLED_FIXTURE: &str =
-        include_str!("../../tests/fixtures/homebrew/list_installed_versions.txt");
-    const OUTDATED_FIXTURE: &str =
-        include_str!("../../tests/fixtures/homebrew/list_outdated_verbose.txt");
+    const INSTALLED_FIXTURE: &str = include_str!("../../tests/fixtures/homebrew/installed.json");
+    const OUTDATED_FIXTURE: &str = include_str!("../../tests/fixtures/homebrew/outdated.json");
     const SEARCH_FIXTURE: &str = include_str!("../../tests/fixtures/homebrew/search_local.txt");
+    const SEARCH_DESC_FIXTURE: &str = "==> Formulae\nripgrep: Recursively search directories for a regex pattern\nripgrep-all: Search all the things\n==> Casks\nripper: should be ignored\n";
 
     #[test]
     fn parses_homebrew_version_from_standard_banner() {
@@ -1010,10 +1151,13 @@ mod tests {
     fn parses_installed_formulae_fixture() {
         let parsed = parse_installed_formulae(INSTALLED_FIXTURE).unwrap();
         assert_eq!(parsed.len(), 4);
-        assert_eq!(parsed[0].package.name, "python@3.12");
-        assert_eq!(parsed[0].installed_version.as_deref(), Some("3.12.3"));
-        assert_eq!(parsed[2].package.name, "node");
-        assert_eq!(parsed[2].installed_version.as_deref(), Some("22.5.1"));
+        assert_eq!(parsed[0].package.name, "node");
+        assert_eq!(parsed[0].installed_version.as_deref(), Some("22.5.1"));
+        assert_eq!(parsed[1].package.name, "openssl@3");
+        assert_eq!(parsed[1].installed_version.as_deref(), Some("3.3.1"));
+        assert!(parsed[1].pinned);
+        assert_eq!(parsed[2].package.name, "python@3.12");
+        assert_eq!(parsed[2].installed_version.as_deref(), Some("3.12.3"));
     }
 
     #[test]
@@ -1023,38 +1167,26 @@ mod tests {
         assert_eq!(parsed[0].package.name, "git");
         assert_eq!(parsed[0].installed_version.as_deref(), Some("2.44.0"));
         assert_eq!(parsed[0].candidate_version, "2.45.1");
+        assert_eq!(parsed[1].package.name, "libzip");
+        assert!(parsed[1].pinned);
     }
 
     #[test]
-    fn parses_outdated_formulae_with_alternate_separators() {
-        let parsed = parse_outdated_formulae(
-            "foo (1.2.3) != 1.2.4\nbar 2.0.0 -> 2.1.0\nbaz (3.1.0) → 3.2.0",
-        )
-        .unwrap();
-        assert_eq!(parsed.len(), 3);
-        assert_eq!(parsed[0].package.name, "foo");
-        assert_eq!(parsed[0].candidate_version, "1.2.4");
-        assert_eq!(parsed[1].package.name, "bar");
-        assert_eq!(parsed[1].installed_version.as_deref(), Some("2.0.0"));
-        assert_eq!(parsed[1].candidate_version, "2.1.0");
-        assert_eq!(parsed[2].candidate_version, "3.2.0");
+    fn skips_outdated_entries_when_current_version_matches_installed_version() {
+        let parsed = parse_outdated_formulae(OUTDATED_FIXTURE).unwrap();
+        assert!(!parsed.iter().any(|package| package.package.name == "bat"));
     }
 
     #[test]
     fn parses_outdated_formulae_marks_pinned_entries() {
-        let parsed =
-            parse_outdated_formulae("libzip (1.11.4) < 1.11.4_1 [pinned at 1.11.4]").unwrap();
-        assert_eq!(parsed.len(), 1);
-        assert_eq!(parsed[0].package.name, "libzip");
-        assert_eq!(parsed[0].installed_version.as_deref(), Some("1.11.4"));
-        assert_eq!(parsed[0].candidate_version, "1.11.4_1");
-        assert!(parsed[0].pinned);
-    }
-
-    #[test]
-    fn ignores_outdated_line_when_candidate_is_already_installed() {
-        let parsed = parse_outdated_formulae("sevenzip (25.01, 26.00) < 26.00").unwrap();
-        assert!(parsed.is_empty());
+        let parsed = parse_outdated_formulae(OUTDATED_FIXTURE).unwrap();
+        let libzip = parsed
+            .iter()
+            .find(|package| package.package.name == "libzip")
+            .expect("expected libzip outdated entry");
+        assert_eq!(libzip.installed_version.as_deref(), Some("1.11.4"));
+        assert_eq!(libzip.candidate_version, "1.11.4_1");
+        assert!(libzip.pinned);
     }
 
     #[test]
@@ -1085,6 +1217,26 @@ mod tests {
         assert_eq!(parsed[0].result.package.name, "ripgrep");
         assert_eq!(parsed[1].result.package.name, "ripgrep-all");
         assert_eq!(parsed[2].result.package.name, "ripsecret");
+    }
+
+    #[test]
+    fn parses_search_formulae_with_descriptions() {
+        let query = SearchQuery {
+            text: "rip".to_string(),
+            issued_at: UNIX_EPOCH,
+        };
+        let parsed = parse_search_formulae(SEARCH_DESC_FIXTURE, &query).unwrap();
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].result.package.name, "ripgrep");
+        assert_eq!(
+            parsed[0].result.summary.as_deref(),
+            Some("Recursively search directories for a regex pattern")
+        );
+        assert_eq!(parsed[1].result.package.name, "ripgrep-all");
+        assert_eq!(
+            parsed[1].result.summary.as_deref(),
+            Some("Search all the things")
+        );
     }
 
     #[test]
@@ -1127,6 +1279,7 @@ mod tests {
                     manager: crate::models::ManagerId::HomebrewFormula,
                     name: "ripgrep".to_string(),
                 },
+                target_name: None,
                 version: None,
             }))
             .unwrap();
@@ -1144,6 +1297,7 @@ mod tests {
                     manager: crate::models::ManagerId::HomebrewFormula,
                     name: "mas".to_string(),
                 },
+                target_name: None,
                 version: None,
             }))
             .unwrap();
@@ -1162,6 +1316,8 @@ mod tests {
                         manager: crate::models::ManagerId::HomebrewFormula,
                         name: "ripgrep".to_string(),
                     },
+                    target_name: None,
+                    version: None,
                 },
             ))
             .unwrap();
@@ -1181,6 +1337,8 @@ mod tests {
                         manager: crate::models::ManagerId::HomebrewFormula,
                         name: "mas".to_string(),
                     },
+                    target_name: None,
+                    version: None,
                 },
             ))
             .unwrap();
@@ -1200,6 +1358,8 @@ mod tests {
                         manager: crate::models::ManagerId::HomebrewFormula,
                         name: "mas".to_string(),
                     },
+                    target_name: None,
+                    version: None,
                 },
             ))
             .expect_err("non-idempotent uninstall error should be returned");
@@ -1218,6 +1378,8 @@ mod tests {
                     manager: crate::models::ManagerId::HomebrewFormula,
                     name: "mise".to_string(),
                 }),
+                target_name: None,
+                version: None,
             }))
             .unwrap();
         assert!(matches!(result, AdapterResponse::Mutation(_)));
@@ -1228,7 +1390,7 @@ mod tests {
         let source = FixtureSource::default();
         let adapter = HomebrewAdapter::new(source);
 
-        let result = adapter
+        let error = adapter
             .execute(AdapterRequest::Pin(crate::adapters::PinRequest {
                 package: crate::models::PackageRef {
                     manager: crate::models::ManagerId::HomebrewFormula,
@@ -1236,8 +1398,8 @@ mod tests {
                 },
                 version: Some("2.45.1".to_string()),
             }))
-            .unwrap();
-        assert!(matches!(result, AdapterResponse::Mutation(_)));
+            .expect_err("separate pin version should be rejected for Homebrew formulae");
+        assert_eq!(error.kind, CoreErrorKind::InvalidInput);
     }
 
     #[test]
@@ -1274,9 +1436,10 @@ mod tests {
         assert_eq!(
             installed.command.args,
             vec![
-                "list".to_string(),
+                "info".to_string(),
                 "--formula".to_string(),
-                "--versions".to_string()
+                "--json=v2".to_string(),
+                "--installed".to_string()
             ]
         );
         assert_eq!(installed.action, ManagerAction::ListInstalled);
@@ -1288,7 +1451,7 @@ mod tests {
             vec![
                 "outdated".to_string(),
                 "--formula".to_string(),
-                "--verbose".to_string()
+                "--json=v2".to_string()
             ]
         );
         assert_eq!(outdated.action, ManagerAction::ListOutdated);
@@ -1311,9 +1474,30 @@ mod tests {
             vec![
                 "search".to_string(),
                 "--formula".to_string(),
+                "--desc".to_string(),
                 "rip grep".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn search_command_plan_uses_catalog_sync_for_empty_query() {
+        let query = SearchQuery {
+            text: "".to_string(),
+            issued_at: UNIX_EPOCH,
+        };
+        let request = homebrew_search_formulae_request(Some(TaskId(10)), &query);
+        assert_eq!(request.task_type, TaskType::CatalogSync);
+        assert_eq!(request.action, ManagerAction::Search);
+        assert_eq!(request.command.args, vec!["formulae".to_string()]);
+    }
+
+    #[test]
+    fn catalog_request_is_structured_for_formulae_listing() {
+        let request = homebrew_catalog_formulae_request(None);
+        assert_eq!(request.task_type, TaskType::CatalogSync);
+        assert_eq!(request.action, ManagerAction::Search);
+        assert_eq!(request.command.args, vec!["formulae".to_string()]);
     }
 
     #[test]
@@ -1380,6 +1564,8 @@ mod tests {
                     manager: crate::models::ManagerId::HomebrewFormula,
                     name: format!("sevenzip{}", super::HOMEBREW_CLEANUP_MARKER),
                 }),
+                target_name: None,
+                version: None,
             }))
             .unwrap();
         match result {
@@ -1421,7 +1607,9 @@ mod tests {
 
     #[test]
     fn adapter_upgrade_fails_when_formula_still_outdated_after_upgrade() {
-        let source = FixtureSource::with_outdated_output("gdu (1.0.0) < 1.0.1\n");
+        let source = FixtureSource::with_outdated_output(
+            r#"{"formulae":[{"name":"gdu","installed_versions":["1.0.0"],"current_version":"1.0.1","pinned":false}]}"#,
+        );
         let adapter = HomebrewAdapter::new(source);
 
         let error = adapter
@@ -1430,6 +1618,8 @@ mod tests {
                     manager: crate::models::ManagerId::HomebrewFormula,
                     name: "gdu".to_string(),
                 }),
+                target_name: None,
+                version: None,
             }))
             .unwrap_err();
 
@@ -1519,8 +1709,12 @@ mod tests {
             Ok(self.outdated_output.clone())
         }
 
-        fn search_local_formulae(&self, _query: &str) -> AdapterResult<String> {
-            Ok(SEARCH_FIXTURE.to_string())
+        fn search_formulae(&self, query: &SearchQuery) -> AdapterResult<String> {
+            if query.text.trim().is_empty() {
+                Ok("ripgrep\nripgrep-all\nripsecret\n".to_string())
+            } else {
+                Ok(SEARCH_FIXTURE.to_string())
+            }
         }
 
         fn install_formula(&self, _name: &str) -> AdapterResult<String> {

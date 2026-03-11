@@ -1,7 +1,11 @@
 use std::collections::{BTreeMap, HashMap};
 use std::env;
+#[cfg(target_vendor = "apple")]
+use std::ffi::CString;
 use std::fs::{self, OpenOptions};
 use std::io::{IsTerminal, Read, Write};
+#[cfg(target_vendor = "apple")]
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{ExitCode, Stdio};
@@ -10,6 +14,9 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use helm_core::adapters::manager::{
+    PackageDetailChildKind, PackageDetailOperation, PackageDetailRequest,
+};
 use helm_core::adapters::{
     AdapterRequest, AdapterResponse, AsdfAdapter, BundlerAdapter, CargoAdapter,
     CargoBinstallAdapter, ColimaAdapter, DetectRequest, DockerDesktopAdapter,
@@ -27,6 +34,7 @@ use helm_core::adapters::{
     ProcessYarnSource, Rosetta2Adapter, RubyGemsAdapter, RustupAdapter, SearchRequest,
     SetappAdapter, SoftwareUpdateAdapter, SparkleAdapter, UninstallRequest, UnpinRequest,
     UpgradeRequest, XcodeCommandLineToolsAdapter, YarnAdapter,
+    load_rustup_toolchain_detail_with_runtime,
 };
 use helm_core::execution::{
     ManagerTimeoutProfile, TaskOutputRecord, TokioProcessExecutor,
@@ -41,8 +49,8 @@ use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
     CachedSearchResult, Capability, DetectionInfo, HomebrewKegPolicy, InstalledPackage,
     ManagerAuthority, ManagerId, ManagerInstallInstance, ManagerUninstallPreview, OutdatedPackage,
-    PackageRef, PackageUninstallPreview, PinKind, PinRecord, SearchQuery, StrategyKind, TaskId,
-    TaskLogLevel, TaskRecord, TaskStatus,
+    PackageRef, PackageRuntimeState, PackageUninstallPreview, PinKind, PinRecord, SearchQuery,
+    StrategyKind, TaskId, TaskLogLevel, TaskRecord, TaskStatus,
 };
 use helm_core::orchestration::{AdapterRuntime, AdapterTaskTerminalState, CancellationMode};
 use helm_core::persistence::{DetectionStore, PackageStore, PinStore, SearchCacheStore, TaskStore};
@@ -53,6 +61,8 @@ use helm_core::uninstall_preview::{
     PackageUninstallPreviewContext, build_manager_uninstall_preview,
     build_package_uninstall_preview,
 };
+use helm_core::versioning::PackageCoordinate;
+use helm_core::versioning::package_family_preference_key;
 use semver::Version;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -110,7 +120,7 @@ const BASH_COMPLETION_SCRIPT: &str = r#"_helm_complete() {
 
     case "${COMP_WORDS[1]}" in
         packages)
-            COMPREPLY=( $(compgen -W "list search show install uninstall upgrade pin unpin keg-policy help" -- "${cur}") )
+            COMPREPLY=( $(compgen -W "list search show install uninstall upgrade pin unpin rustup keg-policy help" -- "${cur}") )
             ;;
         updates)
             COMPREPLY=( $(compgen -W "list summary preview run help" -- "${cur}") )
@@ -175,7 +185,7 @@ fi
 
 case $words[2] in
   packages)
-    _values 'subcommand' list search show install uninstall upgrade pin unpin keg-policy help
+    _values 'subcommand' list search show install uninstall upgrade pin unpin rustup keg-policy help
     ;;
   updates)
     _values 'subcommand' list summary preview run help
@@ -212,7 +222,7 @@ esac
 "#;
 const FISH_COMPLETION_SCRIPT: &str = r#"complete -c helm -f
 complete -c helm -n "__fish_use_subcommand" -a "status refresh search ls packages updates tasks managers settings diagnostics doctor onboarding self completion help"
-complete -c helm -n "__fish_seen_subcommand_from packages" -a "list search show install uninstall upgrade pin unpin keg-policy help"
+complete -c helm -n "__fish_seen_subcommand_from packages" -a "list search show install uninstall upgrade pin unpin rustup keg-policy help"
 complete -c helm -n "__fish_seen_subcommand_from updates" -a "list summary preview run help"
 complete -c helm -n "__fish_seen_subcommand_from tasks" -a "list show logs output follow cancel help"
 complete -c helm -n "__fish_seen_subcommand_from managers" -a "list show detect enable disable install update uninstall executables install-methods instances priority help"
@@ -408,6 +418,7 @@ struct CliPackageManagerView {
     candidate_version: Option<String>,
     pinned: bool,
     restart_required: bool,
+    runtime_state: PackageRuntimeState,
 }
 
 #[derive(Serialize)]
@@ -415,6 +426,7 @@ struct CliPackageManagerView {
 struct CliPackageShowResult {
     name: String,
     manager: CliPackageManagerView,
+    rustup_toolchain_detail: Option<helm_core::adapters::rustup::RustupToolchainDetail>,
 }
 
 #[derive(Serialize)]
@@ -557,15 +569,50 @@ enum CoordinatorSubmitRequest {
     Search {
         query: String,
     },
+    RustupAddComponent {
+        toolchain: String,
+        component: String,
+    },
+    RustupRemoveComponent {
+        toolchain: String,
+        component: String,
+    },
+    RustupAddTarget {
+        toolchain: String,
+        target: String,
+    },
+    RustupRemoveTarget {
+        toolchain: String,
+        target: String,
+    },
+    RustupSetDefaultToolchain {
+        toolchain: String,
+    },
+    RustupSetOverride {
+        toolchain: String,
+        path: String,
+    },
+    RustupUnsetOverride {
+        toolchain: String,
+        path: String,
+    },
+    RustupSetProfile {
+        profile: String,
+    },
     Install {
         package_name: String,
+        target_name: Option<String>,
         version: Option<String>,
     },
     Uninstall {
         package_name: String,
+        target_name: Option<String>,
+        version: Option<String>,
     },
     Upgrade {
         package_name: Option<String>,
+        target_name: Option<String>,
+        version: Option<String>,
     },
     Pin {
         package_name: String,
@@ -573,6 +620,7 @@ enum CoordinatorSubmitRequest {
     },
     Unpin {
         package_name: String,
+        version: Option<String>,
     },
 }
 
@@ -807,6 +855,7 @@ fn main() -> ExitCode {
         verbose_log(format!("manager policy self-heal skipped: {}", error));
     }
     if command_requires_cli_onboarding(command)
+        && !command_bypasses_cli_onboarding(command, &command_args)
         && let Err(error) = ensure_cli_onboarding_completed(store.as_ref(), &options)
     {
         let (json_emitted, normalized_error) = strip_json_error_marker(error.as_str());
@@ -1303,6 +1352,7 @@ fn command_help_topic_exists(command: Command, path: &[String]) -> bool {
                             | "upgrade"
                             | "pin"
                             | "unpin"
+                            | "rustup"
                             | "keg-policy"
                     )
                 );
@@ -1310,10 +1360,28 @@ fn command_help_topic_exists(command: Command, path: &[String]) -> bool {
             if path.len() == 2 {
                 return matches!(
                     (path[0].as_str(), path[1].as_str()),
-                    ("keg-policy", "list")
+                    ("rustup", "show")
+                        | ("rustup", "component")
+                        | ("rustup", "target")
+                        | ("rustup", "default")
+                        | ("rustup", "override")
+                        | ("rustup", "profile")
+                        | ("keg-policy", "list")
                         | ("keg-policy", "get")
                         | ("keg-policy", "set")
                         | ("keg-policy", "reset")
+                );
+            }
+            if path.len() == 3 {
+                return matches!(
+                    (path[0].as_str(), path[1].as_str(), path[2].as_str()),
+                    ("rustup", "component", "add")
+                        | ("rustup", "component", "remove")
+                        | ("rustup", "target", "add")
+                        | ("rustup", "target", "remove")
+                        | ("rustup", "override", "set")
+                        | ("rustup", "override", "unset")
+                        | ("rustup", "profile", "set")
                 );
             }
             false
@@ -1462,6 +1530,13 @@ fn command_requires_cli_onboarding(command: Command) -> bool {
             | Command::Completion
             | Command::Onboarding
             | Command::InternalCoordinator
+    )
+}
+
+fn command_bypasses_cli_onboarding(command: Command, command_args: &[String]) -> bool {
+    matches!(
+        (command, command_args.first().map(String::as_str)),
+        (Command::SelfCmd, Some("install-shim"))
     )
 }
 
@@ -1919,6 +1994,10 @@ fn cmd_packages(
         return cmd_packages_show(store.as_ref(), options, &command_args[1..]);
     }
 
+    if command_args[0] == "rustup" {
+        return cmd_packages_rustup(store, options, &command_args[1..]);
+    }
+
     if command_args[0] == "keg-policy" {
         return cmd_packages_keg_policy(store.as_ref(), options, &command_args[1..]);
     }
@@ -1931,7 +2010,7 @@ fn cmd_packages(
     }
 
     Err(format!(
-        "unsupported packages subcommand '{}'; currently supported: list, search, show, install, uninstall, upgrade, pin, unpin, keg-policy",
+        "unsupported packages subcommand '{}'; currently supported: list, search, show, install, uninstall, upgrade, pin, unpin, rustup, keg-policy",
         command_args[0]
     ))
 }
@@ -2081,23 +2160,514 @@ fn cmd_packages_show(
     options: GlobalOptions,
     command_args: &[String],
 ) -> Result<(), String> {
-    let (package_name, requested_manager) = parse_package_show_args(command_args)?;
+    let parsed = parse_package_show_args(command_args)?;
+    let mut package_name = parsed.package_name;
+    let requested_manager = parsed.manager;
+    let mut requested_version: Option<String> = None;
+
     let enabled_map = manager_enabled_map(store)?;
     let installed = list_installed_for_enabled(store, &enabled_map)?;
     let outdated = list_outdated_for_enabled(store, &enabled_map)?;
-    let mut rows: Vec<CliPackageManagerView> = Vec::new();
-
-    let mut installed_map: HashMap<ManagerId, InstalledPackage> = HashMap::new();
-    for package in installed {
-        if package.package.name == package_name {
-            installed_map.insert(package.package.manager, package);
+    let mut rows = collect_package_show_rows(
+        installed.as_slice(),
+        outdated.as_slice(),
+        package_name.as_str(),
+        None,
+    );
+    if rows.is_empty() {
+        let coordinate_hint_allowed = requested_manager
+            .map(manager_supports_package_coordinate_versions)
+            .unwrap_or(false);
+        if coordinate_hint_allowed
+            && let Some((coordinate_package_name, coordinate_version)) = parsed.coordinate_hint
+        {
+            let hinted_rows = collect_package_show_rows(
+                installed.as_slice(),
+                outdated.as_slice(),
+                coordinate_package_name.as_str(),
+                Some(coordinate_version.as_str()),
+            );
+            if !hinted_rows.is_empty() {
+                package_name = coordinate_package_name;
+                requested_version = Some(coordinate_version);
+                rows = hinted_rows;
+            }
         }
     }
 
-    let mut outdated_map: HashMap<ManagerId, OutdatedPackage> = HashMap::new();
+    if rows.is_empty() {
+        let requested_package_display = if let Some(version) = requested_version.as_deref() {
+            format!("{}@{}", package_name, version)
+        } else {
+            package_name.clone()
+        };
+        if let Some(manager) = requested_manager {
+            let managers = list_managers(store)?;
+            let detected = managers
+                .iter()
+                .find(|row| row.manager_id == manager.as_str())
+                .map(|row| row.detected)
+                .unwrap_or(false);
+            if !detected {
+                return Err(format!(
+                    "manager '{}' is not currently detected/installed",
+                    manager.as_str()
+                ));
+            }
+            return Err(format!(
+                "package '{}' not found under manager '{}'",
+                requested_package_display,
+                manager.as_str()
+            ));
+        }
+        return Err(format!("package '{}' not found", requested_package_display));
+    }
+
+    if let Some(manager) = requested_manager {
+        rows.retain(|row| row.manager_id == manager.as_str());
+        if rows.is_empty() {
+            return Err(format!(
+                "package '{}' not found under manager '{}'",
+                if let Some(version) = requested_version.as_deref() {
+                    format!("{}@{}", package_name, version)
+                } else {
+                    package_name.clone()
+                },
+                manager.as_str()
+            ));
+        }
+    } else if rows.len() > 1 {
+        let preference_key =
+            package_manager_preference_key(package_name.as_str(), requested_version.as_deref());
+        let fallback_preference_key = package_manager_preference_key(package_name.as_str(), None);
+        let preferred_manager = store
+            .package_manager_preference(preference_key.as_str())
+            .map_err(|error| format!("failed to read package manager preference: {error}"))?;
+        let preferred_manager = preferred_manager.or_else(|| {
+            if preference_key == fallback_preference_key {
+                return None;
+            }
+            store
+                .package_manager_preference(fallback_preference_key.as_str())
+                .ok()
+                .flatten()
+        });
+
+        if let Some(preferred_manager) = preferred_manager {
+            rows.retain(|row| row.manager_id == preferred_manager.as_str());
+        }
+    }
+
+    if rows.len() > 1 {
+        let managers = rows
+            .iter()
+            .map(|row| row.manager_id.clone())
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(format!(
+            "package '{}' is ambiguous across managers; specify --manager <id> (candidates: {})",
+            package_name, managers
+        ));
+    }
+
+    let manager = rows.into_iter().next().ok_or_else(|| {
+        format!(
+            "package '{}' could not be resolved for display due to empty manager set",
+            package_name
+        )
+    })?;
+    let rustup_toolchain_detail =
+        resolve_rustup_package_show_detail(package_name.as_str(), &manager);
+
+    if options.json {
+        emit_json_payload(
+            "helm.cli.v1.packages.show",
+            json!({
+                "package": CliPackageShowResult {
+                    name: package_name,
+                    manager,
+                    rustup_toolchain_detail,
+                }
+            }),
+        );
+        return Ok(());
+    }
+
+    println!("Package: {}", package_name);
+    println!("  manager: {}", manager.manager_id);
+    println!(
+        "  installed_version: {}",
+        manager.installed_version.as_deref().unwrap_or("-")
+    );
+    println!(
+        "  candidate_version: {}",
+        manager.candidate_version.as_deref().unwrap_or("-")
+    );
+    println!("  pinned: {}", manager.pinned);
+    println!("  restart_required: {}", manager.restart_required);
+    if !manager.runtime_state.is_empty() {
+        println!(
+            "  runtime_state: {}",
+            render_package_runtime_state(&manager.runtime_state)
+        );
+    }
+    if let Some(detail) = rustup_toolchain_detail.as_ref() {
+        print_rustup_toolchain_detail(detail);
+    }
+    Ok(())
+}
+
+fn resolve_rustup_package_show_detail(
+    package_name: &str,
+    manager: &CliPackageManagerView,
+) -> Option<helm_core::adapters::rustup::RustupToolchainDetail> {
+    if manager.manager_id != ManagerId::Rustup.as_str() {
+        return None;
+    }
+    load_rustup_toolchain_detail_for_cli(package_name, "packages show")
+}
+
+pub(crate) fn load_rustup_toolchain_detail_for_cli(
+    toolchain: &str,
+    context: &str,
+) -> Option<helm_core::adapters::rustup::RustupToolchainDetail> {
+    let runtime = match cli_tokio_runtime() {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            eprintln!("{context}: failed to initialize tokio runtime: {error}");
+            return None;
+        }
+    };
+
+    match load_rustup_toolchain_detail_with_runtime(runtime.handle(), toolchain) {
+        Ok(detail) => Some(detail),
+        Err(error) => {
+            eprintln!(
+                "{context}: failed to fetch rustup detail for '{}': {}",
+                toolchain, error
+            );
+            None
+        }
+    }
+}
+
+fn print_rustup_toolchain_detail(detail: &helm_core::adapters::rustup::RustupToolchainDetail) {
+    println!(
+        "  profile: {}",
+        detail.current_profile.as_deref().unwrap_or("-")
+    );
+    if detail.override_paths.is_empty() {
+        println!("  overrides: none");
+    } else {
+        println!("  overrides: {}", detail.override_paths.join(", "));
+    }
+    print_rustup_toolchain_detail_group("components", detail.components.as_slice());
+    print_rustup_toolchain_detail_group("targets", detail.targets.as_slice());
+}
+
+fn print_rustup_toolchain_detail_group(
+    label: &str,
+    entries: &[helm_core::adapters::rustup::RustupToolchainDetailEntry],
+) {
+    let installed = entries
+        .iter()
+        .filter(|entry| entry.installed)
+        .map(|entry| entry.name.as_str())
+        .collect::<Vec<_>>();
+    println!(
+        "  {label}: {} installed of {} available",
+        installed.len(),
+        entries.len()
+    );
+    if installed.is_empty() {
+        println!("    none installed");
+    } else {
+        println!("    installed: {}", installed.join(", "));
+    }
+}
+
+fn render_package_runtime_state(state: &PackageRuntimeState) -> String {
+    let mut parts = Vec::new();
+    if state.is_active {
+        parts.push("active");
+    }
+    if state.is_default {
+        parts.push("default");
+    }
+    if state.has_override {
+        parts.push("override");
+    }
+    if parts.is_empty() {
+        "-".to_string()
+    } else {
+        parts.join(", ")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RustupPackagesCommand {
+    Show {
+        toolchain: String,
+    },
+    ComponentAdd {
+        toolchain: String,
+        component: String,
+    },
+    ComponentRemove {
+        toolchain: String,
+        component: String,
+    },
+    TargetAdd {
+        toolchain: String,
+        target: String,
+    },
+    TargetRemove {
+        toolchain: String,
+        target: String,
+    },
+    Default {
+        toolchain: String,
+    },
+    OverrideSet {
+        toolchain: String,
+        path: String,
+    },
+    OverrideUnset {
+        toolchain: String,
+        path: String,
+    },
+    ProfileSet {
+        profile: String,
+    },
+}
+
+impl RustupPackagesCommand {
+    fn submit_request(&self) -> Option<CoordinatorSubmitRequest> {
+        match self {
+            Self::Show { .. } => None,
+            Self::ComponentAdd {
+                toolchain,
+                component,
+            } => Some(CoordinatorSubmitRequest::RustupAddComponent {
+                toolchain: toolchain.clone(),
+                component: component.clone(),
+            }),
+            Self::ComponentRemove {
+                toolchain,
+                component,
+            } => Some(CoordinatorSubmitRequest::RustupRemoveComponent {
+                toolchain: toolchain.clone(),
+                component: component.clone(),
+            }),
+            Self::TargetAdd { toolchain, target } => {
+                Some(CoordinatorSubmitRequest::RustupAddTarget {
+                    toolchain: toolchain.clone(),
+                    target: target.clone(),
+                })
+            }
+            Self::TargetRemove { toolchain, target } => {
+                Some(CoordinatorSubmitRequest::RustupRemoveTarget {
+                    toolchain: toolchain.clone(),
+                    target: target.clone(),
+                })
+            }
+            Self::Default { toolchain } => {
+                Some(CoordinatorSubmitRequest::RustupSetDefaultToolchain {
+                    toolchain: toolchain.clone(),
+                })
+            }
+            Self::OverrideSet { toolchain, path } => {
+                Some(CoordinatorSubmitRequest::RustupSetOverride {
+                    toolchain: toolchain.clone(),
+                    path: path.clone(),
+                })
+            }
+            Self::OverrideUnset { toolchain, path } => {
+                Some(CoordinatorSubmitRequest::RustupUnsetOverride {
+                    toolchain: toolchain.clone(),
+                    path: path.clone(),
+                })
+            }
+            Self::ProfileSet { profile } => Some(CoordinatorSubmitRequest::RustupSetProfile {
+                profile: profile.clone(),
+            }),
+        }
+    }
+
+    fn schema(&self) -> &'static str {
+        match self {
+            Self::Show { .. } => "helm.cli.v1.packages.rustup.show",
+            Self::ComponentAdd { .. } => "helm.cli.v1.packages.rustup.component.add",
+            Self::ComponentRemove { .. } => "helm.cli.v1.packages.rustup.component.remove",
+            Self::TargetAdd { .. } => "helm.cli.v1.packages.rustup.target.add",
+            Self::TargetRemove { .. } => "helm.cli.v1.packages.rustup.target.remove",
+            Self::Default { .. } => "helm.cli.v1.packages.rustup.default",
+            Self::OverrideSet { .. } => "helm.cli.v1.packages.rustup.override.set",
+            Self::OverrideUnset { .. } => "helm.cli.v1.packages.rustup.override.unset",
+            Self::ProfileSet { .. } => "helm.cli.v1.packages.rustup.profile.set",
+        }
+    }
+
+    fn json_fields(&self) -> serde_json::Value {
+        match self {
+            Self::Show { toolchain } => json!({
+                "manager_id": ManagerId::Rustup.as_str(),
+                "toolchain": toolchain,
+            }),
+            Self::ComponentAdd {
+                toolchain,
+                component,
+            }
+            | Self::ComponentRemove {
+                toolchain,
+                component,
+            } => json!({
+                "manager_id": ManagerId::Rustup.as_str(),
+                "toolchain": toolchain,
+                "component": component,
+            }),
+            Self::TargetAdd { toolchain, target } | Self::TargetRemove { toolchain, target } => {
+                json!({
+                    "manager_id": ManagerId::Rustup.as_str(),
+                    "toolchain": toolchain,
+                    "target": target,
+                })
+            }
+            Self::Default { toolchain } => json!({
+                "manager_id": ManagerId::Rustup.as_str(),
+                "toolchain": toolchain,
+            }),
+            Self::OverrideSet { toolchain, path } | Self::OverrideUnset { toolchain, path } => {
+                json!({
+                    "manager_id": ManagerId::Rustup.as_str(),
+                    "toolchain": toolchain,
+                    "path": path,
+                })
+            }
+            Self::ProfileSet { profile } => json!({
+                "manager_id": ManagerId::Rustup.as_str(),
+                "profile": profile,
+            }),
+        }
+    }
+
+    fn wait_message(&self, task_id: u64) -> String {
+        match self {
+            Self::Show { toolchain } => {
+                format!("rustup toolchain detail loaded for '{toolchain}' (task #{task_id})")
+            }
+            Self::ComponentAdd {
+                toolchain,
+                component,
+            } => format!("rustup component '{component}' added to '{toolchain}' (task #{task_id})"),
+            Self::ComponentRemove {
+                toolchain,
+                component,
+            } => format!(
+                "rustup component '{component}' removed from '{toolchain}' (task #{task_id})"
+            ),
+            Self::TargetAdd { toolchain, target } => {
+                format!("rustup target '{target}' added to '{toolchain}' (task #{task_id})")
+            }
+            Self::TargetRemove { toolchain, target } => {
+                format!("rustup target '{target}' removed from '{toolchain}' (task #{task_id})")
+            }
+            Self::Default { toolchain } => {
+                format!("rustup default toolchain set to '{toolchain}' (task #{task_id})")
+            }
+            Self::OverrideSet { toolchain, path } => {
+                format!("rustup override for '{toolchain}' set at '{path}' (task #{task_id})")
+            }
+            Self::OverrideUnset { toolchain, path } => {
+                format!("rustup override for '{toolchain}' cleared at '{path}' (task #{task_id})")
+            }
+            Self::ProfileSet { profile } => {
+                format!("rustup profile set to '{profile}' (task #{task_id})")
+            }
+        }
+    }
+
+    fn detach_message(&self, task_id: u64) -> String {
+        match self {
+            Self::Show { toolchain } => {
+                format!("rustup toolchain detail requested for '{toolchain}' (task #{task_id})")
+            }
+            Self::ComponentAdd {
+                toolchain,
+                component,
+            } => format!(
+                "rustup component '{component}' add submitted for '{toolchain}' (task #{task_id})"
+            ),
+            Self::ComponentRemove {
+                toolchain,
+                component,
+            } => format!(
+                "rustup component '{component}' removal submitted for '{toolchain}' (task #{task_id})"
+            ),
+            Self::TargetAdd { toolchain, target } => format!(
+                "rustup target '{target}' add submitted for '{toolchain}' (task #{task_id})"
+            ),
+            Self::TargetRemove { toolchain, target } => format!(
+                "rustup target '{target}' removal submitted for '{toolchain}' (task #{task_id})"
+            ),
+            Self::Default { toolchain } => format!(
+                "rustup default toolchain change submitted for '{toolchain}' (task #{task_id})"
+            ),
+            Self::OverrideSet { toolchain, path } => format!(
+                "rustup override set submitted for '{toolchain}' at '{path}' (task #{task_id})"
+            ),
+            Self::OverrideUnset { toolchain, path } => format!(
+                "rustup override clear submitted for '{toolchain}' at '{path}' (task #{task_id})"
+            ),
+            Self::ProfileSet { profile } => {
+                format!("rustup profile change submitted for '{profile}' (task #{task_id})")
+            }
+        }
+    }
+}
+
+fn collect_package_show_rows(
+    installed: &[InstalledPackage],
+    outdated: &[OutdatedPackage],
+    package_name: &str,
+    version_filter: Option<&str>,
+) -> Vec<CliPackageManagerView> {
+    let mut rows: Vec<CliPackageManagerView> = Vec::new();
+
+    let mut installed_map: HashMap<ManagerId, &InstalledPackage> = HashMap::new();
+    for package in installed {
+        if package.package.name != package_name {
+            continue;
+        }
+        if let Some(version) = version_filter
+            && package.installed_version.as_deref() != Some(version)
+        {
+            continue;
+        }
+        let entry = installed_map
+            .entry(package.package.manager)
+            .or_insert(package);
+        if prefer_installed_package_for_show(package, entry) {
+            *entry = package;
+        }
+    }
+
+    let mut outdated_map: HashMap<ManagerId, &OutdatedPackage> = HashMap::new();
     for package in outdated {
-        if package.package.name == package_name {
-            outdated_map.insert(package.package.manager, package);
+        if package.package.name != package_name {
+            continue;
+        }
+        if let Some(version) = version_filter
+            && package.installed_version.as_deref() != Some(version)
+            && package.candidate_version != version
+        {
+            continue;
+        }
+        let entry = outdated_map
+            .entry(package.package.manager)
+            .or_insert(package);
+        if prefer_outdated_package_for_show(package, entry) {
+            *entry = package;
         }
     }
 
@@ -2122,86 +2692,55 @@ fn cmd_packages_show(
             restart_required: outdated_row
                 .map(|row| row.restart_required)
                 .unwrap_or(false),
+            runtime_state: installed_row
+                .map(|row| row.runtime_state.clone())
+                .unwrap_or_else(|| {
+                    outdated_row
+                        .map(|row| row.runtime_state.clone())
+                        .unwrap_or_default()
+                }),
         });
     }
 
-    if rows.is_empty() {
-        if let Some(manager) = requested_manager {
-            let managers = list_managers(store)?;
-            let detected = managers
-                .iter()
-                .find(|row| row.manager_id == manager.as_str())
-                .map(|row| row.detected)
-                .unwrap_or(false);
-            if !detected {
-                return Err(format!(
-                    "manager '{}' is not currently detected/installed",
-                    manager.as_str()
-                ));
-            }
-            return Err(format!(
-                "package '{}' not found under manager '{}'",
-                package_name,
-                manager.as_str()
-            ));
-        }
-        return Err(format!("package '{}' not found", package_name));
-    }
+    rows
+}
 
-    if let Some(manager) = requested_manager {
-        rows.retain(|row| row.manager_id == manager.as_str());
-        if rows.is_empty() {
-            return Err(format!(
-                "package '{}' not found under manager '{}'",
-                package_name,
-                manager.as_str()
-            ));
-        }
-    } else if rows.len() > 1 {
-        let managers = rows
-            .iter()
-            .map(|row| row.manager_id.clone())
-            .collect::<Vec<_>>()
-            .join(", ");
-        return Err(format!(
-            "package '{}' is ambiguous across managers; specify --manager <id> (candidates: {})",
-            package_name, managers
-        ));
-    }
+fn prefer_installed_package_for_show(
+    candidate: &InstalledPackage,
+    current: &InstalledPackage,
+) -> bool {
+    runtime_state_rank(&candidate.runtime_state).cmp(&runtime_state_rank(&current.runtime_state))
+        == std::cmp::Ordering::Greater
+        || (candidate.runtime_state == current.runtime_state
+            && version_text_rank(candidate.installed_version.as_deref())
+                > version_text_rank(current.installed_version.as_deref()))
+}
 
-    let manager = rows.into_iter().next().ok_or_else(|| {
-        format!(
-            "package '{}' could not be resolved for display due to empty manager set",
-            package_name
-        )
-    })?;
+fn prefer_outdated_package_for_show(
+    candidate: &OutdatedPackage,
+    current: &OutdatedPackage,
+) -> bool {
+    runtime_state_rank(&candidate.runtime_state).cmp(&runtime_state_rank(&current.runtime_state))
+        == std::cmp::Ordering::Greater
+        || (candidate.runtime_state == current.runtime_state
+            && version_text_rank(candidate.installed_version.as_deref())
+                > version_text_rank(current.installed_version.as_deref()))
+}
 
-    if options.json {
-        emit_json_payload(
-            "helm.cli.v1.packages.show",
-            json!({
-                "package": CliPackageShowResult {
-                    name: package_name,
-                    manager,
-                }
-            }),
-        );
-        return Ok(());
-    }
+fn runtime_state_rank(runtime_state: &PackageRuntimeState) -> (u8, u8, u8) {
+    (
+        u8::from(runtime_state.is_active),
+        u8::from(runtime_state.is_default),
+        u8::from(!runtime_state.has_override),
+    )
+}
 
-    println!("Package: {}", package_name);
-    println!("  manager: {}", manager.manager_id);
-    println!(
-        "  installed_version: {}",
-        manager.installed_version.as_deref().unwrap_or("-")
-    );
-    println!(
-        "  candidate_version: {}",
-        manager.candidate_version.as_deref().unwrap_or("-")
-    );
-    println!("  pinned: {}", manager.pinned);
-    println!("  restart_required: {}", manager.restart_required);
-    Ok(())
+fn version_text_rank(version: Option<&str>) -> String {
+    version
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_default()
 }
 
 fn cmd_packages_mutation(
@@ -2210,7 +2749,7 @@ fn cmd_packages_mutation(
     subcommand: &str,
     command_args: &[String],
 ) -> Result<(), String> {
-    let allow_version = matches!(subcommand, "install" | "pin");
+    let allow_version = matches!(subcommand, "install" | "pin" | "unpin");
     let parsed = parse_package_mutation_args(subcommand, command_args, allow_version)?;
     let package = PackageRef {
         manager: parsed.manager,
@@ -2234,6 +2773,7 @@ fn cmd_packages_mutation(
         Some(build_package_uninstall_preview_for_package(
             store.as_ref(),
             &package,
+            parsed.version.as_deref(),
         )?)
     } else {
         None
@@ -2263,13 +2803,18 @@ fn cmd_packages_mutation(
     let coordinator_request = match subcommand {
         "install" => Some(CoordinatorSubmitRequest::Install {
             package_name: parsed.package_name.clone(),
+            target_name: None,
             version: parsed.version.clone(),
         }),
         "uninstall" => Some(CoordinatorSubmitRequest::Uninstall {
             package_name: parsed.package_name.clone(),
+            target_name: None,
+            version: parsed.version.clone(),
         }),
         "upgrade" => Some(CoordinatorSubmitRequest::Upgrade {
             package_name: Some(parsed.package_name.clone()),
+            target_name: None,
+            version: parsed.version.clone(),
         }),
         "pin" if supports_native_pin => Some(CoordinatorSubmitRequest::Pin {
             package_name: parsed.package_name.clone(),
@@ -2277,6 +2822,7 @@ fn cmd_packages_mutation(
         }),
         "unpin" if supports_native_unpin => Some(CoordinatorSubmitRequest::Unpin {
             package_name: parsed.package_name.clone(),
+            version: parsed.version.clone(),
         }),
         "pin" | "unpin" => None,
         _ => {
@@ -2308,22 +2854,25 @@ fn cmd_packages_mutation(
             .upsert_pin(&PinRecord {
                 package: package.clone(),
                 kind: pin_kind,
-                pinned_version: parsed.version.clone(),
+                pinned_version: if pin_kind == PinKind::Native {
+                    None
+                } else {
+                    parsed.version.clone()
+                },
                 created_at: SystemTime::now(),
             })
             .map_err(|error| format!("failed to persist pin record: {error}"))?;
         store
-            .set_snapshot_pinned(&package, true)
+            .set_snapshot_pinned(&package, parsed.version.as_deref(), true)
             .map_err(|error| format!("failed to mark package pinned in snapshot: {error}"))?;
     }
 
     if subcommand == "unpin" {
-        let package_key = format!("{}:{}", parsed.manager.as_str(), parsed.package_name);
         store
-            .remove_pin(&package_key)
+            .remove_pin(&package, parsed.version.as_deref())
             .map_err(|error| format!("failed to remove pin record: {error}"))?;
         store
-            .set_snapshot_pinned(&package, false)
+            .set_snapshot_pinned(&package, parsed.version.as_deref(), false)
             .map_err(|error| format!("failed to unmark package pinned in snapshot: {error}"))?;
     }
 
@@ -2455,6 +3004,79 @@ fn cmd_packages_mutation(
     }
 
     Ok(())
+}
+
+fn cmd_packages_rustup(
+    store: Arc<SqliteStore>,
+    options: GlobalOptions,
+    command_args: &[String],
+) -> Result<(), String> {
+    let parsed = parse_packages_rustup_args(command_args)?;
+    if let RustupPackagesCommand::Show { toolchain } = &parsed {
+        return cmd_packages_show(
+            store.as_ref(),
+            options,
+            &[
+                toolchain.clone(),
+                "--manager".to_string(),
+                ManagerId::Rustup.as_str().to_string(),
+            ],
+        );
+    }
+
+    cmd_packages_rustup_submit(store, options, parsed)
+}
+
+fn cmd_packages_rustup_submit(
+    store: Arc<SqliteStore>,
+    options: GlobalOptions,
+    command: RustupPackagesCommand,
+) -> Result<(), String> {
+    let request = command
+        .submit_request()
+        .ok_or_else(|| "rustup command does not produce a submit request".to_string())?;
+    let response = coordinator_submit_request(
+        store.as_ref(),
+        ManagerId::Rustup,
+        request,
+        options.execution_mode,
+    )?;
+
+    if options.execution_mode == ExecutionMode::Detach {
+        let task_id = response
+            .task_id
+            .ok_or_else(|| "coordinator detach response missing task id".to_string())?;
+        if options.json {
+            let mut payload = command.json_fields();
+            payload["accepted"] = json!(true);
+            payload["mode"] = json!("detach");
+            payload["task_id"] = json!(task_id);
+            emit_json_payload(command.schema(), payload);
+        } else {
+            println!("{}", command.detach_message(task_id));
+        }
+        return Ok(());
+    }
+
+    let task_id = response
+        .task_id
+        .ok_or_else(|| "coordinator wait response missing task id".to_string())?;
+    match response.payload {
+        Some(CoordinatorPayload::Refreshed) | Some(CoordinatorPayload::Mutation { .. }) => {
+            if options.json {
+                let mut payload = command.json_fields();
+                payload["accepted"] = json!(true);
+                payload["mode"] = json!("wait");
+                payload["task_id"] = json!(task_id);
+                payload["refreshed"] = json!(true);
+                emit_json_payload(command.schema(), payload);
+            } else {
+                println!("{}", command.wait_message(task_id));
+            }
+            Ok(())
+        }
+        _ => Err("packages rustup returned unexpected coordinator payload".to_string()),
+    }
 }
 
 fn cmd_packages_keg_policy(
@@ -2928,6 +3550,8 @@ fn cmd_updates_run(
                 manager: step.manager,
                 name: upgrade_request_name(step),
             }),
+            target_name: None,
+            version: None,
         });
         let response = tokio_runtime.block_on(submit_request_wait(&runtime, step.manager, request));
         match response {
@@ -4799,6 +5423,12 @@ struct ParsedSelfUpdateArgs {
     force: bool,
 }
 
+#[derive(Debug, Clone)]
+struct ParsedSelfInstallShimArgs {
+    app_bundle_path: PathBuf,
+    app_bundle_id: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct CliUpdateManifest {
     version: String,
@@ -5222,6 +5852,59 @@ fn parse_self_update_args(command_args: &[String]) -> Result<ParsedSelfUpdateArg
         }
     }
     Ok(parsed)
+}
+
+fn parse_self_install_shim_args(
+    command_args: &[String],
+) -> Result<ParsedSelfInstallShimArgs, String> {
+    let mut app_bundle_path: Option<PathBuf> = None;
+    let mut app_bundle_id: Option<String> = None;
+
+    let mut index = 0usize;
+    while index < command_args.len() {
+        match command_args[index].as_str() {
+            "--app-bundle-path" => {
+                index += 1;
+                let Some(value) = command_args.get(index) else {
+                    return Err("--app-bundle-path requires a value".to_string());
+                };
+                if value.trim().is_empty() {
+                    return Err("--app-bundle-path must not be empty".to_string());
+                }
+                app_bundle_path = Some(PathBuf::from(value));
+            }
+            "--app-bundle-id" => {
+                index += 1;
+                let Some(value) = command_args.get(index) else {
+                    return Err("--app-bundle-id requires a value".to_string());
+                };
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    return Err("--app-bundle-id must not be empty".to_string());
+                }
+                app_bundle_id = Some(trimmed.to_string());
+            }
+            other => {
+                return Err(format!(
+                    "unsupported self install-shim argument '{}' (supported: --app-bundle-path, --app-bundle-id)",
+                    other
+                ));
+            }
+        }
+        index += 1;
+    }
+
+    let app_bundle_path =
+        app_bundle_path.ok_or_else(|| "--app-bundle-path is required".to_string())?;
+    if !app_bundle_path.is_absolute() {
+        return Err("--app-bundle-path must be absolute".to_string());
+    }
+    let app_bundle_id = app_bundle_id.ok_or_else(|| "--app-bundle-id is required".to_string())?;
+
+    Ok(ParsedSelfInstallShimArgs {
+        app_bundle_path,
+        app_bundle_id,
+    })
 }
 
 fn fetch_cli_update_manifest(endpoint: &str) -> Result<CliUpdateManifest, SelfUpdateCommandError> {
@@ -5756,6 +6439,289 @@ fn default_helm_cli_shim_path() -> Result<PathBuf, String> {
     Ok(PathBuf::from(home).join(DEFAULT_HELM_CLI_SHIM_RELATIVE_PATH))
 }
 
+fn default_helm_cli_shim_marker(version: &str) -> Result<InstallMarker, String> {
+    let installed_at = OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string());
+    Ok(InstallMarker {
+        channel: InstallChannel::AppBundleShim.as_str().to_string(),
+        artifact: "helm-cli".to_string(),
+        installed_at,
+        update_policy: UpdatePolicy::ChannelManaged.as_str().to_string(),
+        version: Some(version.to_string()),
+    })
+}
+
+fn shell_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+fn render_app_bundle_shim_script(app_bundle_path: &Path, app_bundle_id: &str) -> String {
+    let quoted_bundle_path = shell_single_quote(&app_bundle_path.display().to_string());
+    let quoted_bundle_id = shell_single_quote(app_bundle_id);
+    format!(
+        "#!/bin/sh\nset -eu\n\nHELM_APP_BUNDLE_PATH={quoted_bundle_path}\nHELM_APP_BUNDLE_ID={quoted_bundle_id}\nHELM_CLI_RELATIVE_PATH='Contents/Resources/helm-cli'\nHELM_SHIM_SELF=\"$0\"\n{APP_BUNDLE_SHIM_SENTINEL}\n\nresolve_cli_from_bundle() {{\n  bundle_path=\"$1\"\n  candidate=\"${{bundle_path%/}}/${{HELM_CLI_RELATIVE_PATH}}\"\n  if [ -x \"$candidate\" ]; then\n    printf '%s\\n' \"$candidate\"\n    return 0\n  fi\n  return 1\n}}\n\nresolve_cli() {{\n  if candidate=\"$(resolve_cli_from_bundle \"$HELM_APP_BUNDLE_PATH\")\"; then\n    printf '%s\\n' \"$candidate\"\n    return 0\n  fi\n\n  if command -v osascript >/dev/null 2>&1; then\n    discovered=\"$(osascript -e 'try' -e \"POSIX path of (path to application id \\\"${{HELM_APP_BUNDLE_ID}}\\\")\" -e 'on error' -e 'return \"\"' -e 'end try' 2>/dev/null | tr -d '\\r')\"\n    if [ -n \"$discovered\" ]; then\n      if candidate=\"$(resolve_cli_from_bundle \"${{discovered%/}}\")\"; then\n        printf '%s\\n' \"$candidate\"\n        return 0\n      fi\n    fi\n  fi\n\n  return 1\n}}\n\nif cli_path=\"$(resolve_cli)\"; then\n  exec \"$cli_path\" \"$@\"\nfi\n\necho \"Helm app bundle was not found or is missing its embedded CLI binary.\" >&2\necho \"If Helm is removed, this shim can remove itself.\" >&2\necho \"Shim path: ${{HELM_SHIM_SELF}}\" >&2\n\nif [ -t 0 ]; then\n  printf \"Remove this shim now? [y/N] \" >&2\n  if read -r answer; then\n    case \"$answer\" in\n      y|Y|yes|YES)\n        if rm -f -- \"$HELM_SHIM_SELF\"; then\n          echo \"Removed shim: ${{HELM_SHIM_SELF}}\" >&2\n        else\n          echo \"Failed to remove shim: ${{HELM_SHIM_SELF}}\" >&2\n        fi\n        ;;\n    esac\n  fi\nfi\n\nexit 1\n"
+    )
+}
+
+fn reject_symlink_file_path(path: &Path, label: &str) -> Result<(), String> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(format!(
+                "failed to inspect {} '{}': {}",
+                label,
+                path.display(),
+                error
+            ));
+        }
+    };
+    if metadata.file_type().is_symlink() {
+        return Err(format!(
+            "refusing to replace {} symlink path '{}'",
+            label,
+            path.display()
+        ));
+    }
+    if !metadata.file_type().is_file() {
+        return Err(format!(
+            "refusing to replace non-file {} path '{}'",
+            label,
+            path.display()
+        ));
+    }
+    Ok(())
+}
+
+fn write_regular_file_atomically(
+    path: &Path,
+    bytes: &[u8],
+    mode: u32,
+    label: &str,
+) -> Result<(), String> {
+    reject_symlink_file_path(path, label)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "failed to create parent directory for {} '{}': {}",
+                label,
+                path.display(),
+                error
+            )
+        })?;
+    }
+    reject_symlink_file_path(path, label)?;
+
+    let temp_path = update_temp_path(path);
+    let mut temp_file = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .mode(mode)
+        .open(&temp_path)
+        .map_err(|error| {
+            format!(
+                "failed to create temporary {} '{}': {}",
+                label,
+                temp_path.display(),
+                error
+            )
+        })?;
+    temp_file.write_all(bytes).map_err(|error| {
+        format!(
+            "failed to write temporary {} '{}': {}",
+            label,
+            temp_path.display(),
+            error
+        )
+    })?;
+    temp_file.sync_all().map_err(|error| {
+        format!(
+            "failed to flush temporary {} '{}': {}",
+            label,
+            temp_path.display(),
+            error
+        )
+    })?;
+
+    let mut permissions = temp_file
+        .metadata()
+        .map_err(|error| {
+            format!(
+                "failed to inspect temporary {} '{}': {}",
+                label,
+                temp_path.display(),
+                error
+            )
+        })?
+        .permissions();
+    permissions.set_mode(mode);
+    fs::set_permissions(&temp_path, permissions).map_err(|error| {
+        format!(
+            "failed to set permissions on temporary {} '{}': {}",
+            label,
+            temp_path.display(),
+            error
+        )
+    })?;
+
+    if let Err(error) = fs::rename(&temp_path, path) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(format!(
+            "failed to atomically replace {} '{}': {}",
+            label,
+            path.display(),
+            error
+        ));
+    }
+
+    sync_parent_directory(path)?;
+    Ok(())
+}
+
+#[cfg(target_vendor = "apple")]
+fn path_cstring(path: &Path) -> Result<CString, String> {
+    CString::new(path.as_os_str().as_bytes()).map_err(|_| {
+        format!(
+            "path '{}' contains interior NUL bytes and cannot be used",
+            path.display()
+        )
+    })
+}
+
+#[cfg(target_vendor = "apple")]
+fn quarantine_attr_name() -> CString {
+    CString::new("com.apple.quarantine").expect("static string should not contain NUL")
+}
+
+#[cfg(target_vendor = "apple")]
+fn has_quarantine_attribute(path: &Path) -> Result<bool, String> {
+    let path_c = path_cstring(path)?;
+    let attr_name = quarantine_attr_name();
+    let length = unsafe {
+        libc::getxattr(
+            path_c.as_ptr(),
+            attr_name.as_ptr(),
+            std::ptr::null_mut(),
+            0,
+            0,
+            0,
+        )
+    };
+    if length >= 0 {
+        return Ok(true);
+    }
+    let error = std::io::Error::last_os_error();
+    if error.raw_os_error() == Some(libc::ENOATTR) {
+        return Ok(false);
+    }
+    Err(format!(
+        "failed to inspect quarantine attribute for '{}': {}",
+        path.display(),
+        error
+    ))
+}
+
+#[cfg(not(target_vendor = "apple"))]
+fn has_quarantine_attribute(_path: &Path) -> Result<bool, String> {
+    Ok(false)
+}
+
+#[cfg(target_vendor = "apple")]
+fn clear_quarantine_attribute_if_present(path: &Path) -> Result<bool, String> {
+    if !has_quarantine_attribute(path)? {
+        return Ok(false);
+    }
+    let path_c = path_cstring(path)?;
+    let attr_name = quarantine_attr_name();
+    let result = unsafe { libc::removexattr(path_c.as_ptr(), attr_name.as_ptr(), 0) };
+    if result == 0 {
+        return Ok(true);
+    }
+    Err(format!(
+        "failed to clear quarantine attribute from '{}': {}",
+        path.display(),
+        std::io::Error::last_os_error()
+    ))
+}
+
+#[cfg(not(target_vendor = "apple"))]
+fn clear_quarantine_attribute_if_present(_path: &Path) -> Result<bool, String> {
+    Ok(false)
+}
+
+fn install_managed_app_bundle_shim(
+    app_bundle_path: &Path,
+    app_bundle_id: &str,
+    version: &str,
+) -> Result<(PathBuf, PathBuf), String> {
+    let bundled_cli_path = app_bundle_path
+        .join("Contents")
+        .join("Resources")
+        .join("helm-cli");
+    let metadata = fs::metadata(&bundled_cli_path).map_err(|error| {
+        format!(
+            "bundled CLI '{}' is unavailable: {}",
+            bundled_cli_path.display(),
+            error
+        )
+    })?;
+    if !metadata.is_file() {
+        return Err(format!(
+            "bundled CLI path '{}' is not a file",
+            bundled_cli_path.display()
+        ));
+    }
+
+    let shim_path = default_helm_cli_shim_path()?;
+    let marker_path = install_marker_path()?;
+    let shim_existed = shim_path.exists();
+    if shim_existed {
+        reject_symlink_file_path(&shim_path, "Helm CLI shim")?;
+        let script = fs::read_to_string(&shim_path).map_err(|error| {
+            format!(
+                "failed to read Helm CLI shim '{}': {}",
+                shim_path.display(),
+                error
+            )
+        })?;
+        if !script.contains(APP_BUNDLE_SHIM_SENTINEL) {
+            return Err(format!(
+                "refusing to replace non-managed Helm CLI shim at '{}'",
+                shim_path.display()
+            ));
+        }
+    }
+
+    let script = render_app_bundle_shim_script(app_bundle_path, app_bundle_id);
+    write_regular_file_atomically(&shim_path, script.as_bytes(), 0o755, "Helm CLI shim")?;
+    if let Err(error) = clear_quarantine_attribute_if_present(&shim_path) {
+        if !shim_existed {
+            let _ = fs::remove_file(&shim_path);
+        }
+        return Err(error);
+    }
+    if has_quarantine_attribute(&shim_path)? {
+        if !shim_existed {
+            let _ = fs::remove_file(&shim_path);
+        }
+        return Err(format!(
+            "installed Helm CLI shim remains quarantined at '{}'",
+            shim_path.display()
+        ));
+    }
+
+    let marker = default_helm_cli_shim_marker(version)?;
+    if let Err(error) = write_install_marker(&marker_path, &marker) {
+        if !shim_existed {
+            let _ = fs::remove_file(&shim_path);
+        }
+        return Err(error);
+    }
+
+    Ok((shim_path, marker_path))
+}
+
 fn self_uninstall_recommended_action(channel: InstallChannel, executable_path: &Path) -> String {
     match channel {
         InstallChannel::DirectScript => "helm self uninstall".to_string(),
@@ -6099,6 +7065,62 @@ fn cmd_self(
             print_self_help();
         }
         return Ok(());
+    }
+
+    if command_args[0] == "install-shim" {
+        if options.execution_mode == ExecutionMode::Detach {
+            return Err("self install-shim does not support --detach".to_string());
+        }
+        let parsed = parse_self_install_shim_args(&command_args[1..])?;
+        let current_version = current_cli_version();
+        match install_managed_app_bundle_shim(
+            parsed.app_bundle_path.as_path(),
+            parsed.app_bundle_id.as_str(),
+            &current_version,
+        ) {
+            Ok((shim_path, marker_path)) => {
+                if options.json {
+                    emit_json_payload(
+                        "helm.cli.v1.self.install_shim",
+                        json!({
+                            "accepted": true,
+                            "installed": true,
+                            "channel": InstallChannel::AppBundleShim.as_str(),
+                            "update_policy": UpdatePolicy::ChannelManaged.as_str(),
+                            "current_version": current_version,
+                            "shim_path": shim_path.to_string_lossy().to_string(),
+                            "marker_path": marker_path.to_string_lossy().to_string(),
+                            "reason": serde_json::Value::Null
+                        }),
+                    );
+                } else {
+                    println!("Helm CLI shim installed.");
+                    println!("  channel: {}", InstallChannel::AppBundleShim.as_str());
+                    println!("  shim_path: {}", shim_path.display());
+                    println!("  marker_path: {}", marker_path.display());
+                }
+                return Ok(());
+            }
+            Err(error) => {
+                if options.json {
+                    emit_json_payload(
+                        "helm.cli.v1.self.install_shim",
+                        json!({
+                            "accepted": false,
+                            "installed": false,
+                            "channel": InstallChannel::AppBundleShim.as_str(),
+                            "update_policy": UpdatePolicy::ChannelManaged.as_str(),
+                            "current_version": current_version,
+                            "shim_path": serde_json::Value::Null,
+                            "marker_path": serde_json::Value::Null,
+                            "reason": error
+                        }),
+                    );
+                    return Err(mark_json_error_emitted("self install-shim failed"));
+                }
+                return Err(error);
+            }
+        }
     }
 
     let executable_path = env::current_exe()
@@ -8170,6 +9192,8 @@ fn run_coordinator_workflow(
                         manager: step.manager,
                         name: upgrade_request_name(step),
                     }),
+                    target_name: None,
+                    version: None,
                 });
                 tokio_runtime
                     .block_on(submit_request_wait(&runtime, step.manager, request))
@@ -8201,29 +9225,134 @@ fn coordinator_submit_request_to_adapter(
                 issued_at: SystemTime::now(),
             },
         }),
+        CoordinatorSubmitRequest::RustupAddComponent {
+            toolchain,
+            component,
+        } => AdapterRequest::ConfigurePackageDetail(PackageDetailRequest {
+            manager,
+            package: Some(PackageRef {
+                manager,
+                name: toolchain,
+            }),
+            operation: PackageDetailOperation::AddChild {
+                kind: PackageDetailChildKind::Component,
+                value: component,
+            },
+        }),
+        CoordinatorSubmitRequest::RustupRemoveComponent {
+            toolchain,
+            component,
+        } => AdapterRequest::ConfigurePackageDetail(PackageDetailRequest {
+            manager,
+            package: Some(PackageRef {
+                manager,
+                name: toolchain,
+            }),
+            operation: PackageDetailOperation::RemoveChild {
+                kind: PackageDetailChildKind::Component,
+                value: component,
+            },
+        }),
+        CoordinatorSubmitRequest::RustupAddTarget { toolchain, target } => {
+            AdapterRequest::ConfigurePackageDetail(PackageDetailRequest {
+                manager,
+                package: Some(PackageRef {
+                    manager,
+                    name: toolchain,
+                }),
+                operation: PackageDetailOperation::AddChild {
+                    kind: PackageDetailChildKind::Target,
+                    value: target,
+                },
+            })
+        }
+        CoordinatorSubmitRequest::RustupRemoveTarget { toolchain, target } => {
+            AdapterRequest::ConfigurePackageDetail(PackageDetailRequest {
+                manager,
+                package: Some(PackageRef {
+                    manager,
+                    name: toolchain,
+                }),
+                operation: PackageDetailOperation::RemoveChild {
+                    kind: PackageDetailChildKind::Target,
+                    value: target,
+                },
+            })
+        }
+        CoordinatorSubmitRequest::RustupSetDefaultToolchain { toolchain } => {
+            AdapterRequest::ConfigurePackageDetail(PackageDetailRequest {
+                manager,
+                package: Some(PackageRef {
+                    manager,
+                    name: toolchain,
+                }),
+                operation: PackageDetailOperation::SetDefault,
+            })
+        }
+        CoordinatorSubmitRequest::RustupSetOverride { toolchain, path } => {
+            AdapterRequest::ConfigurePackageDetail(PackageDetailRequest {
+                manager,
+                package: Some(PackageRef {
+                    manager,
+                    name: toolchain,
+                }),
+                operation: PackageDetailOperation::SetPathOverride {
+                    path: PathBuf::from(path),
+                },
+            })
+        }
+        CoordinatorSubmitRequest::RustupUnsetOverride { toolchain, path } => {
+            AdapterRequest::ConfigurePackageDetail(PackageDetailRequest {
+                manager,
+                package: Some(PackageRef {
+                    manager,
+                    name: toolchain,
+                }),
+                operation: PackageDetailOperation::ClearPathOverride {
+                    path: PathBuf::from(path),
+                },
+            })
+        }
+        CoordinatorSubmitRequest::RustupSetProfile { profile } => {
+            AdapterRequest::ConfigurePackageDetail(PackageDetailRequest {
+                manager,
+                package: None,
+                operation: PackageDetailOperation::SetProfile { profile },
+            })
+        }
         CoordinatorSubmitRequest::Install {
             package_name,
+            target_name,
             version,
         } => AdapterRequest::Install(InstallRequest {
             package: PackageRef {
                 manager,
                 name: package_name,
             },
+            target_name,
             version,
         }),
-        CoordinatorSubmitRequest::Uninstall { package_name } => {
-            AdapterRequest::Uninstall(UninstallRequest {
-                package: PackageRef {
-                    manager,
-                    name: package_name,
-                },
-            })
-        }
-        CoordinatorSubmitRequest::Upgrade { package_name } => {
-            AdapterRequest::Upgrade(UpgradeRequest {
-                package: package_name.map(|name| PackageRef { manager, name }),
-            })
-        }
+        CoordinatorSubmitRequest::Uninstall {
+            package_name,
+            target_name,
+            version,
+        } => AdapterRequest::Uninstall(UninstallRequest {
+            package: PackageRef {
+                manager,
+                name: package_name,
+            },
+            target_name,
+            version,
+        }),
+        CoordinatorSubmitRequest::Upgrade {
+            package_name,
+            target_name,
+            version,
+        } => AdapterRequest::Upgrade(UpgradeRequest {
+            package: package_name.map(|name| PackageRef { manager, name }),
+            target_name,
+            version,
+        }),
         CoordinatorSubmitRequest::Pin {
             package_name,
             version,
@@ -8234,7 +9363,10 @@ fn coordinator_submit_request_to_adapter(
             },
             version,
         }),
-        CoordinatorSubmitRequest::Unpin { package_name } => AdapterRequest::Unpin(UnpinRequest {
+        CoordinatorSubmitRequest::Unpin {
+            package_name,
+            version: _,
+        } => AdapterRequest::Unpin(UnpinRequest {
             package: PackageRef {
                 manager,
                 name: package_name,
@@ -8251,15 +9383,91 @@ fn adapter_request_to_coordinator_submit(
         AdapterRequest::Search(search) => Ok(CoordinatorSubmitRequest::Search {
             query: search.query.text,
         }),
+        AdapterRequest::ConfigurePackageDetail(request) => match request.operation {
+            PackageDetailOperation::AddChild {
+                kind: PackageDetailChildKind::Component,
+                value,
+            } => Ok(CoordinatorSubmitRequest::RustupAddComponent {
+                toolchain: request
+                    .package
+                    .ok_or("package detail add-component request missing package target")?
+                    .name,
+                component: value,
+            }),
+            PackageDetailOperation::RemoveChild {
+                kind: PackageDetailChildKind::Component,
+                value,
+            } => Ok(CoordinatorSubmitRequest::RustupRemoveComponent {
+                toolchain: request
+                    .package
+                    .ok_or("package detail remove-component request missing package target")?
+                    .name,
+                component: value,
+            }),
+            PackageDetailOperation::AddChild {
+                kind: PackageDetailChildKind::Target,
+                value,
+            } => Ok(CoordinatorSubmitRequest::RustupAddTarget {
+                toolchain: request
+                    .package
+                    .ok_or("package detail add-target request missing package target")?
+                    .name,
+                target: value,
+            }),
+            PackageDetailOperation::RemoveChild {
+                kind: PackageDetailChildKind::Target,
+                value,
+            } => Ok(CoordinatorSubmitRequest::RustupRemoveTarget {
+                toolchain: request
+                    .package
+                    .ok_or("package detail remove-target request missing package target")?
+                    .name,
+                target: value,
+            }),
+            PackageDetailOperation::SetDefault => {
+                Ok(CoordinatorSubmitRequest::RustupSetDefaultToolchain {
+                    toolchain: request
+                        .package
+                        .ok_or("package detail set-default request missing package target")?
+                        .name,
+                })
+            }
+            PackageDetailOperation::SetPathOverride { path } => {
+                Ok(CoordinatorSubmitRequest::RustupSetOverride {
+                    toolchain: request
+                        .package
+                        .ok_or("package detail set-override request missing package target")?
+                        .name,
+                    path: path.to_string_lossy().to_string(),
+                })
+            }
+            PackageDetailOperation::ClearPathOverride { path } => {
+                Ok(CoordinatorSubmitRequest::RustupUnsetOverride {
+                    toolchain: request
+                        .package
+                        .ok_or("package detail clear-override request missing package target")?
+                        .name,
+                    path: path.to_string_lossy().to_string(),
+                })
+            }
+            PackageDetailOperation::SetProfile { profile } => {
+                Ok(CoordinatorSubmitRequest::RustupSetProfile { profile })
+            }
+        },
         AdapterRequest::Install(install) => Ok(CoordinatorSubmitRequest::Install {
             package_name: install.package.name,
+            target_name: install.target_name,
             version: install.version,
         }),
         AdapterRequest::Uninstall(uninstall) => Ok(CoordinatorSubmitRequest::Uninstall {
             package_name: uninstall.package.name,
+            target_name: uninstall.target_name,
+            version: uninstall.version,
         }),
         AdapterRequest::Upgrade(upgrade) => Ok(CoordinatorSubmitRequest::Upgrade {
             package_name: upgrade.package.map(|package| package.name),
+            target_name: upgrade.target_name,
+            version: upgrade.version,
         }),
         AdapterRequest::Pin(pin) => Ok(CoordinatorSubmitRequest::Pin {
             package_name: pin.package.name,
@@ -8267,6 +9475,7 @@ fn adapter_request_to_coordinator_submit(
         }),
         AdapterRequest::Unpin(unpin) => Ok(CoordinatorSubmitRequest::Unpin {
             package_name: unpin.package.name,
+            version: None,
         }),
         unsupported => Err(format!(
             "coordinator submit request does not support adapter action '{:?}'",
@@ -8286,6 +9495,10 @@ fn adapter_response_to_coordinator_payload(response: AdapterResponse) -> Coordin
                 .map(|path| path.to_string_lossy().to_string()),
         },
         AdapterResponse::Refreshed => CoordinatorPayload::Refreshed,
+        AdapterResponse::SnapshotSync {
+            installed: _,
+            outdated: _,
+        } => CoordinatorPayload::Refreshed,
         AdapterResponse::InstalledPackages(packages) => CoordinatorPayload::InstalledPackages {
             count: packages.len(),
         },
@@ -9330,6 +10543,137 @@ fn task_log_to_cli_record(record: helm_core::models::TaskLogRecord) -> CliTaskLo
     }
 }
 
+fn require_nonempty_packages_rustup_arg(raw: &str, label: &str) -> Result<String, String> {
+    let normalized = raw.trim();
+    if normalized.is_empty() {
+        return Err(format!("packages rustup {label} cannot be empty"));
+    }
+    Ok(normalized.to_string())
+}
+
+fn require_absolute_packages_rustup_path(raw: &str, label: &str) -> Result<String, String> {
+    let normalized = require_nonempty_packages_rustup_arg(raw, label)?;
+    if !Path::new(normalized.as_str()).is_absolute() {
+        return Err(format!(
+            "packages rustup {label} requires an absolute path (received '{}')",
+            normalized
+        ));
+    }
+    Ok(normalized)
+}
+
+fn parse_packages_rustup_args(command_args: &[String]) -> Result<RustupPackagesCommand, String> {
+    if command_args.is_empty() {
+        return Err(
+            "packages rustup requires a subcommand: show, component, target, default, override, profile"
+                .to_string(),
+        );
+    }
+
+    match command_args[0].as_str() {
+        "show" => {
+            if command_args.len() != 2 {
+                return Err("packages rustup show requires <toolchain>".to_string());
+            }
+            Ok(RustupPackagesCommand::Show {
+                toolchain: require_nonempty_packages_rustup_arg(&command_args[1], "toolchain")?,
+            })
+        }
+        "component" => {
+            if command_args.len() != 4 {
+                return Err(
+                    "packages rustup component requires <add|remove> <toolchain> <component>"
+                        .to_string(),
+                );
+            }
+            let toolchain = require_nonempty_packages_rustup_arg(&command_args[2], "toolchain")?;
+            let component = require_nonempty_packages_rustup_arg(&command_args[3], "component")?;
+            match command_args[1].as_str() {
+                "add" => Ok(RustupPackagesCommand::ComponentAdd {
+                    toolchain,
+                    component,
+                }),
+                "remove" => Ok(RustupPackagesCommand::ComponentRemove {
+                    toolchain,
+                    component,
+                }),
+                other => Err(format!(
+                    "unsupported packages rustup component action '{}'; supported: add, remove",
+                    other
+                )),
+            }
+        }
+        "target" => {
+            if command_args.len() != 4 {
+                return Err(
+                    "packages rustup target requires <add|remove> <toolchain> <target>".to_string(),
+                );
+            }
+            let toolchain = require_nonempty_packages_rustup_arg(&command_args[2], "toolchain")?;
+            let target = require_nonempty_packages_rustup_arg(&command_args[3], "target")?;
+            match command_args[1].as_str() {
+                "add" => Ok(RustupPackagesCommand::TargetAdd { toolchain, target }),
+                "remove" => Ok(RustupPackagesCommand::TargetRemove { toolchain, target }),
+                other => Err(format!(
+                    "unsupported packages rustup target action '{}'; supported: add, remove",
+                    other
+                )),
+            }
+        }
+        "default" => {
+            if command_args.len() != 2 {
+                return Err("packages rustup default requires <toolchain>".to_string());
+            }
+            Ok(RustupPackagesCommand::Default {
+                toolchain: require_nonempty_packages_rustup_arg(&command_args[1], "toolchain")?,
+            })
+        }
+        "override" => {
+            if command_args.len() != 4 {
+                return Err(
+                    "packages rustup override requires <set|unset> <toolchain> <absolute-path>"
+                        .to_string(),
+                );
+            }
+            let toolchain = require_nonempty_packages_rustup_arg(&command_args[2], "toolchain")?;
+            let path = require_absolute_packages_rustup_path(&command_args[3], "path")?;
+            match command_args[1].as_str() {
+                "set" => Ok(RustupPackagesCommand::OverrideSet { toolchain, path }),
+                "unset" => Ok(RustupPackagesCommand::OverrideUnset { toolchain, path }),
+                other => Err(format!(
+                    "unsupported packages rustup override action '{}'; supported: set, unset",
+                    other
+                )),
+            }
+        }
+        "profile" => {
+            if command_args.len() != 3 {
+                return Err("packages rustup profile requires set <profile>".to_string());
+            }
+            match command_args[1].as_str() {
+                "set" => Ok(RustupPackagesCommand::ProfileSet {
+                    profile: require_nonempty_packages_rustup_arg(&command_args[2], "profile")?,
+                }),
+                other => Err(format!(
+                    "unsupported packages rustup profile action '{}'; supported: set",
+                    other
+                )),
+            }
+        }
+        other => Err(format!(
+            "unsupported packages rustup subcommand '{}'; supported: show, component, target, default, override, profile",
+            other
+        )),
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ParsedPackageShowArgs {
+    package_name: String,
+    manager: Option<ManagerId>,
+    coordinate_hint: Option<(String, String)>,
+}
+
 #[derive(Debug, Clone)]
 struct ParsedPackageMutationArgs {
     package_name: String,
@@ -9339,7 +10683,7 @@ struct ParsedPackageMutationArgs {
     yes: bool,
 }
 
-fn parse_package_show_args(command_args: &[String]) -> Result<(String, Option<ManagerId>), String> {
+fn parse_package_show_args(command_args: &[String]) -> Result<ParsedPackageShowArgs, String> {
     if command_args.is_empty() {
         return Err("packages show requires a package name".to_string());
     }
@@ -9371,7 +10715,13 @@ fn parse_package_show_args(command_args: &[String]) -> Result<(String, Option<Ma
         }
     }
 
-    Ok((package_name, selector_manager))
+    let coordinate_hint = package_coordinate_hint(package_name.as_str());
+
+    Ok(ParsedPackageShowArgs {
+        package_name,
+        manager: selector_manager,
+        coordinate_hint,
+    })
 }
 
 fn parse_package_mutation_args(
@@ -9383,7 +10733,7 @@ fn parse_package_mutation_args(
         return Err("package mutation requires a package name".to_string());
     }
 
-    let (package_name, mut selector_manager) = parse_package_selector(&command_args[0])?;
+    let (mut package_name, mut selector_manager) = parse_package_selector(&command_args[0])?;
     let mut manager: Option<ManagerId> = selector_manager.take();
     let mut version: Option<String> = None;
     let uninstall_command = subcommand == "uninstall";
@@ -9441,6 +10791,22 @@ fn parse_package_mutation_args(
     let manager = manager
         .ok_or_else(|| "package mutation requires --manager <id> or name@manager".to_string())?;
 
+    if allow_version
+        && let Some((coordinate_package_name, coordinate_version)) =
+            package_coordinate_hint_for_manager(package_name.as_str(), manager)
+    {
+        if let Some(explicit_version) = version.as_ref()
+            && explicit_version != &coordinate_version
+        {
+            return Err(format!(
+                "conflicting version selectors '{}' and '{}'; remove one or make them match",
+                coordinate_version, explicit_version
+            ));
+        }
+        package_name = coordinate_package_name;
+        version = Some(coordinate_version);
+    }
+
     Ok(ParsedPackageMutationArgs {
         package_name,
         manager,
@@ -9448,6 +10814,26 @@ fn parse_package_mutation_args(
         preview,
         yes,
     })
+}
+
+fn manager_supports_package_coordinate_versions(manager: ManagerId) -> bool {
+    matches!(manager, ManagerId::Asdf | ManagerId::Mise)
+}
+
+fn package_coordinate_hint(raw: &str) -> Option<(String, String)> {
+    let coordinate = PackageCoordinate::parse(raw)?;
+    let selector = coordinate.version_selector?;
+    if coordinate.package_name == raw {
+        return None;
+    }
+    Some((coordinate.package_name, selector.raw))
+}
+
+fn package_coordinate_hint_for_manager(raw: &str, manager: ManagerId) -> Option<(String, String)> {
+    if !manager_supports_package_coordinate_versions(manager) {
+        return None;
+    }
+    package_coordinate_hint(raw)
 }
 
 fn parse_package_selector(raw: &str) -> Result<(String, Option<ManagerId>), String> {
@@ -9460,8 +10846,10 @@ fn parse_package_selector(raw: &str) -> Result<(String, Option<ManagerId>), Stri
         && !name.trim().is_empty()
         && !manager_raw.trim().is_empty()
     {
-        let manager = parse_manager_id(manager_raw.trim())?;
-        return Ok((name.trim().to_string(), Some(manager)));
+        let manager_raw = manager_raw.trim();
+        if let Ok(manager) = parse_manager_id(manager_raw) {
+            return Ok((name.trim().to_string(), Some(manager)));
+        }
     }
 
     Ok((trimmed.to_string(), None))
@@ -9556,6 +10944,7 @@ fn build_adapter_runtime(store: Arc<SqliteStore>) -> Result<AdapterRuntime, Stri
         Arc::new(CargoAdapter::new(ProcessCargoSource::new(executor.clone()))),
         Arc::new(CargoBinstallAdapter::new(ProcessCargoBinstallSource::new(
             executor.clone(),
+            store.clone(),
         ))),
         Arc::new(PipAdapter::new(ProcessPipSource::new(executor.clone()))),
         Arc::new(PipxAdapter::new(ProcessPipxSource::new(executor.clone()))),
@@ -10104,10 +11493,11 @@ fn list_installed_for_enabled(
     Ok(packages
         .into_iter()
         .filter(|package| {
-            enabled_map
-                .get(&package.package.manager)
-                .copied()
-                .unwrap_or(true)
+            package.package.is_user_visible_package()
+                && enabled_map
+                    .get(&package.package.manager)
+                    .copied()
+                    .unwrap_or(true)
         })
         .collect())
 }
@@ -10122,12 +11512,17 @@ fn list_outdated_for_enabled(
     Ok(packages
         .into_iter()
         .filter(|package| {
-            enabled_map
-                .get(&package.package.manager)
-                .copied()
-                .unwrap_or(true)
+            package.package.is_user_visible_package()
+                && enabled_map
+                    .get(&package.package.manager)
+                    .copied()
+                    .unwrap_or(true)
         })
         .collect())
+}
+
+fn package_manager_preference_key(package_name: &str, version: Option<&str>) -> String {
+    package_family_preference_key(package_name, version)
 }
 
 fn search_local_for_enabled(
@@ -10141,7 +11536,8 @@ fn search_local_for_enabled(
     Ok(results
         .into_iter()
         .filter(|result| {
-            manager_participates_in_package_search(result.result.package.manager)
+            result.result.package.is_user_visible_package()
+                && manager_participates_in_package_search(result.result.package.manager)
                 && manager_participates_in_package_search(result.source_manager)
                 && enabled_map
                     .get(&result.result.package.manager)
@@ -11696,6 +13092,8 @@ fn build_manager_mutation_request_with_options(
                         manager: ManagerId::Rustup,
                         name: "__self__".to_string(),
                     },
+                    target_name: None,
+                    version: None,
                 }),
             ),
             _ => {
@@ -11707,6 +13105,8 @@ fn build_manager_mutation_request_with_options(
                                 manager: ManagerId::HomebrewFormula,
                                 name: formula_name.to_string(),
                             },
+                            target_name: None,
+                            version: None,
                         }),
                     )
                 } else {
@@ -12397,15 +13797,115 @@ fn active_manager_install_instance(
 fn build_package_uninstall_preview_for_package(
     store: &SqliteStore,
     package: &PackageRef,
+    requested_version: Option<&str>,
 ) -> Result<PackageUninstallPreview, String> {
     let active_instance = active_manager_install_instance(store, package.manager)?;
+    let runtime_state = package_runtime_state_from_snapshot(store, package, requested_version)?;
+    let rustup_override_paths = rustup_override_paths_for_preview(package, runtime_state.as_ref());
     Ok(build_package_uninstall_preview(
         PackageUninstallPreviewContext {
             package,
             active_instance: active_instance.as_ref(),
+            package_runtime_state: runtime_state.as_ref(),
+            rustup_override_paths: rustup_override_paths.as_slice(),
         },
         DEFAULT_MANAGER_UNINSTALL_SAFE_BLAST_RADIUS_THRESHOLD,
     ))
+}
+
+fn package_runtime_state_from_snapshot(
+    store: &SqliteStore,
+    package: &PackageRef,
+    requested_version: Option<&str>,
+) -> Result<Option<PackageRuntimeState>, String> {
+    let installed = store
+        .list_installed()
+        .map_err(|error| format!("failed to list installed packages: {error}"))?;
+    if let Some(state) = installed.iter().find_map(|row| {
+        package_runtime_state_match(
+            package,
+            requested_version,
+            &row.package,
+            row.installed_version.as_deref(),
+        )
+        .then(|| row.runtime_state.clone())
+    }) {
+        return Ok(Some(state));
+    }
+
+    let outdated = store
+        .list_outdated()
+        .map_err(|error| format!("failed to list outdated packages: {error}"))?;
+    Ok(outdated.iter().find_map(|row| {
+        package_runtime_state_match(
+            package,
+            requested_version,
+            &row.package,
+            row.installed_version.as_deref(),
+        )
+        .then(|| row.runtime_state.clone())
+    }))
+}
+
+fn rustup_override_paths_for_preview(
+    package: &PackageRef,
+    runtime_state: Option<&PackageRuntimeState>,
+) -> Vec<String> {
+    if package.manager != ManagerId::Rustup {
+        return Vec::new();
+    }
+
+    load_rustup_toolchain_detail_for_cli(package.name.as_str(), "preview package uninstall")
+        .map(|detail| detail.override_paths)
+        .or_else(|| {
+            runtime_state
+                .is_some_and(|state| state.has_override)
+                .then(Vec::new)
+        })
+        .unwrap_or_default()
+}
+
+fn package_runtime_state_match(
+    requested: &PackageRef,
+    requested_version: Option<&str>,
+    snapshot: &PackageRef,
+    snapshot_installed_version: Option<&str>,
+) -> bool {
+    if requested == snapshot {
+        return match requested_version
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            Some(version) => snapshot_installed_version == Some(version),
+            None => true,
+        };
+    }
+    if requested.manager != snapshot.manager {
+        return false;
+    }
+    if !matches!(requested.manager, ManagerId::Asdf | ManagerId::Mise) {
+        return false;
+    }
+
+    let Some(coordinate) = PackageCoordinate::parse(requested.name.as_str()) else {
+        return false;
+    };
+    let requested_base = coordinate.package_name.trim();
+    if requested_base != snapshot.name {
+        return false;
+    }
+    match requested_version
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            coordinate
+                .version_selector
+                .as_ref()
+                .map(|selector| selector.raw.as_str())
+        }) {
+        Some(version) => snapshot_installed_version == Some(version),
+        None => true,
+    }
 }
 
 fn parse_manager_id(raw: &str) -> Result<ManagerId, String> {
@@ -13118,8 +14618,64 @@ fn print_packages_help_topic(path: &[String]) -> bool {
                 print_packages_unpin_help();
                 true
             }
+            "rustup" => {
+                print_packages_rustup_help();
+                true
+            }
             "keg-policy" => {
                 print_packages_keg_policy_help();
+                true
+            }
+            _ => false,
+        };
+    }
+
+    if path.len() == 2 && path[0] == "rustup" {
+        return match path[1].as_str() {
+            "show" => {
+                print_packages_rustup_show_help();
+                true
+            }
+            "component" => {
+                print_packages_rustup_component_help();
+                true
+            }
+            "target" => {
+                print_packages_rustup_target_help();
+                true
+            }
+            "default" => {
+                print_packages_rustup_default_help();
+                true
+            }
+            "override" => {
+                print_packages_rustup_override_help();
+                true
+            }
+            "profile" => {
+                print_packages_rustup_profile_help();
+                true
+            }
+            _ => false,
+        };
+    }
+
+    if path.len() == 3 && path[0] == "rustup" {
+        return match (path[1].as_str(), path[2].as_str()) {
+            ("component", "add") | ("component", "remove") => {
+                print_packages_rustup_component_help();
+                true
+            }
+            ("target", "add") | ("target", "remove") => {
+                print_packages_rustup_target_help();
+                true
+            }
+            ("override", "set") | ("override", "unset") => {
+                print_packages_rustup_override_help();
+                true
+            }
+            ("profile", "set") => {
+                print_packages_rustup_profile_help();
                 true
             }
             _ => false,
@@ -13400,6 +14956,10 @@ fn print_self_help_topic(path: &[String]) -> bool {
                 print_self_update_help();
                 return true;
             }
+            "install-shim" => {
+                print_self_install_shim_help();
+                return true;
+            }
             "uninstall" => {
                 print_self_uninstall_help();
                 return true;
@@ -13535,7 +15095,7 @@ fn print_help() {
     println!("  refresh                Run detection + refresh pipeline");
     println!("  search <query>         Progressive package search (local + remote)");
     println!("  ls                     List installed packages (alias)");
-    println!("  packages [list|search|show|install|uninstall|upgrade|pin|unpin|keg-policy]");
+    println!("  packages [list|search|show|install|uninstall|upgrade|pin|unpin|rustup|keg-policy]");
     println!("                         Package listing/search/details and mutations");
     println!("  updates [list|summary|preview|run]");
     println!("                         List/summarize/preview/run package upgrades");
@@ -13615,6 +15175,7 @@ fn print_packages_help() {
     println!("  upgrade <name|name@manager> --manager <id>");
     println!("  pin <name|name@manager> --manager <id> [--version <v>]");
     println!("  unpin <name|name@manager> --manager <id>");
+    println!("  rustup <show|component|target|default|override|profile> ...");
     println!("  keg-policy <list|get|set|reset> ...");
     println!();
     println!("DESCRIPTION:");
@@ -13646,6 +15207,9 @@ fn print_packages_show_help() {
     println!();
     println!("DESCRIPTION:");
     println!("  Show manager-scoped package details with ambiguity protection.");
+    println!(
+        "  For asdf/mise package coordinates, <name@selector> is accepted when manager is explicit."
+    );
 }
 
 fn print_packages_install_help() {
@@ -13654,6 +15218,7 @@ fn print_packages_install_help() {
     println!();
     println!("DESCRIPTION:");
     println!("  Install a package via the selected manager.");
+    println!("  For asdf/mise, <name@selector> can be used instead of --version <selector>.");
 }
 
 fn print_packages_uninstall_help() {
@@ -13682,14 +15247,84 @@ fn print_packages_pin_help() {
     println!(
         "  Pin a package version (native manager pinning when available, otherwise virtual pin)."
     );
+    println!("  For asdf/mise, <name@selector> can be used instead of --version <selector>.");
 }
 
 fn print_packages_unpin_help() {
     println!("USAGE:");
-    println!("  helm packages unpin <name|name@manager> --manager <id>");
+    println!("  helm packages unpin <name|name@manager> --manager <id> [--version <v>]");
     println!();
     println!("DESCRIPTION:");
-    println!("  Remove pin state for a package.");
+    println!("  Remove pin state for a package version.");
+    println!("  For asdf/mise, <name@selector> can be used instead of --version <selector>.");
+}
+
+fn print_packages_rustup_help() {
+    println!("USAGE:");
+    println!("  helm packages rustup show <toolchain>");
+    println!("  helm packages rustup component <add|remove> <toolchain> <component>");
+    println!("  helm packages rustup target <add|remove> <toolchain> <target>");
+    println!("  helm packages rustup default <toolchain>");
+    println!("  helm packages rustup override <set|unset> <toolchain> <absolute-path>");
+    println!("  helm packages rustup profile set <minimal|default|complete>");
+    println!();
+    println!("DESCRIPTION:");
+    println!(
+        "  Inspect and configure rustup-managed toolchains, components, targets, overrides, and profile state."
+    );
+}
+
+fn print_packages_rustup_show_help() {
+    println!("USAGE:");
+    println!("  helm packages rustup show <toolchain>");
+    println!();
+    println!("DESCRIPTION:");
+    println!(
+        "  Show rustup-specific detail for one installed toolchain, including runtime state, profile, overrides, components, and targets."
+    );
+}
+
+fn print_packages_rustup_component_help() {
+    println!("USAGE:");
+    println!("  helm packages rustup component add <toolchain> <component>");
+    println!("  helm packages rustup component remove <toolchain> <component>");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Add or remove one rustup component for a specific toolchain.");
+}
+
+fn print_packages_rustup_target_help() {
+    println!("USAGE:");
+    println!("  helm packages rustup target add <toolchain> <target>");
+    println!("  helm packages rustup target remove <toolchain> <target>");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Add or remove one compilation target for a specific rustup toolchain.");
+}
+
+fn print_packages_rustup_default_help() {
+    println!("USAGE:");
+    println!("  helm packages rustup default <toolchain>");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Set the rustup default toolchain.");
+}
+
+fn print_packages_rustup_override_help() {
+    println!("USAGE:");
+    println!("  helm packages rustup override set <toolchain> <absolute-path>");
+    println!("  helm packages rustup override unset <toolchain> <absolute-path>");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Set or clear a rustup directory override for one absolute filesystem path.");
+}
+
+fn print_packages_rustup_profile_help() {
+    println!("USAGE:");
+    println!("  helm packages rustup profile set <minimal|default|complete>");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Change the rustup installation profile used for future component defaults.");
 }
 
 fn print_packages_keg_policy_help() {
@@ -14286,6 +15921,7 @@ fn print_self_help() {
     println!("  helm self status");
     println!("  helm self check");
     println!("  helm self update [--check] [--force]");
+    println!("  helm self install-shim --app-bundle-path <path> --app-bundle-id <id>");
     println!("  helm self uninstall");
     println!("  helm self auto-check status");
     println!("  helm self auto-check enable");
@@ -14322,6 +15958,17 @@ fn print_self_update_help() {
     println!("  Apply direct CLI self-update when provenance policy allows it.");
     println!("  --check performs a non-mutating availability check.");
     println!("  --force is only honored for direct-script installs.");
+}
+
+fn print_self_install_shim_help() {
+    println!("USAGE:");
+    println!("  helm self install-shim --app-bundle-path <path> --app-bundle-id <id>");
+    println!();
+    println!("DESCRIPTION:");
+    println!("  Install the managed ~/.local/bin/helm shim for a Helm.app bundle.");
+    println!(
+        "  Intended for the GUI/XPC install flow so shim creation happens outside the app sandbox."
+    );
 }
 
 fn print_self_uninstall_help() {
@@ -14391,21 +16038,23 @@ fn print_completion_help() {
 mod tests {
     use super::{
         CLI_LICENSE_TERMS_VERSION, Command, CoordinatorClientTransport, ExecutionMode,
-        GlobalOptions, HomebrewKegPolicy, InstallChannel, ManagerId, SelfUpdateErrorKind,
-        UpdatePolicy, UpgradeExecutionStep, acquire_coordinator_bootstrap_lock,
-        apply_manager_enablement_self_heal, build_json_payload_lines, classify_failure_class,
-        cmd_updates_run, command_help_topic_exists, coordinator_transport_for_cancel,
-        coordinator_transport_for_submit, coordinator_transport_for_workflow,
-        count_upgrade_step_failures, ensure_cli_onboarding_completed, exit_code_for_error,
-        failure_class_hint, list_managers, manager_operation_failure_error, mark_exit_code,
-        parse_args, parse_args_with_tty, parse_homebrew_keg_policy_arg, parse_manager_id,
-        parse_manager_mutation_args, parse_package_mutation_args, parse_search_args,
-        parse_structured_terminal_error_message, parse_updates_run_preview_args,
-        provenance_can_self_update, raw_args_request_json, raw_args_request_ndjson,
-        read_update_bytes_with_limit, remove_install_marker_if_channel, resolve_redirect_url,
-        resolve_update_redirect_target, selected_executable_differs_from_default,
-        self_uninstall_recommended_action, should_launch_coordinator_on_demand,
-        strip_exit_code_marker, upgrade_request_name,
+        GlobalOptions, HomebrewKegPolicy, InstallChannel, ManagerId, RustupPackagesCommand,
+        SelfUpdateErrorKind, UpdatePolicy, UpgradeExecutionStep,
+        acquire_coordinator_bootstrap_lock, apply_manager_enablement_self_heal,
+        build_json_payload_lines, classify_failure_class, cmd_updates_run,
+        command_bypasses_cli_onboarding, command_help_topic_exists,
+        coordinator_transport_for_cancel, coordinator_transport_for_submit,
+        coordinator_transport_for_workflow, count_upgrade_step_failures,
+        ensure_cli_onboarding_completed, exit_code_for_error, failure_class_hint, list_managers,
+        manager_operation_failure_error, mark_exit_code, parse_args, parse_args_with_tty,
+        parse_homebrew_keg_policy_arg, parse_manager_id, parse_manager_mutation_args,
+        parse_package_mutation_args, parse_package_selector, parse_package_show_args,
+        parse_packages_rustup_args, parse_search_args, parse_structured_terminal_error_message,
+        parse_updates_run_preview_args, provenance_can_self_update, raw_args_request_json,
+        raw_args_request_ndjson, read_update_bytes_with_limit, remove_install_marker_if_channel,
+        resolve_redirect_url, resolve_update_redirect_target,
+        selected_executable_differs_from_default, self_uninstall_recommended_action,
+        should_launch_coordinator_on_demand, strip_exit_code_marker, upgrade_request_name,
     };
     use helm_core::execution::TaskOutputRecord;
     use helm_core::models::{
@@ -14803,12 +16452,30 @@ mod tests {
     }
 
     #[test]
-    fn package_search_excludes_rustup_manager() {
-        assert!(!super::manager_participates_in_package_search(
+    fn package_search_policy_matches_shared_registry() {
+        assert!(super::manager_participates_in_package_search(
             ManagerId::Rustup
         ));
         assert!(super::manager_participates_in_package_search(
             ManagerId::HomebrewFormula
+        ));
+        assert!(super::manager_participates_in_package_search(
+            ManagerId::Pipx
+        ));
+        assert!(super::manager_participates_in_package_search(
+            ManagerId::Pip
+        ));
+        assert!(super::manager_participates_in_package_search(
+            ManagerId::Poetry
+        ));
+        assert!(super::manager_participates_in_package_search(
+            ManagerId::Bundler
+        ));
+        assert!(!super::manager_participates_in_package_search(
+            ManagerId::SoftwareUpdate
+        ));
+        assert!(!super::manager_participates_in_package_search(
+            ManagerId::Sparkle
         ));
     }
 
@@ -15104,6 +16771,19 @@ mod tests {
         assert!(options.accept_defaults);
         assert_eq!(command, Command::Onboarding);
         assert_eq!(args, vec!["status".to_string()]);
+    }
+
+    #[test]
+    fn self_install_shim_bypasses_cli_onboarding_gate() {
+        assert!(command_bypasses_cli_onboarding(
+            Command::SelfCmd,
+            &["install-shim".to_string()]
+        ));
+        assert!(!command_bypasses_cli_onboarding(
+            Command::SelfCmd,
+            &["status".to_string()]
+        ));
+        assert!(!command_bypasses_cli_onboarding(Command::Status, &[]));
     }
 
     #[test]
@@ -16037,6 +17717,185 @@ mod tests {
         )
         .expect_err("upgrade should reject uninstall-only preview flag");
         assert!(error.contains("unsupported package mutation argument '--preview'"));
+    }
+
+    #[test]
+    fn parse_package_mutation_args_install_infers_coordinate_version_for_asdf() {
+        let parsed = parse_package_mutation_args(
+            "install",
+            &[
+                "python@mambaforge-24.11.0-1".to_string(),
+                "--manager".to_string(),
+                "asdf".to_string(),
+            ],
+            true,
+        )
+        .expect("asdf package coordinate should infer version");
+
+        assert_eq!(parsed.package_name, "python");
+        assert_eq!(parsed.manager, ManagerId::Asdf);
+        assert_eq!(parsed.version.as_deref(), Some("mambaforge-24.11.0-1"));
+    }
+
+    #[test]
+    fn parse_package_mutation_args_install_infers_coordinate_version_for_mise_with_manager_suffix()
+    {
+        let parsed = parse_package_mutation_args(
+            "install",
+            &["java@zulu-jre-javafx-8.92.0.21@mise".to_string()],
+            true,
+        )
+        .expect("mise package coordinate should infer version");
+
+        assert_eq!(parsed.package_name, "java");
+        assert_eq!(parsed.manager, ManagerId::Mise);
+        assert_eq!(parsed.version.as_deref(), Some("zulu-jre-javafx-8.92.0.21"));
+    }
+
+    #[test]
+    fn parse_package_mutation_args_install_keeps_homebrew_formula_name_with_version_suffix() {
+        let parsed = parse_package_mutation_args(
+            "install",
+            &[
+                "python@3.12".to_string(),
+                "--manager".to_string(),
+                "homebrew_formula".to_string(),
+            ],
+            true,
+        )
+        .expect("homebrew formula names with @version should remain package names");
+
+        assert_eq!(parsed.package_name, "python@3.12");
+        assert_eq!(parsed.manager, ManagerId::HomebrewFormula);
+        assert_eq!(parsed.version, None);
+    }
+
+    #[test]
+    fn parse_package_mutation_args_unpin_infers_coordinate_version_for_asdf() {
+        let parsed = parse_package_mutation_args(
+            "unpin",
+            &[
+                "python@mambaforge-24.11.0-1".to_string(),
+                "--manager".to_string(),
+                "asdf".to_string(),
+            ],
+            true,
+        )
+        .expect("asdf package coordinate should infer version for unpin");
+
+        assert_eq!(parsed.package_name, "python");
+        assert_eq!(parsed.manager, ManagerId::Asdf);
+        assert_eq!(parsed.version.as_deref(), Some("mambaforge-24.11.0-1"));
+    }
+
+    #[test]
+    fn parse_package_mutation_args_install_rejects_conflicting_coordinate_and_version_flag() {
+        let error = parse_package_mutation_args(
+            "install",
+            &[
+                "python@mambaforge-24.11.0-1".to_string(),
+                "--manager".to_string(),
+                "asdf".to_string(),
+                "--version".to_string(),
+                "3.12.4".to_string(),
+            ],
+            true,
+        )
+        .expect_err("conflicting version selectors should fail");
+        assert!(error.contains("conflicting version selectors"));
+    }
+
+    #[test]
+    fn parse_package_show_args_preserves_raw_package_name_and_records_coordinate_hint() {
+        let parsed = parse_package_show_args(&[
+            "python@mambaforge-24.11.0-1".to_string(),
+            "--manager".to_string(),
+            "asdf".to_string(),
+        ])
+        .expect("show args should parse");
+
+        assert_eq!(parsed.package_name, "python@mambaforge-24.11.0-1");
+        assert_eq!(parsed.manager, Some(ManagerId::Asdf));
+        assert_eq!(
+            parsed.coordinate_hint,
+            Some(("python".to_string(), "mambaforge-24.11.0-1".to_string()))
+        );
+    }
+
+    #[test]
+    fn parse_packages_rustup_args_supports_component_add() {
+        let parsed = parse_packages_rustup_args(&[
+            "component".to_string(),
+            "add".to_string(),
+            "stable-aarch64-apple-darwin".to_string(),
+            "clippy".to_string(),
+        ])
+        .expect("rustup component add should parse");
+
+        assert_eq!(
+            parsed,
+            RustupPackagesCommand::ComponentAdd {
+                toolchain: "stable-aarch64-apple-darwin".to_string(),
+                component: "clippy".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_packages_rustup_args_rejects_relative_override_path() {
+        let error = parse_packages_rustup_args(&[
+            "override".to_string(),
+            "set".to_string(),
+            "stable-aarch64-apple-darwin".to_string(),
+            "relative/path".to_string(),
+        ])
+        .expect_err("relative override path should fail");
+
+        assert!(error.contains("requires an absolute path"));
+    }
+
+    #[test]
+    fn command_help_topic_exists_for_packages_rustup_nested_topics() {
+        assert!(command_help_topic_exists(
+            Command::Packages,
+            &[
+                "rustup".to_string(),
+                "component".to_string(),
+                "add".to_string(),
+            ],
+        ));
+        assert!(command_help_topic_exists(
+            Command::Packages,
+            &[
+                "rustup".to_string(),
+                "override".to_string(),
+                "unset".to_string(),
+            ],
+        ));
+    }
+
+    #[test]
+    fn parse_package_selector_treats_version_suffix_as_package_name() {
+        let (name, manager) = parse_package_selector("python@mambaforge-24.11.0-1")
+            .expect("version-like suffix should parse as package name");
+        assert_eq!(name, "python@mambaforge-24.11.0-1");
+        assert_eq!(manager, None);
+    }
+
+    #[test]
+    fn parse_package_selector_treats_composite_suffix_as_package_name() {
+        let (name, manager) = parse_package_selector("java@zulu-jre-javafx-8.92.0.21")
+            .expect("composite suffix should parse as package name");
+        assert_eq!(name, "java@zulu-jre-javafx-8.92.0.21");
+        assert_eq!(manager, None);
+    }
+
+    #[test]
+    fn parse_package_selector_still_supports_manager_suffix() {
+        let (name, manager) = parse_package_selector("git@homebrew_formula")
+            .expect("manager suffix should still parse");
+        assert_eq!(name, "git");
+        assert_eq!(manager, Some(ManagerId::HomebrewFormula));
     }
 
     #[test]

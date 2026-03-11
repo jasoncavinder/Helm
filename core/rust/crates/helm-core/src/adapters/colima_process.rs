@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use crate::adapters::colima::{
-    ColimaDetectOutput, ColimaSource, colima_detect_request, colima_list_outdated_request,
+    ColimaDetectOutput, ColimaSource, colima_detect_request, colima_homebrew_info_request,
+    colima_list_outdated_request,
 };
 use crate::adapters::detect_utils::which_executable;
 use crate::adapters::manager::AdapterResult;
@@ -71,6 +72,15 @@ impl ColimaSource for ProcessColimaSource {
             "brew",
             &["/opt/homebrew/bin", "/usr/local/bin"],
         );
-        Ok(run_and_collect_stdout(self.executor.as_ref(), request).unwrap_or_default())
+        run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+
+    fn homebrew_info(&self) -> AdapterResult<String> {
+        let request = self.configure_request(
+            colima_homebrew_info_request(None),
+            "brew",
+            &["/opt/homebrew/bin", "/usr/local/bin"],
+        );
+        run_and_collect_stdout(self.executor.as_ref(), request)
     }
 }

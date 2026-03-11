@@ -313,6 +313,35 @@ fn prepend_dir_to_path_env(command: &mut CommandSpec, dir: &std::path::Path) {
     command.env.insert("PATH".to_string(), value);
 }
 
+fn resolve_program_from_path_env(command: &mut CommandSpec) {
+    if command.program.is_absolute() {
+        return;
+    }
+    if command.program.components().count() != 1 {
+        return;
+    }
+
+    let Some(binary_name) = command.program.file_name() else {
+        return;
+    };
+    let search_path = command
+        .env
+        .get("PATH")
+        .cloned()
+        .or_else(|| std::env::var("PATH").ok())
+        .unwrap_or_default();
+    if search_path.trim().is_empty() {
+        return;
+    }
+
+    if let Some(resolved) = std::env::split_paths(search_path.as_str())
+        .map(|dir| dir.join(binary_name))
+        .find(|candidate| candidate.is_file())
+    {
+        command.program = resolved;
+    }
+}
+
 fn discover_node_runtime_bin_dir(executable_path: &std::path::Path) -> Option<PathBuf> {
     // Traverse ancestor directories and pick the nearest `bin/` that contains a `node` runtime.
     for ancestor in executable_path.ancestors().skip(1).take(8) {
@@ -420,10 +449,12 @@ fn default_idle_timeout_for_request(request: &ProcessSpawnRequest) -> Option<Dur
     let default_idle = match request.task_type {
         TaskType::Detection => Some(Duration::from_secs(20)),
         TaskType::Search => Some(Duration::from_secs(45)),
+        TaskType::CatalogSync => Some(Duration::from_secs(120)),
         TaskType::Refresh => Some(Duration::from_secs(120)),
         TaskType::Install
         | TaskType::Uninstall
         | TaskType::Upgrade
+        | TaskType::Configure
         | TaskType::Pin
         | TaskType::Unpin => None,
     }?;
@@ -516,6 +547,7 @@ pub fn spawn_validated(
         request.task_id = crate::task_context::current_task_id();
     }
     apply_manager_executable_override(&mut request);
+    resolve_program_from_path_env(&mut request.command);
     apply_manager_timeout_profile(&mut request);
     request.validate()?;
     executor.spawn(request)
@@ -755,6 +787,33 @@ mod tests {
             captured_path.contains("/usr/bin:/bin"),
             "original PATH entries should remain in PATH, got: {captured_path}"
         );
+
+        clear_manager_selected_executables();
+        clear_manager_timeout_profiles();
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn spawn_validated_resolves_bare_program_from_request_path_env() {
+        let _lock = execution_test_lock()
+            .lock()
+            .expect("execution test lock poisoned");
+        clear_manager_selected_executables();
+        clear_manager_timeout_profiles();
+        let temp_dir = test_temp_dir("bare-program-path-env");
+        let selected_program = temp_dir.join("asdf");
+        create_placeholder_binary(&selected_program);
+
+        let executor = CapturingExecutor::default();
+        let request = ProcessSpawnRequest::new(
+            ManagerId::Asdf,
+            TaskType::Refresh,
+            ManagerAction::ListInstalled,
+            CommandSpec::new("asdf").env("PATH", temp_dir.to_string_lossy().to_string()),
+        );
+
+        let _ = spawn_validated(&executor, request).expect("spawn should succeed");
+        assert_eq!(executor.captured_program(), selected_program);
 
         clear_manager_selected_executables();
         clear_manager_timeout_profiles();

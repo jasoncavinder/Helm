@@ -9,16 +9,7 @@ use crate::models::{
     ManagerId, OutdatedPackage, PackageCandidate, PackageRef, SearchQuery, TaskId, TaskType,
 };
 
-const NIX_DARWIN_CAPABILITIES: &[Capability] = &[
-    Capability::Detect,
-    Capability::Refresh,
-    Capability::Search,
-    Capability::ListInstalled,
-    Capability::ListOutdated,
-    Capability::Install,
-    Capability::Uninstall,
-    Capability::Upgrade,
-];
+const NIX_DARWIN_CAPABILITIES: &[Capability] = &[Capability::Detect, Capability::Refresh];
 
 const NIX_DARWIN_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
     id: ManagerId::NixDarwin,
@@ -77,8 +68,7 @@ impl<S: NixDarwinSource> ManagerAdapter for NixDarwinAdapter<S> {
             AdapterRequest::Detect(_) => {
                 let output = self.source.detect()?;
                 let version = parse_nix_darwin_version(&output.version_output);
-                let has_executable = output.executable_path.is_some();
-                let installed = has_executable || version.is_some();
+                let installed = version.is_some();
                 Ok(AdapterResponse::Detection(DetectionInfo {
                     installed,
                     executable_path: output.executable_path,
@@ -87,76 +77,10 @@ impl<S: NixDarwinSource> ManagerAdapter for NixDarwinAdapter<S> {
             }
             AdapterRequest::Refresh(_) => {
                 let _ = self.source.detect()?;
-                Ok(AdapterResponse::Refreshed)
-            }
-            AdapterRequest::ListInstalled(_) => {
-                let raw = self.source.list_installed()?;
-                let packages = parse_nix_darwin_installed(&raw);
-                Ok(AdapterResponse::InstalledPackages(packages))
-            }
-            AdapterRequest::ListOutdated(_) => {
-                let raw = self.source.list_outdated()?;
-                let packages = parse_nix_darwin_outdated(&raw);
-                Ok(AdapterResponse::OutdatedPackages(packages))
-            }
-            AdapterRequest::Search(search_request) => {
-                let raw = self.source.search(search_request.query.text.as_str())?;
-                let results = parse_nix_darwin_search(&raw, &search_request.query);
-                Ok(AdapterResponse::SearchResults(results))
-            }
-            AdapterRequest::Install(install_request) => {
-                crate::adapters::validate_package_identifier(
-                    ManagerId::NixDarwin,
-                    ManagerAction::Install,
-                    install_request.package.name.as_str(),
-                )?;
-                let _ = self.source.install(&install_request.package.name)?;
-                Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
-                    package: install_request.package,
-                    action: ManagerAction::Install,
-                    before_version: None,
-                    after_version: install_request.version,
-                }))
-            }
-            AdapterRequest::Uninstall(uninstall_request) => {
-                crate::adapters::validate_package_identifier(
-                    ManagerId::NixDarwin,
-                    ManagerAction::Uninstall,
-                    uninstall_request.package.name.as_str(),
-                )?;
-                let _ = self.source.uninstall(&uninstall_request.package.name)?;
-                Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
-                    package: uninstall_request.package,
-                    action: ManagerAction::Uninstall,
-                    before_version: None,
-                    after_version: None,
-                }))
-            }
-            AdapterRequest::Upgrade(upgrade_request) => {
-                let package = upgrade_request.package.unwrap_or(PackageRef {
-                    manager: ManagerId::NixDarwin,
-                    name: "__all__".to_string(),
-                });
-
-                let target = if package.name == "__all__" {
-                    None
-                } else {
-                    crate::adapters::validate_package_identifier(
-                        ManagerId::NixDarwin,
-                        ManagerAction::Upgrade,
-                        package.name.as_str(),
-                    )?;
-                    Some(package.name.as_str())
-                };
-
-                let _ = self.source.upgrade(target)?;
-
-                Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
-                    package,
-                    action: ManagerAction::Upgrade,
-                    before_version: None,
-                    after_version: None,
-                }))
+                Ok(AdapterResponse::SnapshotSync {
+                    installed: Some(Vec::new()),
+                    outdated: Some(Vec::new()),
+                })
             }
             _ => Err(CoreError {
                 manager: Some(ManagerId::NixDarwin),
@@ -294,6 +218,7 @@ fn parse_nix_darwin_version(output: &str) -> Option<String> {
     Some(token.to_string())
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn parse_nix_darwin_installed(output: &str) -> Vec<InstalledPackage> {
     let mut packages = Vec::new();
 
@@ -312,8 +237,10 @@ fn parse_nix_darwin_installed(output: &str) -> Vec<InstalledPackage> {
                 manager: ManagerId::NixDarwin,
                 name,
             },
+            package_identifier: None,
             installed_version: version,
             pinned: false,
+            runtime_state: Default::default(),
         });
     }
 
@@ -321,6 +248,7 @@ fn parse_nix_darwin_installed(output: &str) -> Vec<InstalledPackage> {
     packages
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn parse_nix_darwin_outdated(output: &str) -> Vec<OutdatedPackage> {
     let mut outdated = Vec::new();
 
@@ -349,16 +277,19 @@ fn parse_nix_darwin_outdated(output: &str) -> Vec<OutdatedPackage> {
                 manager: ManagerId::NixDarwin,
                 name: package_name,
             },
+            package_identifier: None,
             installed_version: old_version,
             candidate_version,
             pinned: false,
             restart_required: false,
+            runtime_state: Default::default(),
         });
     }
 
     outdated
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn parse_nix_darwin_search(output: &str, query: &SearchQuery) -> Vec<CachedSearchResult> {
     let mut results = Vec::new();
 
@@ -390,6 +321,7 @@ fn parse_nix_darwin_search(output: &str, query: &SearchQuery) -> Vec<CachedSearc
                     manager: ManagerId::NixDarwin,
                     name: package_name,
                 },
+                package_identifier: None,
                 version: version.unwrap_or(None),
                 summary: Some(attr_path.to_string()),
             },
@@ -402,6 +334,7 @@ fn parse_nix_darwin_search(output: &str, query: &SearchQuery) -> Vec<CachedSearc
     results
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn split_nix_name_version(identifier: &str) -> (String, Option<String>) {
     for (index, _) in identifier.rmatch_indices('-') {
         let (name, version_candidate) = identifier.split_at(index);
@@ -417,6 +350,7 @@ fn split_nix_name_version(identifier: &str) -> (String, Option<String>) {
     (identifier.to_string(), None)
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn quoted_segments(line: &str) -> Vec<&str> {
     let mut values = Vec::new();
     let mut in_quote = false;
@@ -443,15 +377,13 @@ mod tests {
     use std::time::UNIX_EPOCH;
 
     use crate::adapters::manager::{
-        AdapterRequest, AdapterResponse, AdapterResult, DetectRequest, ListInstalledRequest,
-        ListOutdatedRequest, ManagerAdapter, SearchRequest,
+        AdapterRequest, AdapterResponse, AdapterResult, DetectRequest, ManagerAdapter,
+        RefreshRequest,
     };
     use crate::adapters::nix_darwin::{
         NixDarwinAdapter, NixDarwinDetectOutput, NixDarwinSource, nix_darwin_detect_request,
-        nix_darwin_install_request, nix_darwin_list_installed_request,
-        nix_darwin_list_outdated_request, nix_darwin_search_request, nix_darwin_uninstall_request,
-        nix_darwin_upgrade_request, parse_nix_darwin_installed, parse_nix_darwin_outdated,
-        parse_nix_darwin_search, parse_nix_darwin_version,
+        parse_nix_darwin_installed, parse_nix_darwin_outdated, parse_nix_darwin_search,
+        parse_nix_darwin_version,
     };
     use crate::models::{ManagerAction, ManagerId, SearchQuery, TaskType};
 
@@ -503,40 +435,10 @@ mod tests {
         assert_eq!(detect.task_type, TaskType::Detection);
         assert_eq!(detect.action, ManagerAction::Detect);
         assert_eq!(detect.command.args, vec!["--version"]);
-
-        let list_installed = nix_darwin_list_installed_request(None);
-        assert_eq!(list_installed.task_type, TaskType::Refresh);
-        assert_eq!(list_installed.command.args, vec!["-q", "--installed"]);
-
-        let list_outdated = nix_darwin_list_outdated_request(None);
-        assert_eq!(list_outdated.action, ManagerAction::ListOutdated);
-        assert_eq!(list_outdated.command.args, vec!["-u", "--dry-run"]);
-
-        let query = SearchQuery {
-            text: "ripgrep".to_string(),
-            issued_at: UNIX_EPOCH,
-        };
-        let search = nix_darwin_search_request(None, &query);
-        assert_eq!(search.task_type, TaskType::Search);
-        assert_eq!(search.command.args, vec!["-qaP", "ripgrep"]);
-
-        let install = nix_darwin_install_request(None, "hello");
-        assert_eq!(install.task_type, TaskType::Install);
-        assert_eq!(install.command.args, vec!["-iA", "nixpkgs.hello"]);
-
-        let uninstall = nix_darwin_uninstall_request(None, "hello");
-        assert_eq!(uninstall.task_type, TaskType::Uninstall);
-        assert_eq!(uninstall.command.args, vec!["-e", "hello"]);
-
-        let upgrade_one = nix_darwin_upgrade_request(None, Some("hello"));
-        assert_eq!(upgrade_one.command.args, vec!["-u", "hello"]);
-
-        let upgrade_all = nix_darwin_upgrade_request(None, None);
-        assert_eq!(upgrade_all.command.args, vec!["-u"]);
     }
 
     #[test]
-    fn adapter_paths_for_detect_list_outdated_search_work() {
+    fn adapter_detect_and_refresh_clear_package_snapshots() {
         let source = FixtureSource {
             detect_result: Ok(NixDarwinDetectOutput {
                 executable_path: Some(PathBuf::from("/run/current-system/sw/bin/darwin-rebuild")),
@@ -557,34 +459,18 @@ mod tests {
         assert!(info.installed);
         assert_eq!(info.version.as_deref(), Some("25.05.20250219.abcdef"));
 
-        let installed = adapter
-            .execute(AdapterRequest::ListInstalled(ListInstalledRequest))
+        let refresh = adapter
+            .execute(AdapterRequest::Refresh(RefreshRequest))
             .unwrap();
-        let AdapterResponse::InstalledPackages(packages) = installed else {
-            panic!("expected installed response");
+        let AdapterResponse::SnapshotSync {
+            installed,
+            outdated,
+        } = refresh
+        else {
+            panic!("expected snapshot sync response");
         };
-        assert_eq!(packages.len(), 2);
-
-        let outdated = adapter
-            .execute(AdapterRequest::ListOutdated(ListOutdatedRequest))
-            .unwrap();
-        let AdapterResponse::OutdatedPackages(packages) = outdated else {
-            panic!("expected outdated response");
-        };
-        assert_eq!(packages.len(), 1);
-
-        let search = adapter
-            .execute(AdapterRequest::Search(SearchRequest {
-                query: SearchQuery {
-                    text: "ripgrep".to_string(),
-                    issued_at: UNIX_EPOCH,
-                },
-            }))
-            .unwrap();
-        let AdapterResponse::SearchResults(results) = search else {
-            panic!("expected search response");
-        };
-        assert_eq!(results.len(), 2);
+        assert_eq!(installed, Some(Vec::new()));
+        assert_eq!(outdated, Some(Vec::new()));
     }
 
     struct FixtureSource {

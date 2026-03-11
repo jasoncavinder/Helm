@@ -339,4 +339,58 @@ final class PackageConsolidationPolicyTests: XCTestCase {
             )
         )
     }
+
+    func testPreferredManagerIdUsesPreferredWhenAvailable() {
+        let selected = PackageConsolidationPolicy.preferredManagerId(
+            managerIds: ["homebrew_formula", "pip"],
+            preferredManagerId: "pip"
+        )
+
+        XCTAssertEqual(selected, "pip")
+    }
+
+    func testPreferredManagerIdFallsBackToFirstManagerWhenPreferredMissing() {
+        let selected = PackageConsolidationPolicy.preferredManagerId(
+            managerIds: ["homebrew_formula", "pip"],
+            preferredManagerId: "cargo"
+        )
+
+        XCTAssertEqual(selected, "homebrew_formula")
+    }
+}
+
+final class PackageActionTrackingTests: XCTestCase {
+    func testPackageNameFromVersionedPackageId() {
+        XCTAssertEqual(
+            PackageActionTracking.packageNameFromPackageId("homebrew_formula:zig::0.14.0"),
+            "zig"
+        )
+    }
+
+    func testPackageNameFromStablePackageId() {
+        XCTAssertEqual(
+            PackageActionTracking.packageNameFromPackageId("pip:certifi"),
+            "certifi"
+        )
+    }
+
+    func testInFlightInstallNamesUsesTrackedNamesWhenCurrentSnapshotNoLongerContainsPackageId() {
+        let names = PackageActionTracking.inFlightInstallNames(
+            installActionPackageIds: ["homebrew_formula:zig::0.13.0"],
+            packageNameById: [:],
+            trackedNamesByPackageId: ["homebrew_formula:zig::0.13.0": "zig"]
+        )
+
+        XCTAssertEqual(names, ["zig"])
+    }
+
+    func testInFlightInstallNamesFallsBackToPackageIdParsingWhenTrackedNameMissing() {
+        let names = PackageActionTracking.inFlightInstallNames(
+            installActionPackageIds: ["homebrew_formula:zig::0.13.0"],
+            packageNameById: [:],
+            trackedNamesByPackageId: [:]
+        )
+
+        XCTAssertEqual(names, ["zig"])
+    }
 }
