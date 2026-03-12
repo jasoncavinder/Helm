@@ -11,6 +11,22 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ---
 
+## 0.17.10 — 2026-03-11
+
+Patch `0.17.10` focuses on final stable-line hardening before broader `0.18.x` work begins.
+
+### Added
+- Doctor/repair now detects stale selected manager executable overrides and can clear them locally through the existing repair flow.
+
+### Changed
+- Executable discovery now accounts for non-default `CARGO_HOME`, `ASDF_DIR`, `ASDF_DATA_DIR`, and modern `mise`/`rtx` shim and install roots more consistently across core, FFI, and CLI surfaces.
+- Catalog-sync participation is now explicitly scoped instead of being inferred from generic package-search participation.
+
+### Fixed
+- Onboarding no longer risks clobbering a valid discovered `rustup` executable path during follow-up detection.
+- Non-default `cargo`, `cargo-binstall`, and `rustup` installs now route execution through the correct resolved binary path instead of assuming `~/.cargo/bin`.
+- Executable discovery caches now self-heal when cached paths disappear and are invalidated on recent manager lifecycle transitions.
+
 ## 0.17.9 — 2026-03-11
 
 Patch `0.17.9` completes current-scope manager adapter coverage and package workflow hardening ahead of the `0.18.x` doctor/repair and local-security cycle.

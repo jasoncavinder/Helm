@@ -116,7 +116,9 @@ char *helm_list_manager_status(void);
  * Run a local doctor scan and return a health report JSON payload.
  *
  * Current implementation scope:
- * - package-state diagnostics for metadata-only Homebrew manager installs.
+ * - package-state diagnostics for metadata-only Homebrew manager installs
+ * - post-install setup requirements for managed tool/runtime managers
+ * - stale selected executable path overrides
  *
  * TODO(doctor-repair): wire additional detectors and remote fingerprint lookups.
  */
@@ -474,6 +476,7 @@ bool helm_set_manager_timeout_profile(const char *manager_id,
  * The current scaffold supports metadata-only Homebrew manager installs by routing one of:
  * - `reinstall_manager_via_homebrew`
  * - `remove_stale_package_entry`
+ * - `clear_selected_executable_override`
  *
  * # Safety
  *

@@ -111,6 +111,13 @@ fn manager_additional_bin_roots() -> Vec<PathBuf> {
     manager_additional_bin_roots_for_home(std::env::var_os("HOME").map(PathBuf::from))
 }
 
+fn absolute_env_path(key: &str) -> Option<PathBuf> {
+    std::env::var_os(key)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute() && !path.as_os_str().is_empty())
+}
+
 fn manager_additional_bin_roots_for_home(home: Option<PathBuf>) -> Vec<PathBuf> {
     let mut roots = vec![
         PathBuf::from("/opt/homebrew/bin"),
@@ -124,13 +131,25 @@ fn manager_additional_bin_roots_for_home(home: Option<PathBuf>) -> Vec<PathBuf> 
         PathBuf::from("/nix/var/nix/profiles/default/bin"),
     ];
 
+    if let Some(cargo_home) = absolute_env_path("CARGO_HOME") {
+        roots.push(cargo_home.join("bin"));
+    }
     if let Some(home) = home {
         roots.push(home.join(".local/bin"));
         roots.push(home.join(".cargo/bin"));
         roots.push(home.join(".asdf/bin"));
         roots.push(home.join(".asdf/shims"));
+        roots.push(home.join(".local/share/mise/shims"));
         roots.push(home.join(".local/share/rtx/shims"));
         roots.push(home.join(".nix-profile/bin"));
+    }
+    if let Some(path) = absolute_env_path("ASDF_DIR") {
+        roots.push(path.join("bin"));
+        roots.push(path.join("shims"));
+    }
+    if let Some(path) = absolute_env_path("ASDF_DATA_DIR") {
+        roots.push(path.join("bin"));
+        roots.push(path.join("shims"));
     }
 
     roots
@@ -200,6 +219,13 @@ fn manager_versioned_install_roots_for_home(
         roots.push(home.join(".local/share/rtx/installs"));
     }
 
+    if let Some(path) = absolute_env_path("ASDF_DIR") {
+        roots.push(path.join("installs"));
+    }
+    if let Some(path) = absolute_env_path("ASDF_DATA_DIR") {
+        roots.push(path.join("installs"));
+    }
+
     roots
 }
 
@@ -263,6 +289,9 @@ mod tests {
     struct EnvSnapshot {
         path: Option<OsString>,
         home: Option<OsString>,
+        cargo_home: Option<OsString>,
+        asdf_dir: Option<OsString>,
+        asdf_data_dir: Option<OsString>,
     }
 
     impl EnvSnapshot {
@@ -270,6 +299,9 @@ mod tests {
             Self {
                 path: std::env::var_os("PATH"),
                 home: std::env::var_os("HOME"),
+                cargo_home: std::env::var_os("CARGO_HOME"),
+                asdf_dir: std::env::var_os("ASDF_DIR"),
+                asdf_data_dir: std::env::var_os("ASDF_DATA_DIR"),
             }
         }
     }
@@ -285,6 +317,18 @@ mod tests {
                 match &self.home {
                     Some(value) => std::env::set_var("HOME", value),
                     None => std::env::remove_var("HOME"),
+                }
+                match &self.cargo_home {
+                    Some(value) => std::env::set_var("CARGO_HOME", value),
+                    None => std::env::remove_var("CARGO_HOME"),
+                }
+                match &self.asdf_dir {
+                    Some(value) => std::env::set_var("ASDF_DIR", value),
+                    None => std::env::remove_var("ASDF_DIR"),
+                }
+                match &self.asdf_data_dir {
+                    Some(value) => std::env::set_var("ASDF_DATA_DIR", value),
+                    None => std::env::remove_var("ASDF_DATA_DIR"),
                 }
             }
         }
@@ -382,6 +426,58 @@ mod tests {
                 .iter()
                 .any(|path| path.ends_with(".local/share/rtx/installs")),
             "rtx installs should be present in versioned install roots"
+        );
+    }
+
+    #[test]
+    fn additional_roots_include_mise_shims_and_custom_cargo_home() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("env lock should be available");
+        let _snapshot = EnvSnapshot::capture();
+
+        let home = PathBuf::from("/tmp/helm-detect-home");
+        let cargo_home = PathBuf::from("/tmp/helm-custom-cargo");
+
+        unsafe {
+            std::env::set_var("CARGO_HOME", cargo_home.to_string_lossy().to_string());
+        }
+
+        let additional = manager_additional_bin_roots_for_home(Some(home.clone()));
+        assert!(
+            additional
+                .iter()
+                .any(|path| path == &home.join(".local/share/mise/shims")),
+            "mise shims should be present in additional search roots"
+        );
+        assert!(
+            additional
+                .iter()
+                .any(|path| path == &cargo_home.join("bin")),
+            "custom cargo home bin should be present in additional search roots"
+        );
+    }
+
+    #[test]
+    fn versioned_roots_include_custom_asdf_dir() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("env lock should be available");
+        let _snapshot = EnvSnapshot::capture();
+
+        let custom_asdf = PathBuf::from("/tmp/helm-custom-asdf");
+        unsafe {
+            std::env::set_var("ASDF_DIR", custom_asdf.to_string_lossy().to_string());
+        }
+
+        let versioned = manager_versioned_install_roots_for_home(ManagerId::Npm, None);
+        assert!(
+            versioned
+                .iter()
+                .any(|path| path == &custom_asdf.join("installs")),
+            "custom ASDF_DIR installs root should be present in versioned install roots"
         );
     }
 }

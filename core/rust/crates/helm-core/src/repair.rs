@@ -1,8 +1,9 @@
 use crate::doctor::{
     DoctorFinding, FINDING_CODE_HOMEBREW_METADATA_ONLY_INSTALL,
-    FINDING_CODE_POST_INSTALL_SETUP_REQUIRED, ISSUE_CODE_METADATA_ONLY_INSTALL,
-    ISSUE_CODE_POST_INSTALL_SETUP_REQUIRED, fingerprint_for_metadata_only_install,
-    fingerprint_for_post_install_setup_required,
+    FINDING_CODE_POST_INSTALL_SETUP_REQUIRED, FINDING_CODE_SELECTED_EXECUTABLE_PATH_STALE,
+    ISSUE_CODE_METADATA_ONLY_INSTALL, ISSUE_CODE_POST_INSTALL_SETUP_REQUIRED,
+    ISSUE_CODE_SELECTED_EXECUTABLE_PATH_STALE, fingerprint_for_metadata_only_install,
+    fingerprint_for_post_install_setup_required, fingerprint_for_selected_executable_path_stale,
 };
 use crate::models::ManagerId;
 use serde::{Deserialize, Serialize};
@@ -13,6 +14,8 @@ pub const REPAIR_OPTION_REINSTALL_MANAGER_VIA_HOMEBREW: &str = "reinstall_manage
 pub const REPAIR_OPTION_REMOVE_STALE_PACKAGE_ENTRY: &str = "remove_stale_package_entry";
 pub const REPAIR_OPTION_APPLY_POST_INSTALL_SETUP_DEFAULTS: &str =
     "apply_post_install_setup_defaults";
+pub const REPAIR_OPTION_CLEAR_SELECTED_EXECUTABLE_OVERRIDE: &str =
+    "clear_selected_executable_override";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -38,6 +41,7 @@ pub enum RepairAction {
     ReinstallManagerViaHomebrew,
     RemoveStalePackageEntry,
     ApplyPostInstallSetupDefaults,
+    ClearSelectedExecutableOverride,
 }
 
 impl RepairAction {
@@ -46,6 +50,7 @@ impl RepairAction {
             Self::ReinstallManagerViaHomebrew => "reinstall_manager_via_homebrew",
             Self::RemoveStalePackageEntry => "remove_stale_package_entry",
             Self::ApplyPostInstallSetupDefaults => "apply_post_install_setup_defaults",
+            Self::ClearSelectedExecutableOverride => "clear_selected_executable_override",
         }
     }
 }
@@ -144,6 +149,32 @@ pub fn plan_for_finding(finding: &DoctorFinding) -> Option<RepairPlan> {
         });
     }
 
+    if finding.finding_code == FINDING_CODE_SELECTED_EXECUTABLE_PATH_STALE
+        && finding.issue_code == ISSUE_CODE_SELECTED_EXECUTABLE_PATH_STALE
+    {
+        return Some(RepairPlan {
+            manager_id: finding.manager_id.clone(),
+            source_manager_id: finding.source_manager_id.clone(),
+            package_name: finding.package_name.clone(),
+            issue_code: finding.issue_code.clone(),
+            finding_code: finding.finding_code.clone(),
+            fingerprint: finding.fingerprint.clone(),
+            knowledge_source: REPAIR_KNOWLEDGE_SOURCE.to_string(),
+            knowledge_version: REPAIR_KNOWLEDGE_VERSION.to_string(),
+            options: vec![RepairOption {
+                option_id: REPAIR_OPTION_CLEAR_SELECTED_EXECUTABLE_OVERRIDE.to_string(),
+                action: RepairAction::ClearSelectedExecutableOverride,
+                title: "Clear selected executable override".to_string(),
+                description:
+                    "Remove the saved executable override so Helm can fall back to normal executable discovery."
+                        .to_string(),
+                recommended: true,
+                requires_confirmation: false,
+                automation_level: RepairAutomationLevel::Automatic,
+            }],
+        });
+    }
+
     None
 }
 
@@ -158,6 +189,22 @@ pub fn plan_for_issue(
             finding_code: FINDING_CODE_POST_INSTALL_SETUP_REQUIRED.to_string(),
             issue_code: ISSUE_CODE_POST_INSTALL_SETUP_REQUIRED.to_string(),
             fingerprint: fingerprint_for_post_install_setup_required(manager, &["unknown"]),
+            manager_id: manager.as_str().to_string(),
+            source_manager_id: Some(source_manager.as_str().to_string()),
+            package_name: None,
+            severity: crate::doctor::DoctorFindingSeverity::Warning,
+            summary: String::new(),
+            evidence_primary: None,
+            evidence_secondary: None,
+        };
+        return plan_for_finding(&finding);
+    }
+
+    if issue_code == ISSUE_CODE_SELECTED_EXECUTABLE_PATH_STALE {
+        let finding = DoctorFinding {
+            finding_code: FINDING_CODE_SELECTED_EXECUTABLE_PATH_STALE.to_string(),
+            issue_code: ISSUE_CODE_SELECTED_EXECUTABLE_PATH_STALE.to_string(),
+            fingerprint: fingerprint_for_selected_executable_path_stale(manager, package_name),
             manager_id: manager.as_str().to_string(),
             source_manager_id: Some(source_manager.as_str().to_string()),
             package_name: None,
@@ -207,7 +254,7 @@ mod tests {
     use super::*;
     use crate::doctor::{
         DoctorFinding, DoctorFindingSeverity, FINDING_CODE_POST_INSTALL_SETUP_REQUIRED,
-        ISSUE_CODE_POST_INSTALL_SETUP_REQUIRED,
+        ISSUE_CODE_POST_INSTALL_SETUP_REQUIRED, ISSUE_CODE_SELECTED_EXECUTABLE_PATH_STALE,
     };
 
     #[test]
@@ -274,6 +321,33 @@ mod tests {
         assert_eq!(
             plan.options[0].action,
             RepairAction::ApplyPostInstallSetupDefaults
+        );
+    }
+
+    #[test]
+    fn stale_selected_executable_finding_returns_clear_override_plan() {
+        let finding = DoctorFinding {
+            finding_code: FINDING_CODE_SELECTED_EXECUTABLE_PATH_STALE.to_string(),
+            issue_code: ISSUE_CODE_SELECTED_EXECUTABLE_PATH_STALE.to_string(),
+            fingerprint: "fingerprint-selected-executable".to_string(),
+            manager_id: ManagerId::Rustup.as_str().to_string(),
+            source_manager_id: Some(ManagerId::Rustup.as_str().to_string()),
+            package_name: None,
+            severity: DoctorFindingSeverity::Warning,
+            summary: String::new(),
+            evidence_primary: None,
+            evidence_secondary: None,
+        };
+
+        let plan = plan_for_finding(&finding).expect("expected selected executable repair plan");
+        assert_eq!(plan.options.len(), 1);
+        assert_eq!(
+            plan.options[0].option_id,
+            REPAIR_OPTION_CLEAR_SELECTED_EXECUTABLE_OVERRIDE
+        );
+        assert_eq!(
+            plan.options[0].action,
+            RepairAction::ClearSelectedExecutableOverride
         );
     }
 }

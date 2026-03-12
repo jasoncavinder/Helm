@@ -54,38 +54,45 @@ This checklist is required before creating a release tag on `main`.
   - `CLI Update Metadata Drift Guard`
 - [ ] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
-## v0.17.9 (Stable Patch Release Gate)
+## v0.17.10 (Stable Patch Release Gate)
 
 ### Scope and Documentation
-- [ ] `CHANGELOG.md` includes finalized `0.17.9` patch notes for current-scope manager adapter completion and release-prep follow-through.
-- [ ] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect `v0.17.9` as the current stable release on `main` and resumed `0.18.x` planning on `dev`.
-- [ ] Website changelog and current-version surfaces reflect `v0.17.9`.
-- [ ] README current stable version markers reflect `v0.17.9`.
-- [ ] Canonical release-line contract check passes: `scripts/release/check_release_line_copy.sh`.
+- [x] `CHANGELOG.md` includes finalized `0.17.10` patch notes for final stable-line hardening and manager discovery/repair follow-through.
+- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect `v0.17.10` as the current stable release on `main` and `0.18.x` planning on `dev`.
+- [x] Website changelog and current-version surfaces reflect `v0.17.10`.
+- [x] README current stable version markers reflect `v0.17.10`.
+- [x] Canonical release-line contract targets `v0.17.10` on the promotion branch.
+- [x] Internal prep branch version artifacts reflect `0.17.10` for workspace/app build outputs.
+- [x] Canonical release-line contract check passes: `scripts/release/check_release_line_copy.sh`.
 
 ### Versioning
-- [ ] Workspace version bumped to `0.17.9` in `core/rust/Cargo.toml`.
-- [ ] Rust lockfile local package versions aligned to `0.17.9` in `core/rust/Cargo.lock`.
-- [ ] Generated app version artifacts aligned to `0.17.9` (`apps/macos-ui/Generated/HelmVersion.swift`, `apps/macos-ui/Generated/HelmVersion.xcconfig`).
+- [x] Workspace version bumped to `0.17.10` in `core/rust/Cargo.toml`.
+- [x] Rust lockfile local package versions aligned to `0.17.10` in `core/rust/Cargo.lock`.
+- [x] Generated app version artifacts aligned to `0.17.10` (`apps/macos-ui/Generated/HelmVersion.swift`, `apps/macos-ui/Generated/HelmVersion.xcconfig`).
 
 ### Validation
-- [ ] Rust tests pass (`cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`).
-- [ ] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`).
-- [ ] Locale checks pass (`apps/macos-ui/scripts/check_locale_integrity.sh` and `apps/macos-ui/scripts/check_locale_lengths.sh`).
-- [ ] Third-party license audit commands complete without runtime-license scope regressions (`cargo metadata`, `cargo tree`, website lockfile license scan).
-- [ ] Sparkle feed publication + direct-channel update smoke validation complete against the stable appcast entry.
+- [x] Rust tests pass (`cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`).
+- [x] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`).
+- [x] Locale checks pass (`apps/macos-ui/scripts/check_locale_integrity.sh` and `apps/macos-ui/scripts/check_locale_lengths.sh`).
+- [x] Third-party license audit commands complete without runtime-license scope regressions (`cargo metadata`, `cargo tree`, website lockfile license scan).
+- [x] Sparkle feed publication + direct-channel update smoke validation complete against the stable appcast entry.
 
 ### Branch and Tag
-- [ ] Release-prep PR merged to `dev`.
+- [x] Release-prep PR merged to `dev`.
 - [ ] `dev` merged into `main` for stable cut.
 - [ ] If release-critical docs updates were developed on `docs`, merge `docs` into `main`.
 - [ ] If release-critical website updates were developed on `web`, merge `web` into `main`.
-- [ ] Create annotated stable tag from `main`: `git tag -a v0.17.9 -m "Helm v0.17.9"`.
-- [ ] Push stable tag: `git push origin v0.17.9`.
-- [ ] Publish GitHub release for `v0.17.9` (mark as latest, non-prerelease).
-- [ ] Confirm release-generated publish PR (`chore/publish-updates-v0.17.9`) merged to `main`.
-- [ ] Confirm release-generated CLI metadata publish PR (`chore/publish-cli-updates-v0.17.9-stable`) merged to `main`.
+- [ ] Create annotated stable tag from `main`: `git tag -a v0.17.10 -m "Helm v0.17.10"`.
+- [ ] Push stable tag: `git push origin v0.17.10`.
+- [ ] Publish GitHub release for `v0.17.10` (mark as latest, non-prerelease).
+- [ ] Confirm release-generated publish PR (`chore/publish-updates-v0.17.10`) merged to `main`.
+- [ ] Confirm release-generated CLI metadata publish PR (`chore/publish-cli-updates-v0.17.10-stable`) merged to `main`.
 - [ ] Confirm `Release Publish Verify`, `Appcast Drift Guard`, and `CLI Update Metadata Drift Guard` are green after publication.
+
+## v0.17.9 (Stable Patch Release Gate, Completed)
+
+- Completed and published on `main` on 2026-03-11.
+- Historical execution details remain preserved in git history, published release metadata, and the `v0.17.9` changelog entry.
 
 ## Historical RC and Prior-Release Checklists (Archive)
 

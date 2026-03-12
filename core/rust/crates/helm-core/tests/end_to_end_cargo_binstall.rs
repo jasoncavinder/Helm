@@ -151,6 +151,7 @@ fn build_runtime_with_store(
 
 async fn wait_for_tracked_package_count(store: &SqliteStore, expected: usize) {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+    let mut poll_interval = Duration::from_millis(50);
     loop {
         let count = store
             .list_installed()
@@ -164,9 +165,11 @@ async fn wait_for_tracked_package_count(store: &SqliteStore, expected: usize) {
         if tokio::time::Instant::now() >= deadline {
             break;
         }
-        // Give the background persistence watcher time to commit the mutation
-        // instead of continuously reopening the database in a tight loop.
-        tokio::time::sleep(Duration::from_millis(25)).await;
+        // Back off between polls so the async persistence watcher can flush its
+        // snapshot work on slower CI runners instead of competing with a hot
+        // loop that keeps reopening the database.
+        tokio::time::sleep(poll_interval).await;
+        poll_interval = std::cmp::min(poll_interval.saturating_mul(2), Duration::from_millis(500));
     }
 
     let actual = store

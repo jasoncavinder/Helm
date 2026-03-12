@@ -8,20 +8,20 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.17.9 stable publication ready on `main`** with `0.18.x` follow-up planning active on `dev`.
+Current documentation baseline: **0.17.10 stable released on `main`** with `0.18.x` planning active on `dev`.
 
-Implementation baseline: **0.17.9 stable release candidate** with diagnostics/logging delivery, package workflow hardening, manager-selection/enablement and onboarding/detection hardening, release-process hardening phases 1-5, post-`v0.17.5` refresh reliability/diagnostics hardening, and complete current-scope manager adapter coverage.
+Implementation baseline: **0.18.x planning on `dev`** after diagnostics/logging delivery, package workflow hardening, manager-selection/enablement and onboarding/detection hardening, release-process hardening phases 1-5, post-`v0.17.5` refresh reliability/diagnostics hardening, complete current-scope manager adapter coverage, and local doctor/repair follow-up for executable-path drift.
 
 See:
 - CHANGELOG.md
 
 Active milestone:
-- latest stable release currently published on `main`: **0.17.9** (stable promotion candidate aligned for tag + publish execution on `main`)
-- next integration target on `dev`: **0.18.x** (doctor/repair foundation and local security groundwork sequencing)
+- latest stable release currently published on `main`: **0.17.10** (released on 2026-03-11)
+- next integration target on `dev`: **0.18.x** (broader doctor/repair foundation and local security groundwork sequencing)
 - repository operations follow-up on `dev`: repository-local Codex operating model refined for lean context (`project_doc_max_bytes=131072`), policy-only root `AGENTS.md`, workflow Skills under `ops/codex/skills/`, slash-command templates under `.codex/commands/`, and structured local notify logging to `dev/logs/codex-runs.ndjson`.
-- stable publication cut prepared for `v0.17.9`:
-  - workspace, docs, and website release-line surfaces are aligned for the `0.17.9` stable promotion.
-  - tag, release publication, and publish-metadata follow-up remain governed by the `v0.17.9` release checklist on `main`.
+- latest stable publication cut completed for `v0.17.10`:
+  - workspace, docs, website, appcast, and CLI metadata now reflect the published `0.17.10` stable line.
+  - release automation follow-through and publish verification completed on `main`.
 - 0.17.x — Diagnostics & Logging (**stable released on `main`**, RC lineage `v0.17.0-rc.1` through `v0.17.0-rc.5`)
   - delivered: `feat/v0.17-log-foundation` (SQLite-backed task lifecycle logs + retrieval plumbing)
   - delivered: `feat/v0.17-task-log-viewer` (inspector diagnostics logs tab with level/status filters + load-more pagination)
@@ -93,7 +93,7 @@ Active milestone:
   - delivered: manager lifecycle parity sweep follow-up (on `dev`): install planning now supports additional non-system managers through deterministic Homebrew routes (`npm`, `pnpm`, `yarn`, `pip`, `pipx`, `poetry`, `rubygems`, `bundler`, `cargo`, `cargo-binstall`, `podman`, `colima`); install-method surfaces in core/CLI/FFI now expose only planner-supported methods (policy-filtered per environment), and GUI manager capability gating now marks these managers automatable so install/update/uninstall controls stay aligned with executable lifecycle paths.
   - delivered: pre-`v0.17.7` release-gate closure follow-up (on `dev`): runtime queue terminal waits now avoid missed-notify timeout races and emit periodic heartbeat diagnostics while waiting; graceful cancellation now re-checks terminal state before forced abort; request/response orchestration now logs start timestamp, effective timeout (`min(policy_timeout, orchestration_cap)`), retry attempts, terminal status, and cancellation path; Homebrew adapter `clippy::collapsible_if` warnings were removed; process-timeout coverage now verifies timeout termination does not leave child process-group orphans; and rustup orchestration reliability was re-validated with repeated stress runs.
   - delivered: GitHub governance hardening follow-up (on `dev`): per-branch rulesets are now explicit for `main`/`dev`/`docs`/`web` with branch-specific required checks; new `Policy Gate` + `Docs Checks` + `Web Build` workflows enforce branch targeting/scope policy; repository merge settings keep auto-merge/update-branch enabled while delete-branch-on-merge stays off to protect primary branches; blocking ruleset `update` enforcement was removed after protected-ref merge-block diagnostics; CodeQL is now main-focused (push/schedule/manual) to avoid PR gate friction.
-  - `v0.17.9` stable release execution status: release promotion prepared on `main` (validation green + stable-line alignment complete ahead of tag/publish)
+  - `v0.17.10` stable release execution status: released on `main` with tag, publish metadata, and verification complete.
 
 Security rollout staging status:
 - Stage 0 (`<=0.16.x`): planning/docs only (active in `0.16.1`)
@@ -1011,4 +1011,4 @@ Helm is a **functional control plane for 28 implemented managers** with:
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-0.13.x through 0.17.9 stable checkpoints are complete on `main`; `v0.17.0-rc.1` through `v0.17.0-rc.5` served as the completed RC validation path into stable `0.17.0`, followed by stable patch releases `v0.17.1`, `v0.17.2`, `v0.17.3`, `v0.17.4`, `v0.17.5`, `v0.17.6`, `v0.17.7`, `v0.17.8`, and `v0.17.9`.
+0.13.x through 0.17.10 stable checkpoints are complete on `main`; `v0.17.0-rc.1` through `v0.17.0-rc.5` served as the completed RC validation path into stable `0.17.0`, followed by stable patch releases `v0.17.1`, `v0.17.2`, `v0.17.3`, `v0.17.4`, `v0.17.5`, `v0.17.6`, `v0.17.7`, `v0.17.8`, `v0.17.9`, and `v0.17.10`.

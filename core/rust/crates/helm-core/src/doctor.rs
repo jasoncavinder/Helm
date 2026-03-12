@@ -3,12 +3,15 @@ use crate::models::{InstallProvenance, InstalledPackage, ManagerId, ManagerInsta
 use crate::post_install_setup::evaluate_manager_post_install_setup;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const ISSUE_CODE_METADATA_ONLY_INSTALL: &str = "metadata_only_install";
 pub const FINDING_CODE_HOMEBREW_METADATA_ONLY_INSTALL: &str = "homebrew_metadata_only_install";
 pub const ISSUE_CODE_POST_INSTALL_SETUP_REQUIRED: &str = "post_install_setup_required";
 pub const FINDING_CODE_POST_INSTALL_SETUP_REQUIRED: &str = "post_install_setup_required";
+pub const ISSUE_CODE_SELECTED_EXECUTABLE_PATH_STALE: &str = "selected_executable_path_stale";
+pub const FINDING_CODE_SELECTED_EXECUTABLE_PATH_STALE: &str = "selected_executable_path_stale";
 const FINGERPRINT_VERSION: u8 = 1;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -80,10 +83,18 @@ pub struct DoctorReport {
     pub summary: DoctorSummary,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ManagerExecutableDoctorState {
+    pub detected: bool,
+    pub stored_selected_executable_path: Option<String>,
+    pub default_executable_path: Option<String>,
+}
+
 pub struct ManagerPackageStateScanInput<'a> {
     pub manager: ManagerId,
     pub manager_install_instances: Option<&'a [ManagerInstallInstance]>,
     pub homebrew_installed_formulas: &'a HashSet<String>,
+    pub executable_state: Option<&'a ManagerExecutableDoctorState>,
 }
 
 pub fn fingerprint_for_metadata_only_install(
@@ -118,6 +129,19 @@ pub fn fingerprint_for_post_install_setup_required(
         manager.as_str(),
         ISSUE_CODE_POST_INSTALL_SETUP_REQUIRED,
         encoded_requirements
+    )
+}
+
+pub fn fingerprint_for_selected_executable_path_stale(
+    manager: ManagerId,
+    selected_path: &str,
+) -> String {
+    let normalized_path = selected_path.trim().to_ascii_lowercase();
+    format!(
+        "v{FINGERPRINT_VERSION}:manager:{}:issue:{}:selected_path:{}",
+        manager.as_str(),
+        ISSUE_CODE_SELECTED_EXECUTABLE_PATH_STALE,
+        normalized_path
     )
 }
 
@@ -218,6 +242,53 @@ pub fn scan_manager_package_state_issues(
         });
     }
 
+    if let Some(executable_state) = input.executable_state
+        && let Some(selected_path) = executable_state
+            .stored_selected_executable_path
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        && !Path::new(selected_path).is_file()
+    {
+        let evidence_secondary = executable_state
+            .default_executable_path
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|path| format!("current discovered default executable path: '{}'", path))
+            .or_else(|| {
+                Some(if executable_state.detected {
+                    "manager is still detected through another executable path".to_string()
+                } else {
+                    "no currently detected executable path is available for this manager"
+                        .to_string()
+                })
+            });
+
+        findings.push(DoctorFinding {
+            finding_code: FINDING_CODE_SELECTED_EXECUTABLE_PATH_STALE.to_string(),
+            issue_code: ISSUE_CODE_SELECTED_EXECUTABLE_PATH_STALE.to_string(),
+            fingerprint: fingerprint_for_selected_executable_path_stale(
+                input.manager,
+                selected_path,
+            ),
+            manager_id: input.manager.as_str().to_string(),
+            source_manager_id: Some(input.manager.as_str().to_string()),
+            package_name: None,
+            severity: DoctorFindingSeverity::Warning,
+            summary: format!(
+                "{} is configured to use '{}', but that executable no longer exists.",
+                ManagerDisplayName(input.manager),
+                selected_path
+            ),
+            evidence_primary: Some(format!(
+                "saved selected executable path: '{}'",
+                selected_path
+            )),
+            evidence_secondary,
+        });
+    }
+
     findings
 }
 
@@ -225,6 +296,7 @@ pub fn scan_package_state_report(
     managers: impl IntoIterator<Item = ManagerId>,
     manager_install_instances: &HashMap<ManagerId, Vec<ManagerInstallInstance>>,
     installed_packages: &[InstalledPackage],
+    manager_executable_states: &HashMap<ManagerId, ManagerExecutableDoctorState>,
 ) -> DoctorReport {
     let homebrew_installed_formulas: HashSet<String> = installed_packages
         .iter()
@@ -241,6 +313,7 @@ pub fn scan_package_state_report(
                 manager: *manager,
                 manager_install_instances: instances,
                 homebrew_installed_formulas: &homebrew_installed_formulas,
+                executable_state: manager_executable_states.get(manager),
             })
         })
         .collect::<Vec<_>>();
@@ -345,6 +418,7 @@ mod tests {
             manager: ManagerId::Rustup,
             manager_install_instances: None,
             homebrew_installed_formulas: &formulas,
+            executable_state: None,
         });
 
         let finding = findings
@@ -373,6 +447,7 @@ mod tests {
             manager: ManagerId::Rustup,
             manager_install_instances: Some(&instances),
             homebrew_installed_formulas: &formulas,
+            executable_state: None,
         });
 
         assert!(
@@ -393,6 +468,7 @@ mod tests {
             manager: ManagerId::Mise,
             manager_install_instances: Some(&instances),
             homebrew_installed_formulas: &formulas,
+            executable_state: None,
         });
 
         let finding = findings
@@ -426,5 +502,38 @@ mod tests {
         assert_eq!(report.summary.total_findings, 1);
         assert_eq!(report.summary.warnings, 1);
         assert_eq!(report.summary.errors, 0);
+    }
+
+    #[test]
+    fn stale_selected_executable_path_issue_detected_when_saved_path_missing() {
+        let formulas = HashSet::new();
+        let executable_state = ManagerExecutableDoctorState {
+            detected: false,
+            stored_selected_executable_path: Some("/tmp/helm-missing-rustup".to_string()),
+            default_executable_path: Some("/usr/local/bin/rustup".to_string()),
+        };
+        let findings = scan_manager_package_state_issues(ManagerPackageStateScanInput {
+            manager: ManagerId::Rustup,
+            manager_install_instances: None,
+            homebrew_installed_formulas: &formulas,
+            executable_state: Some(&executable_state),
+        });
+
+        let finding = findings
+            .iter()
+            .find(|finding| finding.issue_code == ISSUE_CODE_SELECTED_EXECUTABLE_PATH_STALE)
+            .expect("stale selected executable issue should be present");
+        assert_eq!(
+            finding.fingerprint,
+            fingerprint_for_selected_executable_path_stale(
+                ManagerId::Rustup,
+                "/tmp/helm-missing-rustup"
+            )
+        );
+        assert_eq!(finding.severity, DoctorFindingSeverity::Warning);
+        assert_eq!(
+            finding.evidence_secondary.as_deref(),
+            Some("current discovered default executable path: '/usr/local/bin/rustup'")
+        );
     }
 }

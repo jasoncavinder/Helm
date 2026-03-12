@@ -29,9 +29,24 @@ impl ProcessCargoBinstallSource {
         }
     }
 
+    fn cargo_bin_dir() -> String {
+        std::env::var_os("CARGO_HOME")
+            .filter(|value| !value.is_empty())
+            .map(std::path::PathBuf::from)
+            .filter(|path| path.is_absolute())
+            .unwrap_or_else(|| {
+                std::env::var_os("HOME")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_default()
+                    .join(".cargo")
+            })
+            .join("bin")
+            .to_string_lossy()
+            .to_string()
+    }
+
     fn configure_request(&self, mut request: ProcessSpawnRequest) -> ProcessSpawnRequest {
-        let home = std::env::var("HOME").unwrap_or_default();
-        let cargo_bin = format!("{home}/.cargo/bin");
+        let cargo_bin = Self::cargo_bin_dir();
         let path = std::env::var("PATH").unwrap_or_default();
         let new_path = format!("{cargo_bin}:/opt/homebrew/bin:/usr/local/bin:{path}");
 
@@ -65,8 +80,7 @@ impl ProcessCargoBinstallSource {
 
 impl CargoBinstallSource for ProcessCargoBinstallSource {
     fn detect(&self) -> AdapterResult<CargoBinstallDetectOutput> {
-        let home = std::env::var("HOME").unwrap_or_default();
-        let cargo_bin = format!("{home}/.cargo/bin");
+        let cargo_bin = Self::cargo_bin_dir();
 
         let executable_path = which_executable(
             self.executor.as_ref(),
