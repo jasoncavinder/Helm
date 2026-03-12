@@ -159,7 +159,7 @@ use helm_core::models::{
     Capability, DetectionInfo, HomebrewKegPolicy, ManagerAction, ManagerAuthority, ManagerId,
     ManagerInstallInstance, ManagerUninstallPreview, OutdatedPackage, PackageRef,
     PackageRuntimeState, PinKind, PinRecord, SearchQuery, StrategyKind, TaskId, TaskLogLevel,
-    TaskLogRecord, TaskStatus, TaskType,
+    TaskLogRecord, TaskRecord, TaskStatus, TaskType,
 };
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
 use helm_core::orchestration::{AdapterTaskTerminalState, CancellationMode};
@@ -723,6 +723,8 @@ struct ManagerAutomationPolicyContext {
 static EXECUTABLE_DISCOVERY_CACHE: OnceLock<
     Mutex<std::collections::HashMap<ManagerId, Vec<String>>>,
 > = OnceLock::new();
+static EXECUTABLE_DISCOVERY_INVALIDATED_TASKS: OnceLock<Mutex<std::collections::HashSet<u64>>> =
+    OnceLock::new();
 static MANAGER_AUTOMATION_POLICY_CONTEXT: OnceLock<ManagerAutomationPolicyContext> =
     OnceLock::new();
 static COORDINATOR_REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -732,6 +734,7 @@ static AUTO_CHECK_TICKER_STARTED: AtomicBool = AtomicBool::new(false);
 const COORDINATOR_REQUEST_TIMEOUT_SECS: u64 = 30;
 const COORDINATOR_POLL_SLEEP_MS: u64 = 25;
 const AUTO_CHECK_TICK_SECS: u64 = 30;
+const EXECUTABLE_CACHE_INVALIDATION_MAX_AGE_SECS: u64 = 600;
 #[cfg(any(test, target_os = "macos"))]
 const LEGACY_FILE_COORDINATOR_IPC_ENV: &str = "HELM_LEGACY_FILE_COORDINATOR_IPC";
 const DEFAULT_CLI_UPDATE_ENDPOINT: &str = "https://helmapp.dev/updates/cli/latest.json";
@@ -749,6 +752,62 @@ const AUTO_CHECK_ALLOWED_HOSTS: [&str; 5] = [
     "github-releases.githubusercontent.com",
     "release-assets.githubusercontent.com",
 ];
+
+fn invalidate_executable_discovery_cache(manager: Option<ManagerId>) {
+    let cache =
+        EXECUTABLE_DISCOVERY_CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()));
+    if let Ok(mut guard) = cache.lock() {
+        if let Some(manager) = manager {
+            guard.remove(&manager);
+        } else {
+            guard.clear();
+        }
+    }
+}
+
+fn task_should_invalidate_executable_cache(task: &TaskRecord) -> bool {
+    matches!(
+        task.task_type,
+        TaskType::Detection
+            | TaskType::Refresh
+            | TaskType::Install
+            | TaskType::Uninstall
+            | TaskType::Upgrade
+    ) && matches!(
+        task.status,
+        TaskStatus::Completed | TaskStatus::Cancelled | TaskStatus::Failed
+    ) && std::time::SystemTime::now()
+        .duration_since(task.created_at)
+        .map(|elapsed| elapsed.as_secs() <= EXECUTABLE_CACHE_INVALIDATION_MAX_AGE_SECS)
+        .unwrap_or(true)
+}
+
+fn invalidate_executable_cache_for_recent_manager_lifecycle_tasks(store: &SqliteStore) {
+    let recent_tasks = match store.list_recent_tasks(TASK_RECENT_FETCH_LIMIT) {
+        Ok(tasks) => tasks,
+        Err(_) => return,
+    };
+
+    let recent_task_ids: std::collections::HashSet<u64> =
+        recent_tasks.iter().map(|task| task.id.0).collect();
+    let invalidated = EXECUTABLE_DISCOVERY_INVALIDATED_TASKS
+        .get_or_init(|| Mutex::new(std::collections::HashSet::new()));
+    let mut managers_to_invalidate = std::collections::HashSet::new();
+
+    if let Ok(mut guard) = invalidated.lock() {
+        guard.retain(|task_id| recent_task_ids.contains(task_id));
+        for task in recent_tasks {
+            if !task_should_invalidate_executable_cache(&task) || !guard.insert(task.id.0) {
+                continue;
+            }
+            managers_to_invalidate.insert(task.manager);
+        }
+    }
+
+    for manager in managers_to_invalidate {
+        invalidate_executable_discovery_cache(Some(manager));
+    }
+}
 
 #[derive(Debug, serde::Deserialize)]
 struct AutoCheckInstallMarker {
@@ -1126,6 +1185,13 @@ fn normalize_path_string(path: &std::path::Path) -> Option<String> {
     }
 }
 
+fn absolute_env_path(key: &str) -> Option<std::path::PathBuf> {
+    std::env::var_os(key)
+        .filter(|value| !value.is_empty())
+        .map(std::path::PathBuf::from)
+        .filter(|path| path.is_absolute() && !path.as_os_str().is_empty())
+}
+
 fn manager_additional_bin_roots() -> Vec<std::path::PathBuf> {
     let mut roots = vec![
         std::path::PathBuf::from("/opt/homebrew/bin"),
@@ -1133,23 +1199,22 @@ fn manager_additional_bin_roots() -> Vec<std::path::PathBuf> {
         std::path::PathBuf::from("/opt/local/bin"),
     ];
 
+    if let Some(cargo_home) = absolute_env_path("CARGO_HOME") {
+        roots.push(cargo_home.join("bin"));
+    }
     if let Some(home) = std::env::var_os("HOME").map(std::path::PathBuf::from) {
         roots.push(home.join(".local/bin"));
         roots.push(home.join(".cargo/bin"));
         roots.push(home.join(".asdf/bin"));
         roots.push(home.join(".asdf/shims"));
+        roots.push(home.join(".local/share/mise/shims"));
+        roots.push(home.join(".local/share/rtx/shims"));
     }
-    if let Some(path) = std::env::var_os("ASDF_DIR")
-        .map(std::path::PathBuf::from)
-        .filter(|path| path.is_absolute() && !path.as_os_str().is_empty())
-    {
+    if let Some(path) = absolute_env_path("ASDF_DIR") {
         roots.push(path.join("bin"));
         roots.push(path.join("shims"));
     }
-    if let Some(path) = std::env::var_os("ASDF_DATA_DIR")
-        .map(std::path::PathBuf::from)
-        .filter(|path| path.is_absolute() && !path.as_os_str().is_empty())
-    {
+    if let Some(path) = absolute_env_path("ASDF_DATA_DIR") {
         roots.push(path.join("bin"));
         roots.push(path.join("shims"));
     }
@@ -1202,17 +1267,12 @@ fn manager_versioned_install_roots(id: ManagerId) -> Vec<std::path::PathBuf> {
     {
         roots.push(home.join(".asdf/installs"));
         roots.push(home.join(".local/share/mise/installs"));
+        roots.push(home.join(".local/share/rtx/installs"));
     }
-    if let Some(path) = std::env::var_os("ASDF_DIR")
-        .map(std::path::PathBuf::from)
-        .filter(|path| path.is_absolute() && !path.as_os_str().is_empty())
-    {
+    if let Some(path) = absolute_env_path("ASDF_DIR") {
         roots.push(path.join("installs"));
     }
-    if let Some(path) = std::env::var_os("ASDF_DATA_DIR")
-        .map(std::path::PathBuf::from)
-        .filter(|path| path.is_absolute() && !path.as_os_str().is_empty())
-    {
+    if let Some(path) = absolute_env_path("ASDF_DATA_DIR") {
         roots.push(path.join("installs"));
     }
 
@@ -1293,19 +1353,54 @@ fn cached_discovered_executable_paths(id: ManagerId, candidates: &[&str]) -> Vec
     let cache =
         EXECUTABLE_DISCOVERY_CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()));
 
-    if let Ok(guard) = cache.lock()
-        && let Some(cached) = guard.get(&id)
-    {
-        return cached.clone();
-    }
-
-    let discovered = discover_executable_paths(id, candidates);
-
     if let Ok(mut guard) = cache.lock() {
+        if let Some(cached) = guard.get(&id).cloned()
+            && cached
+                .iter()
+                .all(|path| std::path::Path::new(path).is_file())
+        {
+            return cached;
+        }
+
+        let discovered = discover_executable_paths(id, candidates);
         guard.insert(id, discovered.clone());
+        return discovered;
     }
 
-    discovered
+    discover_executable_paths(id, candidates)
+}
+
+fn build_manager_executable_doctor_states(
+    detection_map: &std::collections::HashMap<ManagerId, DetectionInfo>,
+    pref_map: &std::collections::HashMap<ManagerId, ManagerPreference>,
+) -> std::collections::HashMap<ManagerId, helm_core::doctor::ManagerExecutableDoctorState> {
+    ManagerId::ALL
+        .into_iter()
+        .map(|manager| {
+            let detection = detection_map.get(&manager);
+            let detected = detection.map(|info| info.installed).unwrap_or(false);
+            let active_path = detection.and_then(|info| info.executable_path.as_deref());
+            let executable_paths = if detected {
+                collect_manager_executable_paths(manager, active_path)
+            } else {
+                Vec::new()
+            };
+            let default_executable_path =
+                default_manager_executable_path(manager, &executable_paths);
+            let stored_selected_executable_path = pref_map
+                .get(&manager)
+                .and_then(|pref| normalize_nonempty(pref.selected_executable_path.clone()));
+
+            (
+                manager,
+                helm_core::doctor::ManagerExecutableDoctorState {
+                    detected,
+                    stored_selected_executable_path,
+                    default_executable_path,
+                },
+            )
+        })
+        .collect()
 }
 
 fn collect_manager_executable_paths(
@@ -1447,6 +1542,10 @@ fn build_manager_statuses(
     detection_map: &std::collections::HashMap<ManagerId, DetectionInfo>,
     pref_map: &std::collections::HashMap<ManagerId, ManagerPreference>,
 ) -> Vec<FfiManagerStatus> {
+    if let Some(store) = store {
+        invalidate_executable_cache_for_recent_manager_lifecycle_tasks(store);
+    }
+
     let mut install_instances_by_manager: std::collections::HashMap<
         ManagerId,
         Vec<ManagerInstallInstance>,
@@ -1493,6 +1592,8 @@ fn build_manager_statuses(
                 .collect()
         })
         .unwrap_or_default();
+    let manager_executable_doctor_states =
+        build_manager_executable_doctor_states(detection_map, pref_map);
 
     ManagerId::ALL
         .iter()
@@ -1596,6 +1697,7 @@ fn build_manager_statuses(
                 id,
                 manager_install_instances,
                 &homebrew_installed_formulas,
+                manager_executable_doctor_states.get(&id),
             );
             let setup_required = package_state_issues.iter().any(|issue| {
                 issue.issue_code == helm_core::doctor::ISSUE_CODE_POST_INSTALL_SETUP_REQUIRED
@@ -1668,12 +1770,14 @@ fn manager_package_state_issues(
     manager: ManagerId,
     manager_install_instances: Option<&Vec<ManagerInstallInstance>>,
     homebrew_installed_formulas: &std::collections::HashSet<String>,
+    executable_state: Option<&helm_core::doctor::ManagerExecutableDoctorState>,
 ) -> Vec<FfiManagerPackageStateIssue> {
     let findings = helm_core::doctor::scan_manager_package_state_issues(
         helm_core::doctor::ManagerPackageStateScanInput {
             manager,
             manager_install_instances: manager_install_instances.map(Vec::as_slice),
             homebrew_installed_formulas,
+            executable_state,
         },
     );
 
@@ -2271,6 +2375,7 @@ fn manager_has_setup_required_issue(
         manager,
         install_instances_by_manager.get(&manager),
         homebrew_installed_formulas,
+        None,
     )
     .iter()
     .any(|issue| issue.issue_code == helm_core::doctor::ISSUE_CODE_POST_INSTALL_SETUP_REQUIRED)
@@ -2419,17 +2524,40 @@ fn preseed_presence_detections(
         if !is_implemented_manager(manager) || !runtime.has_manager(manager) {
             continue;
         }
-
-        let discovered_paths = collect_manager_executable_paths(manager, None);
-        if let Some(executable_path) = discovered_paths.first().map(std::path::PathBuf::from) {
-            let info = DetectionInfo {
-                installed: true,
-                executable_path: Some(executable_path),
-                version: None,
-            };
-            let _ = store.upsert_detection(manager, &info);
-        }
+        preseed_presence_detection(store, runtime, manager);
     }
+}
+
+fn preseed_presence_detection(store: &SqliteStore, runtime: &AdapterRuntime, manager: ManagerId) {
+    if !is_implemented_manager(manager) || !runtime.has_manager(manager) {
+        return;
+    }
+
+    invalidate_executable_discovery_cache(Some(manager));
+    let discovered_paths = collect_manager_executable_paths(manager, None);
+    if let Some(executable_path) = discovered_paths.first().map(std::path::PathBuf::from) {
+        let info = DetectionInfo {
+            installed: true,
+            executable_path: Some(executable_path),
+            version: None,
+        };
+        let _ = store.upsert_detection(manager, &info);
+    }
+}
+
+fn sync_manager_execution_preferences_from_store(store: &SqliteStore) {
+    let detection_map: std::collections::HashMap<_, _> = store
+        .list_detections()
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+    let pref_map: std::collections::HashMap<_, _> = store
+        .list_manager_preferences()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|pref| (pref.manager, pref))
+        .collect();
+    sync_manager_executable_overrides(&detection_map, &pref_map);
 }
 
 fn search_label_key_for_query(query: &str) -> &'static str {
@@ -2469,6 +2597,10 @@ fn manager_participates_in_package_search(manager: ManagerId) -> bool {
     helm_core::registry::manager_participates_in_package_search(manager)
 }
 
+fn manager_participates_in_catalog_sync(manager: ManagerId) -> bool {
+    helm_core::registry::manager_participates_in_catalog_sync(manager)
+}
+
 fn now_unix_seconds_i64() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -2494,7 +2626,8 @@ fn manager_can_catalog_sync(
     runtime: &AdapterRuntime,
     manager: ManagerId,
 ) -> bool {
-    if !can_submit_remote_search(runtime, manager) {
+    if !can_submit_remote_search(runtime, manager) || !manager_participates_in_catalog_sync(manager)
+    {
         return false;
     }
 
@@ -2802,6 +2935,123 @@ fn run_homebrew_probe_output(program: &std::ffi::OsStr, args: &[&str]) -> Option
     }
 
     normalize_nonempty(Some(combined))
+}
+
+fn rustup_probe_candidates(executable_path: Option<&std::path::Path>) -> Vec<std::ffi::OsString> {
+    let mut candidates = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    let mut push_unique = |candidate: std::ffi::OsString| {
+        if candidate.is_empty() {
+            return;
+        }
+        if seen.insert(candidate.clone()) {
+            candidates.push(candidate);
+        }
+    };
+
+    if let Some(path) = executable_path {
+        push_unique(path.as_os_str().to_os_string());
+    }
+    if let Some(cargo_home) = absolute_env_path("CARGO_HOME") {
+        push_unique(cargo_home.join("bin/rustup").into_os_string());
+    }
+    if let Some(home) = std::env::var_os("HOME")
+        .filter(|value| !value.is_empty())
+        .map(std::path::PathBuf::from)
+    {
+        push_unique(home.join(".cargo/bin/rustup").into_os_string());
+    }
+    push_unique(std::ffi::OsString::from(
+        "/opt/homebrew/opt/rustup/bin/rustup",
+    ));
+    push_unique(std::ffi::OsString::from("/usr/local/opt/rustup/bin/rustup"));
+    push_unique(std::ffi::OsString::from("/opt/homebrew/bin/rustup"));
+    push_unique(std::ffi::OsString::from("/usr/local/bin/rustup"));
+    push_unique(std::ffi::OsString::from("rustup"));
+
+    candidates
+}
+
+fn run_rustup_probe_output(program: &std::ffi::OsStr, args: &[&str]) -> Option<String> {
+    let mut path_parts = Vec::new();
+    if let Some(parent) = std::path::Path::new(program).parent()
+        && parent.is_dir()
+    {
+        path_parts.push(parent.to_string_lossy().to_string());
+    }
+    if let Some(cargo_home) = absolute_env_path("CARGO_HOME") {
+        path_parts.push(cargo_home.join("bin").to_string_lossy().to_string());
+    } else if let Some(home) = std::env::var_os("HOME")
+        .filter(|value| !value.is_empty())
+        .map(std::path::PathBuf::from)
+    {
+        path_parts.push(home.join(".cargo/bin").to_string_lossy().to_string());
+    }
+    if let Ok(existing_path) = std::env::var("PATH")
+        && !existing_path.trim().is_empty()
+    {
+        path_parts.push(existing_path);
+    }
+    path_parts.push(
+        "/opt/homebrew/opt/rustup/bin:/usr/local/opt/rustup/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+            .to_string(),
+    );
+
+    let output = Command::new(program)
+        .args(args)
+        .env("PATH", path_parts.join(":"))
+        .output()
+        .ok()?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let mut combined = String::new();
+    if !stdout.trim().is_empty() {
+        combined.push_str(&stdout);
+    }
+    if !stderr.trim().is_empty() {
+        if !combined.is_empty() {
+            combined.push('\n');
+        }
+        combined.push_str(&stderr);
+    }
+
+    normalize_nonempty(Some(combined))
+}
+
+fn probe_rustup_version(executable_path: Option<&std::path::Path>) -> Option<String> {
+    for candidate in rustup_probe_candidates(executable_path) {
+        if let Some(version_output) = run_rustup_probe_output(candidate.as_os_str(), &["--version"])
+            && let Some(version) = normalize_nonempty(parse_rustup_probe_version(&version_output))
+        {
+            return Some(version);
+        }
+    }
+
+    None
+}
+
+fn parse_rustup_probe_version(output: &str) -> Option<String> {
+    for line in output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+    {
+        if let Some(rest) = line.strip_prefix("rustup ") {
+            let version = rest
+                .split_whitespace()
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .to_string();
+            if !version.is_empty() {
+                return Some(version);
+            }
+        }
+    }
+
+    None
 }
 
 fn parse_homebrew_config_version(output: &str) -> Option<String> {
@@ -4330,6 +4580,9 @@ fn detect_single_manager(
         ));
     }
 
+    preseed_presence_detection(store, runtime, manager);
+    sync_manager_execution_preferences_from_store(store);
+
     let was_detected = manager_is_detected(store, manager);
     let response = submit_request_wait(
         runtime,
@@ -5679,6 +5932,7 @@ pub extern "C" fn helm_trigger_detection() -> bool {
     }
 
     preseed_presence_detections(store.as_ref(), runtime.as_ref(), &enabled_by_manager);
+    sync_manager_execution_preferences_from_store(store.as_ref());
 
     state._tokio_rt.spawn(async move {
         let results = runtime.detect_all_ordered().await;
@@ -6071,37 +6325,18 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
         .into_iter()
         .map(|pref| (pref.manager, pref))
         .collect();
-    apply_manager_enablement_self_heal(
-        state.store.as_ref(),
-        state.runtime.as_ref(),
-        &state.rt_handle,
-        &detection_map,
-        &mut pref_map,
-    );
-    sync_manager_executable_overrides(&detection_map, &pref_map);
-
-    let mut statuses = build_manager_statuses(
-        Some(state.runtime.as_ref()),
-        Some(state.store.as_ref()),
-        &detection_map,
-        &pref_map,
-    );
 
     // Homebrew detection/version probing is occasionally flaky during first detection.
     // If status is missing or incomplete, probe directly from brew.
-    if let Some(status) = statuses
-        .iter_mut()
-        .find(|status| status.manager_id == ManagerId::HomebrewFormula.as_str())
-        && (status.version.is_none() || !status.detected)
+    if detection_map
+        .get(&ManagerId::HomebrewFormula)
+        .is_none_or(|detection| detection.version.is_none() || !detection.installed)
         && let Some(probed) = probe_homebrew_version(
             detection_map
                 .get(&ManagerId::HomebrewFormula)
                 .and_then(|d| d.executable_path.as_deref()),
         )
     {
-        status.version = Some(probed.clone());
-        status.detected = true;
-
         let refreshed = if let Some(existing) = detection_map.get(&ManagerId::HomebrewFormula) {
             DetectionInfo {
                 installed: true,
@@ -6121,7 +6356,47 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
         detection_map.insert(ManagerId::HomebrewFormula, refreshed);
     }
 
+    if detection_map
+        .get(&ManagerId::Rustup)
+        .is_none_or(|detection| detection.version.is_none() || !detection.installed)
+        && let Some(probed) = probe_rustup_version(
+            detection_map
+                .get(&ManagerId::Rustup)
+                .and_then(|d| d.executable_path.as_deref()),
+        )
+    {
+        let refreshed = if let Some(existing) = detection_map.get(&ManagerId::Rustup) {
+            DetectionInfo {
+                installed: true,
+                executable_path: existing.executable_path.clone(),
+                version: Some(probed),
+            }
+        } else {
+            DetectionInfo {
+                installed: true,
+                executable_path: None,
+                version: Some(probed),
+            }
+        };
+        let _ = state.store.upsert_detection(ManagerId::Rustup, &refreshed);
+        detection_map.insert(ManagerId::Rustup, refreshed);
+    }
+
+    apply_manager_enablement_self_heal(
+        state.store.as_ref(),
+        state.runtime.as_ref(),
+        &state.rt_handle,
+        &detection_map,
+        &mut pref_map,
+    );
     sync_manager_executable_overrides(&detection_map, &pref_map);
+
+    let statuses = build_manager_statuses(
+        Some(state.runtime.as_ref()),
+        Some(state.store.as_ref()),
+        &detection_map,
+        &pref_map,
+    );
 
     let json = match serde_json::to_string(&statuses) {
         Ok(j) => j,
@@ -6137,7 +6412,9 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
 /// Run a local doctor scan and return a health report JSON payload.
 ///
 /// Current implementation scope:
-/// - package-state diagnostics for metadata-only Homebrew manager installs.
+/// - package-state diagnostics for metadata-only Homebrew manager installs
+/// - post-install setup requirements for managed tool/runtime managers
+/// - stale selected executable path overrides
 ///
 /// TODO(doctor-repair): wire additional detectors and remote fingerprint lookups.
 #[unsafe(no_mangle)]
@@ -6176,11 +6453,30 @@ pub extern "C" fn helm_doctor_scan() -> *mut c_char {
             .or_default()
             .push(instance);
     }
+    let detection_map: std::collections::HashMap<_, _> = match state.store.list_detections() {
+        Ok(entries) => entries.into_iter().collect(),
+        Err(_) => {
+            set_last_error_key(SERVICE_ERROR_STORAGE_FAILURE);
+            return std::ptr::null_mut();
+        }
+    };
+    let pref_map: std::collections::HashMap<_, _> = match state.store.list_manager_preferences() {
+        Ok(entries) => entries
+            .into_iter()
+            .map(|pref| (pref.manager, pref))
+            .collect(),
+        Err(_) => {
+            set_last_error_key(SERVICE_ERROR_STORAGE_FAILURE);
+            return std::ptr::null_mut();
+        }
+    };
+    let executable_states = build_manager_executable_doctor_states(&detection_map, &pref_map);
 
     let report = helm_core::doctor::scan_package_state_report(
         ManagerId::ALL,
         &instances_by_manager,
         installed_packages.as_slice(),
+        &executable_states,
     );
     let json = match serde_json::to_string(&report) {
         Ok(json) => json,
@@ -8864,6 +9160,7 @@ pub unsafe extern "C" fn helm_set_manager_selected_executable_path(
         return return_error_bool(SERVICE_ERROR_STORAGE_FAILURE);
     }
 
+    invalidate_executable_discovery_cache(Some(manager));
     let detection_map: std::collections::HashMap<_, _> = state
         .store
         .list_detections()
@@ -9376,6 +9673,7 @@ fn spawn_post_install_setup_task(
 /// The current scaffold supports metadata-only Homebrew manager installs by routing one of:
 /// - `reinstall_manager_via_homebrew`
 /// - `remove_stale_package_entry`
+/// - `clear_selected_executable_override`
 ///
 /// # Safety
 ///
@@ -9509,6 +9807,68 @@ pub unsafe extern "C" fn helm_apply_manager_package_state_issue_repair(
                 Ok(task_id) => task_id.0 as i64,
                 Err(error_key) => return_error_i64(error_key),
             }
+        }
+        helm_core::repair::RepairAction::ClearSelectedExecutableOverride => {
+            let store = {
+                let guard = lock_or_recover(&STATE, "state");
+                let state = match guard.as_ref() {
+                    Some(s) => s,
+                    None => return return_error_i64(SERVICE_ERROR_INTERNAL),
+                };
+                state.store.clone()
+            };
+
+            let task_id = match create_local_task(
+                store.as_ref(),
+                manager,
+                helm_core::models::TaskType::Configure,
+            ) {
+                Ok(task_id) => task_id,
+                Err(error_key) => return return_error_i64(error_key),
+            };
+            set_task_label(
+                task_id,
+                "service.task.label.repair.manager",
+                &[("manager", manager.as_str().to_string())],
+            );
+            update_local_task_status(
+                store.as_ref(),
+                task_id,
+                manager,
+                helm_core::models::TaskType::Configure,
+                helm_core::models::TaskStatus::Running,
+                helm_core::models::TaskLogLevel::Info,
+                "clearing selected executable override",
+            );
+
+            if store
+                .set_manager_selected_executable_path(manager, None)
+                .is_ok()
+            {
+                invalidate_executable_discovery_cache(Some(manager));
+                sync_manager_execution_preferences_from_store(store.as_ref());
+                update_local_task_status(
+                    store.as_ref(),
+                    task_id,
+                    manager,
+                    helm_core::models::TaskType::Configure,
+                    helm_core::models::TaskStatus::Completed,
+                    helm_core::models::TaskLogLevel::Info,
+                    "selected executable override cleared",
+                );
+            } else {
+                update_local_task_status(
+                    store.as_ref(),
+                    task_id,
+                    manager,
+                    helm_core::models::TaskType::Configure,
+                    helm_core::models::TaskStatus::Failed,
+                    helm_core::models::TaskLogLevel::Error,
+                    "failed to clear selected executable override",
+                );
+            }
+
+            task_id.0 as i64
         }
     }
 }
@@ -10163,11 +10523,13 @@ mod tests {
         build_manager_uninstall_plan, build_manager_uninstall_preview, build_visible_tasks,
         collect_upgrade_all_targets, homebrew_probe_candidates,
         manager_allows_individual_package_install, manager_allows_individual_package_uninstall,
-        manager_authority_key, manager_participates_in_package_search,
-        manager_uninstall_label_for_route, parse_homebrew_config_version, push_upgrade_plan_step,
+        manager_authority_key, manager_participates_in_catalog_sync,
+        manager_participates_in_package_search, manager_uninstall_label_for_route,
+        parse_homebrew_config_version, push_upgrade_plan_step,
         resolve_homebrew_manager_update_strategy, resolve_rustup_uninstall_strategy,
-        search_label_args, search_label_key_for_query, search_task_type_for_query,
-        upgrade_plan_step_id, upgrade_reason_label_for, upgrade_task_label_for,
+        rustup_probe_candidates, search_label_args, search_label_key_for_query,
+        search_task_type_for_query, upgrade_plan_step_id, upgrade_reason_label_for,
+        upgrade_task_label_for,
     };
     use helm_core::adapters::{AdapterRequest, ManagerAdapter, UninstallRequest};
     use helm_core::manager_policy::{
@@ -10185,11 +10547,12 @@ mod tests {
         DEFAULT_MANAGER_UNINSTALL_SAFE_BLAST_RADIUS_THRESHOLD, ManagerUninstallPreviewContext,
     };
     use std::collections::HashMap;
+    use std::ffi::OsString;
     use std::fs;
     #[cfg(unix)]
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
     use std::path::Path;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[cfg(unix)]
@@ -10281,6 +10644,63 @@ mod tests {
         SqliteStore::new(path)
     }
 
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    struct EnvSnapshot {
+        path: Option<OsString>,
+        home: Option<OsString>,
+        cargo_home: Option<OsString>,
+        asdf_dir: Option<OsString>,
+        asdf_data_dir: Option<OsString>,
+    }
+
+    impl EnvSnapshot {
+        fn capture() -> Self {
+            Self {
+                path: std::env::var_os("PATH"),
+                home: std::env::var_os("HOME"),
+                cargo_home: std::env::var_os("CARGO_HOME"),
+                asdf_dir: std::env::var_os("ASDF_DIR"),
+                asdf_data_dir: std::env::var_os("ASDF_DATA_DIR"),
+            }
+        }
+    }
+
+    impl Drop for EnvSnapshot {
+        fn drop(&mut self) {
+            unsafe {
+                match &self.path {
+                    Some(value) => std::env::set_var("PATH", value),
+                    None => std::env::remove_var("PATH"),
+                }
+                match &self.home {
+                    Some(value) => std::env::set_var("HOME", value),
+                    None => std::env::remove_var("HOME"),
+                }
+                match &self.cargo_home {
+                    Some(value) => std::env::set_var("CARGO_HOME", value),
+                    None => std::env::remove_var("CARGO_HOME"),
+                }
+                match &self.asdf_dir {
+                    Some(value) => std::env::set_var("ASDF_DIR", value),
+                    None => std::env::remove_var("ASDF_DIR"),
+                }
+                match &self.asdf_data_dir {
+                    Some(value) => std::env::set_var("ASDF_DATA_DIR", value),
+                    None => std::env::remove_var("ASDF_DATA_DIR"),
+                }
+            }
+        }
+    }
+
+    fn unique_temp_dir(name: &str) -> std::path::PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("helm-ffi-{name}-{nanos}"))
+    }
+
     #[test]
     fn package_search_policy_matches_shared_registry() {
         assert!(manager_participates_in_package_search(ManagerId::Rustup));
@@ -10295,6 +10715,144 @@ mod tests {
             ManagerId::SoftwareUpdate
         ));
         assert!(!manager_participates_in_package_search(ManagerId::Sparkle));
+    }
+
+    #[test]
+    fn catalog_sync_policy_matches_shared_registry() {
+        assert!(manager_participates_in_catalog_sync(ManagerId::Mise));
+        assert!(manager_participates_in_catalog_sync(ManagerId::Asdf));
+        assert!(manager_participates_in_catalog_sync(ManagerId::Rustup));
+        assert!(manager_participates_in_catalog_sync(
+            ManagerId::HomebrewFormula
+        ));
+        assert!(manager_participates_in_catalog_sync(
+            ManagerId::HomebrewCask
+        ));
+        assert!(!manager_participates_in_catalog_sync(ManagerId::MacPorts));
+        assert!(!manager_participates_in_catalog_sync(ManagerId::Npm));
+        assert!(!manager_participates_in_catalog_sync(ManagerId::Cargo));
+    }
+
+    #[test]
+    fn discovery_roots_include_mise_shims_and_custom_cargo_home() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("env lock should be available");
+        let _snapshot = EnvSnapshot::capture();
+
+        let home = std::path::PathBuf::from("/tmp/helm-ffi-home");
+        let cargo_home = std::path::PathBuf::from("/tmp/helm-ffi-cargo");
+
+        unsafe {
+            std::env::set_var("HOME", home.to_string_lossy().to_string());
+            std::env::set_var("CARGO_HOME", cargo_home.to_string_lossy().to_string());
+        }
+
+        let additional = super::manager_additional_bin_roots();
+        assert!(
+            additional
+                .iter()
+                .any(|path| path == &home.join(".local/share/mise/shims")),
+            "mise shims should be discoverable in FFI helper roots"
+        );
+        assert!(
+            additional
+                .iter()
+                .any(|path| path == &cargo_home.join("bin")),
+            "custom cargo home bin should be discoverable in FFI helper roots"
+        );
+    }
+
+    #[test]
+    fn rustup_probe_candidates_include_custom_cargo_home_and_homebrew_kegs() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("env lock should be available");
+        let _snapshot = EnvSnapshot::capture();
+
+        let home = std::path::PathBuf::from("/tmp/helm-ffi-rustup-home");
+        let cargo_home = std::path::PathBuf::from("/tmp/helm-ffi-rustup-cargo");
+
+        unsafe {
+            std::env::set_var("HOME", home.to_string_lossy().to_string());
+            std::env::set_var("CARGO_HOME", cargo_home.to_string_lossy().to_string());
+        }
+
+        let candidates = rustup_probe_candidates(None)
+            .into_iter()
+            .map(|candidate| candidate.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+
+        assert!(candidates.contains(&cargo_home.join("bin/rustup").to_string_lossy().to_string()));
+        assert!(candidates.contains(&home.join(".cargo/bin/rustup").to_string_lossy().to_string()));
+        assert!(candidates.contains(&"/opt/homebrew/opt/rustup/bin/rustup".to_string()));
+        assert!(candidates.contains(&"/usr/local/opt/rustup/bin/rustup".to_string()));
+    }
+
+    #[test]
+    fn cached_discovery_recomputes_when_cached_path_disappears() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("env lock should be available");
+        let _snapshot = EnvSnapshot::capture();
+
+        let root = unique_temp_dir("discovery-cache");
+        let first = root.join("first/bin/rustup");
+        let second = root.join("second/bin/rustup");
+        fs::create_dir_all(first.parent().expect("first parent")).expect("create first parent");
+        fs::create_dir_all(second.parent().expect("second parent")).expect("create second parent");
+        fs::write(&first, b"#!/bin/sh\nexit 0\n").expect("write first binary");
+        fs::write(&second, b"#!/bin/sh\nexit 0\n").expect("write second binary");
+
+        let cache = super::EXECUTABLE_DISCOVERY_CACHE
+            .get_or_init(|| Mutex::new(std::collections::HashMap::new()));
+        if let Ok(mut guard) = cache.lock() {
+            guard.clear();
+        }
+
+        unsafe {
+            std::env::set_var(
+                "PATH",
+                first
+                    .parent()
+                    .expect("first parent")
+                    .to_string_lossy()
+                    .to_string(),
+            );
+        }
+
+        let initial = super::cached_discovered_executable_paths(ManagerId::Rustup, &["rustup"]);
+        assert!(
+            initial.contains(&first.to_string_lossy().to_string()),
+            "initial discovery should include the first binary: {initial:?}"
+        );
+
+        fs::remove_file(&first).expect("remove first binary");
+        unsafe {
+            std::env::set_var(
+                "PATH",
+                second
+                    .parent()
+                    .expect("second parent")
+                    .to_string_lossy()
+                    .to_string(),
+            );
+        }
+
+        let refreshed = super::cached_discovered_executable_paths(ManagerId::Rustup, &["rustup"]);
+        assert!(
+            refreshed.contains(&second.to_string_lossy().to_string()),
+            "refreshed discovery should include the replacement binary: {refreshed:?}"
+        );
+        assert!(
+            !refreshed.contains(&first.to_string_lossy().to_string()),
+            "refreshed discovery should drop the removed binary: {refreshed:?}"
+        );
+
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
@@ -11651,6 +12209,42 @@ mod tests {
         );
 
         let _ = fs::remove_file(store.database_path());
+    }
+
+    #[test]
+    fn manager_status_flags_stale_selected_executable_override_issue() {
+        let pref_map = HashMap::from([(
+            ManagerId::Rustup,
+            ManagerPreference {
+                manager: ManagerId::Rustup,
+                enabled: true,
+                selected_executable_path: Some("/tmp/helm-missing-rustup".to_string()),
+                selected_install_method: None,
+                timeout_hard_seconds: None,
+                timeout_idle_seconds: None,
+            },
+        )]);
+
+        let statuses = build_manager_statuses(None, None, &HashMap::new(), &pref_map);
+        let rustup = status_for(&statuses, ManagerId::Rustup);
+        let issue = rustup
+            .package_state_issues
+            .iter()
+            .find(|issue| {
+                issue.finding_code == helm_core::doctor::FINDING_CODE_SELECTED_EXECUTABLE_PATH_STALE
+            })
+            .expect("stale selected executable issue should be present");
+        assert_eq!(
+            issue.issue_code,
+            helm_core::doctor::ISSUE_CODE_SELECTED_EXECUTABLE_PATH_STALE
+        );
+        assert_eq!(issue.source_manager_id, "rustup");
+        assert!(issue.package_name.is_empty());
+        assert_eq!(issue.repair_options.len(), 1);
+        assert_eq!(
+            issue.repair_options[0].option_id,
+            helm_core::repair::REPAIR_OPTION_CLEAR_SELECTED_EXECUTABLE_OVERRIDE
+        );
     }
 
     #[test]

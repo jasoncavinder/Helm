@@ -47,6 +47,7 @@ pub struct ManagerLifecycleMetadata {
     pub install_method_ids: &'static [&'static str],
     pub install_methods: &'static [ManagerInstallMethodSpec],
     pub participates_in_package_search: bool,
+    pub participates_in_catalog_sync: bool,
 }
 
 const fn method_spec(
@@ -823,141 +824,169 @@ const MISE_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetada
     install_method_ids: MISE_INSTALL_METHOD_IDS,
     install_methods: MISE_INSTALL_METHODS,
     participates_in_package_search: true,
+    participates_in_catalog_sync: true,
 };
 const ASDF_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: ASDF_INSTALL_METHOD_IDS,
     install_methods: ASDF_INSTALL_METHODS,
     participates_in_package_search: true,
+    participates_in_catalog_sync: true,
 };
 const RUSTUP_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: RUSTUP_INSTALL_METHOD_IDS,
     install_methods: RUSTUP_INSTALL_METHODS,
     participates_in_package_search: true,
+    participates_in_catalog_sync: true,
 };
 const HOMEBREW_FORMULA_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: HOMEBREW_FORMULA_INSTALL_METHOD_IDS,
     install_methods: HOMEBREW_FORMULA_INSTALL_METHODS,
     participates_in_package_search: true,
+    participates_in_catalog_sync: true,
 };
 const SOFTWAREUPDATE_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: SOFTWAREUPDATE_INSTALL_METHOD_IDS,
     install_methods: SOFTWAREUPDATE_INSTALL_METHODS,
     participates_in_package_search: false,
+    participates_in_catalog_sync: false,
 };
 const MACPORTS_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: MACPORTS_INSTALL_METHOD_IDS,
     install_methods: MACPORTS_INSTALL_METHODS,
     participates_in_package_search: true,
+    participates_in_catalog_sync: false,
 };
 const NIX_DARWIN_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: NIX_DARWIN_INSTALL_METHOD_IDS,
     install_methods: NIX_DARWIN_INSTALL_METHODS,
     participates_in_package_search: false,
+    participates_in_catalog_sync: false,
 };
 const NPM_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: NPM_INSTALL_METHOD_IDS,
     install_methods: NPM_INSTALL_METHODS,
     participates_in_package_search: true,
+    participates_in_catalog_sync: false,
 };
 const PNPM_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: PNPM_INSTALL_METHOD_IDS,
     install_methods: PNPM_INSTALL_METHODS,
     participates_in_package_search: true,
+    participates_in_catalog_sync: false,
 };
 const YARN_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: YARN_INSTALL_METHOD_IDS,
     install_methods: YARN_INSTALL_METHODS,
     participates_in_package_search: true,
+    participates_in_catalog_sync: false,
 };
 const PIPX_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: PIPX_INSTALL_METHOD_IDS,
     install_methods: PIPX_INSTALL_METHODS,
     participates_in_package_search: true,
+    participates_in_catalog_sync: false,
 };
 const PIP_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: PIP_INSTALL_METHOD_IDS,
     install_methods: PIP_INSTALL_METHODS,
     participates_in_package_search: true,
+    participates_in_catalog_sync: false,
 };
 const POETRY_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: POETRY_INSTALL_METHOD_IDS,
     install_methods: POETRY_INSTALL_METHODS,
     participates_in_package_search: true,
+    participates_in_catalog_sync: false,
 };
 const RUBYGEMS_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: RUBYGEMS_INSTALL_METHOD_IDS,
     install_methods: RUBYGEMS_INSTALL_METHODS,
     participates_in_package_search: true,
+    participates_in_catalog_sync: false,
 };
 const BUNDLER_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: BUNDLER_INSTALL_METHOD_IDS,
     install_methods: BUNDLER_INSTALL_METHODS,
     participates_in_package_search: true,
+    participates_in_catalog_sync: false,
 };
 const CARGO_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: CARGO_INSTALL_METHOD_IDS,
     install_methods: CARGO_INSTALL_METHODS,
     participates_in_package_search: true,
+    participates_in_catalog_sync: false,
 };
 const CARGO_BINSTALL_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: CARGO_BINSTALL_INSTALL_METHOD_IDS,
     install_methods: CARGO_BINSTALL_INSTALL_METHODS,
     participates_in_package_search: true,
+    participates_in_catalog_sync: false,
 };
 const MAS_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: MAS_INSTALL_METHOD_IDS,
     install_methods: MAS_INSTALL_METHODS,
     participates_in_package_search: true,
+    participates_in_catalog_sync: false,
 };
 const SPARKLE_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: SPARKLE_INSTALL_METHOD_IDS,
     install_methods: SPARKLE_INSTALL_METHODS,
     participates_in_package_search: false,
+    participates_in_catalog_sync: false,
 };
 const SETAPP_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: SETAPP_INSTALL_METHOD_IDS,
     install_methods: SETAPP_INSTALL_METHODS,
     participates_in_package_search: false,
+    participates_in_catalog_sync: false,
 };
 const HOMEBREW_CASK_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: HOMEBREW_CASK_INSTALL_METHOD_IDS,
     install_methods: HOMEBREW_CASK_INSTALL_METHODS,
     participates_in_package_search: true,
+    participates_in_catalog_sync: true,
 };
 const DOCKER_DESKTOP_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: DOCKER_DESKTOP_INSTALL_METHOD_IDS,
     install_methods: DOCKER_DESKTOP_INSTALL_METHODS,
     participates_in_package_search: false,
+    participates_in_catalog_sync: false,
 };
 const PODMAN_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: PODMAN_INSTALL_METHOD_IDS,
     install_methods: PODMAN_INSTALL_METHODS,
     participates_in_package_search: false,
+    participates_in_catalog_sync: false,
 };
 const COLIMA_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: COLIMA_INSTALL_METHOD_IDS,
     install_methods: COLIMA_INSTALL_METHODS,
     participates_in_package_search: false,
+    participates_in_catalog_sync: false,
 };
 const PARALLELS_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: PARALLELS_INSTALL_METHOD_IDS,
     install_methods: PARALLELS_INSTALL_METHODS,
     participates_in_package_search: false,
+    participates_in_catalog_sync: false,
 };
 const XCODE_CLT_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: XCODE_CLT_INSTALL_METHOD_IDS,
     install_methods: XCODE_CLT_INSTALL_METHODS,
     participates_in_package_search: false,
+    participates_in_catalog_sync: false,
 };
 const ROSETTA_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: ROSETTA_INSTALL_METHOD_IDS,
     install_methods: ROSETTA_INSTALL_METHODS,
     participates_in_package_search: false,
+    participates_in_catalog_sync: false,
 };
 const FIRMWARE_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: FIRMWARE_INSTALL_METHOD_IDS,
     install_methods: FIRMWARE_INSTALL_METHODS,
     participates_in_package_search: false,
+    participates_in_catalog_sync: false,
 };
 pub fn managers() -> &'static [ManagerDescriptor] {
     &ALL_MANAGERS
@@ -1022,11 +1051,17 @@ pub fn manager_participates_in_package_search(id: ManagerId) -> bool {
         && manager_lifecycle_metadata(id).participates_in_package_search
 }
 
+pub fn manager_participates_in_catalog_sync(id: ManagerId) -> bool {
+    manager_participates_in_package_search(id)
+        && manager_lifecycle_metadata(id).participates_in_catalog_sync
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         InstallMethodRecommendationReason, manager, manager_install_method_candidates,
-        manager_install_method_specs, manager_participates_in_package_search,
+        manager_install_method_specs, manager_participates_in_catalog_sync,
+        manager_participates_in_package_search,
     };
     use crate::models::{Capability, ManagerId};
 
@@ -1080,5 +1115,22 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn catalog_sync_policy_is_explicitly_scoped() {
+        assert!(manager_participates_in_catalog_sync(ManagerId::Mise));
+        assert!(manager_participates_in_catalog_sync(ManagerId::Asdf));
+        assert!(manager_participates_in_catalog_sync(ManagerId::Rustup));
+        assert!(manager_participates_in_catalog_sync(
+            ManagerId::HomebrewFormula
+        ));
+        assert!(manager_participates_in_catalog_sync(
+            ManagerId::HomebrewCask
+        ));
+        assert!(!manager_participates_in_catalog_sync(ManagerId::MacPorts));
+        assert!(!manager_participates_in_catalog_sync(ManagerId::Npm));
+        assert!(!manager_participates_in_catalog_sync(ManagerId::Cargo));
+        assert!(!manager_participates_in_catalog_sync(ManagerId::Pipx));
     }
 }
