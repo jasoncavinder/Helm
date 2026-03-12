@@ -54,19 +54,19 @@ This checklist is required before creating a release tag on `main`.
   - `CLI Update Metadata Drift Guard`
 - [ ] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
-## v0.17.9 (Stable Patch Release Gate)
+## v0.17.10 (Stable Patch Release Gate)
 
 ### Scope and Documentation
-- [x] `CHANGELOG.md` includes finalized `0.17.9` patch notes for current-scope manager adapter completion and release-prep follow-through.
-- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect `v0.17.9` as the current stable release on `main` and resumed `0.18.x` planning on `dev`.
-- [x] Website changelog and current-version surfaces reflect `v0.17.9`.
-- [x] README current stable version markers reflect `v0.17.9`.
+- [x] `CHANGELOG.md` includes finalized `0.17.10` patch notes for final stable-line hardening and manager discovery/repair follow-through.
+- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect `v0.17.9` as the current stable release on `main` and `0.17.10` as the active final hardening patch on `dev`.
+- [x] Public stable-line surfaces (`README.md`, website appcast, CLI latest metadata, release-line contract) remain on published `v0.17.9` until the later `main` promotion branch.
+- [x] Internal prep branch version artifacts reflect `0.17.10` for workspace/app build outputs.
 - [x] Canonical release-line contract check passes: `scripts/release/check_release_line_copy.sh`.
 
 ### Versioning
-- [x] Workspace version bumped to `0.17.9` in `core/rust/Cargo.toml`.
-- [x] Rust lockfile local package versions aligned to `0.17.9` in `core/rust/Cargo.lock`.
-- [x] Generated app version artifacts aligned to `0.17.9` (`apps/macos-ui/Generated/HelmVersion.swift`, `apps/macos-ui/Generated/HelmVersion.xcconfig`).
+- [x] Workspace version bumped to `0.17.10` in `core/rust/Cargo.toml`.
+- [x] Rust lockfile local package versions aligned to `0.17.10` in `core/rust/Cargo.lock`.
+- [x] Generated app version artifacts aligned to `0.17.10` (`apps/macos-ui/Generated/HelmVersion.swift`, `apps/macos-ui/Generated/HelmVersion.xcconfig`).
 
 ### Validation
 - [x] Rust tests pass (`cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`).
@@ -76,16 +76,21 @@ This checklist is required before creating a release tag on `main`.
 - [x] Sparkle feed publication + direct-channel update smoke validation complete against the stable appcast entry.
 
 ### Branch and Tag
-- [x] Release-prep PR merged to `dev`.
-- [x] `dev` merged into `main` for stable cut.
-- [x] If release-critical docs updates were developed on `docs`, merge `docs` into `main`.
-- [x] If release-critical website updates were developed on `web`, merge `web` into `main`.
-- [x] Create annotated stable tag from `main`: `git tag -a v0.17.9 -m "Helm v0.17.9"`.
-- [x] Push stable tag: `git push origin v0.17.9`.
-- [x] Publish GitHub release for `v0.17.9` (mark as latest, non-prerelease).
-- [x] Confirm release-generated publish PR (`chore/publish-updates-v0.17.9`) merged to `main`.
-- [x] Confirm release-generated CLI metadata publish PR (`chore/publish-cli-updates-v0.17.9-stable`) merged to `main`.
-- [x] Confirm `Release Publish Verify`, `Appcast Drift Guard`, and `CLI Update Metadata Drift Guard` are green after publication.
+- [ ] Release-prep PR merged to `dev`.
+- [ ] `dev` merged into `main` for stable cut.
+- [ ] If release-critical docs updates were developed on `docs`, merge `docs` into `main`.
+- [ ] If release-critical website updates were developed on `web`, merge `web` into `main`.
+- [ ] Create annotated stable tag from `main`: `git tag -a v0.17.10 -m "Helm v0.17.10"`.
+- [ ] Push stable tag: `git push origin v0.17.10`.
+- [ ] Publish GitHub release for `v0.17.10` (mark as latest, non-prerelease).
+- [ ] Confirm release-generated publish PR (`chore/publish-updates-v0.17.10`) merged to `main`.
+- [ ] Confirm release-generated CLI metadata publish PR (`chore/publish-cli-updates-v0.17.10-stable`) merged to `main`.
+- [ ] Confirm `Release Publish Verify`, `Appcast Drift Guard`, and `CLI Update Metadata Drift Guard` are green after publication.
+
+## v0.17.9 (Stable Patch Release Gate, Completed)
+
+- Completed and published on `main` on 2026-03-11.
+- Historical execution details remain preserved in git history, published release metadata, and the `v0.17.9` changelog entry.
 
 ## Historical RC and Prior-Release Checklists (Archive)
 
