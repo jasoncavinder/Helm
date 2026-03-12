@@ -1805,7 +1805,7 @@ private struct InspectorPackageDetailView: View {
     }
 }
 
-private extension InspectorPackageDetailView {
+private extension InspectorManagerDetailView {
     var genericManagerPackageStateIssues: [ManagerPackageStateIssue] {
         (status?.packageStateIssues ?? []).filter { issue in
             issue.issueCode != "metadata_only_install"
