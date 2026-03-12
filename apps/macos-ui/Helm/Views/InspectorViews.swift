@@ -2338,6 +2338,13 @@ private struct InspectorManagerDetailView: View {
         })
     }
 
+    private var genericManagerPackageStateIssues: [ManagerPackageStateIssue] {
+        (status?.packageStateIssues ?? []).filter { issue in
+            issue.issueCode != "metadata_only_install"
+                && issue.issueCode != "post_install_setup_required"
+        }
+    }
+
     private var postInstallSetupTaskInFlight: Bool {
         core.activeTasks.contains { task in
             task.managerId == manager.id
@@ -2480,6 +2487,10 @@ private struct InspectorManagerDetailView: View {
 
             if let issue = postInstallSetupIssue {
                 postInstallSetupBanner(issue)
+            }
+
+            ForEach(Array(genericManagerPackageStateIssues.enumerated()), id: \.offset) { _, issue in
+                genericPackageStateIssueBanner(issue)
             }
 
             InspectorField(label: L10n.App.Inspector.category.localized) {
@@ -3350,6 +3361,64 @@ private struct InspectorManagerDetailView: View {
             packageName: issue.packageName,
             issueCode: issue.issueCode,
             optionId: "remove_stale_package_entry"
+        )
+    }
+
+    @ViewBuilder
+    private func genericPackageStateIssueBanner(_ issue: ManagerPackageStateIssue) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(HelmTheme.stateAttention)
+                    .padding(.top, 2)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(issue.summary ?? issue.issueCode)
+                        .font(.callout.weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let evidencePrimary = issue.evidencePrimary,
+                       !evidencePrimary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text(evidencePrimary)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    if let evidenceSecondary = issue.evidenceSecondary,
+                       !evidenceSecondary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text(evidenceSecondary)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+
+            if let repairOptions = issue.repairOptions, !repairOptions.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(repairOptions, id: \.optionId) { option in
+                        Button(option.title) {
+                            core.applyManagerPackageStateIssueRepair(
+                                managerId: manager.id,
+                                sourceManagerId: issue.sourceManagerId,
+                                packageName: issue.packageName,
+                                issueCode: issue.issueCode,
+                                optionId: option.optionId
+                            )
+                        }
+                        .buttonStyle(HelmSecondaryButtonStyle())
+                        .disabled(managerIsUninstalling)
+                        .helmPointer(enabled: !managerIsUninstalling)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(HelmTheme.surfaceElevated)
         )
     }
 

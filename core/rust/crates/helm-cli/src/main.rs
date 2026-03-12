@@ -7888,6 +7888,17 @@ fn cmd_doctor_scan(store: &SqliteStore, options: GlobalOptions) -> Result<(), St
     let install_instances = store
         .list_install_instances(None)
         .map_err(|error| format!("failed to list install instances for doctor scan: {error}"))?;
+    let detection_map: HashMap<ManagerId, DetectionInfo> = store
+        .list_detections()
+        .map_err(|error| format!("failed to list manager detections for doctor scan: {error}"))?
+        .into_iter()
+        .collect();
+    let preference_map: HashMap<ManagerId, helm_core::persistence::ManagerPreference> = store
+        .list_manager_preferences()
+        .map_err(|error| format!("failed to list manager preferences for doctor scan: {error}"))?
+        .into_iter()
+        .map(|preference| (preference.manager, preference))
+        .collect();
     let mut instances_by_manager: HashMap<ManagerId, Vec<ManagerInstallInstance>> = HashMap::new();
     for instance in install_instances {
         instances_by_manager
@@ -7895,10 +7906,12 @@ fn cmd_doctor_scan(store: &SqliteStore, options: GlobalOptions) -> Result<(), St
             .or_default()
             .push(instance);
     }
+    let executable_states = build_manager_executable_doctor_states(&detection_map, &preference_map);
     let report = helm_core::doctor::scan_package_state_report(
         ManagerId::ALL,
         &instances_by_manager,
         installed_packages.as_slice(),
+        &executable_states,
     );
 
     if options.json {
@@ -8095,6 +8108,34 @@ fn cmd_doctor_repair(
                         );
                     }
                     cmd_managers_detect(store_handle, options, &[manager.as_str().to_string()])
+                }
+                helm_core::repair::RepairAction::ClearSelectedExecutableOverride => {
+                    store_handle
+                        .set_manager_selected_executable_path(manager, None)
+                        .map_err(|error| {
+                            format!(
+                                "failed to clear selected executable override for '{}': {error}",
+                                manager.as_str()
+                            )
+                        })?;
+                    sync_manager_executable_overrides(store_handle.as_ref())?;
+
+                    if options.json {
+                        emit_json_payload(
+                            "helm.cli.v1.doctor.repair.clear_selected_executable_override",
+                            json!({
+                                "manager": manager.as_str(),
+                                "cleared": true
+                            }),
+                        );
+                    } else {
+                        println!(
+                            "Cleared selected executable override for {}.",
+                            manager.as_str()
+                        );
+                    }
+
+                    Ok(())
                 }
             }
         }
@@ -12490,24 +12531,67 @@ fn normalize_path_string(path: &std::path::Path) -> Option<String> {
     }
 }
 
+fn absolute_env_path(key: &str) -> Option<std::path::PathBuf> {
+    std::env::var_os(key)
+        .filter(|value| !value.is_empty())
+        .map(std::path::PathBuf::from)
+        .filter(|path| path.is_absolute() && !path.as_os_str().is_empty())
+}
+
 fn manager_additional_bin_roots() -> Vec<std::path::PathBuf> {
+    manager_additional_bin_roots_for_home(std::env::var_os("HOME").map(std::path::PathBuf::from))
+}
+
+fn manager_additional_bin_roots_for_home(
+    home: Option<std::path::PathBuf>,
+) -> Vec<std::path::PathBuf> {
     let mut roots = vec![
         std::path::PathBuf::from("/opt/homebrew/bin"),
         std::path::PathBuf::from("/usr/local/bin"),
         std::path::PathBuf::from("/opt/local/bin"),
+        std::path::PathBuf::from("/usr/bin"),
+        std::path::PathBuf::from("/bin"),
+        std::path::PathBuf::from("/usr/sbin"),
+        std::path::PathBuf::from("/sbin"),
+        std::path::PathBuf::from("/run/current-system/sw/bin"),
+        std::path::PathBuf::from("/nix/var/nix/profiles/default/bin"),
     ];
 
-    if let Some(home) = std::env::var_os("HOME").map(std::path::PathBuf::from) {
+    if let Some(cargo_home) = absolute_env_path("CARGO_HOME") {
+        roots.push(cargo_home.join("bin"));
+    }
+    if let Some(home) = home {
         roots.push(home.join(".local/bin"));
         roots.push(home.join(".cargo/bin"));
         roots.push(home.join(".asdf/bin"));
         roots.push(home.join(".asdf/shims"));
+        roots.push(home.join(".local/share/mise/shims"));
+        roots.push(home.join(".local/share/rtx/shims"));
+        roots.push(home.join(".nix-profile/bin"));
+    }
+    if let Some(path) = absolute_env_path("ASDF_DIR") {
+        roots.push(path.join("bin"));
+        roots.push(path.join("shims"));
+    }
+    if let Some(path) = absolute_env_path("ASDF_DATA_DIR") {
+        roots.push(path.join("bin"));
+        roots.push(path.join("shims"));
     }
 
     roots
 }
 
 fn manager_versioned_install_roots(id: ManagerId) -> Vec<std::path::PathBuf> {
+    manager_versioned_install_roots_for_home(
+        id,
+        std::env::var_os("HOME").map(std::path::PathBuf::from),
+    )
+}
+
+fn manager_versioned_install_roots_for_home(
+    id: ManagerId,
+    home: Option<std::path::PathBuf>,
+) -> Vec<std::path::PathBuf> {
     let mut roots = Vec::new();
 
     if matches!(
@@ -12548,10 +12632,18 @@ fn manager_versioned_install_roots(id: ManagerId) -> Vec<std::path::PathBuf> {
             | ManagerId::Bundler
             | ManagerId::Cargo
             | ManagerId::CargoBinstall
-    ) && let Some(home) = std::env::var_os("HOME").map(std::path::PathBuf::from)
+    ) && let Some(home) = home
     {
         roots.push(home.join(".asdf/installs"));
         roots.push(home.join(".local/share/mise/installs"));
+        roots.push(home.join(".local/share/rtx/installs"));
+    }
+
+    if let Some(path) = absolute_env_path("ASDF_DIR") {
+        roots.push(path.join("installs"));
+    }
+    if let Some(path) = absolute_env_path("ASDF_DATA_DIR") {
+        roots.push(path.join("installs"));
     }
 
     roots
@@ -12631,6 +12723,9 @@ fn cached_discovered_executable_paths(id: ManagerId, candidates: &[&str]) -> Vec
     let cache = EXECUTABLE_DISCOVERY_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(guard) = cache.lock()
         && let Some(cached) = guard.get(&id)
+        && cached
+            .iter()
+            .all(|path| std::path::Path::new(path.as_str()).is_file())
     {
         return cached.clone();
     }
@@ -12709,6 +12804,37 @@ fn manager_executable_path_diagnostic(
         (Some(_), None) => "default_only",
         (None, None) => "unresolved",
     }
+}
+
+fn build_manager_executable_doctor_states(
+    detection_map: &HashMap<ManagerId, DetectionInfo>,
+    preferences: &HashMap<ManagerId, helm_core::persistence::ManagerPreference>,
+) -> HashMap<ManagerId, helm_core::doctor::ManagerExecutableDoctorState> {
+    let mut states = HashMap::new();
+    for manager in ManagerId::ALL {
+        let executable_paths = collect_manager_executable_paths(
+            manager,
+            detection_map
+                .get(&manager)
+                .and_then(|detection| detection.executable_path.as_deref()),
+        );
+        let default_executable_path = default_manager_executable_path(manager, &executable_paths);
+        let stored_selected_executable_path = preferences
+            .get(&manager)
+            .and_then(|preference| normalize_nonempty(preference.selected_executable_path.clone()));
+        states.insert(
+            manager,
+            helm_core::doctor::ManagerExecutableDoctorState {
+                detected: detection_map
+                    .get(&manager)
+                    .map(|detection| detection.installed)
+                    .unwrap_or(false),
+                stored_selected_executable_path,
+                default_executable_path,
+            },
+        );
+    }
+    states
 }
 
 fn normalize_install_method(id: ManagerId, method: Option<String>) -> Option<String> {
@@ -16069,7 +16195,7 @@ mod tests {
     #[cfg(unix)]
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
     use std::path::{Path, PathBuf};
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex, OnceLock};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     const COORDINATOR_TRANSPORT_INVARIANTS_DOC: &str =
@@ -16089,6 +16215,19 @@ mod tests {
             .expect("clock should be after epoch")
             .as_nanos();
         std::env::temp_dir().join(format!("helm-cli-self-heal-{name}-{nanos}.sqlite3"))
+    }
+
+    fn executable_discovery_test_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn clear_executable_discovery_cache() {
+        if let Some(cache) = super::EXECUTABLE_DISCOVERY_CACHE.get()
+            && let Ok(mut guard) = cache.lock()
+        {
+            guard.clear();
+        }
     }
 
     fn seed_homebrew_detected(store: &SqliteStore) {
@@ -16218,6 +16357,61 @@ mod tests {
             super::manager_executable_path_diagnostic(Some("/tmp/npm"), None),
             "default_only"
         );
+    }
+
+    #[test]
+    fn manager_additional_bin_roots_include_modern_tool_shims() {
+        let home = PathBuf::from("/Users/tester");
+        let roots = super::manager_additional_bin_roots_for_home(Some(home.clone()));
+
+        assert!(roots.contains(&home.join(".local/share/mise/shims")));
+        assert!(roots.contains(&home.join(".local/share/rtx/shims")));
+        assert!(roots.contains(&home.join(".nix-profile/bin")));
+    }
+
+    #[test]
+    fn manager_versioned_install_roots_include_modern_tool_installs() {
+        let home = PathBuf::from("/Users/tester");
+        let roots =
+            super::manager_versioned_install_roots_for_home(ManagerId::Cargo, Some(home.clone()));
+
+        assert!(roots.contains(&home.join(".local/share/mise/installs")));
+        assert!(roots.contains(&home.join(".local/share/rtx/installs")));
+        assert!(roots.contains(&home.join(".asdf/installs")));
+    }
+
+    #[test]
+    fn cached_discovered_executable_paths_refresh_when_cached_path_disappears() {
+        let _lock = executable_discovery_test_lock()
+            .lock()
+            .expect("executable discovery test lock should succeed");
+        clear_executable_discovery_cache();
+
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        let temp_dir = std::env::temp_dir().join(format!("helm-cli-exec-cache-{nanos}"));
+        fs::create_dir_all(&temp_dir).expect("temporary executable discovery dir should exist");
+        let candidate_path = temp_dir.join("rustup");
+        fs::write(&candidate_path, "#!/bin/sh\n").expect("temporary executable should be writable");
+
+        let candidate = candidate_path.to_string_lossy().to_string();
+        let initial =
+            super::cached_discovered_executable_paths(ManagerId::Rustup, &[candidate.as_str()]);
+        assert_eq!(initial, vec![candidate.clone()]);
+
+        fs::remove_file(&candidate_path).expect("temporary executable should be removable");
+
+        let refreshed =
+            super::cached_discovered_executable_paths(ManagerId::Rustup, &[candidate.as_str()]);
+        assert!(
+            refreshed.is_empty(),
+            "expected cached discovery to refresh after cached path disappears"
+        );
+
+        clear_executable_discovery_cache();
+        let _ = fs::remove_dir_all(temp_dir);
     }
 
     #[test]

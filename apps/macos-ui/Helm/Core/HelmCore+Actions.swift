@@ -1312,6 +1312,7 @@ extension HelmCore {
         }
         let isManagerInstallRepair = optionId == "reinstall_manager_via_homebrew"
         let isManagerSetupRepair = optionId == "apply_post_install_setup_defaults"
+        let isExecutableOverrideRepair = optionId == "clear_selected_executable_override"
         if isManagerInstallRepair {
             DispatchQueue.main.async {
                 self.managerOperations[managerId] = L10n.App.Managers.Operation.startingInstall.localized
@@ -1399,6 +1400,9 @@ extension HelmCore {
                         ),
                         inProgressText: L10n.App.Managers.Operation.verifying.localized
                     )
+                } else if isExecutableOverrideRepair {
+                    self.fetchManagerStatus()
+                    self.fetchTasks()
                 }
             }
         }

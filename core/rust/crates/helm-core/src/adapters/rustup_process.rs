@@ -31,11 +31,25 @@ impl ProcessRustupSource {
         Self { executor }
     }
 
+    fn cargo_bin_dir() -> PathBuf {
+        std::env::var_os("CARGO_HOME")
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute())
+            .unwrap_or_else(|| {
+                std::env::var_os("HOME")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| PathBuf::from("."))
+                    .join(".cargo")
+            })
+            .join("bin")
+    }
+
     fn configure_request(&self, mut request: ProcessSpawnRequest) -> ProcessSpawnRequest {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        let cargo_bin = format!("{home}/.cargo/bin");
+        let cargo_bin = Self::cargo_bin_dir();
         let path = std::env::var("PATH").unwrap_or_default();
-        let new_path = format!("{cargo_bin}:{path}");
+        let cargo_bin_string = cargo_bin.to_string_lossy().to_string();
+        let new_path = format!("{cargo_bin_string}:{path}");
 
         request.command = request.command.env("PATH", new_path);
 
@@ -49,13 +63,13 @@ impl ProcessRustupSource {
         if let Some(program) = program.as_deref()
             && (program == "rustup" || program == "rustup-init")
         {
-            let direct_path = std::path::Path::new(&cargo_bin).join(program);
+            let direct_path = cargo_bin.join(program);
             if direct_path.exists() {
                 request.command.program = direct_path;
             } else if let Some(exe) = which_executable(
                 self.executor.as_ref(),
                 program,
-                &[cargo_bin.as_str()],
+                &[cargo_bin_string.as_str()],
                 ManagerId::Rustup,
             ) {
                 request.command.program = exe;
@@ -92,16 +106,16 @@ pub fn load_rustup_toolchain_detail_with_runtime(
 impl RustupSource for ProcessRustupSource {
     fn detect(&self) -> AdapterResult<RustupDetectOutput> {
         // Phase 1: instant filesystem check
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        let cargo_bin = format!("{home}/.cargo/bin");
-        let direct_path = Path::new(&cargo_bin).join("rustup");
+        let cargo_bin = Self::cargo_bin_dir();
+        let cargo_bin_string = cargo_bin.to_string_lossy().to_string();
+        let direct_path = cargo_bin.join("rustup");
         let executable_path = if direct_path.exists() {
             Some(direct_path)
         } else {
             which_executable(
                 self.executor.as_ref(),
                 "rustup",
-                &[&cargo_bin],
+                &[cargo_bin_string.as_str()],
                 ManagerId::Rustup,
             )
         };

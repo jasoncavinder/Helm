@@ -11,22 +11,22 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-0.18.x doctor/repair foundation execution (post-v0.17.9 stable)
+0.17.10 stable hardening on `dev` (post-v0.17.9 release, pre-0.18.x)
 ```
 
 Focus:
-- keep `main`/`dev`/`docs`/`web` publication docs and version markers aligned for `v0.17.9`
+- keep `main`/`dev`/`docs`/`web` release-state docs and version markers aligned now that `v0.17.9` is published
 - maintain release-process hardening guardrails now that phases 1-5 are complete (preflight, publish verification, drift prevention)
-- execute doctor/repair subsystem foundation in core + FFI + service surfaces
-- ship first repair path for Homebrew metadata-only manager installs via the new repair subsystem
+- finish stable-line hardening for onboarding detection, executable-path discovery, catalog-sync scoping, and local doctor/repair for executable-path drift
+- continue doctor/repair subsystem foundation in core + FFI + service surfaces without widening into online knowledge lookup yet
 - keep repair knowledge lookup local/embedded for now, with explicit TODO seams for future online fingerprint lookup
-- sequence `0.18.x` local security groundwork after doctor/repair foundation slice
+- sequence `0.18.x` local security groundwork after the `0.17.10` hardening slice lands
 - keep launch-at-login scoped to GUI only (no CLI/TUI parity target)
 - track post-mise lifecycle follow-ups: plugin-as-package modeling evaluation and managed-environment install-source policy controls
 - keep the repository-local Codex operating model current (lean `AGENTS`, `ops/codex/skills/`, `.codex/commands/`, notify logging, and `ops/codex/docs/` workflows) so recurring AI workflows remain deterministic and low-friction
 
 Current checkpoint:
-- `v0.17.9` is the current stable release on `main`; current-scope manager adapter completion and package workflow hardening are now aligned for stable publication:
+- `v0.17.9` is the current stable release on `main`; current-scope manager adapter completion and package workflow hardening are now published, and `0.17.10` is reserved for final stable-line hardening:
   - all current manager adapters are considered complete for Helm's intended scope
   - intentionally narrower manager scopes remain explicit (`nix_darwin` detect/refresh-only; detection-only adapters such as `sparkle`, `setapp`, and `parallels_desktop`; guarded/status adapters such as `docker_desktop`, `podman`, `colima`, `rosetta2`, `firmware_updates`, and `xcode_command_line_tools`)
   - no additional manager-adapter implementation gaps remain beyond those intentional product boundaries
