@@ -12850,6 +12850,9 @@ fn effective_manager_executable_path(
     if detected_path == preferred {
         return Some(detected_path);
     }
+    if trusted_system_manager_path(manager, Path::new(detected_path.as_str())) {
+        return Some(preferred.to_string());
+    }
     if matches!(
         manager,
         ManagerId::SoftwareUpdate
@@ -12857,6 +12860,11 @@ fn effective_manager_executable_path(
             | ManagerId::Rosetta2
             | ManagerId::FirmwareUpdates
     ) {
+        if let Some(path) = default_path
+            && trusted_system_manager_path(manager, Path::new(path))
+        {
+            return Some(preferred.to_string());
+        }
         return default_path
             .map(ToOwned::to_owned)
             .or_else(|| Some(preferred.to_string()));
