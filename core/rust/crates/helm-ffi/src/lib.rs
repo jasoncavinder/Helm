@@ -1420,17 +1420,28 @@ fn collect_manager_executable_paths(
     if let Some(active_path) = active_path
         && let Some(rendered) = normalize_path_string(active_path)
     {
+        let rendered = canonicalize_manager_executable_display_path(id, rendered);
         seen.insert(rendered.clone());
         resolved.push(rendered);
     }
 
     for discovered in cached_discovered_executable_paths(id, manager_executable_candidates(id)) {
+        let discovered = canonicalize_manager_executable_display_path(id, discovered);
         if seen.insert(discovered.clone()) {
             resolved.push(discovered);
         }
     }
 
     resolved
+}
+
+fn canonicalize_manager_executable_display_path(manager: ManagerId, path: String) -> String {
+    if let Some(preferred) = preferred_system_manager_display_path(manager)
+        && trusted_system_manager_path(manager, Path::new(path.as_str()))
+    {
+        return preferred.to_string();
+    }
+    path
 }
 
 fn default_manager_executable_path(id: ManagerId, executable_paths: &[String]) -> Option<String> {
@@ -1446,6 +1457,7 @@ fn default_manager_executable_path(id: ManagerId, executable_paths: &[String]) -
     if let Some(discovered) =
         cached_discovered_executable_paths(id, manager_executable_candidates(id))
             .into_iter()
+            .map(|path| canonicalize_manager_executable_display_path(id, path))
             .next()
     {
         return Some(discovered);
