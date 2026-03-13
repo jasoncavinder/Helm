@@ -1597,7 +1597,23 @@ fn build_manager_statuses(
     detection_map: &std::collections::HashMap<ManagerId, DetectionInfo>,
     pref_map: &std::collections::HashMap<ManagerId, ManagerPreference>,
 ) -> Vec<FfiManagerStatus> {
-    let detection_map = normalize_shared_detection_map(detection_map.clone());
+    let mut effective_detection_map: std::collections::HashMap<ManagerId, DetectionInfo> = store
+        .and_then(|store| store.list_detections().ok())
+        .map(|detections| detections.into_iter().collect())
+        .unwrap_or_default();
+    effective_detection_map.extend(detection_map.clone());
+    let detection_map = normalize_shared_detection_map(effective_detection_map);
+    let mut effective_pref_map: std::collections::HashMap<ManagerId, ManagerPreference> = store
+        .and_then(|store| store.list_manager_preferences().ok())
+        .map(|preferences| {
+            preferences
+                .into_iter()
+                .map(|pref| (pref.manager, pref))
+                .collect()
+        })
+        .unwrap_or_default();
+    effective_pref_map.extend(pref_map.clone());
+    let pref_map = effective_pref_map;
     if let Some(store) = store {
         invalidate_executable_cache_for_recent_manager_lifecycle_tasks(store);
     }
@@ -1650,7 +1666,7 @@ fn build_manager_statuses(
         })
         .unwrap_or_default();
     let manager_executable_doctor_states =
-        build_manager_executable_doctor_states(&detection_map, pref_map);
+        build_manager_executable_doctor_states(&detection_map, &pref_map);
 
     ManagerId::ALL
         .iter()
@@ -1701,7 +1717,7 @@ fn build_manager_statuses(
                 default_executable_path.as_deref(),
             );
             let selected_executable_path =
-                resolved_manager_selected_executable_path(id, &detection_map, pref_map);
+                resolved_manager_selected_executable_path(id, &detection_map, &pref_map);
             let selected_executable_differs_from_default = selected_executable_differs_from_default(
                 default_executable_path.as_deref(),
                 selected_executable_path.as_deref(),
