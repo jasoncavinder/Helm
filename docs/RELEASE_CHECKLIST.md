@@ -58,8 +58,10 @@ This checklist is required before creating a release tag on `main`.
 
 ### Scope and Documentation
 - [x] `CHANGELOG.md` includes finalized `0.17.10` patch notes for final stable-line hardening and manager discovery/repair follow-through.
-- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect `v0.17.9` as the current stable release on `main` and `0.17.10` as the active final hardening patch on `dev`.
-- [x] Public stable-line surfaces (`README.md`, website appcast, CLI latest metadata, release-line contract) remain on published `v0.17.9` until the later `main` promotion branch.
+- [x] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect `v0.17.10` as the current stable release on `main` and `0.18.x` planning on `dev`.
+- [x] Website changelog and current-version surfaces reflect `v0.17.10`.
+- [x] README current stable version markers reflect `v0.17.10`.
+- [x] Canonical release-line contract targets `v0.17.10` on the promotion branch.
 - [x] Internal prep branch version artifacts reflect `0.17.10` for workspace/app build outputs.
 - [x] Canonical release-line contract check passes: `scripts/release/check_release_line_copy.sh`.
 
@@ -76,7 +78,7 @@ This checklist is required before creating a release tag on `main`.
 - [x] Sparkle feed publication + direct-channel update smoke validation complete against the stable appcast entry.
 
 ### Branch and Tag
-- [ ] Release-prep PR merged to `dev`.
+- [x] Release-prep PR merged to `dev`.
 - [ ] `dev` merged into `main` for stable cut.
 - [ ] If release-critical docs updates were developed on `docs`, merge `docs` into `main`.
 - [ ] If release-critical website updates were developed on `web`, merge `web` into `main`.

@@ -725,11 +725,7 @@ impl ProvenanceSpec for XcodeCommandLineToolsProvenanceSpec {
         instance: &mut ManagerInstallInstance,
         _context: &mut ExternalEvidenceContext,
     ) {
-        classify_system_guarded_manager_instance(
-            instance,
-            "xcode_command_line_tools",
-            &["xcode-select"],
-        );
+        classify_xcode_command_line_tools_instance(instance);
     }
 }
 
@@ -881,7 +877,7 @@ fn classify_cargo_runtime_instance(
     instance.confidence = confidence;
     instance.decision_margin = Some(0.20);
     instance.automation_level = automation_level_for(instance.provenance, confidence);
-    instance.uninstall_strategy = uninstall_strategy_for(instance.provenance);
+    instance.uninstall_strategy = uninstall_strategy_for(instance.manager, instance.provenance);
     instance.update_strategy = update_strategy_for(instance.provenance);
     instance.remediation_strategy = remediation_strategy_for(instance.provenance);
     instance.explanation_primary = Some(format!(
@@ -905,7 +901,7 @@ fn set_instance_provenance(
     instance.confidence = clamped_confidence;
     instance.decision_margin = decision_margin;
     instance.automation_level = automation_level_for(provenance, clamped_confidence);
-    instance.uninstall_strategy = uninstall_strategy_for(provenance);
+    instance.uninstall_strategy = uninstall_strategy_for(instance.manager, provenance);
     instance.update_strategy = update_strategy_for(provenance);
     instance.remediation_strategy = remediation_strategy_for(provenance);
     instance.explanation_primary = Some(explainability.explanation_primary);
@@ -981,6 +977,71 @@ fn classify_system_guarded_manager_instance(
                 "{} executable path is not a trusted OS-managed location",
                 manager_label
             ),
+            explanation_secondary: Some("defaulting to unknown read-only behavior".to_string()),
+            competing: None,
+        },
+    );
+}
+
+fn classify_xcode_command_line_tools_instance(instance: &mut ManagerInstallInstance) {
+    let canonical = instance
+        .canonical_path
+        .as_ref()
+        .unwrap_or(&instance.display_path)
+        .to_string_lossy()
+        .to_string()
+        .to_lowercase();
+    let display = instance
+        .display_path
+        .to_string_lossy()
+        .to_string()
+        .to_lowercase();
+    let matches_xcode_select = path_matches_exec_name(canonical.as_str(), "xcode-select")
+        || path_matches_exec_name(display.as_str(), "xcode-select");
+    let matches_clt_clang = (path_matches_exec_name(canonical.as_str(), "clang")
+        || path_matches_exec_name(display.as_str(), "clang"))
+        && (canonical.starts_with("/library/developer/commandlinetools/")
+            || display.starts_with("/library/developer/commandlinetools/"));
+    let trusted_clt_prefix = canonical.starts_with("/library/developer/commandlinetools/")
+        || display.starts_with("/library/developer/commandlinetools/");
+    let system_prefix = canonical.starts_with("/usr/bin/")
+        || canonical.starts_with("/usr/sbin/")
+        || canonical.starts_with("/system/")
+        || canonical.starts_with("/bin/")
+        || canonical.starts_with("/sbin/")
+        || display.starts_with("/usr/bin/")
+        || display.starts_with("/usr/sbin/")
+        || display.starts_with("/system/")
+        || display.starts_with("/bin/")
+        || display.starts_with("/sbin/")
+        || trusted_clt_prefix;
+
+    if (system_prefix && matches_xcode_select) || matches_clt_clang {
+        set_instance_provenance(
+            instance,
+            InstallProvenance::System,
+            0.99,
+            Some(0.60),
+            ProvenanceExplainability {
+                explanation_primary:
+                    "xcode_command_line_tools executable path is in an OS-managed system location"
+                        .to_string(),
+                explanation_secondary: None,
+                competing: Some((InstallProvenance::Unknown, 0.30)),
+            },
+        );
+        return;
+    }
+
+    set_instance_provenance(
+        instance,
+        InstallProvenance::Unknown,
+        0.30,
+        None,
+        ProvenanceExplainability {
+            explanation_primary:
+                "xcode_command_line_tools executable path is not a trusted OS-managed location"
+                    .to_string(),
             explanation_secondary: Some("defaulting to unknown read-only behavior".to_string()),
             competing: None,
         },
@@ -2027,7 +2088,7 @@ fn finalize_scored_instance_provenance(
     instance.confidence = clamped_confidence;
     instance.decision_margin = decision_margin;
     instance.automation_level = automation_level_for(selected_provenance, clamped_confidence);
-    instance.uninstall_strategy = uninstall_strategy_for(selected_provenance);
+    instance.uninstall_strategy = uninstall_strategy_for(instance.manager, selected_provenance);
     instance.update_strategy = update_strategy_for(selected_provenance);
     instance.remediation_strategy = remediation_strategy_for(selected_provenance);
 
@@ -2169,18 +2230,24 @@ fn parse_pkgutil_file_owner(output: &str) -> Option<PkgutilFileOwner> {
     Some(PkgutilFileOwner::NotOwned)
 }
 
-fn uninstall_strategy_for(provenance: InstallProvenance) -> StrategyKind {
+fn uninstall_strategy_for(manager: ManagerId, provenance: InstallProvenance) -> StrategyKind {
     match provenance {
         InstallProvenance::Homebrew => StrategyKind::HomebrewFormula,
         InstallProvenance::RustupInit => StrategyKind::RustupSelf,
+        InstallProvenance::Macports => {
+            if manager == ManagerId::MacPorts {
+                StrategyKind::MacportsSelf
+            } else {
+                StrategyKind::InteractivePrompt
+            }
+        }
         InstallProvenance::System
         | InstallProvenance::EnterpriseManaged
         | InstallProvenance::Nix => StrategyKind::ReadOnly,
         InstallProvenance::Unknown
         | InstallProvenance::SourceBuild
         | InstallProvenance::Asdf
-        | InstallProvenance::Mise
-        | InstallProvenance::Macports => StrategyKind::InteractivePrompt,
+        | InstallProvenance::Mise => StrategyKind::InteractivePrompt,
     }
 }
 
@@ -2411,7 +2478,7 @@ fn manager_executable_candidates(id: ManagerId) -> &'static [&'static str] {
         ManagerId::DockerDesktop => &["docker"],
         ManagerId::Podman => &["podman"],
         ManagerId::Colima => &["colima"],
-        ManagerId::XcodeCommandLineTools => &["xcode-select"],
+        ManagerId::XcodeCommandLineTools => &["/Library/Developer/CommandLineTools/usr/bin/clang"],
         ManagerId::SoftwareUpdate => &["/usr/sbin/softwareupdate"],
         _ => &[],
     }
@@ -3842,7 +3909,7 @@ mod tests {
             instance.automation_level,
             AutomationLevel::NeedsConfirmation
         );
-        assert_eq!(instance.uninstall_strategy, StrategyKind::InteractivePrompt);
+        assert_eq!(instance.uninstall_strategy, StrategyKind::MacportsSelf);
         assert_eq!(instance.update_strategy, StrategyKind::InteractivePrompt);
     }
 
@@ -3926,6 +3993,41 @@ mod tests {
             display_path: PathBuf::from("/usr/bin/xcode-select"),
             canonical_path: Some(PathBuf::from("/usr/bin/xcode-select")),
             alias_paths: vec![PathBuf::from("/usr/bin/xcode-select")],
+            is_active: true,
+        };
+        let mut context = ExternalEvidenceContext::without_external_queries();
+
+        let instance = classify_instance(
+            ManagerId::XcodeCommandLineTools,
+            &detection,
+            candidate,
+            &mut context,
+        );
+        assert_eq!(instance.provenance, InstallProvenance::System);
+        assert_eq!(instance.automation_level, AutomationLevel::ReadOnly);
+        assert_eq!(instance.uninstall_strategy, StrategyKind::ReadOnly);
+        assert_eq!(instance.update_strategy, StrategyKind::ReadOnly);
+    }
+
+    #[test]
+    fn xcode_clt_clang_path_classifies_as_system() {
+        let detection = DetectionInfo {
+            installed: true,
+            executable_path: Some(PathBuf::from(
+                "/Library/Developer/CommandLineTools/usr/bin/clang",
+            )),
+            version: Some("2397".to_string()),
+        };
+        let candidate = CandidateInstance {
+            identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+            identity_value: "/Library/Developer/CommandLineTools/usr/bin/clang".to_string(),
+            display_path: PathBuf::from("/Library/Developer/CommandLineTools/usr/bin/clang"),
+            canonical_path: Some(PathBuf::from(
+                "/Library/Developer/CommandLineTools/usr/bin/clang",
+            )),
+            alias_paths: vec![PathBuf::from(
+                "/Library/Developer/CommandLineTools/usr/bin/clang",
+            )],
             is_active: true,
         };
         let mut context = ExternalEvidenceContext::without_external_queries();

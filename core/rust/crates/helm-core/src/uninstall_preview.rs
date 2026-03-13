@@ -1,4 +1,7 @@
 use crate::adapters::AdapterRequest;
+use crate::adapters::macports::{
+    collect_macports_self_cleanup_targets, macports_prefix_from_port_path,
+};
 use crate::manager_lifecycle::{
     HomebrewUninstallCleanupMode, parse_homebrew_manager_uninstall_package_name,
     strip_shell_setup_cleanup_suffix,
@@ -106,6 +109,18 @@ pub fn build_manager_uninstall_preview(
             &mut seen_directories,
             context.active_instance,
             self_request_shell_cleanup_requested,
+        );
+    } else if context.target_manager == ManagerId::MacPorts
+        || context.strategy == StrategyKind::MacportsSelf
+    {
+        append_macports_uninstall_impact(
+            store,
+            &mut files_removed,
+            &mut directories_removed,
+            &mut secondary_effects,
+            &mut seen_files,
+            &mut seen_directories,
+            context.active_instance,
         );
     } else if context.target_manager == ManagerId::HomebrewFormula {
         let formula_name = homebrew_uninstall_spec
@@ -487,6 +502,68 @@ fn append_asdf_uninstall_impact(
         secondary_effects
             .push("Shell profile initialization lines are not automatically removed.".to_string());
     }
+}
+
+fn append_macports_uninstall_impact(
+    store: &SqliteStore,
+    files_removed: &mut Vec<UninstallImpactPath>,
+    directories_removed: &mut Vec<UninstallImpactPath>,
+    secondary_effects: &mut Vec<String>,
+    seen_files: &mut HashSet<String>,
+    seen_directories: &mut HashSet<String>,
+    active_instance: Option<&ManagerInstallInstance>,
+) {
+    let prefix = active_instance
+        .and_then(|instance| {
+            instance
+                .canonical_path
+                .as_ref()
+                .or(Some(&instance.display_path))
+                .and_then(|path| macports_prefix_from_port_path(path))
+        })
+        .unwrap_or_else(|| PathBuf::from("/opt/local"));
+
+    let cleanup = collect_macports_self_cleanup_targets(prefix.as_path());
+    for file in cleanup.files {
+        push_impact_path(files_removed, seen_files, file);
+    }
+    for directory in cleanup.directories {
+        push_impact_path(directories_removed, seen_directories, directory);
+    }
+
+    let installed_ports = store
+        .list_installed()
+        .ok()
+        .map(|packages| {
+            packages
+                .into_iter()
+                .filter(|package| package.package.manager == ManagerId::MacPorts)
+                .map(|package| package.package.name)
+                .filter(|name| !name.trim().is_empty())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    if installed_ports.is_empty() {
+        secondary_effects.push(
+            "No cached MacPorts port inventory was found before manager removal.".to_string(),
+        );
+    } else {
+        let sample = installed_ports.iter().take(6).cloned().collect::<Vec<_>>();
+        secondary_effects.push(format!(
+            "{} installed MacPorts ports will be force-uninstalled first: {}",
+            installed_ports.len(),
+            sample.join(", ")
+        ));
+    }
+
+    secondary_effects.push(format!(
+        "MacPorts install prefix '{}' will be removed.",
+        prefix.display()
+    ));
+    secondary_effects.push(
+        "MacPorts service accounts 'macports' user/group will be removed if present.".to_string(),
+    );
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -948,6 +1025,8 @@ fn normalize_nonempty(value: Option<String>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::InstalledPackage;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn sample_instance() -> ManagerInstallInstance {
         ManagerInstallInstance {
@@ -972,6 +1051,20 @@ mod tests {
             competing_provenance: None,
             competing_confidence: None,
         }
+    }
+
+    fn temp_store(test_name: &str) -> SqliteStore {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should advance")
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("helm-uninstall-preview-{test_name}-{unique}.db"));
+        let store = SqliteStore::new(path);
+        store
+            .migrate_to_latest()
+            .expect("sqlite migrations should apply");
+        store
     }
 
     #[test]
@@ -1078,6 +1171,105 @@ mod tests {
                 .secondary_effects
                 .iter()
                 .any(|line| line.contains("directory override"))
+        );
+    }
+
+    #[test]
+    fn manager_uninstall_preview_for_macports_self_lists_prefix_and_ports() {
+        let store = temp_store("macports-self");
+        let packages = vec![
+            InstalledPackage {
+                package: PackageRef {
+                    manager: ManagerId::MacPorts,
+                    name: "ripgrep".to_string(),
+                },
+                package_identifier: None,
+                installed_version: Some("14.1.1_0".to_string()),
+                pinned: false,
+                runtime_state: PackageRuntimeState::default(),
+            },
+            InstalledPackage {
+                package: PackageRef {
+                    manager: ManagerId::MacPorts,
+                    name: "git".to_string(),
+                },
+                package_identifier: None,
+                installed_version: Some("2.49.0_0".to_string()),
+                pinned: false,
+                runtime_state: PackageRuntimeState::default(),
+            },
+        ];
+        store
+            .replace_installed_snapshot(ManagerId::MacPorts, packages.as_slice())
+            .expect("installed snapshot should persist");
+
+        let instance = ManagerInstallInstance {
+            manager: ManagerId::MacPorts,
+            instance_id: "macports".to_string(),
+            identity_kind: crate::models::InstallInstanceIdentityKind::CanonicalPath,
+            identity_value: "/opt/local/bin/port".to_string(),
+            display_path: PathBuf::from("/opt/local/bin/port"),
+            canonical_path: Some(PathBuf::from("/opt/local/bin/port")),
+            alias_paths: vec![PathBuf::from("/opt/local/bin/port")],
+            is_active: true,
+            version: Some("2.8.1".to_string()),
+            provenance: InstallProvenance::Macports,
+            confidence: 0.96,
+            decision_margin: Some(0.45),
+            automation_level: AutomationLevel::NeedsConfirmation,
+            uninstall_strategy: StrategyKind::MacportsSelf,
+            update_strategy: StrategyKind::InteractivePrompt,
+            remediation_strategy: StrategyKind::InteractivePrompt,
+            explanation_primary: Some(
+                "macports executable path is in MacPorts-managed prefix".to_string(),
+            ),
+            explanation_secondary: None,
+            competing_provenance: Some(InstallProvenance::Unknown),
+            competing_confidence: Some(0.35),
+        };
+        let request = AdapterRequest::Uninstall(crate::adapters::UninstallRequest {
+            package: PackageRef {
+                manager: ManagerId::MacPorts,
+                name: "__self__".to_string(),
+            },
+            target_name: None,
+            version: None,
+        });
+
+        let preview = build_manager_uninstall_preview(
+            &store,
+            ManagerUninstallPreviewContext {
+                requested_manager: ManagerId::MacPorts,
+                target_manager: ManagerId::MacPorts,
+                request: &request,
+                strategy: StrategyKind::MacportsSelf,
+                active_instance: Some(&instance),
+                unknown_override_required: false,
+                used_unknown_override: false,
+                legacy_fallback_used: false,
+            },
+            DEFAULT_MANAGER_UNINSTALL_SAFE_BLAST_RADIUS_THRESHOLD,
+        );
+
+        assert!(preview.requires_yes);
+        assert!(
+            preview
+                .directories_removed
+                .iter()
+                .any(|path| path.path == "/opt/local")
+        );
+        assert!(
+            preview
+                .secondary_effects
+                .iter()
+                .any(|line| line
+                    .contains("installed MacPorts ports will be force-uninstalled first"))
+        );
+        assert!(
+            preview
+                .secondary_effects
+                .iter()
+                .any(|line| line.contains("service accounts 'macports'"))
         );
     }
 }

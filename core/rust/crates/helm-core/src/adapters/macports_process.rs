@@ -2,14 +2,16 @@ use std::sync::Arc;
 
 use crate::adapters::detect_utils::which_executable;
 use crate::adapters::macports::{
-    MacPortsDetectOutput, MacPortsSource, macports_detect_request, macports_install_request,
-    macports_list_installed_request, macports_list_outdated_request, macports_search_request,
+    MacPortsDetectOutput, MacPortsSource, collect_macports_self_cleanup_targets,
+    macports_detect_request, macports_install_request, macports_list_installed_request,
+    macports_list_outdated_request, macports_prefix_from_port_path, macports_search_request,
     macports_uninstall_request, macports_upgrade_request,
 };
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::process_utils::{run_and_collect_stdout, run_and_collect_version_output};
 use crate::execution::{
-    ProcessExecutor, ProcessExitStatus, ProcessOutput, ProcessSpawnRequest, spawn_validated,
+    CommandSpec, ProcessExecutor, ProcessExitStatus, ProcessOutput, ProcessSpawnRequest,
+    spawn_validated,
 };
 use crate::models::{CoreError, CoreErrorKind, ManagerId, SearchQuery};
 
@@ -88,6 +90,68 @@ impl ProcessMacPortsSource {
             }),
         }
     }
+
+    fn command_succeeds(&self, request: ProcessSpawnRequest) -> bool {
+        let process = match spawn_validated(self.executor.as_ref(), request) {
+            Ok(process) => process,
+            Err(_) => return false,
+        };
+
+        let handle = tokio::runtime::Handle::current();
+        let output: ProcessOutput = match handle.block_on(process.wait()) {
+            Ok(output) => output,
+            Err(_) => return false,
+        };
+
+        matches!(output.status, ProcessExitStatus::ExitCode(0))
+    }
+
+    fn macports_self_uninstall_request(&self) -> AdapterResult<ProcessSpawnRequest> {
+        let executable = which_executable(
+            self.executor.as_ref(),
+            "port",
+            &["/opt/local/bin"],
+            ManagerId::MacPorts,
+        )
+        .ok_or(CoreError {
+            manager: Some(ManagerId::MacPorts),
+            task: Some(crate::models::TaskType::Uninstall),
+            action: Some(crate::models::ManagerAction::Uninstall),
+            kind: CoreErrorKind::ProcessFailure,
+            message: "unable to resolve MacPorts executable for manager uninstall".to_string(),
+        })?;
+
+        Ok(ProcessSpawnRequest::new(
+            ManagerId::MacPorts,
+            crate::models::TaskType::Uninstall,
+            crate::models::ManagerAction::Uninstall,
+            CommandSpec::new(executable).args(["-fp", "uninstall", "installed"]),
+        )
+        .requires_elevation(true)
+        .timeout(std::time::Duration::from_secs(3600)))
+    }
+
+    fn dscl_record_exists(&self, record_path: &str) -> bool {
+        self.command_succeeds(ProcessSpawnRequest::new(
+            ManagerId::MacPorts,
+            crate::models::TaskType::Uninstall,
+            crate::models::ManagerAction::Uninstall,
+            CommandSpec::new("/usr/bin/dscl").args([".", "-read", record_path]),
+        ))
+    }
+
+    fn run_optional_dscl_delete(&self, record_path: &str) -> AdapterResult<()> {
+        let request = ProcessSpawnRequest::new(
+            ManagerId::MacPorts,
+            crate::models::TaskType::Uninstall,
+            crate::models::ManagerAction::Uninstall,
+            CommandSpec::new("/usr/bin/dscl").args([".", "-delete", record_path]),
+        )
+        .requires_elevation(true)
+        .timeout(std::time::Duration::from_secs(60));
+        let _ = self.run_and_collect_stdout_accepting(request, &[])?;
+        Ok(())
+    }
 }
 
 impl MacPortsSource for ProcessMacPortsSource {
@@ -125,6 +189,74 @@ impl MacPortsSource for ProcessMacPortsSource {
         };
         let request = self.configure_request(macports_search_request(None, &search_query));
         self.run_and_collect_stdout_accepting(request, &[1])
+    }
+
+    fn self_uninstall(&self) -> AdapterResult<String> {
+        let self_request = self.configure_request(self.macports_self_uninstall_request()?);
+        let port_executable = self_request.command.program.clone();
+        let prefix = macports_prefix_from_port_path(port_executable.as_path()).ok_or(CoreError {
+            manager: Some(ManagerId::MacPorts),
+            task: Some(crate::models::TaskType::Uninstall),
+            action: Some(crate::models::ManagerAction::Uninstall),
+            kind: CoreErrorKind::InvalidInput,
+            message: format!(
+                "refusing MacPorts manager uninstall because '{}' is not a recognized '<prefix>/bin/port' executable path",
+                port_executable.display()
+            ),
+        })?;
+
+        let mut notes = Vec::new();
+        crate::execution::record_task_log_note(
+            format!(
+                "running MacPorts manager uninstall flow for prefix '{}'",
+                prefix.display()
+            )
+            .as_str(),
+        );
+        let uninstall_ports_output = self.run_and_collect_stdout_accepting(self_request, &[])?;
+        if !uninstall_ports_output.trim().is_empty() {
+            notes.push(uninstall_ports_output.trim().to_string());
+        }
+
+        if self.dscl_record_exists("/Users/macports") {
+            self.run_optional_dscl_delete("/Users/macports")?;
+            notes.push("removed macports user account".to_string());
+        }
+        if self.dscl_record_exists("/Groups/macports") {
+            self.run_optional_dscl_delete("/Groups/macports")?;
+            notes.push("removed macports group".to_string());
+        }
+
+        let cleanup = collect_macports_self_cleanup_targets(prefix.as_path());
+        let cleanup_paths = cleanup
+            .directories
+            .iter()
+            .chain(cleanup.files.iter())
+            .map(|path| path.to_string_lossy().to_string())
+            .filter(|path| !path.trim().is_empty())
+            .collect::<Vec<_>>();
+        if !cleanup_paths.is_empty() {
+            crate::execution::record_task_log_note(
+                format!("removing {} MacPorts cleanup paths", cleanup_paths.len()).as_str(),
+            );
+            let cleanup_request = ProcessSpawnRequest::new(
+                ManagerId::MacPorts,
+                crate::models::TaskType::Uninstall,
+                crate::models::ManagerAction::Uninstall,
+                CommandSpec::new("/bin/rm")
+                    .args(["-rf"])
+                    .args(cleanup_paths.iter().cloned()),
+            )
+            .requires_elevation(true)
+            .timeout(std::time::Duration::from_secs(600));
+            let _ = self.run_and_collect_stdout_accepting(cleanup_request, &[])?;
+        }
+
+        if notes.is_empty() {
+            Ok("MacPorts uninstall flow completed.".to_string())
+        } else {
+            Ok(notes.join("\n"))
+        }
     }
 
     fn install(

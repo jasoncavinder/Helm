@@ -6,7 +6,9 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
-Patch `0.17.10` is focused on final stable-line hardening before broader `0.18.x` work begins.
+Post-`v0.17.10`, `dev` is now positioned for broader `0.18.x` work.
+
+## [0.17.10] - 2026-03-11
 
 ### Added
 - Doctor/repair now detects stale selected manager executable overrides and can clear them locally through the existing repair flow.
