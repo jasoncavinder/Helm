@@ -2129,11 +2129,45 @@ fn runtime_task_is_inflight(
         .unwrap_or(false)
 }
 
+fn latest_persisted_terminal_status(store: &SqliteStore, task_id: TaskId) -> Option<TaskStatus> {
+    store
+        .list_task_logs(task_id, 20)
+        .ok()?
+        .into_iter()
+        .find_map(|entry| match entry.status {
+            Some(status @ (TaskStatus::Completed | TaskStatus::Cancelled | TaskStatus::Failed)) => {
+                Some(status)
+            }
+            _ => None,
+        })
+}
+
 fn mark_stale_inflight_task_terminal(
     store: &SqliteStore,
     task: &helm_core::models::TaskRecord,
     context: &str,
 ) {
+    if let Some(status) = latest_persisted_terminal_status(store, task.id) {
+        update_local_task_status(
+            store,
+            task.id,
+            task.manager,
+            task.task_type,
+            status,
+            match status {
+                TaskStatus::Completed => TaskLogLevel::Info,
+                TaskStatus::Cancelled => TaskLogLevel::Warn,
+                TaskStatus::Failed => TaskLogLevel::Error,
+                TaskStatus::Queued | TaskStatus::Running => TaskLogLevel::Warn,
+            },
+            format!(
+                "task reconciled from persisted terminal lifecycle log [{}]",
+                context
+            ),
+        );
+        return;
+    }
+
     update_local_task_status(
         store,
         task.id,
@@ -11237,6 +11271,70 @@ mod tests {
             logs.iter()
                 .any(|entry| entry.message.contains("test_reconcile")),
             "reconciled task log should include reconciliation context"
+        );
+
+        let _ = fs::remove_file(store.database_path());
+    }
+
+    #[test]
+    fn stale_inflight_reconciliation_uses_persisted_terminal_log_status() {
+        let store = temp_sqlite_store("stale-inflight-reconcile-terminal-log");
+        store
+            .migrate_to_latest()
+            .expect("sqlite migrations should apply");
+
+        let stale_running = TaskRecord {
+            id: TaskId(401),
+            manager: ManagerId::Rustup,
+            task_type: TaskType::Refresh,
+            status: TaskStatus::Running,
+            created_at: SystemTime::now(),
+        };
+
+        store
+            .create_task(&stale_running)
+            .expect("running task insert should succeed");
+        store
+            .append_task_log(&helm_core::models::NewTaskLogRecord {
+                task_id: stale_running.id,
+                manager: stale_running.manager,
+                task_type: stale_running.task_type,
+                status: Some(TaskStatus::Completed),
+                level: helm_core::models::TaskLogLevel::Info,
+                message: "task completed".to_string(),
+                created_at: SystemTime::now(),
+            })
+            .expect("terminal lifecycle log insert should succeed");
+
+        let runtime = AdapterRuntime::new(Vec::<Arc<dyn ManagerAdapter>>::new())
+            .expect("empty adapter runtime should initialize");
+        let tokio_runtime =
+            tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
+
+        let reconciled = super::reconcile_stale_local_inflight_tasks(
+            &store,
+            &runtime,
+            tokio_runtime.handle(),
+            "test_terminal_log",
+        );
+        assert_eq!(reconciled, 1);
+
+        let refreshed = store
+            .list_recent_tasks(10)
+            .expect("task listing should succeed");
+        let task = refreshed
+            .into_iter()
+            .find(|task| task.id == stale_running.id)
+            .expect("task should exist");
+        assert_eq!(task.status, TaskStatus::Completed);
+
+        let logs = store
+            .list_task_logs(stale_running.id, 20)
+            .expect("task logs should load");
+        assert!(
+            logs.iter()
+                .any(|entry| entry.message.contains("persisted terminal lifecycle log")),
+            "reconciled task log should note terminal lifecycle recovery"
         );
 
         let _ = fs::remove_file(store.database_path());
