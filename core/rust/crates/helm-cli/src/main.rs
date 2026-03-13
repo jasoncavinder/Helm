@@ -12869,15 +12869,15 @@ fn resolve_selected_executable_path(
     preferred: Option<String>,
     default_path: Option<String>,
 ) -> Option<String> {
-    if let Some(preferred) = preferred
-        && std::path::Path::new(preferred.as_str()).is_file()
-    {
+    if let Some(preferred) = preferred {
         if let Some(canonical) = preferred_system_manager_display_path(manager)
             && trusted_system_manager_path(manager, std::path::Path::new(preferred.as_str()))
         {
             return Some(canonical.to_string());
         }
-        return Some(preferred);
+        if std::path::Path::new(preferred.as_str()).is_file() {
+            return Some(preferred);
+        }
     }
     default_path
 }

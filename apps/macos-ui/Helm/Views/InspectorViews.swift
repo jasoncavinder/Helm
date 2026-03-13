@@ -2957,7 +2957,9 @@ private struct InspectorManagerDetailView: View {
             consumePendingInstallSheetRequestIfNeeded()
         }
     }
+}
 
+extension InspectorManagerDetailView {
     private func multiInstanceBanner<Actions: View>(
         icon: String,
         tint: Color,
