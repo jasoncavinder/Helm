@@ -867,17 +867,9 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
                         status: TaskStatus::Running,
                         created_at: SystemTime::now(),
                     };
-                    let _ = persist_update_task(
+                    let _ = persist_update_task_with_log(
                         task_store.clone(),
                         running_record,
-                        manager,
-                        task_type,
-                        action,
-                    )
-                    .await;
-
-                    let _ = persist_append_task_log(
-                        task_store.clone(),
                         NewTaskLogRecord {
                             task_id,
                             manager,
@@ -1007,33 +999,14 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
             created_at: SystemTime::now(),
         };
 
-        if let Err(error) = persist_update_task(
-            task_store.clone(),
-            updated,
-            snapshot.runtime.manager,
-            snapshot.runtime.task_type,
-            action,
-        )
-        .await
-        {
-            tracing::error!(
-                manager = ?manager,
-                task_id = task_id.0,
-                task_type = ?task_type,
-                action = ?action,
-                kind = ?error.kind,
-                message = %error.message,
-                "failed to persist terminal task status"
-            );
-        }
-
         let terminal_status = snapshot.runtime.status;
         let terminal_error = terminal_error_details(&snapshot);
         let terminal_level = task_log_level_for_status(terminal_status);
         let terminal_message = task_log_message_for_status(terminal_status, terminal_error.clone());
 
-        if let Err(error) = persist_append_task_log(
+        if let Err(error) = persist_update_task_with_log(
             task_store.clone(),
+            updated,
             NewTaskLogRecord {
                 task_id: snapshot.runtime.id,
                 manager: snapshot.runtime.manager,
@@ -1049,14 +1022,14 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
         )
         .await
         {
-            tracing::warn!(
+            tracing::error!(
                 manager = ?manager,
                 task_id = task_id.0,
                 task_type = ?task_type,
                 action = ?action,
                 kind = ?error.kind,
                 message = %error.message,
-                "failed to persist terminal task log"
+                "failed to persist terminal task transition"
             );
         }
 
@@ -1358,22 +1331,43 @@ async fn persist_create_task(
     .await
 }
 
-async fn persist_update_task(
+async fn persist_update_task_with_log(
     task_store: Arc<dyn TaskStore>,
     task_record: TaskRecord,
+    log_entry: NewTaskLogRecord,
     manager: ManagerId,
     task_type: TaskType,
     action: ManagerAction,
 ) -> OrchestrationResult<()> {
-    persist_task_record_with_retry(
-        task_store,
-        task_record,
-        manager,
-        task_type,
-        action,
-        TaskStoreOperation::Update,
-    )
-    .await
+    let mut remaining_attempts = TASK_PERSIST_RETRY_ATTEMPTS;
+    loop {
+        let store = task_store.clone();
+        let record = task_record.clone();
+        let entry = log_entry.clone();
+        let op_result =
+            tokio::task::spawn_blocking(move || store.update_task_with_log(&record, &entry))
+                .await
+                .map_err(|join_error| CoreError {
+                    manager: Some(manager),
+                    task: Some(task_type),
+                    action: Some(action),
+                    kind: CoreErrorKind::Internal,
+                    message: format!("task transition persistence join failure: {join_error}"),
+                })?;
+
+        match op_result {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                let attributed = attribute_error(error, manager, task_type, action);
+                remaining_attempts = remaining_attempts.saturating_sub(1);
+                if remaining_attempts == 0 || attributed.kind != CoreErrorKind::StorageFailure {
+                    return Err(attributed);
+                }
+
+                tokio::time::sleep(Duration::from_millis(TASK_PERSIST_RETRY_DELAY_MS)).await;
+            }
+        }
+    }
 }
 
 async fn persist_append_task_log(
@@ -1710,7 +1704,6 @@ fn truncate_for_diagnostic(value: &str, max_chars: usize) -> String {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum TaskStoreOperation {
     Create,
-    Update,
 }
 
 async fn persist_task_record_with_retry(
@@ -1727,7 +1720,6 @@ async fn persist_task_record_with_retry(
         let record = task_record.clone();
         let op_result = tokio::task::spawn_blocking(move || match operation {
             TaskStoreOperation::Create => store.create_task(&record),
-            TaskStoreOperation::Update => store.update_task(&record),
         })
         .await
         .map_err(|join_error| CoreError {

@@ -67,6 +67,7 @@ impl TestAdapter {
 struct RecordingTaskStore {
     records: Mutex<HashMap<TaskId, TaskRecord>>,
     remaining_create_failures: Mutex<usize>,
+    fail_plain_updates: bool,
 }
 
 impl RecordingTaskStore {
@@ -78,6 +79,15 @@ impl RecordingTaskStore {
         Self {
             records: Mutex::new(HashMap::new()),
             remaining_create_failures: Mutex::new(failures),
+            fail_plain_updates: false,
+        }
+    }
+
+    fn fail_plain_updates() -> Self {
+        Self {
+            records: Mutex::new(HashMap::new()),
+            remaining_create_failures: Mutex::new(0),
+            fail_plain_updates: true,
         }
     }
 
@@ -123,6 +133,40 @@ impl TaskStore for RecordingTaskStore {
     }
 
     fn update_task(&self, task: &TaskRecord) -> PersistenceResult<()> {
+        if self.fail_plain_updates {
+            return Err(CoreError {
+                manager: None,
+                task: None,
+                action: None,
+                kind: CoreErrorKind::StorageFailure,
+                message: "plain update_task forced failure".to_string(),
+            });
+        }
+        let mut records = self.records.lock().map_err(|_| CoreError {
+            manager: None,
+            task: None,
+            action: None,
+            kind: CoreErrorKind::Internal,
+            message: "recording store mutex poisoned".to_string(),
+        })?;
+        if !records.contains_key(&task.id) {
+            return Err(CoreError {
+                manager: None,
+                task: None,
+                action: None,
+                kind: CoreErrorKind::StorageFailure,
+                message: "task record not found".to_string(),
+            });
+        }
+        records.insert(task.id, task.clone());
+        Ok(())
+    }
+
+    fn update_task_with_log(
+        &self,
+        task: &TaskRecord,
+        _entry: &helm_core::models::NewTaskLogRecord,
+    ) -> PersistenceResult<()> {
         let mut records = self.records.lock().map_err(|_| CoreError {
             manager: None,
             task: None,
@@ -560,6 +604,42 @@ async fn submit_retries_initial_task_persistence_and_succeeds_after_transient_fa
     assert_eq!(record.id, task_id);
     assert_eq!(record.manager, ManagerId::Npm);
     assert_eq!(record.task_type, TaskType::Refresh);
+}
+
+#[tokio::test]
+async fn submit_with_task_store_persists_terminal_status_via_atomic_transition() {
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(TestAdapter::new(
+        ManagerId::Npm,
+        AdapterBehavior::Succeeds(AdapterResponse::Refreshed),
+    ));
+    let task_store = Arc::new(RecordingTaskStore::fail_plain_updates());
+    let runtime = AdapterRuntime::with_task_store([adapter], task_store.clone()).unwrap();
+
+    let task_id = runtime
+        .submit(ManagerId::Npm, AdapterRequest::Refresh(RefreshRequest))
+        .await
+        .unwrap();
+    let snapshot = runtime
+        .wait_for_terminal(task_id, Some(Duration::from_secs(1)))
+        .await
+        .unwrap();
+
+    assert_eq!(snapshot.runtime.status, TaskStatus::Completed);
+
+    let mut persisted = None;
+    for _ in 0..20 {
+        if let Some(record) = task_store.get(task_id)
+            && record.status == TaskStatus::Completed
+        {
+            persisted = Some(record);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    let record = persisted.expect("expected completed persisted task record through atomic path");
+    assert_eq!(record.id, task_id);
+    assert_eq!(record.status, TaskStatus::Completed);
 }
 
 #[tokio::test]
