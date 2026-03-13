@@ -2417,6 +2417,35 @@ private struct InspectorManagerDetailView: View {
         manager.id == "rustup" || manager.id == "mise" || manager.id == "asdf"
     }
 
+    private var managerCanInstall: Bool {
+        let supportsHelmInstall = Set([
+            "mise",
+            "asdf",
+            "mas",
+            "rustup",
+            "npm",
+            "pnpm",
+            "yarn",
+            "pipx",
+            "pip",
+            "poetry",
+            "rubygems",
+            "bundler",
+            "cargo",
+            "cargo_binstall",
+            "podman",
+            "colima"
+        ]).contains(manager.id)
+        guard supportsHelmInstall else { return false }
+        let allowedOptions = sortedHelmSupportedInstallMethodOptions.filter { option in
+            option.method != .notManageable && option.isAllowed(in: installMethodPolicyContext)
+        }
+        if !allowedOptions.isEmpty {
+            return true
+        }
+        return manager.canInstall
+    }
+
     private var supportsShellSetupTeardownOption: Bool {
         manager.id == "rustup" || manager.id == "mise" || manager.id == "asdf"
     }
@@ -3443,7 +3472,7 @@ private struct InspectorManagerDetailView: View {
     private func consumePendingInstallSheetRequestIfNeeded() {
         guard context.managerInstallSheetRequestManagerId == manager.id else { return }
         context.managerInstallSheetRequestManagerId = nil
-        guard manager.canInstall && !detected else { return }
+        guard managerCanInstall && !detected else { return }
         guard !managerIsUninstalling else { return }
         guard !installSubmissionInFlight else { return }
         prepareInstallMethodSelection()

@@ -718,6 +718,7 @@ final class HelmCore: ObservableObject {
     @Published var rustupToolchainDetailUnavailableKeys: Set<String> = []
     @Published var rustupToolchainActionInFlightKeys: Set<String> = []
     @Published var onboardingDetectionInProgress: Bool = false
+    var onboardingDetectionStatusSyncRequested: Bool = false
     @Published var homebrewKegAutoCleanupEnabled: Bool = false
     @Published var packageKegPolicyOverrides: [String: HomebrewKegPolicyOverride] = [:]
     @Published var packageManagerPreferencesByFamilyKey: [String: String] = [:]
@@ -1231,6 +1232,7 @@ final class HelmCore: ObservableObject {
         onboardingDetectionPendingManagers = enabledImplementedManagers
         onboardingDetectionStartedAt = Date()
         onboardingDetectionInProgress = !enabledImplementedManagers.isEmpty
+        onboardingDetectionStatusSyncRequested = false
 
         triggerDetection()
     }
@@ -1362,6 +1364,7 @@ final class HelmCore: ObservableObject {
 
     func completeOnboardingDetectionProgress() {
         onboardingDetectionInProgress = false
+        onboardingDetectionStatusSyncRequested = false
         onboardingDetectionPendingManagers.removeAll()
         onboardingDetectionStartedAt = nil
     }

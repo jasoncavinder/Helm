@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::adapters::manager::{AdapterRequest, AdapterResponse, AdapterResult, ManagerAdapter};
@@ -32,6 +33,7 @@ const MACPORTS_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
 };
 
 const PORT_COMMAND: &str = "port";
+pub const MACPORTS_SELF_PACKAGE_NAME: &str = "__self__";
 const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
 const LIST_TIMEOUT: Duration = Duration::from_secs(180);
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(60);
@@ -69,11 +71,18 @@ struct ParsedMacPortsEntry {
     runtime_state: PackageRuntimeState,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MacPortsSelfCleanupTargets {
+    pub files: Vec<PathBuf>,
+    pub directories: Vec<PathBuf>,
+}
+
 pub trait MacPortsSource: Send + Sync {
     fn detect(&self) -> AdapterResult<MacPortsDetectOutput>;
     fn list_installed(&self) -> AdapterResult<String>;
     fn list_outdated(&self) -> AdapterResult<String>;
     fn search(&self, query: &str) -> AdapterResult<String>;
+    fn self_uninstall(&self) -> AdapterResult<String>;
     fn install(
         &self,
         port_name: &str,
@@ -393,6 +402,28 @@ impl<S: MacPortsSource> ManagerAdapter for MacPortsAdapter<S> {
                 }))
             }
             AdapterRequest::Uninstall(uninstall_request) => {
+                if is_macports_self_package_name(uninstall_request.package.name.as_str()) {
+                    let before_version = self
+                        .source
+                        .detect()
+                        .ok()
+                        .and_then(|output| parse_macports_version(&output.version_output));
+                    let _ = self.source.self_uninstall()?;
+                    crate::execution::record_task_log_note(
+                        "completed MacPorts manager uninstall flow",
+                    );
+                    return Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
+                        package: PackageRef {
+                            manager: ManagerId::MacPorts,
+                            name: MACPORTS_SELF_PACKAGE_NAME.to_string(),
+                        },
+                        package_identifier: None,
+                        action: ManagerAction::Uninstall,
+                        before_version,
+                        after_version: None,
+                    }));
+                }
+
                 let target = self.resolve_installed_target(
                     uninstall_request
                         .target_name
@@ -487,6 +518,125 @@ impl<S: MacPortsSource> ManagerAdapter for MacPortsAdapter<S> {
                 kind: CoreErrorKind::UnsupportedCapability,
                 message: "macports adapter action not implemented in this milestone".to_string(),
             }),
+        }
+    }
+}
+
+pub fn is_macports_self_package_name(value: &str) -> bool {
+    value.trim() == MACPORTS_SELF_PACKAGE_NAME
+}
+
+pub fn macports_prefix_from_port_path(path: &Path) -> Option<PathBuf> {
+    let file_name = path.file_name()?.to_str()?;
+    if file_name != "port" {
+        return None;
+    }
+
+    let bin_dir = path.parent()?;
+    let bin_name = bin_dir.file_name()?.to_str()?;
+    if bin_name != "bin" {
+        return None;
+    }
+
+    let prefix = bin_dir.parent()?;
+    if prefix.as_os_str().is_empty() || prefix == Path::new("/") {
+        return None;
+    }
+
+    Some(prefix.to_path_buf())
+}
+
+pub fn collect_macports_self_cleanup_targets(prefix: &Path) -> MacPortsSelfCleanupTargets {
+    let mut files = Vec::new();
+    let mut directories = Vec::new();
+    let mut seen = std::collections::HashSet::<String>::new();
+
+    push_cleanup_directory(prefix.to_path_buf(), &mut directories, &mut seen);
+    push_cleanup_directory(
+        PathBuf::from("/Applications/MacPorts"),
+        &mut directories,
+        &mut seen,
+    );
+    push_cleanup_directory(
+        PathBuf::from("/Applications/DarwinPorts"),
+        &mut directories,
+        &mut seen,
+    );
+    push_cleanup_directory(
+        PathBuf::from("/Library/StartupItems/DarwinPortsStartup"),
+        &mut directories,
+        &mut seen,
+    );
+    push_cleanup_directory(
+        PathBuf::from("/Library/Tcl/macports1.0"),
+        &mut directories,
+        &mut seen,
+    );
+    push_cleanup_directory(
+        PathBuf::from("/Library/Tcl/darwinports1.0"),
+        &mut directories,
+        &mut seen,
+    );
+
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        push_cleanup_directory(home.join(".macports"), &mut directories, &mut seen);
+    }
+
+    extend_cleanup_matches(
+        Path::new("/Library/LaunchDaemons"),
+        |name| name.starts_with("org.macports."),
+        &mut files,
+        &mut seen,
+    );
+    extend_cleanup_matches(
+        Path::new("/Library/Receipts"),
+        |name| name.starts_with("MacPorts") || name.starts_with("DarwinPorts"),
+        &mut files,
+        &mut seen,
+    );
+
+    MacPortsSelfCleanupTargets { files, directories }
+}
+
+fn push_cleanup_directory(
+    path: PathBuf,
+    directories: &mut Vec<PathBuf>,
+    seen: &mut std::collections::HashSet<String>,
+) {
+    let rendered = path.to_string_lossy().to_string();
+    if rendered.is_empty() {
+        return;
+    }
+    if seen.insert(rendered) {
+        directories.push(path);
+    }
+}
+
+fn extend_cleanup_matches<F>(
+    root: &Path,
+    predicate: F,
+    files: &mut Vec<PathBuf>,
+    seen: &mut std::collections::HashSet<String>,
+) where
+    F: Fn(&str) -> bool,
+{
+    let Ok(entries) = fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        if !predicate(name) {
+            continue;
+        }
+        let rendered = path.to_string_lossy().to_string();
+        if rendered.is_empty() {
+            continue;
+        }
+        if seen.insert(rendered) {
+            files.push(path);
         }
     }
 }
@@ -1081,11 +1231,11 @@ mod tests {
     use std::time::UNIX_EPOCH;
 
     use crate::adapters::macports::{
-        MacPortsAdapter, MacPortsDetectOutput, MacPortsSource, macports_detect_request,
-        macports_install_request, macports_list_installed_request, macports_list_outdated_request,
-        macports_search_request, macports_uninstall_request, macports_upgrade_request,
-        parse_macports_installed, parse_macports_outdated, parse_macports_requested_target,
-        parse_macports_search, parse_macports_version,
+        MACPORTS_SELF_PACKAGE_NAME, MacPortsAdapter, MacPortsDetectOutput, MacPortsSource,
+        macports_detect_request, macports_install_request, macports_list_installed_request,
+        macports_list_outdated_request, macports_search_request, macports_uninstall_request,
+        macports_upgrade_request, parse_macports_installed, parse_macports_outdated,
+        parse_macports_requested_target, parse_macports_search, parse_macports_version,
     };
     use crate::adapters::manager::{
         AdapterRequest, AdapterResponse, AdapterResult, DetectRequest, InstallRequest,
@@ -1248,6 +1398,7 @@ mod tests {
             list_outdated_result: Ok(OUTDATED_VARIANTS_FIXTURE.to_string()),
             list_outdated_sequence: Arc::new(std::sync::Mutex::new(Vec::new())),
             search_result: Ok(SEARCH_FIXTURE.to_string()),
+            self_uninstall_result: Ok(String::new()),
             install_result: Ok(String::new()),
             uninstall_result: Ok(String::new()),
             upgrade_result: Ok(String::new()),
@@ -1306,6 +1457,7 @@ mod tests {
             list_outdated_result: Ok(String::new()),
             list_outdated_sequence: Arc::new(std::sync::Mutex::new(Vec::new())),
             search_result: Ok(SEARCH_FIXTURE.to_string()),
+            self_uninstall_result: Ok(String::new()),
             install_result: Ok(String::new()),
             uninstall_result: Ok(String::new()),
             upgrade_result: Ok(String::new()),
@@ -1342,6 +1494,7 @@ mod tests {
                 Ok(OUTDATED_VARIANTS_FIXTURE.to_string()),
             ])),
             search_result: Ok(SEARCH_FIXTURE.to_string()),
+            self_uninstall_result: Ok(String::new()),
             install_result: Ok(String::new()),
             uninstall_result: Ok(String::new()),
             upgrade_result: Ok(String::new()),
@@ -1397,12 +1550,49 @@ mod tests {
         assert_eq!(upgrade.after_version.as_deref(), Some("2.50.0_0"));
     }
 
+    #[test]
+    fn adapter_self_uninstall_routes_to_manager_mutation() {
+        let source = FixtureSource {
+            detect_result: Ok(MacPortsDetectOutput {
+                executable_path: Some(PathBuf::from("/opt/local/bin/port")),
+                version_output: VERSION_FIXTURE.to_string(),
+            }),
+            list_installed_result: Ok(INSTALLED_VARIANTS_FIXTURE.to_string()),
+            list_outdated_result: Ok(String::new()),
+            list_outdated_sequence: Arc::new(std::sync::Mutex::new(Vec::new())),
+            search_result: Ok(SEARCH_FIXTURE.to_string()),
+            self_uninstall_result: Ok("removed macports".to_string()),
+            install_result: Ok(String::new()),
+            uninstall_result: Ok(String::new()),
+            upgrade_result: Ok(String::new()),
+        };
+        let adapter = MacPortsAdapter::new(source);
+
+        let uninstall = adapter
+            .execute(AdapterRequest::Uninstall(UninstallRequest {
+                package: PackageRef {
+                    manager: ManagerId::MacPorts,
+                    name: MACPORTS_SELF_PACKAGE_NAME.to_string(),
+                },
+                target_name: None,
+                version: None,
+            }))
+            .expect("self uninstall should succeed");
+        let AdapterResponse::Mutation(uninstall) = uninstall else {
+            panic!("expected uninstall mutation");
+        };
+        assert_eq!(uninstall.package.name, MACPORTS_SELF_PACKAGE_NAME);
+        assert_eq!(uninstall.before_version.as_deref(), Some("2.8.1"));
+        assert_eq!(uninstall.after_version, None);
+    }
+
     struct FixtureSource {
         detect_result: AdapterResult<MacPortsDetectOutput>,
         list_installed_result: AdapterResult<String>,
         list_outdated_result: AdapterResult<String>,
         list_outdated_sequence: Arc<std::sync::Mutex<Vec<AdapterResult<String>>>>,
         search_result: AdapterResult<String>,
+        self_uninstall_result: AdapterResult<String>,
         install_result: AdapterResult<String>,
         uninstall_result: AdapterResult<String>,
         upgrade_result: AdapterResult<String>,
@@ -1426,6 +1616,10 @@ mod tests {
 
         fn search(&self, _query: &str) -> AdapterResult<String> {
             self.search_result.clone()
+        }
+
+        fn self_uninstall(&self) -> AdapterResult<String> {
+            self.self_uninstall_result.clone()
         }
 
         fn install(

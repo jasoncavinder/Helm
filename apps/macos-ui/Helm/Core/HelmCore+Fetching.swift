@@ -895,6 +895,10 @@ extension HelmCore {
                     }
                 )
                 self.pruneOnboardingDetectionForDisabledManagers()
+                if self.onboardingDetectionInProgress,
+                   self.onboardingDetectionPendingManagers.isEmpty {
+                    self.completeOnboardingDetectionProgress()
+                }
             }
         }
     }

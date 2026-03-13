@@ -594,6 +594,32 @@ pub fn plan_manager_uninstall_route_with_options(
         });
     }
 
+    if manager == ManagerId::MacPorts {
+        let resolution = resolve_macports_uninstall_strategy(
+            active_instance,
+            allow_unknown_provenance,
+            preview_only,
+        )
+        .map_err(|_| ManagerUninstallRouteError::AmbiguousProvenance)?;
+        if !manager_only_uninstall_options_are_default(options) {
+            return Err(ManagerUninstallRouteError::InvalidOptions);
+        }
+        return Ok(ManagerUninstallRoutePlan {
+            target_manager: ManagerId::MacPorts,
+            request: AdapterRequest::Uninstall(UninstallRequest {
+                package: PackageRef {
+                    manager: ManagerId::MacPorts,
+                    name: "__self__".to_string(),
+                },
+                target_name: None,
+                version: None,
+            }),
+            strategy: resolution.strategy,
+            unknown_override_required: resolution.unknown_override_required,
+            used_unknown_override: resolution.used_unknown_override,
+        });
+    }
+
     if let Some(formula_name) = manager_homebrew_formula_name(manager) {
         let resolution = resolve_homebrew_manager_uninstall_strategy(
             active_instance,
@@ -1096,6 +1122,16 @@ pub fn build_update_request(
                 version: None,
             }))
         }
+        (ManagerUpdateTarget::ManagerSelf, ManagerId::Asdf) => {
+            Some(AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Asdf,
+                    name: "__self__".to_string(),
+                }),
+                target_name: None,
+                version: None,
+            }))
+        }
         (ManagerUpdateTarget::HomebrewFormula { .. }, ManagerId::HomebrewFormula) => {
             homebrew_package_name.map(|package_name| {
                 AdapterRequest::Upgrade(UpgradeRequest {
@@ -1205,6 +1241,7 @@ pub fn resolve_homebrew_manager_uninstall_strategy(
         StrategyKind::InteractivePrompt
         | StrategyKind::Unknown
         | StrategyKind::ManualRemediation
+        | StrategyKind::MacportsSelf
         | StrategyKind::RustupSelf
         | StrategyKind::AsdfSelf => {
             if allow_unknown_provenance {
@@ -1252,6 +1289,7 @@ pub fn resolve_rustup_uninstall_strategy(
         StrategyKind::InteractivePrompt
         | StrategyKind::Unknown
         | StrategyKind::ManualRemediation
+        | StrategyKind::MacportsSelf
         | StrategyKind::AsdfSelf => {
             let fallback = if instance.competing_provenance == Some(InstallProvenance::Homebrew)
                 || rustup_instance_path_looks_homebrew(instance)
@@ -1306,6 +1344,7 @@ pub fn resolve_asdf_uninstall_strategy(
         StrategyKind::InteractivePrompt
         | StrategyKind::Unknown
         | StrategyKind::ManualRemediation
+        | StrategyKind::MacportsSelf
         | StrategyKind::RustupSelf => {
             let fallback = if instance.competing_provenance == Some(InstallProvenance::Homebrew)
                 || asdf_instance_path_looks_homebrew(instance)
@@ -1336,6 +1375,52 @@ pub fn resolve_asdf_uninstall_strategy(
     }
 }
 
+pub fn resolve_macports_uninstall_strategy(
+    active_instance: Option<&ManagerInstallInstance>,
+    allow_unknown_provenance: bool,
+    preview_only: bool,
+) -> Result<UninstallStrategyResolution, UninstallStrategyResolutionError> {
+    let Some(instance) = active_instance else {
+        return Ok(UninstallStrategyResolution {
+            strategy: StrategyKind::MacportsSelf,
+            unknown_override_required: false,
+            used_unknown_override: false,
+        });
+    };
+
+    match instance.uninstall_strategy {
+        StrategyKind::MacportsSelf | StrategyKind::ReadOnly => Ok(UninstallStrategyResolution {
+            strategy: instance.uninstall_strategy,
+            unknown_override_required: false,
+            used_unknown_override: false,
+        }),
+        StrategyKind::InteractivePrompt
+        | StrategyKind::Unknown
+        | StrategyKind::ManualRemediation
+        | StrategyKind::HomebrewFormula
+        | StrategyKind::RustupSelf
+        | StrategyKind::AsdfSelf => {
+            if allow_unknown_provenance {
+                return Ok(UninstallStrategyResolution {
+                    strategy: StrategyKind::MacportsSelf,
+                    unknown_override_required: true,
+                    used_unknown_override: true,
+                });
+            }
+
+            if preview_only {
+                return Ok(UninstallStrategyResolution {
+                    strategy: StrategyKind::MacportsSelf,
+                    unknown_override_required: true,
+                    used_unknown_override: false,
+                });
+            }
+
+            Err(UninstallStrategyResolutionError::AmbiguousProvenance)
+        }
+    }
+}
+
 pub fn resolve_rustup_update_strategy(
     active_instance: Option<&ManagerInstallInstance>,
 ) -> Result<StrategyKind, UpdateStrategyResolutionError> {
@@ -1349,6 +1434,7 @@ pub fn resolve_rustup_update_strategy(
         StrategyKind::InteractivePrompt
         | StrategyKind::Unknown
         | StrategyKind::ManualRemediation
+        | StrategyKind::MacportsSelf
         | StrategyKind::AsdfSelf => Err(UpdateStrategyResolutionError::AmbiguousProvenance),
     }
 }
@@ -1366,6 +1452,7 @@ pub fn resolve_asdf_update_strategy(
         StrategyKind::InteractivePrompt
         | StrategyKind::Unknown
         | StrategyKind::ManualRemediation
+        | StrategyKind::MacportsSelf
         | StrategyKind::RustupSelf => Err(UpdateStrategyResolutionError::AmbiguousProvenance),
     }
 }
@@ -1383,6 +1470,7 @@ pub fn resolve_homebrew_manager_update_strategy(
         StrategyKind::InteractivePrompt
         | StrategyKind::Unknown
         | StrategyKind::ManualRemediation
+        | StrategyKind::MacportsSelf
         | StrategyKind::RustupSelf
         | StrategyKind::AsdfSelf => Err(UpdateStrategyResolutionError::AmbiguousProvenance),
     }
@@ -1410,9 +1498,10 @@ fn asdf_instance_path_looks_homebrew(instance: &ManagerInstallInstance) -> bool 
 mod tests {
     use super::{
         HomebrewUninstallCleanupMode, ManagerInstallOptions, ManagerInstallPlanError,
-        ManagerUninstallOptions, ManagerUninstallRouteError, MiseInstallSource,
-        MiseUninstallCleanupMode, MiseUninstallConfigRemoval, RustupInstallSource,
-        UpdateStrategyResolutionError, encode_homebrew_manager_uninstall_package_name,
+        ManagerUninstallOptions, ManagerUninstallRouteError, ManagerUpdatePlan,
+        ManagerUpdateTarget, MiseInstallSource, MiseUninstallCleanupMode,
+        MiseUninstallConfigRemoval, RustupInstallSource, UpdateStrategyResolutionError,
+        build_update_request, encode_homebrew_manager_uninstall_package_name,
         encode_homebrew_manager_uninstall_package_name_with_options, manager_homebrew_formula_name,
         manager_supported_install_methods, parse_homebrew_manager_uninstall_package_name,
         plan_manager_install, plan_manager_uninstall_route_with_options,
@@ -1747,6 +1836,26 @@ mod tests {
     }
 
     #[test]
+    fn build_update_request_supports_asdf_self_update() {
+        let plan = ManagerUpdatePlan {
+            target_manager: ManagerId::Asdf,
+            target: ManagerUpdateTarget::ManagerSelf,
+        };
+        let request =
+            build_update_request(&plan, None).expect("asdf self update request should build");
+        match request {
+            crate::adapters::AdapterRequest::Upgrade(upgrade) => {
+                let package = upgrade
+                    .package
+                    .expect("asdf self update should target a package");
+                assert_eq!(package.manager, ManagerId::Asdf);
+                assert_eq!(package.name, "__self__");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+    }
+
+    #[test]
     fn mise_uninstall_full_cleanup_requires_explicit_config_choice() {
         let error = plan_manager_uninstall_route_with_options(
             ManagerId::Mise,
@@ -1962,6 +2071,80 @@ mod tests {
             },
         )
         .expect_err("asdf self uninstall should reject homebrew cleanup options");
+        assert_eq!(error, ManagerUninstallRouteError::InvalidOptions);
+    }
+
+    #[test]
+    fn macports_self_uninstall_routes_to_macports_manager() {
+        let mut instance = sample_instance();
+        instance.manager = ManagerId::MacPorts;
+        instance.display_path = PathBuf::from("/opt/local/bin/port");
+        instance.canonical_path = Some(PathBuf::from("/opt/local/bin/port"));
+        instance.provenance = InstallProvenance::Macports;
+        instance.automation_level = AutomationLevel::NeedsConfirmation;
+        instance.uninstall_strategy = StrategyKind::MacportsSelf;
+        instance.update_strategy = StrategyKind::InteractivePrompt;
+        let route = plan_manager_uninstall_route_with_options(
+            ManagerId::MacPorts,
+            Some(&instance),
+            false,
+            false,
+            &ManagerUninstallOptions::default(),
+        )
+        .expect("macports self uninstall should route");
+        assert_eq!(route.target_manager, ManagerId::MacPorts);
+        assert_eq!(route.strategy, StrategyKind::MacportsSelf);
+        match route.request {
+            crate::adapters::AdapterRequest::Uninstall(uninstall) => {
+                assert_eq!(uninstall.package.manager, ManagerId::MacPorts);
+                assert_eq!(uninstall.package.name, "__self__");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn macports_preview_requires_unknown_override_when_provenance_is_ambiguous() {
+        let mut instance = sample_instance();
+        instance.manager = ManagerId::MacPorts;
+        instance.display_path = PathBuf::from("/custom/macports/bin/port");
+        instance.canonical_path = Some(PathBuf::from("/custom/macports/bin/port"));
+        instance.provenance = InstallProvenance::Unknown;
+        instance.automation_level = AutomationLevel::NeedsConfirmation;
+        instance.uninstall_strategy = StrategyKind::InteractivePrompt;
+        let route = plan_manager_uninstall_route_with_options(
+            ManagerId::MacPorts,
+            Some(&instance),
+            false,
+            true,
+            &ManagerUninstallOptions::default(),
+        )
+        .expect("preview should route with confirmation requirement");
+        assert_eq!(route.strategy, StrategyKind::MacportsSelf);
+        assert!(route.unknown_override_required);
+        assert!(!route.used_unknown_override);
+    }
+
+    #[test]
+    fn macports_self_uninstall_rejects_unrelated_cleanup_options() {
+        let mut instance = sample_instance();
+        instance.manager = ManagerId::MacPorts;
+        instance.display_path = PathBuf::from("/opt/local/bin/port");
+        instance.canonical_path = Some(PathBuf::from("/opt/local/bin/port"));
+        instance.provenance = InstallProvenance::Macports;
+        instance.automation_level = AutomationLevel::NeedsConfirmation;
+        instance.uninstall_strategy = StrategyKind::MacportsSelf;
+        let error = plan_manager_uninstall_route_with_options(
+            ManagerId::MacPorts,
+            Some(&instance),
+            false,
+            false,
+            &ManagerUninstallOptions {
+                homebrew_cleanup_mode: Some(HomebrewUninstallCleanupMode::FullCleanup),
+                ..ManagerUninstallOptions::default()
+            },
+        )
+        .expect_err("macports self uninstall should reject unrelated cleanup options");
         assert_eq!(error, ManagerUninstallRouteError::InvalidOptions);
     }
 }
