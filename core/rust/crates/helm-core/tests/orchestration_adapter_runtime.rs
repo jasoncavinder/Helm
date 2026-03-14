@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Condvar, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use helm_core::adapters::{
@@ -15,7 +15,9 @@ use helm_core::models::{
     SearchQuery, TaskId, TaskRecord, TaskStatus, TaskType,
 };
 use helm_core::orchestration::{AdapterRuntime, AdapterTaskTerminalState};
-use helm_core::persistence::{DetectionStore, PackageStore, PersistenceResult, TaskStore};
+use helm_core::persistence::{
+    DetectionStore, PackageStore, PersistenceResult, SearchCacheStore, TaskStore,
+};
 use helm_core::sqlite::SqliteStore;
 
 const TEST_CAPABILITIES: &[Capability] = &[Capability::Refresh, Capability::Search];
@@ -229,6 +231,80 @@ impl TaskStore for RecordingTaskStore {
         })?;
         records.clear();
         Ok(())
+    }
+}
+
+#[derive(Default)]
+struct BlockingSearchState {
+    entered: bool,
+    released: bool,
+}
+
+struct BlockingSearchCacheStore {
+    inner: Arc<SqliteStore>,
+    entered: AtomicBool,
+    state: Mutex<BlockingSearchState>,
+    condvar: Condvar,
+}
+
+impl BlockingSearchCacheStore {
+    fn new(inner: Arc<SqliteStore>) -> Self {
+        Self {
+            inner,
+            entered: AtomicBool::new(false),
+            state: Mutex::new(BlockingSearchState::default()),
+            condvar: Condvar::new(),
+        }
+    }
+
+    fn has_entered(&self) -> bool {
+        self.entered.load(Ordering::SeqCst)
+    }
+
+    fn release(&self) {
+        let mut state = self
+            .state
+            .lock()
+            .expect("blocking search state mutex poisoned");
+        state.released = true;
+        self.condvar.notify_all();
+    }
+}
+
+impl SearchCacheStore for BlockingSearchCacheStore {
+    fn upsert_search_results(
+        &self,
+        results: &[helm_core::models::CachedSearchResult],
+    ) -> PersistenceResult<()> {
+        let mut state = self.state.lock().map_err(|_| CoreError {
+            manager: None,
+            task: None,
+            action: None,
+            kind: CoreErrorKind::Internal,
+            message: "blocking search state mutex poisoned".to_string(),
+        })?;
+        self.entered.store(true, Ordering::SeqCst);
+        state.entered = true;
+        self.condvar.notify_all();
+        while !state.released {
+            state = self.condvar.wait(state).map_err(|_| CoreError {
+                manager: None,
+                task: None,
+                action: None,
+                kind: CoreErrorKind::Internal,
+                message: "blocking search state wait poisoned".to_string(),
+            })?;
+        }
+        drop(state);
+        self.inner.upsert_search_results(results)
+    }
+
+    fn query_local(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> PersistenceResult<Vec<helm_core::models::CachedSearchResult>> {
+        self.inner.query_local(query, limit)
     }
 }
 
@@ -640,6 +716,90 @@ async fn submit_with_task_store_persists_terminal_status_via_atomic_transition()
     let record = persisted.expect("expected completed persisted task record through atomic path");
     assert_eq!(record.id, task_id);
     assert_eq!(record.status, TaskStatus::Completed);
+}
+
+#[tokio::test]
+async fn submit_catalog_sync_marks_task_complete_before_search_cache_persistence_finishes() {
+    let path = test_db_path("orchestration-runtime-catalog-sync-terminal-before-cache");
+    let store = Arc::new(SqliteStore::new(&path));
+    store.migrate_to_latest().unwrap();
+    let search_cache_store = Arc::new(BlockingSearchCacheStore::new(store.clone()));
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(TestAdapter::new(
+        ManagerId::HomebrewCask,
+        AdapterBehavior::Succeeds(AdapterResponse::SearchResults(vec![
+            helm_core::models::CachedSearchResult {
+                result: helm_core::models::PackageCandidate {
+                    package: PackageRef {
+                        manager: ManagerId::HomebrewCask,
+                        name: "visual-studio-code".to_string(),
+                    },
+                    package_identifier: None,
+                    version: None,
+                    summary: Some("Code editor".to_string()),
+                },
+                source_manager: ManagerId::HomebrewCask,
+                originating_query: String::new(),
+                cached_at: SystemTime::now(),
+            },
+        ])),
+    ));
+    let runtime = AdapterRuntime::with_all_stores(
+        [adapter],
+        store.clone(),
+        store.clone(),
+        search_cache_store.clone(),
+        store.clone(),
+    )
+    .unwrap();
+
+    let task_id = runtime
+        .submit(
+            ManagerId::HomebrewCask,
+            AdapterRequest::Search(SearchRequest {
+                query: SearchQuery {
+                    text: String::new(),
+                    issued_at: SystemTime::now(),
+                },
+            }),
+        )
+        .await
+        .unwrap();
+    let snapshot = runtime
+        .wait_for_terminal(task_id, Some(Duration::from_secs(1)))
+        .await
+        .unwrap();
+    assert_eq!(snapshot.runtime.status, TaskStatus::Completed);
+
+    for _ in 0..100 {
+        if search_cache_store.has_entered() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(
+        search_cache_store.has_entered(),
+        "expected search cache persistence to start"
+    );
+
+    let mut persisted_completed = false;
+    for _ in 0..20 {
+        let records = store.list_recent_tasks(10).unwrap();
+        if records
+            .iter()
+            .any(|record| record.id == task_id && record.status == TaskStatus::Completed)
+        {
+            persisted_completed = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    search_cache_store.release();
+
+    assert!(
+        persisted_completed,
+        "catalog sync task should be marked completed before search-cache persistence finishes"
+    );
 }
 
 #[tokio::test]
