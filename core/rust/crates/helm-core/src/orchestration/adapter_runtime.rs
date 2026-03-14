@@ -914,81 +914,6 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
             }
         };
 
-        // Persist task result (domain data)
-        if let Some(package_store) = package_store
-            && let Some(AdapterTaskTerminalState::Succeeded(response)) = &snapshot.terminal_state
-            && let Err(error) =
-                persist_adapter_response(package_store, response, manager, task_type, action).await
-        {
-            tracing::error!(
-                manager = ?manager,
-                task_id = task_id.0,
-                task_type = ?task_type,
-                action = ?action,
-                kind = ?error.kind,
-                message = %error.message,
-                "failed to persist adapter response data"
-            );
-        }
-
-        // Persist search results to cache
-        if let Some(search_cache_store) = search_cache_store
-            && let Some(AdapterTaskTerminalState::Succeeded(response)) = &snapshot.terminal_state
-            && let Err(error) =
-                persist_search_response(search_cache_store, response, manager, task_type, action)
-                    .await
-        {
-            tracing::error!(
-                manager = ?manager,
-                task_id = task_id.0,
-                task_type = ?task_type,
-                action = ?action,
-                kind = ?error.kind,
-                message = %error.message,
-                "failed to persist search cache data"
-            );
-        }
-
-        if let Some(detection_store) = detection_store.as_ref()
-            && let Some(AdapterTaskTerminalState::Succeeded(response)) = &snapshot.terminal_state
-            && let Err(error) = persist_manager_uninstall_state_reset(
-                detection_store.clone(),
-                response,
-                manager,
-                task_type,
-                action,
-            )
-            .await
-        {
-            tracing::error!(
-                manager = ?manager,
-                task_id = task_id.0,
-                task_type = ?task_type,
-                action = ?action,
-                kind = ?error.kind,
-                message = %error.message,
-                "failed to persist manager uninstall state reset"
-            );
-        }
-
-        // Persist detection results
-        if let Some(detection_store) = detection_store
-            && let Some(AdapterTaskTerminalState::Succeeded(response)) = &snapshot.terminal_state
-            && let Err(error) =
-                persist_detection_response(detection_store, response, manager, task_type, action)
-                    .await
-        {
-            tracing::error!(
-                manager = ?manager,
-                task_id = task_id.0,
-                task_type = ?task_type,
-                action = ?action,
-                kind = ?error.kind,
-                message = %error.message,
-                "failed to persist detection data"
-            );
-        }
-
         let updated = TaskRecord {
             id: snapshot.runtime.id,
             manager: snapshot.runtime.manager,
@@ -1030,6 +955,85 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
                 kind = ?error.kind,
                 message = %error.message,
                 "failed to persist terminal task transition"
+            );
+        }
+
+        // Persist task result (domain data) after the task is marked terminal so
+        // long-running snapshot/cache writes do not leave completed work looking stuck.
+        if let Some(package_store) = package_store
+            && let Some(AdapterTaskTerminalState::Succeeded(response)) = &snapshot.terminal_state
+            && let Err(error) =
+                persist_adapter_response(package_store, response, manager, task_type, action).await
+        {
+            tracing::error!(
+                manager = ?manager,
+                task_id = task_id.0,
+                task_type = ?task_type,
+                action = ?action,
+                kind = ?error.kind,
+                message = %error.message,
+                "failed to persist adapter response data"
+            );
+        }
+
+        // Persist search results to cache after the task reaches terminal state. Catalog-sync
+        // payloads can be large enough that keeping the task marked running until cache writes
+        // finish looks like a hung task even though the subprocess has already exited.
+        if let Some(search_cache_store) = search_cache_store
+            && let Some(AdapterTaskTerminalState::Succeeded(response)) = &snapshot.terminal_state
+            && let Err(error) =
+                persist_search_response(search_cache_store, response, manager, task_type, action)
+                    .await
+        {
+            tracing::error!(
+                manager = ?manager,
+                task_id = task_id.0,
+                task_type = ?task_type,
+                action = ?action,
+                kind = ?error.kind,
+                message = %error.message,
+                "failed to persist search cache data"
+            );
+        }
+
+        if let Some(detection_store) = detection_store.as_ref()
+            && let Some(AdapterTaskTerminalState::Succeeded(response)) = &snapshot.terminal_state
+            && let Err(error) = persist_manager_uninstall_state_reset(
+                detection_store.clone(),
+                response,
+                manager,
+                task_type,
+                action,
+            )
+            .await
+        {
+            tracing::error!(
+                manager = ?manager,
+                task_id = task_id.0,
+                task_type = ?task_type,
+                action = ?action,
+                kind = ?error.kind,
+                message = %error.message,
+                "failed to persist manager uninstall state reset"
+            );
+        }
+
+        // Persist detection results after the task is visible as terminal to keep manager tasks
+        // from appearing hung on store updates.
+        if let Some(detection_store) = detection_store
+            && let Some(AdapterTaskTerminalState::Succeeded(response)) = &snapshot.terminal_state
+            && let Err(error) =
+                persist_detection_response(detection_store, response, manager, task_type, action)
+                    .await
+        {
+            tracing::error!(
+                manager = ?manager,
+                task_id = task_id.0,
+                task_type = ?task_type,
+                action = ?action,
+                kind = ?error.kind,
+                message = %error.message,
+                "failed to persist detection data"
             );
         }
 
