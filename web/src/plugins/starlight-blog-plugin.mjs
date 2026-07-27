@@ -10,6 +10,14 @@ function hasBlogSidebarEntry(sidebar, directory, label) {
 	return sidebar.some((entry) => {
 		if (!isObject(entry)) return false;
 		if (isObject(entry.autogenerate) && entry.autogenerate.directory === directory) return true;
+		if (
+			Array.isArray(entry.items) &&
+			entry.items.some(
+				(item) => isObject(item) && isObject(item.autogenerate) && item.autogenerate.directory === directory,
+			)
+		) {
+			return true;
+		}
 		if (typeof entry.label === 'string' && entry.label.toLowerCase() === label.toLowerCase()) return true;
 		return false;
 	});
@@ -44,11 +52,14 @@ export function helmStarlightBlogPlugin(options = {}) {
 				if (!hasBlogSidebarEntry(sidebar, blogDirectory, blogLabel)) {
 					const blogEntry = {
 						label: blogLabel,
-						autogenerate: {
-							directory: blogDirectory,
-							collapsed: false,
-							attrs: {},
-						},
+						items: [
+							{
+								autogenerate: {
+									directory: blogDirectory,
+									collapsed: false,
+								},
+							},
+						],
 					};
 					const changelogIndex = findChangelogIndex(sidebar);
 					if (changelogIndex === -1) {
