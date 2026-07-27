@@ -291,7 +291,7 @@ struct ManagerInfo: Identifiable {
     }
 
     var canUninstall: Bool {
-        installMethod == .automatable || installMethod == .updateAndUninstall
+        installMethod == .automatable || installMethod == .updateAndUninstall || id == "macports"
     }
 
     var canUpdate: Bool {

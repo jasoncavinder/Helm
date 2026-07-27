@@ -89,6 +89,15 @@ pub trait TaskStore: Send + Sync {
 
     fn update_task(&self, task: &TaskRecord) -> PersistenceResult<()>;
 
+    fn update_task_with_log(
+        &self,
+        task: &TaskRecord,
+        entry: &crate::models::NewTaskLogRecord,
+    ) -> PersistenceResult<()> {
+        self.update_task(task)?;
+        self.append_task_log(entry)
+    }
+
     fn list_recent_tasks(&self, limit: usize) -> PersistenceResult<Vec<TaskRecord>>;
 
     fn next_task_id(&self) -> PersistenceResult<u64>;

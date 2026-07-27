@@ -9,6 +9,8 @@ private let logger = Logger(subsystem: "app.jasoncavinder.Helm.HelmService", cat
 private let expectedTeamID = "V73WPJR9M4"
 
 class HelmServiceDelegate: NSObject, NSXPCListenerDelegate {
+    private let sharedService = HelmService()
+
     func listener(_ listener: NSXPCListener, shouldAcceptNewConnection newConnection: NSXPCConnection) -> Bool {
         guard validateConnection(newConnection) else {
             logger.warning("Rejected XPC connection from PID \(newConnection.processIdentifier)")
@@ -16,7 +18,7 @@ class HelmServiceDelegate: NSObject, NSXPCListenerDelegate {
         }
 
         newConnection.exportedInterface = NSXPCInterface(with: HelmServiceProtocol.self)
-        newConnection.exportedObject = HelmService()
+        newConnection.exportedObject = sharedService
         newConnection.resume()
         return true
     }

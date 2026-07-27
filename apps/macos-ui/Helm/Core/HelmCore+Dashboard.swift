@@ -1065,7 +1065,14 @@ extension HelmCore {
         pruneOnboardingDetectionForDisabledManagers()
 
         if onboardingDetectionPendingManagers.isEmpty {
-            completeOnboardingDetectionProgress()
+            if !onboardingDetectionStatusSyncRequested {
+                onboardingDetectionStatusSyncRequested = true
+                fetchManagerStatus()
+            } else if let startedAt = onboardingDetectionStartedAt,
+                      Date().timeIntervalSince(startedAt) > 90 {
+                taskSyncLogger.warning("Onboarding detection timed out waiting for final manager status sync")
+                completeOnboardingDetectionProgress()
+            }
             return
         }
 

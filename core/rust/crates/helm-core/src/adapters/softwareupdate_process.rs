@@ -21,9 +21,13 @@ impl ProcessSoftwareUpdateSource {
 
 impl SoftwareUpdateSource for ProcessSoftwareUpdateSource {
     fn detect(&self) -> AdapterResult<SoftwareUpdateDetectOutput> {
-        // Phase 1: instant filesystem check — sw_vers is a system binary at a fixed path
+        // Prefer the actual update-management binary instead of the sw_vers helper used only
+        // for version reporting. Falling back to sw_vers keeps detection resilient on broken hosts.
+        let softwareupdate_path = Path::new("/usr/sbin/softwareupdate");
         let sw_vers_path = Path::new("/usr/bin/sw_vers");
-        let executable_path = if sw_vers_path.exists() {
+        let executable_path = if softwareupdate_path.exists() {
+            Some(softwareupdate_path.to_path_buf())
+        } else if sw_vers_path.exists() {
             Some(sw_vers_path.to_path_buf())
         } else {
             None
