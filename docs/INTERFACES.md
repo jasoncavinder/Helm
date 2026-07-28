@@ -196,20 +196,18 @@ All process execution uses:
 Guarded actions (notably macOS OS updates) require explicit confirmation.
 
 Contract shape:
-- UI requests a guarded operation
-- Service/Core returns a “confirmation required” response including:
-  - reason code
-  - human-readable message key (localized in UI)
-  - confirmation token (short-lived)
-- UI must resubmit action with the confirmation token to proceed
+- UI presents the upgrade plan and collects explicit user approval for OS updates.
+- UI submits the upgrade request with `allow_os_updates=true` only after approval.
+- Service/Core excludes OS updates when that flag is false and rejects them when Safe Mode is enabled.
+- The request/response boundary returns structured errors and localization keys for blocked actions.
 
 **Invariant:** Silent OS updates are prohibited.
 
 ### 6.3 Safe Mode (Policy)
 
 Safe mode is an app policy flag that:
-- blocks guarded upgrade execution
-- requires explicit disabling before guarded operations can proceed
+- blocks `softwareupdate` upgrade execution
+- requires explicit disabling before macOS OS updates can proceed
 
 ---
 
@@ -270,69 +268,40 @@ When a contract changes:
 
 ## 10. Concrete Interface Inventories
 
-### 10.1 XPC Protocol Methods (32 methods)
+### 10.1 XPC Protocol Methods (65 methods)
 
 Source: `apps/macos-ui/Helm/Shared/HelmServiceProtocol.swift`
 
-All methods use asynchronous `withReply` closures. Connection security is enforced via code-signing team ID validation at `NSXPCListener` acceptance.
+All methods use asynchronous `withReply` closures. The protocol covers package and pin operations, Rustup toolchain controls, task lifecycle/output/timeout handling, discovery and search, manager lifecycle/provenance/repair controls, onboarding and settings, upgrade planning, and local-data reset. Connection security is enforced via code-signing team ID validation at `NSXPCListener` acceptance.
 
-| Method | Category | Reply Type |
-|--------|----------|------------|
-| `listInstalledPackages` | Package queries | `String?` (JSON) |
-| `listOutdatedPackages` | Package queries | `String?` (JSON) |
-| `listTasks` | Task management | `String?` (JSON) |
-| `triggerRefresh` | Task management | `Bool` |
-| `triggerDetection` | Task management | `Bool` |
-| `cancelTask(taskId:)` | Task management | `Bool` |
-| `searchLocal(query:)` | Search | `String?` (JSON) |
-| `triggerRemoteSearch(query:)` | Search | `Int64` (task ID) |
-| `listPins` | Pinning | `String?` (JSON) |
-| `pinPackage(managerId:packageName:version:)` | Pinning | `Bool` |
-| `unpinPackage(managerId:packageName:)` | Pinning | `Bool` |
-| `listManagerStatus` | Manager control | `String?` (JSON) |
-| `setManagerEnabled(managerId:enabled:)` | Manager control | `Bool` |
-| `setManagerSelectedExecutablePath(managerId:selectedPath:)` | Manager control | `Bool` |
-| `setManagerInstallMethod(managerId:installMethod:)` | Manager control | `Bool` |
-| `installManager(managerId:)` | Manager control | `Int64` (task ID) |
-| `updateManager(managerId:)` | Manager control | `Int64` (task ID) |
-| `uninstallManager(managerId:)` | Manager control | `Int64` (task ID) |
-| `previewManagerUninstall(managerId:allowUnknownProvenance:)` | Manager control | `String?` (JSON) |
-| `uninstallManagerWithOptions(managerId:allowUnknownProvenance:)` | Manager control | `Int64` (task ID) |
-| `getSafeMode` | Settings | `Bool` |
-| `setSafeMode(enabled:)` | Settings | `Bool` |
-| `getHomebrewKegAutoCleanup` | Settings | `Bool` |
-| `setHomebrewKegAutoCleanup(enabled:)` | Settings | `Bool` |
-| `listPackageKegPolicies` | Keg policies | `String?` (JSON) |
-| `setPackageKegPolicy(managerId:packageName:policyMode:)` | Keg policies | `Bool` |
-| `previewUpgradePlan(includePinned:allowOsUpdates:)` | Upgrade | `String?` (JSON) |
-| `upgradeAll(includePinned:allowOsUpdates:)` | Upgrade | `Bool` |
-| `upgradePackage(managerId:packageName:)` | Upgrade | `Int64` (task ID) |
-| `previewPackageUninstall(managerId:packageName:)` | Package mutation | `String?` (JSON) |
-| `resetDatabase` | Database | `Bool` |
-| `takeLastErrorKey` | Error | `String?` |
+The Swift protocol declaration is the canonical method-by-method inventory; it is intentionally not duplicated here to prevent contract drift.
 
 Client-side timeout enforcement: 30s for data fetch calls, 300s for mutation calls. Exponential backoff reconnection on invalidation/interruption (2s base, doubling to 60s cap).
 
-### 10.2 FFI Exports (34 functions)
+### 10.2 FFI Exports (27 functions)
 
 Source: `core/rust/crates/helm-ffi/src/lib.rs`
 
-See the module-level documentation in `lib.rs` for the full export table with categories. All data exchange uses JSON-encoded UTF-8 `*mut c_char` strings, freed via `helm_free_string`. The FFI layer has no explicit shutdown; runtime state spans the XPC service process lifetime.
+See the module-level documentation in `lib.rs` for the full export table with categories. String payloads use JSON-encoded UTF-8 `*mut c_char` values, freed via `helm_free_string`; control operations use their declared scalar return types. The FFI layer has no explicit shutdown; runtime state spans the XPC service process lifetime.
 
-### 10.3 SQLite Schema Summary (10 tables, 10 migrations)
+### 10.3 SQLite Schema Summary (14 application tables, 16 migrations)
 
 Source: `core/rust/crates/helm-core/src/sqlite/migrations.rs`
 
 | Table | Migration | Primary Key | Purpose |
 |-------|-----------|-------------|---------|
-| `installed_packages` | v1 | `(manager_id, package_name)` | Cached installed package state |
-| `outdated_packages` | v1 (+v3 adds `restart_required`) | `(manager_id, package_name)` | Cached outdated package state |
-| `pin_records` | v1 | `(manager_id, package_name)` | Native and virtual pin records |
+| `installed_packages` | v1 | `(manager_id, package_name)` | Legacy cached installed package state |
+| `outdated_packages` | v1 (+v3, v14, v16) | `(manager_id, package_name)` | Cached outdated package state |
+| `installed_package_versions` | v13 (+v16 identifiers) | `(manager_id, package_name, installed_version)` | Version-scoped installed package state |
+| `pin_records` | v1 (+v15 version scope) | version-scoped manager/package identity | Native and virtual pin records |
 | `search_cache` | v1 | none (indexed on `originating_query` + `cached_at_unix`) | Remote search result cache |
 | `task_records` | v1 | `task_id INTEGER` | Task execution history |
+| `task_log_records` | v6 | `log_id INTEGER` | Persisted structured task logs |
 | `manager_detection` | v2 | `manager_id` | Manager install detection state |
-| `manager_preferences` | v2 (+v7 adds `selected_executable_path` and `selected_install_method`) | `manager_id` | Per-manager enablement and manager-selection preferences |
+| `manager_preferences` | v2 (+v7/v8) | `manager_id` | Per-manager enablement, selection, and timeout preferences |
 | `manager_install_instances` | v9 (+v10 adds `decision_margin`) | `(manager_id, instance_id)` | Per-manager install-instance identity, provenance confidence/margin, explainability, and strategy metadata |
+| `manager_multi_instance_ack` | v11 | `manager_id` | Acknowledgement state for multi-instance attention |
+| `package_manager_preferences` | v12 | `package_name` | Preferred manager for a package family |
 | `app_settings` | v4 | `key` | App-level key-value settings |
 | `package_keg_policies` | v5 | `(manager_id, package_name)` | Homebrew keg cleanup policy overrides |
 
@@ -340,8 +309,8 @@ Migrations are applied idempotently via `execute_batch_tolerant()` (see `sqlite/
 
 ### 10.4 Task Log Payload
 
-Task terminal output is not currently persisted as a structured payload. Task outcomes are stored via `task_records` (status transitions only). Adapter responses are persisted to domain tables (installed/outdated/search/detection) but raw terminal/process output is not retained. This is a known gap tracked for the Diagnostics milestone (0.17.x).
+Structured task logs persist in `task_log_records`; task lifecycle state persists in `task_records`. Raw command, stdout, and stderr buffers are retained in bounded runtime memory for live diagnostics rather than persisted indefinitely. Adapter responses persist to their domain tables (installed, outdated, search, and detection).
 
-### 10.5 Confirmation Token Model
+### 10.5 Guarded-Action Confirmation Model
 
-Confirmation tokens are **not used** in the current implementation. Security is enforced at the XPC connection acceptance level via code-signing team ID verification (`SecCode` + `SecRequirement`). Safe mode policy enforcement blocks guarded operations (softwareupdate upgrades) at the Rust core level before task submission. The `upgrade_all` FFI function accepts boolean parameters (`include_pinned`, `allow_os_updates`) rather than a cryptographic token. The guardrail contract described in Section 6.2 is satisfied by this policy model rather than a token-based exchange.
+Confirmation tokens are **not used**. Security is enforced at XPC connection acceptance through code-signing team ID verification (`SecCode` + `SecRequirement`). The upgrade boundary accepts boolean `include_pinned` and `allow_os_updates` parameters; `allow_os_updates` records explicit approval, while Safe Mode blocks `softwareupdate` upgrades in core before task submission.

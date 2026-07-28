@@ -416,15 +416,15 @@ Acceptance:
 
 ## 12. Delivery Tracking and Documentation Updates
 
-When each phase lands, update:
+This plan is a historical delivery record. The TUI implementation is delivered; when its contract changes, update:
 
 - `docs/CURRENT_STATE.md` (implementation reality)
 - `docs/NEXT_STEPS.md` (priority and completion status)
-- `docs/architecture/HELM_CLI_SPEC.ms` (contract updates if behavior changes)
+- `docs/architecture/CLI_COORDINATOR_TRANSPORT_INVARIANTS.md` (transport-contract updates if behavior changes)
 
 ---
 
-## 13. Immediate Next Slice (Execution Order)
+## 13. Completed Delivery Sequence (Historical)
 
 1. Add dependencies (`ratatui`, `crossterm`) and create TUI module scaffold.
 2. Implement no-arg TTY routing to `tui::run()`.

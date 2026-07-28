@@ -319,8 +319,8 @@ Current checkpoint:
     - `Docs Checks` and `Web Build` workflows now gate `docs` and `web` branches respectively
     - blocking ruleset `update` enforcement was removed after protected-ref merge-block diagnostics so normal PR merges can complete
     - CodeQL now runs on `main` push + schedule/manual (non-PR gate) to reduce merge friction while retaining scanning coverage
-  - CLI kickoff delivered on `dev`:
-    - draft CLI spec published at `docs/architecture/HELM_CLI_SPEC.ms` with command surface, output contract, and shared-coordinator target architecture
+  - CLI delivery completed on `dev`:
+    - command surface, output contract, and shared-coordinator behavior are implemented in `core/rust/crates/helm-cli` and documented by `docs/architecture/CLI_COORDINATOR_TRANSPORT_INVARIANTS.md`
     - new Rust CLI crate scaffolded at `core/rust/crates/helm-cli` (binary: `helm`) with read-only commands (`status`, `ls`/`packages`, `updates`, `tasks`, `managers`, `settings`) and `--json` output
     - runtime-backed command slice added for `refresh` and `managers detect` using Helm core orchestration with process-adapter bootstrap + manager executable override sync
     - `--wait` / `--detach` global flags are now parsed; shared CLI coordinator routing now supports true detach for coordinator-backed single-task mutations (`packages install|uninstall|upgrade`, `managers detect <id>`, `managers install|update|uninstall`)
@@ -374,7 +374,7 @@ Next release targets:
 - `v0.18.x` — Local security groundwork (internal-only)
 - `v0.19.x` — Stability & Pre-1.0 hardening
 
-## v0.17.x Delivery Tracker (Stable `0.17.3` Complete)
+## Historical v0.17.x Delivery Tracker (0.17.3 Checkpoint)
 
 - [x] `feat/v0.17-log-foundation` — task log event model, SQLite persistence migration, FFI/XPC retrieval surface.
 - [x] `feat/v0.17-task-log-viewer` — per-task log viewer UI with filters and pagination.
@@ -1206,41 +1206,42 @@ Completed in `v0.13.0-beta.6`:
 
 ---
 
-## Post-0.14.x Priorities
+## Historical Post-0.14.x Priorities
 
-### Priority 6 — Self Update
+This archived planning snapshot records delivery sequencing through the 0.17.x line. Current priorities are defined at the top of this document.
 
-Implement:
+### Priority 6 — Self Update (Delivered)
+
+Delivered:
 
 - Signed updates
 - Integrity verification
 - Update recovery
 
-### Priority 7 — Diagnostics
+### Priority 7 — Diagnostics (Delivered)
 
-Implement:
+Delivered:
 
 - Task log viewer
 - Error export
 - Manager diagnostics panel
 
-### Priority 8 — Hardening (Remaining)
+### Priority 8 — Hardening (Continues in Current Priorities)
 
-Implement:
+Tracked:
 
 - Stress test orchestration
 - Cancellation reliability under load
 - Memory audit
 - FFI stability under extended runtime
 
-### Priority 9 — CLI Companion (New Goal)
+### Priority 9 — CLI Companion (Delivered)
 
-Implement:
+Delivered:
 
-- Approve and iterate CLI specification in `docs/architecture/HELM_CLI_SPEC.ms`
-- Keep GUI + CLI on one shared coordinator/runtime path (single task authority)
-- Scaffold `helm` binary with read-only command surface and stable `--json` output contracts
-- Add mutating command/task lifecycle coverage to match GUI capabilities incrementally
+- Shared GUI and CLI coordinator/runtime path (single task authority)
+- `helm` binary with read-only and mutating command surfaces plus stable `--json` output contracts
+- Task lifecycle coverage aligned with GUI capabilities for the current scope
 
 ---
 

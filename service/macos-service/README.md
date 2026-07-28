@@ -8,7 +8,7 @@ apps/macos-ui/HelmService/
 
 The XPC service hosts the Rust FFI layer (`helm-ffi`) in a separate unsandboxed process, providing:
 
-- 25 XPC protocol methods (package queries, task management, manager operations, settings, pin management)
+- XPC protocol methods for package queries and mutations, task management, manager operations, settings, pin management, diagnostics, and onboarding
 - Code-signing validation on all connections (team ID verification via SecCode)
 - Graceful reconnection with exponential backoff (2s base, doubling to 60s cap)
 - Timeout enforcement on all calls (30s data fetches, 300s mutations)

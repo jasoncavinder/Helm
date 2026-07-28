@@ -312,7 +312,7 @@ Helm must support self-updating via a signed update mechanism.
 Requirements:
 - Code-signed updates
 - Version integrity verification
-- Delta updates preferred
+- Full signed DMG updates are the current direct-channel policy; delta payloads are deferred
 - No shell-based update mechanisms
 - Manual approval required (auto-update optional)
 
