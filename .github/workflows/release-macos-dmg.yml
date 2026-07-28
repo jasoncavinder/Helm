@@ -30,7 +30,7 @@ concurrency:
 
 jobs:
   build-and-upload-dmg:
-    runs-on: macos-14
+    runs-on: macos-26
     permissions:
       contents: write
       pull-requests: write
