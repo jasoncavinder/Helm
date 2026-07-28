@@ -5,9 +5,15 @@ permissions:
 
 on:
   pull_request:
-    branches: [web]
+    branches: [web, dev, main]
+    paths:
+      - "web/**"
+      - ".github/workflows/web-build.yml"
   push:
-    branches: [web]
+    branches: [web, dev, main]
+    paths:
+      - "web/**"
+      - ".github/workflows/web-build.yml"
 
 jobs:
   web-build:
