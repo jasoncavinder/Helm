@@ -34,6 +34,7 @@ const MACPORTS_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
 
 const PORT_COMMAND: &str = "port";
 pub const MACPORTS_SELF_PACKAGE_NAME: &str = "__self__";
+const TRUSTED_MACPORTS_PREFIXES: &[&str] = &["/opt/local"];
 const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
 const LIST_TIMEOUT: Duration = Duration::from_secs(180);
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(60);
@@ -544,6 +545,22 @@ pub fn macports_prefix_from_port_path(path: &Path) -> Option<PathBuf> {
     }
 
     Some(prefix.to_path_buf())
+}
+
+/// Returns the prefix only when `path` is already canonical and matches a
+/// MacPorts installation location that Helm can safely remove.
+pub fn trusted_macports_prefix_from_canonical_port_path(path: &Path) -> Option<PathBuf> {
+    let prefix = macports_prefix_from_port_path(path)?;
+    TRUSTED_MACPORTS_PREFIXES
+        .iter()
+        .any(|trusted_prefix| prefix == Path::new(trusted_prefix))
+        .then_some(prefix)
+}
+
+pub fn macports_self_uninstall_port_paths() -> impl Iterator<Item = PathBuf> {
+    TRUSTED_MACPORTS_PREFIXES
+        .iter()
+        .map(|prefix| Path::new(prefix).join("bin/port"))
 }
 
 pub fn collect_macports_self_cleanup_targets(prefix: &Path) -> MacPortsSelfCleanupTargets {
@@ -1233,9 +1250,11 @@ mod tests {
     use crate::adapters::macports::{
         MACPORTS_SELF_PACKAGE_NAME, MacPortsAdapter, MacPortsDetectOutput, MacPortsSource,
         macports_detect_request, macports_install_request, macports_list_installed_request,
-        macports_list_outdated_request, macports_search_request, macports_uninstall_request,
-        macports_upgrade_request, parse_macports_installed, parse_macports_outdated,
-        parse_macports_requested_target, parse_macports_search, parse_macports_version,
+        macports_list_outdated_request, macports_search_request,
+        macports_self_uninstall_port_paths, macports_uninstall_request, macports_upgrade_request,
+        parse_macports_installed, parse_macports_outdated, parse_macports_requested_target,
+        parse_macports_search, parse_macports_version,
+        trusted_macports_prefix_from_canonical_port_path,
     };
     use crate::adapters::manager::{
         AdapterRequest, AdapterResponse, AdapterResult, DetectRequest, InstallRequest,
@@ -1385,6 +1404,38 @@ mod tests {
 
         let upgrade_all = macports_upgrade_request(None, None, None, &[]);
         assert_eq!(upgrade_all.command.args, vec!["upgrade", "outdated"]);
+    }
+
+    #[test]
+    fn trusted_macports_prefix_requires_the_supported_canonical_port_path() {
+        assert_eq!(
+            macports_self_uninstall_port_paths().collect::<Vec<_>>(),
+            vec![PathBuf::from("/opt/local/bin/port")]
+        );
+        assert_eq!(
+            trusted_macports_prefix_from_canonical_port_path(
+                PathBuf::from("/opt/local/bin/port").as_path()
+            ),
+            Some(PathBuf::from("/opt/local"))
+        );
+        assert_eq!(
+            trusted_macports_prefix_from_canonical_port_path(
+                PathBuf::from("/Users/example/macports/bin/port").as_path()
+            ),
+            None
+        );
+        assert_eq!(
+            trusted_macports_prefix_from_canonical_port_path(
+                PathBuf::from("/usr/local/bin/port").as_path()
+            ),
+            None
+        );
+        assert_eq!(
+            trusted_macports_prefix_from_canonical_port_path(
+                PathBuf::from("/opt/local/bin/not-port").as_path()
+            ),
+            None
+        );
     }
 
     #[test]

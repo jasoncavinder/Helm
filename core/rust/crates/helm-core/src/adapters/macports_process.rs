@@ -1,11 +1,16 @@
+use std::fs;
 use std::sync::Arc;
+
+#[cfg(unix)]
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
 use crate::adapters::detect_utils::which_executable;
 use crate::adapters::macports::{
     MacPortsDetectOutput, MacPortsSource, collect_macports_self_cleanup_targets,
     macports_detect_request, macports_install_request, macports_list_installed_request,
-    macports_list_outdated_request, macports_prefix_from_port_path, macports_search_request,
+    macports_list_outdated_request, macports_search_request, macports_self_uninstall_port_paths,
     macports_uninstall_request, macports_upgrade_request,
+    trusted_macports_prefix_from_canonical_port_path,
 };
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::process_utils::{run_and_collect_stdout, run_and_collect_version_output};
@@ -107,18 +112,20 @@ impl ProcessMacPortsSource {
     }
 
     fn macports_self_uninstall_request(&self) -> AdapterResult<ProcessSpawnRequest> {
-        let executable = which_executable(
-            self.executor.as_ref(),
-            "port",
-            &["/opt/local/bin"],
-            ManagerId::MacPorts,
-        )
-        .ok_or(CoreError {
+        // Destructive cleanup must not inherit a user-controlled PATH entry.
+        let executable = macports_self_uninstall_port_paths()
+            .filter_map(|path| path.canonicalize().ok())
+            .find(|path| {
+                trusted_macports_prefix_from_canonical_port_path(path)
+                    .is_some_and(|prefix| macports_self_uninstall_target_is_system_owned(path, &prefix))
+            })
+            .ok_or(CoreError {
             manager: Some(ManagerId::MacPorts),
             task: Some(crate::models::TaskType::Uninstall),
             action: Some(crate::models::ManagerAction::Uninstall),
             kind: CoreErrorKind::ProcessFailure,
-            message: "unable to resolve MacPorts executable for manager uninstall".to_string(),
+            message: "refusing MacPorts manager uninstall because no canonical trusted MacPorts executable was found"
+                .to_string(),
         })?;
 
         Ok(ProcessSpawnRequest::new(
@@ -151,6 +158,65 @@ impl ProcessMacPortsSource {
         .timeout(std::time::Duration::from_secs(60));
         let _ = self.run_and_collect_stdout_accepting(request, &[])?;
         Ok(())
+    }
+}
+
+fn macports_self_uninstall_target_is_system_owned(
+    executable: &std::path::Path,
+    prefix: &std::path::Path,
+) -> bool {
+    #[cfg(unix)]
+    {
+        [prefix, &prefix.join("bin"), executable]
+            .into_iter()
+            .all(|path| {
+                fs::metadata(path).is_ok_and(|metadata| {
+                    metadata.uid() == 0 && metadata.permissions().mode() & 0o022 == 0
+                })
+            })
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = (executable, prefix);
+        false
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+
+    use super::macports_self_uninstall_target_is_system_owned;
+
+    #[test]
+    fn self_uninstall_target_rejects_user_writable_prefix() {
+        let prefix = std::env::temp_dir().join(format!(
+            "helm-macports-uninstall-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after the Unix epoch")
+                .as_nanos()
+        ));
+        let executable = prefix.join("bin/port");
+        fs::create_dir_all(
+            executable
+                .parent()
+                .expect("executable should have a parent"),
+        )
+        .expect("test prefix should be created");
+        fs::write(&executable, "test").expect("test executable should be created");
+        fs::set_permissions(&prefix, fs::Permissions::from_mode(0o777))
+            .expect("test prefix permissions should be set");
+
+        assert!(!macports_self_uninstall_target_is_system_owned(
+            executable.as_path(),
+            prefix.as_path()
+        ));
+
+        fs::remove_dir_all(prefix).expect("test prefix should be removed");
     }
 }
 
@@ -192,18 +258,30 @@ impl MacPortsSource for ProcessMacPortsSource {
     }
 
     fn self_uninstall(&self) -> AdapterResult<String> {
-        let self_request = self.configure_request(self.macports_self_uninstall_request()?);
+        let self_request = self.macports_self_uninstall_request()?;
         let port_executable = self_request.command.program.clone();
-        let prefix = macports_prefix_from_port_path(port_executable.as_path()).ok_or(CoreError {
+        let prefix = trusted_macports_prefix_from_canonical_port_path(port_executable.as_path()).ok_or(CoreError {
             manager: Some(ManagerId::MacPorts),
             task: Some(crate::models::TaskType::Uninstall),
             action: Some(crate::models::ManagerAction::Uninstall),
             kind: CoreErrorKind::InvalidInput,
             message: format!(
-                "refusing MacPorts manager uninstall because '{}' is not a recognized '<prefix>/bin/port' executable path",
+                "refusing MacPorts manager uninstall because '{}' is not a canonical trusted MacPorts executable path",
                 port_executable.display()
             ),
         })?;
+        if !macports_self_uninstall_target_is_system_owned(port_executable.as_path(), &prefix) {
+            return Err(CoreError {
+                manager: Some(ManagerId::MacPorts),
+                task: Some(crate::models::TaskType::Uninstall),
+                action: Some(crate::models::ManagerAction::Uninstall),
+                kind: CoreErrorKind::InvalidInput,
+                message: format!(
+                    "refusing MacPorts manager uninstall because '{}' or its prefix is user-writable or not system-owned",
+                    port_executable.display()
+                ),
+            });
+        }
 
         let mut notes = Vec::new();
         crate::execution::record_task_log_note(
