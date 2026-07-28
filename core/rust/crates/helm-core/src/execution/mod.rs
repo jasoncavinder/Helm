@@ -247,6 +247,16 @@ pub struct ManagerTimeoutProfile {
 static MANAGER_EXECUTABLE_OVERRIDES: OnceLock<RwLock<ManagerExecutionPreferences>> =
     OnceLock::new();
 static TASK_PROCESS_REGISTRY: OnceLock<Mutex<TaskProcessRegistry>> = OnceLock::new();
+static MANAGER_EXECUTION_PREFERENCES_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+/// Serializes tests that change the process-global execution preferences.
+#[doc(hidden)]
+pub fn manager_execution_preferences_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    MANAGER_EXECUTION_PREFERENCES_TEST_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .expect("manager execution preferences test lock poisoned")
+}
 
 #[derive(Default)]
 struct TaskProcessRegistry {
@@ -694,7 +704,7 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::{Arc, Mutex, OnceLock};
+    use std::sync::{Arc, Mutex};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     #[derive(Default)]
@@ -785,16 +795,9 @@ mod tests {
         fs::write(path, b"#!/bin/sh\nexit 0\n").expect("failed to write placeholder executable");
     }
 
-    fn execution_test_lock() -> &'static Mutex<()> {
-        static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        TEST_LOCK.get_or_init(|| Mutex::new(()))
-    }
-
     #[test]
     fn spawn_validated_uses_selected_executable_for_matching_alias() {
-        let _lock = execution_test_lock()
-            .lock()
-            .expect("execution test lock poisoned");
+        let _lock = manager_execution_preferences_test_guard();
         clear_manager_selected_executables();
         clear_manager_timeout_profiles();
         let temp_dir = test_temp_dir("selected-brew");
@@ -821,9 +824,7 @@ mod tests {
 
     #[test]
     fn spawn_validated_resolves_sibling_alias_when_selected_binary_name_differs() {
-        let _lock = execution_test_lock()
-            .lock()
-            .expect("execution test lock poisoned");
+        let _lock = manager_execution_preferences_test_guard();
         clear_manager_selected_executables();
         clear_manager_timeout_profiles();
         let temp_dir = test_temp_dir("pip-sibling");
@@ -852,9 +853,7 @@ mod tests {
 
     #[test]
     fn spawn_validated_prepends_selected_parent_to_path_for_node_manager_overrides() {
-        let _lock = execution_test_lock()
-            .lock()
-            .expect("execution test lock poisoned");
+        let _lock = manager_execution_preferences_test_guard();
         clear_manager_selected_executables();
         clear_manager_timeout_profiles();
         let temp_dir = test_temp_dir("npm-path-prefix");
@@ -900,9 +899,7 @@ mod tests {
 
     #[test]
     fn spawn_validated_resolves_bare_program_from_request_path_env() {
-        let _lock = execution_test_lock()
-            .lock()
-            .expect("execution test lock poisoned");
+        let _lock = manager_execution_preferences_test_guard();
         clear_manager_selected_executables();
         clear_manager_timeout_profiles();
         let temp_dir = test_temp_dir("bare-program-path-env");
@@ -927,9 +924,7 @@ mod tests {
 
     #[test]
     fn spawn_validated_does_not_duplicate_selected_parent_in_path() {
-        let _lock = execution_test_lock()
-            .lock()
-            .expect("execution test lock poisoned");
+        let _lock = manager_execution_preferences_test_guard();
         clear_manager_selected_executables();
         clear_manager_timeout_profiles();
         let temp_dir = test_temp_dir("npm-path-no-dup");
@@ -973,9 +968,7 @@ mod tests {
 
     #[test]
     fn spawn_validated_selects_node_script_override_and_prepends_runtime_bin() {
-        let _lock = execution_test_lock()
-            .lock()
-            .expect("execution test lock poisoned");
+        let _lock = manager_execution_preferences_test_guard();
         clear_manager_selected_executables();
         clear_manager_timeout_profiles();
         let temp_dir = test_temp_dir("npm-script-override");
@@ -1033,9 +1026,7 @@ mod tests {
 
     #[test]
     fn spawn_validated_prepends_node_runtime_when_program_is_selected_script() {
-        let _lock = execution_test_lock()
-            .lock()
-            .expect("execution test lock poisoned");
+        let _lock = manager_execution_preferences_test_guard();
         clear_manager_selected_executables();
         clear_manager_timeout_profiles();
         let temp_dir = test_temp_dir("npm-script-direct");
@@ -1089,9 +1080,7 @@ mod tests {
 
     #[test]
     fn spawn_validated_applies_default_idle_timeout_for_refresh_tasks() {
-        let _lock = execution_test_lock()
-            .lock()
-            .expect("execution test lock poisoned");
+        let _lock = manager_execution_preferences_test_guard();
         clear_manager_selected_executables();
         clear_manager_timeout_profiles();
 
@@ -1115,9 +1104,7 @@ mod tests {
 
     #[test]
     fn spawn_validated_applies_manager_timeout_profile_overrides() {
-        let _lock = execution_test_lock()
-            .lock()
-            .expect("execution test lock poisoned");
+        let _lock = manager_execution_preferences_test_guard();
         clear_manager_selected_executables();
         clear_manager_timeout_profiles();
         set_manager_timeout_profile(
@@ -1148,9 +1135,7 @@ mod tests {
 
     #[test]
     fn spawn_validated_clamps_idle_timeout_to_hard_timeout_limit() {
-        let _lock = execution_test_lock()
-            .lock()
-            .expect("execution test lock poisoned");
+        let _lock = manager_execution_preferences_test_guard();
         clear_manager_selected_executables();
         clear_manager_timeout_profiles();
         set_manager_timeout_profile(
@@ -1180,9 +1165,7 @@ mod tests {
 
     #[test]
     fn replace_manager_execution_preferences_avoids_empty_read_window() {
-        let _lock = execution_test_lock()
-            .lock()
-            .expect("execution test lock poisoned");
+        let _lock = manager_execution_preferences_test_guard();
         clear_manager_selected_executables();
         clear_manager_timeout_profiles();
 
