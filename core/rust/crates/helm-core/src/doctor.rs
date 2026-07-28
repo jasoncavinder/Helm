@@ -2,7 +2,9 @@ use crate::manager_lifecycle;
 use crate::models::{
     InstallProvenance, InstalledPackage, ManagerId, ManagerInstallInstance, TaskLogRecord,
 };
-use crate::post_install_setup::evaluate_manager_post_install_setup;
+use crate::post_install_setup::{
+    ManagerPostInstallSetupReport, evaluate_manager_post_install_setup,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -176,6 +178,54 @@ pub fn fingerprint_for_selected_executable_path_stale(
     )
 }
 
+fn post_install_setup_required_finding(
+    report: &ManagerPostInstallSetupReport,
+) -> Option<DoctorFinding> {
+    if !report.has_unmet_required() {
+        return None;
+    }
+
+    let unmet = report
+        .requirements
+        .iter()
+        .filter(|requirement| !requirement.met)
+        .collect::<Vec<_>>();
+    let unmet_requirement_ids = unmet
+        .iter()
+        .map(|requirement| requirement.requirement_id)
+        .collect::<Vec<_>>();
+    let unmet_details = unmet
+        .iter()
+        .map(|requirement| requirement.detail)
+        .collect::<Vec<_>>();
+    let evidence_secondary = report
+        .rc_files
+        .first()
+        .map(|path| format!("shell startup file to update: '{}'", path.display()));
+
+    Some(DoctorFinding {
+        finding_code: FINDING_CODE_POST_INSTALL_SETUP_REQUIRED.to_string(),
+        issue_code: ISSUE_CODE_POST_INSTALL_SETUP_REQUIRED.to_string(),
+        fingerprint: fingerprint_for_post_install_setup_required(
+            report.manager,
+            unmet_requirement_ids.as_slice(),
+        ),
+        manager_id: report.manager.as_str().to_string(),
+        source_manager_id: Some(report.manager.as_str().to_string()),
+        package_name: None,
+        severity: DoctorFindingSeverity::Warning,
+        summary: format!(
+            "{} is installed but requires post-install setup before Helm can enable manager actions.",
+            ManagerDisplayName(report.manager)
+        ),
+        evidence_primary: Some(format!(
+            "unmet setup requirements: {}",
+            unmet_details.join("; ")
+        )),
+        evidence_secondary,
+    })
+}
+
 pub fn parse_recent_task_failure_diagnostic(
     entry: &TaskLogRecord,
 ) -> Option<RecentTaskFailureDiagnostic> {
@@ -322,49 +372,12 @@ pub fn scan_manager_package_state_issues(
         }
     }
 
-    if let Some(report) =
+    if let Some(finding) =
         evaluate_manager_post_install_setup(input.manager, input.manager_install_instances)
-            .filter(|report| report.has_unmet_required())
+            .as_ref()
+            .and_then(post_install_setup_required_finding)
     {
-        let unmet = report
-            .requirements
-            .iter()
-            .filter(|requirement| !requirement.met)
-            .collect::<Vec<_>>();
-        let unmet_requirement_ids = unmet
-            .iter()
-            .map(|requirement| requirement.requirement_id)
-            .collect::<Vec<_>>();
-        let unmet_details = unmet
-            .iter()
-            .map(|requirement| requirement.detail)
-            .collect::<Vec<_>>();
-        let evidence_secondary = report
-            .rc_files
-            .first()
-            .map(|path| format!("shell startup file to update: '{}'", path.display()));
-
-        findings.push(DoctorFinding {
-            finding_code: FINDING_CODE_POST_INSTALL_SETUP_REQUIRED.to_string(),
-            issue_code: ISSUE_CODE_POST_INSTALL_SETUP_REQUIRED.to_string(),
-            fingerprint: fingerprint_for_post_install_setup_required(
-                input.manager,
-                unmet_requirement_ids.as_slice(),
-            ),
-            manager_id: input.manager.as_str().to_string(),
-            source_manager_id: Some(input.manager.as_str().to_string()),
-            package_name: None,
-            severity: DoctorFindingSeverity::Warning,
-            summary: format!(
-                "{} is installed but requires post-install setup before Helm can enable manager actions.",
-                ManagerDisplayName(input.manager)
-            ),
-            evidence_primary: Some(format!(
-                "unmet setup requirements: {}",
-                unmet_details.join("; ")
-            )),
-            evidence_secondary,
-        });
+        findings.push(finding);
     }
 
     if let Some(executable_state) = input.executable_state
@@ -637,28 +650,34 @@ mod tests {
     }
 
     #[test]
-    fn setup_required_issue_detected_when_requirements_unmet() {
-        let formulas = HashSet::new();
-        let instances = vec![sample_homebrew_instance(
-            ManagerId::Mise,
-            "/Users/test/.local/bin/mise",
-        )];
-        let findings = scan_manager_package_state_issues(ManagerPackageStateScanInput {
+    fn setup_required_finding_is_constructed_from_report() {
+        let report = ManagerPostInstallSetupReport {
             manager: ManagerId::Mise,
-            manager_install_instances: Some(&instances),
-            homebrew_installed_formulas: &formulas,
-            executable_state: None,
-        });
+            shell_name: "zsh".to_string(),
+            rc_files: vec![PathBuf::from("/tmp/helm-doctor-test/.zshrc")],
+            automation_supported: true,
+            requirements: vec![crate::post_install_setup::PostInstallRequirementStatus {
+                requirement_id: "mise_activate",
+                met: false,
+                detail: "shell startup config includes mise activation",
+            }],
+        };
 
-        let finding = findings
-            .iter()
-            .find(|finding| finding.issue_code == ISSUE_CODE_POST_INSTALL_SETUP_REQUIRED)
-            .expect("setup-required issue should be present");
+        let finding = post_install_setup_required_finding(&report)
+            .expect("setup-required issue should be constructed");
         assert_eq!(
             finding.finding_code,
             FINDING_CODE_POST_INSTALL_SETUP_REQUIRED.to_string()
         );
         assert_eq!(finding.severity, DoctorFindingSeverity::Warning);
+        assert_eq!(
+            finding.fingerprint,
+            fingerprint_for_post_install_setup_required(ManagerId::Mise, &["mise_activate"])
+        );
+        assert_eq!(
+            finding.evidence_secondary.as_deref(),
+            Some("shell startup file to update: '/tmp/helm-doctor-test/.zshrc'")
+        );
     }
 
     #[test]

@@ -83,7 +83,10 @@ impl AdapterExecutionRuntime {
                             return Err(cancelled_error(manager, task_type, action));
                         }
                         crate::task_context::with_task_id(task_id, || {
-                            execute_with_capability_check(adapter.as_ref(), request)
+                            crate::task_context::with_task_process_cancellation_key(
+                                blocking_token.process_cancellation_key(),
+                                || execute_with_capability_check(adapter.as_ref(), request),
+                            )
                         })
                     })
                     .await

@@ -384,6 +384,7 @@ Operational baseline:
 - Build command: `npm ci && npm run build`
 - Output directory: `dist`
 - Framework: Astro (Starlight)
+- Node runtime: 24 (pinned by `web/.node-version`)
 - Deploy model: GitHub-connected automatic deployments from `main`, plus preview deployments for pull requests/branches
 
 **Rationale:**

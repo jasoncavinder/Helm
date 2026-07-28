@@ -31,11 +31,20 @@ pub type TaskOperation = Box<
 pub struct TaskCancellationToken {
     flag: Arc<AtomicBool>,
     forced_flag: Arc<AtomicBool>,
+    process_cancellation_key: crate::execution::TaskProcessCancellationKey,
 }
 
 impl TaskCancellationToken {
-    fn new(flag: Arc<AtomicBool>, forced_flag: Arc<AtomicBool>) -> Self {
-        Self { flag, forced_flag }
+    fn new(
+        flag: Arc<AtomicBool>,
+        forced_flag: Arc<AtomicBool>,
+        process_cancellation_key: crate::execution::TaskProcessCancellationKey,
+    ) -> Self {
+        Self {
+            flag,
+            forced_flag,
+            process_cancellation_key,
+        }
     }
 
     pub fn cancel(&self) {
@@ -48,6 +57,10 @@ impl TaskCancellationToken {
 
     pub fn is_forced_cancelled(&self) -> bool {
         self.forced_flag.load(Ordering::SeqCst)
+    }
+
+    pub(crate) fn process_cancellation_key(&self) -> crate::execution::TaskProcessCancellationKey {
+        self.process_cancellation_key
     }
 }
 
@@ -76,6 +89,7 @@ struct QueueState {
     cancellation_flags: HashMap<TaskId, Arc<AtomicBool>>,
     forced_cancellation_flags: HashMap<TaskId, Arc<AtomicBool>>,
     preserve_execution_lease_on_cancel: HashMap<TaskId, bool>,
+    process_cancellation_keys: HashMap<TaskId, crate::execution::TaskProcessCancellationKey>,
     abort_handles: HashMap<TaskId, AbortHandle>,
     completion_notifiers: HashMap<TaskId, Arc<Notify>>,
 }
@@ -118,7 +132,14 @@ impl InMemoryAsyncTaskQueue {
         operation: TaskOperation,
         preserve_execution_lease_on_cancel: bool,
     ) -> OrchestrationResult<TaskId> {
-        let (task_id, manager_lock, cancel_flag, forced_cancel_flag, completion_notify) = {
+        let (
+            task_id,
+            manager_lock,
+            cancel_flag,
+            forced_cancel_flag,
+            process_cancellation_key,
+            completion_notify,
+        ) = {
             let mut state = self.inner.lock().await;
             let task_id = TaskId(state.next_task_id);
             state.next_task_id = state.next_task_id.saturating_add(1);
@@ -151,6 +172,7 @@ impl InMemoryAsyncTaskQueue {
             };
             let cancel_flag = Arc::new(AtomicBool::new(false));
             let forced_cancel_flag = Arc::new(AtomicBool::new(false));
+            let process_cancellation_key = crate::execution::next_task_process_cancellation_key();
             let completion_notify = Arc::new(Notify::new());
 
             state
@@ -163,6 +185,9 @@ impl InMemoryAsyncTaskQueue {
                 .preserve_execution_lease_on_cancel
                 .insert(task_id, preserve_execution_lease_on_cancel);
             state
+                .process_cancellation_keys
+                .insert(task_id, process_cancellation_key);
+            state
                 .completion_notifiers
                 .insert(task_id, completion_notify.clone());
 
@@ -171,12 +196,14 @@ impl InMemoryAsyncTaskQueue {
                 manager_lock,
                 cancel_flag,
                 forced_cancel_flag,
+                process_cancellation_key,
                 completion_notify,
             )
         };
 
         let inner = self.inner.clone();
-        let token = TaskCancellationToken::new(cancel_flag, forced_cancel_flag);
+        let token =
+            TaskCancellationToken::new(cancel_flag, forced_cancel_flag, process_cancellation_key);
         let join_handle = tokio::spawn(async move {
             let _manager_guard = manager_lock.lock().await;
 
@@ -237,6 +264,7 @@ impl InMemoryAsyncTaskQueue {
             abort_handle,
             notify,
             preserve_execution_lease_on_cancel,
+            process_cancellation_key,
             prior_status,
             manager,
             task_type,
@@ -252,6 +280,18 @@ impl InMemoryAsyncTaskQueue {
             if is_terminal(prior_status) {
                 return Ok(());
             }
+            let preserve_execution_lease_on_cancel = state
+                .preserve_execution_lease_on_cancel
+                .get(&task_id)
+                .copied()
+                .unwrap_or(false);
+            let preserve_running_execution_lease =
+                prior_status == TaskStatus::Running && preserve_execution_lease_on_cancel;
+            let process_cancellation_key = state
+                .process_cancellation_keys
+                .get(&task_id)
+                .copied()
+                .ok_or_else(|| task_lookup_error(task_id))?;
 
             let cancel_flag = state
                 .cancellation_flags
@@ -268,7 +308,8 @@ impl InMemoryAsyncTaskQueue {
             if prior_status == TaskStatus::Queued || mode == CancellationMode::Immediate {
                 forced_cancel_flag.store(true, Ordering::SeqCst);
             }
-            if (prior_status == TaskStatus::Queued || mode == CancellationMode::Immediate)
+            if (prior_status == TaskStatus::Queued
+                || (mode == CancellationMode::Immediate && !preserve_running_execution_lease))
                 && let Some(task) = state.tasks.get_mut(&task_id)
             {
                 task.status = TaskStatus::Cancelled;
@@ -281,16 +322,11 @@ impl InMemoryAsyncTaskQueue {
                 .get(&task_id)
                 .cloned()
                 .ok_or_else(|| task_lookup_error(task_id))?;
-            let preserve_execution_lease_on_cancel = state
-                .preserve_execution_lease_on_cancel
-                .get(&task_id)
-                .copied()
-                .unwrap_or(false);
-
             (
                 abort_handle,
                 notify,
                 preserve_execution_lease_on_cancel,
+                process_cancellation_key,
                 prior_status,
                 manager,
                 task_type,
@@ -311,10 +347,15 @@ impl InMemoryAsyncTaskQueue {
         let mut force_cancelled_state = false;
         match mode {
             CancellationMode::Immediate => {
-                if !preserve_running_execution_lease && let Some(handle) = abort_handle.clone() {
+                if preserve_running_execution_lease {
+                    crate::execution::terminate_task_processes(
+                        process_cancellation_key,
+                        crate::execution::ProcessTerminationMode::Immediate,
+                    )?;
+                } else if let Some(handle) = abort_handle.clone() {
                     handle.abort();
                 }
-                force_cancelled_state = true;
+                force_cancelled_state = !preserve_running_execution_lease;
                 tracing::warn!(
                     task_id = task_id.0,
                     manager = ?manager,
@@ -332,7 +373,23 @@ impl InMemoryAsyncTaskQueue {
                 if prior_status == TaskStatus::Running {
                     let wait = notify.notified();
                     if timeout(grace_period, wait).await.is_err() {
-                        if !self.force_mark_cancelled(task_id).await {
+                        if preserve_running_execution_lease {
+                            crate::execution::terminate_task_processes(
+                                process_cancellation_key,
+                                crate::execution::ProcessTerminationMode::Immediate,
+                            )?;
+                            self.set_forced_cancellation_flag(task_id).await;
+                            self.mark_cancelled_while_reaping(task_id).await;
+                            tracing::warn!(
+                                task_id = task_id.0,
+                                manager = ?manager,
+                                task_type = ?task_type,
+                                cancellation_path = "graceful_timeout_process_termination",
+                                grace_period_ms = grace_period.as_millis(),
+                                execution_lease_preserved = true,
+                                "graceful cancellation timed out; terminating active process before task becomes cancelled"
+                            );
+                        } else if !self.force_mark_cancelled(task_id).await {
                             tracing::debug!(
                                 task_id = task_id.0,
                                 manager = ?manager,
@@ -341,9 +398,7 @@ impl InMemoryAsyncTaskQueue {
                                 "graceful cancellation observed terminal completion before abort"
                             );
                         } else {
-                            if !preserve_running_execution_lease
-                                && let Some(handle) = abort_handle.clone()
-                            {
+                            if let Some(handle) = abort_handle.clone() {
                                 handle.abort();
                             }
                             tracing::warn!(
@@ -462,8 +517,38 @@ impl InMemoryAsyncTaskQueue {
 }
 
 impl InMemoryAsyncTaskQueue {
+    async fn set_forced_cancellation_flag(&self, task_id: TaskId) {
+        let state = self.inner.lock().await;
+        if let Some(flag) = state.forced_cancellation_flags.get(&task_id) {
+            flag.store(true, Ordering::SeqCst);
+        }
+    }
+
+    async fn mark_cancelled_while_reaping(&self, task_id: TaskId) {
+        let notify = {
+            let mut state = self.inner.lock().await;
+            let transitioned = state
+                .tasks
+                .get(&task_id)
+                .map(|task| !is_terminal(task.status))
+                .unwrap_or(false);
+            if transitioned && let Some(task) = state.tasks.get_mut(&task_id) {
+                task.status = TaskStatus::Cancelled;
+                task.finished_at = Some(SystemTime::now());
+            }
+            transitioned
+                .then(|| state.completion_notifiers.get(&task_id).cloned())
+                .flatten()
+        };
+
+        // Keep the execution lease and process-cancellation state until the task exits and reaps.
+        if let Some(notify) = notify {
+            notify.notify_waiters();
+        }
+    }
+
     async fn force_mark_cancelled(&self, task_id: TaskId) -> bool {
-        let (notify, transitioned) = {
+        let (notify, process_cancellation_key, transitioned) = {
             let mut state = self.inner.lock().await;
             let transitioned = state
                 .tasks
@@ -482,12 +567,17 @@ impl InMemoryAsyncTaskQueue {
             state.cancellation_flags.remove(&task_id);
             state.forced_cancellation_flags.remove(&task_id);
             state.preserve_execution_lease_on_cancel.remove(&task_id);
+            let process_cancellation_key = state.process_cancellation_keys.remove(&task_id);
             (
                 state.completion_notifiers.get(&task_id).cloned(),
+                process_cancellation_key,
                 transitioned,
             )
         };
 
+        if let Some(key) = process_cancellation_key {
+            crate::execution::clear_task_process_cancellation(key);
+        }
         if let Some(notify) = notify {
             notify.notify_waiters();
         }
@@ -533,12 +623,16 @@ async fn set_cancelled_terminal(
 }
 
 async fn finalize_cleanup(inner: &Arc<Mutex<QueueState>>, task_id: TaskId, notify: &Arc<Notify>) {
-    {
+    let process_cancellation_key = {
         let mut state = inner.lock().await;
         state.abort_handles.remove(&task_id);
         state.cancellation_flags.remove(&task_id);
         state.forced_cancellation_flags.remove(&task_id);
         state.preserve_execution_lease_on_cancel.remove(&task_id);
+        state.process_cancellation_keys.remove(&task_id)
+    };
+    if let Some(key) = process_cancellation_key {
+        crate::execution::clear_task_process_cancellation(key);
     }
     notify.notify_waiters();
 }

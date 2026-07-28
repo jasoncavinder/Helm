@@ -725,12 +725,12 @@ button[data-open-modal] {
     box-shadow: none;
 }
 
-.helm-announcement-banner :global(strong) {
+.helm-announcement-banner strong {
     color: var(--sl-color-white);
     font-weight: 600;
 }
 
-.helm-announcement-banner :global(a) {
+.helm-announcement-banner a {
     color: var(--sl-color-white);
     text-decoration: underline;
     text-underline-offset: 3px;
@@ -743,11 +743,11 @@ button[data-open-modal] {
     color: var(--helm-blue-900);
 }
 
-:root[data-theme="light"] .helm-announcement-banner :global(strong) {
+:root[data-theme="light"] .helm-announcement-banner strong {
     color: var(--helm-blue-900);
 }
 
-:root[data-theme="light"] .helm-announcement-banner :global(a) {
+:root[data-theme="light"] .helm-announcement-banner a {
     color: var(--helm-blue-900);
 }
 

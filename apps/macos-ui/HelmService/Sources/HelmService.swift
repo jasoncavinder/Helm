@@ -11,6 +11,8 @@ private func withOptionalCString<T>(_ value: String?, _ body: (UnsafePointer<CCh
 }
 
 class HelmService: NSObject, HelmServiceProtocol {
+    private static let helmAppBundleIdentifier = "com.jasoncavinder.Helm"
+
     private struct HelmCliShimInstallResponse: Codable {
         let accepted: Bool
         let installed: Bool
@@ -32,6 +34,8 @@ class HelmService: NSObject, HelmServiceProtocol {
             case reason
         }
     }
+
+    private let cliShimCommandRunner = HelmCliShimCommandRunner()
 
     override init() {
         super.init()
@@ -348,12 +352,26 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(result)
     }
 
-    func installHelmCliShim(
-        appBundlePath: String,
-        appBundleIdentifier: String,
-        withReply reply: @escaping (String?) -> Void
-    ) {
-        let appBundleURL = URL(fileURLWithPath: appBundlePath, isDirectory: true)
+    func installHelmCliShim(withReply reply: @escaping (String?) -> Void) {
+        guard let appBundle = helmAppBundle() else {
+            logger.error("installHelmCliShim could not resolve the containing Helm app bundle")
+            reply(encodeHelmCliShimInstallResponse(
+                HelmCliShimInstallResponse(
+                    accepted: false,
+                    installed: false,
+                    channel: "app-bundle-shim",
+                    updatePolicy: "channel",
+                    currentVersion: nil,
+                    shimPath: nil,
+                    markerPath: nil,
+                    reason: "Unable to resolve the containing Helm app bundle."
+                )
+            ))
+            return
+        }
+
+        let appBundleURL = appBundle.bundleURL.standardizedFileURL
+        let appBundlePath = appBundleURL.path
         let cliURL = appBundleURL
             .appendingPathComponent("Contents", isDirectory: true)
             .appendingPathComponent("Resources", isDirectory: true)
@@ -376,76 +394,48 @@ class HelmService: NSObject, HelmServiceProtocol {
             return
         }
 
-        let process = Process()
-        process.executableURL = cliURL
-        process.arguments = [
+        let arguments = [
             "--json",
             "self",
             "install-shim",
             "--app-bundle-path",
             appBundlePath,
             "--app-bundle-id",
-            appBundleIdentifier,
+            Self.helmAppBundleIdentifier,
         ]
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
 
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            logger.error("installHelmCliShim failed to launch bundled CLI: \(error.localizedDescription, privacy: .public)")
-            reply(encodeHelmCliShimInstallResponse(
-                HelmCliShimInstallResponse(
-                    accepted: false,
-                    installed: false,
-                    channel: "app-bundle-shim",
-                    updatePolicy: "channel",
-                    currentVersion: nil,
-                    shimPath: nil,
-                    markerPath: nil,
-                    reason: error.localizedDescription
-                )
-            ))
-            return
+        cliShimCommandRunner.run(executableURL: cliURL, arguments: arguments) { [weak self] result in
+            guard let self else { return }
+
+            if let launchError = result.launchError {
+                logger.error("installHelmCliShim failed to launch bundled CLI: \(launchError, privacy: .public)")
+                reply(self.helmCliShimFailureResponse(reason: launchError))
+                return
+            }
+
+            if result.didTimeout {
+                logger.error("installHelmCliShim bundled CLI exceeded the service timeout")
+                reply(self.helmCliShimFailureResponse(reason: "Bundled Helm CLI shim install timed out."))
+                return
+            }
+
+            let stdout = String(data: result.stdout, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let stderr = String(data: result.stderr, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if let stdout, !stdout.isEmpty {
+                logger.info("installHelmCliShim bundled CLI exited \(result.terminationStatus ?? -1) with JSON payload")
+                reply(stdout)
+                return
+            }
+
+            let reason = (stderr?.isEmpty == false)
+                ? stderr!
+                : "Bundled Helm CLI shim install failed without output."
+            logger.error("installHelmCliShim bundled CLI exited \(result.terminationStatus ?? -1) without JSON payload: \(reason, privacy: .public)")
+            reply(self.helmCliShimFailureResponse(reason: reason))
         }
-
-        let stdout = String(
-            data: stdoutPipe.fileHandleForReading.readDataToEndOfFile(),
-            encoding: .utf8
-        )?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let stderr = String(
-            data: stderrPipe.fileHandleForReading.readDataToEndOfFile(),
-            encoding: .utf8
-        )?.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if let stdout, !stdout.isEmpty {
-            logger.info("installHelmCliShim bundled CLI exited \(process.terminationStatus) with JSON payload")
-            reply(stdout)
-            return
-        }
-
-        let reason: String
-        if let stderr, !stderr.isEmpty {
-            reason = stderr
-        } else {
-            reason = "Bundled Helm CLI shim install failed without output."
-        }
-        logger.error("installHelmCliShim bundled CLI exited \(process.terminationStatus) without JSON payload: \(reason, privacy: .public)")
-        reply(encodeHelmCliShimInstallResponse(
-            HelmCliShimInstallResponse(
-                accepted: false,
-                installed: false,
-                channel: "app-bundle-shim",
-                updatePolicy: "channel",
-                currentVersion: nil,
-                shimPath: nil,
-                markerPath: nil,
-                reason: reason
-            )
-        ))
     }
 
     func listPackageManagerPreferences(withReply reply: @escaping (String?) -> Void) {
@@ -882,5 +872,33 @@ class HelmService: NSObject, HelmServiceProtocol {
             return nil
         }
         return String(data: data, encoding: .utf8)
+    }
+
+    private func helmAppBundle() -> Bundle? {
+        var bundleURL = Bundle.main.bundleURL.standardizedFileURL
+        while bundleURL.path != "/" {
+            if bundleURL.pathExtension == "app",
+               let bundle = Bundle(url: bundleURL),
+               bundle.bundleIdentifier == Self.helmAppBundleIdentifier {
+                return bundle
+            }
+            bundleURL.deleteLastPathComponent()
+        }
+        return nil
+    }
+
+    private func helmCliShimFailureResponse(reason: String) -> String? {
+        encodeHelmCliShimInstallResponse(
+            HelmCliShimInstallResponse(
+                accepted: false,
+                installed: false,
+                channel: "app-bundle-shim",
+                updatePolicy: "channel",
+                currentVersion: nil,
+                shimPath: nil,
+                markerPath: nil,
+                reason: reason
+            )
+        )
     }
 }

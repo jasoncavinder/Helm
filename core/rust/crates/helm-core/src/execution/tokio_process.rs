@@ -3,14 +3,14 @@ use std::io::Write;
 #[cfg(target_os = "macos")]
 use std::mem::MaybeUninit;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime};
 
 use tokio::io::AsyncReadExt;
 
 use crate::execution::{
-    CommandSpec, ExecutionResult, ProcessExecutor, ProcessExitStatus, ProcessOutput,
-    ProcessSpawnRequest, ProcessTerminationMode, ProcessWaitFuture, RunningProcess,
+    CommandSpec, ExecutionResult, ProcessCancellation, ProcessExecutor, ProcessExitStatus,
+    ProcessOutput, ProcessSpawnRequest, ProcessTerminationMode, ProcessWaitFuture, RunningProcess,
 };
 use crate::models::{CoreError, CoreErrorKind, ManagerAction, ManagerId, TaskId, TaskType};
 
@@ -86,7 +86,13 @@ impl ProcessExecutor for TokioProcessExecutor {
         }
 
         Ok(Box::new(TokioRunningProcess {
-            child: Mutex::new(Some(child)),
+            control: Arc::new(TokioProcessControl {
+                child: Mutex::new(Some(child)),
+                pid,
+                manager,
+                task_type,
+                action,
+            }),
             pid,
             started_at,
             timeout: request.timeout,
@@ -413,7 +419,7 @@ APPLESCRIPT
 }
 
 struct TokioRunningProcess {
-    child: Mutex<Option<tokio::process::Child>>,
+    control: Arc<TokioProcessControl>,
     pid: Option<u32>,
     started_at: SystemTime,
     timeout: Option<Duration>,
@@ -425,6 +431,14 @@ struct TokioRunningProcess {
     command_display: String,
     program_path: String,
     path_snippet: Option<String>,
+}
+
+struct TokioProcessControl {
+    child: Mutex<Option<tokio::process::Child>>,
+    pid: Option<u32>,
+    manager: ManagerId,
+    task_type: TaskType,
+    action: ManagerAction,
 }
 
 struct ProcessCpuProgressProbe {
@@ -694,35 +708,21 @@ impl RunningProcess for TokioRunningProcess {
     }
 
     fn terminate(&self, mode: ProcessTerminationMode) -> ExecutionResult<()> {
-        let Some(pid) = self.pid else {
-            return Ok(());
-        };
+        self.control.terminate(mode)
+    }
 
-        let signal = match mode {
-            ProcessTerminationMode::Immediate => libc::SIGKILL,
-            ProcessTerminationMode::Graceful { .. } => libc::SIGTERM,
-        };
-
-        let pgid = -(pid as libc::pid_t);
-        let result = unsafe { libc::kill(pgid, signal) };
-
-        if result != 0 {
-            let os_error = std::io::Error::last_os_error();
-            if os_error.raw_os_error() != Some(libc::ESRCH) {
-                return Err(process_failure(
-                    self.manager,
-                    self.task_type,
-                    self.action,
-                    format!("failed to send signal {signal} to process group {pid}: {os_error}"),
-                ));
-            }
-        }
-
-        Ok(())
+    fn cancellation_handle(&self) -> Option<Arc<dyn ProcessCancellation>> {
+        Some(self.control.clone())
     }
 
     fn wait(self: Box<Self>) -> ProcessWaitFuture {
-        let child = self.child.into_inner().ok().flatten();
+        let control = self.control.clone();
+        let child = self
+            .control
+            .child
+            .lock()
+            .ok()
+            .and_then(|mut child| child.take());
         let timeout = self.timeout;
         let idle_timeout = self.idle_timeout;
         let started_at = self.started_at;
@@ -736,6 +736,7 @@ impl RunningProcess for TokioRunningProcess {
         let path_snippet = self.path_snippet;
 
         Box::pin(async move {
+            let _control = control;
             let mut child = child.ok_or_else(|| {
                 let message = "child process already consumed".to_string();
                 if let Some(task_id) = task_id {
@@ -1298,6 +1299,35 @@ impl RunningProcess for TokioRunningProcess {
                 finished_at,
             })
         })
+    }
+}
+
+impl ProcessCancellation for TokioProcessControl {
+    fn terminate(&self, mode: ProcessTerminationMode) -> ExecutionResult<()> {
+        let Some(pid) = self.pid else {
+            return Ok(());
+        };
+
+        let signal = match mode {
+            ProcessTerminationMode::Immediate => libc::SIGKILL,
+            ProcessTerminationMode::Graceful { .. } => libc::SIGTERM,
+        };
+        let pgid = -(pid as libc::pid_t);
+        let result = unsafe { libc::kill(pgid, signal) };
+
+        if result != 0 {
+            let os_error = std::io::Error::last_os_error();
+            if os_error.raw_os_error() != Some(libc::ESRCH) {
+                return Err(process_failure(
+                    self.manager,
+                    self.task_type,
+                    self.action,
+                    format!("failed to send signal {signal} to process group {pid}: {os_error}"),
+                ));
+            }
+        }
+
+        Ok(())
     }
 }
 

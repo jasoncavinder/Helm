@@ -215,18 +215,13 @@ extension HelmCore {
             return
         }
 
-        let bundlePath = Bundle.main.bundleURL.standardizedFileURL.path
-        let bundleIdentifier = Bundle.main.bundleIdentifier ?? "app.jasoncavinder.Helm"
         withTimeout(
             20,
             source: "core.settings",
             action: "installHelmCliShim",
             taskType: "settings",
             operation: { completion in
-                service.installHelmCliShim(
-                    appBundlePath: bundlePath,
-                    appBundleIdentifier: bundleIdentifier
-                ) { result in
+                service.installHelmCliShim { result in
                     completion(result)
                 }
             },

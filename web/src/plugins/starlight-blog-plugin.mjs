@@ -44,11 +44,14 @@ export function helmStarlightBlogPlugin(options = {}) {
 				if (!hasBlogSidebarEntry(sidebar, blogDirectory, blogLabel)) {
 					const blogEntry = {
 						label: blogLabel,
-						autogenerate: {
-							directory: blogDirectory,
-							collapsed: false,
-							attrs: {},
-						},
+						items: [
+							{
+								autogenerate: {
+									directory: blogDirectory,
+									collapsed: false,
+								},
+							},
+						],
 					};
 					const changelogIndex = findChangelogIndex(sidebar);
 					if (changelogIndex === -1) {

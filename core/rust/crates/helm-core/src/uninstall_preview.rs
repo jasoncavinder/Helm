@@ -1,6 +1,6 @@
 use crate::adapters::AdapterRequest;
 use crate::adapters::macports::{
-    collect_macports_self_cleanup_targets, macports_prefix_from_port_path,
+    collect_macports_self_cleanup_targets, trusted_macports_prefix_from_canonical_port_path,
 };
 use crate::manager_lifecycle::{
     HomebrewUninstallCleanupMode, parse_homebrew_manager_uninstall_package_name,
@@ -513,15 +513,18 @@ fn append_macports_uninstall_impact(
     seen_directories: &mut HashSet<String>,
     active_instance: Option<&ManagerInstallInstance>,
 ) {
-    let prefix = active_instance
-        .and_then(|instance| {
-            instance
-                .canonical_path
-                .as_ref()
-                .or(Some(&instance.display_path))
-                .and_then(|path| macports_prefix_from_port_path(path))
-        })
-        .unwrap_or_else(|| PathBuf::from("/opt/local"));
+    let Some(prefix) = active_instance.and_then(|instance| {
+        instance
+            .canonical_path
+            .as_deref()
+            .and_then(trusted_macports_prefix_from_canonical_port_path)
+    }) else {
+        secondary_effects.push(
+            "MacPorts cleanup paths are unavailable because the active executable is not canonical and trusted."
+                .to_string(),
+        );
+        return;
+    };
 
     let cleanup = collect_macports_self_cleanup_targets(prefix.as_path());
     for file in cleanup.files {

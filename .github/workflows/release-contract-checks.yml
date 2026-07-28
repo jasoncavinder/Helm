@@ -33,6 +33,9 @@ jobs:
       - name: Validate CI toolchain pin contracts
         run: scripts/release/tests/ci_toolchain_contract.sh
 
+      - name: Validate release workflow safety contracts
+        run: scripts/release/tests/release_workflow_contract.sh
+
       - name: Validate release provenance manifest contracts
         run: scripts/release/tests/provenance_manifest_contract.sh
 

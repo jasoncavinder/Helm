@@ -1,3 +1,4 @@
+use crate::adapters::macports::trusted_macports_prefix_from_canonical_port_path;
 use crate::adapters::{AdapterRequest, InstallRequest, UninstallRequest, UpgradeRequest};
 use crate::models::{
     InstallProvenance, ManagerId, ManagerInstallInstance, PackageRef, StrategyKind,
@@ -1381,12 +1382,17 @@ pub fn resolve_macports_uninstall_strategy(
     preview_only: bool,
 ) -> Result<UninstallStrategyResolution, UninstallStrategyResolutionError> {
     let Some(instance) = active_instance else {
-        return Ok(UninstallStrategyResolution {
-            strategy: StrategyKind::MacportsSelf,
-            unknown_override_required: false,
-            used_unknown_override: false,
-        });
+        return Err(UninstallStrategyResolutionError::AmbiguousProvenance);
     };
+
+    if instance
+        .canonical_path
+        .as_deref()
+        .and_then(trusted_macports_prefix_from_canonical_port_path)
+        .is_none()
+    {
+        return Err(UninstallStrategyResolutionError::AmbiguousProvenance);
+    }
 
     match instance.uninstall_strategy {
         StrategyKind::MacportsSelf | StrategyKind::ReadOnly => Ok(UninstallStrategyResolution {
@@ -2107,8 +2113,8 @@ mod tests {
     fn macports_preview_requires_unknown_override_when_provenance_is_ambiguous() {
         let mut instance = sample_instance();
         instance.manager = ManagerId::MacPorts;
-        instance.display_path = PathBuf::from("/custom/macports/bin/port");
-        instance.canonical_path = Some(PathBuf::from("/custom/macports/bin/port"));
+        instance.display_path = PathBuf::from("/opt/local/bin/port");
+        instance.canonical_path = Some(PathBuf::from("/opt/local/bin/port"));
         instance.provenance = InstallProvenance::Unknown;
         instance.automation_level = AutomationLevel::NeedsConfirmation;
         instance.uninstall_strategy = StrategyKind::InteractivePrompt;
@@ -2123,6 +2129,38 @@ mod tests {
         assert_eq!(route.strategy, StrategyKind::MacportsSelf);
         assert!(route.unknown_override_required);
         assert!(!route.used_unknown_override);
+    }
+
+    #[test]
+    fn macports_self_uninstall_rejects_untrusted_or_noncanonical_executables() {
+        let mut instance = sample_instance();
+        instance.manager = ManagerId::MacPorts;
+        instance.display_path = PathBuf::from("/Users/example/macports/bin/port");
+        instance.canonical_path = Some(PathBuf::from("/Users/example/macports/bin/port"));
+        instance.provenance = InstallProvenance::Macports;
+        instance.uninstall_strategy = StrategyKind::MacportsSelf;
+
+        let error = plan_manager_uninstall_route_with_options(
+            ManagerId::MacPorts,
+            Some(&instance),
+            true,
+            false,
+            &ManagerUninstallOptions::default(),
+        )
+        .expect_err("user-home MacPorts prefixes must not be removed");
+        assert_eq!(error, ManagerUninstallRouteError::AmbiguousProvenance);
+
+        instance.display_path = PathBuf::from("/opt/local/bin/port");
+        instance.canonical_path = None;
+        let error = plan_manager_uninstall_route_with_options(
+            ManagerId::MacPorts,
+            Some(&instance),
+            true,
+            false,
+            &ManagerUninstallOptions::default(),
+        )
+        .expect_err("self uninstall requires a canonical executable path");
+        assert_eq!(error, ManagerUninstallRouteError::AmbiguousProvenance);
     }
 
     #[test]

@@ -2399,7 +2399,7 @@ mod tests {
     use crate::adapters::{AdapterRequest, AdapterResponse, MutationResult, SearchRequest};
     use crate::execution::{
         ManagerTimeoutProfile, TaskOutputRecord, clear_manager_timeout_profiles,
-        set_manager_timeout_profile,
+        manager_execution_preferences_test_guard, set_manager_timeout_profile,
     };
     use crate::models::{
         AutomationLevel, CoreError, CoreErrorKind, DetectionInfo, InstallInstanceIdentityKind,
@@ -2414,15 +2414,7 @@ mod tests {
     use std::collections::HashMap;
     use std::fs;
     use std::path::PathBuf;
-    use std::sync::{Mutex, OnceLock};
     use std::time::{Duration, SystemTime};
-
-    fn timeout_profile_test_guard() -> std::sync::MutexGuard<'static, ()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-            .lock()
-            .expect("timeout profile test lock should be available")
-    }
 
     fn temp_sqlite_store(test_name: &str) -> SqliteStore {
         let stamp = SystemTime::now()
@@ -2470,7 +2462,7 @@ mod tests {
 
     #[test]
     fn refresh_wait_timeout_uses_default_policy_when_no_override_is_set() {
-        let _guard = timeout_profile_test_guard();
+        let _guard = manager_execution_preferences_test_guard();
         clear_manager_timeout_profiles();
 
         assert_eq!(
@@ -2493,7 +2485,7 @@ mod tests {
 
     #[test]
     fn refresh_wait_timeout_clamps_policy_to_operation_cap() {
-        let _guard = timeout_profile_test_guard();
+        let _guard = manager_execution_preferences_test_guard();
         clear_manager_timeout_profiles();
         set_manager_timeout_profile(
             ManagerId::Npm,
@@ -2525,7 +2517,7 @@ mod tests {
 
     #[test]
     fn refresh_wait_timeout_respects_policy_when_below_cap() {
-        let _guard = timeout_profile_test_guard();
+        let _guard = manager_execution_preferences_test_guard();
         clear_manager_timeout_profiles();
         set_manager_timeout_profile(
             ManagerId::Npm,
