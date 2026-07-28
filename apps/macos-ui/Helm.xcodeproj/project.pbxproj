@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 100;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -23,7 +23,6 @@
 		A10000010000000000000001 /* HelmApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000001 /* HelmApp.swift */; };
 		A10000010000000000000002 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000002 /* AppDelegate.swift */; };
 		A10000010000000000000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000003 /* Assets.xcassets */; };
-		L200000000000000000000001 /* helm-cli in Resources */ = {isa = PBXBuildFile; fileRef = L100000000000000000000001 /* helm-cli */; };
 		A30000000000000000000002 /* HelmVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000001 /* HelmVersion.swift */; };
 		B20000000000000000000001 /* ManagerInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000001 /* ManagerInfo.swift */; };
 		B20000000000000000000002 /* LabeledContentRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000002 /* LabeledContentRow.swift */; };
@@ -39,7 +38,6 @@
 		B20000000000000000000012 /* OnboardingWelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000012 /* OnboardingWelcomeView.swift */; };
 		B20000000000000000000013 /* OnboardingDetectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000013 /* OnboardingDetectionView.swift */; };
 		B20000000000000000000014 /* OnboardingConfigureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000014 /* OnboardingConfigureView.swift */; };
-		D20000000000000000000010 /* OnboardingSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000010 /* OnboardingSettingsView.swift */; };
 		B20000000000000000000015 /* LocalizationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000015 /* LocalizationManager.swift */; };
 		B20000000000000000000016 /* String+Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000016 /* String+Localization.swift */; };
 		B20000000000000000000017 /* L10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000017 /* L10n.swift */; };
@@ -56,8 +54,9 @@
 		D20000000000000000000007 /* HelmCore+Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000007 /* HelmCore+Settings.swift */; };
 		D20000000000000000000008 /* WalkthroughState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000008 /* WalkthroughState.swift */; };
 		D20000000000000000000009 /* SpotlightOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000009 /* SpotlightOverlay.swift */; };
-		E20000000000000000000001 /* InspectorViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000000000000000000001 /* InspectorViews.swift */; };
+		D20000000000000000000010 /* OnboardingSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000010 /* OnboardingSettingsView.swift */; };
 		D20000000000000000000011 /* HelmCore+ManagerPriority.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000011 /* HelmCore+ManagerPriority.swift */; };
+		E20000000000000000000001 /* InspectorViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000000000000000000001 /* InspectorViews.swift */; };
 		F20000000000000000000001 /* PopoverHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000001 /* PopoverHelpers.swift */; };
 		F20000000000000000000002 /* PopoverOverlayViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000002 /* PopoverOverlayViews.swift */; };
 		F20000000000000000000003 /* ControlCenterSectionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000003 /* ControlCenterSectionViews.swift */; };
@@ -71,6 +70,7 @@
 		K200000000000000000000001 /* SupportRedactor.swift in Sources */ = {isa = PBXBuildFile; fileRef = K100000000000000000000001 /* SupportRedactor.swift */; };
 		K200000000000000000000002 /* SupportRedactor.swift in Sources */ = {isa = PBXBuildFile; fileRef = K100000000000000000000001 /* SupportRedactor.swift */; };
 		K200000000000000000000003 /* SupportRedactorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K100000000000000000000002 /* SupportRedactorTests.swift */; };
+		L200000000000000000000001 /* helm-cli in Resources */ = {isa = PBXBuildFile; fileRef = L100000000000000000000001 /* helm-cli */; };
 		M200000000000000000000001 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = M100000000000000000000002 /* main.swift */; };
 		M200000000000000000000002 /* HelmLoginHelper.app in Embed Login Items */ = {isa = PBXBuildFile; fileRef = M100000000000000000000001 /* HelmLoginHelper.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
@@ -95,25 +95,21 @@
 /* Begin PBXCopyFilesBuildPhase section */
 		8CE1FDCC2F3D2AD8000A3945 /* Embed XPC Services */ = {
 			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
 			dstPath = "$(CONTENTS_FOLDER_PATH)/XPCServices";
-			dstSubfolderSpec = 16;
+			dstSubfolder = Product;
 			files = (
 				8CE1FDCB2F3D2AD8000A3945 /* HelmService.xpc in Embed XPC Services */,
 			);
 			name = "Embed XPC Services";
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		M400000000000000000000001 /* Embed Login Items */ = {
 			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
 			dstPath = "$(CONTENTS_FOLDER_PATH)/Library/LoginItems";
-			dstSubfolderSpec = 16;
+			dstSubfolder = Product;
 			files = (
 				M200000000000000000000002 /* HelmLoginHelper.app in Embed Login Items */,
 			);
 			name = "Embed Login Items";
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
 
@@ -142,7 +138,6 @@
 		A10000020000000000000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A10000020000000000000006 /* Helm.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Helm.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A30000000000000000000001 /* HelmVersion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HelmVersion.swift; path = Generated/HelmVersion.swift; sourceTree = SOURCE_ROOT; };
-		L100000000000000000000001 /* helm-cli */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; name = "helm-cli"; path = Generated/helm-cli; sourceTree = SOURCE_ROOT; };
 		A40000000000000000000001 /* HelmVersion.base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = HelmVersion.base.xcconfig; path = Config/HelmVersion.base.xcconfig; sourceTree = SOURCE_ROOT; };
 		B10000000000000000000001 /* ManagerInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagerInfo.swift; sourceTree = "<group>"; };
 		B10000000000000000000002 /* LabeledContentRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabeledContentRow.swift; sourceTree = "<group>"; };
@@ -158,7 +153,6 @@
 		B10000000000000000000012 /* OnboardingWelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWelcomeView.swift; sourceTree = "<group>"; };
 		B10000000000000000000013 /* OnboardingDetectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingDetectionView.swift; sourceTree = "<group>"; };
 		B10000000000000000000014 /* OnboardingConfigureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingConfigureView.swift; sourceTree = "<group>"; };
-		D10000000000000000000010 /* OnboardingSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingSettingsView.swift; sourceTree = "<group>"; };
 		B10000000000000000000015 /* LocalizationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationManager.swift; sourceTree = "<group>"; };
 		B10000000000000000000016 /* String+Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+Localization.swift"; sourceTree = "<group>"; };
 		B10000000000000000000017 /* L10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L10n.swift; sourceTree = "<group>"; };
@@ -175,6 +169,7 @@
 		D10000000000000000000007 /* HelmCore+Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HelmCore+Settings.swift"; sourceTree = "<group>"; };
 		D10000000000000000000008 /* WalkthroughState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughState.swift; sourceTree = "<group>"; };
 		D10000000000000000000009 /* SpotlightOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotlightOverlay.swift; sourceTree = "<group>"; };
+		D10000000000000000000010 /* OnboardingSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingSettingsView.swift; sourceTree = "<group>"; };
 		D10000000000000000000011 /* HelmCore+ManagerPriority.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HelmCore+ManagerPriority.swift"; sourceTree = "<group>"; };
 		E10000000000000000000001 /* InspectorViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorViews.swift; sourceTree = "<group>"; };
 		F10000000000000000000001 /* PopoverHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverHelpers.swift; sourceTree = "<group>"; };
@@ -187,6 +182,7 @@
 		J100000000000000000000001 /* AppUpdateConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateConfiguration.swift; sourceTree = "<group>"; };
 		K100000000000000000000001 /* SupportRedactor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportRedactor.swift; sourceTree = "<group>"; };
 		K100000000000000000000002 /* SupportRedactorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportRedactorTests.swift; sourceTree = "<group>"; };
+		L100000000000000000000001 /* helm-cli */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; name = "helm-cli"; path = "Generated/helm-cli"; sourceTree = SOURCE_ROOT; };
 		M100000000000000000000001 /* HelmLoginHelper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HelmLoginHelper.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		M100000000000000000000002 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		M100000000000000000000003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -196,33 +192,25 @@
 /* Begin PBXFrameworksBuildPhase section */
 		8CE1FDBD2F3D2AD7000A3945 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 				8CE1FDDD2F3D2DA7000A3945 /* libhelm_ffi.a in Frameworks */,
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		A10000030000000000000001 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 				H000000000000000000000003 /* Sparkle in Frameworks */,
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		C10000000000000000000007 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		M400000000000000000000003 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
@@ -472,8 +460,6 @@
 			);
 			buildRules = (
 			);
-			dependencies = (
-			);
 			name = HelmService;
 			productName = HelmService;
 			productReference = 8CE1FDC02F3D2AD7000A3945 /* HelmService.xpc */;
@@ -503,23 +489,6 @@
 			productReference = A10000020000000000000006 /* Helm.app */;
 			productType = "com.apple.product-type.application";
 		};
-		M500000000000000000000001 /* HelmLoginHelper */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = M700000000000000000000001 /* Build configuration list for PBXNativeTarget "HelmLoginHelper" */;
-			buildPhases = (
-				M400000000000000000000002 /* Sources */,
-				M400000000000000000000003 /* Frameworks */,
-				M400000000000000000000004 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = HelmLoginHelper;
-			productName = HelmLoginHelper;
-			productReference = M100000000000000000000001 /* HelmLoginHelper.app */;
-			productType = "com.apple.product-type.application";
-		};
 		C10000000000000000000009 /* HelmTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = C10000000000000000000010 /* Build configuration list for PBXNativeTarget "HelmTests" */;
@@ -530,12 +499,25 @@
 			);
 			buildRules = (
 			);
-			dependencies = (
-			);
 			name = HelmTests;
 			productName = HelmTests;
 			productReference = C10000000000000000000004 /* HelmTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		M500000000000000000000001 /* HelmLoginHelper */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = M700000000000000000000001 /* Build configuration list for PBXNativeTarget "HelmLoginHelper" */;
+			buildPhases = (
+				M400000000000000000000002 /* Sources */,
+				M400000000000000000000003 /* Frameworks */,
+				M400000000000000000000004 /* Resources */,
+			);
+			buildRules = (
+			);
+			name = HelmLoginHelper;
+			productName = HelmLoginHelper;
+			productReference = M100000000000000000000001 /* HelmLoginHelper.app */;
+			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
@@ -545,7 +527,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1420;
-				LastUpgradeCheck = 1420;
+				LastUpgradeCheck = 2660;
 				TargetAttributes = {
 					8CE1FDBF2F3D2AD7000A3945 = {
 						CreatedOnToolsVersion = 14.2;
@@ -562,7 +544,6 @@
 				};
 			};
 			buildConfigurationList = A10000070000000000000001 /* Build configuration list for PBXProject "Helm" */;
-			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -570,12 +551,13 @@
 				Base,
 			);
 			mainGroup = A10000040000000000000001;
-			productRefGroup = A10000040000000000000003 /* Products */;
-			projectDirPath = "";
-			projectRoot = "";
 			packageReferences = (
 				H000000000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
+			preferredProjectObjectVersion = 100;
+			productRefGroup = A10000040000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
 			targets = (
 				A10000050000000000000001 /* Helm */,
 				8CE1FDBF2F3D2AD7000A3945 /* HelmService */,
@@ -588,34 +570,26 @@
 /* Begin PBXResourcesBuildPhase section */
 		8CE1FDBE2F3D2AD7000A3945 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		A10000060000000000000002 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 				8CD965322F40F02800AE2AF5 /* Resources in Resources */,
 				A10000010000000000000003 /* Assets.xcassets in Resources */,
 				L200000000000000000000001 /* helm-cli in Resources */,
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		C10000000000000000000016 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		M400000000000000000000004 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
@@ -623,16 +597,7 @@
 		8CE1FDDC2F3D2D41000A3945 /* Build Rust Core */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
 			name = "Build Rust Core";
-			outputFileListPaths = (
-			);
 			outputPaths = (
 				"$(SRCROOT)/Generated/HelmVersion.swift",
 				"$(SRCROOT)/Generated/HelmVersion.xcconfig",
@@ -641,27 +606,26 @@
 				"$(SRCROOT)/Generated/helm-cli",
 				"$(SRCROOT)/Generated/helm.h",
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "$SRCROOT/scripts/build_rust.sh\n";
+			shellScript = (
+				"$SRCROOT/scripts/build_rust.sh",
+				"",
+			);
 		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		8CE1FDBC2F3D2AD7000A3945 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 				8CE1FDD32F3D2B84000A3945 /* HelmServiceProtocol.swift in Sources */,
 				8CE1FDD92F3D2BAA000A3945 /* main.swift in Sources */,
 				8CE1FDDA2F3D2BAA000A3945 /* HelmServiceDelegate.swift in Sources */,
 				8CE1FDD82F3D2BAA000A3945 /* HelmService.swift in Sources */,
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		A10000060000000000000001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 				8CFB6D5A2F3D1D1D002372B8 /* Package.swift in Sources */,
 				J200000000000000000000001 /* AppUpdateConfiguration.swift in Sources */,
@@ -711,11 +675,9 @@
 				G20000000000000000000002 /* AppDelegate+Windows.swift in Sources */,
 				G20000000000000000000003 /* AppDelegate+StatusBadge.swift in Sources */,
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		C10000000000000000000008 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 				J200000000000000000000002 /* AppUpdateConfiguration.swift in Sources */,
 				H200000000000000000000001 /* AppUpdateConfigurationTests.swift in Sources */,
@@ -725,36 +687,14 @@
 				K200000000000000000000003 /* SupportRedactorTests.swift in Sources */,
 				C10000000000000000000002 /* UpgradePreviewPlannerTests.swift in Sources */,
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		M400000000000000000000002 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 				M200000000000000000000001 /* main.swift in Sources */,
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		H000000000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/sparkle-project/Sparkle";
-			requirement = {
-				kind = exactVersion;
-				version = 2.8.1;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		H000000000000000000000002 /* Sparkle */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = H000000000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */;
-			productName = Sparkle;
-		};
-/* End XCSwiftPackageProductDependency section */
 
 /* Begin PBXTargetDependency section */
 		8CE1FDCA2F3D2AD8000A3945 /* PBXTargetDependency */ = {
@@ -770,7 +710,7 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-		8CE1FDCD2F3D2AD8000A3945 /* Debug */ = {
+		8CE1FDCD2F3D2AD8000A3945 /* Debug configuration for PBXNativeTarget "HelmService" */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = A40000000000000000000001 /* HelmVersion.base.xcconfig */;
 			buildSettings = {
@@ -801,7 +741,7 @@
 			};
 			name = Debug;
 		};
-		8CE1FDCE2F3D2AD8000A3945 /* Release */ = {
+		8CE1FDCE2F3D2AD8000A3945 /* Release configuration for PBXNativeTarget "HelmService" */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = A40000000000000000000001 /* HelmVersion.base.xcconfig */;
 			buildSettings = {
@@ -815,7 +755,6 @@
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = V73WPJR9M4;
 				ENABLE_HARDENED_RUNTIME = YES;
-				OTHER_CODE_SIGN_FLAGS = "--timestamp";
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/Generated";
 				INFOPLIST_FILE = "$(PROJECT_DIR)/../../service/macos-service/Info.plist";
@@ -826,6 +765,7 @@
 					"$(PROJECT_DIR)/Generated",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				OTHER_CODE_SIGN_FLAGS = "--timestamp";
 				PRODUCT_BUNDLE_IDENTIFIER = app.jasoncavinder.Helm.HelmService;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -836,7 +776,7 @@
 			};
 			name = Release;
 		};
-		A10000090000000000000001 /* Debug */ = {
+		A10000090000000000000001 /* Debug configuration for PBXProject "Helm" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -874,6 +814,7 @@
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -895,13 +836,14 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OBJC_BRIDGING_HEADER = "";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Debug;
 		};
-		A10000090000000000000002 /* Release */ = {
+		A10000090000000000000002 /* Release configuration for PBXProject "Helm" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -939,6 +881,7 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -953,17 +896,17 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OBJC_BRIDGING_HEADER = "";
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 			};
 			name = Release;
 		};
-		A10000090000000000000003 /* Debug */ = {
+		A10000090000000000000003 /* Debug configuration for PBXNativeTarget "Helm" */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = A40000000000000000000001 /* HelmVersion.base.xcconfig */;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Helm/Helm.entitlements;
@@ -976,13 +919,15 @@
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = V73WPJR9M4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Helm/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Helm;
+				INFOPLIST_KEY_HelmDistributionChannel = "$(HELM_DISTRIBUTION_CHANNEL)";
+				INFOPLIST_KEY_HelmSparkleEnabled = "$(HELM_SPARKLE_ENABLED)";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMainStoryboardFile = "";
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
-				INFOPLIST_KEY_HelmDistributionChannel = "$(HELM_DISTRIBUTION_CHANNEL)";
-				INFOPLIST_KEY_HelmSparkleEnabled = "$(HELM_SPARKLE_ENABLED)";
-				INFOPLIST_KEY_SUFeedURL = "$(HELM_SPARKLE_FEED_URL)";
 				INFOPLIST_KEY_SUAllowsDowngrades = "$(HELM_SPARKLE_ALLOW_DOWNGRADES)";
+				INFOPLIST_KEY_SUFeedURL = "$(HELM_SPARKLE_FEED_URL)";
 				INFOPLIST_KEY_SUPublicEDKey = "$(HELM_SPARKLE_PUBLIC_ED_KEY)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -992,6 +937,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/Generated",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 11.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jasoncavinder.Helm;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -1000,11 +946,10 @@
 			};
 			name = Debug;
 		};
-		A10000090000000000000004 /* Release */ = {
+		A10000090000000000000004 /* Release configuration for PBXNativeTarget "Helm" */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = A40000000000000000000001 /* HelmVersion.base.xcconfig */;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Helm/HelmRelease.entitlements;
@@ -1017,16 +962,17 @@
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = V73WPJR9M4;
 				ENABLE_HARDENED_RUNTIME = YES;
-				OTHER_CODE_SIGN_FLAGS = "--timestamp";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Helm/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Helm;
+				INFOPLIST_KEY_HelmDistributionChannel = "$(HELM_DISTRIBUTION_CHANNEL)";
+				INFOPLIST_KEY_HelmSparkleEnabled = "$(HELM_SPARKLE_ENABLED)";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMainStoryboardFile = "";
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
-				INFOPLIST_KEY_HelmDistributionChannel = "$(HELM_DISTRIBUTION_CHANNEL)";
-				INFOPLIST_KEY_HelmSparkleEnabled = "$(HELM_SPARKLE_ENABLED)";
-				INFOPLIST_KEY_SUFeedURL = "$(HELM_SPARKLE_FEED_URL)";
 				INFOPLIST_KEY_SUAllowsDowngrades = "$(HELM_SPARKLE_ALLOW_DOWNGRADES)";
+				INFOPLIST_KEY_SUFeedURL = "$(HELM_SPARKLE_FEED_URL)";
 				INFOPLIST_KEY_SUPublicEDKey = "$(HELM_SPARKLE_PUBLIC_ED_KEY)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1036,6 +982,8 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/Generated",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				OTHER_CODE_SIGN_FLAGS = "--timestamp";
 				PRODUCT_BUNDLE_IDENTIFIER = com.jasoncavinder.Helm;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -1044,7 +992,45 @@
 			};
 			name = Release;
 		};
-		M600000000000000000000001 /* Debug */ = {
+		C10000000000000000000013 /* Debug configuration for PBXNativeTarget "HelmTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 82VSX8SQ5Q;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = HelmTests;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jasoncavinder.HelmTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		C10000000000000000000014 /* Release configuration for PBXNativeTarget "HelmTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 82VSX8SQ5Q;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = HelmTests;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jasoncavinder.HelmTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		M600000000000000000000001 /* Debug configuration for PBXNativeTarget "HelmLoginHelper" */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = A40000000000000000000001 /* HelmVersion.base.xcconfig */;
 			buildSettings = {
@@ -1069,7 +1055,7 @@
 			};
 			name = Debug;
 		};
-		M600000000000000000000002 /* Release */ = {
+		M600000000000000000000002 /* Release configuration for PBXNativeTarget "HelmLoginHelper" */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = A40000000000000000000001 /* HelmVersion.base.xcconfig */;
 			buildSettings = {
@@ -1083,54 +1069,16 @@
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = V73WPJR9M4;
 				ENABLE_HARDENED_RUNTIME = YES;
-				OTHER_CODE_SIGN_FLAGS = "--timestamp";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = HelmLoginHelper/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				OTHER_CODE_SIGN_FLAGS = "--timestamp";
 				PRODUCT_BUNDLE_IDENTIFIER = com.jasoncavinder.HelmLoginHelper;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-			};
-			name = Release;
-		};
-		C10000000000000000000013 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_IDENTITY = "-";
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 82VSX8SQ5Q;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = HelmTests;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@loader_path/../Frameworks",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 11.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.jasoncavinder.HelmTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 5.0;
-			};
-			name = Debug;
-		};
-		C10000000000000000000014 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_IDENTITY = "-";
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 82VSX8SQ5Q;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = HelmTests;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@loader_path/../Frameworks",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 11.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.jasoncavinder.HelmTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
@@ -1141,49 +1089,63 @@
 		8CE1FDCF2F3D2AD8000A3945 /* Build configuration list for PBXNativeTarget "HelmService" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				8CE1FDCD2F3D2AD8000A3945 /* Debug */,
-				8CE1FDCE2F3D2AD8000A3945 /* Release */,
+				8CE1FDCD2F3D2AD8000A3945 /* Debug configuration for PBXNativeTarget "HelmService" */,
+				8CE1FDCE2F3D2AD8000A3945 /* Release configuration for PBXNativeTarget "HelmService" */,
 			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 		A10000070000000000000001 /* Build configuration list for PBXProject "Helm" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				A10000090000000000000001 /* Debug */,
-				A10000090000000000000002 /* Release */,
+				A10000090000000000000001 /* Debug configuration for PBXProject "Helm" */,
+				A10000090000000000000002 /* Release configuration for PBXProject "Helm" */,
 			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 		A10000070000000000000002 /* Build configuration list for PBXNativeTarget "Helm" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				A10000090000000000000003 /* Debug */,
-				A10000090000000000000004 /* Release */,
+				A10000090000000000000003 /* Debug configuration for PBXNativeTarget "Helm" */,
+				A10000090000000000000004 /* Release configuration for PBXNativeTarget "Helm" */,
 			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		M700000000000000000000001 /* Build configuration list for PBXNativeTarget "HelmLoginHelper" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				M600000000000000000000001 /* Debug */,
-				M600000000000000000000002 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 		C10000000000000000000010 /* Build configuration list for PBXNativeTarget "HelmTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				C10000000000000000000013 /* Debug */,
-				C10000000000000000000014 /* Release */,
+				C10000000000000000000013 /* Debug configuration for PBXNativeTarget "HelmTests" */,
+				C10000000000000000000014 /* Release configuration for PBXNativeTarget "HelmTests" */,
 			);
-			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		M700000000000000000000001 /* Build configuration list for PBXNativeTarget "HelmLoginHelper" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				M600000000000000000000001 /* Debug configuration for PBXNativeTarget "HelmLoginHelper" */,
+				M600000000000000000000002 /* Release configuration for PBXNativeTarget "HelmLoginHelper" */,
+			);
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		H000000000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = exactVersion;
+				version = 2.8.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		H000000000000000000000002 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = H000000000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A10000080000000000000001 /* Project object */;
 }
