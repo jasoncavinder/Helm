@@ -5,6 +5,11 @@ use std::time::{Duration, SystemTime};
 use helm_core::adapters::{
     AdapterRequest, AdapterResponse, AdapterResult, ManagerAdapter, RefreshRequest, SearchRequest,
 };
+use helm_core::execution::{
+    CommandSpec, ExecutionResult, ProcessCancellation, ProcessExecutor, ProcessExitStatus,
+    ProcessOutput, ProcessSpawnRequest, ProcessTerminationMode, ProcessWaitFuture, RunningProcess,
+    spawn_validated,
+};
 use helm_core::models::{
     ActionSafety, Capability, CoreError, CoreErrorKind, ManagerAction, ManagerAuthority,
     ManagerCategory, ManagerDescriptor, ManagerId, SearchQuery, TaskStatus, TaskType,
@@ -32,6 +37,127 @@ enum AdapterBehavior {
 struct TestAdapter {
     descriptor: ManagerDescriptor,
     behavior: AdapterBehavior,
+}
+
+struct ProcessAdapter {
+    descriptor: ManagerDescriptor,
+    executor: Arc<dyn ProcessExecutor>,
+}
+
+impl ProcessAdapter {
+    fn new(manager: ManagerId, executor: Arc<dyn ProcessExecutor>) -> Self {
+        Self {
+            descriptor: ManagerDescriptor {
+                id: manager,
+                display_name: "process-adapter",
+                category: ManagerCategory::Language,
+                authority: ManagerAuthority::Standard,
+                capabilities: TEST_CAPABILITIES,
+            },
+            executor,
+        }
+    }
+}
+
+impl ManagerAdapter for ProcessAdapter {
+    fn descriptor(&self) -> &ManagerDescriptor {
+        &self.descriptor
+    }
+
+    fn action_safety(&self, action: ManagerAction) -> ActionSafety {
+        action.safety()
+    }
+
+    fn execute(&self, _request: AdapterRequest) -> AdapterResult<AdapterResponse> {
+        let request = ProcessSpawnRequest::new(
+            self.descriptor.id,
+            TaskType::Refresh,
+            ManagerAction::Refresh,
+            CommandSpec::new("process-adapter-test"),
+        );
+        let process = spawn_validated(self.executor.as_ref(), request)?;
+        let output = tokio::runtime::Handle::current().block_on(process.wait())?;
+        match output.status {
+            ProcessExitStatus::ExitCode(0) => Ok(AdapterResponse::Refreshed),
+            ProcessExitStatus::ExitCode(code) => Err(CoreError {
+                manager: Some(self.descriptor.id),
+                task: Some(TaskType::Refresh),
+                action: Some(ManagerAction::Refresh),
+                kind: CoreErrorKind::ProcessFailure,
+                message: format!("process exited with code {code}"),
+            }),
+            ProcessExitStatus::Terminated => Err(CoreError {
+                manager: Some(self.descriptor.id),
+                task: Some(TaskType::Refresh),
+                action: Some(ManagerAction::Refresh),
+                kind: CoreErrorKind::ProcessFailure,
+                message: "process terminated by cancellation".to_string(),
+            }),
+        }
+    }
+}
+
+#[derive(Default)]
+struct TrackingProcessControl {
+    terminated: AtomicBool,
+    reaped: AtomicBool,
+}
+
+impl ProcessCancellation for TrackingProcessControl {
+    fn terminate(&self, _mode: ProcessTerminationMode) -> ExecutionResult<()> {
+        self.terminated.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+}
+
+struct TrackingProcess {
+    control: Arc<TrackingProcessControl>,
+}
+
+impl RunningProcess for TrackingProcess {
+    fn pid(&self) -> Option<u32> {
+        Some(42)
+    }
+
+    fn terminate(&self, mode: ProcessTerminationMode) -> ExecutionResult<()> {
+        self.control.terminate(mode)
+    }
+
+    fn cancellation_handle(&self) -> Option<Arc<dyn ProcessCancellation>> {
+        Some(self.control.clone())
+    }
+
+    fn wait(self: Box<Self>) -> ProcessWaitFuture {
+        let control = self.control;
+        Box::pin(async move {
+            while !control.terminated.load(Ordering::SeqCst) {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+            control.reaped.store(true, Ordering::SeqCst);
+            let now = SystemTime::now();
+            Ok(ProcessOutput {
+                status: ProcessExitStatus::Terminated,
+                stdout: Vec::new(),
+                stderr: Vec::new(),
+                started_at: now,
+                finished_at: now,
+            })
+        })
+    }
+}
+
+struct TrackingExecutor {
+    control: Arc<TrackingProcessControl>,
+    spawned: Arc<AtomicBool>,
+}
+
+impl ProcessExecutor for TrackingExecutor {
+    fn spawn(&self, _request: ProcessSpawnRequest) -> ExecutionResult<Box<dyn RunningProcess>> {
+        self.spawned.store(true, Ordering::SeqCst);
+        Ok(Box::new(TrackingProcess {
+            control: self.control.clone(),
+        }))
+    }
 }
 
 impl TestAdapter {
@@ -90,7 +216,7 @@ impl ManagerAdapter for TestAdapter {
 async fn successful_execution_returns_completed_terminal_state() {
     let runtime = AdapterExecutionRuntime::new();
     let adapter = Arc::new(TestAdapter::new(
-        ManagerId::Npm,
+        ManagerId::Setapp,
         AdapterBehavior::Succeeds(AdapterResponse::Refreshed),
     ));
 
@@ -156,7 +282,7 @@ async fn failed_execution_is_attributed_with_manager_task_and_action() {
 async fn immediate_cancel_reports_cancelled_terminal_state() {
     let runtime = AdapterExecutionRuntime::new();
     let adapter = Arc::new(TestAdapter::new(
-        ManagerId::HomebrewFormula,
+        ManagerId::Npm,
         AdapterBehavior::SleepsThenSucceeds(Duration::from_millis(300), AdapterResponse::Refreshed),
     ));
 
@@ -181,6 +307,48 @@ async fn immediate_cancel_reports_cancelled_terminal_state() {
         snapshot.terminal_state,
         Some(AdapterTaskTerminalState::Cancelled(_))
     ));
+}
+
+#[tokio::test]
+async fn immediate_cancel_terminates_and_reaps_adapter_process_before_cancellation() {
+    let runtime = AdapterExecutionRuntime::new();
+    let control = Arc::new(TrackingProcessControl::default());
+    let spawned = Arc::new(AtomicBool::new(false));
+    let executor = Arc::new(TrackingExecutor {
+        control: control.clone(),
+        spawned: spawned.clone(),
+    });
+    let task_id = runtime
+        .submit(
+            Arc::new(ProcessAdapter::new(ManagerId::DockerDesktop, executor)),
+            AdapterRequest::Refresh(RefreshRequest),
+        )
+        .await
+        .expect("task should start");
+
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while !spawned.load(Ordering::SeqCst) {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("adapter process should spawn");
+    runtime
+        .cancel(task_id, CancellationMode::Immediate)
+        .await
+        .expect("cancellation should signal the process");
+    let snapshot = runtime
+        .wait_for_terminal(task_id, Some(Duration::from_secs(1)))
+        .await
+        .expect("process termination should reach a terminal task state");
+
+    assert_eq!(snapshot.runtime.status, TaskStatus::Cancelled);
+    assert!(matches!(
+        snapshot.terminal_state,
+        Some(AdapterTaskTerminalState::Cancelled(_))
+    ));
+    assert!(control.terminated.load(Ordering::SeqCst));
+    assert!(control.reaped.load(Ordering::SeqCst));
 }
 
 #[tokio::test]

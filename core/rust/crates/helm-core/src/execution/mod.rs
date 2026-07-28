@@ -12,12 +12,22 @@ use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::{OnceLock, RwLock};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock, RwLock, Weak};
 use std::time::{Duration, SystemTime};
 
 use crate::models::{CoreError, CoreErrorKind, ManagerAction, ManagerId, TaskId, TaskType};
 
 pub type ExecutionResult<T> = Result<T, CoreError>;
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct TaskProcessCancellationKey(pub(crate) u64);
+
+static NEXT_TASK_PROCESS_CANCELLATION_KEY: AtomicU64 = AtomicU64::new(1);
+
+pub(crate) fn next_task_process_cancellation_key() -> TaskProcessCancellationKey {
+    TaskProcessCancellationKey(NEXT_TASK_PROCESS_CANCELLATION_KEY.fetch_add(1, Ordering::Relaxed))
+}
 
 pub type ProcessWaitFuture = Pin<Box<dyn Future<Output = ExecutionResult<ProcessOutput>> + Send>>;
 
@@ -212,7 +222,16 @@ pub trait RunningProcess: Send + Sync {
 
     fn terminate(&self, mode: ProcessTerminationMode) -> ExecutionResult<()>;
 
+    fn cancellation_handle(&self) -> Option<Arc<dyn ProcessCancellation>> {
+        None
+    }
+
     fn wait(self: Box<Self>) -> ProcessWaitFuture;
+}
+
+/// A task-scoped handle used to stop a running process without taking ownership of its waiter.
+pub trait ProcessCancellation: Send + Sync {
+    fn terminate(&self, mode: ProcessTerminationMode) -> ExecutionResult<()>;
 }
 
 pub trait ProcessExecutor: Send + Sync {
@@ -227,6 +246,84 @@ pub struct ManagerTimeoutProfile {
 
 static MANAGER_EXECUTABLE_OVERRIDES: OnceLock<RwLock<ManagerExecutionPreferences>> =
     OnceLock::new();
+static TASK_PROCESS_REGISTRY: OnceLock<Mutex<TaskProcessRegistry>> = OnceLock::new();
+
+#[derive(Default)]
+struct TaskProcessRegistry {
+    cancellation_modes: HashMap<TaskProcessCancellationKey, ProcessTerminationMode>,
+    processes: HashMap<TaskProcessCancellationKey, Vec<Weak<dyn ProcessCancellation>>>,
+}
+
+fn task_process_registry() -> &'static Mutex<TaskProcessRegistry> {
+    TASK_PROCESS_REGISTRY.get_or_init(|| Mutex::new(TaskProcessRegistry::default()))
+}
+
+fn register_task_process(
+    task_id: TaskId,
+    key: TaskProcessCancellationKey,
+    process: Arc<dyn ProcessCancellation>,
+) {
+    let cancellation_mode = {
+        let mut registry = task_process_registry()
+            .lock()
+            .expect("task process registry lock poisoned");
+        registry
+            .processes
+            .entry(key)
+            .or_default()
+            .push(Arc::downgrade(&process));
+        registry.cancellation_modes.get(&key).copied()
+    };
+
+    // A cancellation may race process spawn; terminate a newly registered process immediately.
+    if let Some(mode) = cancellation_mode
+        && let Err(error) = process.terminate(mode)
+    {
+        tracing::error!(
+            task_id = task_id.0,
+            kind = ?error.kind,
+            message = %error.message,
+            "failed to terminate process registered after task cancellation"
+        );
+    }
+}
+
+pub(crate) fn terminate_task_processes(
+    key: TaskProcessCancellationKey,
+    mode: ProcessTerminationMode,
+) -> ExecutionResult<()> {
+    let (processes, effective_mode) = {
+        let mut registry = task_process_registry()
+            .lock()
+            .expect("task process registry lock poisoned");
+        let effective_mode = match (registry.cancellation_modes.get(&key), mode) {
+            (Some(ProcessTerminationMode::Immediate), _)
+            | (_, ProcessTerminationMode::Immediate) => ProcessTerminationMode::Immediate,
+            (_, graceful) => graceful,
+        };
+        registry.cancellation_modes.insert(key, effective_mode);
+        (
+            registry.processes.get(&key).cloned().unwrap_or_default(),
+            effective_mode,
+        )
+    };
+
+    for process in processes
+        .into_iter()
+        .filter_map(|process| process.upgrade())
+    {
+        process.terminate(effective_mode)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn clear_task_process_cancellation(key: TaskProcessCancellationKey) {
+    let mut registry = task_process_registry()
+        .lock()
+        .expect("task process registry lock poisoned");
+    registry.cancellation_modes.remove(&key);
+    registry.processes.remove(&key);
+}
 
 #[derive(Clone, Debug, Default)]
 struct ManagerExecutionPreferences {
@@ -550,7 +647,15 @@ pub fn spawn_validated(
     resolve_program_from_path_env(&mut request.command);
     apply_manager_timeout_profile(&mut request);
     request.validate()?;
-    executor.spawn(request)
+    let process = executor.spawn(request.clone())?;
+    if let (Some(task_id), Some(key), Some(handle)) = (
+        request.task_id,
+        crate::task_context::current_process_cancellation_key(),
+        process.cancellation_handle(),
+    ) {
+        register_task_process(task_id, key, handle);
+    }
+    Ok(process)
 }
 
 pub fn task_output(task_id: TaskId) -> Option<TaskOutputRecord> {
