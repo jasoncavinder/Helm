@@ -4309,31 +4309,28 @@ fn apply_sgr_style(current: Style, fallback_style: Style, sgr: &str, allow_color
                 }
                 index += 1;
             }
-            38 => {
-                if index + 1 < codes.len() {
-                    match codes[index + 1] {
-                        2 if index + 4 < codes.len() => {
-                            if allow_colors {
-                                let r = codes[index + 2].min(255) as u8;
-                                let g = codes[index + 3].min(255) as u8;
-                                let b = codes[index + 4].min(255) as u8;
-                                style = style.fg(Color::Rgb(r, g, b));
-                            }
-                            index += 5;
-                        }
-                        5 if index + 2 < codes.len() => {
-                            if allow_colors {
-                                style = style.fg(Color::Indexed(codes[index + 2].min(255) as u8));
-                            }
-                            index += 3;
-                        }
-                        _ => {
-                            index += 1;
-                        }
+            38 if index + 1 < codes.len() => match codes[index + 1] {
+                2 if index + 4 < codes.len() => {
+                    if allow_colors {
+                        let r = codes[index + 2].min(255) as u8;
+                        let g = codes[index + 3].min(255) as u8;
+                        let b = codes[index + 4].min(255) as u8;
+                        style = style.fg(Color::Rgb(r, g, b));
                     }
-                } else {
+                    index += 5;
+                }
+                5 if index + 2 < codes.len() => {
+                    if allow_colors {
+                        style = style.fg(Color::Indexed(codes[index + 2].min(255) as u8));
+                    }
+                    index += 3;
+                }
+                _ => {
                     index += 1;
                 }
+            },
+            38 => {
+                index += 1;
             }
             _ => {
                 index += 1;
