@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime};
 
 use helm_core::adapters::{
@@ -19,6 +20,12 @@ enum AdapterBehavior {
     Succeeds(AdapterResponse),
     Fails(CoreError),
     SleepsThenSucceeds(Duration, AdapterResponse),
+    BlocksUntilReleased {
+        started: Arc<AtomicBool>,
+        released: Arc<AtomicBool>,
+        response: AdapterResponse,
+    },
+    SignalsThenSucceeds(Arc<AtomicBool>, AdapterResponse),
     Panics,
 }
 
@@ -57,6 +64,21 @@ impl ManagerAdapter for TestAdapter {
             AdapterBehavior::Fails(error) => Err(error.clone()),
             AdapterBehavior::SleepsThenSucceeds(delay, response) => {
                 std::thread::sleep(*delay);
+                Ok(response.clone())
+            }
+            AdapterBehavior::BlocksUntilReleased {
+                started,
+                released,
+                response,
+            } => {
+                started.store(true, Ordering::SeqCst);
+                while !released.load(Ordering::SeqCst) {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                Ok(response.clone())
+            }
+            AdapterBehavior::SignalsThenSucceeds(started, response) => {
+                started.store(true, Ordering::SeqCst);
                 Ok(response.clone())
             }
             AdapterBehavior::Panics => panic!("simulated adapter panic"),
@@ -159,6 +181,76 @@ async fn immediate_cancel_reports_cancelled_terminal_state() {
         snapshot.terminal_state,
         Some(AdapterTaskTerminalState::Cancelled(_))
     ));
+}
+
+#[tokio::test]
+async fn cancelled_homebrew_task_holds_execution_lock_until_adapter_exits() {
+    let formula_runtime = AdapterExecutionRuntime::new();
+    let cask_runtime = AdapterExecutionRuntime::new();
+    let formula_started = Arc::new(AtomicBool::new(false));
+    let release_formula = Arc::new(AtomicBool::new(false));
+    let cask_started = Arc::new(AtomicBool::new(false));
+
+    let formula_task = formula_runtime
+        .submit(
+            Arc::new(TestAdapter::new(
+                ManagerId::HomebrewFormula,
+                AdapterBehavior::BlocksUntilReleased {
+                    started: formula_started.clone(),
+                    released: release_formula.clone(),
+                    response: AdapterResponse::Refreshed,
+                },
+            )),
+            AdapterRequest::Refresh(RefreshRequest),
+        )
+        .await
+        .unwrap();
+
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while !formula_started.load(Ordering::SeqCst) {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("formula adapter should start");
+
+    formula_runtime
+        .cancel(formula_task, CancellationMode::Immediate)
+        .await
+        .unwrap();
+
+    let cask_task = cask_runtime
+        .submit(
+            Arc::new(TestAdapter::new(
+                ManagerId::HomebrewCask,
+                AdapterBehavior::SignalsThenSucceeds(
+                    cask_started.clone(),
+                    AdapterResponse::Refreshed,
+                ),
+            )),
+            AdapterRequest::Refresh(RefreshRequest),
+        )
+        .await
+        .unwrap();
+
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    assert!(!cask_started.load(Ordering::SeqCst));
+    assert_eq!(
+        cask_runtime.status(cask_task).await.unwrap(),
+        TaskStatus::Queued
+    );
+
+    release_formula.store(true, Ordering::SeqCst);
+    let cask_snapshot = cask_runtime
+        .wait_for_terminal(cask_task, Some(Duration::from_secs(1)))
+        .await
+        .expect("cask task should complete after formula adapter exits");
+    assert!(cask_started.load(Ordering::SeqCst));
+    assert_eq!(cask_snapshot.runtime.status, TaskStatus::Completed);
+    assert_eq!(
+        formula_runtime.status(formula_task).await.unwrap(),
+        TaskStatus::Cancelled
+    );
 }
 
 #[tokio::test]

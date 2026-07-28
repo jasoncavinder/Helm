@@ -40,7 +40,14 @@ pub struct SerialPerManagerPolicy;
 
 impl ConcurrencyPolicy for SerialPerManagerPolicy {
     fn can_run_together(&self, first_manager: ManagerId, second_manager: ManagerId) -> bool {
-        first_manager != second_manager
+        manager_execution_domain(first_manager) != manager_execution_domain(second_manager)
+    }
+}
+
+pub(crate) fn manager_execution_domain(manager: ManagerId) -> ManagerId {
+    match manager {
+        ManagerId::HomebrewFormula | ManagerId::HomebrewCask => ManagerId::HomebrewFormula,
+        _ => manager,
     }
 }
 
@@ -56,4 +63,17 @@ pub trait TaskCoordinator: Send + Sync {
     fn cancel(&self, task_id: TaskId, mode: CancellationMode) -> OrchestrationResult<()>;
 
     fn status(&self, task_id: TaskId) -> OrchestrationResult<TaskStatus>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ConcurrencyPolicy, SerialPerManagerPolicy};
+    use crate::models::ManagerId;
+
+    #[test]
+    fn formula_and_cask_share_a_serial_execution_domain() {
+        let policy = SerialPerManagerPolicy;
+        assert!(!policy.can_run_together(ManagerId::HomebrewFormula, ManagerId::HomebrewCask));
+        assert!(policy.can_run_together(ManagerId::HomebrewFormula, ManagerId::Npm));
+    }
 }

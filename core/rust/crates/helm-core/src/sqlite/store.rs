@@ -1265,6 +1265,69 @@ LIMIT ?2
         })
     }
 
+    fn list_recent_failure_diagnostic_logs(
+        &self,
+        cutoff: SystemTime,
+        issue_key: &str,
+        limit: usize,
+    ) -> PersistenceResult<Vec<TaskLogRecord>> {
+        if limit == 0 || issue_key.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+
+        self.with_connection("list_recent_failure_diagnostic_logs", |connection| {
+            ensure_schema_ready(connection)?;
+            let issue_pattern = format!("%\"issueKey\":\"{}\"%", issue_key.trim());
+            let mut statement = connection.prepare(
+                "
+SELECT
+    logs.log_id,
+    logs.task_id,
+    logs.manager_id,
+    logs.task_type,
+    logs.status,
+    logs.level,
+    logs.message,
+    logs.created_at_unix
+FROM task_log_records AS logs
+INNER JOIN task_records AS tasks ON tasks.task_id = logs.task_id
+WHERE tasks.status = 'failed'
+  AND logs.created_at_unix >= ?1
+  AND logs.message LIKE '[diagnostic.v1] %'
+  AND logs.message LIKE ?2
+ORDER BY logs.created_at_unix DESC, logs.log_id DESC
+LIMIT ?3
+",
+            )?;
+            let rows = statement.query_map(
+                params![to_unix_seconds(cutoff)?, issue_pattern, to_i64(limit)?],
+                |row| {
+                    let log_id_raw: i64 = row.get(0)?;
+                    let task_id_raw: i64 = row.get(1)?;
+                    let manager_raw: String = row.get(2)?;
+                    let task_type_raw: String = row.get(3)?;
+                    let status_raw: Option<String> = row.get(4)?;
+                    let level_raw: String = row.get(5)?;
+                    let message: String = row.get(6)?;
+                    let created_at_unix: i64 = row.get(7)?;
+
+                    Ok(TaskLogRecord {
+                        id: i64_to_u64(log_id_raw)?,
+                        task_id: TaskId(i64_to_u64(task_id_raw)?),
+                        manager: parse_manager_id(&manager_raw)?,
+                        task_type: parse_task_type(&task_type_raw)?,
+                        status: status_raw.as_deref().map(parse_task_status).transpose()?,
+                        level: parse_task_log_level(&level_raw)?,
+                        message,
+                        created_at: from_unix_seconds(created_at_unix)?,
+                    })
+                },
+            )?;
+
+            rows.collect()
+        })
+    }
+
     fn prune_task_logs(&self, max_age_secs: i64) -> PersistenceResult<usize> {
         self.with_connection("prune_task_logs", |connection| {
             ensure_schema_ready(connection)?;

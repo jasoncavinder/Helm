@@ -1410,6 +1410,37 @@ fn build_manager_executable_doctor_states(
         .collect()
 }
 
+fn collect_recent_doctor_failure_diagnostics(
+    store: &dyn TaskStore,
+) -> Vec<helm_core::doctor::RecentTaskFailureDiagnostic> {
+    let cutoff = SystemTime::now()
+        .checked_sub(Duration::from_secs(DOCTOR_FAILURE_MAX_AGE_SECS))
+        .unwrap_or(SystemTime::UNIX_EPOCH);
+    store
+        .list_recent_failure_diagnostic_logs(
+            cutoff,
+            helm_core::doctor::HOME_BREW_LOCK_DIAGNOSTIC_ISSUE_KEY,
+            DOCTOR_FAILURE_MATCH_LIMIT,
+        )
+        .unwrap_or_default()
+        .iter()
+        .filter_map(helm_core::doctor::parse_recent_task_failure_diagnostic)
+        .collect()
+}
+
+fn group_recent_doctor_failure_diagnostics_by_manager(
+    diagnostics: &[helm_core::doctor::RecentTaskFailureDiagnostic],
+) -> std::collections::HashMap<ManagerId, Vec<helm_core::doctor::RecentTaskFailureDiagnostic>> {
+    let mut grouped = std::collections::HashMap::new();
+    for diagnostic in diagnostics {
+        grouped
+            .entry(diagnostic.manager)
+            .or_insert_with(Vec::new)
+            .push(diagnostic.clone());
+    }
+    grouped
+}
+
 fn collect_manager_executable_paths(
     id: ManagerId,
     active_path: Option<&std::path::Path>,
@@ -1679,6 +1710,12 @@ fn build_manager_statuses(
         .unwrap_or_default();
     let manager_executable_doctor_states =
         build_manager_executable_doctor_states(&detection_map, &pref_map);
+    let diagnostics_by_manager = store
+        .map(|store| {
+            let diagnostics = collect_recent_doctor_failure_diagnostics(store);
+            group_recent_doctor_failure_diagnostics_by_manager(diagnostics.as_slice())
+        })
+        .unwrap_or_default();
 
     ManagerId::ALL
         .iter()
@@ -1788,6 +1825,7 @@ fn build_manager_statuses(
                 manager_install_instances,
                 &homebrew_installed_formulas,
                 manager_executable_doctor_states.get(&id),
+                diagnostics_by_manager.get(&id).map(Vec::as_slice),
             );
             let setup_required = package_state_issues.iter().any(|issue| {
                 issue.issue_code == helm_core::doctor::ISSUE_CODE_POST_INSTALL_SETUP_REQUIRED
@@ -1861,8 +1899,9 @@ fn manager_package_state_issues(
     manager_install_instances: Option<&Vec<ManagerInstallInstance>>,
     homebrew_installed_formulas: &std::collections::HashSet<String>,
     executable_state: Option<&helm_core::doctor::ManagerExecutableDoctorState>,
+    recent_failure_diagnostics: Option<&[helm_core::doctor::RecentTaskFailureDiagnostic]>,
 ) -> Vec<FfiManagerPackageStateIssue> {
-    let findings = helm_core::doctor::scan_manager_package_state_issues(
+    let mut findings = helm_core::doctor::scan_manager_package_state_issues(
         helm_core::doctor::ManagerPackageStateScanInput {
             manager,
             manager_install_instances: manager_install_instances.map(Vec::as_slice),
@@ -1870,6 +1909,12 @@ fn manager_package_state_issues(
             executable_state,
         },
     );
+    if let Some(diagnostics) = recent_failure_diagnostics {
+        findings.extend(helm_core::doctor::scan_recent_task_failure_issues(
+            diagnostics,
+            SystemTime::now(),
+        ));
+    }
 
     findings
         .into_iter()
@@ -2087,6 +2132,8 @@ fn update_local_task_status(
 const TASK_PRUNE_MAX_AGE_SECS: i64 = 300;
 const TASK_RECENT_FETCH_LIMIT: usize = 1000;
 const TASK_TERMINAL_HISTORY_LIMIT: usize = 50;
+const DOCTOR_FAILURE_MATCH_LIMIT: usize = 16;
+const DOCTOR_FAILURE_MAX_AGE_SECS: u64 = 60 * 60;
 const TASK_INFLIGHT_DEDUP_MAX_AGE_SECS: u64 = 1800;
 const CATALOG_SYNC_STALE_AFTER_SECS: i64 = 6 * 60 * 60;
 const STALE_INFLIGHT_TASK_LOG_CONTEXT_STARTUP: &str = "startup_reconciliation";
@@ -2519,6 +2566,7 @@ fn manager_has_setup_required_issue(
         manager,
         install_instances_by_manager.get(&manager),
         homebrew_installed_formulas,
+        None,
         None,
     )
     .iter()
@@ -6628,6 +6676,7 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
 /// - package-state diagnostics for metadata-only Homebrew manager installs
 /// - post-install setup requirements for managed tool/runtime managers
 /// - stale selected executable path overrides
+/// - recent task failure diagnostics for known repairable local issues
 ///
 /// TODO(doctor-repair): wire additional detectors and remote fingerprint lookups.
 #[unsafe(no_mangle)]
@@ -6684,12 +6733,16 @@ pub extern "C" fn helm_doctor_scan() -> *mut c_char {
         }
     };
     let executable_states = build_manager_executable_doctor_states(&detection_map, &pref_map);
+    let recent_failure_diagnostics =
+        collect_recent_doctor_failure_diagnostics(state.store.as_ref());
 
     let report = helm_core::doctor::scan_package_state_report(
         ManagerId::ALL,
         &instances_by_manager,
         installed_packages.as_slice(),
         &executable_states,
+        recent_failure_diagnostics.as_slice(),
+        SystemTime::now(),
     );
     let json = match serde_json::to_string(&report) {
         Ok(json) => json,
@@ -12656,6 +12709,57 @@ mod tests {
             issue.repair_options[0].option_id,
             helm_core::repair::REPAIR_OPTION_CLEAR_SELECTED_EXECUTABLE_OVERRIDE
         );
+    }
+
+    #[test]
+    fn manager_status_flags_recent_homebrew_lock_conflict_issue() {
+        let store = temp_sqlite_store("manager-status-homebrew-lock-conflict");
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .upsert_detection(
+                ManagerId::HomebrewFormula,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(std::path::PathBuf::from("/opt/homebrew/bin/brew")),
+                    version: Some("5.0.0".to_string()),
+                },
+            )
+            .expect("homebrew detection should persist");
+        store
+            .create_task(&TaskRecord {
+                id: TaskId(41),
+                manager: ManagerId::HomebrewFormula,
+                task_type: TaskType::Upgrade,
+                status: TaskStatus::Failed,
+                created_at: UNIX_EPOCH,
+            })
+            .expect("task should persist");
+        store
+            .append_task_log(&helm_core::models::NewTaskLogRecord {
+                task_id: TaskId(41),
+                manager: ManagerId::HomebrewFormula,
+                task_type: TaskType::Upgrade,
+                status: Some(TaskStatus::Failed),
+                level: helm_core::models::TaskLogLevel::Info,
+                message: r#"[diagnostic.v1] {"schema":"helm.task.failure_diagnostic","schemaVersion":1,"fingerprint":"failure-v1-homebrew-lock","taskId":41,"managerId":"homebrew_formula","taskType":"upgrade","errorCode":"process_failure","issueKey":"homebrew.cellar_lock_conflict","issueOwner":"local_runtime","issueConfidence":"high","issueSummary":"Another Homebrew process already holds a Cellar lock for this upgrade target.","command":"brew upgrade --formula fd","errorExcerpt":"Error: A `brew upgrade fd` process has already locked /usr/local/Cellar/fd."}"#.to_string(),
+                created_at: SystemTime::now(),
+            })
+            .expect("task diagnostic should persist");
+
+        let statuses = build_manager_statuses(None, Some(&store), &HashMap::new(), &HashMap::new());
+        let homebrew = status_for(&statuses, ManagerId::HomebrewFormula);
+        let issue = homebrew
+            .package_state_issues
+            .iter()
+            .find(|issue| {
+                issue.issue_code == helm_core::doctor::ISSUE_CODE_HOMEBREW_CELLAR_LOCK_CONFLICT
+            })
+            .expect("homebrew lock conflict issue should be present");
+        assert_eq!(issue.source_manager_id, "homebrew_formula");
+        assert_eq!(issue.package_name, "fd");
+        assert!(issue.repair_options.is_empty());
     }
 
     #[test]

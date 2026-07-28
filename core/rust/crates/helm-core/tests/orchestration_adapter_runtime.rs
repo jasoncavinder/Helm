@@ -9,6 +9,7 @@ use helm_core::adapters::{
     AdapterRequest, AdapterResponse, AdapterResult, InstallRequest, ListInstalledRequest,
     ManagerAdapter, MutationResult, RefreshRequest, SearchRequest, UninstallRequest,
 };
+use helm_core::execution::{ManagerTimeoutProfile, set_manager_timeout_profile};
 use helm_core::models::{
     ActionSafety, Capability, CoreError, CoreErrorKind, DetectionInfo, ManagerAction,
     ManagerAuthority, ManagerCategory, ManagerDescriptor, ManagerId, OutdatedPackage, PackageRef,
@@ -35,6 +36,10 @@ fn test_db_path(test_name: &str) -> PathBuf {
 enum AdapterBehavior {
     Succeeds(AdapterResponse),
     Fails(CoreError),
+    BlocksFirstCall {
+        call_count: Arc<AtomicUsize>,
+        release_first: Arc<AtomicBool>,
+    },
 }
 
 struct TestAdapter {
@@ -321,6 +326,18 @@ impl ManagerAdapter for TestAdapter {
         match &self.behavior {
             AdapterBehavior::Succeeds(response) => Ok(response.clone()),
             AdapterBehavior::Fails(error) => Err(error.clone()),
+            AdapterBehavior::BlocksFirstCall {
+                call_count,
+                release_first,
+            } => {
+                let call = call_count.fetch_add(1, Ordering::SeqCst);
+                if call == 0 {
+                    while !release_first.load(Ordering::SeqCst) {
+                        std::thread::sleep(Duration::from_millis(2));
+                    }
+                }
+                Ok(AdapterResponse::Refreshed)
+            }
         }
     }
 }
@@ -853,6 +870,38 @@ async fn submit_refresh_request_response_retries_once_on_timeout() {
 
     assert_eq!(response, AdapterResponse::Refreshed);
     assert_eq!(call_count.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn orchestration_timeout_cancels_queued_retry_before_return() {
+    let call_count = Arc::new(AtomicUsize::new(0));
+    let release_first = Arc::new(AtomicBool::new(false));
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(TestAdapter::new(
+        ManagerId::Npm,
+        AdapterBehavior::BlocksFirstCall {
+            call_count: call_count.clone(),
+            release_first: release_first.clone(),
+        },
+    ));
+    set_manager_timeout_profile(
+        ManagerId::Npm,
+        ManagerTimeoutProfile {
+            hard_timeout: Some(Duration::from_millis(30)),
+            idle_timeout: None,
+        },
+    );
+    let runtime = AdapterRuntime::new([adapter]).unwrap();
+
+    let result = runtime
+        .submit_refresh_request_response(ManagerId::Npm, AdapterRequest::Refresh(RefreshRequest))
+        .await;
+    release_first.store(true, Ordering::SeqCst);
+    set_manager_timeout_profile(ManagerId::Npm, ManagerTimeoutProfile::default());
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let error = result.expect_err("both orchestration attempts should time out");
+    assert_eq!(error.kind, CoreErrorKind::Timeout);
+    assert_eq!(call_count.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]

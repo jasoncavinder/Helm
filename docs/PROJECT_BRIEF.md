@@ -276,6 +276,7 @@ Settings include:
 - Background task queue with observable statuses.
 - Task types: detection, install, uninstall, refresh, search, upgrade.
 - Per-manager exclusivity locks; same manager tasks run serially.
+- Managers that share mutable backend state use a common execution lock; Homebrew formula and cask tasks never run concurrently within a Helm runtime process.
 - True process cancellation, not just UI dismissal.
 
 ---

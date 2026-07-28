@@ -130,6 +130,12 @@ const HOMEBREW_API_CACHE_PERMISSION_PROBES: [&str; 3] = [
     "ls -ld ~/Library/Caches/Homebrew ~/Library/Caches/Homebrew/api",
     "brew update --debug",
 ];
+const HOMEBREW_LOCK_CONFLICT_PROBES: [&str; 4] = [
+    "ps -Ao pid,ppid,stat,etime,command | rg \"brew( |$)\"",
+    "brew upgrade --formula --dry-run <package>",
+    "brew upgrade --cask --dry-run <package>",
+    "wait for the other Homebrew process to finish, then retry",
+];
 
 impl AdapterRuntime {
     pub fn new(
@@ -611,6 +617,23 @@ impl AdapterRuntime {
                 }
                 Err(error) => {
                     let attributed = attribute_error(error, manager, task_type, action);
+                    if attributed.kind == CoreErrorKind::Timeout
+                        && let Err(cancel_error) = self
+                            .execution
+                            .cancel(task_id, CancellationMode::Immediate)
+                            .await
+                    {
+                        tracing::warn!(
+                            manager = ?manager,
+                            task_type = ?task_type,
+                            action = ?action,
+                            task_id = task_id.0,
+                            attempt,
+                            kind = ?cancel_error.kind,
+                            message = %cancel_error.message,
+                            "failed to cancel timed-out request-response task"
+                        );
+                    }
                     tracing::warn!(
                         manager = ?manager,
                         task_type = ?task_type,
@@ -1589,8 +1612,8 @@ fn build_failure_diagnostic_envelope(
 }
 
 fn classify_failure_issue(manager: ManagerId, combined_text: &str) -> FailureIssueClassification {
+    let normalized = normalize_failure_text(combined_text);
     if manager == ManagerId::HomebrewFormula {
-        let normalized = normalize_failure_text(combined_text);
         if normalized.contains("no available formula with the name \"formula.jws.json\"")
             || (normalized.contains("formulaunavailableerror")
                 && normalized.contains("formula.jws.json"))
@@ -1615,6 +1638,24 @@ fn classify_failure_issue(manager: ManagerId, combined_text: &str) -> FailureIss
                 recommended_probes: &HOMEBREW_API_CACHE_PERMISSION_PROBES,
             };
         }
+    }
+
+    if matches!(
+        manager,
+        ManagerId::HomebrewFormula | ManagerId::HomebrewCask
+    ) && normalized.contains("process has already locked /")
+        && normalized.contains("brew ")
+        && (normalized.contains("/cellar/")
+            || normalized.contains("/caskroom/")
+            || normalized.contains("/homebrew/locks/"))
+    {
+        return FailureIssueClassification {
+            key: "homebrew.cellar_lock_conflict",
+            owner: "local_runtime",
+            confidence: "high",
+            summary: "Another Homebrew process already holds a lock for this target.",
+            recommended_probes: &HOMEBREW_LOCK_CONFLICT_PROBES,
+        };
     }
 
     FailureIssueClassification {
@@ -2708,6 +2749,28 @@ mod tests {
         );
         assert_eq!(issue.key, "homebrew.api_manifest_treated_as_formula");
         assert_eq!(issue.owner, "homebrew");
+        assert_eq!(issue.confidence, "high");
+    }
+
+    #[test]
+    fn classify_failure_issue_detects_homebrew_lock_conflict_signature() {
+        let issue = classify_failure_issue(
+            ManagerId::HomebrewFormula,
+            "Error: A `brew upgrade fd` process has already locked /usr/local/Cellar/fd.\nPlease wait for it to finish or terminate it to continue.",
+        );
+        assert_eq!(issue.key, "homebrew.cellar_lock_conflict");
+        assert_eq!(issue.owner, "local_runtime");
+        assert_eq!(issue.confidence, "high");
+    }
+
+    #[test]
+    fn classify_failure_issue_detects_homebrew_cask_lock_conflict_signature() {
+        let issue = classify_failure_issue(
+            ManagerId::HomebrewCask,
+            "Error: A `brew upgrade --cask iterm2` process has already locked /opt/homebrew/Caskroom/iterm2.",
+        );
+        assert_eq!(issue.key, "homebrew.cellar_lock_conflict");
+        assert_eq!(issue.owner, "local_runtime");
         assert_eq!(issue.confidence, "high");
     }
 

@@ -119,6 +119,7 @@ char *helm_list_manager_status(void);
  * - package-state diagnostics for metadata-only Homebrew manager installs
  * - post-install setup requirements for managed tool/runtime managers
  * - stale selected executable path overrides
+ * - recent task failure diagnostics for known repairable local issues
  *
  * TODO(doctor-repair): wire additional detectors and remote fingerprint lookups.
  */

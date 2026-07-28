@@ -256,6 +256,7 @@ Properties:
 
 - Cross-manager parallelism
 - Per-manager serialization
+- Shared execution domains where managers use the same mutable backend; Homebrew formula and cask tasks serialize together
 - True process cancellation
 - Deterministic execution ordering
 
@@ -493,6 +494,7 @@ UI refreshed (inspector shows task detail)
 
 - Managers run in parallel
 - Tasks within same manager are serialized
+- Homebrew formula and cask tasks share one process-wide execution domain because both mutate the same Homebrew installation
 - Authority phases executed sequentially
 
 ---
