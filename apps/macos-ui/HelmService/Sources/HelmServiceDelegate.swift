@@ -4,9 +4,9 @@ import os.log
 
 private let logger = Logger(subsystem: "app.jasoncavinder.Helm.HelmService", category: "delegate")
 
-/// The development team ID used for code signing validation.
-/// Only processes signed by this team are allowed to connect to the XPC service.
+/// The signing identity required for connections to the embedded Helm service.
 private let expectedTeamID = "V73WPJR9M4"
+private let expectedHelmBundleIdentifier = "com.jasoncavinder.Helm"
 
 class HelmServiceDelegate: NSObject, NSXPCListenerDelegate {
     private let sharedService = HelmService()
@@ -34,9 +34,9 @@ class HelmServiceDelegate: NSObject, NSXPCListenerDelegate {
             return false
         }
 
-        // Require the connecting process is signed by the same development team
+        // Only the Helm app, not another app signed by the same team, may use this service.
         var requirement: SecRequirement?
-        let requirementString = "anchor apple generic and certificate leaf[subject.OU] = \"\(expectedTeamID)\"" as CFString
+        let requirementString = "anchor apple generic and certificate leaf[subject.OU] = \"\(expectedTeamID)\" and identifier \"\(expectedHelmBundleIdentifier)\"" as CFString
         guard SecRequirementCreateWithString(requirementString, SecCSFlags(), &requirement) == errSecSuccess,
               let requirement = requirement else {
             logger.warning("Failed to create security requirement")
